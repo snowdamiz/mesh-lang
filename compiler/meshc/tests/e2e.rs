@@ -5879,6 +5879,18 @@ fn e2e_regex_captures() {
     assert_eq!(output, "hello world\nhello\nworld\nno match\n");
 }
 
+/// Regression: an Option<String> returned by a helper must preserve its tag
+/// when one branch forwards an Option allocated by the runtime.
+#[test]
+fn e2e_option_string_helper_preserves_runtime_value() {
+    let source = read_fixture("option_string_helper_return.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "authorization\nAuthorization\nmissing\nlocal\nAuthorization\n"
+    );
+}
+
 /// Phase 119: Regex.replace(rx, str, replacement) -> String (REGEX-05).
 #[test]
 fn e2e_regex_replace() {

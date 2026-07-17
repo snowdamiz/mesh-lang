@@ -545,7 +545,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // This handles mismatches like ptr vs { i8, ptr } (Result type).
                     let fn_ret_ty = fn_val.get_type().get_return_type();
                     let coerced_result = if let Some(expected_ty) = fn_ret_ty {
-                        self.coerce_return_value(result, expected_ty)?
+                        self.coerce_value_to_type(result, expected_ty)?
                     } else {
                         result
                     };
@@ -563,13 +563,13 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Coerce a return value to match the function's declared return type.
+    /// Coerce a value to the LLVM representation expected at a typed boundary.
     ///
     /// Handles common mismatches:
     /// - ptr result, struct return type: load struct from pointer
     /// - struct result, ptr return type: heap-alloc + store + return pointer
     /// - struct result, different struct return type: bitcast via alloca
-    fn coerce_return_value(
+    fn coerce_value_to_type(
         &self,
         result: inkwell::values::BasicValueEnum<'ctx>,
         expected_ty: inkwell::types::BasicTypeEnum<'ctx>,

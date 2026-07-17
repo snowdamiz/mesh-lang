@@ -37,6 +37,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// * `scrutinee_alloca` - Pointer to the scrutinee value (alloca'd)
     /// * `scrutinee_ty` - The MIR type of the scrutinee
     /// * `arms` - The original match arms (for arm body codegen)
+    /// * `result_ty` - The MIR type shared by every match arm
     /// * `result_alloca` - Pointer to store the match result
     /// * `merge_bb` - Block to branch to after an arm body executes
     pub(crate) fn codegen_decision_tree(
@@ -45,6 +46,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -58,6 +60,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             ),
@@ -72,6 +75,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             ),
@@ -88,6 +92,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             ),
@@ -102,6 +107,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             ),
@@ -118,6 +124,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             ),
@@ -138,6 +145,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -219,6 +227,7 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
+            let body_val = self.coerce_value_to_type(body_val, self.llvm_type(result_ty))?;
             self.builder
                 .build_store(result_alloca, body_val)
                 .map_err(|e| e.to_string())?;
@@ -240,6 +249,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -301,6 +311,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             )?;
@@ -314,6 +325,7 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee_alloca,
                 scrutinee_ty,
                 arms,
+                result_ty,
                 result_alloca,
                 merge_bb,
             )?;
@@ -336,6 +348,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -420,6 +433,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;
@@ -431,6 +445,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;
@@ -448,6 +463,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -506,6 +522,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;
@@ -517,6 +534,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;
@@ -535,6 +553,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         arms: &[MirMatchArm],
+        result_ty: &MirType,
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
@@ -577,6 +596,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;
@@ -588,6 +608,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            result_ty,
             result_alloca,
             merge_bb,
         )?;

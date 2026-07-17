@@ -1,5 +1,7 @@
 # Knowledge
 
+- Runtime intrinsics return heap pointers for sum values such as `Option<String>`, while Mesh control-flow result slots use the by-value LLVM sum layout. Coerce each non-terminated `if`/`case` branch to the result representation before storing it in the shared slot; LLVM opaque pointers otherwise permit a pointer store that silently corrupts the constructor tag and later surfaces as a non-exhaustive-match panic or process crash.
+
 - For M061/S04 combined `verify-m061-s04.sh` dev-route replay failures, inspect the first non-connection-refused assertion in `../hyperpush-mono/mesher/.tmp/m061-s01/verify-client-route-inventory/route-inventory-dev.log` before chasing the later `ERR_CONNECTION_REFUSED` fallout. In the current failures, later seeded-walkthrough/read-seam connection errors were secondary after the first Issues proof mismatch destabilized the shared dev run.
 
 - For M061/S04 isolated `seed-live-issue.sh` replays, removing default backend reuse exposes a second seam: the temporary Mesher process can log `Runtime ready` while the script still records an empty `project-settings-last-response.txt` and times out waiting for `/api/v1/projects/default/settings`. Resume from the retained `seed-live-issue/mesher.log` and `project-settings-last-response.txt` pair rather than assuming the failure is in the later issue/event seeding logic.

@@ -1820,6 +1820,7 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
+            let then_val = self.coerce_value_to_type(then_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, then_val)
                 .map_err(|e| e.to_string())?;
@@ -1838,6 +1839,7 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
+            let else_val = self.coerce_value_to_type(else_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, else_val)
                 .map_err(|e| e.to_string())?;
@@ -2000,6 +2002,7 @@ impl<'ctx> CodeGen<'ctx> {
             scrutinee_alloca,
             scrutinee_ty,
             arms,
+            ty,
             result_alloca,
             merge_bb,
         )?;
