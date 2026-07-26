@@ -49,6 +49,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::STRUCT_FIELD => walk_struct_field(node),
         SyntaxKind::CLOSURE_EXPR => walk_closure_expr(node),
         SyntaxKind::CLOSURE_CLAUSE => walk_closure_clause(node),
+        SyntaxKind::TRAILING_CLOSURE => walk_trailing_closure(node),
         SyntaxKind::RETURN_EXPR => walk_return_expr(node),
         SyntaxKind::IMPORT_DECL => walk_import_decl(node),
         SyntaxKind::FROM_IMPORT_DECL => walk_from_import_decl(node),
@@ -106,7 +107,6 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::GUARD_CLAUSE
         | SyntaxKind::FN_EXPR_BODY
         | SyntaxKind::INTERPOLATION
-        | SyntaxKind::TRAILING_CLOSURE
         | SyntaxKind::TYPE_PARAM_LIST
         | SyntaxKind::GENERIC_PARAM_LIST
         | SyntaxKind::GENERIC_ARG_LIST
@@ -631,6 +631,9 @@ fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
 
 fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
+    let has_do = node
+        .children_with_tokens()
+        .any(|child| child.kind() == SyntaxKind::DO_KW);
 
     for child in node.children_with_tokens() {
         match child {
@@ -640,6 +643,10 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text(tok.text()));
                     parts.push(sp());
                 }
+                SyntaxKind::DO_KW => {
+                    parts.push(ir::text("do"));
+                }
+                SyntaxKind::END_KW => {}
                 SyntaxKind::WHEN_KW => {
                     parts.push(sp());
                     parts.push(ir::text("when"));
@@ -661,11 +668,54 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::BLOCK => {
                     let body = walk_block_body(&n);
-                    parts.push(body);
+                    if has_do {
+                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                        parts.push(ir::hardline());
+                        parts.push(ir::text("end"));
+                    } else {
+                        parts.push(body);
+                    }
                 }
                 _ => {
                     parts.push(walk_node(&n));
                 }
+            },
+        }
+    }
+
+    ir::concat(parts)
+}
+
+fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    let mut first_bar = true;
+
+    for child in node.children_with_tokens() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::DO_KW => {
+                    parts.push(sp());
+                    parts.push(ir::text("do"));
+                }
+                SyntaxKind::BAR => {
+                    if first_bar {
+                        parts.push(sp());
+                        first_bar = false;
+                    }
+                    parts.push(ir::text("|"));
+                }
+                SyntaxKind::END_KW | SyntaxKind::NEWLINE => {}
+                _ => add_token_with_context(&tok, &mut parts),
+            },
+            NodeOrToken::Node(n) => match n.kind() {
+                SyntaxKind::PARAM_LIST => parts.push(walk_bare_param_list(&n)),
+                SyntaxKind::BLOCK => {
+                    let body = walk_block_body(&n);
+                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    parts.push(ir::hardline());
+                    parts.push(ir::text("end"));
+                }
+                _ => parts.push(walk_node(&n)),
             },
         }
     }
@@ -2340,6 +2390,26 @@ mod tests {
     fn case_expression() {
         let result = fmt("case x do\n1 -> \"one\"\n2 -> \"two\"\nend");
         assert_eq!(result, "case x do\n  1 -> \"one\"\n  2 -> \"two\"\nend\n");
+    }
+
+    #[test]
+    fn case_arm_do_block() {
+        let result = fmt(
+            "case outcome do\nReject -> do\nlet value = recover(outcome) ?\nOk(value)\nend\n_ -> Ok(outcome)\nend",
+        );
+        assert_eq!(
+            result,
+            "case outcome do\n  Reject -> do\n    let value = recover(outcome) ?\n    Ok(value)\n  end\n  _ -> Ok(outcome)\nend\n"
+        );
+    }
+
+    #[test]
+    fn nested_trailing_closure_blocks() {
+        let result = fmt("describe(\"paper\") do\ntest(\"fills\") do\nassert(true)\nend\nend");
+        assert_eq!(
+            result,
+            "describe(\"paper\") do\n  test(\"fills\") do\n    assert(true)\n  end\nend\n"
+        );
     }
 
     #[test]
