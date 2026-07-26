@@ -667,7 +667,15 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
         let path_ty = self.resolve_path_type(scrutinee_ty, path)?;
-        let llvm_ty = self.llvm_type(&path_ty);
+        let llvm_ty = if matches!(path, AccessPath::VariantField(_, _, _))
+            && matches!(path_ty, MirType::Struct(_))
+        {
+            self.context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()
+        } else {
+            self.llvm_type(&path_ty)
+        };
         let val = self
             .builder
             .build_load(llvm_ty, ptr, "path_val")
@@ -746,6 +754,20 @@ impl<'ctx> CodeGen<'ctx> {
                 let parent_ptr =
                     self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
+                let parent_ptr = if matches!(parent.as_ref(), AccessPath::VariantField(_, _, _))
+                    && matches!(parent_ty, MirType::Struct(_))
+                {
+                    self.builder
+                        .build_load(
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                            parent_ptr,
+                            "boxed_variant_struct",
+                        )
+                        .map_err(|e| e.to_string())?
+                        .into_pointer_value()
+                } else {
+                    parent_ptr
+                };
 
                 let struct_name = match &parent_ty {
                     MirType::Struct(name) => name.clone(),

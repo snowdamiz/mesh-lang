@@ -7267,3 +7267,72 @@ end
     );
     assert_eq!(output, "zero\none\nother\nerror\n");
 }
+
+/// User-defined sum types must box struct payloads just like generic Result.
+#[test]
+fn e2e_user_sum_struct_payload_roundtrip() {
+    let output = compile_multifile_and_run(&[
+        (
+            "models.mpl",
+            r#"
+pub struct Position do
+  quantity :: Int
+  seed :: Int
+end
+
+pub fn load_position(quantity :: Int) -> Position!String do
+  Ok(Position { quantity: quantity, seed: 42 })
+end
+"#,
+        ),
+        (
+            "main.mpl",
+            r#"
+from Models import Position, load_position
+
+type Portfolio do
+  Idle
+  Open(Position)
+end
+
+struct State do
+  first :: Portfolio
+  second :: Portfolio
+  marker :: Int
+end
+
+fn open(quantity :: Int) -> Portfolio!String do
+  let position = load_position(quantity) ?
+  Ok(Open(position))
+end
+
+fn quantity(portfolio :: Portfolio) -> Int do
+  case portfolio do
+    Idle -> 0
+    Open(position) -> position.quantity
+  end
+end
+
+fn make_state() -> State!String do
+  Ok(State {
+    first: open(2467333333) ?,
+    second: open(1234567890) ?,
+    marker: 99
+  })
+end
+
+fn main() do
+  case make_state() do
+    Ok(state) -> do
+      println("${quantity(state.first)}")
+      println("${quantity(state.second)}")
+      println("${state.marker}")
+    end
+    Err(error) -> println(error)
+  end
+end
+"#,
+        ),
+    ]);
+    assert_eq!(output, "2467333333\n1234567890\n99\n");
+}

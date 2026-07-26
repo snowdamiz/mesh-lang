@@ -216,7 +216,11 @@ pub fn variant_struct_type<'ctx>(
     let tag_type = context.i8_type();
     let mut fields: Vec<BasicTypeEnum<'ctx>> = vec![tag_type.into()];
     for f in field_types {
-        fields.push(llvm_type(context, f, struct_types, sum_type_layouts));
+        fields.push(if matches!(f, MirType::Struct(_)) {
+            context.ptr_type(inkwell::AddressSpace::default()).into()
+        } else {
+            llvm_type(context, f, struct_types, sum_type_layouts)
+        });
     }
     context.struct_type(&fields, false)
 }
@@ -506,9 +510,7 @@ mod tests {
             "Ptr variant overlay should have ptr field"
         );
 
-        // Case 5: The variant overlay for Struct fields uses the struct type directly.
-        // This overlay is used for construction (GEP into the struct field).
-        // The struct value is heap-allocated during construction and stored as a ptr.
+        // Case 5: Struct payloads use the same boxed pointer representation.
         let struct_overlay = variant_struct_type(
             &context,
             &[MirType::Struct("TestStruct".to_string())],
@@ -520,19 +522,12 @@ mod tests {
             struct_overlay
                 .get_field_type_at_index(1)
                 .unwrap()
-                .is_struct_type(),
-            "Struct variant overlay should have struct field type (used for construction GEP)"
+                .is_pointer_type(),
+            "Struct variant overlay should have ptr field"
         );
 
-        // The struct overlay is larger than the {i8, ptr} layout because the
-        // struct is stored INLINE in the overlay (before boxing).
         let ptr_layout_size = td.get_store_size(&generic_layout);
         let struct_overlay_size = td.get_store_size(&struct_overlay);
-        assert!(
-            struct_overlay_size > ptr_layout_size,
-            "Struct variant overlay ({} bytes) should exceed {{i8, ptr}} layout ({} bytes)",
-            struct_overlay_size,
-            ptr_layout_size,
-        );
+        assert_eq!(struct_overlay_size, ptr_layout_size);
     }
 }

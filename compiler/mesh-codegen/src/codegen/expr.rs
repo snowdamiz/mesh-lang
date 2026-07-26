@@ -2266,7 +2266,9 @@ impl<'ctx> CodeGen<'ctx> {
             for (i, field_expr) in fields.iter().enumerate() {
                 let val = self.codegen_expr(field_expr)?;
                 let expected_field_ty = field_types.get(i).unwrap_or(field_expr.ty());
-                let val = if matches!(expected_field_ty, MirType::Ptr) && !val.is_pointer_value() {
+                let val = if matches!(expected_field_ty, MirType::Ptr | MirType::Struct(_))
+                    && !val.is_pointer_value()
+                {
                     self.box_variant_payload(val, "variant_box")?
                 } else {
                     val
