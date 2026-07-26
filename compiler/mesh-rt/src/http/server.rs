@@ -895,12 +895,13 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
 /// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
 /// Format: status line, Content-Type, Content-Length, Connection: close,
-/// optional extra headers, blank line, body bytes.
+/// optional extra headers, blank line, body bytes. A custom Content-Type
+/// replaces the JSON default.
 ///
 /// When `extra_headers` is `Some`, each header is emitted as `{name}: {value}\r\n`
 /// between the standard headers and the blank line.
 fn write_response(
-    stream: &mut HttpStream,
+    stream: &mut impl Write,
     status: u16,
     body: &[u8],
     extra_headers: Option<Vec<(String, String)>>,
@@ -923,14 +924,28 @@ fn write_response(
         _ => "OK",
     };
 
+    let content_type = extra_headers
+        .as_ref()
+        .and_then(|headers| {
+            headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        })
+        .map(|(_, value)| value.as_str())
+        .unwrap_or("application/json; charset=utf-8");
     let mut header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n",
-        status, status_text, body.len()
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        status,
+        status_text,
+        content_type,
+        body.len()
     );
 
     if let Some(ref headers) = extra_headers {
         for (name, value) in headers {
-            header.push_str(&format!("{}: {}\r\n", name, value));
+            if !name.eq_ignore_ascii_case("content-type") {
+                header.push_str(&format!("{}: {}\r\n", name, value));
+            }
         }
     }
 
@@ -1653,6 +1668,30 @@ mod tests {
             assert!(!resp.headers.is_null());
             assert_eq!(map::mesh_map_size(resp.headers), 1);
         }
+    }
+
+    #[test]
+    fn response_content_type_header_overrides_json_default() {
+        let mut response = Vec::new();
+        write_response(
+            &mut response,
+            200,
+            b"metric 1\n",
+            Some(owned_pairs(&[(
+                "Content-Type",
+                "text/plain; version=0.0.4; charset=utf-8",
+            )])),
+        )
+        .unwrap();
+
+        let response = String::from_utf8(response).unwrap();
+        assert_eq!(
+            response
+                .lines()
+                .filter(|line| line.to_ascii_lowercase().starts_with("content-type:"))
+                .collect::<Vec<_>>(),
+            ["Content-Type: text/plain; version=0.0.4; charset=utf-8"]
+        );
     }
 
     #[test]
