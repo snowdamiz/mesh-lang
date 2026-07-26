@@ -17,6 +17,10 @@ fn put_string(mut result: *mut u8, key: &str, value: &str) -> *mut u8 {
     result
 }
 
+fn duration_nanos(duration: std::time::Duration) -> u64 {
+    duration.as_nanos().min(u64::MAX.into()) as u64
+}
+
 /// Return bounded local and cluster capacity counters as `Map<String, Int>`.
 #[no_mangle]
 pub extern "C" fn mesh_cluster_capacity() -> *mut u8 {
@@ -98,6 +102,94 @@ pub extern "C" fn mesh_cluster_pressure() -> *mut u8 {
             "false"
         },
     )
+}
+
+/// Return fixed-name local runtime counters and gauges as `Map<String, Int>`.
+#[no_mangle]
+pub extern "C" fn mesh_cluster_telemetry() -> *mut u8 {
+    let telemetry = super::telemetry::runtime_telemetry().snapshot();
+    let mut result = map::mesh_map_new_typed(1);
+    for (key, value) in [
+        ("active_workers", telemetry.active_workers.into()),
+        ("configured_workers", telemetry.configured_workers.into()),
+        ("runnable_actors", telemetry.runnable_actors),
+        (
+            "global_run_queue_depth",
+            telemetry.global_run_queue_depth.into(),
+        ),
+        (
+            "scheduler_busy_nanoseconds_total",
+            duration_nanos(telemetry.scheduler_busy_time),
+        ),
+        (
+            "scheduler_idle_nanoseconds_total",
+            duration_nanos(telemetry.scheduler_idle_time),
+        ),
+        ("mailbox_messages", telemetry.mailbox_messages),
+        ("mailbox_depth_p50", telemetry.mailbox_depth_p50),
+        ("mailbox_depth_p95", telemetry.mailbox_depth_p95),
+        ("mailbox_depth_max", telemetry.mailbox_depth_max),
+        ("http_connections", telemetry.http_connections.into()),
+        ("http_inflight_requests", telemetry.inflight_requests.into()),
+        ("http_queued_requests", telemetry.queued_requests.into()),
+        ("http_queued_bytes", telemetry.queued_bytes),
+        ("http_rejected_requests_total", telemetry.rejected_requests),
+        (
+            "http_outstanding_reservations",
+            telemetry.outstanding_reservations.into(),
+        ),
+        (
+            "http_queue_wait_p95_nanoseconds",
+            duration_nanos(telemetry.p95_queue_wait),
+        ),
+        (
+            "http_service_p95_nanoseconds",
+            duration_nanos(telemetry.p95_service_time),
+        ),
+        (
+            "http_end_to_end_p95_nanoseconds",
+            duration_nanos(telemetry.p95_end_to_end_time),
+        ),
+        (
+            "remote_dispatch_queued_items",
+            telemetry.remote_dispatch_queued_items.into(),
+        ),
+        (
+            "remote_dispatch_queued_bytes",
+            telemetry.remote_dispatch_queued_bytes,
+        ),
+        (
+            "remote_dispatch_timeouts_total",
+            telemetry.remote_dispatch_timeouts,
+        ),
+        (
+            "remote_dispatch_retries_total",
+            telemetry.remote_dispatch_retries,
+        ),
+        (
+            "remote_dispatch_circuit_rejections_total",
+            telemetry.remote_dispatch_circuit_rejections,
+        ),
+        (
+            "remote_dispatch_queue_rejections_total",
+            telemetry.remote_dispatch_queue_rejections,
+        ),
+        (
+            "remote_dispatch_open_circuits",
+            telemetry.remote_dispatch_open_circuits.into(),
+        ),
+        (
+            "process_resident_memory_bytes",
+            telemetry.process_resident_memory_bytes.unwrap_or(0),
+        ),
+        (
+            "cpu_available_parallelism",
+            telemetry.cpu_available_parallelism.into(),
+        ),
+    ] {
+        result = put_int(result, key, value);
+    }
+    result
 }
 
 /// Return the configured combined role string.

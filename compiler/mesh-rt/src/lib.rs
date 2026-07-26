@@ -148,6 +148,7 @@ pub use dist::autonomous::{
 pub use dist::bootstrap::{BootstrapMode, BootstrapStatus};
 pub use dist::cluster_api::{
     mesh_cluster_capacity, mesh_cluster_pressure, mesh_cluster_role, mesh_cluster_state,
+    mesh_cluster_telemetry,
 };
 pub use dist::consensus::{
     commit_consensus_command, consensus_node_id_for_stable_id, consensus_runtime_snapshot,

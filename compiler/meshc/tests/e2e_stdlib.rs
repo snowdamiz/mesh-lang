@@ -177,6 +177,26 @@ fn e2e_string_contains() {
 }
 
 #[test]
+fn e2e_cluster_telemetry_is_available_as_a_typed_map() {
+    let output = compile_and_run(
+        r#"
+fn verify(metrics :: Map<String, Int>) do
+  println("${Map.has_key(metrics, "mailbox_messages")}")
+  println("${Map.has_key(metrics, "scheduler_busy_nanoseconds_total")}")
+  println("${Map.has_key(metrics, "process_resident_memory_bytes")}")
+  println("${Map.get(metrics, "cpu_available_parallelism") > 0}")
+end
+
+fn main() do
+  Cluster.telemetry()
+    |> verify
+end
+"#,
+    );
+    assert_eq!(output, "true\ntrue\ntrue\ntrue\n");
+}
+
+#[test]
 fn e2e_string_trim() {
     let source = read_fixture("stdlib_string_trim.mpl");
     let output = compile_and_run(&source);

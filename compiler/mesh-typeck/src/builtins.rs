@@ -1639,6 +1639,10 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::string()))),
     );
     env.insert(
+        "cluster_telemetry".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::int()))),
+    );
+    env.insert(
         "cluster_role".into(),
         Scheme::mono(Ty::fun(vec![], Ty::string())),
     );

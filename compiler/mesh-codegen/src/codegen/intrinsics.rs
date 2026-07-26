@@ -1808,6 +1808,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
+        "mesh_cluster_telemetry",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
         "mesh_cluster_role",
         ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),

@@ -1466,6 +1466,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::string()))),
     );
     cluster_mod.insert(
+        "telemetry".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::map(Ty::string(), Ty::int()))),
+    );
+    cluster_mod.insert(
         "role".to_string(),
         Scheme::mono(Ty::fun(vec![], Ty::string())),
     );

@@ -2113,6 +2113,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_cluster_telemetry".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_cluster_role".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::String)),
         );
@@ -13705,6 +13709,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_idempotency_key" => "mesh_http_idempotency_key".to_string(),
         "cluster_capacity" => "mesh_cluster_capacity".to_string(),
         "cluster_pressure" => "mesh_cluster_pressure".to_string(),
+        "cluster_telemetry" => "mesh_cluster_telemetry".to_string(),
         "cluster_role" => "mesh_cluster_role".to_string(),
         "cluster_state" => "mesh_cluster_state".to_string(),
         // Phase 51: Method-specific routing (HTTP.on_get -> http_on_get -> mesh_http_route_get)
