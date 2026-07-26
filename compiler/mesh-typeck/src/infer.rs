@@ -1254,6 +1254,11 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::string(),
         )),
     );
+    // Json.is_string(json_string, key) -> Bool
+    json_mod.insert(
+        "is_string".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
+    );
 
     modules.insert("JSON".to_string(), json_mod.clone());
 

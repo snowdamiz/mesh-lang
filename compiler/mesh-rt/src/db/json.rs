@@ -1,10 +1,10 @@
 //! JSON field extraction runtime functions for Mesh.
 //!
-//! Provides `mesh_json_get` and `mesh_json_get_nested` intrinsics that extract
-//! string fields from JSON strings using serde_json. These replace PostgreSQL
-//! JSONB parsing roundtrips (`$1::jsonb->>'key'`) with in-process extraction.
+//! Provides intrinsics that inspect and extract fields from JSON strings using
+//! serde_json. These replace PostgreSQL JSONB parsing roundtrips
+//! (`$1::jsonb->>'key'`) with in-process extraction.
 //!
-//! Both functions follow the COALESCE pattern used at all 5 call sites:
+//! The extraction functions follow the existing COALESCE behavior:
 //! - If the field exists and is a string, return the string value
 //! - If the field exists and is a number/bool/null, convert to string
 //! - If the field is missing or JSON is invalid, return empty string ""
@@ -33,6 +33,14 @@ fn json_get_nested_field(json_str: &str, path1: &str, path2: &str) -> String {
     };
     let nested = val.get(path1).and_then(|v| v.get(path2));
     value_to_string(nested)
+}
+
+/// Return whether a top-level field exists and is a JSON string.
+fn json_field_is_string(json_str: &str, key: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(json_str)
+        .ok()
+        .and_then(|value| value.get(key).cloned())
+        .is_some_and(|value| value.is_string())
 }
 
 /// Convert an optional serde_json::Value to a string representation.
@@ -94,6 +102,16 @@ pub extern "C" fn mesh_json_get_nested(
         let path2 = (*(path2_ptr as *const MeshString)).as_str();
         let result = json_get_nested_field(json_str, path1, path2);
         mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+    }
+}
+
+/// Return true only when the top-level field exists and is a JSON string.
+#[no_mangle]
+pub extern "C" fn mesh_json_is_string(json_ptr: *mut u8, key_ptr: *mut u8) -> i8 {
+    unsafe {
+        let json_str = (*(json_ptr as *const MeshString)).as_str();
+        let key = (*(key_ptr as *const MeshString)).as_str();
+        json_field_is_string(json_str, key) as i8
     }
 }
 
@@ -206,5 +224,16 @@ mod tests {
 
         let without_field = json_get_field(r#"{}"#, "enabled");
         assert_eq!(without_field, ""); // caller defaults to "true" when empty
+    }
+
+    #[test]
+    fn test_json_field_is_string_distinguishes_json_types() {
+        let json = r#"{"string":"42","number":42,"nested":{"value":"ok"}}"#;
+        assert!(json_field_is_string(json, "string"));
+        assert!(!json_field_is_string(json, "number"));
+        assert!(json_field_is_string(
+            &json_get_field(json, "nested"),
+            "value"
+        ));
     }
 }

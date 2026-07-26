@@ -101,7 +101,7 @@ pub use db::expr::{
     mesh_pg_jsonb_contains, mesh_pg_plainto_tsquery, mesh_pg_text, mesh_pg_timestamptz,
     mesh_pg_to_tsvector, mesh_pg_ts_rank, mesh_pg_tsvector_matches, mesh_pg_uuid,
 };
-pub use db::json::{mesh_json_get, mesh_json_get_nested};
+pub use db::json::{mesh_json_get, mesh_json_get_nested, mesh_json_is_string};
 pub use db::migration::{
     mesh_migration_add_column, mesh_migration_create_index, mesh_migration_create_table,
     mesh_migration_drop_column, mesh_migration_drop_index, mesh_migration_drop_table,

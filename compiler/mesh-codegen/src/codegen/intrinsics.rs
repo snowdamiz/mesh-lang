@@ -1495,6 +1495,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_json_is_string(json: ptr, key: ptr) -> i8 (Bool)
+    module.add_function(
+        "mesh_json_is_string",
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ── Structured JSON object/array functions (Phase 49) ──────────────
     // mesh_json_object_new() -> ptr
@@ -3992,6 +3998,7 @@ mod tests {
         // Phase 103: JSON field extraction
         assert!(module.get_function("mesh_json_get").is_some());
         assert!(module.get_function("mesh_json_get_nested").is_some());
+        assert!(module.get_function("mesh_json_is_string").is_some());
 
         // Structured JSON functions (Phase 49)
         assert!(module.get_function("mesh_json_object_new").is_some());

@@ -1960,6 +1960,10 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        self.known_functions.insert(
+            "mesh_json_is_string".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)),
+        );
         // JSON structured object/array functions (Phase 49)
         self.known_functions.insert(
             "mesh_json_object_new".to_string(),
@@ -13673,6 +13677,7 @@ fn map_builtin_name(name: &str) -> String {
         // Phase 103: JSON field extraction
         "json_get" => "mesh_json_get".to_string(),
         "json_get_nested" => "mesh_json_get_nested".to_string(),
+        "json_is_string" => "mesh_json_is_string".to_string(),
         // JSON bare names for from/import usage
         "parse" => "mesh_json_parse".to_string(),
         "encode" => "mesh_json_encode".to_string(),

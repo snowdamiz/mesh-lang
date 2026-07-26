@@ -444,6 +444,10 @@ fn register_runtime_symbols() {
         "mesh_json_get_nested",
         mesh_rt::mesh_json_get_nested as *const (),
     );
+    add_sym(
+        "mesh_json_is_string",
+        mesh_rt::mesh_json_is_string as *const (),
+    );
     add_sym("mesh_json_parse", mesh_rt::mesh_json_parse as *const ());
     add_sym("mesh_json_encode", mesh_rt::mesh_json_encode as *const ());
     add_sym(

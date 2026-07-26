@@ -446,6 +446,13 @@ fn e2e_json_parse_roundtrip() {
     assert_eq!(output, "99\n");
 }
 
+#[test]
+fn e2e_json_is_string() {
+    let source = read_fixture("json_is_string.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\nfalse\ntrue\n");
+}
+
 // ── JSON Struct Serde E2E Tests (Phase 49) ──────────────────────────────
 
 #[test]
