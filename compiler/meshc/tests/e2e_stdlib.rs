@@ -789,15 +789,18 @@ fn wait_for_server_ready(guard: &mut ServerGuard) {
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        let mut ready = false;
         for line in stderr_reader.lines() {
             if let Ok(line) = line {
-                if line.contains("HTTP server listening on") {
+                if !ready && line.contains("HTTP server listening on") {
+                    ready = true;
                     let _ = tx.send(true);
-                    return;
                 }
             }
         }
-        let _ = tx.send(false);
+        if !ready {
+            let _ = tx.send(false);
+        }
     });
 
     let ready = rx
@@ -901,6 +904,71 @@ fn e2e_http_server_runtime() {
     );
 
     // ServerGuard Drop will kill the server process.
+}
+
+#[test]
+fn e2e_http_server_drains_accepted_requests_before_returning() {
+    let markers = tempfile::tempdir().expect("failed to create marker directory");
+    let started = markers.path().join("started");
+    let stopped = markers.path().join("stopped");
+    let source = r#"
+fn slow(_request) do
+  File.write("__STARTED__", "started")
+  Timer.sleep(500)
+  HTTP.response(200, "done")
+end
+
+fn main() do
+  Process.install_shutdown_signals()
+  HTTP.router()
+    |> HTTP.on_get("/slow", slow)
+    |> HTTP.serve(18084)
+  File.write("__STOPPED__", "stopped")
+end
+"#
+    .replace("__STARTED__", started.to_str().unwrap())
+    .replace("__STOPPED__", stopped.to_str().unwrap());
+    let mut guard = compile_and_start_server(&source);
+    wait_for_server_ready(&mut guard);
+
+    let request = std::thread::spawn(|| {
+        let mut stream =
+            std::net::TcpStream::connect("127.0.0.1:18084").expect("failed to connect");
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        stream
+            .write_all(b"GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .expect("failed to write request");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .expect("failed to read response");
+        response
+    });
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !started.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(started.exists(), "slow handler did not start");
+    assert!(Command::new("kill")
+        .args(["-TERM", &guard.child.id().to_string()])
+        .status()
+        .expect("failed to send SIGTERM")
+        .success());
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(
+        !stopped.exists(),
+        "HTTP.serve returned before the accepted request completed"
+    );
+
+    assert!(request.join().unwrap().contains("200"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while !stopped.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(stopped.exists(), "HTTP.serve did not return after draining");
 }
 
 // ── HTTP Crash Isolation E2E Tests (Phase 15) ─────────────────────────

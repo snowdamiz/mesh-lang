@@ -1075,9 +1075,24 @@ extern "C" fn connection_handler_entry(args: *const u8) {
         eprintln!("[mesh-rt] HTTP handler panicked: {:?}", panic_info);
         let _ = write_response(&mut stream, 500, b"Internal Server Error", None);
     }
+    drop(connection_permit);
 }
 
 // ── Server ─────────────────────────────────────────────────────────────
+
+fn drain_accepted_connections() {
+    crate::dist::telemetry::global_admission_controller().set_draining(true);
+    let mut connections = crate::dist::telemetry::runtime_telemetry()
+        .snapshot()
+        .http_connections;
+    eprintln!("[mesh-rt] draining {connections} accepted HTTP connections");
+    while connections != 0 {
+        std::thread::sleep(Duration::from_millis(10));
+        connections = crate::dist::telemetry::runtime_telemetry()
+            .snapshot()
+            .http_connections;
+    }
+}
 
 /// Start an HTTP server on the given port, blocking the calling thread.
 ///
@@ -1166,6 +1181,7 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
             1, // Normal priority
         );
     }
+    drain_accepted_connections();
     eprintln!("[mesh-rt] HTTP server stopped");
 }
 
@@ -1286,6 +1302,7 @@ pub extern "C" fn mesh_http_serve_tls(
             1,
         );
     }
+    drain_accepted_connections();
     unsafe {
         drop(Arc::from_raw(config_ptr as *const ServerConfig));
     }
