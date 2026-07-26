@@ -38,6 +38,16 @@ pub extern "C" fn mesh_process_request_shutdown() {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
+#[no_mangle]
+pub extern "C" fn mesh_process_exit(code: i64) -> ! {
+    let code = if (0..=255).contains(&code) {
+        code as i32
+    } else {
+        1
+    };
+    std::process::exit(code)
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

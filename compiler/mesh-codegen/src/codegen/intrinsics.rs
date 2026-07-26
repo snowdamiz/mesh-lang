@@ -2548,6 +2548,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         void_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
+    let process_exit = module.add_function(
+        "mesh_process_exit",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    process_exit.add_attribute(
+        inkwell::attributes::AttributeLoc::Function,
+        context.create_enum_attribute(
+            inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+            0,
+        ),
+    );
 
     // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> void
     module.add_function(
@@ -4232,16 +4244,17 @@ mod tests {
     }
 
     #[test]
-    fn test_panic_is_noreturn() {
+    fn test_nonreturning_intrinsics_are_marked_noreturn() {
         let context = Context::create();
         let module = context.create_module("test");
         declare_intrinsics(&module);
 
-        let panic_fn = get_intrinsic(&module, "mesh_panic");
-        // Check that noreturn attribute is present
         let noreturn_id = inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn");
-        let attr =
-            panic_fn.get_enum_attribute(inkwell::attributes::AttributeLoc::Function, noreturn_id);
-        assert!(attr.is_some(), "mesh_panic should have noreturn attribute");
+        for name in ["mesh_panic", "mesh_process_exit"] {
+            let function = get_intrinsic(&module, name);
+            let attr = function
+                .get_enum_attribute(inkwell::attributes::AttributeLoc::Function, noreturn_id);
+            assert!(attr.is_some(), "{name} should have noreturn attribute");
+        }
     }
 }

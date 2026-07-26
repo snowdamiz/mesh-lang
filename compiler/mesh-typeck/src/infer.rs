@@ -2046,6 +2046,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "request_shutdown".to_string(),
         Scheme::mono(Ty::fun(vec![], Ty::Tuple(vec![]))),
     );
+    process_mod.insert(
+        "exit".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Tuple(vec![]))),
+    );
     modules.insert("Process".to_string(), process_mod);
 
     // ── Global module (Phase 68) ─────────────────────────────────────

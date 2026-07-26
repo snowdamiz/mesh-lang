@@ -13933,6 +13933,7 @@ fn map_builtin_name(name: &str) -> String {
         "process_install_shutdown_signals" => "mesh_process_install_shutdown_signals".to_string(),
         "process_shutdown_requested" => "mesh_process_shutdown_requested".to_string(),
         "process_request_shutdown" => "mesh_process_request_shutdown".to_string(),
+        "process_exit" => "mesh_process_exit".to_string(),
         // ── Phase 68: Global registry functions ─────────────────────────
         "global_register" => "mesh_global_register".to_string(),
         "global_whereis" => "mesh_global_whereis".to_string(),

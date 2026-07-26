@@ -261,7 +261,7 @@ pub use monotonic::{
 pub use option::{alloc_option, MeshOption};
 pub use panic::mesh_panic;
 pub use process_signal::{
-    mesh_process_install_shutdown_signals, mesh_process_request_shutdown,
+    mesh_process_exit, mesh_process_install_shutdown_signals, mesh_process_request_shutdown,
     mesh_process_shutdown_requested,
 };
 pub use random::{mesh_random_next_int, mesh_random_next_unit_ppm, mesh_random_seed};

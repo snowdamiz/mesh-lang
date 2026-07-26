@@ -7336,3 +7336,34 @@ end
     ]);
     assert_eq!(output, "2467333333\n1234567890\n99\n");
 }
+
+#[test]
+fn e2e_process_exit_sets_the_native_status_code() {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
+    std::fs::write(
+        project_dir.join("main.mpl"),
+        r#"
+fn main() do
+  Process.exit(7)
+end
+"#,
+    )
+    .expect("failed to write main.mpl");
+
+    let build = Command::new(find_meshc())
+        .args(["build", project_dir.to_str().unwrap()])
+        .output()
+        .expect("failed to invoke meshc");
+    assert!(
+        build.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(project_dir.join("project"))
+        .output()
+        .expect("failed to run compiled binary");
+    assert_eq!(output.status.code(), Some(7));
+}
