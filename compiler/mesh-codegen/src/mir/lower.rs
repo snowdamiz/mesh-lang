@@ -1312,6 +1312,30 @@ impl<'a> Lowerer<'a> {
             "mesh_datetime_after".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
         );
+        for name in [
+            "mesh_checked_add",
+            "mesh_checked_sub",
+            "mesh_checked_mul",
+            "mesh_checked_div",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_checked_abs".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_checked_mul_div", "mesh_checked_rescale"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Int, MirType::Int, MirType::Int, MirType::String],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
         // Http client functions (Phase 137)
         // MeshRequest handle is u64 -> MirType::Int
         self.known_functions.insert(
@@ -13338,15 +13362,16 @@ const STDLIB_MODULES: &[&str] = &[
     "Iter",    // Phase 76
     "Orm",     // Phase 97
     "Expr",
-    "Query",      // Phase 98
-    "Repo",       // Phase 98
-    "Changeset",  // Phase 99
-    "Migration",  // Phase 101
-    "Regex",      // Phase 119
-    "Crypto",     // Phase 135
-    "Base64",     // Phase 135
-    "Hex",        // Phase 135
-    "DateTime",   // Phase 136
+    "Query",     // Phase 98
+    "Repo",      // Phase 98
+    "Changeset", // Phase 99
+    "Migration", // Phase 101
+    "Regex",     // Phase 119
+    "Crypto",    // Phase 135
+    "Base64",    // Phase 135
+    "Hex",       // Phase 135
+    "DateTime",  // Phase 136
+    "Checked",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity
@@ -13426,6 +13451,13 @@ fn map_builtin_name(name: &str) -> String {
         "datetime_diff" => "mesh_datetime_diff".to_string(),
         "datetime_is_before" => "mesh_datetime_before".to_string(),
         "datetime_is_after" => "mesh_datetime_after".to_string(),
+        "checked_add" => "mesh_checked_add".to_string(),
+        "checked_sub" => "mesh_checked_sub".to_string(),
+        "checked_mul" => "mesh_checked_mul".to_string(),
+        "checked_div" => "mesh_checked_div".to_string(),
+        "checked_abs" => "mesh_checked_abs".to_string(),
+        "checked_mul_div" => "mesh_checked_mul_div".to_string(),
+        "checked_rescale" => "mesh_checked_rescale".to_string(),
         // Http client functions (Phase 137)
         "http_build" => "mesh_http_build".to_string(),
         "http_header" => "mesh_http_header".to_string(),

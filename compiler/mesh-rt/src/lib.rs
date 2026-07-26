@@ -28,6 +28,7 @@ pub mod db;
 pub mod dist;
 pub mod env;
 pub mod file;
+pub mod finance;
 pub mod gc;
 pub mod hash;
 pub mod http;
@@ -218,6 +219,10 @@ pub use dist::telemetry::{
 pub use env::{mesh_env_args, mesh_env_get, mesh_env_get_int, mesh_env_get_with_default};
 pub use file::{
     mesh_file_append, mesh_file_delete, mesh_file_exists, mesh_file_read, mesh_file_write,
+};
+pub use finance::{
+    mesh_checked_abs, mesh_checked_add, mesh_checked_div, mesh_checked_mul, mesh_checked_mul_div,
+    mesh_checked_rescale, mesh_checked_sub,
 };
 pub use gc::{mesh_gc_alloc, mesh_gc_alloc_actor, mesh_rt_init};
 pub use hash::{

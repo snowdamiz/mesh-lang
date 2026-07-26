@@ -522,6 +522,29 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
     modules.insert("DateTime".to_string(), datetime_mod);
 
+    let mut checked_mod = HashMap::new();
+    let checked_result = Ty::result(Ty::int(), Ty::string());
+    for name in ["add", "sub", "mul", "div"] {
+        checked_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], checked_result.clone())),
+        );
+    }
+    checked_mod.insert(
+        "abs".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], checked_result.clone())),
+    );
+    for name in ["mul_div", "rescale"] {
+        checked_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::int(), Ty::int(), Ty::int(), Ty::Con(TyCon::new("Atom"))],
+                checked_result.clone(),
+            )),
+        );
+    }
+    modules.insert("Checked".to_string(), checked_mod);
+
     // ── Http client module (Phase 137) ───────────────────────────────────────
     let http_req_t = Ty::int(); // opaque handle — u64 ABI as Int
     let http_resp_t = Ty::Con(TyCon::new("HttpResponse"));
@@ -3060,15 +3083,16 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Ws",      // Phase 88
     "Orm",     // Phase 97
     "Expr",
-    "Query",      // Phase 98
-    "Repo",       // Phase 98
-    "Changeset",  // Phase 99
-    "Migration",  // Phase 101
-    "Regex",      // Phase 119
-    "Crypto",     // Phase 135
-    "Base64",     // Phase 135
-    "Hex",        // Phase 135
-    "DateTime",   // Phase 136
+    "Query",     // Phase 98
+    "Repo",      // Phase 98
+    "Changeset", // Phase 99
+    "Migration", // Phase 101
+    "Regex",     // Phase 119
+    "Crypto",    // Phase 135
+    "Base64",    // Phase 135
+    "Hex",       // Phase 135
+    "DateTime",  // Phase 136
+    "Checked",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity

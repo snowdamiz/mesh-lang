@@ -686,6 +686,45 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    for name in [
+        "mesh_checked_add",
+        "mesh_checked_sub",
+        "mesh_checked_mul",
+        "mesh_checked_div",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_checked_abs",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // Checked.mul_div/rescale each accept three integers and a rounding atom.
+    let checked_mul_div_ty = ptr_type.fn_type(
+        &[
+            i64_type.into(),
+            i64_type.into(),
+            i64_type.into(),
+            ptr_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_checked_mul_div",
+        checked_mul_div_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_checked_rescale",
+        checked_mul_div_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Http client functions (Phase 137) ──────────────────────────────────────
 
     // mesh_http_build(method: ptr, url: ptr) -> i64 (MeshRequest handle)

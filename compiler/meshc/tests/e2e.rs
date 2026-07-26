@@ -6164,6 +6164,14 @@ fn e2e_datetime_compare() {
     assert_eq!(output, "true\nfalse\nfalse\ntrue\n");
 }
 
+/// MESH-FIN-001: Checked.mul_div uses a wide intermediate and explicit rounding.
+#[test]
+fn e2e_checked_mul_div() {
+    let source = read_fixture("checked_mul_div.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "8\n42\n-2\n-42\n-4\n42\n1236\n");
+}
+
 /// Phase 137: Http.build/header/timeout fluent builder compiles (HTTP-01, HTTP-02, HTTP-04).
 /// Compile-only — no network access needed. The program builds a request and prints "built".
 #[test]

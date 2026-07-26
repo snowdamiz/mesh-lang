@@ -474,6 +474,27 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![dt_t.clone(), dt_t.clone()], Ty::bool())),
     );
 
+    let checked_result = Ty::result(Ty::int(), Ty::string());
+    for name in ["add", "sub", "mul", "div"] {
+        env.insert(
+            format!("checked_{name}"),
+            Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], checked_result.clone())),
+        );
+    }
+    env.insert(
+        "checked_abs".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], checked_result.clone())),
+    );
+    for name in ["mul_div", "rescale"] {
+        env.insert(
+            format!("checked_{name}"),
+            Scheme::mono(Ty::fun(
+                vec![Ty::int(), Ty::int(), Ty::int(), Ty::Con(TyCon::new("Atom"))],
+                checked_result.clone(),
+            )),
+        );
+    }
+
     // ── Standard library: Http client builder API (Phase 137) ─────────────────
     let http_req_t = Ty::int(); // MeshRequest opaque handle is u64 -> Int ABI
     let http_resp_t = Ty::Con(TyCon::new("HttpResponse"));
