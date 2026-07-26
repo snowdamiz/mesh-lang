@@ -811,11 +811,37 @@ fn alloc_option(tag: u8, value: *mut u8) -> *mut u8 {
 // ── HTTP/1.1 Request Parser ─────────────────────────────────────────────
 
 /// Parsed HTTP/1.1 request with method, path, headers, and body.
+#[derive(Debug)]
 struct ParsedRequest {
     method: String,
     path: String,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
+}
+
+const MAX_HTTP_HEADER_BYTES: usize = 8 * 1024;
+const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
+
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    maximum: usize,
+    limit_error: &str,
+) -> Result<String, String> {
+    if maximum == 0 {
+        return Err(limit_error.to_string());
+    }
+    let mut bytes = Vec::new();
+    reader
+        .take((maximum + 1) as u64)
+        .read_until(b'\n', &mut bytes)
+        .map_err(|error| format!("read HTTP line: {error}"))?;
+    if bytes.len() > maximum {
+        return Err(limit_error.to_string());
+    }
+    if bytes.is_empty() || !bytes.ends_with(b"\n") {
+        return Err("unterminated HTTP line".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "HTTP headers must be UTF-8".to_string())
 }
 
 /// Parse an HTTP/1.1 request from an `HttpStream` (plain TCP or TLS).
@@ -824,16 +850,16 @@ struct ParsedRequest {
 /// writing the response after parsing completes (the BufReader borrows
 /// the stream mutably, and the borrow ends when this function returns).
 ///
-/// Limits: max 100 headers, max 8KB total header data.
-fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
-    let mut reader = BufReader::new(stream);
+/// Limits: max 100 headers, max 8KB total header data, max 1MB body.
+fn parse_buffered_request<R: BufRead>(reader: &mut R) -> Result<ParsedRequest, String> {
     let mut total_header_bytes: usize = 0;
 
     // 1. Read request line: "GET /path HTTP/1.1\r\n"
-    let mut request_line = String::new();
-    reader
-        .read_line(&mut request_line)
-        .map_err(|e| format!("read request line: {}", e))?;
+    let request_line = read_bounded_line(
+        reader,
+        MAX_HTTP_HEADER_BYTES,
+        "request line exceeds 8KB header limit",
+    )?;
     total_header_bytes += request_line.len();
 
     let request_line_trimmed = request_line.trim_end();
@@ -846,14 +872,15 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
 
     // 2. Read headers until blank line (\r\n alone).
     let mut headers = Vec::new();
-    let mut content_length: usize = 0;
+    let mut content_length = None;
     loop {
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|e| format!("read header: {}", e))?;
+        let line = read_bounded_line(
+            reader,
+            MAX_HTTP_HEADER_BYTES.saturating_sub(total_header_bytes),
+            "header section exceeds 8KB limit",
+        )?;
         total_header_bytes += line.len();
-        if total_header_bytes > 8192 {
+        if total_header_bytes > MAX_HTTP_HEADER_BYTES {
             return Err("header section exceeds 8KB limit".to_string());
         }
 
@@ -864,17 +891,34 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
         if headers.len() >= 100 {
             return Err("too many headers (max 100)".to_string());
         }
-        if let Some((name, value)) = trimmed.split_once(':') {
-            let name = name.trim().to_string();
-            let value = value.trim().to_string();
-            if name.eq_ignore_ascii_case("content-length") {
-                content_length = value.parse().unwrap_or(0);
-            }
-            headers.push((name, value));
+        let (name, value) = trimmed
+            .split_once(':')
+            .ok_or_else(|| "malformed HTTP header".to_string())?;
+        let name = name.trim().to_string();
+        let value = value.trim().to_string();
+        if name.is_empty() {
+            return Err("malformed HTTP header".to_string());
         }
+        if name.eq_ignore_ascii_case("transfer-encoding") {
+            return Err("transfer-encoding is not supported".to_string());
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            if content_length.is_some() {
+                return Err("duplicate content-length header".to_string());
+            }
+            let length = value
+                .parse::<usize>()
+                .map_err(|_| "invalid content-length header".to_string())?;
+            if length > MAX_HTTP_BODY_BYTES {
+                return Err("request body exceeds 1MB limit".to_string());
+            }
+            content_length = Some(length);
+        }
+        headers.push((name, value));
     }
 
     // 3. Read body based on Content-Length.
+    let content_length = content_length.unwrap_or(0);
     let mut body = vec![0u8; content_length];
     if content_length > 0 {
         reader
@@ -888,6 +932,10 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
         headers,
         body,
     })
+}
+
+fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
+    parse_buffered_request(&mut BufReader::new(stream))
 }
 
 // ── HTTP/1.1 Response Writer ────────────────────────────────────────────
@@ -1638,6 +1686,42 @@ mod tests {
             &format!("{{\"echo\":\"{}\"}}", body),
             &[("X-Clustered", "true")],
         )
+    }
+
+    #[test]
+    fn request_parser_rejects_unbounded_or_ambiguous_input() {
+        let parse = |request: String| {
+            let mut reader = BufReader::new(std::io::Cursor::new(request.into_bytes()));
+            parse_buffered_request(&mut reader)
+        };
+
+        let oversized_body = format!(
+            "POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
+            MAX_HTTP_BODY_BYTES + 1
+        );
+        assert_eq!(
+            parse(oversized_body).unwrap_err(),
+            "request body exceeds 1MB limit"
+        );
+
+        let oversized_line = format!(
+            "GET /{} HTTP/1.1\r\n\r\n",
+            "x".repeat(MAX_HTTP_HEADER_BYTES)
+        );
+        assert_eq!(
+            parse(oversized_line).unwrap_err(),
+            "request line exceeds 8KB header limit"
+        );
+
+        assert_eq!(
+            parse("POST / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\nx".to_string())
+                .unwrap_err(),
+            "duplicate content-length header"
+        );
+        assert_eq!(
+            parse("POST / HTTP/1.1\r\nContent-Length: invalid\r\n\r\n".to_string()).unwrap_err(),
+            "invalid content-length header"
+        );
     }
 
     #[test]
