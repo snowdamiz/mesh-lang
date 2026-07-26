@@ -930,10 +930,16 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(f, &[list_val.into(), elem_val.into()], "list_contains_str")
                     .map_err(|e| e.to_string())?;
-                return result
+                let value = result
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| "mesh_list_contains_str returned void".to_string());
+                    .ok_or_else(|| "mesh_list_contains_str returned void".to_string())?
+                    .into_int_value();
+                return self
+                    .builder
+                    .build_int_truncate(value, self.context.bool_type(), "list_contains_bool")
+                    .map(Into::into)
+                    .map_err(|e| e.to_string());
             }
         }
 

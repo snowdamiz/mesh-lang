@@ -1264,7 +1264,7 @@ fn e2e_list_any_all() {
 fn e2e_list_contains() {
     let source = read_fixture("stdlib_list_contains.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "true\nfalse\nfalse\n");
+    assert_eq!(output, "true\nfalse\nfalse\ntrue\ntrue\n");
 }
 
 // ── String Split/Join/Parse E2E Tests (Phase 46 Plan 02) ───────────────

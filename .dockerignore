@@ -2,6 +2,9 @@
 !Cargo.toml
 !Cargo.lock
 !compiler/**
+!tests/
+!tests/e2e/
+!tests/e2e/stdlib_list_contains.mpl
 !examples/
 !examples/todo-postgres/**
 !proof/
