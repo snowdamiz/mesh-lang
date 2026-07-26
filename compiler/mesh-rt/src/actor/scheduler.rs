@@ -712,7 +712,7 @@ fn try_get_request(
 ///
 /// 1. FIRST: invoke terminate_callback if set (wrapped in catch_unwind for panic safety)
 /// 2. THEN: propagate exit signals to all linked processes
-/// 3. Mark the process as Exited
+/// 3. Mark the process as exited, then remove it after notifications and cleanup
 fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: ExitReason) {
     // Extract terminate callback, linked PIDs, and monitored_by under a single lock.
     let (terminate_cb, linked_pids, monitored_by_entries) = {
@@ -721,6 +721,7 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
+            proc.state = ProcessState::Exited(reason.clone());
             (cb, links, monitored_by)
         } else {
             return;
@@ -791,10 +792,8 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
         }
     }
 
-    // Step 4: Mark the process as Exited.
-    if let Some(proc_arc) = process_table.read().get(&pid) {
-        proc_arc.lock().state = ProcessState::Exited(reason);
-    }
+    // Step 4: Release the completed actor and its private heap.
+    process_table.write().remove(&pid);
 }
 
 /// Invoke a terminate callback, catching any panics to prevent them from
@@ -888,6 +887,21 @@ mod tests {
             "Expected at least {} actors to complete, got {}",
             num_actors,
             final_count
+        );
+    }
+
+    #[test]
+    fn completed_actors_leave_the_process_table() {
+        let sched = Scheduler::new(2);
+        for _ in 0..100 {
+            sched.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
+        }
+        sched.signal_shutdown();
+        sched.run();
+
+        assert!(
+            sched.process_table.read().is_empty(),
+            "completed actor heaps must not remain reachable"
         );
     }
 
