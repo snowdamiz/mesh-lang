@@ -7242,3 +7242,28 @@ end
     );
     assert_eq!(output, "ok\n");
 }
+
+/// Literal patterns must dereference boxed scalar payloads in generic sum types.
+#[test]
+fn e2e_result_literal_payload_pattern() {
+    let output = compile_and_run(
+        r#"
+fn classify(value :: Int!String) -> String do
+  case value do
+    Ok(0) -> "zero"
+    Ok(1) -> "one"
+    Ok(_) -> "other"
+    Err(_) -> "error"
+  end
+end
+
+fn main() do
+  println(classify(Ok(0)))
+  println(classify(Ok(1)))
+  println(classify(Ok(7)))
+  println(classify(Err("boom")))
+end
+"#,
+    );
+    assert_eq!(output, "zero\none\nother\nerror\n");
+}

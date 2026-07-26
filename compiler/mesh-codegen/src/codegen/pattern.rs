@@ -356,6 +356,37 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Load the value at the access path
         let test_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
+        // Generic Result/Option layouts store scalar payloads in a canonical
+        // pointer slot. Constructors box those scalars, so literal patterns
+        // must load the source-level value before comparing it.
+        let test_val = if test_val.is_pointer_value() {
+            let payload_ptr = test_val.into_pointer_value();
+            match value {
+                MirLiteral::Int(_) => self
+                    .builder
+                    .build_load(self.context.i64_type(), payload_ptr, "literal_int_payload")
+                    .map_err(|e| e.to_string())?,
+                MirLiteral::Float(_) => self
+                    .builder
+                    .build_load(
+                        self.context.f64_type(),
+                        payload_ptr,
+                        "literal_float_payload",
+                    )
+                    .map_err(|e| e.to_string())?,
+                MirLiteral::Bool(_) => self
+                    .builder
+                    .build_load(
+                        self.context.bool_type(),
+                        payload_ptr,
+                        "literal_bool_payload",
+                    )
+                    .map_err(|e| e.to_string())?,
+                MirLiteral::String(_) => test_val,
+            }
+        } else {
+            test_val
+        };
 
         // Compare with the literal
         let cond = match value {
