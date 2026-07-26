@@ -1343,6 +1343,7 @@ dependencies = [
  "crossbeam-utils",
  "hmac",
  "hostname",
+ "libc",
  "libsqlite3-sys",
  "md-5",
  "openraft",

@@ -6196,6 +6196,14 @@ fn e2e_deterministic_random() {
     assert_eq!(output, "1\ntrue\ntrue\ntrue\n");
 }
 
+/// MESH-PROC-001: applications can poll and trigger the same graceful-shutdown flag.
+#[test]
+fn e2e_process_shutdown_signal() {
+    let source = read_fixture("process_shutdown_signal.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "false\ntrue\n");
+}
+
 /// Phase 137: Http.build/header/timeout fluent builder compiles (HTTP-01, HTTP-02, HTTP-04).
 /// Compile-only — no network access needed. The program builds a request and prints "built".
 #[test]

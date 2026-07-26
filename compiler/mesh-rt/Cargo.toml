@@ -47,6 +47,7 @@ rustls-pki-types = "1"
 ring = "0.17"
 # Hostname-based auto-identity for generic Docker/container deployments.
 hostname = "0.4"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

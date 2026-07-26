@@ -39,6 +39,7 @@ pub mod json;
 pub mod monotonic;
 pub mod option;
 pub mod panic;
+pub mod process_signal;
 pub mod random;
 pub mod regex;
 pub mod string;
@@ -259,6 +260,10 @@ pub use monotonic::{
 };
 pub use option::{alloc_option, MeshOption};
 pub use panic::mesh_panic;
+pub use process_signal::{
+    mesh_process_install_shutdown_signals, mesh_process_request_shutdown,
+    mesh_process_shutdown_requested,
+};
 pub use random::{mesh_random_next_int, mesh_random_next_unit_ppm, mesh_random_seed};
 pub use regex::{
     mesh_regex_captures, mesh_regex_compile, mesh_regex_from_literal, mesh_regex_match,

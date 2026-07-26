@@ -2029,6 +2029,18 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "whereis".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Con(TyCon::new("Pid")))),
     );
+    process_mod.insert(
+        "install_shutdown_signals".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::Tuple(vec![]))),
+    );
+    process_mod.insert(
+        "shutdown_requested".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::bool())),
+    );
+    process_mod.insert(
+        "request_shutdown".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::Tuple(vec![]))),
+    );
     modules.insert("Process".to_string(), process_mod);
 
     // ── Global module (Phase 68) ─────────────────────────────────────

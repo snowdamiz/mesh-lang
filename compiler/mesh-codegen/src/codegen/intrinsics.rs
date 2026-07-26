@@ -2527,6 +2527,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_process_install_shutdown_signals",
+        void_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_process_shutdown_requested",
+        i8_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_process_request_shutdown",
+        void_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> void
     module.add_function(
         "mesh_actor_send_named",
