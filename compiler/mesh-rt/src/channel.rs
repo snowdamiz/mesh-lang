@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, TryLockError};
 use std::time::{Duration, Instant};
 
 use crate::io::{alloc_result, MeshResult};
@@ -22,6 +22,7 @@ struct Channel {
     dropped: u64,
 }
 
+const VALUE_BYTES: usize = size_of::<i64>();
 static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 // ponytail: one global lock; shard by channel if contention is measurable.
 static CHANNELS: OnceLock<Mutex<HashMap<u64, Channel>>> = OnceLock::new();
@@ -40,19 +41,30 @@ fn result(value: Result<i64, &'static str>) -> *mut MeshResult {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn mesh_channel_bounded(
-    capacity: i64,
-    policy: *const MeshString,
-) -> *mut MeshResult {
+fn effective_capacity(capacity: i64, byte_capacity: i64) -> Result<usize, &'static str> {
     if capacity <= 0 {
-        return result(Err("channel capacity must be positive"));
+        return Err("channel capacity must be positive");
     }
+    if byte_capacity < VALUE_BYTES as i64 {
+        return Err("channel byte capacity must fit one Int");
+    }
+    let capacity = usize::try_from(capacity).map_err(|_| "channel capacity is too large")?;
+    let byte_capacity =
+        usize::try_from(byte_capacity).map_err(|_| "channel byte capacity is too large")?;
+    Ok(capacity.min(byte_capacity / VALUE_BYTES))
+}
+
+fn register_channel(
+    capacity: i64,
+    byte_capacity: i64,
+    policy: *const MeshString,
+) -> Result<i64, &'static str> {
+    let capacity = effective_capacity(capacity, byte_capacity)?;
     let policy = match unsafe { (*policy).as_str() } {
         "reject_newest" => OverflowPolicy::RejectNewest,
         "drop_oldest" => OverflowPolicy::DropOldest,
         "latest_only" => OverflowPolicy::LatestOnly,
-        _ => return result(Err("invalid overflow policy")),
+        _ => return Err("invalid overflow policy"),
     };
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     channels()
@@ -61,18 +73,42 @@ pub extern "C" fn mesh_channel_bounded(
         .insert(
             handle,
             Channel {
-                capacity: capacity as usize,
+                capacity,
                 policy,
                 values: VecDeque::new(),
                 dropped: 0,
             },
         );
-    result(i64::try_from(handle).map_err(|_| "channel handle overflow"))
+    i64::try_from(handle).map_err(|_| "channel handle overflow")
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_channel_bounded(
+    capacity: i64,
+    policy: *const MeshString,
+) -> *mut MeshResult {
+    let Some(byte_capacity) = capacity.checked_mul(VALUE_BYTES as i64) else {
+        return result(Err("channel capacity is too large"));
+    };
+    result(register_channel(capacity, byte_capacity, policy))
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_channel_bounded_bytes(
+    capacity: i64,
+    byte_capacity: i64,
+    policy: *const MeshString,
+) -> *mut MeshResult {
+    result(register_channel(capacity, byte_capacity, policy))
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_channel_try_send(handle: i64, value: i64) -> *mut MeshResult {
-    let mut channels = channels().lock().expect("channel registry poisoned");
+    let mut channels = match channels().try_lock() {
+        Ok(channels) => channels,
+        Err(TryLockError::WouldBlock) => return result(Err("channel busy")),
+        Err(TryLockError::Poisoned(_)) => return result(Err("channel registry poisoned")),
+    };
     let Some(channel) = channels.get_mut(&(handle as u64)) else {
         return result(Err("unknown channel"));
     };
@@ -126,6 +162,17 @@ pub extern "C" fn mesh_channel_depth(handle: i64) -> i64 {
 }
 
 #[no_mangle]
+pub extern "C" fn mesh_channel_byte_depth(handle: i64) -> i64 {
+    channels()
+        .lock()
+        .expect("channel registry poisoned")
+        .get(&(handle as u64))
+        .and_then(|channel| channel.values.len().checked_mul(VALUE_BYTES))
+        .and_then(|bytes| i64::try_from(bytes).ok())
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
 pub extern "C" fn mesh_channel_dropped(handle: i64) -> i64 {
     channels()
         .lock()
@@ -157,5 +204,33 @@ mod tests {
         latest.values.push_back(2);
         assert_eq!(latest.values, VecDeque::from([2]));
         assert_eq!(latest.dropped, 1);
+    }
+
+    #[test]
+    fn byte_bound_limits_int_capacity() {
+        assert_eq!(effective_capacity(3, 16), Ok(2));
+        assert_eq!(
+            effective_capacity(1, 7),
+            Err("channel byte capacity must fit one Int")
+        );
+    }
+
+    #[test]
+    fn producer_does_not_wait_for_registry_lock() {
+        let registry = channels().lock().expect("channel registry poisoned");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let producer = std::thread::spawn(move || {
+            let response = mesh_channel_try_send(1, 1);
+            sender
+                .send(unsafe { (*response).tag })
+                .expect("test receiver dropped");
+        });
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)),
+            Ok(1),
+            "producer blocked on the channel registry"
+        );
+        drop(registry);
+        producer.join().expect("producer panicked");
     }
 }

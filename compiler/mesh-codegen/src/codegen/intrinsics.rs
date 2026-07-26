@@ -746,6 +746,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_channel_bounded_bytes",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     for name in ["mesh_channel_try_send", "mesh_channel_recv"] {
         module.add_function(
             name,
@@ -753,7 +758,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
-    for name in ["mesh_channel_depth", "mesh_channel_dropped"] {
+    for name in [
+        "mesh_channel_depth",
+        "mesh_channel_byte_depth",
+        "mesh_channel_dropped",
+    ] {
         module.add_function(
             name,
             i64_type.fn_type(&[i64_type.into()], false),

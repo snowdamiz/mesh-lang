@@ -1354,13 +1354,24 @@ impl<'a> Lowerer<'a> {
             "mesh_channel_bounded".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)),
         );
+        self.known_functions.insert(
+            "mesh_channel_bounded_bytes".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::Int, MirType::String],
+                Box::new(MirType::Ptr),
+            ),
+        );
         for name in ["mesh_channel_try_send", "mesh_channel_recv"] {
             self.known_functions.insert(
                 name.to_string(),
                 MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
             );
         }
-        for name in ["mesh_channel_depth", "mesh_channel_dropped"] {
+        for name in [
+            "mesh_channel_depth",
+            "mesh_channel_byte_depth",
+            "mesh_channel_dropped",
+        ] {
             self.known_functions.insert(
                 name.to_string(),
                 MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
@@ -13520,9 +13531,11 @@ fn map_builtin_name(name: &str) -> String {
         "duration_millis" => "mesh_duration_millis".to_string(),
         "duration_seconds" => "mesh_duration_seconds".to_string(),
         "channel_bounded" => "mesh_channel_bounded".to_string(),
+        "channel_bounded_bytes" => "mesh_channel_bounded_bytes".to_string(),
         "channel_try_send" => "mesh_channel_try_send".to_string(),
         "channel_recv" => "mesh_channel_recv".to_string(),
         "channel_depth" => "mesh_channel_depth".to_string(),
+        "channel_byte_depth" => "mesh_channel_byte_depth".to_string(),
         "channel_dropped" => "mesh_channel_dropped".to_string(),
         "random_seed" => "mesh_random_seed".to_string(),
         "random_next_int" => "mesh_random_next_int".to_string(),

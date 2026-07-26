@@ -6180,12 +6180,12 @@ fn e2e_monotonic_duration() {
     assert_eq!(output, "true\ntrue\n");
 }
 
-/// MESH-ACTOR-001: latest-only channels remain bounded and report coalescing.
+/// MESH-ACTOR-001: channels enforce item and byte bounds without blocking producers.
 #[test]
 fn e2e_bounded_channel() {
     let source = read_fixture("bounded_channel.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "1\n2\n30\n");
+    assert_eq!(output, "1\n8\n2\n30\nchannel full\n2\n16\n1\n");
 }
 
 /// MESH-TEST-002: seeded random sequences are stable and explicitly stateful.

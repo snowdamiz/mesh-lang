@@ -580,13 +580,20 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             channel_result.clone(),
         )),
     );
+    channel_mod.insert(
+        "bounded_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::Con(TyCon::new("Atom"))],
+            channel_result.clone(),
+        )),
+    );
     for name in ["try_send", "recv"] {
         channel_mod.insert(
             name.to_string(),
             Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
         );
     }
-    for name in ["depth", "dropped"] {
+    for name in ["depth", "byte_depth", "dropped"] {
         channel_mod.insert(
             name.to_string(),
             Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),

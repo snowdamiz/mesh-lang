@@ -56,8 +56,8 @@ pub use actor::{
     mesh_rt_run_scheduler, mesh_timer_send_after, mesh_timer_sleep,
 };
 pub use channel::{
-    mesh_channel_bounded, mesh_channel_depth, mesh_channel_dropped, mesh_channel_recv,
-    mesh_channel_try_send,
+    mesh_channel_bounded, mesh_channel_bounded_bytes, mesh_channel_byte_depth, mesh_channel_depth,
+    mesh_channel_dropped, mesh_channel_recv, mesh_channel_try_send,
 };
 pub use collections::list::{
     mesh_list_all, mesh_list_any, mesh_list_append, mesh_list_concat, mesh_list_contains,
