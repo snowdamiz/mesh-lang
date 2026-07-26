@@ -1039,15 +1039,26 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
             return;
         }
     };
+    if let Err(e) = listener.set_nonblocking(true) {
+        eprintln!(
+            "[mesh-rt] Failed to configure HTTP listener on {}: {}",
+            addr, e
+        );
+        return;
+    }
 
     eprintln!("[mesh-rt] HTTP server listening on {}", addr);
     crate::dist::node::mesh_trigger_startup_work();
 
     let router_addr = router as usize;
 
-    for tcp_stream in listener.incoming() {
-        let tcp_stream = match tcp_stream {
-            Ok(s) => s,
+    while !crate::process_signal::shutdown_requested() {
+        let tcp_stream = match listener.accept() {
+            Ok((stream, _peer)) => stream,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(25));
+                continue;
+            }
             Err(e) => {
                 eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
@@ -1092,6 +1103,7 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
             1, // Normal priority
         );
     }
+    eprintln!("[mesh-rt] HTTP server stopped");
 }
 
 // ── HTTPS Server ────────────────────────────────────────────────────────
@@ -1134,6 +1146,13 @@ pub extern "C" fn mesh_http_serve_tls(
             return;
         }
     };
+    if let Err(e) = listener.set_nonblocking(true) {
+        eprintln!(
+            "[mesh-rt] Failed to configure HTTPS listener on {}: {}",
+            addr, e
+        );
+        return;
+    }
 
     eprintln!("[mesh-rt] HTTPS server listening on {}", addr);
     crate::dist::node::mesh_trigger_startup_work();
@@ -1143,9 +1162,13 @@ pub extern "C" fn mesh_http_serve_tls(
     // The server runs forever, so this is intentional (no cleanup needed).
     let config_ptr = Arc::into_raw(tls_config) as usize;
 
-    for tcp_stream in listener.incoming() {
-        let tcp_stream = match tcp_stream {
-            Ok(s) => s,
+    while !crate::process_signal::shutdown_requested() {
+        let tcp_stream = match listener.accept() {
+            Ok((stream, _peer)) => stream,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(25));
+                continue;
+            }
             Err(e) => {
                 eprintln!("[mesh-rt] accept error: {}", e);
                 continue;
@@ -1200,6 +1223,10 @@ pub extern "C" fn mesh_http_serve_tls(
             1,
         );
     }
+    unsafe {
+        drop(Arc::from_raw(config_ptr as *const ServerConfig));
+    }
+    eprintln!("[mesh-rt] HTTPS server stopped");
 }
 
 // ── Middleware chain infrastructure ──────────────────────────────────

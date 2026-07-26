@@ -6204,6 +6204,14 @@ fn e2e_process_shutdown_signal() {
     assert_eq!(output, "false\ntrue\n");
 }
 
+/// MESH-PROC-001: HTTP.serve returns after the process shutdown flag is set.
+#[test]
+fn e2e_http_graceful_shutdown() {
+    let source = read_fixture("http_graceful_shutdown.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "stopped\n");
+}
+
 /// Phase 137: Http.build/header/timeout fluent builder compiles (HTTP-01, HTTP-02, HTTP-04).
 /// Compile-only — no network access needed. The program builds a request and prints "built".
 #[test]

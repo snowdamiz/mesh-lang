@@ -4,6 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn shutdown_requested() -> bool {
+    SHUTDOWN_REQUESTED.load(Ordering::SeqCst)
+}
+
 #[cfg(unix)]
 extern "C" fn request_shutdown_from_signal(_signal: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
@@ -26,7 +30,7 @@ pub extern "C" fn mesh_process_install_shutdown_signals() {
 
 #[no_mangle]
 pub extern "C" fn mesh_process_shutdown_requested() -> i8 {
-    SHUTDOWN_REQUESTED.load(Ordering::SeqCst) as i8
+    shutdown_requested() as i8
 }
 
 #[no_mangle]
