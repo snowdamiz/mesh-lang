@@ -1350,6 +1350,22 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
             );
         }
+        self.known_functions.insert(
+            "mesh_channel_bounded".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_channel_try_send", "mesh_channel_recv"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
+            );
+        }
+        for name in ["mesh_channel_depth", "mesh_channel_dropped"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
+            );
+        }
         // Http client functions (Phase 137)
         // MeshRequest handle is u64 -> MirType::Int
         self.known_functions.insert(
@@ -13388,6 +13404,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Checked",
     "Monotonic",
     "Duration",
+    "Channel",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity
@@ -13478,6 +13495,11 @@ fn map_builtin_name(name: &str) -> String {
         "monotonic_elapsed" => "mesh_monotonic_elapsed".to_string(),
         "duration_millis" => "mesh_duration_millis".to_string(),
         "duration_seconds" => "mesh_duration_seconds".to_string(),
+        "channel_bounded" => "mesh_channel_bounded".to_string(),
+        "channel_try_send" => "mesh_channel_try_send".to_string(),
+        "channel_recv" => "mesh_channel_recv".to_string(),
+        "channel_depth" => "mesh_channel_depth".to_string(),
+        "channel_dropped" => "mesh_channel_dropped".to_string(),
         // Http client functions (Phase 137)
         "http_build" => "mesh_http_build".to_string(),
         "http_header" => "mesh_http_header".to_string(),

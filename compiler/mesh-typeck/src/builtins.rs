@@ -514,6 +514,28 @@ pub fn register_builtins(
             )),
         );
     }
+    let channel_result = Ty::result(Ty::int(), Ty::string());
+    env.insert(
+        "channel_bounded".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::Con(TyCon::new("Atom"))],
+            channel_result.clone(),
+        )),
+    );
+    env.insert(
+        "channel_try_send".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
+    );
+    env.insert(
+        "channel_recv".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
+    );
+    for name in ["depth", "dropped"] {
+        env.insert(
+            format!("channel_{name}"),
+            Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
+        );
+    }
 
     // ── Standard library: Http client builder API (Phase 137) ─────────────────
     let http_req_t = Ty::int(); // MeshRequest opaque handle is u64 -> Int ABI

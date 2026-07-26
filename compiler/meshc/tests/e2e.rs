@@ -6180,6 +6180,14 @@ fn e2e_monotonic_duration() {
     assert_eq!(output, "true\ntrue\n");
 }
 
+/// MESH-ACTOR-001: latest-only channels remain bounded and report coalescing.
+#[test]
+fn e2e_bounded_channel() {
+    let source = read_fixture("bounded_channel.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\n2\n30\n");
+}
+
 /// Phase 137: Http.build/header/timeout fluent builder compiles (HTTP-01, HTTP-02, HTTP-04).
 /// Compile-only — no network access needed. The program builds a request and prints "built".
 #[test]
