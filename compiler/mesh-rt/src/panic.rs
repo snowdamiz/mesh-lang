@@ -19,7 +19,7 @@
 /// `msg` must point to `msg_len` valid UTF-8 bytes.
 /// `file` must point to `file_len` valid UTF-8 bytes.
 #[no_mangle]
-pub extern "C" fn mesh_panic(
+pub extern "C-unwind" fn mesh_panic(
     msg: *const u8,
     msg_len: u64,
     file: *const u8,

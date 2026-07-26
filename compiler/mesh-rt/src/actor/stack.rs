@@ -159,8 +159,8 @@ impl CoroutineHandle {
 
             // Call the actor entry function.
             // Safety: The fn_ptr was provided by the scheduler from a valid extern "C" fn.
-            let func: extern "C" fn(*const u8) =
-                unsafe { std::mem::transmute::<usize, extern "C" fn(*const u8)>(fn_ptr) };
+            let func: extern "C-unwind" fn(*const u8) =
+                unsafe { std::mem::transmute::<usize, extern "C-unwind" fn(*const u8)>(fn_ptr) };
             func(args as *const u8);
 
             // No need to clear CURRENT_YIELDER here -- the scheduler clears
@@ -181,6 +181,20 @@ impl CoroutineHandle {
             CoroutineResult::Yield(()) => true,
             CoroutineResult::Return(()) => false,
         }
+    }
+
+    /// Resume an actor while converting an unwinding Mesh panic into an exit
+    /// reason that the scheduler can propagate to links and supervisors.
+    pub(crate) fn resume_catching_panic(&mut self) -> Result<bool, String> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume())).map_err(|panic| {
+            if let Some(message) = panic.downcast_ref::<String>() {
+                message.clone()
+            } else if let Some(message) = panic.downcast_ref::<&str>() {
+                (*message).to_string()
+            } else {
+                "actor panicked".to_string()
+            }
+        })
     }
 
     /// Check whether the coroutine has finished.

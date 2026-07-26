@@ -522,34 +522,8 @@ fn worker_loop(
 
             did_work = true;
 
-            // Set thread-local PID for mesh_actor_self().
-            set_current_pid(pid);
-
-            let yielded = handle.resume();
-
-            // Clear thread-local context after resume returns.
-            clear_current_pid();
-            CURRENT_YIELDER.with(|c| c.set(None));
-
-            if yielded {
-                // Still running -- re-suspend.
-                // Reset reductions for next timeslice.
-                if let Some(proc) = process_table.read().get(&pid) {
-                    let mut proc = proc.lock();
-                    proc.reductions = DEFAULT_REDUCTIONS;
-                    // Only set Ready if not Waiting (receive may have set Waiting).
-                    if !matches!(proc.state, ProcessState::Waiting) {
-                        proc.state = ProcessState::Ready;
-                    }
-                }
+            if resume_process(&process_table, &active_count, pid, &mut handle) {
                 still_suspended.push((pid, handle));
-            } else {
-                // Actor completed.
-                handle_process_exit(&process_table, pid, ExitReason::Normal);
-                let remaining = active_count
-                    .fetch_sub(1, Ordering::SeqCst)
-                    .saturating_sub(1);
-                crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
             }
         }
         suspended = still_suspended;
@@ -570,33 +544,8 @@ fn worker_loop(
                 proc.lock().state = ProcessState::Running;
             }
 
-            // Set thread-local PID.
-            set_current_pid(req.pid);
-
-            let yielded = handle.resume();
-
-            // Clear thread-local context after resume returns.
-            clear_current_pid();
-            CURRENT_YIELDER.with(|c| c.set(None));
-
-            if yielded {
-                // Actor yielded -- add to suspended list.
-                if let Some(proc) = process_table.read().get(&req.pid) {
-                    let mut proc = proc.lock();
-                    proc.reductions = DEFAULT_REDUCTIONS;
-                    // Only set Ready if not Waiting (receive may have set Waiting).
-                    if !matches!(proc.state, ProcessState::Waiting) {
-                        proc.state = ProcessState::Ready;
-                    }
-                }
+            if resume_process(&process_table, &active_count, req.pid, &mut handle) {
                 suspended.push((req.pid, handle));
-            } else {
-                // Actor completed on first run.
-                handle_process_exit(&process_table, req.pid, ExitReason::Normal);
-                let remaining = active_count
-                    .fetch_sub(1, Ordering::SeqCst)
-                    .saturating_sub(1);
-                crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
             }
         }
 
@@ -669,6 +618,45 @@ fn worker_loop(
         }
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
+    }
+}
+
+/// Resume one actor timeslice and turn a Mesh panic into a linked error exit.
+fn resume_process(
+    process_table: &ProcessTable,
+    active_count: &AtomicU64,
+    pid: ProcessId,
+    handle: &mut CoroutineHandle,
+) -> bool {
+    set_current_pid(pid);
+    let result = handle.resume_catching_panic();
+    clear_current_pid();
+    CURRENT_YIELDER.with(|current| current.set(None));
+
+    match result {
+        Ok(true) => {
+            if let Some(process) = process_table.read().get(&pid) {
+                let mut process = process.lock();
+                process.reductions = DEFAULT_REDUCTIONS;
+                if !matches!(process.state, ProcessState::Waiting) {
+                    process.state = ProcessState::Ready;
+                }
+            }
+            true
+        }
+        result => {
+            let reason = match result {
+                Ok(false) => ExitReason::Normal,
+                Err(message) => ExitReason::Error(message),
+                Ok(true) => unreachable!(),
+            };
+            handle_process_exit(process_table, pid, reason);
+            let remaining = active_count
+                .fetch_sub(1, Ordering::SeqCst)
+                .saturating_sub(1);
+            crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
+            false
+        }
     }
 }
 

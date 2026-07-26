@@ -18,6 +18,8 @@ use serde_json::json;
 pub enum ClusterCommand {
     /// Show runtime-owned membership and authority for a clustered node.
     Status(ClusterStatusArgs),
+    /// Show the complete runtime-owned operator snapshot for a clustered node.
+    Snapshot(ClusterRuntimeArgs),
     /// Show runtime-owned continuity status for one request key, or list recent continuity records.
     Continuity(ClusterContinuityArgs),
     /// Show recent runtime-owned failover and continuity diagnostics.
@@ -228,6 +230,7 @@ pub struct ClusterDiagnosticsArgs {
 pub fn run_cluster_command(command: ClusterCommand) -> Result<(), String> {
     match command {
         ClusterCommand::Status(args) => run_status(args),
+        ClusterCommand::Snapshot(args) => run_snapshot(args),
         ClusterCommand::Continuity(args) => run_continuity(args),
         ClusterCommand::Diagnostics(args) => run_diagnostics(args),
         ClusterCommand::Capacity(args) => run_capacity(args),
@@ -336,6 +339,74 @@ fn runtime_snapshot(args: &ClusterRuntimeArgs) -> Result<OperatorRuntimeSnapshot
     let cookie = cluster_cookie(args.cookie_file.as_deref())?;
     query_operator_runtime_remote(&args.target, &cookie, timeout(args.timeout_ms))
         .map_err(|error| error.to_string())
+}
+
+fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
+    let snapshot = runtime_snapshot(&args)?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&snapshot)
+                .expect("serialize complete cluster runtime snapshot")
+        );
+        return Ok(());
+    }
+
+    println!("target: {}", args.target);
+    println!("local_node: {}", snapshot.local_node);
+    println!("telemetry_complete: {}", snapshot.telemetry_complete);
+    println!(
+        "capacity: desired={} observed={} ready={} draining={} min={} max={}",
+        snapshot.desired_capacity,
+        snapshot.observed_capacity,
+        snapshot.ready_capacity,
+        snapshot.draining_capacity,
+        snapshot.scheduler_min_workers,
+        snapshot.scheduler_max_workers,
+    );
+    println!("autoscaler_paused: {}", snapshot.autoscaler_paused);
+    if let Some(consensus) = &snapshot.consensus {
+        println!(
+            "consensus: state={} term={} leader={} applied={} voters={:?}",
+            consensus.state,
+            consensus.current_term,
+            consensus
+                .current_leader
+                .map_or_else(|| "(none)".to_string(), |leader| leader.to_string()),
+            consensus
+                .last_applied_log
+                .map_or_else(|| "(none)".to_string(), |index| index.to_string()),
+            consensus.voter_ids,
+        );
+    } else {
+        println!("consensus: disabled");
+    }
+    println!(
+        "autonomous: configured={} running={} leader={} state={} desired_workers={}",
+        snapshot.autonomous.configured,
+        snapshot.autonomous.running,
+        snapshot.autonomous.leader,
+        snapshot.autonomous.state,
+        snapshot.autonomous.desired_workers,
+    );
+    if snapshot.nodes.is_empty() {
+        println!("nodes: (none)");
+    } else {
+        println!("nodes:");
+        for node in snapshot.nodes {
+            println!(
+                "- node={} roles={} state={} eligible={} pressure={:.3} inflight={} queued={}",
+                node.node_id,
+                node.roles.join(","),
+                node.state,
+                node.routing_eligible,
+                node.pressure,
+                node.inflight,
+                node.queued_items,
+            );
+        }
+    }
+    Ok(())
 }
 
 fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {

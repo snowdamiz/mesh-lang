@@ -1064,6 +1064,47 @@ pub extern "C" fn mesh_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 
 // Supervisor extern "C" ABI functions
 // ---------------------------------------------------------------------------
 
+extern "C" fn supervisor_entry(_args: *const u8) {
+    let Some(supervisor_pid) = stack::get_current_pid() else {
+        return;
+    };
+
+    loop {
+        let message = mesh_actor_receive(-1);
+        if message.is_null() {
+            break;
+        }
+
+        let Some(state) = supervisor::get_supervisor_state(supervisor_pid) else {
+            break;
+        };
+        let type_tag = unsafe { std::ptr::read_unaligned(message.cast::<u64>()) };
+        if type_tag != link::EXIT_SIGNAL_TAG {
+            continue;
+        }
+        let data_len = unsafe { std::ptr::read_unaligned(message.add(8).cast::<u64>()) } as usize;
+        let data = unsafe { std::slice::from_raw_parts(message.add(16), data_len) };
+        let Some((child_pid, reason)) = link::decode_exit_signal(data) else {
+            continue;
+        };
+
+        let mut state = state.lock();
+        if supervisor::handle_child_exit(
+            &mut state,
+            child_pid,
+            &reason,
+            global_scheduler(),
+            supervisor_pid,
+        )
+        .is_err()
+        {
+            break;
+        }
+    }
+
+    supervisor::remove_supervisor_state(supervisor_pid);
+}
+
 /// Start a new supervisor actor.
 ///
 /// Deserializes a `SupervisorConfig` from the raw bytes, creates a
@@ -1117,27 +1158,26 @@ pub extern "C" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64)
         })
         .collect();
 
-    // Spawn the supervisor as a normal actor (no-op entry -- it doesn't run
-    // a coroutine. The supervisor logic is driven externally by the compiled
-    // Mesh program's receive loop or by the runtime's supervisor_entry).
-    extern "C" fn supervisor_noop(_args: *const u8) {}
-    let sup_pid = sched.spawn(supervisor_noop as *const u8, std::ptr::null(), 0, 1);
+    let sup_pid = sched.spawn(supervisor_entry as *const u8, std::ptr::null(), 0, 1);
 
     // Set trap_exit on the supervisor process.
     if let Some(proc) = sched.get_process(ProcessId(sup_pid.as_u64())) {
         proc.lock().trap_exit = true;
     }
 
+    // Register before starting children so even an immediately crashing child
+    // can be resolved by the supervisor receive loop.
+    let state = supervisor::register_supervisor_state(sup_pid, sup_state);
+
     // Start all children.
-    match supervisor::start_children(&mut sup_state, sched, sup_pid) {
+    match supervisor::start_children(&mut state.lock(), sched, sup_pid) {
         Ok(()) => {}
         Err(_e) => {
+            supervisor::remove_supervisor_state(sup_pid);
+            local_send(sup_pid.as_u64(), std::ptr::null(), 0);
             return u64::MAX;
         }
     }
-
-    // Register the supervisor state in the global registry.
-    supervisor::register_supervisor_state(sup_pid, sup_state);
 
     sup_pid.as_u64()
 }

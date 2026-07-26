@@ -136,6 +136,12 @@ fn run_with_timeout(binary: &Path, timeout_secs: u64) -> String {
         }
     };
 
+    assert!(
+        output.status.success(),
+        "binary failed with {:?}: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
@@ -237,6 +243,48 @@ fn supervisor_restart_limit() {
         stdout.contains("restart limit test started"),
         "Expected 'restart limit test started' in output, got: {}",
         stdout
+    );
+}
+
+/// A permanent child that panics after yielding must be restarted by its
+/// one_for_one supervisor without terminating the native Mesh process.
+#[test]
+fn supervisor_restarts_crashed_permanent_child() {
+    let source = r#"
+fn deliberate_crash(0) -> Int do
+  0
+end
+
+actor worker() do
+  println("worker-started")
+  Timer.sleep(25)
+  println("worker-awake")
+  deliberate_crash(1)
+end
+
+supervisor WorkerSup do
+  strategy: one_for_one
+  max_restarts: 3
+  max_seconds: 5
+
+  child worker do
+    start: fn -> spawn(worker) end
+    restart: permanent
+    shutdown: 100
+  end
+end
+
+fn main() do
+  let _ = spawn(WorkerSup)
+  Timer.sleep(250)
+end
+"#;
+    let (_temp_dir, binary) = compile_mesh(source);
+    let stdout = run_with_timeout(&binary, 10);
+
+    assert!(
+        stdout.matches("worker-started").count() >= 2,
+        "expected a crashed permanent child to restart, got: {stdout:?}"
     );
 }
 

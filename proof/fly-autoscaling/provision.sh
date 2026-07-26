@@ -102,6 +102,15 @@ for app in "${controller_app}" "${data_app}" "${runner_app}"; do
   created_apps+=("${app}")
 done
 
+token_expiry_seconds=$(( duration_seconds + 3600 ))
+readonly token_expiry_seconds
+data_app_token=$(flyctl tokens create deploy --app "${data_app}" \
+  --name "mesh-proof-${run_id}-data" --expiry "${token_expiry_seconds}s")
+readonly data_app_token
+controller_app_token=$(flyctl tokens create deploy --app "${controller_app}" \
+  --name "mesh-proof-${run_id}-controller" --expiry "${token_expiry_seconds}s")
+readonly controller_app_token
+
 log "creating isolated Fly Managed Postgres ${mpg_name}"
 flyctl mpg create --name "${mpg_name}" --org "${organization}" --region "${region}" \
   --plan basic --pg-major-version 16 --volume-size 10 --v2 >/dev/null
@@ -141,19 +150,18 @@ import_shared_secrets "${controller_app}"
 import_shared_secrets "${data_app}"
 import_shared_secrets "${runner_app}"
 
-fly_token=$(flyctl auth token)
 {
-  printf 'FLY_API_TOKEN=%s\n' "${fly_token}"
+  printf 'FLY_API_TOKEN=%s\n' "${data_app_token}"
   printf 'MESH_CAPACITY_IDENTITY_SIGNING_KEY_DER_B64=%s\n' \
     "$(jq -r '.identity_signing_key_der_b64' "${material_file}")"
 } | flyctl secrets import --stage --app "${controller_app}" >/dev/null
 {
-  printf 'FLY_API_TOKEN=%s\n' "${fly_token}"
+  printf 'FLY_DATA_API_TOKEN=%s\n' "${data_app_token}"
+  printf 'FLY_CONTROLLER_API_TOKEN=%s\n' "${controller_app_token}"
   printf 'MESH_ROLES=operator\n'
   printf 'MESH_STABLE_NODE_ID=%s/operator/fly-proof\n' "${cluster_id}"
   printf 'MESH_NODE_IDENTITY_ENVELOPE_B64=%s\n' "$(jq -r '.identities.operator' "${material_file}")"
 } | flyctl secrets import --stage --app "${runner_app}" >/dev/null
-unset fly_token
 
 build_args=(
   --build-arg "DATA_APP=${data_app}"
@@ -182,7 +190,8 @@ start_mesh_node() {
   flyctl machine run "${worker_image}" --app "${app}" --name "${label}" --region "${region}" \
     --vm-cpu-kind shared --vm-cpus 1 --vm-memory 512 --restart always --detach \
     --metadata "mesh.proof_run=${run_id}" --metadata "mesh.role=${role}" \
-    --metadata "mesh_node=${label}" \
+    --metadata "mesh_node=${label}" --metadata "mesh.cluster=${cluster_id}" \
+    --metadata "mesh.fixed=true" \
     --env PORT=8080 --env MESH_CLUSTER_MODE=autonomous --env MESH_CLUSTER_PORT=4370 \
     --env "MESH_DISCOVERY_SEED=${controller_seed}" --env "MESH_CONTROLLER_VOTERS=${voters}" \
     --env MESH_ADAPTIVE_ROUTING=true --env MESH_CONTINUITY_DB=/tmp/mesh-continuity.db \

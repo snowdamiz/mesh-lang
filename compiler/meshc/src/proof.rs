@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const COOKIE: &str = "proof-cookie-0123456789abcdef0123";
+const OPERATOR_KEY: &str = "proof-operator-key-0123456789abcdef";
 const MIN_WORKERS: u16 = 2;
 const PROOF_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(15);
 const CONCURRENT_BURST_P99_BUDGET_MILLIS: u64 = 6_000;
@@ -64,6 +65,14 @@ pub struct DockerAutoscalingArgs {
     /// Reuse an already-built proof image.
     #[arg(long)]
     pub no_build: bool,
+
+    /// Start the healthy proof topology and skip the fault-injection proof sequence.
+    #[arg(long)]
+    pub start_only: bool,
+
+    /// Owner-only connection manifest to create for the running topology.
+    #[arg(long, value_name = "PATH", requires = "start_only")]
+    pub connection_file: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -856,6 +865,64 @@ struct ProofHarness {
     events: Vec<Value>,
 }
 
+fn write_owner_only_new(path: &Path, contents: &[u8], label: &str) -> Result<(), String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| format!("{label}_directory_failed:{error}"))?;
+    }
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut output = options
+        .open(path)
+        .map_err(|error| format!("{label}_open_failed:{error}"))?;
+    output
+        .write_all(contents)
+        .map_err(|error| format!("{label}_write_failed:{error}"))?;
+    output
+        .sync_all()
+        .map_err(|error| format!("{label}_sync_failed:{error}"))
+}
+
+fn absolute_path(path: PathBuf) -> Result<PathBuf, String> {
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        std::env::current_dir()
+            .map(|directory| directory.join(path))
+            .map_err(|error| format!("proof_current_directory_failed:{error}"))
+    }
+}
+
+fn connection_secret_paths(path: &Path) -> (PathBuf, PathBuf) {
+    (
+        path.with_extension("cookie"),
+        path.with_extension("operator-key"),
+    )
+}
+
+fn ensure_connection_outputs_are_new(path: &Path) -> Result<(), String> {
+    let (cookie_file, operator_key_file) = connection_secret_paths(path);
+    if path == cookie_file || path == operator_key_file {
+        return Err("proof_connection_file_extension_invalid".to_string());
+    }
+    for output in [path.to_path_buf(), cookie_file, operator_key_file] {
+        if output.exists() {
+            return Err(format!(
+                "proof_connection_refuses_existing_output:{}",
+                output.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl ProofHarness {
     fn redact(&self, value: &str) -> String {
         redact(value)
@@ -868,33 +935,64 @@ impl ProofHarness {
             .replace(&self.driver_shared_key, "[redacted-driver-shared-key]")
     }
 
+    fn proof_environment(&self) -> BTreeMap<String, &str> {
+        let mut environment = BTreeMap::from([
+            ("MESH_PROOF_PROJECT".to_string(), self.project.as_str()),
+            (
+                "MESH_PROOF_CLUSTER_ID".to_string(),
+                self.cluster_id.as_str(),
+            ),
+            ("MESH_PROOF_IMAGE".to_string(), self.image.as_str()),
+            (
+                "MESH_PROOF_DRIVER_IMAGE".to_string(),
+                self.driver_image.as_str(),
+            ),
+            (
+                "MESH_PROOF_TLS_CA_DER_B64".to_string(),
+                self.tls_ca_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_TLS_CERT_DER_B64".to_string(),
+                self.tls_cert_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_TLS_KEY_DER_B64".to_string(),
+                self.tls_key_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_DRIVER_CERT_DER_B64".to_string(),
+                self.driver_cert_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_DRIVER_KEY_DER_B64".to_string(),
+                self.driver_key_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_DRIVER_SHARED_KEY".to_string(),
+                self.driver_shared_key.as_str(),
+            ),
+            (
+                "MESH_PROOF_IDENTITY_SIGNING_KEY_DER_B64".to_string(),
+                self.identity_signing_key_der_b64.as_str(),
+            ),
+            (
+                "MESH_PROOF_IDENTITY_VERIFY_KEY_B64".to_string(),
+                self.identity_verify_key_b64.as_str(),
+            ),
+        ]);
+        environment.extend(
+            self.identity_envelopes
+                .iter()
+                .map(|(name, value)| (format!("MESH_PROOF_IDENTITY_{name}"), value.as_str())),
+        );
+        environment
+    }
+
     fn command(&self, program: &str, args: &[&str]) -> Result<Output, String> {
         Command::new(program)
             .args(args)
             .current_dir(&self.root)
-            .env("MESH_PROOF_PROJECT", &self.project)
-            .env("MESH_PROOF_CLUSTER_ID", &self.cluster_id)
-            .env("MESH_PROOF_IMAGE", &self.image)
-            .env("MESH_PROOF_DRIVER_IMAGE", &self.driver_image)
-            .env("MESH_PROOF_TLS_CA_DER_B64", &self.tls_ca_der_b64)
-            .env("MESH_PROOF_TLS_CERT_DER_B64", &self.tls_cert_der_b64)
-            .env("MESH_PROOF_TLS_KEY_DER_B64", &self.tls_key_der_b64)
-            .env("MESH_PROOF_DRIVER_CERT_DER_B64", &self.driver_cert_der_b64)
-            .env("MESH_PROOF_DRIVER_KEY_DER_B64", &self.driver_key_der_b64)
-            .env("MESH_PROOF_DRIVER_SHARED_KEY", &self.driver_shared_key)
-            .env(
-                "MESH_PROOF_IDENTITY_SIGNING_KEY_DER_B64",
-                &self.identity_signing_key_der_b64,
-            )
-            .env(
-                "MESH_PROOF_IDENTITY_VERIFY_KEY_B64",
-                &self.identity_verify_key_b64,
-            )
-            .envs(
-                self.identity_envelopes
-                    .iter()
-                    .map(|(name, value)| (format!("MESH_PROOF_IDENTITY_{name}"), value)),
-            )
+            .envs(self.proof_environment())
             .stdin(Stdio::null())
             .output()
             .map_err(|error| format!("proof_command_start_failed:{program}:{error}"))
@@ -925,6 +1023,103 @@ impl ProofHarness {
     fn write(&self, name: &str, contents: impl AsRef<[u8]>) -> Result<(), String> {
         fs::write(self.evidence.join(name), contents)
             .map_err(|error| format!("proof_evidence_write_failed:{name}:{error}"))
+    }
+
+    fn write_connection_manifest(&self, path: &Path) -> Result<(), String> {
+        let (cookie_file, operator_key_file) = connection_secret_paths(path);
+        write_owner_only_new(
+            &cookie_file,
+            format!("{COOKIE}\n").as_bytes(),
+            "proof_connection_cookie",
+        )?;
+        write_owner_only_new(
+            &operator_key_file,
+            format!("{OPERATOR_KEY}\n").as_bytes(),
+            "proof_connection_operator_key",
+        )?;
+        let meshc_path = std::env::current_exe()
+            .map_err(|error| format!("proof_connection_meshc_path_failed:{error}"))?;
+        let voters = format!(
+            "{}/controller/controller1|controller1@controller1:4370,{}/controller/controller2|controller2@controller2:4370,{}/controller/controller3|controller3@controller3:4370",
+            self.cluster_id, self.cluster_id, self.cluster_id,
+        );
+        let operator_identity = self
+            .identity_envelopes
+            .get("OPERATOR")
+            .ok_or_else(|| "proof_connection_operator_identity_missing".to_string())?;
+        let mut environment: BTreeMap<String, String> = self
+            .proof_environment()
+            .into_iter()
+            .map(|(name, value)| (name, value.to_string()))
+            .collect();
+        environment.extend([
+            (
+                "MESH_TLS_CA_DER_B64".to_string(),
+                self.tls_ca_der_b64.clone(),
+            ),
+            (
+                "MESH_TLS_CERT_DER_B64".to_string(),
+                self.tls_cert_der_b64.clone(),
+            ),
+            (
+                "MESH_TLS_KEY_DER_B64".to_string(),
+                self.tls_key_der_b64.clone(),
+            ),
+            ("MESH_CLUSTER_MODE".to_string(), "autonomous".to_string()),
+            ("MESH_CLUSTER_ID".to_string(), self.cluster_id.clone()),
+            ("MESH_CONTROLLER_VOTERS".to_string(), voters),
+            (
+                "MESH_STABLE_NODE_ID".to_string(),
+                format!("{}/operator/proof", self.cluster_id),
+            ),
+            ("MESH_ROLES".to_string(), "operator".to_string()),
+            (
+                mesh_rt::IDENTITY_VERIFY_KEYS_ENV.to_string(),
+                self.identity_verify_key_b64.clone(),
+            ),
+            (
+                mesh_rt::IDENTITY_ENVELOPE_ENV.to_string(),
+                operator_identity.clone(),
+            ),
+        ]);
+        let services = BTreeMap::from([
+            ("controller1@controller1:4370", "controller1"),
+            ("controller2@controller2:4370", "controller2"),
+            ("controller3@controller3:4370", "controller3"),
+            ("gateway1@gateway1:4370", "gateway1"),
+            ("gateway2@gateway2:4370", "gateway2"),
+            ("worker1@worker1:4370", "worker1"),
+            ("worker2@worker2:4370", "worker2"),
+        ]);
+        let document = json!({
+            "schemaVersion": 1,
+            "provider": "docker",
+            "clusterId": self.cluster_id,
+            "controllerTargets": [
+                "controller1@127.0.0.1:14371",
+                "controller2@127.0.0.1:14372",
+                "controller3@127.0.0.1:14373",
+            ],
+            "gatewayUrls": ["http://127.0.0.1:18081", "http://127.0.0.1:18082"],
+            "meshcPath": meshc_path,
+            "cookieFile": cookie_file,
+            "operatorKeyFile": operator_key_file,
+            "environment": environment,
+            "docker": {
+                "project": self.project,
+                "composeFile": self.compose_file,
+                "services": services,
+                "fence": {
+                    "composeProjectLabel": self.project,
+                    "managedClusterLabel": self.cluster_id,
+                    "managedLabel": "true",
+                },
+            },
+        });
+        let mut encoded = serde_json::to_vec_pretty(&document)
+            .map_err(|error| format!("proof_connection_encode_failed:{error}"))?;
+        encoded.push(b'\n');
+        write_owner_only_new(path, &encoded, "proof_connection")
     }
 
     fn snapshot_containers(&self, label: &str) -> Result<(), String> {
@@ -1063,16 +1258,41 @@ impl ProofHarness {
     }
 }
 
+fn validate_docker_autoscaling_args(args: &DockerAutoscalingArgs) -> Result<(), String> {
+    if args.start_only && !args.keep_running {
+        return Err("docker_autoscaling_start_only_requires_keep_running".to_string());
+    }
+    if !args.start_only && args.connection_file.is_some() {
+        return Err("docker_autoscaling_connection_file_requires_start_only".to_string());
+    }
+    Ok(())
+}
+
 fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
+    validate_docker_autoscaling_args(&args)?;
+    let DockerAutoscalingArgs {
+        keep_running,
+        evidence_dir,
+        no_build,
+        start_only,
+        connection_file,
+    } = args;
     let root = repository_root()?;
     let timestamp = unix_millis();
     let project = format!("mesh-proof-{}-{timestamp}", std::process::id());
-    let evidence = args.evidence_dir.unwrap_or_else(|| {
+    let evidence = evidence_dir.unwrap_or_else(|| {
         root.join("target")
             .join("proof")
             .join("docker-autoscaling")
             .join(timestamp.to_string())
     });
+    let connection_file = start_only
+        .then(|| connection_file.unwrap_or_else(|| evidence.join("connection.json")))
+        .map(absolute_path)
+        .transpose()?;
+    if let Some(connection_file) = &connection_file {
+        ensure_connection_outputs_are_new(connection_file)?;
+    }
     fs::create_dir_all(&evidence)
         .map_err(|error| format!("proof_evidence_directory_failed:{error}"))?;
     let tls_dir = std::env::temp_dir().join(format!("mesh-proof-mtls-{timestamp}"));
@@ -1193,12 +1413,12 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
             .get("OPERATOR")
             .expect("proof operator identity generated"),
     );
-    let image = if args.no_build {
+    let image = if no_build {
         "mesh-autoscaling-proof:local".to_string()
     } else {
         format!("mesh-autoscaling-proof:{timestamp}")
     };
-    let driver_image = if args.no_build {
+    let driver_image = if no_build {
         "mesh-autoscaling-driver:local".to_string()
     } else {
         format!("mesh-autoscaling-driver:{timestamp}")
@@ -1211,7 +1431,7 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         image,
         driver_image,
         project,
-        keep_running: args.keep_running,
+        keep_running,
         tls_dir,
         tls_ca_der_b64,
         tls_cert_der_b64,
@@ -1226,21 +1446,24 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         events: Vec::new(),
     };
 
-    let result = run_proof(&mut harness, args.no_build);
+    let result = run_proof(&mut harness, no_build, connection_file.as_deref());
     harness.collect_logs();
-    let compose_logs = fs::read_to_string(harness.evidence.join("compose.log")).unwrap_or_default();
-    harness.assertions.insert(
-        "docker_api_timeout_injected".to_string(),
-        compose_logs.contains("fault=docker_api_timeout_once"),
-    );
-    harness.assertions.insert(
-        "docker_create_response_loss_injected".to_string(),
-        compose_logs.contains("fault=ensure_response_loss_once"),
-    );
-    harness.assertions.insert(
-        "unhealthy_new_worker_injected".to_string(),
-        compose_logs.contains("fault=unhealthy_new_worker_once"),
-    );
+    if !start_only {
+        let compose_logs =
+            fs::read_to_string(harness.evidence.join("compose.log")).unwrap_or_default();
+        harness.assertions.insert(
+            "docker_api_timeout_injected".to_string(),
+            compose_logs.contains("fault=docker_api_timeout_once"),
+        );
+        harness.assertions.insert(
+            "docker_create_response_loss_injected".to_string(),
+            compose_logs.contains("fault=ensure_response_loss_once"),
+        );
+        harness.assertions.insert(
+            "unhealthy_new_worker_injected".to_string(),
+            compose_logs.contains("fault=unhealthy_new_worker_once"),
+        );
+    }
     let cleanup_result = if harness.keep_running {
         Ok(())
     } else {
@@ -1254,6 +1477,7 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         && harness.assertions.values().all(|passed| *passed);
     let summary = json!({
         "schema_version": 1,
+        "mode": if start_only { "start_only" } else { "proof" },
         "passed": passed,
         "project": harness.project,
         "cluster_id": harness.cluster_id,
@@ -1268,10 +1492,18 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         serde_json::to_vec_pretty(&summary).expect("serialize proof summary"),
     )?;
     println!("evidence_bundle: {}", harness.evidence.display());
-    println!(
-        "docker_autoscaling_proof: {}",
-        if passed { "PASS" } else { "FAIL" }
-    );
+    if let Some(connection_file) = &connection_file {
+        println!("connection_manifest: {}", connection_file.display());
+        println!(
+            "docker_autoscaling_topology: {}",
+            if passed { "READY" } else { "FAILED" }
+        );
+    } else {
+        println!(
+            "docker_autoscaling_proof: {}",
+            if passed { "PASS" } else { "FAIL" }
+        );
+    }
     if passed {
         Ok(())
     } else {
@@ -1308,19 +1540,25 @@ fn proof_identity_envelope(
     ))
 }
 
-fn run_proof(harness: &mut ProofHarness, no_build: bool) -> Result<(), String> {
-    let snapshot_resume = mesh_rt::prove_interrupted_snapshot_resume()?;
-    harness.write(
-        "continuity-snapshot-resume.json",
-        serde_json::to_vec_pretty(&snapshot_resume)
-            .expect("serialize continuity snapshot resume proof"),
-    )?;
-    harness.assertions.insert(
-        "interrupted_continuity_snapshot_resumed".to_string(),
-        snapshot_resume.chunks > 1
-            && snapshot_resume.acknowledged_before_interruption > 0
-            && snapshot_resume.records == 64,
-    );
+fn run_proof(
+    harness: &mut ProofHarness,
+    no_build: bool,
+    connection_file: Option<&Path>,
+) -> Result<(), String> {
+    if connection_file.is_none() {
+        let snapshot_resume = mesh_rt::prove_interrupted_snapshot_resume()?;
+        harness.write(
+            "continuity-snapshot-resume.json",
+            serde_json::to_vec_pretty(&snapshot_resume)
+                .expect("serialize continuity snapshot resume proof"),
+        )?;
+        harness.assertions.insert(
+            "interrupted_continuity_snapshot_resumed".to_string(),
+            snapshot_resume.chunks > 1
+                && snapshot_resume.acknowledged_before_interruption > 0
+                && snapshot_resume.records == 64,
+        );
+    }
     let docker_version = harness.checked("docker", &["version", "--format", "{{json .}}"])?;
     let compose_version = harness.checked("docker", &["compose", "version", "--short"])?;
     let revision = harness
@@ -1441,6 +1679,12 @@ fn run_proof(harness: &mut ProofHarness, no_build: bool) -> Result<(), String> {
             .count()
             >= MIN_WORKERS as usize,
     );
+    if let Some(connection_file) = connection_file {
+        harness.write_connection_manifest(connection_file)?;
+        fs::remove_dir_all(&harness.tls_dir)
+            .map_err(|error| format!("proof_mtls_cleanup_failed:{error}"))?;
+        return Ok(());
+    }
 
     let acknowledged_mutations = seed_postgres_mutations()?;
     // Keep policy pressure active through worker replacement and controller
@@ -3138,6 +3382,66 @@ fn unix_millis() -> u64 {
 fn redact(value: &str) -> String {
     value
         .replace(COOKIE, "[redacted]")
-        .replace("proof-operator-key-0123456789abcdef", "[redacted]")
+        .replace(OPERATOR_KEY, "[redacted]")
         .replace("postgres:postgres", "[redacted]")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn docker_args() -> DockerAutoscalingArgs {
+        DockerAutoscalingArgs {
+            keep_running: false,
+            evidence_dir: None,
+            no_build: true,
+            start_only: false,
+            connection_file: None,
+        }
+    }
+
+    #[test]
+    fn start_only_requires_keep_running() {
+        let args = DockerAutoscalingArgs {
+            start_only: true,
+            ..docker_args()
+        };
+
+        assert_eq!(
+            validate_docker_autoscaling_args(&args),
+            Err("docker_autoscaling_start_only_requires_keep_running".to_string())
+        );
+    }
+
+    #[test]
+    fn connection_file_requires_start_only() {
+        let args = DockerAutoscalingArgs {
+            connection_file: Some(PathBuf::from("connection.json")),
+            ..docker_args()
+        };
+
+        assert_eq!(
+            validate_docker_autoscaling_args(&args),
+            Err("docker_autoscaling_connection_file_requires_start_only".to_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn owner_only_file_is_created_with_mode_0600() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().expect("create temporary directory");
+        let path = directory.path().join("connection.json");
+        write_owner_only_new(&path, b"{}\n", "test_owner_only").expect("create owner-only file");
+
+        assert_eq!(
+            fs::metadata(path)
+                .expect("read owner-only metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
 }

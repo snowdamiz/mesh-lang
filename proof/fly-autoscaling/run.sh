@@ -22,7 +22,8 @@ log() { printf '[%s] %s\n' "$(timestamp)" "$*" | tee -a "${evidence_dir}/runner.
 
 required_environment() {
   local name
-  for name in DATABASE_URL FLY_API_TOKEN MESH_CLUSTER_COOKIE MESH_TLS_CA_DER_B64 \
+  for name in DATABASE_URL FLY_DATA_API_TOKEN FLY_CONTROLLER_API_TOKEN \
+    MESH_CLUSTER_COOKIE MESH_TLS_CA_DER_B64 \
     MESH_TLS_CERT_DER_B64 MESH_TLS_KEY_DER_B64 MESH_NODE_IDENTITY_VERIFY_KEYS_B64 \
     MESH_NODE_IDENTITY_ENVELOPE_B64 MESH_STABLE_NODE_ID MESH_CLUSTER_ID; do
     if [[ -z "${!name:-}" ]]; then
@@ -44,8 +45,17 @@ required_environment() {
 
 api_get_machines() {
   local app=$1
+  local token
+  if [[ "${app}" == "${data_app}" ]]; then
+    token=${FLY_DATA_API_TOKEN}
+  elif [[ "${app}" == "${controller_app}" ]]; then
+    token=${FLY_CONTROLLER_API_TOKEN}
+  else
+    printf 'refusing Machines API access outside proof apps: %s\n' "${app}" >&2
+    return 1
+  fi
   curl --fail --silent --show-error --max-time 15 \
-    -H "Authorization: Bearer ${FLY_API_TOKEN}" \
+    -H "Authorization: Bearer ${token}" \
     "${machines_api}/${app}/machines"
 }
 
@@ -141,7 +151,7 @@ inject_worker_loss_once() {
     return 1
   fi
   if curl --fail --silent --show-error --max-time 20 -X DELETE \
-    -H "Authorization: Bearer ${FLY_API_TOKEN}" \
+    -H "Authorization: Bearer ${FLY_DATA_API_TOKEN}" \
     "${machines_api}/${data_app}/machines/${machine_id}?force=true" >/dev/null; then
     jq -cn --arg at "$(timestamp)" --arg machine_id "${machine_id}" \
       --argjson elapsed_seconds "$(( $(date +%s) - proof_started_epoch ))" \
