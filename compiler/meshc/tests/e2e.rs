@@ -7194,16 +7194,11 @@ fn e2e_inferred_cross_module_identity() {
 
 // ── Known compiler-limit regressions ───────────────────────────────────
 
-/// Freezes the nested-`&&` codegen blocker until the lowering is fixed.
+/// Nested short-circuit expressions must use the actual predecessor block.
 #[test]
-fn e2e_nested_and_known_codegen_limit() {
-    let error = compile_expect_error(NESTED_AND_MAIN);
-    assert!(
-        error.contains("PHI node entries do not match predecessors!")
-            && error.contains("%and_result = phi i1"),
-        "Expected nested-&& LLVM PHI mismatch, got: {}",
-        error
-    );
+fn e2e_nested_and() {
+    let output = compile_and_run(NESTED_AND_MAIN);
+    assert_eq!(output, "no\n");
 }
 
 /// Freezes the timer-to-service-cast no-op until timer dispatch is implemented.

@@ -562,6 +562,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let fn_val = self.current_function();
         let lhs_val = self.codegen_expr(lhs)?.into_int_value();
+        let lhs_end_bb = self.builder.get_insert_block().unwrap();
 
         let rhs_bb = self.context.append_basic_block(fn_val, "and_rhs");
         let merge_bb = self.context.append_basic_block(fn_val, "and_merge");
@@ -586,18 +587,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         let false_val = self.context.bool_type().const_int(0, false);
-        let lhs_bb = fn_val.get_basic_blocks().into_iter().find(|bb| {
-            // Find the block that branches to merge_bb but is not rhs_end_bb
-            bb != &rhs_bb && bb != &merge_bb && bb != &rhs_end_bb
-        });
-
-        // Use the block where lhs was evaluated (could be entry or wherever)
-        if let Some(lhs_end_bb) = lhs_bb {
-            phi.add_incoming(&[(&false_val, lhs_end_bb), (&rhs_val, rhs_end_bb)]);
-        } else {
-            // Fallback: just use false
-            phi.add_incoming(&[(&rhs_val, rhs_end_bb)]);
-        }
+        phi.add_incoming(&[(&false_val, lhs_end_bb), (&rhs_val, rhs_end_bb)]);
 
         Ok(phi.as_basic_value())
     }
