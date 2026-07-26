@@ -6188,6 +6188,14 @@ fn e2e_bounded_channel() {
     assert_eq!(output, "1\n2\n30\n");
 }
 
+/// MESH-TEST-002: seeded random sequences are stable and explicitly stateful.
+#[test]
+fn e2e_deterministic_random() {
+    let source = read_fixture("deterministic_random.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "1\ntrue\ntrue\ntrue\n");
+}
+
 /// Phase 137: Http.build/header/timeout fluent builder compiles (HTTP-01, HTTP-02, HTTP-04).
 /// Compile-only — no network access needed. The program builds a request and prints "built".
 #[test]

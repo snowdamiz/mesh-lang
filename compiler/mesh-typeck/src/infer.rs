@@ -594,6 +594,24 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Channel".to_string(), channel_mod);
 
+    let mut random_mod = HashMap::new();
+    random_mod.insert(
+        "seed".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
+    );
+    random_mod.insert(
+        "next_int".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::int()],
+            Ty::Con(TyCon::new("Tuple")),
+        )),
+    );
+    random_mod.insert(
+        "next_unit_ppm".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Con(TyCon::new("Tuple")))),
+    );
+    modules.insert("Random".to_string(), random_mod);
+
     // ── Http client module (Phase 137) ───────────────────────────────────────
     let http_req_t = Ty::int(); // opaque handle — u64 ABI as Int
     let http_resp_t = Ty::Con(TyCon::new("HttpResponse"));
@@ -3145,6 +3163,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Monotonic",
     "Duration",
     "Channel",
+    "Random",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity

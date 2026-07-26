@@ -536,6 +536,21 @@ pub fn register_builtins(
             Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
         );
     }
+    env.insert(
+        "random_seed".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
+    );
+    env.insert(
+        "random_next_int".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::int()],
+            Ty::Con(TyCon::new("Tuple")),
+        )),
+    );
+    env.insert(
+        "random_next_unit_ppm".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Con(TyCon::new("Tuple")))),
+    );
 
     // ── Standard library: Http client builder API (Phase 137) ─────────────────
     let http_req_t = Ty::int(); // MeshRequest opaque handle is u64 -> Int ABI

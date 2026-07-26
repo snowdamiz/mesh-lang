@@ -1366,6 +1366,21 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
             );
         }
+        self.known_functions.insert(
+            "mesh_random_seed".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
+            "mesh_random_next_int".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::Int, MirType::Int],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_random_next_unit_ppm".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
         // Http client functions (Phase 137)
         // MeshRequest handle is u64 -> MirType::Int
         self.known_functions.insert(
@@ -13405,6 +13420,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Monotonic",
     "Duration",
     "Channel",
+    "Random",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity
@@ -13500,6 +13516,9 @@ fn map_builtin_name(name: &str) -> String {
         "channel_recv" => "mesh_channel_recv".to_string(),
         "channel_depth" => "mesh_channel_depth".to_string(),
         "channel_dropped" => "mesh_channel_dropped".to_string(),
+        "random_seed" => "mesh_random_seed".to_string(),
+        "random_next_int" => "mesh_random_next_int".to_string(),
+        "random_next_unit_ppm" => "mesh_random_next_unit_ppm".to_string(),
         // Http client functions (Phase 137)
         "http_build" => "mesh_http_build".to_string(),
         "http_header" => "mesh_http_header".to_string(),

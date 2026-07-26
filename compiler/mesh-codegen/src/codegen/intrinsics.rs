@@ -760,6 +760,21 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_random_seed",
+        i64_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_random_next_int",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_random_next_unit_ppm",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ── Http client functions (Phase 137) ──────────────────────────────────────
 
