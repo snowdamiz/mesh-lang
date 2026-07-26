@@ -421,7 +421,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_env_args() -> ptr (packed array)
+    // mesh_env_args() -> ptr (List<String>)
     let env_args_ty = ptr_type.fn_type(&[], false);
     module.add_function(
         "mesh_env_args",

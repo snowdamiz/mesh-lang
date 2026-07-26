@@ -2,7 +2,7 @@
 //!
 //! Provides `Env.get(key)` and `Env.args()` for Mesh programs.
 
-use crate::gc::mesh_gc_alloc_actor;
+use crate::collections::list::mesh_list_from_array;
 use crate::option::{alloc_option, MeshOption};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -54,32 +54,13 @@ pub extern "C" fn mesh_env_get_int(key: *const MeshString, default: i64) -> i64 
     }
 }
 
-/// Return CLI arguments as a packed array of MeshString pointers.
-///
-/// Layout: `[u64 count, *mut MeshString arg0, *mut MeshString arg1, ...]`
-///
-/// This temporary representation will be replaced by proper List<String>
-/// in Plan 02 when the List type is implemented.
+/// Return CLI arguments as a `List<String>`.
 #[no_mangle]
 pub extern "C" fn mesh_env_args() -> *mut u8 {
-    let args: Vec<String> = std::env::args().collect();
-    let count = args.len();
-    // Layout: u64 count + count * pointer-sized entries
-    let ptr_size = std::mem::size_of::<*mut MeshString>();
-    let total_size = std::mem::size_of::<u64>() + count * ptr_size;
-
-    unsafe {
-        let buf = mesh_gc_alloc_actor(total_size as u64, 8);
-        // Write count
-        *(buf as *mut u64) = count as u64;
-        // Write string pointers
-        let ptrs = buf.add(std::mem::size_of::<u64>()) as *mut *mut MeshString;
-        for (i, arg) in args.iter().enumerate() {
-            let s = mesh_string_new(arg.as_ptr(), arg.len() as u64);
-            *ptrs.add(i) = s;
-        }
-        buf
-    }
+    let args = std::env::args()
+        .map(|arg| mesh_string_new(arg.as_ptr(), arg.len() as u64) as u64)
+        .collect::<Vec<_>>();
+    mesh_list_from_array(args.as_ptr(), args.len() as i64)
 }
 
 #[cfg(test)]
@@ -144,11 +125,12 @@ mod tests {
     #[test]
     fn test_env_args() {
         mesh_rt_init();
-        let buf = mesh_env_args();
+        let args = mesh_env_args();
+        let count = crate::collections::list::mesh_list_length(args);
+        assert!(count >= 1, "expected at least 1 arg, got {count}");
+        let first = crate::collections::list::mesh_list_get(args, 0) as *const MeshString;
         unsafe {
-            let count = *(buf as *const u64);
-            // There should be at least 1 arg (the test binary itself)
-            assert!(count >= 1, "expected at least 1 arg, got {}", count);
+            assert!(!(*first).as_str().is_empty());
         }
     }
 }
