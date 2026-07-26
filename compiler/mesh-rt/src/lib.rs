@@ -35,6 +35,7 @@ pub mod http;
 pub mod io;
 pub mod iter;
 pub mod json;
+pub mod monotonic;
 pub mod option;
 pub mod panic;
 pub mod regex;
@@ -246,6 +247,9 @@ pub use json::{
     mesh_json_encode, mesh_json_encode_bool, mesh_json_encode_int, mesh_json_encode_list,
     mesh_json_encode_map, mesh_json_encode_string, mesh_json_from_bool, mesh_json_from_float,
     mesh_json_from_int, mesh_json_from_string, mesh_json_parse,
+};
+pub use monotonic::{
+    mesh_duration_millis, mesh_duration_seconds, mesh_monotonic_elapsed, mesh_monotonic_now_nanos,
 };
 pub use option::{alloc_option, MeshOption};
 pub use panic::mesh_panic;

@@ -724,6 +724,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         checked_mul_div_ty,
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_monotonic_now_nanos",
+        i64_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_monotonic_elapsed",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in ["mesh_duration_millis", "mesh_duration_seconds"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[i64_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Http client functions (Phase 137) ──────────────────────────────────────
 

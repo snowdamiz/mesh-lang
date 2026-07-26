@@ -1336,6 +1336,20 @@ impl<'a> Lowerer<'a> {
                 ),
             );
         }
+        self.known_functions.insert(
+            "mesh_monotonic_now_nanos".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
+            "mesh_monotonic_elapsed".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_duration_millis", "mesh_duration_seconds"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+            );
+        }
         // Http client functions (Phase 137)
         // MeshRequest handle is u64 -> MirType::Int
         self.known_functions.insert(
@@ -13372,6 +13386,8 @@ const STDLIB_MODULES: &[&str] = &[
     "Hex",       // Phase 135
     "DateTime",  // Phase 136
     "Checked",
+    "Monotonic",
+    "Duration",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity
@@ -13458,6 +13474,10 @@ fn map_builtin_name(name: &str) -> String {
         "checked_abs" => "mesh_checked_abs".to_string(),
         "checked_mul_div" => "mesh_checked_mul_div".to_string(),
         "checked_rescale" => "mesh_checked_rescale".to_string(),
+        "monotonic_now_nanos" => "mesh_monotonic_now_nanos".to_string(),
+        "monotonic_elapsed" => "mesh_monotonic_elapsed".to_string(),
+        "duration_millis" => "mesh_duration_millis".to_string(),
+        "duration_seconds" => "mesh_duration_seconds".to_string(),
         // Http client functions (Phase 137)
         "http_build" => "mesh_http_build".to_string(),
         "http_header" => "mesh_http_header".to_string(),

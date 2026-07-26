@@ -545,6 +545,32 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Checked".to_string(), checked_mod);
 
+    let mut monotonic_mod = HashMap::new();
+    monotonic_mod.insert(
+        "now_nanos".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::int())),
+    );
+    monotonic_mod.insert(
+        "elapsed".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    modules.insert("Monotonic".to_string(), monotonic_mod);
+
+    let mut duration_mod = HashMap::new();
+    for name in ["millis", "seconds"] {
+        duration_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::int()],
+                Ty::result(Ty::int(), Ty::string()),
+            )),
+        );
+    }
+    modules.insert("Duration".to_string(), duration_mod);
+
     // ── Http client module (Phase 137) ───────────────────────────────────────
     let http_req_t = Ty::int(); // opaque handle — u64 ABI as Int
     let http_resp_t = Ty::Con(TyCon::new("HttpResponse"));
@@ -3093,6 +3119,8 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Hex",       // Phase 135
     "DateTime",  // Phase 136
     "Checked",
+    "Monotonic",
+    "Duration",
     "Http",       // Phase 137
     "Test",       // Phase 138
     "Continuity", // continuity

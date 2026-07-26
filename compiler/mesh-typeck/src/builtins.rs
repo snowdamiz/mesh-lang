@@ -494,6 +494,26 @@ pub fn register_builtins(
             )),
         );
     }
+    env.insert(
+        "monotonic_now_nanos".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::int())),
+    );
+    env.insert(
+        "monotonic_elapsed".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    for name in ["millis", "seconds"] {
+        env.insert(
+            format!("duration_{name}"),
+            Scheme::mono(Ty::fun(
+                vec![Ty::int()],
+                Ty::result(Ty::int(), Ty::string()),
+            )),
+        );
+    }
 
     // ── Standard library: Http client builder API (Phase 137) ─────────────────
     let http_req_t = Ty::int(); // MeshRequest opaque handle is u64 -> Int ABI
