@@ -229,7 +229,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::UnresolvedAssocType { span, .. } => Some(*span),
         TypeError::SlotPositionConflict { span, .. } => Some(*span),
         TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
-        TypeError::UndefinedType { span, .. } => Some(*span),
+        TypeError::UndefinedType { span, .. }
+        | TypeError::NativeDeclarationInvalid { span, .. } => Some(*span),
     }
 }
 

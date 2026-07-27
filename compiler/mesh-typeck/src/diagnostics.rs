@@ -142,6 +142,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SlotPositionConflict { .. } => "E0043",
         TypeError::SlotPipeOutOfRange { .. } => "E0044",
         TypeError::UndefinedType { .. } => "E0045",
+        TypeError::NativeDeclarationInvalid { .. } => "E0052",
     }
 }
 
@@ -508,7 +509,8 @@ pub fn render_json_diagnostic(
                 | TypeError::UnresolvedAssocType { span, .. }
                 | TypeError::SlotPositionConflict { span, .. }
                 | TypeError::SlotPipeOutOfRange { span, .. }
-                | TypeError::UndefinedType { span, .. } => {
+                | TypeError::UndefinedType { span, .. }
+                | TypeError::NativeDeclarationInvalid { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1931,6 +1933,20 @@ pub fn render_diagnostic(
                     "define `{}` as a struct, sum type, or type alias before using it here",
                     target_name
                 ))
+                .finish()
+        }
+        TypeError::NativeDeclarationInvalid { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("invalid native function declaration")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(reason)
+                        .with_color(Color::Red),
+                )
+                .with_help("use a public, fully annotated, non-generic signature and a C identifier symbol")
                 .finish()
         }
     };

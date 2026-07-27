@@ -786,8 +786,10 @@ impl<'ctx> CodeGen<'ctx> {
         // we check whether expanding closures/FnPtrs would exceed the target function's
         // declared parameter count.
         let target_param_count: Option<usize> = if let MirExpr::Var(name, _) = func {
-            self.module
-                .get_function(name)
+            self.functions
+                .get(name)
+                .copied()
+                .or_else(|| self.module.get_function(name))
                 .map(|f| f.count_params() as usize)
         } else {
             None

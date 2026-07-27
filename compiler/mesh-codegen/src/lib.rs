@@ -497,6 +497,7 @@ pub fn merge_mir_modules(
 
     let mut merged = mir::MirModule {
         functions: Vec::new(),
+        native_functions: Vec::new(),
         structs: Vec::new(),
         sum_types: Vec::new(),
         entry_function: None,
@@ -504,6 +505,7 @@ pub fn merge_mir_modules(
     };
 
     let mut seen_functions: HashSet<String> = HashSet::new();
+    let mut seen_native_functions: HashSet<String> = HashSet::new();
     let mut seen_structs: HashSet<String> = HashSet::new();
     let mut seen_sum_types: HashSet<String> = HashSet::new();
 
@@ -517,6 +519,11 @@ pub fn merge_mir_modules(
         for func in &module.functions {
             if seen_functions.insert(func.name.clone()) {
                 merged.functions.push(func.clone());
+            }
+        }
+        for function in &module.native_functions {
+            if seen_native_functions.insert(function.name.clone()) {
+                merged.native_functions.push(function.clone());
             }
         }
         for s in &module.structs {
@@ -584,6 +591,7 @@ mod tests {
                     sum_types: Vec::new(),
                     entry_function: Some("mesh_main".to_string()),
                     service_dispatch: std::collections::HashMap::new(),
+                    native_functions: Vec::new(),
                 },
                 MirModule {
                     functions: vec![MirFunction {
@@ -599,6 +607,7 @@ mod tests {
                     sum_types: Vec::new(),
                     entry_function: Some("mesh_main".to_string()),
                     service_dispatch: std::collections::HashMap::new(),
+                    native_functions: Vec::new(),
                 },
             ],
             1,
@@ -674,5 +683,40 @@ end
             !request_fn.contains("mesh_string_concat(ptr %str, ptr @node_name)"),
             "request_registry_name_for_node must interpolate the local binding, not the function symbol:\n{request_fn}"
         );
+    }
+
+    #[test]
+    fn native_binding_lowers_to_an_external_symbol_declaration() {
+        let source = r#"
+@native("mesh_math_add")
+pub fn add(left :: Int, right :: Int) -> Int
+
+fn main() -> Int do
+  20 |> add(22)
+end
+"#;
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let ll_path = std::env::temp_dir().join(format!("mesh-native-binding-{stamp}.ll"));
+        compile_to_llvm_ir(&parse, &typeck, &ll_path, None)
+            .expect("failed to emit native binding llvm");
+        let llvm = fs::read_to_string(&ll_path).unwrap();
+        let _ = fs::remove_file(&ll_path);
+
+        assert!(
+            llvm.contains("declare i64 @mesh_math_add(i64, i64)"),
+            "native declaration missing:\n{llvm}"
+        );
+        assert!(
+            llvm.contains("call i64 @mesh_math_add(i64 20, i64 22)"),
+            "native call missing:\n{llvm}"
+        );
+        assert!(!llvm.contains("define i64 @add"));
     }
 }

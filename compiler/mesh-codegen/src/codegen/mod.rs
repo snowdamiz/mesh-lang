@@ -30,7 +30,7 @@ use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::OptimizationLevel;
 use rustc_hash::FxHashMap;
 
-use crate::mir::{MirFunction, MirModule, MirStructDef, MirSumTypeDef, MirType};
+use crate::mir::{MirFunction, MirModule, MirNativeFunction, MirStructDef, MirSumTypeDef, MirType};
 use crate::DeclaredRuntimeRegistration;
 use crate::StartupWorkRegistration;
 
@@ -254,6 +254,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Step 3: Forward-declare all functions.
+        self.declare_native_functions(&mir.native_functions)?;
         self.declare_functions(&mir.functions);
 
         // Step 4: Compile function bodies.
@@ -406,6 +407,49 @@ impl<'ctx> CodeGen<'ctx> {
             let fn_val = self.module.add_function(&func.name, fn_type, None);
             self.functions.insert(func.name.clone(), fn_val);
         }
+    }
+
+    fn declare_native_functions(&mut self, functions: &[MirNativeFunction]) -> Result<(), String> {
+        for function in functions {
+            let params = function
+                .params
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .collect::<Vec<_>>();
+            let function_type = llvm_fn_type(
+                self.context,
+                &params,
+                &function.return_type,
+                &self.struct_types,
+                &self.sum_type_layouts,
+            );
+            let value = if let Some(existing) = self.module.get_function(&function.symbol) {
+                if existing.get_type() != function_type {
+                    return Err(format!(
+                        "Native symbol `{}` is declared with incompatible signatures",
+                        function.symbol
+                    ));
+                }
+                existing
+            } else {
+                self.module.add_function(
+                    &function.symbol,
+                    function_type,
+                    Some(inkwell::module::Linkage::External),
+                )
+            };
+            if self
+                .functions
+                .insert(function.name.clone(), value)
+                .is_some()
+            {
+                return Err(format!(
+                    "Native binding `{}` is declared more than once",
+                    function.name
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn compile_function(&mut self, func: &MirFunction) -> Result<(), String> {
@@ -968,6 +1012,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         }
     }
 
@@ -986,6 +1031,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         }
     }
 
@@ -1076,6 +1122,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1100,6 +1147,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1169,6 +1217,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let ir = compile_with_declared_handlers_to_ir(
@@ -1228,6 +1277,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let ir = compile_with_declared_handlers_to_ir(
@@ -1441,6 +1491,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1484,6 +1535,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1537,6 +1589,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1607,6 +1660,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1655,6 +1709,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1755,6 +1810,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1882,6 +1938,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -1967,6 +2024,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -2308,6 +2366,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -2381,6 +2440,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();
@@ -2510,6 +2570,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         let context = Context::create();

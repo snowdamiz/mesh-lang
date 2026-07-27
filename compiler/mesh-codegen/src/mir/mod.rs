@@ -19,6 +19,8 @@ use std::fmt;
 pub struct MirModule {
     /// All functions (including lifted closure functions).
     pub functions: Vec<MirFunction>,
+    /// Bodyless functions implemented by package-owned native archives.
+    pub native_functions: Vec<MirNativeFunction>,
     /// Struct type definitions.
     pub structs: Vec<MirStructDef>,
     /// Sum type definitions.
@@ -30,6 +32,16 @@ pub struct MirModule {
     /// Each handler entry: (type_tag, handler_fn_name, num_args).
     pub service_dispatch:
         std::collections::HashMap<String, (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirNativeFunction {
+    /// Mesh-visible, module-qualified binding name.
+    pub name: String,
+    /// Exact external C symbol in the linked static archive.
+    pub symbol: String,
+    pub params: Vec<(String, MirType)>,
+    pub return_type: MirType,
 }
 
 // ── MirFunction ───────────────────────────────────────────────────────

@@ -6227,6 +6227,10 @@ fn infer_fn_def(
         .name()
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<anonymous>".to_string());
+    let is_native = fn_.native_decl().is_some();
+    if is_native {
+        validate_native_declaration(ctx, fn_);
+    }
 
     // Save any pre-registered mutual-recursion placeholder before we overwrite the env entry.
     // For arity-overloaded fns, the placeholder is stored under the mangled name__arity key.
@@ -6352,9 +6356,16 @@ fn infer_fn_def(
         resolve_type_annotation(ctx, &ann, type_registry)
             .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
     });
+    if is_native {
+        validate_native_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
+    }
 
     ctx.push_fn_return_type(return_type_annotation.clone());
-    let body_ty = if let Some(body) = fn_.body() {
+    let body_ty = if is_native {
+        return_type_annotation
+            .clone()
+            .unwrap_or_else(|| Ty::Tuple(vec![]))
+    } else if let Some(body) = fn_.body() {
         infer_block(
             ctx,
             env,
@@ -6401,6 +6412,115 @@ fn infer_fn_def(
     types.insert(fn_.syntax().text_range(), resolved.clone());
 
     Ok(resolved)
+}
+
+fn validate_native_declaration(ctx: &mut InferCtx, function: &FnDef) {
+    let span = function.syntax().text_range();
+    let mut reject = |reason: &str| {
+        ctx.errors.push(TypeError::NativeDeclarationInvalid {
+            reason: reason.to_string(),
+            span,
+        });
+    };
+
+    if function.visibility().is_none() {
+        reject("native functions must be public");
+    }
+    let symbol = function
+        .native_decl()
+        .and_then(|declaration| declaration.symbol())
+        .unwrap_or_default();
+    if !is_c_identifier(&symbol) {
+        reject("native symbol must be a non-empty C identifier");
+    }
+    if function.return_type().is_none() {
+        reject("native functions require an explicit return type");
+    }
+    if function.param_list().is_some_and(|params| {
+        params
+            .params()
+            .any(|parameter| parameter.type_annotation().is_none())
+    }) {
+        reject("every native function parameter requires an explicit type");
+    }
+    if function
+        .syntax()
+        .children()
+        .any(|child| child.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+    {
+        reject("generic native functions are unsupported; generate concrete bindings");
+    }
+    if function
+        .syntax()
+        .children()
+        .any(|child| child.kind() == SyntaxKind::WHERE_CLAUSE)
+    {
+        reject("native function declarations cannot have a where clause");
+    }
+    if function.guard().is_some() {
+        reject("native function declarations cannot have a guard");
+    }
+}
+
+fn is_c_identifier(symbol: &str) -> bool {
+    let mut bytes = symbol.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
+fn validate_native_abi_types(
+    ctx: &mut InferCtx,
+    function: &FnDef,
+    params: &[Ty],
+    return_type: Option<&Ty>,
+) {
+    let span = function.syntax().text_range();
+    for ty in params {
+        if !is_native_abi_value(ty) {
+            ctx.errors.push(TypeError::NativeDeclarationInvalid {
+                reason: format!(
+                    "parameter type `{ty}` is not ABI-safe; use Int, Float, Bool, String, Bytes, U64, U128, or I128"
+                ),
+                span,
+            });
+        }
+    }
+    if return_type.is_some_and(|ty| !is_native_abi_return(ty)) {
+        ctx.errors.push(TypeError::NativeDeclarationInvalid {
+            reason: format!(
+                "return type `{}` is not ABI-safe; use a native value, Result, or Option",
+                return_type.unwrap()
+            ),
+            span,
+        });
+    }
+}
+
+fn is_native_abi_value(ty: &Ty) -> bool {
+    matches!(
+        ty,
+        Ty::Con(con)
+            if matches!(
+                con.name.as_str(),
+                "Int" | "Float" | "Bool" | "String" | "Bytes" | "U64" | "U128" | "I128"
+            )
+    )
+}
+
+fn is_native_abi_return(ty: &Ty) -> bool {
+    if is_native_abi_value(ty) {
+        return true;
+    }
+    matches!(
+        ty,
+        Ty::App(constructor, values)
+            if matches!(
+                constructor.as_ref(),
+                Ty::Con(con) if matches!(con.name.as_str(), "Result" | "Option")
+            ) && values.iter().all(is_native_abi_value)
+    )
 }
 
 // ── Expression Inference ───────────────────────────────────────────────

@@ -225,6 +225,11 @@ pub struct ProjectData {
     pub module_parses: Vec<mesh_parser::Parse>,
 }
 
+pub struct ExtraMeshSource {
+    pub path: PathBuf,
+    pub relative_path: PathBuf,
+}
+
 /// Build a complete project: discover files, parse all, build dependency graph.
 ///
 /// This is the main entry point for the multi-file build pipeline.
@@ -243,6 +248,14 @@ pub struct ProjectData {
 pub fn build_project_with_entrypoint(
     project_root: &Path,
     entry_relative_path: &Path,
+) -> Result<ProjectData, String> {
+    build_project_with_entrypoint_and_sources(project_root, entry_relative_path, &[])
+}
+
+pub fn build_project_with_entrypoint_and_sources(
+    project_root: &Path,
+    entry_relative_path: &Path,
+    extra_sources: &[ExtraMeshSource],
 ) -> Result<ProjectData, String> {
     // Phase 1: Discover files, register modules, read and parse source.
     let files = discover_mesh_files(project_root)?;
@@ -299,11 +312,42 @@ pub fn build_project_with_entrypoint(
                 let source = std::fs::read_to_string(&full_path)
                     .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
                 let parse = mesh_parser::parse(&source);
-                let _id = graph.add_module(name, relative_path.clone(), false);
+                let _id = graph.add_module(name, full_path, false);
                 module_sources.push(source);
                 module_parses.push(parse);
             }
         }
+    }
+
+    for extra in extra_sources {
+        let name = path_to_module_name(&extra.relative_path).ok_or_else(|| {
+            format!(
+                "Cannot determine native binding module name for '{}'",
+                extra.relative_path.display()
+            )
+        })?;
+        if let Some(existing) = graph.resolve(&name) {
+            let existing_path = &graph.get(existing).path;
+            let existing_full_path = if existing_path.is_absolute() {
+                existing_path.clone()
+            } else {
+                project_root.join(existing_path)
+            };
+            if existing_full_path.canonicalize().ok() == extra.path.canonicalize().ok() {
+                continue;
+            }
+            return Err(format!(
+                "Native binding module `{name}` from '{}' conflicts with '{}'",
+                extra.path.display(),
+                existing_full_path.display()
+            ));
+        }
+        let source = std::fs::read_to_string(&extra.path)
+            .map_err(|error| format!("Failed to read '{}': {error}", extra.path.display()))?;
+        let parse = mesh_parser::parse(&source);
+        graph.add_module(name, extra.path.clone(), false);
+        module_sources.push(source);
+        module_parses.push(parse);
     }
 
     // Phase 2: Build dependency edges from import declarations.

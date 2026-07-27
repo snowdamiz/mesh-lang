@@ -720,10 +720,26 @@ pub(crate) fn prepare_project_build(
     } else {
         None
     };
+    let native_bindings = if manifest.is_some() {
+        mesh_pkg::resolve_native_bindings(dir)?
+    } else {
+        Vec::new()
+    };
     let entry_relative_path = resolve_entrypoint(dir, manifest.as_ref())?;
 
     // Build the project: discover all files, parse, build module graph
-    let project = discovery::build_project_with_entrypoint(dir, &entry_relative_path)?;
+    let native_sources = native_bindings
+        .iter()
+        .map(|binding| discovery::ExtraMeshSource {
+            path: binding.path.clone(),
+            relative_path: binding.relative_path.clone(),
+        })
+        .collect::<Vec<_>>();
+    let project = discovery::build_project_with_entrypoint_and_sources(
+        dir,
+        &entry_relative_path,
+        &native_sources,
+    )?;
 
     // Find the entry module
     let entry_id = project
@@ -787,6 +803,39 @@ pub(crate) fn prepare_project_build(
     // If any parse errors exist, skip type checking entirely
     if has_errors {
         return Err("Compilation failed due to errors above.".to_string());
+    }
+
+    let allowed_native_bindings = native_bindings
+        .iter()
+        .map(|binding| binding.path.as_path())
+        .collect::<HashSet<_>>();
+    for id in &project.compilation_order {
+        let idx = id.0 as usize;
+        if !project.module_parses[idx]
+            .tree()
+            .fn_defs()
+            .any(|function| function.native_decl().is_some())
+        {
+            continue;
+        }
+        let source_path = &project.graph.get(*id).path;
+        let full_path = if source_path.is_absolute() {
+            source_path.clone()
+        } else {
+            dir.join(source_path)
+        };
+        let canonical = full_path.canonicalize().map_err(|error| {
+            format!(
+                "Failed to resolve native binding source '{}': {error}",
+                full_path.display()
+            )
+        })?;
+        if !allowed_native_bindings.contains(canonical.as_path()) {
+            return Err(format!(
+                "Native declaration in '{}' is outside a manifest-declared native binding",
+                full_path.display()
+            ));
+        }
     }
 
     // Type-check ALL modules in topological order (Phase 39)

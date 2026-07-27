@@ -11,6 +11,13 @@ pub struct ResolvedNativeArchive {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedNativeBinding {
+    pub package: String,
+    pub path: PathBuf,
+    pub relative_path: PathBuf,
+}
+
 /// Resolve and verify the native archives reachable from one project.
 ///
 /// Registry and git packages must already be installed and pinned by
@@ -19,6 +26,14 @@ pub fn resolve_native_archives(
     project_root: &Path,
     target: &str,
 ) -> Result<Vec<ResolvedNativeArchive>, String> {
+    resolve_native(project_root, Some(target)).map(|resolution| resolution.archives)
+}
+
+pub fn resolve_native_bindings(project_root: &Path) -> Result<Vec<ResolvedNativeBinding>, String> {
+    resolve_native(project_root, None).map(|resolution| resolution.bindings)
+}
+
+fn resolve_native(project_root: &Path, target: Option<&str>) -> Result<NativeResolution, String> {
     let project_root = project_root
         .canonicalize()
         .map_err(|error| format!("Failed to resolve '{}': {error}", project_root.display()))?;
@@ -34,17 +49,27 @@ pub fn resolve_native_archives(
         lockfile: lockfile.as_ref(),
         visited: BTreeSet::new(),
         archives: Vec::new(),
+        bindings: Vec::new(),
     };
     context.visit(&project_root, &manifest)?;
-    Ok(context.archives)
+    Ok(NativeResolution {
+        archives: context.archives,
+        bindings: context.bindings,
+    })
+}
+
+struct NativeResolution {
+    archives: Vec<ResolvedNativeArchive>,
+    bindings: Vec<ResolvedNativeBinding>,
 }
 
 struct ResolveContext<'a> {
     project_root: &'a Path,
-    target: &'a str,
+    target: Option<&'a str>,
     lockfile: Option<&'a Lockfile>,
     visited: BTreeSet<PathBuf>,
     archives: Vec<ResolvedNativeArchive>,
+    bindings: Vec<ResolvedNativeBinding>,
 }
 
 impl ResolveContext<'_> {
@@ -61,40 +86,47 @@ impl ResolveContext<'_> {
 
         if let Some(native) = &manifest.native {
             for binding in &native.bindings {
-                checked_package_file(&package_root, binding, "native binding")?;
+                self.bindings.push(ResolvedNativeBinding {
+                    package: manifest.package.name.clone(),
+                    path: checked_package_file(&package_root, binding, "native binding")?,
+                    relative_path: binding.clone(),
+                });
             }
 
-            let library = native
-                .libraries
-                .iter()
-                .find(|library| library.target == self.target)
-                .ok_or_else(|| {
-                    let available = native
-                        .libraries
-                        .iter()
-                        .map(|library| library.target.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!(
-                        "Native package `{}` has no archive for target `{}` (available: {})",
-                        manifest.package.name, self.target, available
-                    )
-                })?;
-            let path = checked_package_file(&package_root, &library.path, "native static archive")?;
-            let actual = sha256_file(&path)?;
-            if actual != library.sha256 {
-                return Err(format!(
-                    "SHA-256 mismatch for native archive '{}' in package `{}`: expected {}, got {}",
-                    library.path.display(),
-                    manifest.package.name,
-                    library.sha256,
-                    actual
-                ));
+            if let Some(target) = self.target {
+                let library = native
+                    .libraries
+                    .iter()
+                    .find(|library| library.target == target)
+                    .ok_or_else(|| {
+                        let available = native
+                            .libraries
+                            .iter()
+                            .map(|library| library.target.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!(
+                            "Native package `{}` has no archive for target `{}` (available: {})",
+                            manifest.package.name, target, available
+                        )
+                    })?;
+                let path =
+                    checked_package_file(&package_root, &library.path, "native static archive")?;
+                let actual = sha256_file(&path)?;
+                if actual != library.sha256 {
+                    return Err(format!(
+                        "SHA-256 mismatch for native archive '{}' in package `{}`: expected {}, got {}",
+                        library.path.display(),
+                        manifest.package.name,
+                        library.sha256,
+                        actual
+                    ));
+                }
+                self.archives.push(ResolvedNativeArchive {
+                    package: manifest.package.name.clone(),
+                    path,
+                });
             }
-            self.archives.push(ResolvedNativeArchive {
-                package: manifest.package.name.clone(),
-                path,
-            });
         }
 
         for (name, dependency) in &manifest.dependencies {
@@ -261,6 +293,16 @@ sha256 = "{sha256}"
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].package, "native-math");
         assert_eq!(resolved[0].path, archive_path.canonicalize().unwrap());
+        let bindings = resolve_native_bindings(project.path()).unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(
+            bindings[0].path,
+            project
+                .path()
+                .join("bindings/math.mpl")
+                .canonicalize()
+                .unwrap()
+        );
 
         let target_error =
             resolve_native_archives(project.path(), "x86_64-unknown-linux-gnu").unwrap_err();

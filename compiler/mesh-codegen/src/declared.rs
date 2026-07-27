@@ -406,6 +406,7 @@ mod tests {
             sum_types: Vec::new(),
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: Vec::new(),
         }
     }
 

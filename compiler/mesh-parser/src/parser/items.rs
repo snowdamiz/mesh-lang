@@ -23,18 +23,23 @@ fn parse_optional_visibility(p: &mut Parser) {
 // ── Function Definition ──────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ClusteredDeclPrefixState {
+enum FnDeclPrefixState {
     Absent,
-    SourceDecoratorValid,
-    SourceDecoratorInvalid,
+    ClusterDecoratorValid,
+    ClusterDecoratorInvalid,
+    NativeDecoratorValid,
+    NativeDecoratorInvalid,
     RemovedSyntaxInvalid,
 }
 
-impl ClusteredDeclPrefixState {
+impl FnDeclPrefixState {
     fn missing_fn_message(self) -> Option<&'static str> {
         match self {
-            Self::SourceDecoratorValid | Self::SourceDecoratorInvalid => {
+            Self::ClusterDecoratorValid | Self::ClusterDecoratorInvalid => {
                 Some("expected `fn` or `def` after `@cluster`")
+            }
+            Self::NativeDecoratorValid | Self::NativeDecoratorInvalid => {
+                Some("expected `fn` or `def` after `@native`")
             }
             Self::RemovedSyntaxInvalid | Self::Absent => None,
         }
@@ -42,6 +47,13 @@ impl ClusteredDeclPrefixState {
 
     fn is_removed_syntax(self) -> bool {
         matches!(self, Self::RemovedSyntaxInvalid)
+    }
+
+    fn is_native(self) -> bool {
+        matches!(
+            self,
+            Self::NativeDecoratorValid | Self::NativeDecoratorInvalid
+        )
     }
 }
 
@@ -73,9 +85,9 @@ fn recover_cluster_decorator_args(p: &mut Parser) {
     }
 }
 
-fn parse_cluster_decorator_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
+fn parse_cluster_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
     if !p.at(SyntaxKind::AT) {
-        return ClusteredDeclPrefixState::Absent;
+        return FnDeclPrefixState::Absent;
     }
 
     let m = p.open();
@@ -92,7 +104,7 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
             p.advance();
         }
         p.close(m, SyntaxKind::ERROR_NODE);
-        return ClusteredDeclPrefixState::SourceDecoratorInvalid;
+        return FnDeclPrefixState::ClusterDecoratorInvalid;
     }
 
     if p.eat(SyntaxKind::L_PAREN) {
@@ -129,15 +141,75 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
     );
 
     if valid {
-        ClusteredDeclPrefixState::SourceDecoratorValid
+        FnDeclPrefixState::ClusterDecoratorValid
     } else {
-        ClusteredDeclPrefixState::SourceDecoratorInvalid
+        FnDeclPrefixState::ClusterDecoratorInvalid
     }
 }
 
-fn reject_removed_clustered_work_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
+fn parse_native_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
+    let marker = p.open();
+    let start_span = p.current_span();
+    let mut valid = true;
+    p.advance(); // @
+    p.advance(); // native
+
+    if !p.eat(SyntaxKind::L_PAREN) {
+        p.error("expected `(` and one literal native symbol after `@native`");
+        valid = false;
+    } else if p.at(SyntaxKind::STRING_START) {
+        p.advance();
+        let mut has_content = false;
+        while p.at(SyntaxKind::STRING_CONTENT) {
+            has_content = true;
+            p.advance();
+        }
+        if !has_content {
+            p.error("expected one non-empty literal native symbol");
+            valid = false;
+        }
+        if !p.eat(SyntaxKind::STRING_END) {
+            p.error("expected one literal native symbol without interpolation");
+            valid = false;
+        }
+        if !p.at(SyntaxKind::R_PAREN) {
+            p.error("expected exactly one literal native symbol");
+            recover_cluster_decorator_args(p);
+            valid = false;
+        }
+    } else {
+        p.error("expected one literal native symbol");
+        recover_cluster_decorator_args(p);
+        valid = false;
+    }
+
+    if !p.eat(SyntaxKind::R_PAREN) {
+        p.error_with_related(
+            "expected `)` to close `@native(...)`",
+            start_span,
+            "`@native(` started here",
+        );
+        valid = false;
+    }
+
+    p.close(
+        marker,
+        if valid {
+            SyntaxKind::NATIVE_DECORATOR_DECL
+        } else {
+            SyntaxKind::ERROR_NODE
+        },
+    );
+    if valid {
+        FnDeclPrefixState::NativeDecoratorValid
+    } else {
+        FnDeclPrefixState::NativeDecoratorInvalid
+    }
+}
+
+fn reject_removed_clustered_work_decl(p: &mut Parser) -> FnDeclPrefixState {
     if !(p.at(SyntaxKind::IDENT) && p.current_text() == "clustered") {
-        return ClusteredDeclPrefixState::Absent;
+        return FnDeclPrefixState::Absent;
     }
 
     let m = p.open();
@@ -168,12 +240,16 @@ fn reject_removed_clustered_work_decl(p: &mut Parser) -> ClusteredDeclPrefixStat
         "unsupported clustered declaration started here",
     );
     p.close(m, SyntaxKind::ERROR_NODE);
-    ClusteredDeclPrefixState::RemovedSyntaxInvalid
+    FnDeclPrefixState::RemovedSyntaxInvalid
 }
 
-fn parse_optional_clustered_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
+fn parse_optional_fn_decl(p: &mut Parser) -> FnDeclPrefixState {
     if p.at(SyntaxKind::AT) {
-        parse_cluster_decorator_decl(p)
+        if p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "native" {
+            parse_native_decorator_decl(p)
+        } else {
+            parse_cluster_decorator_decl(p)
+        }
     } else {
         reject_removed_clustered_work_decl(p)
     }
@@ -190,7 +266,10 @@ fn parse_optional_clustered_decl(p: &mut Parser) -> ClusteredDeclPrefixState {
 pub(crate) fn parse_fn_def(p: &mut Parser) {
     let m = p.open();
 
-    let clustered_prefix = parse_optional_clustered_decl(p);
+    let declaration_prefix = parse_optional_fn_decl(p);
+    if !matches!(declaration_prefix, FnDeclPrefixState::Absent) {
+        p.eat_newlines();
+    }
 
     // Optional visibility.
     parse_optional_visibility(p);
@@ -199,9 +278,9 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
     if p.at(SyntaxKind::FN_KW) || p.at(SyntaxKind::DEF_KW) {
         p.advance();
     } else {
-        if let Some(message) = clustered_prefix.missing_fn_message() {
+        if let Some(message) = declaration_prefix.missing_fn_message() {
             p.error(message);
-        } else if !clustered_prefix.is_removed_syntax() {
+        } else if !declaration_prefix.is_removed_syntax() {
             p.error("expected `fn` or `def`");
         }
         p.close(m, SyntaxKind::FN_DEF);
@@ -250,8 +329,13 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         p.close(guard, SyntaxKind::GUARD_CLAUSE);
     }
 
-    // Determine body form: `= expr` or `do ... end`
-    if p.at(SyntaxKind::EQ) {
+    // Native ABI declarations are signatures; their implementation comes from
+    // a checksummed static archive selected by the package manifest.
+    if declaration_prefix.is_native() {
+        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::DO_KW) {
+            p.error("native function declarations must not have a Mesh body");
+        }
+    } else if p.at(SyntaxKind::EQ) {
         // Expression body form: fn name(pattern) = expr
         p.advance(); // EQ
 

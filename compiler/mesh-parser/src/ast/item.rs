@@ -154,6 +154,34 @@ impl ClusteredDecl {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NativeDecl {
+    syntax: SyntaxNode,
+}
+
+impl AstNode for NativeDecl {
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::NATIVE_DECORATOR_DECL).then_some(Self { syntax: node })
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl NativeDecl {
+    pub fn symbol(&self) -> Option<String> {
+        let symbol = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| token.kind() == SyntaxKind::STRING_CONTENT)
+            .map(|token| token.text().to_string())
+            .collect::<String>();
+        (!symbol.is_empty()).then_some(symbol)
+    }
+}
+
 ast_node!(FnDef, FN_DEF);
 
 impl FnDef {
@@ -164,6 +192,11 @@ impl FnDef {
 
     /// Any supported clustered declaration decorator decorating this function.
     pub fn clustered_decl(&self) -> Option<ClusteredDecl> {
+        child_node(&self.syntax)
+    }
+
+    /// A bodyless ABI declaration (`@native("symbol")`), if present.
+    pub fn native_decl(&self) -> Option<NativeDecl> {
         child_node(&self.syntax)
     }
 

@@ -2339,6 +2339,42 @@ fn parser_cluster_decorator_rejects_stray_at() {
 }
 
 #[test]
+fn parser_native_declaration_exposes_external_symbol_without_body() {
+    let parsed =
+        parse("@native(\"mesh_math_add\")\npub fn add(left :: Int, right :: Int) -> Int\n");
+    assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+
+    let function = parsed
+        .tree()
+        .fn_defs()
+        .next()
+        .expect("native function declaration");
+    let native = function.native_decl().expect("@native declaration");
+    assert_eq!(native.symbol().as_deref(), Some("mesh_math_add"));
+    assert!(function.body().is_none());
+    assert!(function.expr_body().is_none());
+}
+
+#[test]
+fn parser_native_declaration_requires_one_literal_symbol() {
+    for source in [
+        "@native()\npub fn value() -> Int\n",
+        "@native(symbol)\npub fn value() -> Int\n",
+        "@native(\"a\", \"b\")\npub fn value() -> Int\n",
+    ] {
+        let parsed = parse(source);
+        assert!(
+            parsed
+                .errors()
+                .iter()
+                .any(|error| error.message.contains("native symbol")),
+            "expected native symbol diagnostic for {source:?}, got {:?}",
+            parsed.errors()
+        );
+    }
+}
+
+#[test]
 fn fn_existing_do_end_still_works() {
     // Existing syntax must continue to work
     let source = "fn foo(x) do\n  x + 1\nend";

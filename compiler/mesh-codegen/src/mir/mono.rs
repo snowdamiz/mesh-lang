@@ -33,6 +33,9 @@ pub fn monomorphize_with_roots(module: &mut MirModule, extra_roots: &[String]) {
     // Keep only reachable functions (plus closure functions that may be
     // referenced transitively).
     module.functions.retain(|f| reachable.contains(&f.name));
+    module
+        .native_functions
+        .retain(|function| reachable.contains(&function.name));
 }
 
 /// Collect the names of all reachable functions starting from the entry point.
@@ -47,6 +50,9 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
         // No entry point: keep all functions reachable.
         for f in &module.functions {
             worklist.push(f.name.clone());
+        }
+        for function in &module.native_functions {
+            worklist.push(function.name.clone());
         }
     }
     for root in extra_roots {
@@ -393,6 +399,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         monomorphize(&mut module);
@@ -433,6 +440,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
         };
 
         monomorphize(&mut module);

@@ -1,0 +1,12 @@
+[package]
+name = "native-math-example"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["bindings/math.mpl"]
+
+[[native.libraries]]
+target = "REPLACE_WITH_EXACT_TARGET"
+path = "native/libmath.a"
+sha256 = "REPLACE_WITH_LOWERCASE_SHA256"

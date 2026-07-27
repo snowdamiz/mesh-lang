@@ -350,6 +350,8 @@ pub enum TypeError {
         target_name: String,
         span: TextRange,
     },
+    /// A native ABI declaration is unsafe, ambiguous, or not fully typed.
+    NativeDeclarationInvalid { reason: String, span: TextRange },
 }
 
 impl fmt::Display for TypeError {
@@ -802,6 +804,9 @@ impl fmt::Display for TypeError {
                     "type alias `{}` references undefined type `{}`",
                     alias_name, target_name
                 )
+            }
+            TypeError::NativeDeclarationInvalid { reason, .. } => {
+                write!(f, "invalid native function declaration: {reason}")
             }
         }
     }

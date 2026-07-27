@@ -28,8 +28,8 @@ use crate::declared::declared_route_wrapper_name;
 
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
-    BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern,
-    MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+    BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
+    MirNativeFunction, MirPattern, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -224,6 +224,8 @@ struct Lowerer<'a> {
     parse: &'a Parse,
     /// Functions being built.
     functions: Vec<MirFunction>,
+    /// Bodyless native archive functions.
+    native_functions: Vec<MirNativeFunction>,
     /// Struct definitions.
     structs: Vec<MirStructDef>,
     /// Sum type definitions.
@@ -344,6 +346,7 @@ impl<'a> Lowerer<'a> {
             default_method_bodies: &typeck.default_method_bodies,
             parse,
             functions: Vec::new(),
+            native_functions: Vec::new(),
             structs: Vec::new(),
             sum_types: Vec::new(),
             scopes: vec![HashMap::new()],
@@ -3445,6 +3448,40 @@ impl<'a> Lowerer<'a> {
         } else {
             self.qualify_name(&original_name)
         };
+
+        if let Some(native) = fn_def.native_decl() {
+            let Some(Ty::Fun(param_tys, return_ty)) = fn_ty_raw.as_ref() else {
+                return;
+            };
+            let source_params = fn_def
+                .param_list()
+                .map(|params| params.params().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let params = source_params
+                .into_iter()
+                .zip(param_tys)
+                .map(|(param, ty)| {
+                    (
+                        param
+                            .name()
+                            .map(|name| name.text().to_string())
+                            .unwrap_or_else(|| "_".to_string()),
+                        resolve_type(ty, self.registry, matches!(ty, Ty::Fun(..))),
+                    )
+                })
+                .collect();
+            self.native_functions.push(MirNativeFunction {
+                name: base_name,
+                symbol: native.symbol().unwrap_or_default(),
+                params,
+                return_type: resolve_type(
+                    return_ty,
+                    self.registry,
+                    matches!(return_ty.as_ref(), Ty::Fun(..)),
+                ),
+            });
+            return;
+        }
 
         let specialization_tys = self
             .inferred_fn_specializations
@@ -14967,6 +15004,7 @@ pub fn lower_to_mir(
 
     Ok(MirModule {
         functions: lowerer.functions,
+        native_functions: lowerer.native_functions,
         structs: lowerer.structs,
         sum_types: lowerer.sum_types,
         entry_function: lowerer.entry_function,

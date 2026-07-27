@@ -24,7 +24,9 @@ pub use manifest::{
     SourceClusteredDeclaration, SourceClusteredDeclarationSyntax,
     DEFAULT_CLUSTER_REPLICATION_COUNT,
 };
-pub use native::{resolve_native_archives, ResolvedNativeArchive};
+pub use native::{
+    resolve_native_archives, resolve_native_bindings, ResolvedNativeArchive, ResolvedNativeBinding,
+};
 pub use resolver::resolve_dependencies;
 pub use scaffold::{
     scaffold_clustered_project, scaffold_project, scaffold_todo_api_project,
