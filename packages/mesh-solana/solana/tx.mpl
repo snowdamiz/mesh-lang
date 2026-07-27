@@ -68,6 +68,37 @@ fn append_uint8(output :: Bytes, value :: Int) -> Bytes ! String do
   append_bytes(output, uint8(value) ?)
 end
 
+fn compute_budget_program() -> Pubkey ! String do
+  "ComputeBudget111111111111111111111111111111"
+    |> pubkey()
+end
+
+pub fn compute_unit_limit_instruction(units :: Int) -> Instruction ! String do
+  if units < 0 || units > 4_294_967_295 do
+    Err("SOLANA_TX: compute unit limit is out of u32 range")
+  else
+    Ok(Instruction {
+      program_id : compute_budget_program() ?,
+      accounts : [],
+      data : (((units
+        |> Int.to_string()
+        |> Bytes.write_uint_le(4)) ?)
+        |2> append_bytes(uint8(2) ?)) ?
+    })
+  end
+end
+
+pub fn compute_unit_price_instruction(micro_lamports :: U64) -> Instruction ! String do
+  Ok(Instruction {
+    program_id : compute_budget_program() ?,
+    accounts : [],
+    data : (((micro_lamports
+      |> U64.to_string()
+      |> Bytes.write_uint_le(8)) ?)
+      |2> append_bytes(uint8(3) ?)) ?
+  })
+end
+
 fn short_u16(value :: Int) -> Bytes ! String do
   if value < 0 || value > 65_535 do
     Err("SOLANA_TX: compact-u16 value is out of range")
