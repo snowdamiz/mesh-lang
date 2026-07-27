@@ -3,25 +3,95 @@
 //! Provides mesh_regex_from_literal, mesh_regex_compile, mesh_regex_match,
 //! mesh_regex_captures, mesh_regex_replace, and mesh_regex_split.
 //!
-//! Regex objects are heap-allocated via Box<regex::Regex> and returned as
-//! opaque raw pointers. They are never freed (GC-managed programs).
+//! Regex values are actor-heap handles containing the source pattern and flags.
+//! Native compiled regexes live in a small process-wide cache so repeated
+//! literals are cheap without leaking one `Box<regex::Regex>` per evaluation.
 
 use crate::collections::list::{mesh_list_builder_new, mesh_list_builder_push};
+use crate::gc::mesh_gc_alloc_actor;
 use crate::option::alloc_option;
 use crate::string::{mesh_string_new, MeshString};
 use regex::RegexBuilder;
+use std::collections::VecDeque;
+use std::sync::{LazyLock, Mutex};
 
 // ── Internal helper ────────────────────────────────────────────────────
+
+const REGEX_CACHE_CAPACITY: usize = 64;
+
+#[repr(C)]
+struct MeshRegex {
+    pattern: *const MeshString,
+    flags_bits: i64,
+}
+
+static REGEX_CACHE: LazyLock<Mutex<VecDeque<(String, i64, regex::Regex)>>> =
+    LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+#[cfg(test)]
+static REGEX_BUILD_COUNTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, usize>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
 /// Build a `regex::Regex` with flag bits applied.
 ///
 /// Flags bitmask: i=1, m=2, s=4  (same encoding used by mesh_regex_from_literal).
-unsafe fn build_with_flags(pattern: &str, flags_bits: i64) -> Result<regex::Regex, regex::Error> {
+fn build_with_flags(pattern: &str, flags_bits: i64) -> Result<regex::Regex, regex::Error> {
+    #[cfg(test)]
+    {
+        *REGEX_BUILD_COUNTS
+            .lock()
+            .unwrap()
+            .entry(pattern.to_string())
+            .or_default() += 1;
+    }
     RegexBuilder::new(pattern)
         .case_insensitive(flags_bits & 1 != 0)
         .multi_line(flags_bits & 2 != 0)
         .dot_matches_new_line(flags_bits & 4 != 0)
         .build()
+}
+
+fn cached_regex(pattern: &str, flags_bits: i64) -> Result<regex::Regex, regex::Error> {
+    let mut cache = REGEX_CACHE.lock().unwrap();
+    if let Some(index) = cache.iter().position(|(cached_pattern, cached_flags, _)| {
+        cached_pattern == pattern && *cached_flags == flags_bits
+    }) {
+        let entry = cache.remove(index).unwrap();
+        let compiled = entry.2.clone();
+        cache.push_back(entry);
+        return Ok(compiled);
+    }
+
+    let compiled = build_with_flags(pattern, flags_bits)?;
+    if cache.len() == REGEX_CACHE_CAPACITY {
+        cache.pop_front();
+    }
+    cache.push_back((pattern.to_string(), flags_bits, compiled.clone()));
+    Ok(compiled)
+}
+
+fn alloc_regex(pattern: *const MeshString, flags_bits: i64) -> *mut u8 {
+    unsafe {
+        let handle = mesh_gc_alloc_actor(
+            std::mem::size_of::<MeshRegex>() as u64,
+            std::mem::align_of::<MeshRegex>() as u64,
+        ) as *mut MeshRegex;
+        (*handle).pattern = pattern;
+        (*handle).flags_bits = flags_bits;
+        handle as *mut u8
+    }
+}
+
+unsafe fn regex_from_handle(rx_ptr: *const u8) -> regex::Regex {
+    let handle = &*(rx_ptr as *const MeshRegex);
+    let pattern = (*handle.pattern).as_str();
+    cached_regex(pattern, handle.flags_bits).unwrap_or_else(|error| {
+        panic!(
+            "mesh regex handle contained invalid pattern {:?}: {}",
+            pattern, error
+        )
+    })
 }
 
 // ── Public ABI ─────────────────────────────────────────────────────────
@@ -34,8 +104,8 @@ unsafe fn build_with_flags(pattern: &str, flags_bits: i64) -> Result<regex::Rege
 pub extern "C" fn mesh_regex_from_literal(pattern: *const MeshString, flags_bits: i64) -> *mut u8 {
     unsafe {
         let pat = (*pattern).as_str();
-        match build_with_flags(pat, flags_bits) {
-            Ok(rx) => Box::into_raw(Box::new(rx)) as *mut u8,
+        match cached_regex(pat, flags_bits) {
+            Ok(_) => alloc_regex(pattern, flags_bits),
             Err(e) => panic!(
                 "mesh_regex_from_literal: invalid regex pattern {:?}: {}",
                 pat, e
@@ -52,11 +122,8 @@ pub extern "C" fn mesh_regex_from_literal(pattern: *const MeshString, flags_bits
 pub extern "C" fn mesh_regex_compile(pattern: *const MeshString) -> *mut u8 {
     unsafe {
         let pat = (*pattern).as_str();
-        match regex::Regex::new(pat) {
-            Ok(rx) => {
-                let rx_ptr = Box::into_raw(Box::new(rx)) as *mut u8;
-                alloc_option(0, rx_ptr) as *mut u8
-            }
+        match cached_regex(pat, 0) {
+            Ok(_) => alloc_option(0, alloc_regex(pattern, 0)) as *mut u8,
             Err(e) => {
                 let msg = e.to_string();
                 let err_str = mesh_string_new(msg.as_ptr(), msg.len() as u64);
@@ -73,7 +140,7 @@ pub extern "C" fn mesh_regex_compile(pattern: *const MeshString) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_regex_match(rx_ptr: *const u8, s: *const MeshString) -> i8 {
     unsafe {
-        let rx = &*(rx_ptr as *const regex::Regex);
+        let rx = regex_from_handle(rx_ptr);
         let text = (*s).as_str();
         if rx.is_match(text) {
             1
@@ -90,7 +157,7 @@ pub extern "C" fn mesh_regex_match(rx_ptr: *const u8, s: *const MeshString) -> i
 #[no_mangle]
 pub extern "C" fn mesh_regex_captures(rx_ptr: *const u8, s: *const MeshString) -> *mut u8 {
     unsafe {
-        let rx = &*(rx_ptr as *const regex::Regex);
+        let rx = regex_from_handle(rx_ptr);
         let text = (*s).as_str();
         match rx.captures(text) {
             None => alloc_option(1, std::ptr::null_mut()) as *mut u8,
@@ -118,7 +185,7 @@ pub extern "C" fn mesh_regex_replace(
     replacement: *const MeshString,
 ) -> *mut MeshString {
     unsafe {
-        let rx = &*(rx_ptr as *const regex::Regex);
+        let rx = regex_from_handle(rx_ptr);
         let text = (*s).as_str();
         let repl = (*replacement).as_str();
         let result: String = rx.replace_all(text, repl).into_owned();
@@ -132,7 +199,7 @@ pub extern "C" fn mesh_regex_replace(
 #[no_mangle]
 pub extern "C" fn mesh_regex_split(rx_ptr: *const u8, s: *const MeshString) -> *mut u8 {
     unsafe {
-        let rx = &*(rx_ptr as *const regex::Regex);
+        let rx = regex_from_handle(rx_ptr);
         let text = (*s).as_str();
         let parts: Vec<&str> = rx.split(text).collect();
         let list = mesh_list_builder_new(parts.len() as i64);
@@ -166,6 +233,33 @@ mod tests {
         let text = ms("hello world");
         let result = mesh_regex_match(rx_ptr as *const u8, text);
         assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn repeated_regex_literal_compiles_once() {
+        mesh_rt_init();
+        let pattern = "mesh-regex-cache-probe-[0-9]+";
+        let before = *REGEX_BUILD_COUNTS
+            .lock()
+            .unwrap()
+            .get(pattern)
+            .unwrap_or(&0);
+
+        for _ in 0..32 {
+            mesh_regex_from_literal(ms(pattern), 0);
+        }
+
+        let after = *REGEX_BUILD_COUNTS.lock().unwrap().get(pattern).unwrap();
+        assert_eq!(
+            after - before,
+            1,
+            "re-evaluating one regex literal must not leak native compiled regexes"
+        );
+
+        for index in 0..=REGEX_CACHE_CAPACITY {
+            mesh_regex_compile(ms(&format!("mesh-regex-bounded-probe-{index}")));
+        }
+        assert_eq!(REGEX_CACHE.lock().unwrap().len(), REGEX_CACHE_CAPACITY);
     }
 
     #[test]
