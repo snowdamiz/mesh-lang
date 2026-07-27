@@ -18,6 +18,11 @@ pub struct BlockHeight do
   value :: U64
 end
 
+pub struct EpochInfo do
+  epoch :: U64
+  absolute_slot :: U64
+end
+
 pub struct RpcRequest do
   id :: Int
   method :: String
@@ -550,6 +555,13 @@ pub fn get_block_height_request(id :: Int, commitment :: String) -> RpcRequest !
     |> commitment_params()) ?)
 end
 
+pub fn get_epoch_info_request(id :: Int, commitment :: String) -> RpcRequest ! String do
+  rpc_request(id,
+  "getEpochInfo",
+  (commitment
+    |> commitment_params()) ?)
+end
+
 pub fn memcmp_filter(offset :: Int, bytes :: String) -> ProgramAccountFilter ! String do
   if offset < 0 do
     Err("SOLANA_FILTER: memcmp offset must be non-negative")
@@ -707,6 +719,17 @@ pub fn block_height_from_response(response :: RpcResponse) -> BlockHeight ! Stri
   Ok(BlockHeight { value : ((response
     |> require_rpc_result()) ?
     |> u64_text("BLOCK_HEIGHT")) ? })
+end
+
+pub fn epoch_info_from_response(response :: RpcResponse) -> EpochInfo ! String do
+  let result = (response
+    |> require_rpc_result()) ?
+  Ok(EpochInfo {
+    epoch : (result
+      |> u64_field("epoch", "EPOCH_INFO")) ?,
+    absolute_slot : (result
+      |> u64_field("absoluteSlot", "EPOCH_INFO")) ?
+  })
 end
 
 fn accounts_loop(values :: Json, index :: Int, total :: Int, accounts :: List < AccountInfo >) -> List < AccountInfo > ! String do
