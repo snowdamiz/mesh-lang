@@ -828,6 +828,68 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
 
     modules.insert("Http".to_string(), http_client_mod);
 
+    // ── Scheduler-aware WebSocket client ────────────────────────────────
+    let ws_message_t = Ty::Con(TyCon::new("WsMessage"));
+    let mut ws_client_mod = HashMap::new();
+    ws_client_mod.insert(
+        "options".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::int())),
+    );
+    for name in [
+        "connect_timeout",
+        "heartbeat_timeout",
+        "max_message_bytes",
+        "queue_capacity",
+    ] {
+        ws_client_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], Ty::int())),
+        );
+    }
+    ws_client_mod.insert(
+        "connect".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
+        "send_text".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
+        "send_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::bytes()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
+        "recv".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int()],
+            Ty::result(ws_message_t, Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
+        "close".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
+        "reconnect_delay".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::int(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    modules.insert("WsClient".to_string(), ws_client_mod);
+
     // ── Test module (Phase 138) ──────────────────────────────────────
     // assert/assert_eq/assert_ne/assert_raises are test-mode DSL builtins lowered
     // in lower.rs, not module-qualified functions. Only Test.mock_actor is a module
@@ -3308,7 +3370,8 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Duration",
     "Channel",
     "Random",
-    "Http",       // Phase 137
+    "Http", // Phase 137
+    "WsClient",
     "Test",       // Phase 138
     "Continuity", // continuity
     "Cluster",
@@ -3350,6 +3413,16 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("status".to_string(), Ty::int()),
             ("body".to_string(), Ty::string()),
             ("headers".to_string(), Ty::map(Ty::string(), Ty::string())),
+        ],
+    });
+    type_registry.register_struct(StructDefInfo {
+        name: "WsMessage".to_string(),
+        generic_params: vec![],
+        fields: vec![
+            ("kind".to_string(), Ty::string()),
+            ("data".to_string(), Ty::bytes()),
+            ("close_code".to_string(), Ty::int()),
+            ("close_reason".to_string(), Ty::string()),
         ],
     });
     type_registry.register_struct(StructDefInfo {

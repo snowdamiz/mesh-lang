@@ -761,6 +761,67 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![http_client_handle_t], Ty::Tuple(vec![]))),
     );
 
+    // ── Scheduler-aware WebSocket client ─────────────────────────────────
+    let ws_message_t = Ty::Con(TyCon::new("WsMessage"));
+    env.insert("WsMessage".into(), Scheme::mono(ws_message_t.clone()));
+    env.insert(
+        "ws_client_options".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::int())),
+    );
+    for name in [
+        "connect_timeout",
+        "heartbeat_timeout",
+        "max_message_bytes",
+        "queue_capacity",
+    ] {
+        env.insert(
+            format!("ws_client_{name}"),
+            Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], Ty::int())),
+        );
+    }
+    env.insert(
+        "ws_client_connect".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "ws_client_send_text".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "ws_client_send_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::bytes()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "ws_client_recv".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int()],
+            Ty::result(ws_message_t, Ty::string()),
+        )),
+    );
+    env.insert(
+        "ws_client_close".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "ws_client_reconnect_delay".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::int(), Ty::int(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+
     // ── Continuity public API (builtin) ──────────────────────────────────────
 
     let continuity_authority_status_t = Ty::Con(TyCon::new("ContinuityAuthorityStatus"));

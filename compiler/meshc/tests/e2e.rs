@@ -2926,6 +2926,22 @@ fn e2e_numeric_neg() {
     assert_eq!(output, "-3\n-7\n-42\n-3.5\n");
 }
 
+#[test]
+fn e2e_numeric_literal_separators_and_radices() {
+    let output = compile_and_run(
+        r##"
+fn main() do
+  println("#{1_000_000}")
+  println("#{0xff_ff}")
+  println("#{0b1111_0000}")
+  println("#{0o777}")
+  println("#{100_000.50}")
+end
+"##,
+    );
+    assert_eq!(output, "1000000\n65535\n240\n511\n100000.5\n");
+}
+
 /// Phase 76: User-defined Iterable with built-in runtime iterator.
 /// EvenNumbers struct implements Iterable with ListIterator backing.
 /// for-in over user-defined Iterable desugars through ForInIterator codegen.

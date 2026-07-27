@@ -31,7 +31,7 @@ impl MeshBytes {
         (self as *mut Self as *mut u8).add(Self::HEADER_SIZE)
     }
 
-    unsafe fn as_slice(&self) -> &[u8] {
+    pub(crate) unsafe fn as_slice(&self) -> &[u8] {
         std::slice::from_raw_parts(self.data_ptr(), self.len as usize)
     }
 }

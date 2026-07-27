@@ -35,7 +35,7 @@ use parking_lot::Mutex;
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 
 use super::close::{process_frame, send_close, validate_text_payload, WsCloseCode};
-use super::frame::{read_frame, write_frame, WsFrame, WsOpcode};
+use super::frame::{read_frame, write_frame, MessageAssembler, ReassembleResult, WsOpcode};
 use super::handshake::perform_upgrade;
 use crate::actor::process::Process;
 use crate::actor::stack;
@@ -129,113 +129,6 @@ impl HeartbeatState {
         } else {
             false
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Fragment reassembly state (FRAG-01 through FRAG-03)
-// ---------------------------------------------------------------------------
-
-/// Tracks fragment reassembly state for continuation frames.
-///
-/// RFC 6455 Section 5.4: fragmented messages consist of a first fragment
-/// (FIN=0, data opcode), zero or more continuation fragments (FIN=0,
-/// opcode 0x0), and a final fragment (FIN=1, opcode 0x0). Control frames
-/// may be interleaved between fragments.
-struct FragmentState {
-    /// The opcode of the first fragment (Text or Binary). None = not in a fragment sequence.
-    initial_opcode: Option<WsOpcode>,
-    /// Accumulated payload bytes from all fragments so far.
-    buffer: Vec<u8>,
-    /// Maximum total message size (16 MiB).
-    max_message_size: usize,
-}
-
-impl FragmentState {
-    fn new() -> Self {
-        Self {
-            initial_opcode: None,
-            buffer: Vec::new(),
-            max_message_size: 16 * 1024 * 1024,
-        }
-    }
-
-    fn is_assembling(&self) -> bool {
-        self.initial_opcode.is_some()
-    }
-}
-
-/// Result of feeding a data frame to the fragment reassembly state machine.
-enum ReassembleResult {
-    /// A complete message is ready (unfragmented or final fragment assembled).
-    Complete(WsFrame),
-    /// Still accumulating fragments.
-    Accumulating,
-    /// Total message size exceeded the limit (FRAG-03).
-    TooLarge,
-    /// Protocol error (e.g., new message during fragmented sequence, unexpected continuation).
-    ProtocolError(&'static str),
-}
-
-/// Feed a data frame through the fragment reassembly state machine.
-///
-/// Control frames (Ping/Pong/Close) must be handled BEFORE calling this
-/// function -- they are not part of the fragment sequence (FRAG-02).
-fn reassemble(frag: &mut FragmentState, frame: WsFrame) -> ReassembleResult {
-    match frame.opcode {
-        // Unfragmented message: FIN=1, data opcode, not currently assembling
-        WsOpcode::Text | WsOpcode::Binary if frame.fin && !frag.is_assembling() => {
-            ReassembleResult::Complete(frame)
-        }
-        // First fragment: FIN=0, data opcode, not currently assembling
-        WsOpcode::Text | WsOpcode::Binary if !frame.fin && !frag.is_assembling() => {
-            frag.initial_opcode = Some(frame.opcode);
-            frag.buffer = frame.payload;
-            if frag.buffer.len() > frag.max_message_size {
-                frag.initial_opcode = None;
-                frag.buffer.clear();
-                return ReassembleResult::TooLarge;
-            }
-            ReassembleResult::Accumulating
-        }
-        // Protocol error: new message started while assembling
-        WsOpcode::Text | WsOpcode::Binary if frag.is_assembling() => {
-            frag.initial_opcode = None;
-            frag.buffer.clear();
-            ReassembleResult::ProtocolError("new message during fragmented sequence")
-        }
-        // Continuation fragment: FIN=0, currently assembling
-        WsOpcode::Continuation if !frame.fin && frag.is_assembling() => {
-            if frag.buffer.len() + frame.payload.len() > frag.max_message_size {
-                frag.initial_opcode = None;
-                frag.buffer.clear();
-                return ReassembleResult::TooLarge;
-            }
-            frag.buffer.extend_from_slice(&frame.payload);
-            ReassembleResult::Accumulating
-        }
-        // Final fragment: FIN=1, continuation, currently assembling
-        WsOpcode::Continuation if frame.fin && frag.is_assembling() => {
-            if frag.buffer.len() + frame.payload.len() > frag.max_message_size {
-                frag.initial_opcode = None;
-                frag.buffer.clear();
-                return ReassembleResult::TooLarge;
-            }
-            frag.buffer.extend_from_slice(&frame.payload);
-            let opcode = frag.initial_opcode.take().unwrap();
-            let payload = std::mem::take(&mut frag.buffer);
-            ReassembleResult::Complete(WsFrame {
-                fin: true,
-                opcode,
-                payload,
-            })
-        }
-        // Protocol error: continuation without preceding first fragment
-        WsOpcode::Continuation if !frag.is_assembling() => {
-            ReassembleResult::ProtocolError("unexpected continuation frame")
-        }
-        // Control frames should never reach reassemble (handled before this call)
-        _ => ReassembleResult::ProtocolError("unexpected opcode in reassembly"),
     }
 }
 
@@ -700,7 +593,7 @@ fn reader_thread_loop(
     }
 
     let mut heartbeat = HeartbeatState::new();
-    let mut frag = FragmentState::new();
+    let mut frag = MessageAssembler::new(16 * 1024 * 1024);
 
     loop {
         if shutdown.load(Ordering::SeqCst) {
@@ -767,7 +660,7 @@ fn reader_thread_loop(
                 }
 
                 // FRAGMENTATION: Feed data frames through reassembly (FRAG-01, FRAG-03)
-                match reassemble(&mut frag, frame) {
+                match frag.push(frame) {
                     ReassembleResult::Complete(msg) => {
                         // UTF-8 validation for text (Pitfall 6: validate on
                         // the fully reassembled payload, not individual fragments)

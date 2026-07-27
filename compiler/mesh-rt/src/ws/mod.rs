@@ -5,6 +5,7 @@
 //! - **Handshake** (`handshake`): HTTP upgrade with Sec-WebSocket-Accept validation
 //! - **Close** (`close`): Close handshake, text UTF-8 validation, and protocol-level frame dispatch
 
+pub mod client;
 pub mod close;
 pub mod frame;
 pub mod handshake;

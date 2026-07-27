@@ -56,7 +56,10 @@ pub fn parse_close_payload(payload: &[u8]) -> (u16, String) {
 pub fn build_close_payload(code: u16, reason: &str) -> Vec<u8> {
     let reason_bytes = reason.as_bytes();
     let max_reason_len = 123; // 125 - 2 bytes for code
-    let truncated_len = reason_bytes.len().min(max_reason_len);
+    let mut truncated_len = reason_bytes.len().min(max_reason_len);
+    while !reason.is_char_boundary(truncated_len) {
+        truncated_len -= 1;
+    }
 
     let mut payload = Vec::with_capacity(2 + truncated_len);
     payload.extend_from_slice(&code.to_be_bytes());
@@ -168,6 +171,13 @@ mod tests {
             "payload should be capped at 125 bytes (2 + 123)"
         );
         assert_eq!(&payload[..2], &[0x03, 0xE8]);
+    }
+
+    #[test]
+    fn test_build_close_truncates_at_utf8_boundary() {
+        let payload = build_close_payload(1000, &"🦀".repeat(40));
+        assert!(payload.len() <= 125);
+        assert!(std::str::from_utf8(&payload[2..]).is_ok());
     }
 
     #[test]

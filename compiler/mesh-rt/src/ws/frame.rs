@@ -52,6 +52,86 @@ pub struct WsFrame {
     pub payload: Vec<u8>,
 }
 
+pub(crate) struct MessageAssembler {
+    initial_opcode: Option<WsOpcode>,
+    buffer: Vec<u8>,
+    max_message_size: usize,
+}
+
+pub(crate) enum ReassembleResult {
+    Complete(WsFrame),
+    Accumulating,
+    TooLarge,
+    ProtocolError(&'static str),
+}
+
+impl MessageAssembler {
+    pub(crate) fn new(max_message_size: usize) -> Self {
+        Self {
+            initial_opcode: None,
+            buffer: Vec::new(),
+            max_message_size,
+        }
+    }
+
+    pub(crate) fn push(&mut self, frame: WsFrame) -> ReassembleResult {
+        match frame.opcode {
+            WsOpcode::Text | WsOpcode::Binary if frame.fin && self.initial_opcode.is_none() => {
+                if frame.payload.len() > self.max_message_size {
+                    ReassembleResult::TooLarge
+                } else {
+                    ReassembleResult::Complete(frame)
+                }
+            }
+            WsOpcode::Text | WsOpcode::Binary if !frame.fin && self.initial_opcode.is_none() => {
+                self.initial_opcode = Some(frame.opcode);
+                self.buffer = frame.payload;
+                if self.buffer.len() > self.max_message_size {
+                    self.reset();
+                    ReassembleResult::TooLarge
+                } else {
+                    ReassembleResult::Accumulating
+                }
+            }
+            WsOpcode::Text | WsOpcode::Binary if self.initial_opcode.is_some() => {
+                self.reset();
+                ReassembleResult::ProtocolError("new message during fragmented sequence")
+            }
+            WsOpcode::Continuation if self.initial_opcode.is_some() => {
+                if self
+                    .buffer
+                    .len()
+                    .checked_add(frame.payload.len())
+                    .is_none_or(|len| len > self.max_message_size)
+                {
+                    self.reset();
+                    return ReassembleResult::TooLarge;
+                }
+                self.buffer.extend_from_slice(&frame.payload);
+                if frame.fin {
+                    let opcode = self.initial_opcode.take().unwrap();
+                    ReassembleResult::Complete(WsFrame {
+                        fin: true,
+                        opcode,
+                        payload: std::mem::take(&mut self.buffer),
+                    })
+                } else {
+                    ReassembleResult::Accumulating
+                }
+            }
+            WsOpcode::Continuation => {
+                ReassembleResult::ProtocolError("unexpected continuation frame")
+            }
+            _ => ReassembleResult::ProtocolError("unexpected opcode in reassembly"),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.initial_opcode = None;
+        self.buffer.clear();
+    }
+}
+
 /// Apply or remove the 4-byte XOR mask on a payload.
 ///
 /// The operation is symmetric: applying the mask twice returns the original.
@@ -68,6 +148,10 @@ pub fn apply_mask(payload: &mut [u8], mask_key: &[u8; 4]) {
 /// XOR unmasking of client-to-server frames. Uses `read_exact` for all reads
 /// -- the caller controls buffering.
 pub fn read_frame<R: Read>(reader: &mut R) -> Result<WsFrame, String> {
+    read_frame_with_mask(reader).map(|(frame, _)| frame)
+}
+
+pub(crate) fn read_frame_with_mask<R: Read>(reader: &mut R) -> Result<(WsFrame, bool), String> {
     // Byte 0: FIN(1) RSV(3) Opcode(4)
     // Byte 1: MASK(1) Payload-Length(7)
     let mut header = [0u8; 2];
@@ -82,6 +166,10 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<WsFrame, String> {
     }
     let opcode_byte = header[0] & 0x0F;
     let opcode = WsOpcode::from_u8(opcode_byte)?;
+    let is_control = matches!(opcode, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong);
+    if is_control && !fin {
+        return Err("control frames must not be fragmented".to_string());
+    }
 
     let masked = (header[1] & 0x80) != 0;
     let length_byte = header[1] & 0x7F;
@@ -117,6 +205,9 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<WsFrame, String> {
             payload_len, MAX_PAYLOAD_SIZE
         ));
     }
+    if is_control && payload_len > 125 {
+        return Err("control frame payload exceeds 125 bytes".to_string());
+    }
 
     // Masking key (4 bytes, present only if MASK bit is set)
     let mask_key = if masked {
@@ -142,11 +233,14 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<WsFrame, String> {
         apply_mask(&mut payload, &key);
     }
 
-    Ok(WsFrame {
-        fin,
-        opcode,
-        payload,
-    })
+    Ok((
+        WsFrame {
+            fin,
+            opcode,
+            payload,
+        },
+        masked,
+    ))
 }
 
 /// Write one WebSocket frame to the stream (server-to-client, unmasked).
@@ -159,33 +253,67 @@ pub fn write_frame<W: Write>(
     payload: &[u8],
     fin: bool,
 ) -> Result<(), String> {
+    write_frame_with_mask(writer, opcode, payload, fin, None)
+}
+
+/// Write one masked client-to-server WebSocket frame.
+pub fn write_masked_frame<W: Write>(
+    writer: &mut W,
+    opcode: WsOpcode,
+    payload: &[u8],
+    fin: bool,
+    mask_key: [u8; 4],
+) -> Result<(), String> {
+    write_frame_with_mask(writer, opcode, payload, fin, Some(mask_key))
+}
+
+fn write_frame_with_mask<W: Write>(
+    writer: &mut W,
+    opcode: WsOpcode,
+    payload: &[u8],
+    fin: bool,
+    mask_key: Option<[u8; 4]>,
+) -> Result<(), String> {
+    let is_control = matches!(opcode, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong);
+    if is_control && (!fin || payload.len() > 125) {
+        return Err("control frames must be final and at most 125 bytes".to_string());
+    }
+
     // Byte 0: FIN + opcode
     let byte0 = if fin { 0x80 } else { 0x00 } | (opcode as u8);
 
-    // Byte 1: MASK=0 + payload length (server MUST NOT mask)
+    let mask_bit = if mask_key.is_some() { 0x80 } else { 0 };
     let len = payload.len();
     if len <= 125 {
         writer
-            .write_all(&[byte0, len as u8])
+            .write_all(&[byte0, mask_bit | len as u8])
             .map_err(|e| format!("write frame header: {}", e))?;
     } else if len <= 65535 {
         writer
-            .write_all(&[byte0, 126])
+            .write_all(&[byte0, mask_bit | 126])
             .map_err(|e| format!("write frame header: {}", e))?;
         writer
             .write_all(&(len as u16).to_be_bytes())
             .map_err(|e| format!("write 16-bit length: {}", e))?;
     } else {
         writer
-            .write_all(&[byte0, 127])
+            .write_all(&[byte0, mask_bit | 127])
             .map_err(|e| format!("write frame header: {}", e))?;
         writer
             .write_all(&(len as u64).to_be_bytes())
             .map_err(|e| format!("write 64-bit length: {}", e))?;
     }
 
-    // Payload (no masking key for server-to-client)
-    if !payload.is_empty() {
+    if let Some(mask_key) = mask_key {
+        writer
+            .write_all(&mask_key)
+            .map_err(|e| format!("write mask key: {}", e))?;
+        let mut masked = payload.to_vec();
+        apply_mask(&mut masked, &mask_key);
+        writer
+            .write_all(&masked)
+            .map_err(|e| format!("write payload: {}", e))?;
+    } else if !payload.is_empty() {
         writer
             .write_all(payload)
             .map_err(|e| format!("write payload: {}", e))?;
@@ -328,6 +456,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_fragmented_or_oversized_control_frames() {
+        assert!(read_frame(&mut Cursor::new([0x09, 0x00])).is_err());
+
+        let mut oversized_ping = vec![0x89, 126, 0, 126];
+        oversized_ping.extend(std::iter::repeat_n(0, 126));
+        assert!(read_frame(&mut Cursor::new(oversized_ping)).is_err());
+    }
+
+    #[test]
     fn test_frame_roundtrip() {
         // Write a frame then read it back (unmasked server frame)
         let original_payload = b"round-trip test payload";
@@ -339,5 +476,23 @@ mod tests {
         assert!(frame.fin);
         assert_eq!(frame.opcode, WsOpcode::Text);
         assert_eq!(frame.payload, original_payload);
+    }
+
+    #[test]
+    fn client_frame_writer_masks_payload() {
+        let mut buf = Vec::new();
+        write_masked_frame(
+            &mut buf,
+            WsOpcode::Text,
+            b"client payload",
+            true,
+            [1, 2, 3, 4],
+        )
+        .unwrap();
+
+        assert_ne!(buf[1] & 0x80, 0);
+        let mut cursor = Cursor::new(buf);
+        let frame = read_frame(&mut cursor).unwrap();
+        assert_eq!(frame.payload, b"client payload");
     }
 }

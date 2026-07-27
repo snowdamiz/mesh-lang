@@ -1805,6 +1805,63 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // ── Bounded WebSocket client ─────────────────────────────────────────
+    module.add_function(
+        "mesh_ws_client_options",
+        i64_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_ws_client_connect_timeout",
+        "mesh_ws_client_heartbeat_timeout",
+        "mesh_ws_client_max_message_bytes",
+        "mesh_ws_client_queue_capacity",
+    ] {
+        module.add_function(
+            name,
+            i64_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_ws_client_connect",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ws_client_send_text",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ws_client_send_bytes",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ws_client_recv",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ws_client_close",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ws_client_reconnect_delay",
+        ptr_type.fn_type(
+            &[
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── WebSocket Room functions (Phase 62) ──────────────────────────────
     // mesh_ws_join(conn: ptr, room: ptr) -> i64
     module.add_function(

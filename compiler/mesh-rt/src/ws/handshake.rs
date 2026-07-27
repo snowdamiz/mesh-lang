@@ -21,7 +21,7 @@ const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /// Compute the `Sec-WebSocket-Accept` value per RFC 6455 Section 4.2.2.
 ///
 /// Concatenates `client_key` + [`WS_GUID`], SHA-1 hashes, then Base64 encodes.
-pub(crate) fn compute_accept_key(client_key: &str) -> String {
+pub fn compute_accept_key(client_key: &str) -> String {
     let mut hasher = Sha1::new();
     hasher.update(client_key.as_bytes());
     hasher.update(WS_GUID.as_bytes());

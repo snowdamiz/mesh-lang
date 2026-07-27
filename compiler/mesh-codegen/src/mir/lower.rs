@@ -1560,6 +1560,51 @@ impl<'a> Lowerer<'a> {
             "mesh_http_client_close".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
         );
+        self.known_functions.insert(
+            "mesh_ws_client_options".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Int)),
+        );
+        for name in [
+            "mesh_ws_client_connect_timeout",
+            "mesh_ws_client_heartbeat_timeout",
+            "mesh_ws_client_max_message_bytes",
+            "mesh_ws_client_queue_capacity",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_ws_client_connect".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_ws_client_send_text".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_ws_client_send_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_ws_client_recv".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_ws_client_close".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::Int, MirType::String],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_ws_client_reconnect_delay".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::Int, MirType::Int, MirType::Int],
+                Box::new(MirType::Ptr),
+            ),
+        );
         // ── Test runtime functions (Phase 138) ─────────────────────────
         // mesh_test_begin(name: ptr) -> void
         self.known_functions.insert(
@@ -4197,11 +4242,12 @@ impl<'a> Lowerer<'a> {
                     let text = tok.text().to_string();
                     let lit_expr = match tok.kind() {
                         SyntaxKind::INT_LITERAL => {
-                            MirExpr::IntLit(text.parse().unwrap_or(0), param.1.clone())
+                            MirExpr::IntLit(parse_int_literal(&text).unwrap_or(0), param.1.clone())
                         }
-                        SyntaxKind::FLOAT_LITERAL => {
-                            MirExpr::FloatLit(text.parse().unwrap_or(0.0), param.1.clone())
-                        }
+                        SyntaxKind::FLOAT_LITERAL => MirExpr::FloatLit(
+                            parse_float_literal(&text).unwrap_or(0.0),
+                            param.1.clone(),
+                        ),
                         SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
                         SyntaxKind::FALSE_KW => MirExpr::BoolLit(false, MirType::Bool),
                         SyntaxKind::MINUS => {
@@ -8258,11 +8304,11 @@ impl<'a> Lowerer<'a> {
 
         match token.kind() {
             SyntaxKind::INT_LITERAL => {
-                let val = text.parse::<i64>().unwrap_or(0);
+                let val = parse_int_literal(&text).unwrap_or(0);
                 MirExpr::IntLit(val, MirType::Int)
             }
             SyntaxKind::FLOAT_LITERAL => {
-                let val = text.parse::<f64>().unwrap_or(0.0);
+                let val = parse_float_literal(&text).unwrap_or(0.0);
                 MirExpr::FloatLit(val, MirType::Float)
             }
             SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
@@ -9544,7 +9590,11 @@ impl<'a> Lowerer<'a> {
                     if STDLIB_MODULES.contains(&base_name.as_str()) {
                         let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
                         // Convert to prefixed name: String.length -> string_length
-                        let prefixed = format!("{}_{}", base_name.to_lowercase(), field);
+                        let prefix = match base_name.as_str() {
+                            "WsClient" => "ws_client".to_string(),
+                            _ => base_name.to_lowercase(),
+                        };
+                        let prefixed = format!("{prefix}_{field}");
                         // Map to runtime name
                         let runtime_name = map_builtin_name(&prefixed);
                         // Use known_functions type if available (more accurate for
@@ -10098,12 +10148,12 @@ impl<'a> Lowerer<'a> {
                     Some(t) => {
                         let text = t.text().to_string();
                         match t.kind() {
-                            SyntaxKind::INT_LITERAL => {
-                                MirPattern::Literal(MirLiteral::Int(text.parse().unwrap_or(0)))
-                            }
-                            SyntaxKind::FLOAT_LITERAL => {
-                                MirPattern::Literal(MirLiteral::Float(text.parse().unwrap_or(0.0)))
-                            }
+                            SyntaxKind::INT_LITERAL => MirPattern::Literal(MirLiteral::Int(
+                                parse_int_literal(&text).unwrap_or(0),
+                            )),
+                            SyntaxKind::FLOAT_LITERAL => MirPattern::Literal(MirLiteral::Float(
+                                parse_float_literal(&text).unwrap_or(0.0),
+                            )),
                             SyntaxKind::TRUE_KW => MirPattern::Literal(MirLiteral::Bool(true)),
                             SyntaxKind::FALSE_KW => MirPattern::Literal(MirLiteral::Bool(false)),
                             SyntaxKind::STRING_START => {
@@ -12425,7 +12475,8 @@ impl<'a> Lowerer<'a> {
                 node.children_with_tokens()
                     .filter_map(|c| c.into_token())
                     .find(|t| t.kind() == SyntaxKind::INT_LITERAL)
-                    .and_then(|t| t.text().parse().ok())
+                    .and_then(|t| parse_int_literal(t.text()))
+                    .and_then(|value| value.try_into().ok())
             })
             .unwrap_or(3);
 
@@ -12436,7 +12487,8 @@ impl<'a> Lowerer<'a> {
                 node.children_with_tokens()
                     .filter_map(|c| c.into_token())
                     .find(|t| t.kind() == SyntaxKind::INT_LITERAL)
-                    .and_then(|t| t.text().parse().ok())
+                    .and_then(|t| parse_int_literal(t.text()))
+                    .and_then(|value| value.try_into().ok())
             })
             .unwrap_or(5);
 
@@ -13571,7 +13623,8 @@ const STDLIB_MODULES: &[&str] = &[
     "Duration",
     "Channel",
     "Random",
-    "Http",       // Phase 137
+    "Http", // Phase 137
+    "WsClient",
     "Test",       // Phase 138
     "Continuity", // continuity
     "Cluster",
@@ -13707,6 +13760,17 @@ fn map_builtin_name(name: &str) -> String {
         "http_client" => "mesh_http_client".to_string(),
         "http_send_with" => "mesh_http_send_with".to_string(),
         "http_client_close" => "mesh_http_client_close".to_string(),
+        "ws_client_options"
+        | "ws_client_connect_timeout"
+        | "ws_client_heartbeat_timeout"
+        | "ws_client_max_message_bytes"
+        | "ws_client_queue_capacity"
+        | "ws_client_connect"
+        | "ws_client_send_text"
+        | "ws_client_send_bytes"
+        | "ws_client_recv"
+        | "ws_client_close"
+        | "ws_client_reconnect_delay" => format!("mesh_{name}"),
         // Test DSL assertion builtins (Phase 138) — lowercase with test_ prefix
         "test_assert" => "mesh_test_assert".to_string(),
         "test_assert_eq" => "mesh_test_assert_eq".to_string(),
@@ -14140,6 +14204,33 @@ fn map_builtin_name(name: &str) -> String {
     }
 }
 
+fn parse_int_literal(text: &str) -> Option<i64> {
+    let normalized = text.replace('_', "");
+    let (digits, radix) = if let Some(digits) = normalized
+        .strip_prefix("0x")
+        .or_else(|| normalized.strip_prefix("0X"))
+    {
+        (digits, 16)
+    } else if let Some(digits) = normalized
+        .strip_prefix("0b")
+        .or_else(|| normalized.strip_prefix("0B"))
+    {
+        (digits, 2)
+    } else if let Some(digits) = normalized
+        .strip_prefix("0o")
+        .or_else(|| normalized.strip_prefix("0O"))
+    {
+        (digits, 8)
+    } else {
+        (normalized.as_str(), 10)
+    };
+    i64::from_str_radix(digits, radix).ok()
+}
+
+fn parse_float_literal(text: &str) -> Option<f64> {
+    text.replace('_', "").parse().ok()
+}
+
 /// Convert a PascalCase name to snake_case.
 fn to_snake_case(name: &str) -> String {
     let mut result = String::new();
@@ -14261,7 +14352,7 @@ fn extract_negative_literal(node: &mesh_parser::cst::SyntaxNode) -> i64 {
             if token.kind() == SyntaxKind::MINUS {
                 found_minus = true;
             } else if found_minus && token.kind() == SyntaxKind::INT_LITERAL {
-                let val: i64 = token.text().parse().unwrap_or(0);
+                let val = parse_int_literal(token.text()).unwrap_or(0);
                 return -val;
             }
         }
@@ -14724,6 +14815,15 @@ pub fn lower_to_mir(
             ("status".to_string(), MirType::Int),
             ("body".to_string(), MirType::Ptr), // *mut MeshString
             ("headers".to_string(), MirType::Ptr), // *mut MeshMap
+        ],
+    });
+    lowerer.structs.push(MirStructDef {
+        name: "WsMessage".to_string(),
+        fields: vec![
+            ("kind".to_string(), MirType::String),
+            ("data".to_string(), MirType::Ptr),
+            ("close_code".to_string(), MirType::Int),
+            ("close_reason".to_string(), MirType::String),
         ],
     });
     lowerer.structs.push(MirStructDef {
