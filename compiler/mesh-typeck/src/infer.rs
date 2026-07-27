@@ -373,6 +373,79 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     );
     modules.insert("Regex".to_string(), regex_mod);
 
+    // ── Bytes module ──────────────────────────────────────────────────
+    let bytes_t = Ty::bytes();
+    let bytes_result = || Ty::result(Ty::bytes(), Ty::string());
+    let mut bytes_mod = HashMap::new();
+    bytes_mod.insert(
+        "empty".to_string(),
+        Scheme::mono(Ty::fun(vec![], bytes_t.clone())),
+    );
+    bytes_mod.insert(
+        "length".to_string(),
+        Scheme::mono(Ty::fun(vec![bytes_t.clone()], Ty::int())),
+    );
+    bytes_mod.insert(
+        "get".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_t.clone(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    bytes_mod.insert(
+        "slice".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_t.clone(), Ty::int(), Ty::int()],
+            bytes_result(),
+        )),
+    );
+    bytes_mod.insert(
+        "concat".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_t.clone(), bytes_t.clone()],
+            bytes_result(),
+        )),
+    );
+    bytes_mod.insert(
+        "secure_equals".to_string(),
+        Scheme::mono(Ty::fun(vec![bytes_t.clone(), bytes_t.clone()], Ty::bool())),
+    );
+    bytes_mod.insert(
+        "from_utf8".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], bytes_t.clone())),
+    );
+    bytes_mod.insert(
+        "to_utf8".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_t.clone()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+    for name in ["to_base64", "to_base58", "to_hex"] {
+        bytes_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![bytes_t.clone()], Ty::string())),
+        );
+    }
+    for name in ["from_base64", "from_base58", "from_hex"] {
+        bytes_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::string()], bytes_result())),
+        );
+    }
+    bytes_mod.insert(
+        "read_uint_le".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_t.clone(), Ty::int(), Ty::int()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+    bytes_mod.insert(
+        "write_uint_le".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
+    );
+    modules.insert("Bytes".to_string(), bytes_mod);
+
     // ── Crypto module (Phase 135) ────────────────────────────────────
     let mut crypto_mod = HashMap::new();
     // Crypto.sha256(s) -> String
@@ -3187,10 +3260,11 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Changeset", // Phase 99
     "Migration", // Phase 101
     "Regex",     // Phase 119
-    "Crypto",    // Phase 135
-    "Base64",    // Phase 135
-    "Hex",       // Phase 135
-    "DateTime",  // Phase 136
+    "Bytes",
+    "Crypto",   // Phase 135
+    "Base64",   // Phase 135
+    "Hex",      // Phase 135
+    "DateTime", // Phase 136
     "Checked",
     "Monotonic",
     "Duration",

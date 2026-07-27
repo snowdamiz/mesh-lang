@@ -1250,6 +1250,72 @@ impl<'a> Lowerer<'a> {
             "mesh_hex_decode".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
+        self.known_functions.insert(
+            "mesh_bytes_empty".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_length".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_get".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_slice".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Int, MirType::Int],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_concat".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_secure_equals".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_from_utf8".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_to_utf8".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        for name in [
+            "mesh_bytes_to_base64",
+            "mesh_bytes_to_base58",
+            "mesh_bytes_to_hex",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+            );
+        }
+        for name in [
+            "mesh_bytes_from_base64",
+            "mesh_bytes_from_base58",
+            "mesh_bytes_from_hex",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_bytes_read_uint_le".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Int, MirType::Int],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_write_uint_le".to_string(),
+            MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr)),
+        );
         // DateTime functions (Phase 136)
         // utc_now() -> DateTime (i64)
         self.known_functions.insert(
@@ -13431,10 +13497,11 @@ const STDLIB_MODULES: &[&str] = &[
     "Changeset", // Phase 99
     "Migration", // Phase 101
     "Regex",     // Phase 119
-    "Crypto",    // Phase 135
-    "Base64",    // Phase 135
-    "Hex",       // Phase 135
-    "DateTime",  // Phase 136
+    "Bytes",
+    "Crypto",   // Phase 135
+    "Base64",   // Phase 135
+    "Hex",      // Phase 135
+    "DateTime", // Phase 136
     "Checked",
     "Monotonic",
     "Duration",
@@ -13507,6 +13574,23 @@ fn map_builtin_name(name: &str) -> String {
         // Hex functions (Phase 135)
         "hex_encode" => "mesh_hex_encode".to_string(),
         "hex_decode" => "mesh_hex_decode".to_string(),
+        // Binary-safe Bytes functions
+        "bytes_empty" => "mesh_bytes_empty".to_string(),
+        "bytes_length" => "mesh_bytes_length".to_string(),
+        "bytes_get" => "mesh_bytes_get".to_string(),
+        "bytes_slice" => "mesh_bytes_slice".to_string(),
+        "bytes_concat" => "mesh_bytes_concat".to_string(),
+        "bytes_secure_equals" => "mesh_bytes_secure_equals".to_string(),
+        "bytes_from_utf8" => "mesh_bytes_from_utf8".to_string(),
+        "bytes_to_utf8" => "mesh_bytes_to_utf8".to_string(),
+        "bytes_to_base64" => "mesh_bytes_to_base64".to_string(),
+        "bytes_from_base64" => "mesh_bytes_from_base64".to_string(),
+        "bytes_to_base58" => "mesh_bytes_to_base58".to_string(),
+        "bytes_from_base58" => "mesh_bytes_from_base58".to_string(),
+        "bytes_to_hex" => "mesh_bytes_to_hex".to_string(),
+        "bytes_from_hex" => "mesh_bytes_from_hex".to_string(),
+        "bytes_read_uint_le" => "mesh_bytes_read_uint_le".to_string(),
+        "bytes_write_uint_le" => "mesh_bytes_write_uint_le".to_string(),
         // DateTime functions (Phase 136)
         "datetime_utc_now" => "mesh_datetime_utc_now".to_string(),
         "datetime_from_iso8601" => "mesh_datetime_from_iso8601".to_string(),

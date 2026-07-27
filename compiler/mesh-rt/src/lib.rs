@@ -21,6 +21,7 @@
 //! (or at least across a single phase).
 
 pub mod actor;
+pub mod bytes;
 pub mod channel;
 pub mod collections;
 pub mod crypto;

@@ -1,11 +1,45 @@
 ---
 title: Standard Library
-description: Cryptography, encoding (Base64, Hex), and date/time utilities in Mesh
+description: Bytes, cryptography, encoding, and date/time utilities in Mesh
 ---
 
 # Standard Library
 
-Mesh ships a set of stdlib modules for cryptography, binary encoding, and date/time operations. All modules are available without any imports — use them directly in your Mesh programs.
+Mesh ships a set of stdlib modules for binary data, cryptography, encoding, and date/time operations. All modules are available without any imports — use them directly in your Mesh programs.
+
+## Bytes
+
+`Bytes` stores arbitrary binary data without treating it as UTF-8. It does not
+implicitly convert to `String`; use `Bytes.to_utf8` when text is expected and
+handle its `Result`.
+
+```mesh
+case "ff0041" |> Bytes.from_hex() do
+  Ok(raw) ->
+    println("#{Bytes.length(raw)}")
+    raw |> Bytes.to_base64() |> println()
+  Err(error) -> println(error)
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Bytes.empty()` | `Bytes` | Empty byte sequence |
+| `Bytes.length(bytes)` | `Int` | Byte length |
+| `Bytes.get(bytes, index)` | `Result<Int, String>` | Byte value at a checked index |
+| `Bytes.slice(bytes, start, length)` | `Result<Bytes, String>` | Checked subrange |
+| `Bytes.concat(left, right)` | `Result<Bytes, String>` | Concatenate two byte sequences |
+| `Bytes.secure_equals(left, right)` | `Bool` | Constant-time equality |
+| `Bytes.from_utf8(text)` | `Bytes` | Copy UTF-8 string bytes |
+| `Bytes.to_utf8(bytes)` | `Result<String, String>` | Validate and decode UTF-8 |
+| `Bytes.to_base64(bytes)` | `String` | Standard padded Base64 |
+| `Bytes.from_base64(text)` | `Result<Bytes, String>` | Decode padded or unpadded Base64 |
+| `Bytes.to_base58(bytes)` | `String` | Base58 encode |
+| `Bytes.from_base58(text)` | `Result<Bytes, String>` | Base58 decode |
+| `Bytes.to_hex(bytes)` | `String` | Lowercase hexadecimal |
+| `Bytes.from_hex(text)` | `Result<Bytes, String>` | Decode case-insensitive hexadecimal |
+| `Bytes.read_uint_le(bytes, offset, width)` | `Result<String, String>` | Read a 1, 2, 4, or 8-byte unsigned integer as a full-range decimal string |
+| `Bytes.write_uint_le(value, width)` | `Result<Bytes, String>` | Write a decimal unsigned integer at width 1, 2, 4, or 8 |
 
 ## Crypto
 

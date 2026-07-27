@@ -83,7 +83,7 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         // Must be lowered to Int to avoid LLVM opaque struct allocation errors.
         "DateTime" => MirType::Int,
         // Collection types, Json, HTTP types, and iterator handles are opaque pointers at LLVM level.
-        "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json"
+        "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json" | "Bytes"
         | "Router" | "Request" | "Response"
         | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
         // Phase 78: Adapter iterator types

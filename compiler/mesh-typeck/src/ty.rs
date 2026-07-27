@@ -111,6 +111,11 @@ impl Ty {
         Ty::Con(TyCon::new("String"))
     }
 
+    /// Create an opaque binary `Bytes` type.
+    pub fn bytes() -> Ty {
+        Ty::Con(TyCon::new("Bytes"))
+    }
+
     /// Create a `Json` newtype.
     ///
     /// Json auto-coerces to String at call sites (the unify function handles this).

@@ -41,6 +41,7 @@ pub fn register_builtins(
     env.insert("Int".into(), Scheme::mono(Ty::int()));
     env.insert("Float".into(), Scheme::mono(Ty::float()));
     env.insert("String".into(), Scheme::mono(Ty::string()));
+    env.insert("Bytes".into(), Scheme::mono(Ty::bytes()));
     env.insert("Bool".into(), Scheme::mono(Ty::bool()));
 
     // ── Actor type constructor ────────────────────────────────────
@@ -326,6 +327,74 @@ pub fn register_builtins(
             vec![Ty::Con(TyCon::new("Regex")), Ty::string()],
             Ty::list(Ty::string()),
         )),
+    );
+
+    // ── Standard library: binary-safe Bytes ────────────────────────────────
+
+    let bytes_result = || Ty::result(Ty::bytes(), Ty::string());
+    env.insert(
+        "bytes_empty".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::bytes())),
+    );
+    env.insert(
+        "bytes_length".into(),
+        Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::int())),
+    );
+    env.insert(
+        "bytes_get".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::int()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "bytes_slice".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::int(), Ty::int()],
+            bytes_result(),
+        )),
+    );
+    env.insert(
+        "bytes_concat".into(),
+        Scheme::mono(Ty::fun(vec![Ty::bytes(), Ty::bytes()], bytes_result())),
+    );
+    env.insert(
+        "bytes_secure_equals".into(),
+        Scheme::mono(Ty::fun(vec![Ty::bytes(), Ty::bytes()], Ty::bool())),
+    );
+    env.insert(
+        "bytes_from_utf8".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::bytes())),
+    );
+    env.insert(
+        "bytes_to_utf8".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+    for name in ["bytes_to_base64", "bytes_to_base58", "bytes_to_hex"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::string())),
+        );
+    }
+    for name in ["bytes_from_base64", "bytes_from_base58", "bytes_from_hex"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(vec![Ty::string()], bytes_result())),
+        );
+    }
+    env.insert(
+        "bytes_read_uint_le".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::int(), Ty::int()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "bytes_write_uint_le".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
     );
 
     // ── Standard library: Crypto functions (Phase 135) ─────────────────────

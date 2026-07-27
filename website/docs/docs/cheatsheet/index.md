@@ -445,6 +445,14 @@ let ok = Crypto.secure_compare("a", "a")   # Bool, constant-time
 let id = Crypto.uuid4()                    # UUID v4 string
 
 # Encoding
+let raw = Bytes.from_utf8("hello")
+let size = Bytes.length(raw)
+let b64_bytes = Bytes.to_base64(raw)
+case Bytes.to_utf8(raw) do
+  Ok(s) -> println(s)
+  Err(e) -> println(e)
+end
+
 let b64 = Base64.encode("hello")
 case Base64.decode(b64) do
   Ok(s) -> println(s)

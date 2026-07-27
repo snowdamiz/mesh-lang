@@ -596,6 +596,73 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // ── Binary-safe Bytes ───────────────────────────────────────────────────
+
+    module.add_function(
+        "mesh_bytes_empty",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_length",
+        i64_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_get",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_slice",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_concat",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_secure_equals",
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_bytes_from_utf8",
+        "mesh_bytes_from_base64",
+        "mesh_bytes_from_base58",
+        "mesh_bytes_from_hex",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    for name in [
+        "mesh_bytes_to_utf8",
+        "mesh_bytes_to_base64",
+        "mesh_bytes_to_base58",
+        "mesh_bytes_to_hex",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_bytes_read_uint_le",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_write_uint_le",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── DateTime functions (Phase 136) ───────────────────────────────────────
 
     // mesh_datetime_utc_now() -> i64

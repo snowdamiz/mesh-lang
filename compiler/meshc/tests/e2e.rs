@@ -6105,6 +6105,40 @@ fn e2e_hex_encode_lowercase() {
     assert_eq!(first_line, "6869");
 }
 
+/// MESH-BYTES-001: binary data is opaque, bounds-checked, and codec-complete.
+#[test]
+fn e2e_bytes_operations() {
+    let source = read_fixture("bytes_operations.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "0\n3\n255\nbyte index out of bounds\n0041\ninvalid utf-8\n/wBB\nHello World\ntrue\n305419896\nffffffffffffffff\n"
+    );
+}
+
+/// `Bytes` never crosses a UTF-8 boundary without an explicit conversion.
+#[test]
+fn e2e_bytes_do_not_implicitly_convert_to_string() {
+    let error = compile_expect_error(
+        r#"
+fn accepts_string(value :: String) do
+  println(value)
+end
+
+fn main() do
+  case Bytes.from_hex("ff") do
+    Ok(bytes) -> accepts_string(bytes)
+    Err(error) -> println(error)
+  end
+end
+"#,
+    );
+    assert!(
+        error.contains("expected String, found Bytes"),
+        "expected the Bytes/String boundary to fail type checking, got:\n{error}"
+    );
+}
+
 // ── Phase 136: DateTime stdlib tests ─────────────────────────────────────────
 
 /// Phase 136: DateTime.utc_now() returns a plausible UTC timestamp (DTIME-01).
