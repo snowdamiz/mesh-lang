@@ -321,10 +321,6 @@ pub extern "C" fn mesh_reduction_check() {
         let remaining = cell.get();
         if remaining == 0 {
             cell.set(DEFAULT_REDUCTIONS);
-            // Check GC pressure before yielding. Running GC at yield points
-            // ensures collection happens cooperatively without affecting other
-            // actors (per-actor GC only).
-            try_trigger_gc();
             stack::yield_current();
         } else {
             cell.set(remaining - 1);
@@ -1868,6 +1864,50 @@ mod tests {
         // Use a no-op entry function.
         extern "C" fn noop(_args: *const u8) {}
         sched.spawn(noop as *const u8, std::ptr::null(), 0, 1)
+    }
+
+    #[inline(never)]
+    fn allocate_receive_garbage() {
+        for _ in 0..5 {
+            let ptr = crate::gc::mesh_gc_alloc_actor(128 * 1024, 8);
+            unsafe { std::ptr::write_volatile(ptr, 1) };
+        }
+    }
+
+    extern "C" fn allocate_then_receive(_args: *const u8) {
+        allocate_receive_garbage();
+        mesh_actor_receive(-1);
+    }
+
+    #[test]
+    fn blocking_receive_collects_long_lived_actor_heap() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let pid = sched.spawn(allocate_then_receive as *const u8, std::ptr::null(), 0, 1);
+
+        for _ in 0..100 {
+            let waiting = sched
+                .get_process(pid)
+                .map(|process| matches!(process.lock().state, ProcessState::Waiting))
+                .unwrap_or(false);
+            if waiting {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+
+        let (retained, threshold) = {
+            let process = sched.get_process(pid).expect("actor should be waiting");
+            let process = process.lock();
+            (process.heap.total_bytes(), process.heap.gc_threshold())
+        };
+        local_send(pid.as_u64(), std::ptr::null(), 0);
+
+        assert!(
+            retained < threshold,
+            "blocking receive retained {retained} bytes above the {threshold}-byte threshold"
+        );
     }
 
     #[test]

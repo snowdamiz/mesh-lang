@@ -87,6 +87,10 @@ pub fn set_stack_base(base: *const u8) {
 /// Must only be called from within a running coroutine (i.e., CURRENT_YIELDER
 /// is set). Panics if called outside of a coroutine context.
 pub fn yield_current() {
+    // Every suspension is a safe cooperative collection point, including
+    // blocking receive in long-lived actors that may never exhaust reductions.
+    super::try_trigger_gc();
+
     CURRENT_YIELDER.with(|c| {
         let ptr = c
             .get()
