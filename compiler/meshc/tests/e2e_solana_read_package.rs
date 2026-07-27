@@ -295,3 +295,78 @@ end
         "320000006:2\n18446744073709551615\n12345678900\n10000000000\n777\n10000000000\n9:true\n2000000000\n1\n11111111111111111111111111111111\n1234567890\nSOLANA_JITOSOL: mint supply does not match stake pool\nSOLANA_PUBKEY: invalid base58\n11111111111111111111111111111111\n64\n32\n9:true:320000006\n320000006\n320000006\ngetAccountInfo:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"getAccountInfo\",\"params\":[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]}\ngetMultipleAccounts:[[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\"],{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\ngetSlot:[{\"commitment\":\"finalized\"}]\ngetBlockHeight:[{\"commitment\":\"processed\"}]\ngetEpochInfo:[{\"commitment\":\"confirmed\"}]\n777:320000006\ngetProgramAccounts:[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\",\"filters\":[{\"memcmp\":{\"offset\":0,\"bytes\":\"11111111111111111111111111111111\"}},{\"dataSize\":611}]}]\naccountSubscribe:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\nslotSubscribe:[]\n41:320000006:82\n42:320000006:320000005:319999974\ndone\n"
     );
 }
+
+#[test]
+fn solana_tx_package_inspects_jupiter_instruction() {
+    let tx_text = fs::read_to_string(package_source().join("solana/tx.mpl")).unwrap();
+    let tx_parse = mesh_parser::parse(&tx_text);
+    assert!(
+        tx_parse.errors().is_empty(),
+        "transaction package parse failed: {:#?}",
+        tx_parse.errors()
+    );
+
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("solana-tx-proof");
+    let package = project.join(".mesh/packages/mesh-solana@0.1.0");
+    fs::create_dir_all(package.join("solana")).unwrap();
+    fs::copy(
+        package_source().join("mesh.toml"),
+        package.join("mesh.toml"),
+    )
+    .unwrap();
+    fs::copy(
+        package_source().join("solana/read.mpl"),
+        package.join("solana/read.mpl"),
+    )
+    .unwrap();
+    fs::copy(
+        package_source().join("solana/tx.mpl"),
+        package.join("solana/tx.mpl"),
+    )
+    .unwrap();
+    fs::write(
+        project.join("mesh.toml"),
+        "[package]\nname = \"solana-tx-proof\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("main.mpl"),
+        r#"
+from Solana.Tx import instruction_from_jupiter_json, instruction_report_json
+
+fn main() do
+  case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
+    |> instruction_from_jupiter_json() do
+    Err(error) -> println(error)
+    Ok(instruction) -> instruction
+      |> instruction_report_json()
+      |> println()
+  end
+end
+"#,
+    )
+    .unwrap();
+
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join("solana-tx-proof"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "Solana transaction proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n"
+    );
+}
