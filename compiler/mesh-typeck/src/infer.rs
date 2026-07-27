@@ -217,7 +217,7 @@ fn wide_integer_module(ty: Ty) -> HashMap<String, Scheme> {
         "compare".to_string(),
         Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], Ty::int())),
     );
-    for operation in ["add", "subtract"] {
+    for operation in ["add", "subtract", "multiply", "divide"] {
         module.insert(
             operation.to_string(),
             Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),

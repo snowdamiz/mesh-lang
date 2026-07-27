@@ -63,7 +63,7 @@ fn mesh_string(value: impl ToString) -> *mut MeshString {
     mesh_string_new(value.as_ptr(), value.len() as u64)
 }
 
-macro_rules! unsigned_abi {
+macro_rules! wide_abi {
     (
         $rust_type:ty,
         $label:literal,
@@ -71,6 +71,8 @@ macro_rules! unsigned_abi {
         $compare:ident,
         $add:ident,
         $subtract:ident,
+        $multiply:ident,
+        $divide:ident,
         $to_int:ident,
         $to_string:ident
     ) => {
@@ -116,6 +118,36 @@ macro_rules! unsigned_abi {
         }
 
         #[no_mangle]
+        pub extern "C" fn $multiply(
+            left: *const MeshWideNum,
+            right: *const MeshWideNum,
+        ) -> *mut MeshResult {
+            unsafe {
+                (bits(left) as $rust_type)
+                    .checked_mul(bits(right) as $rust_type)
+                    .map(|value| ok_wide(value as u128))
+                    .unwrap_or_else(|| error(concat!($label, " multiplication overflow")))
+            }
+        }
+
+        #[no_mangle]
+        pub extern "C" fn $divide(
+            left: *const MeshWideNum,
+            right: *const MeshWideNum,
+        ) -> *mut MeshResult {
+            unsafe {
+                let right = bits(right) as $rust_type;
+                if right == 0 {
+                    return error(concat!($label, " division by zero"));
+                }
+                (bits(left) as $rust_type)
+                    .checked_div(right)
+                    .map(|value| ok_wide(value as u128))
+                    .unwrap_or_else(|| error(concat!($label, " division overflow")))
+            }
+        }
+
+        #[no_mangle]
         pub extern "C" fn $to_int(value: *const MeshWideNum) -> *mut MeshResult {
             unsafe {
                 i64::try_from(bits(value) as $rust_type)
@@ -131,79 +163,41 @@ macro_rules! unsigned_abi {
     };
 }
 
-unsigned_abi!(
+wide_abi!(
     u64,
     "u64",
     mesh_u64_parse,
     mesh_u64_compare,
     mesh_u64_add,
     mesh_u64_subtract,
+    mesh_u64_multiply,
+    mesh_u64_divide,
     mesh_u64_to_int,
     mesh_u64_to_string
 );
 
-unsigned_abi!(
+wide_abi!(
     u128,
     "u128",
     mesh_u128_parse,
     mesh_u128_compare,
     mesh_u128_add,
     mesh_u128_subtract,
+    mesh_u128_multiply,
+    mesh_u128_divide,
     mesh_u128_to_int,
     mesh_u128_to_string
 );
 
-#[no_mangle]
-pub extern "C" fn mesh_i128_parse(text: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        match (*text).as_str().parse::<i128>() {
-            Ok(value) => ok_wide(value as u128),
-            Err(_) => error("invalid i128"),
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mesh_i128_compare(left: *const MeshWideNum, right: *const MeshWideNum) -> i64 {
-    unsafe { ordering((bits(left) as i128).cmp(&(bits(right) as i128))) }
-}
-
-#[no_mangle]
-pub extern "C" fn mesh_i128_add(
-    left: *const MeshWideNum,
-    right: *const MeshWideNum,
-) -> *mut MeshResult {
-    unsafe {
-        (bits(left) as i128)
-            .checked_add(bits(right) as i128)
-            .map(|value| ok_wide(value as u128))
-            .unwrap_or_else(|| error("i128 addition overflow"))
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mesh_i128_subtract(
-    left: *const MeshWideNum,
-    right: *const MeshWideNum,
-) -> *mut MeshResult {
-    unsafe {
-        (bits(left) as i128)
-            .checked_sub(bits(right) as i128)
-            .map(|value| ok_wide(value as u128))
-            .unwrap_or_else(|| error("i128 subtraction overflow"))
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mesh_i128_to_int(value: *const MeshWideNum) -> *mut MeshResult {
-    unsafe {
-        i64::try_from(bits(value) as i128)
-            .map(ok_int)
-            .unwrap_or_else(|_| error("i128 does not fit Int"))
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mesh_i128_to_string(value: *const MeshWideNum) -> *mut MeshString {
-    unsafe { mesh_string(bits(value) as i128) }
-}
+wide_abi!(
+    i128,
+    "i128",
+    mesh_i128_parse,
+    mesh_i128_compare,
+    mesh_i128_add,
+    mesh_i128_subtract,
+    mesh_i128_multiply,
+    mesh_i128_divide,
+    mesh_i128_to_int,
+    mesh_i128_to_string
+);

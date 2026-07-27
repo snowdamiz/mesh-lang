@@ -13730,10 +13730,13 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_from_hex" => "mesh_bytes_from_hex".to_string(),
         "bytes_read_uint_le" => "mesh_bytes_read_uint_le".to_string(),
         "bytes_write_uint_le" => "mesh_bytes_write_uint_le".to_string(),
-        "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_to_int"
-        | "u64_to_string" | "u128_parse" | "u128_compare" | "u128_add" | "u128_subtract"
-        | "u128_to_int" | "u128_to_string" | "i128_parse" | "i128_compare" | "i128_add"
-        | "i128_subtract" | "i128_to_int" | "i128_to_string" => format!("mesh_{name}"),
+        "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
+        | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
+        | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"
+        | "u128_to_string" | "i128_parse" | "i128_compare" | "i128_add" | "i128_subtract"
+        | "i128_multiply" | "i128_divide" | "i128_to_int" | "i128_to_string" => {
+            format!("mesh_{name}")
+        }
         // DateTime functions (Phase 136)
         "datetime_utc_now" => "mesh_datetime_utc_now".to_string(),
         "datetime_from_iso8601" => "mesh_datetime_from_iso8601".to_string(),

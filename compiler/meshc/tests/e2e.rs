@@ -6162,7 +6162,7 @@ fn e2e_wide_integer_operations() {
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "18446744073709551615\n7\nu64 addition overflow\nu64 does not fit Int\n340282366920938463463374607431768211455\nu128 subtraction overflow\n-1\n-170141183460469231731687303715884105728\n-42\ni128 addition overflow\n-42\n"
+        "18446744073709551615\n7\nu64 addition overflow\nu64 does not fit Int\n340282366920938463463374607431768211455\nu128 subtraction overflow\n-1\n1234567890\nu128 division by zero\n-170141183460469231731687303715884105728\n-42\ni128 addition overflow\n-42\n"
     );
 }
 

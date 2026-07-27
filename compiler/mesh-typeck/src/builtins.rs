@@ -24,7 +24,7 @@ fn register_wide_integer(env: &mut TypeEnv, prefix: &str, ty: Ty) {
         format!("{prefix}_compare"),
         Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], Ty::int())),
     );
-    for operation in ["add", "subtract"] {
+    for operation in ["add", "subtract", "multiply", "divide"] {
         env.insert(
             format!("{prefix}_{operation}"),
             Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),

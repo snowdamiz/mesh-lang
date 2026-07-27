@@ -678,7 +678,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
             Some(inkwell::module::Linkage::External),
         );
-        for operation in ["add", "subtract"] {
+        for operation in ["add", "subtract", "multiply", "divide"] {
             module.add_function(
                 &format!("mesh_{prefix}_{operation}"),
                 ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
