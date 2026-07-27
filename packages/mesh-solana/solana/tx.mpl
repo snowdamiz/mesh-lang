@@ -1,4 +1,4 @@
-from Solana.Read import Hash, Pubkey, pubkey, pubkey_string, spl_token_program
+from Solana.Read import Hash, Pubkey, RpcRequest, RpcResponse, pubkey, pubkey_string, rpc_request, spl_token_program
 
 pub struct MessageHeader do
   num_required_signatures :: Int
@@ -31,6 +31,15 @@ pub struct MessageV0 do
   recent_blockhash :: Hash
   instructions :: List < CompiledInstruction >
   address_table_lookups :: List < AddressTableLookup >
+end
+
+pub struct SimulationResult do
+  slot :: U64
+  succeeded :: Bool
+  error_json :: String
+  logs_json :: String
+  units_consumed :: Option < U64 >
+  replacement_blockhash_json :: String
 end
 
 pub struct AccountMeta do
@@ -511,6 +520,152 @@ pub fn serialize_message_v0(message :: MessageV0) -> Bytes ! String do
     Err("SOLANA_TX: serialized message exceeds 1232 bytes")
   else
     Ok(bytes)
+  end
+end
+
+fn append_zero_bytes(output :: Bytes, remaining :: Int) -> Bytes ! String do
+  if remaining <= 0 do
+    Ok(output)
+  else
+    append_zero_bytes(
+      append_uint8(output, 0) ?,
+      remaining - 1
+    )
+  end
+end
+
+fn serialize_unsigned_transaction(
+  message :: Bytes,
+  count :: Int
+) -> Bytes ! String do
+  if count < 0 || count > 256 do
+    Err("SOLANA_TX: required signature count is out of range")
+  else
+    if Bytes.length(message) == 0 do
+      Err("SOLANA_TX: transaction message must not be empty")
+    else
+      let with_count = append_short_u16(
+        Bytes.empty(),
+        count
+      ) ?
+      let with_signatures = append_zero_bytes(
+        with_count,
+        count * 64
+      ) ?
+      let bytes = append_bytes(with_signatures, message) ?
+      if Bytes.length(bytes) > 1232 do
+        Err("SOLANA_TX: serialized transaction exceeds 1232 bytes")
+      else
+        Ok(bytes)
+      end
+    end
+  end
+end
+
+pub fn serialize_unsigned_legacy_transaction(
+  message :: LegacyMessage
+) -> Bytes ! String do
+  serialize_unsigned_transaction(
+    serialize_legacy_message(message) ?,
+    message.header.num_required_signatures
+  )
+end
+
+pub fn serialize_unsigned_v0_transaction(
+  message :: MessageV0
+) -> Bytes ! String do
+  serialize_unsigned_transaction(
+    serialize_message_v0(message) ?,
+    message.header.num_required_signatures
+  )
+end
+
+fn simulation_commitment(value :: String) -> String ! String do
+  if value == "processed" || value == "confirmed" || value == "finalized" do
+    Ok(value)
+  else
+    Err("SOLANA_TX: unsupported simulation commitment #{value}")
+  end
+end
+
+fn min_context_slot_json(value :: Option < U64 >) -> String do
+  case value do
+    None -> ""
+    Some(slot) -> ",\"minContextSlot\":#{U64.to_string(slot)}"
+  end
+end
+
+pub fn simulate_transaction_request(
+  id :: Int,
+  transaction :: Bytes,
+  commitment :: String,
+  replace_recent_blockhash :: Bool,
+  min_context_slot :: Option < U64 >
+) -> RpcRequest ! String do
+  if Bytes.length(transaction) == 0 || Bytes.length(transaction) > 1232 do
+    Err("SOLANA_TX: simulation transaction size is out of range")
+  else
+    let replacement = if replace_recent_blockhash do
+      "true"
+    else
+      "false"
+    end
+    rpc_request(
+      id,
+      "simulateTransaction",
+      "[#{Json.encode_string(Bytes.to_base64(transaction))},{\"commitment\":#{Json.encode_string(simulation_commitment(commitment) ?)},\"encoding\":\"base64\",\"sigVerify\":false,\"replaceRecentBlockhash\":#{replacement}#{min_context_slot_json(min_context_slot)}}]"
+    )
+  end
+end
+
+pub fn simulation_result(response :: RpcResponse) -> SimulationResult ! String do
+  if !response.ok do
+    Err("SOLANA_TX: simulation RPC error #{response.error_json}")
+  else
+    let context_json = Json.get(response.result_json, "context")
+    let value_json = Json.get(response.result_json, "value")
+    if context_json == "" || value_json == "" do
+      Err("SOLANA_TX: simulation result is missing context or value")
+    else
+      let slot_text = Json.get(context_json, "slot")
+      let parsed_value = (value_json
+        |> Json.parse()) ?
+      let error_value = (parsed_value
+        |> Json.object_get("err")) ?
+      let logs = Json.get(value_json, "logs")
+      let units = Json.get(value_json, "unitsConsumed")
+      let replacement = Json.get(value_json, "replacementBlockhash")
+      if slot_text == "" || logs == "" do
+        Err("SOLANA_TX: simulation result is missing slot or logs")
+      else
+        let units_consumed = if units == "" || units == "null" do
+          None
+        else
+          Some((units
+            |> U64.parse()) ?)
+        end
+        Ok(SimulationResult {
+          slot : (slot_text
+            |> U64.parse()) ?,
+          succeeded : error_value
+            |> Json.is_null(),
+          error_json : if error_value
+            |> Json.is_null() do
+            ""
+          else
+            error_value
+              |> Json.encode()
+          end,
+          logs_json : logs,
+          units_consumed : units_consumed,
+          replacement_blockhash_json : if replacement == "" do
+            "null"
+          else
+            replacement
+          end
+        })
+      end
+    end
   end
 end
 
