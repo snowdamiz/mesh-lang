@@ -775,6 +775,20 @@ fn e2e_option_field_extraction() {
     assert_eq!(output, "42\n");
 }
 
+#[test]
+fn e2e_list_get_struct() {
+    let source = read_fixture("list_get_struct.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "7\n");
+}
+
+#[test]
+fn e2e_struct_in_result_roundtrip() {
+    let source = read_fixture("struct_in_result_roundtrip.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "141\n-1\n60\n");
+}
+
 /// Ordering pattern match: compare(3, 5) returns Less, matched to 1.
 #[test]
 fn e2e_ordering_pattern_match() {
@@ -3016,6 +3030,13 @@ fn e2e_from_try_same_error() {
     let source = read_fixture("from_try_same_error.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "err: fail\n");
+}
+
+#[test]
+fn e2e_from_try_nested_success_same_error() {
+    let source = read_fixture("from_try_nested_success_same_error.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "ok\n");
 }
 
 /// Phase 77 CONV-04 gap closure: ? operator auto-converts String error to
@@ -6172,7 +6193,7 @@ fn e2e_json_structured_access() {
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "2\nsecond\ntrue\n7\n1.5\ntrue\nmissing field: missing\ndone\n"
+        "2\nsecond\ntrue\n7\n1.5\ntrue\nmissing field: missing\n{\"value\":18446744073709551615}\ndone\n"
     );
 }
 

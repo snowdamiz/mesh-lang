@@ -11,9 +11,7 @@ fn print_float(value :: Float) do
 end
 
 fn inspect() -> Int ! String do
-  let root = Json.parse(
-    """{"values":["first","second"],"active":true,"count":7,"ratio":1.5,"empty":null}"""
-  ) ?
+  let root = Json.parse("""{"values":["first","second"],"active":true,"count":7,"ratio":1.5,"empty":null}""") ?
   let values = (root
     |> Json.object_get("values")) ?
   (values
@@ -41,15 +39,19 @@ fn inspect() -> Int ! String do
     |> print_bool()
   case root
     |> Json.object_get("missing") do
-    Ok(_) -> println("unexpected-ok")
-    Err(error) -> println(error)
+    Ok( _) -> println("unexpected-ok")
+    Err( error) -> println(error)
   end
+  ("""{"value":18446744073709551615}"""
+    |> Json.parse()) ?
+    |> Json.encode()
+    |> println()
   Ok(0)
 end
 
 fn main() do
   case inspect() do
-    Ok(_) -> println("done")
-    Err(error) -> println(error)
+    Ok( _) -> println("done")
+    Err( error) -> println(error)
   end
 end

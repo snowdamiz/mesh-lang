@@ -284,6 +284,9 @@ struct Lowerer<'a> {
     /// Set when entering a function body, used by lower_try_expr for early-return
     /// variant construction. Save/restore pattern for nested functions and closures.
     current_fn_return_type: Option<MirType>,
+    /// Type-checker form of the current return type. Unlike MIR names, this
+    /// preserves nested generic boundaries needed to compare `?` error types.
+    current_fn_return_typeck: Option<Ty>,
     /// Counter for generating unique try binding names (Phase 45).
     /// Incremented per `?` usage to avoid shadowing in nested `?` expressions.
     try_counter: u32,
@@ -373,6 +376,7 @@ impl<'a> Lowerer<'a> {
             fn_value_usage_types: inferred_fn_usage_types.clone(),
             inferred_fn_specializations: inferred_fn_usage_types.clone(),
             current_fn_return_type: None,
+            current_fn_return_typeck: None,
             try_counter: 0,
             is_test_mode: false,
             overloaded_call_targets: typeck
@@ -3652,9 +3656,15 @@ impl<'a> Lowerer<'a> {
         } else {
             MirType::Unit
         };
+        let return_typeck = concrete_fn_ty.or(fn_ty_raw).and_then(|ty| match ty {
+            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
+            _ => None,
+        });
 
         let prev_fn_return_type = self.current_fn_return_type.take();
+        let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
+        self.current_fn_return_typeck = return_typeck;
 
         self.mono_depth += 1;
         let mut body = if self.mono_depth > self.max_mono_depth {
@@ -3676,6 +3686,7 @@ impl<'a> Lowerer<'a> {
         self.mono_depth -= 1;
 
         self.current_fn_return_type = prev_fn_return_type;
+        self.current_fn_return_typeck = prev_fn_return_typeck;
         self.pop_scope();
 
         let fn_ty = MirType::FnPtr(
@@ -3783,10 +3794,16 @@ impl<'a> Lowerer<'a> {
         } else {
             MirType::Unit
         };
+        let return_typeck = match &fn_ty_raw {
+            Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
+            _ => None,
+        };
 
         // Track current function return type for ? operator desugaring (Phase 45).
         let prev_fn_return_type = self.current_fn_return_type.take();
+        let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
+        self.current_fn_return_typeck = return_typeck;
 
         // Monomorphization depth tracking.
         self.mono_depth += 1;
@@ -3810,6 +3827,7 @@ impl<'a> Lowerer<'a> {
 
         // Restore previous function return type.
         self.current_fn_return_type = prev_fn_return_type;
+        self.current_fn_return_typeck = prev_fn_return_typeck;
 
         self.pop_scope();
 
@@ -10099,12 +10117,19 @@ impl<'a> Lowerer<'a> {
     // ── Case expression lowering ─────────────────────────────────────
 
     fn lower_case_expr(&mut self, case: &CaseExpr) -> MirExpr {
-        let scrutinee = case
-            .scrutinee()
-            .map(|e| self.lower_expr(&e))
+        let scrutinee_expr = case.scrutinee();
+        let scrutinee_typeck = scrutinee_expr
+            .as_ref()
+            .and_then(|expr| self.get_ty(expr.syntax().text_range()))
+            .cloned();
+        let scrutinee = scrutinee_expr
+            .map(|expr| self.lower_expr(&expr))
             .unwrap_or(MirExpr::Unit);
 
-        let arms: Vec<MirMatchArm> = case.arms().map(|arm| self.lower_match_arm(&arm)).collect();
+        let arms: Vec<MirMatchArm> = case
+            .arms()
+            .map(|arm| self.lower_match_arm(&arm, scrutinee_typeck.as_ref()))
+            .collect();
 
         let ty = self.resolve_range(case.syntax().text_range());
 
@@ -10115,12 +10140,12 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_match_arm(&mut self, arm: &MatchArm) -> MirMatchArm {
+    fn lower_match_arm(&mut self, arm: &MatchArm, expected: Option<&Ty>) -> MirMatchArm {
         self.push_scope();
 
         let pattern = arm
             .pattern()
-            .map(|p| self.lower_pattern(&p))
+            .map(|pattern| self.lower_pattern_with_expected(&pattern, expected))
             .unwrap_or(MirPattern::Wildcard);
 
         let guard = arm.guard().map(|e| self.lower_expr(&e));
@@ -10142,6 +10167,10 @@ impl<'a> Lowerer<'a> {
     // ── Pattern lowering ─────────────────────────────────────────────
 
     fn lower_pattern(&mut self, pat: &Pattern) -> MirPattern {
+        self.lower_pattern_with_expected(pat, None)
+    }
+
+    fn lower_pattern_with_expected(&mut self, pat: &Pattern, expected: Option<&Ty>) -> MirPattern {
         match pat {
             Pattern::Wildcard(_) => MirPattern::Wildcard,
 
@@ -10177,7 +10206,9 @@ impl<'a> Lowerer<'a> {
                     }
                 }
 
-                let ty = self.resolve_range(ident.syntax().text_range());
+                let ty = expected
+                    .map(|ty| resolve_type(ty, self.registry, false))
+                    .unwrap_or_else(|| self.resolve_range(ident.syntax().text_range()));
                 self.insert_var(name.clone(), ty.clone());
                 MirPattern::Var(name, ty)
             }
@@ -10221,8 +10252,49 @@ impl<'a> Lowerer<'a> {
                     find_type_for_variant(&variant_name, self.registry).unwrap_or_default()
                 };
 
-                let fields: Vec<MirPattern> =
-                    ctor.fields().map(|p| self.lower_pattern(&p)).collect();
+                let expected_fields = self
+                    .registry
+                    .sum_type_defs
+                    .get(&type_name)
+                    .and_then(|info| {
+                        let variant = info
+                            .variants
+                            .iter()
+                            .find(|variant| variant.name == variant_name)?;
+                        let substitutions = match expected {
+                            Some(Ty::App(con, args))
+                                if matches!(con.as_ref(), Ty::Con(name) if name.name == type_name) =>
+                            {
+                                info.generic_params
+                                    .iter()
+                                    .cloned()
+                                    .zip(args.iter())
+                                    .collect()
+                            }
+                            _ => HashMap::new(),
+                        };
+                        Some(
+                            variant
+                                .fields
+                                .iter()
+                                .map(|field| {
+                                    let ty = match field {
+                                        mesh_typeck::VariantFieldInfo::Positional(ty)
+                                        | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
+                                    };
+                                    substitute_type_params(ty, &substitutions)
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .unwrap_or_default();
+                let fields: Vec<MirPattern> = ctor
+                    .fields()
+                    .enumerate()
+                    .map(|(index, pattern)| {
+                        self.lower_pattern_with_expected(&pattern, expected_fields.get(index))
+                    })
+                    .collect();
 
                 // Collect bindings introduced by sub-patterns.
                 let bindings = collect_pattern_bindings(&fields);
@@ -10372,7 +10444,12 @@ impl<'a> Lowerer<'a> {
         // Lower the body in a new scope with params.
         // Track closure's return type for ? operator desugaring (Phase 45).
         let prev_fn_return_type = self.current_fn_return_type.take();
+        let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
+        self.current_fn_return_typeck = closure_ty.as_ref().and_then(|ty| match ty {
+            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
+            _ => None,
+        });
 
         self.push_scope();
         for (name, ty) in &fn_params {
@@ -10389,6 +10466,7 @@ impl<'a> Lowerer<'a> {
 
         // Restore previous function return type.
         self.current_fn_return_type = prev_fn_return_type;
+        self.current_fn_return_typeck = prev_fn_return_typeck;
 
         // Find captured variables by scanning the lowered body for Var references
         // that match outer scope names and are not parameters.
@@ -10482,7 +10560,12 @@ impl<'a> Lowerer<'a> {
 
         // Track closure's return type for ? operator desugaring (Phase 45).
         let prev_fn_return_type = self.current_fn_return_type.take();
+        let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
+        self.current_fn_return_typeck = closure_ty.as_ref().and_then(|ty| match ty {
+            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
+            _ => None,
+        });
 
         // Build the body using match or if-else chain.
         self.push_scope();
@@ -10566,6 +10649,7 @@ impl<'a> Lowerer<'a> {
 
         // Restore previous function return type.
         self.current_fn_return_type = prev_fn_return_type;
+        self.current_fn_return_typeck = prev_fn_return_typeck;
 
         // Find captured variables.
         let mut captures: Vec<(String, MirType)> = Vec::new();
@@ -11843,10 +11927,22 @@ impl<'a> Lowerer<'a> {
     /// end
     /// ```
     fn lower_try_expr(&mut self, try_expr: &TryExpr) -> MirExpr {
-        let operand = match try_expr.operand() {
-            Some(e) => self.lower_expr(&e),
+        let operand_expr = match try_expr.operand() {
+            Some(expr) => expr,
             None => return MirExpr::Unit,
         };
+        let operand_typeck = self.get_ty(operand_expr.syntax().text_range()).cloned();
+        let error_types = operand_typeck
+            .as_ref()
+            .and_then(Self::result_error_type)
+            .cloned()
+            .zip(
+                self.current_fn_return_typeck
+                    .as_ref()
+                    .and_then(Self::result_error_type)
+                    .cloned(),
+            );
+        let operand = self.lower_expr(&operand_expr);
 
         let operand_ty = operand.ty().clone();
         let fn_ret_ty = self.current_fn_return_type.clone().unwrap_or(MirType::Unit);
@@ -11858,7 +11954,7 @@ impl<'a> Lowerer<'a> {
         // Determine if operand is Result or Option by examining the MirType.
         match &operand_ty {
             MirType::SumType(name) if self.is_result_type(name) => {
-                self.lower_try_result(operand, name, &fn_ret_ty, &success_ty)
+                self.lower_try_result(operand, name, &fn_ret_ty, &success_ty, error_types)
             }
             MirType::SumType(name) if self.is_option_type(name) => {
                 self.lower_try_option(operand, name, &fn_ret_ty, &success_ty)
@@ -11867,6 +11963,18 @@ impl<'a> Lowerer<'a> {
                 // Should not happen if typeck validated correctly; fallback to Unit.
                 MirExpr::Unit
             }
+        }
+    }
+
+    fn result_error_type(ty: &Ty) -> Option<&Ty> {
+        match ty {
+            Ty::App(con, args)
+                if matches!(con.as_ref(), Ty::Con(name) if name.name == "Result")
+                    && args.len() == 2 =>
+            {
+                args.get(1)
+            }
+            _ => None,
         }
     }
 
@@ -11954,6 +12062,7 @@ impl<'a> Lowerer<'a> {
         operand_type_name: &str,
         fn_ret_ty: &MirType,
         success_ty: &MirType,
+        error_types: Option<(Ty, Ty)>,
     ) -> MirExpr {
         self.try_counter += 1;
         let counter = self.try_counter;
@@ -11974,23 +12083,38 @@ impl<'a> Lowerer<'a> {
         // Check if From-based error conversion is needed by comparing the
         // monomorphized Result type names. If the operand and fn return have
         // different Result type names, the error types must differ.
-        let operand_err_name = self.extract_error_type_from_result_name(operand_type_name);
+        let operand_err_name = error_types
+            .as_ref()
+            .map(|(operand, _)| self.mangle_ty_for_display(operand))
+            .or_else(|| self.extract_error_type_from_result_name(operand_type_name));
         let fn_ret_type_name_full = match fn_ret_ty {
             MirType::SumType(n) => n.clone(),
             _ => String::new(),
         };
-        let fn_err_name = self.extract_error_type_from_result_name(&fn_ret_type_name_full);
+        let fn_err_name = error_types
+            .as_ref()
+            .map(|(_, function)| self.mangle_ty_for_display(function))
+            .or_else(|| self.extract_error_type_from_result_name(&fn_ret_type_name_full));
 
-        let needs_from_conversion = match (&operand_err_name, &fn_err_name) {
-            (Some(op_err), Some(fn_err)) => op_err != fn_err,
-            _ => false,
-        };
+        let needs_from_conversion = error_types
+            .as_ref()
+            .map(|(operand, function)| operand != function)
+            .unwrap_or_else(|| match (&operand_err_name, &fn_err_name) {
+                (Some(op_err), Some(fn_err)) => op_err != fn_err,
+                _ => false,
+            });
 
         let (err_body_expr, _err_body_ty) = if needs_from_conversion {
             let source_err_name = operand_err_name.as_deref().unwrap();
             let target_err_name = fn_err_name.as_deref().unwrap();
-            let source_err_ty = self.type_name_to_mir_type(source_err_name);
-            let target_err_ty = self.type_name_to_mir_type(target_err_name);
+            let source_err_ty = error_types
+                .as_ref()
+                .map(|(operand, _)| resolve_type(operand, self.registry, false))
+                .unwrap_or_else(|| self.type_name_to_mir_type(source_err_name));
+            let target_err_ty = error_types
+                .as_ref()
+                .map(|(_, function)| resolve_type(function, self.registry, false))
+                .unwrap_or_else(|| self.type_name_to_mir_type(target_err_name));
 
             // Normalize struct error types to Ptr for the Result variant layout.
             // User-defined struct constructors return heap-allocated pointers
@@ -12025,8 +12149,10 @@ impl<'a> Lowerer<'a> {
         // When From conversion is needed, the pattern binds the SOURCE error type
         // (from the operand), but the body uses the CONVERTED error type.
         let pattern_err_ty = if needs_from_conversion {
-            let source_err_name = operand_err_name.as_deref().unwrap();
-            self.type_name_to_mir_type(source_err_name)
+            error_types
+                .as_ref()
+                .map(|(operand, _)| resolve_type(operand, self.registry, false))
+                .unwrap_or_else(|| self.type_name_to_mir_type(operand_err_name.as_deref().unwrap()))
         } else {
             error_ty.clone()
         };

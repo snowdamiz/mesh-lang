@@ -15,29 +15,41 @@ struct Triple do
   c :: Int
 end
 
-fn make_ok_pair() -> Pair!String do
-  Ok(Pair { x: 42, y: 99 })
+fn make_ok_pair() -> Pair ! String do
+  Ok(Pair {
+    x : 42,
+    y : 99
+  })
 end
 
-fn make_err_pair() -> Pair!String do
+fn make_err_pair() -> Pair ! String do
   Err("error")
 end
 
-fn make_ok_triple() -> Triple!String do
-  Ok(Triple { a: 10, b: 20, c: 30 })
+fn make_ok_triple() -> Triple ! String do
+  Ok(Triple {
+    a : 10,
+    b : 20,
+    c : 30
+  })
 end
 
-fn extract_pair(result :: Pair!String) -> Int do
+fn pair_total(pair :: Pair) -> Int do
+  pair.x + pair.y
+end
+
+fn extract_pair(result :: Pair ! String) -> Int do
   case result do
-    Ok(pair) -> pair.x + pair.y
-    Err(_) -> -1
+    Ok( pair) -> pair
+      |> pair_total()
+    Err( _) -> -1
   end
 end
 
-fn extract_triple(result :: Triple!String) -> Int do
+fn extract_triple(result :: Triple ! String) -> Int do
   case result do
-    Ok(t) -> t.a + t.b + t.c
-    Err(_) -> -1
+    Ok( t) -> t.a + t.b + t.c
+    Err( _) -> -1
   end
 end
 

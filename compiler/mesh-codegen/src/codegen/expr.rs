@@ -1594,16 +1594,27 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
+                // Generic collections store structs and sums as boxed pointers.
+                // Recover the source-level value when get/head returns that pointer as u64.
+                if matches!(ty, MirType::Struct(_) | MirType::SumType(_)) {
+                    if let BasicValueEnum::IntValue(iv) = result {
+                        if iv.get_type().get_bit_width() == 64 {
+                            let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                            let ptr_val = self
+                                .builder
+                                .build_int_to_ptr(iv, ptr_ty, "i64_to_boxed_ptr")
+                                .map_err(|e| e.to_string())?;
+                            return self
+                                .builder
+                                .build_load(self.llvm_type(ty), ptr_val, "boxed_value")
+                                .map_err(|e| e.to_string());
+                        }
+                    }
+                }
+
                 // Runtime functions returning i64 for pointer values (e.g., map_get
                 // returning a string pointer as u64) need inttoptr conversion.
-                if matches!(
-                    ty,
-                    MirType::String
-                        | MirType::Ptr
-                        | MirType::Struct(_)
-                        | MirType::SumType(_)
-                        | MirType::Pid(_)
-                ) {
+                if matches!(ty, MirType::String | MirType::Ptr | MirType::Pid(_)) {
                     if let BasicValueEnum::IntValue(iv) = result {
                         if iv.get_type().get_bit_width() == 64 {
                             let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());

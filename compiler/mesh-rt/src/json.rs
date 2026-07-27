@@ -12,7 +12,8 @@
 //! ```text
 //! MeshJson { tag: u8, value: u64 }
 //! ```
-//! Tags: 0=Null, 1=Bool, 2=Int(i64), 3=Str(*MeshString), 4=Array(*MeshList), 5=Object(*MeshMap), 6=Float(f64)
+//! Tags: 0=Null, 1=Bool, 2=Int(i64), 3=Str(*MeshString), 4=Array(*MeshList),
+//! 5=Object(*MeshMap), 6=Float(f64), 7=UInt(u64)
 
 use crate::collections::list;
 use crate::collections::map;
@@ -28,6 +29,7 @@ const JSON_STR: u8 = 3;
 const JSON_ARRAY: u8 = 4;
 const JSON_OBJECT: u8 = 5;
 const JSON_FLOAT: u8 = 6;
+const JSON_UINT: u8 = 7;
 
 /// GC-allocated JSON value.
 ///
@@ -83,6 +85,8 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
             // Int and Float are separate tags for round-trip fidelity.
             if let Some(i) = n.as_i64() {
                 alloc_json(JSON_INT, i as u64)
+            } else if let Some(u) = n.as_u64() {
+                alloc_json(JSON_UINT, u)
             } else if let Some(f) = n.as_f64() {
                 alloc_json(JSON_FLOAT, f.to_bits())
             } else {
@@ -128,6 +132,7 @@ unsafe fn mesh_json_to_serde_value(json: *const MeshJson) -> serde_json::Value {
             let ival = (*json).value as i64;
             serde_json::Value::Number(serde_json::Number::from(ival))
         }
+        JSON_UINT => serde_json::Value::Number(serde_json::Number::from((*json).value)),
         JSON_FLOAT => {
             let bits = (*json).value;
             let f = f64::from_bits(bits);
@@ -410,6 +415,10 @@ pub extern "C" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
             JSON_INT => {
                 let i = (*j).value as i64;
                 let f = (i as f64).to_bits();
+                alloc_result(0, f as *mut u8) as *mut u8
+            }
+            JSON_UINT => {
+                let f = ((*j).value as f64).to_bits();
                 alloc_result(0, f as *mut u8) as *mut u8
             }
             _ => err_result("expected Float") as *mut u8,
@@ -702,6 +711,17 @@ mod tests {
             let json = (*result).value as *const MeshJson;
             assert_eq!((*json).tag, JSON_INT);
             assert_eq!((*json).value as i64, 42);
+        }
+
+        // unsigned number outside the signed range
+        let result = mesh_json_parse(make_string("18446744073709551615"));
+        unsafe {
+            assert_eq!((*result).tag, 0);
+            let json = (*result).value as *const MeshJson;
+            assert_eq!((*json).tag, JSON_UINT);
+            assert_eq!((*json).value, u64::MAX);
+            let encoded = mesh_json_encode(json.cast_mut().cast());
+            assert_eq!((*encoded).as_str(), "18446744073709551615");
         }
 
         // string
