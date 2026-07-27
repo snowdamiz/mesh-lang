@@ -33,16 +33,29 @@ pub fn link(
     link_with_plan(object_path, output_path, &plan)
 }
 
+pub fn effective_target_triple(target_triple: Option<&str>) -> Result<String, String> {
+    LinkTarget::detect(target_triple).map(|target| target.display_triple())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LinkPlan {
     target: LinkTarget,
     rt_path: PathBuf,
     linker_program: PathBuf,
+    native_archives: Vec<PathBuf>,
 }
 
 pub(crate) fn prepare_link(
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
+) -> Result<LinkPlan, String> {
+    prepare_link_with_native(target_triple, rt_lib_path, &[])
+}
+
+pub(crate) fn prepare_link_with_native(
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+    native_archives: &[PathBuf],
 ) -> Result<LinkPlan, String> {
     let target = LinkTarget::detect(target_triple)?;
     build_trace::set_stage("resolve-runtime-library");
@@ -104,10 +117,15 @@ pub(crate) fn prepare_link(
         return Err(error);
     }
 
+    for archive in native_archives {
+        validate_native_archive(archive, &target)?;
+    }
+
     Ok(LinkPlan {
         target,
         rt_path,
         linker_program,
+        native_archives: native_archives.to_vec(),
     })
 }
 
@@ -116,44 +134,7 @@ pub(crate) fn link_with_plan(
     output_path: &Path,
     plan: &LinkPlan,
 ) -> Result<(), String> {
-    let mut cmd = Command::new(&plan.linker_program);
-    cmd.arg(object_path);
-
-    match plan.target.kind {
-        LinkTargetKind::Unix => {
-            cmd.arg(&plan.rt_path).arg("-lm").arg("-o").arg(output_path);
-        }
-        LinkTargetKind::WindowsMsvc => {
-            cmd.arg(&plan.rt_path).arg("-o").arg(output_path);
-            // mesh_rt.lib is a Rust staticlib whose transitive deps (ureq/TLS,
-            // sqlite, crossbeam, rand, Rust std) need these Windows system libraries.
-            // Use -Wl, to forward them directly to MSVC's link.exe.
-            for lib in &[
-                "ws2_32.lib",
-                "userenv.lib",
-                "advapi32.lib",
-                "bcrypt.lib",
-                "ntdll.lib",
-                "kernel32.lib",
-                "msvcrt.lib",
-                "synchronization.lib",
-            ] {
-                cmd.arg(format!("-Wl,{lib}"));
-            }
-            // Verbose mode so link failures show the full link.exe invocation.
-            cmd.arg("-v");
-        }
-    }
-
-    if plan.target.needs_security_framework() {
-        // The runtime's TLS stack uses Security and chrono's local-time
-        // support reaches CoreFoundation through iana-time-zone. Rust static
-        // libraries do not carry these native framework edges into this final
-        // non-Cargo link step, so Mesh must spell them out explicitly.
-        for framework in ["Security", "CoreFoundation"] {
-            cmd.arg("-framework").arg(framework);
-        }
-    }
+    let mut cmd = build_link_command(object_path, output_path, plan);
 
     build_trace::mark_link_started();
     let output = match cmd.output() {
@@ -198,6 +179,52 @@ pub(crate) fn link_with_plan(
     build_trace::mark_link_completed();
     std::fs::remove_file(object_path).ok();
     Ok(())
+}
+
+fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -> Command {
+    let mut cmd = Command::new(&plan.linker_program);
+    cmd.arg(object_path);
+    for archive in &plan.native_archives {
+        cmd.arg(archive);
+    }
+
+    match plan.target.kind {
+        LinkTargetKind::Unix => {
+            cmd.arg(&plan.rt_path).arg("-lm").arg("-o").arg(output_path);
+        }
+        LinkTargetKind::WindowsMsvc => {
+            cmd.arg(&plan.rt_path).arg("-o").arg(output_path);
+            // mesh_rt.lib is a Rust staticlib whose transitive deps (ureq/TLS,
+            // sqlite, crossbeam, rand, Rust std) need these Windows system libraries.
+            // Use -Wl, to forward them directly to MSVC's link.exe.
+            for lib in &[
+                "ws2_32.lib",
+                "userenv.lib",
+                "advapi32.lib",
+                "bcrypt.lib",
+                "ntdll.lib",
+                "kernel32.lib",
+                "msvcrt.lib",
+                "synchronization.lib",
+            ] {
+                cmd.arg(format!("-Wl,{lib}"));
+            }
+            // Verbose mode so link failures show the full link.exe invocation.
+            cmd.arg("-v");
+        }
+    }
+
+    if plan.target.needs_security_framework() {
+        // The runtime's TLS stack uses Security and chrono's local-time
+        // support reaches CoreFoundation through iana-time-zone. Rust static
+        // libraries do not carry these native framework edges into this final
+        // non-Cargo link step, so Mesh must spell them out explicitly.
+        for framework in ["Security", "CoreFoundation"] {
+            cmd.arg("-framework").arg(framework);
+        }
+    }
+
+    cmd
 }
 
 /// Locate the Mesh runtime static library.
@@ -283,6 +310,28 @@ fn validate_runtime_override(path: &Path, target: &LinkTarget) -> Result<(), Str
         ));
     }
 
+    Ok(())
+}
+
+fn validate_native_archive(path: &Path, target: &LinkTarget) -> Result<(), String> {
+    if !path.is_absolute() || !path.is_file() {
+        return Err(format!(
+            "Native archive '{}' must be an existing absolute file path",
+            path.display()
+        ));
+    }
+    let extension = path.extension().and_then(|value| value.to_str());
+    let expected = match target.kind {
+        LinkTargetKind::Unix => "a",
+        LinkTargetKind::WindowsMsvc => "lib",
+    };
+    if extension != Some(expected) {
+        return Err(format!(
+            "Native archive '{}' must use the `.{expected}` static-library extension for target '{}'",
+            path.display(),
+            target.display_triple()
+        ));
+    }
     Ok(())
 }
 
@@ -551,6 +600,34 @@ mod tests {
             error.contains("expected filename 'mesh_rt.lib'"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn link_command_passes_native_archives_as_paths_before_runtime() {
+        let plan = LinkPlan {
+            target: LinkTarget::detect(Some("aarch64-apple-darwin")).unwrap(),
+            rt_path: PathBuf::from("/tmp/libmesh_rt.a"),
+            linker_program: PathBuf::from("cc"),
+            native_archives: vec![PathBuf::from("/tmp/libnative_math.a")],
+        };
+        let command = build_link_command(Path::new("/tmp/main.o"), Path::new("/tmp/app"), &plan);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let native_index = args
+            .iter()
+            .position(|arg| arg == "/tmp/libnative_math.a")
+            .unwrap();
+        let runtime_index = args
+            .iter()
+            .position(|arg| arg == "/tmp/libmesh_rt.a")
+            .unwrap();
+        assert!(
+            native_index < runtime_index,
+            "unexpected linker args: {args:?}"
+        );
+        assert!(!args.iter().any(|arg| arg.contains("whole-archive")));
     }
 
     #[test]

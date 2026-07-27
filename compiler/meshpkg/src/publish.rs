@@ -85,9 +85,62 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut archive_members = Vec::with_capacity(source_members.len() + 1);
     archive_members.push(PathBuf::from("mesh.toml"));
     archive_members.extend(source_members);
+    let manifest = Manifest::from_file(&project_dir.join("mesh.toml"))?;
+    if let Some(native) = manifest.native {
+        for binding in native.bindings {
+            let member = declared_package_member(project_dir, &binding)?;
+            if !archive_members.contains(&member) {
+                archive_members.push(member);
+            }
+        }
+        for library in native.libraries {
+            let member = declared_package_member(project_dir, &library.path)?;
+            let bytes = std::fs::read(project_dir.join(&member)).map_err(|error| {
+                format!(
+                    "Failed to read native archive '{}': {error}",
+                    member.display()
+                )
+            })?;
+            let actual = format!("{:x}", Sha256::digest(&bytes));
+            if actual != library.sha256 {
+                return Err(format!(
+                    "SHA-256 mismatch for native archive '{}': expected {}, got {}",
+                    member.display(),
+                    library.sha256,
+                    actual
+                ));
+            }
+            archive_members.push(member);
+        }
+    }
+    archive_members.sort();
     ensure_unique_archive_members(&archive_members)?;
 
     Ok(archive_members)
+}
+
+fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, String> {
+    let canonical_root = project_root.canonicalize().map_err(|error| {
+        format!(
+            "Failed to resolve package root '{}': {error}",
+            project_root.display()
+        )
+    })?;
+    let source = project_root.join(relative);
+    let canonical_source = source.canonicalize().map_err(|error| {
+        format!(
+            "Declared package file '{}' does not exist or cannot be read: {error}",
+            relative.display()
+        )
+    })?;
+    if !canonical_source.starts_with(&canonical_root) || !canonical_source.is_file() {
+        return Err(format!(
+            "Declared package file '{}' must be a file inside '{}'",
+            relative.display(),
+            project_root.display()
+        ));
+    }
+    relative_archive_member_path(project_root, &source)
 }
 
 fn discover_publish_source_members(
@@ -380,6 +433,49 @@ mod tests {
                 || member.ends_with(".test.mpl")),
             "hidden or test-only files leaked into the archive: {members:?}"
         );
+    }
+
+    #[test]
+    fn publish_archive_members_include_only_manifest_declared_native_archives() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let project_dir = tempdir.path();
+        let archive = b"native-archive";
+        let sha256 = format!("{:x}", Sha256::digest(archive));
+        write_project_file(
+            project_dir,
+            "mesh.toml",
+            &format!(
+                r#"[package]
+name = "native-package"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["bindings/native.mpl"]
+
+[[native.libraries]]
+target = "aarch64-apple-darwin"
+path = "native/aarch64-apple-darwin/libnative.a"
+sha256 = "{sha256}"
+"#
+            ),
+        );
+        write_project_file(
+            project_dir,
+            "bindings/native.mpl",
+            "@native(\"mesh_native_value\")\npub fn value() -> Int\n",
+        );
+        write_project_file(
+            project_dir,
+            "native/aarch64-apple-darwin/libnative.a",
+            "native-archive",
+        );
+        write_project_file(project_dir, "native/unlisted/libsecret.a", "not-published");
+
+        let members = archive_member_names(project_dir);
+        assert!(members.contains(&"bindings/native.mpl".to_string()));
+        assert!(members.contains(&"native/aarch64-apple-darwin/libnative.a".to_string()));
+        assert!(!members.contains(&"native/unlisted/libsecret.a".to_string()));
     }
 
     #[test]

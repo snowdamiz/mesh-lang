@@ -1,6 +1,7 @@
 pub mod autonomous;
 pub mod lockfile;
 pub mod manifest;
+pub mod native;
 pub mod resolver;
 pub mod scaffold;
 pub mod toolchain_update;
@@ -19,9 +20,11 @@ pub use manifest::{
     validate_cluster_declarations_with_source, ClusteredDeclarationError, ClusteredDeclarationKind,
     ClusteredDeclarationOrigin, ClusteredDeclarationProvenance, ClusteredExecutableSurfaceInfo,
     ClusteredExecutionMetadata, ClusteredExportSurface, ClusteredReplicationCount,
-    ClusteredReplicationCountSource, Dependency, Manifest, Package, SourceClusteredDeclaration,
-    SourceClusteredDeclarationSyntax, DEFAULT_CLUSTER_REPLICATION_COUNT,
+    ClusteredReplicationCountSource, Dependency, Manifest, NativeLibrary, NativePackage, Package,
+    SourceClusteredDeclaration, SourceClusteredDeclarationSyntax,
+    DEFAULT_CLUSTER_REPLICATION_COUNT,
 };
+pub use native::{resolve_native_archives, ResolvedNativeArchive};
 pub use resolver::resolve_dependencies;
 pub use scaffold::{
     scaffold_clustered_project, scaffold_project, scaffold_todo_api_project,

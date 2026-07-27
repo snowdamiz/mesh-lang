@@ -29,7 +29,7 @@ pub use declared::{
 };
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use inkwell::context::Context;
 
@@ -417,10 +417,11 @@ pub fn compile_mir_to_binary(
     opt_level: u8,
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
+    native_archives: &[PathBuf],
 ) -> Result<(), String> {
     let obj_path = output.with_extension("o");
     build_trace::set_compile_context(output, &obj_path, target_triple);
-    let link_plan = link::prepare_link(target_triple, rt_lib_path)?;
+    let link_plan = link::prepare_link_with_native(target_triple, rt_lib_path, native_archives)?;
 
     let result: Result<(), String> = (|| -> Result<(), String> {
         build_trace::set_stage("pre-llvm-init");

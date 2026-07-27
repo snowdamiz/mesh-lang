@@ -646,6 +646,15 @@ pub(crate) fn build(
 
     // Compile to native binary
     let runtime_override = runtime_lib_override_from_env()?;
+    let native_archives = if dir.join("mesh.toml").is_file() {
+        let effective_target = mesh_codegen::link::effective_target_triple(target)?;
+        mesh_pkg::resolve_native_archives(dir, &effective_target)?
+            .into_iter()
+            .map(|archive| archive.path)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     mesh_codegen::compile_mir_to_binary(
         &prepared.merged_mir,
         &declared_handlers,
@@ -655,6 +664,7 @@ pub(crate) fn build(
         opt_level,
         target,
         runtime_override.as_deref(),
+        &native_archives,
     )?;
 
     eprintln!("  Compiled: {}", output_path.display());

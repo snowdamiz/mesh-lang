@@ -13,6 +13,8 @@ pub struct Manifest {
     pub package: Package,
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
+    #[serde(default)]
+    pub native: Option<NativePackage>,
     /// Runtime-owned deployment policy parsed from the modern `[cluster]` table.
     #[serde(skip)]
     pub autonomous_cluster: Option<AutonomousClusterConfig>,
@@ -31,6 +33,82 @@ pub struct Package {
     pub license: Option<String>,
     #[serde(default, deserialize_with = "deserialize_entrypoint")]
     pub entrypoint: Option<PathBuf>,
+}
+
+/// Stable package-owned native ABI contract.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct NativePackage {
+    pub abi: u32,
+    #[serde(default)]
+    pub bindings: Vec<PathBuf>,
+    #[serde(default)]
+    pub libraries: Vec<NativeLibrary>,
+}
+
+/// One checksummed static archive for an exact LLVM target triple.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct NativeLibrary {
+    pub target: String,
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+impl NativePackage {
+    fn validate(&mut self) -> Result<(), String> {
+        if self.abi != 1 {
+            return Err(format!(
+                "unsupported native ABI {}; this compiler supports only ABI 1",
+                self.abi
+            ));
+        }
+
+        for binding in &mut self.bindings {
+            *binding = normalize_native_path(binding, "mpl", "native binding")?;
+        }
+
+        let mut targets = BTreeSet::new();
+        for library in &mut self.libraries {
+            if library.target.is_empty()
+                || !library
+                    .target
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                return Err(format!(
+                    "native library target must be an exact target triple, got `{}`",
+                    library.target
+                ));
+            }
+            if !targets.insert(library.target.clone()) {
+                return Err(format!(
+                    "native package declares more than one library for target `{}`",
+                    library.target
+                ));
+            }
+
+            let extension = if library.target.contains("windows-msvc") {
+                "lib"
+            } else {
+                "a"
+            };
+            library.path =
+                normalize_native_path(&library.path, extension, "native static archive")?;
+
+            if library.sha256.len() != 64
+                || !library
+                    .sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(format!(
+                    "native library `{}` must declare a lowercase 64-character SHA-256",
+                    library.path.display()
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub const DEFAULT_ENTRYPOINT: &str = "main.mpl";
@@ -328,6 +406,54 @@ fn normalize_entrypoint(raw: &str) -> Result<PathBuf, String> {
     Ok(normalized)
 }
 
+fn normalize_native_path(path: &Path, extension: &str, label: &str) -> Result<PathBuf, String> {
+    let raw = path
+        .to_str()
+        .ok_or_else(|| format!("{label} path must be valid UTF-8"))?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} path must not be blank"));
+    }
+    if trimmed.starts_with('-') {
+        return Err(format!(
+            "{label} path must name a package file, not a linker flag: `{trimmed}`"
+        ));
+    }
+
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        return Err(format!(
+            "{label} path must be package-root-relative, got `{trimmed}`"
+        ));
+    }
+
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(segment) => normalized.push(segment),
+            Component::ParentDir => {
+                return Err(format!(
+                    "{label} path must stay within the package root, got `{trimmed}`"
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "{label} path must be package-root-relative, got `{trimmed}`"
+                ));
+            }
+        }
+    }
+
+    if normalized.extension().and_then(|value| value.to_str()) != Some(extension) {
+        return Err(format!(
+            "{label} path must name a `.{extension}` file, got `{trimmed}`"
+        ));
+    }
+
+    Ok(normalized)
+}
+
 pub fn resolve_entrypoint(
     project_root: &Path,
     manifest: Option<&Manifest>,
@@ -450,6 +576,12 @@ impl Manifest {
             None => format!("Failed to parse manifest: {}", error),
         })?;
 
+        if let Some(native) = &mut manifest.native {
+            native.validate().map_err(|message| match source_path {
+                Some(path) => format!("Failed to parse {}: {}", path.display(), message),
+                None => format!("Failed to parse manifest: {}", message),
+            })?;
+        }
         manifest.autonomous_cluster = autonomous_cluster;
         Ok(manifest)
     }
@@ -1189,6 +1321,75 @@ version = "0.0.1"
         assert!(manifest.package.authors.is_empty());
         assert!(manifest.package.entrypoint.is_none());
         assert!(manifest.dependencies.is_empty());
+        assert!(manifest.native.is_none());
+    }
+
+    #[test]
+    fn parse_native_package_contract() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "native-math"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["bindings/math.mpl"]
+
+[[native.libraries]]
+target = "aarch64-apple-darwin"
+path = "native/aarch64-apple-darwin/libnative_math.a"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+        )
+        .unwrap();
+
+        let native = manifest.native.expect("native contract");
+        assert_eq!(native.abi, 1);
+        assert_eq!(native.bindings, vec![PathBuf::from("bindings/math.mpl")]);
+        assert_eq!(native.libraries.len(), 1);
+        assert_eq!(native.libraries[0].target, "aarch64-apple-darwin");
+        assert_eq!(
+            native.libraries[0].path,
+            PathBuf::from("native/aarch64-apple-darwin/libnative_math.a")
+        );
+    }
+
+    #[test]
+    fn reject_unstable_native_abi_and_unsafe_artifact_paths() {
+        for (native, expected) in [
+            ("abi = 2\nbindings = []", "unsupported native ABI"),
+            (
+                "abi = 1\nbindings = [\"../escape.mpl\"]",
+                "must stay within",
+            ),
+        ] {
+            let source =
+                format!("[package]\nname = \"bad\"\nversion = \"0.1.0\"\n\n[native]\n{native}\n");
+            let error = Manifest::from_str(&source).unwrap_err();
+            assert!(error.contains(expected), "unexpected error: {error}");
+        }
+
+        let error = Manifest::from_str(
+            r#"
+[package]
+name = "flags-are-not-paths"
+version = "0.1.0"
+
+[native]
+abi = 1
+
+[[native.libraries]]
+target = "x86_64-unknown-linux-gnu"
+path = "-Wl,--whole-archive"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("static archive"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
