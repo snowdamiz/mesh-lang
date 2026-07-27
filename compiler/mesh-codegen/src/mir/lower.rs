@@ -1298,6 +1298,14 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
             );
         }
+        self.known_functions.insert(
+            "mesh_json_array_length".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_json_is_null".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)),
+        );
         for name in [
             "mesh_bytes_from_base64",
             "mesh_bytes_from_base58",
@@ -13944,6 +13952,8 @@ fn map_builtin_name(name: &str) -> String {
         "json_encode_list" => "mesh_json_encode_list".to_string(),
         "json_object_get" => "mesh_json_object_get".to_string(),
         "json_array_get" => "mesh_json_array_get".to_string(),
+        "json_array_length" => "mesh_json_array_length".to_string(),
+        "json_is_null" => "mesh_json_is_null".to_string(),
         "json_as_int" => "mesh_json_value_as_int".to_string(),
         "json_as_float" => "mesh_json_value_as_float".to_string(),
         "json_as_string" => "mesh_json_as_string".to_string(),

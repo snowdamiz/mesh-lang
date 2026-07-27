@@ -494,6 +494,22 @@ pub extern "C" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let json = json as *mut MeshJson;
+        if (*json).tag != JSON_ARRAY {
+            return err_result("expected Array").cast();
+        }
+        boxed_scalar_result(list::mesh_list_length((*json).value as *mut u8) as i64)
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_json_is_null(json: *mut u8) -> i8 {
+    unsafe { ((*(json as *const MeshJson)).tag == JSON_NULL) as i8 }
+}
+
 /// Return a MeshJson null value. Used for Option::None encoding.
 #[no_mangle]
 pub extern "C" fn mesh_json_null() -> *mut u8 {

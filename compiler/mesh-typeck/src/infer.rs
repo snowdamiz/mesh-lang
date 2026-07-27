@@ -1457,6 +1457,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         )),
     );
     json_mod.insert(
+        "array_length".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "is_null".to_string(),
+        Scheme::mono(Ty::fun(vec![json_t.clone()], Ty::bool())),
+    );
+    json_mod.insert(
         "as_int".to_string(),
         Scheme::mono(Ty::fun(
             vec![json_t.clone()],

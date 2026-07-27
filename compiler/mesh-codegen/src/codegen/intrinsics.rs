@@ -640,6 +640,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_json_array_length",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_json_is_null",
+        i8_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     for name in [
         "mesh_bytes_to_utf8",
         "mesh_bytes_to_base64",

@@ -6172,7 +6172,7 @@ fn e2e_json_structured_access() {
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "second\ntrue\n7\n1.5\nmissing field: missing\ndone\n"
+        "2\nsecond\ntrue\n7\n1.5\ntrue\nmissing field: missing\ndone\n"
     );
 }
 

@@ -1466,6 +1466,17 @@ pub fn register_builtins(
             Ty::result(json_t.clone(), Ty::string()),
         )),
     );
+    env.insert(
+        "json_array_length".into(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "json_is_null".into(),
+        Scheme::mono(Ty::fun(vec![json_t.clone()], Ty::bool())),
+    );
     for (name, value) in [
         ("json_as_int", Ty::int()),
         ("json_as_float", Ty::float()),
