@@ -19,6 +19,20 @@ pub struct LegacyMessage do
   instructions :: List < CompiledInstruction >
 end
 
+pub struct AddressTableLookup do
+  account_key :: Pubkey
+  writable_indexes :: List < Int >
+  readonly_indexes :: List < Int >
+end
+
+pub struct MessageV0 do
+  header :: MessageHeader
+  static_account_keys :: List < Pubkey >
+  recent_blockhash :: Hash
+  instructions :: List < CompiledInstruction >
+  address_table_lookups :: List < AddressTableLookup >
+end
+
 pub struct AccountMeta do
   pubkey :: Pubkey
   signer :: Bool
@@ -124,6 +138,7 @@ fn append_compiled_instructions(
   output :: Bytes,
   instructions :: List < CompiledInstruction >,
   index :: Int,
+  program_count :: Int,
   account_count :: Int
 ) -> Bytes ! String do
   if index >= List.length(instructions) do
@@ -131,7 +146,7 @@ fn append_compiled_instructions(
   else
     let instruction = instructions
       |> List.get(index)
-    if instruction.program_id_index < 0 || instruction.program_id_index >= account_count do
+    if instruction.program_id_index < 0 || instruction.program_id_index >= program_count do
       Err("SOLANA_TX: instruction program index is out of range")
     else
       if List.length(instruction.account_indexes) > 256 do
@@ -159,6 +174,7 @@ fn append_compiled_instructions(
           append_bytes(with_data_count, instruction.data) ?,
           instructions,
           index + 1,
+          program_count,
           account_count
         )
       end
@@ -166,25 +182,29 @@ fn append_compiled_instructions(
   end
 end
 
+fn validate_header(header :: MessageHeader, account_count :: Int) -> Int ! String do
+  if account_count > 256 do
+    Err("SOLANA_TX: message exceeds 256 static account keys")
+  else
+    if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
+      Err("SOLANA_TX: invalid message header")
+    else
+      Ok(account_count)
+    end
+  end
+end
+
 fn legacy_account_count(message :: LegacyMessage) -> Int ! String do
   let account_count = message.account_keys
     |> List.length()
-  let header = message.header
-  if account_count > 256 do
-    Err("SOLANA_TX: legacy message exceeds 256 account keys")
+  validate_header(message.header, account_count) ?
+  if List.length(message.instructions) > 256 do
+    Err("SOLANA_TX: legacy message exceeds 256 instructions")
   else
-    if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
-      Err("SOLANA_TX: invalid legacy message header")
+    if Bytes.length(message.recent_blockhash.bytes) != 32 do
+      Err("SOLANA_TX: recent blockhash must be 32 bytes")
     else
-      if List.length(message.instructions) > 256 do
-        Err("SOLANA_TX: legacy message exceeds 256 instructions")
-      else
-        if Bytes.length(message.recent_blockhash.bytes) != 32 do
-          Err("SOLANA_TX: recent blockhash must be 32 bytes")
-        else
-          Ok(account_count)
-        end
-      end
+      Ok(account_count)
     end
   end
 end
@@ -215,7 +235,178 @@ pub fn serialize_legacy_message(message :: LegacyMessage) -> Bytes ! String do
     bytes,
     message.instructions,
     0,
+    account_count,
     account_count
+  ) ?
+  if Bytes.length(bytes) > 1232 do
+    Err("SOLANA_TX: serialized message exceeds 1232 bytes")
+  else
+    Ok(bytes)
+  end
+end
+
+fn loaded_account_count(
+  lookups :: List < AddressTableLookup >,
+  index :: Int,
+  total :: Int
+) -> Int ! String do
+  if index >= List.length(lookups) do
+    Ok(total)
+  else
+    let lookup = lookups
+      |> List.get(index)
+    let writable_count = lookup.writable_indexes
+      |> List.length()
+    let readonly_count = lookup.readonly_indexes
+      |> List.length()
+    if Bytes.length(lookup.account_key.bytes) != 32 do
+      Err("SOLANA_TX: address lookup table key must be 32 bytes")
+    else
+      if writable_count > 256 || readonly_count > 256 do
+        Err("SOLANA_TX: address lookup exceeds 256 indexes")
+      else
+        loaded_account_count(
+          lookups,
+          index + 1,
+          total + writable_count + readonly_count
+        )
+      end
+    end
+  end
+end
+
+fn append_lookup_indexes(
+  output :: Bytes,
+  indexes :: List < Int >,
+  index :: Int
+) -> Bytes ! String do
+  if index >= List.length(indexes) do
+    Ok(output)
+  else
+    let lookup_index = indexes
+      |> List.get(index)
+    if lookup_index < 0 || lookup_index > 255 do
+      Err("SOLANA_TX: address lookup index is out of range")
+    else
+      append_lookup_indexes(
+        append_uint8(output, lookup_index) ?,
+        indexes,
+        index + 1
+      )
+    end
+  end
+end
+
+fn append_address_table_lookups(
+  output :: Bytes,
+  lookups :: List < AddressTableLookup >,
+  index :: Int
+) -> Bytes ! String do
+  if index >= List.length(lookups) do
+    Ok(output)
+  else
+    let lookup = lookups
+      |> List.get(index)
+    let with_key = append_bytes(output, lookup.account_key.bytes) ?
+    let with_writable_count = append_short_u16(
+      with_key,
+      List.length(lookup.writable_indexes)
+    ) ?
+    let with_writable_indexes = append_lookup_indexes(
+      with_writable_count,
+      lookup.writable_indexes,
+      0
+    ) ?
+    let with_readonly_count = append_short_u16(
+      with_writable_indexes,
+      List.length(lookup.readonly_indexes)
+    ) ?
+    append_address_table_lookups(
+      append_lookup_indexes(
+        with_readonly_count,
+        lookup.readonly_indexes,
+        0
+      ) ?,
+      lookups,
+      index + 1
+    )
+  end
+end
+
+fn message_v0_account_count(message :: MessageV0) -> Int ! String do
+  let static_count = message.static_account_keys
+    |> List.length()
+  validate_header(message.header, static_count) ?
+  if List.length(message.instructions) > 256 || List.length(message.address_table_lookups) > 256 do
+    Err("SOLANA_TX: v0 message exceeds 256 instructions or lookups")
+  else
+    if Bytes.length(message.recent_blockhash.bytes) != 32 do
+      Err("SOLANA_TX: recent blockhash must be 32 bytes")
+    else
+      let account_count = static_count + (loaded_account_count(
+        message.address_table_lookups,
+        0,
+        0
+      ) ?)
+      if account_count > 256 do
+        Err("SOLANA_TX: v0 message exceeds 256 resolved accounts")
+      else
+        Ok(account_count)
+      end
+    end
+  end
+end
+
+pub fn serialize_message_v0(message :: MessageV0) -> Bytes ! String do
+  let static_count = message.static_account_keys
+    |> List.length()
+  let account_count = (message
+    |> message_v0_account_count()) ?
+  let versioned = append_uint8(Bytes.empty(), 128) ?
+  let with_signatures = append_uint8(
+    versioned,
+    message.header.num_required_signatures
+  ) ?
+  let with_readonly_signers = append_uint8(
+    with_signatures,
+    message.header.num_readonly_signed_accounts
+  ) ?
+  let with_readonly_unsigned = append_uint8(
+    with_readonly_signers,
+    message.header.num_readonly_unsigned_accounts
+  ) ?
+  let with_static_count = append_short_u16(
+    with_readonly_unsigned,
+    static_count
+  ) ?
+  let with_static_keys = append_pubkeys(
+    with_static_count,
+    message.static_account_keys,
+    0
+  ) ?
+  let with_blockhash = append_bytes(
+    with_static_keys,
+    message.recent_blockhash.bytes
+  ) ?
+  let with_instruction_count = append_short_u16(
+    with_blockhash,
+    List.length(message.instructions)
+  ) ?
+  let with_instructions = append_compiled_instructions(
+    with_instruction_count,
+    message.instructions,
+    0,
+    static_count,
+    account_count
+  ) ?
+  let with_lookup_count = append_short_u16(
+    with_instructions,
+    List.length(message.address_table_lookups)
+  ) ?
+  let bytes = append_address_table_lookups(
+    with_lookup_count,
+    message.address_table_lookups,
+    0
   ) ?
   if Bytes.length(bytes) > 1232 do
     Err("SOLANA_TX: serialized message exceeds 1232 bytes")

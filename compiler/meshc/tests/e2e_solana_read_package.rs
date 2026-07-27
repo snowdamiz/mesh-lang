@@ -334,7 +334,7 @@ fn solana_tx_package_inspects_jupiter_instruction() {
         project.join("main.mpl"),
         r#"
 from Solana.Read import Hash, Pubkey
-from Solana.Tx import CompiledInstruction, LegacyMessage, MessageHeader, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, serialize_legacy_message
+from Solana.Tx import AddressTableLookup, CompiledInstruction, LegacyMessage, MessageHeader, MessageV0, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, serialize_legacy_message, serialize_message_v0
 
 fn proof() -> Int!String do
   case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
@@ -379,6 +379,33 @@ fn proof() -> Int!String do
       |> println()
     Err(error) -> println(error)
   end
+
+  let v0 = MessageV0 {
+    header: message.header,
+    static_account_keys: message.account_keys,
+    recent_blockhash: message.recent_blockhash,
+    instructions: [
+      CompiledInstruction {
+        program_id_index: 1,
+        account_indexes: [0, 2],
+        data: ("aabb" |> Bytes.from_hex())?
+      }
+    ],
+    address_table_lookups: [
+      AddressTableLookup {
+        account_key: Pubkey { bytes: ("0303030303030303030303030303030303030303030303030303030303030303" |> Bytes.from_hex())? },
+        writable_indexes: [4],
+        readonly_indexes: [5]
+      }
+    ]
+  }
+  case v0
+    |> serialize_message_v0() do
+    Ok(bytes) -> bytes
+      |> Bytes.to_hex()
+      |> println()
+    Err(error) -> println(error)
+  end
   Ok(0)
 end
 
@@ -417,7 +444,8 @@ end
         concat!(
             "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n",
             "{\"accountKeys\":[\"11111111111111111111111111111111\"],\"cleanupCount\":0,\"computeBudgetCount\":1,\"dataBytes\":6,\"instructionCount\":2,\"otherCount\":0,\"programIds\":[\"ComputeBudget111111111111111111111111111111\",\"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4\"],\"schemaVersion\":1,\"setupCount\":0,\"signerKeys\":[\"11111111111111111111111111111111\"],\"source\":\"jupiter-build\",\"tipCount\":0,\"writableKeys\":[\"11111111111111111111111111111111\"]}\n",
-            "0100010200000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020201010100050201010000\n"
+            "0100010200000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020201010100050201010000\n",
+            "8001000102000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202010102000202aabb01030303030303030303030303030303030303030303030303030303030303030301040105\n"
         )
     );
 }
