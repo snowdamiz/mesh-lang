@@ -1,4 +1,23 @@
-from Solana.Read import Pubkey, pubkey, pubkey_string
+from Solana.Read import Hash, Pubkey, pubkey, pubkey_string
+
+pub struct MessageHeader do
+  num_required_signatures :: Int
+  num_readonly_signed_accounts :: Int
+  num_readonly_unsigned_accounts :: Int
+end
+
+pub struct CompiledInstruction do
+  program_id_index :: Int
+  account_indexes :: List < Int >
+  data :: Bytes
+end
+
+pub struct LegacyMessage do
+  header :: MessageHeader
+  account_keys :: List < Pubkey >
+  recent_blockhash :: Hash
+  instructions :: List < CompiledInstruction >
+end
 
 pub struct AccountMeta do
   pubkey :: Pubkey
@@ -19,6 +38,190 @@ pub struct JupiterInstructionSet do
   swap :: Instruction
   cleanup :: Option < Instruction >
   tip :: Option < Instruction >
+end
+
+fn uint8(value :: Int) -> Bytes ! String do
+  value
+    |> Int.to_string()
+    |> Bytes.write_uint_le(1)
+end
+
+fn append_bytes(output :: Bytes, value :: Bytes) -> Bytes ! String do
+  value |2> Bytes.concat(output)
+end
+
+fn append_uint8(output :: Bytes, value :: Int) -> Bytes ! String do
+  append_bytes(output, uint8(value) ?)
+end
+
+fn short_u16(value :: Int) -> Bytes ! String do
+  if value < 0 || value > 65_535 do
+    Err("SOLANA_TX: compact-u16 value is out of range")
+  else
+    if value < 128 do
+      uint8(value)
+    else
+      if value < 16_384 do
+        append_uint8(uint8((value % 128) + 128) ?, value / 128)
+      else
+        let output = append_uint8(
+          uint8((value % 128) + 128) ?,
+          ((value / 128) % 128) + 128
+        ) ?
+        append_uint8(output, value / 16_384)
+      end
+    end
+  end
+end
+
+fn append_short_u16(output :: Bytes, value :: Int) -> Bytes ! String do
+  append_bytes(output, short_u16(value) ?)
+end
+
+fn append_pubkeys(output :: Bytes, keys :: List < Pubkey >, index :: Int) -> Bytes ! String do
+  if index >= List.length(keys) do
+    Ok(output)
+  else
+    let key = keys
+      |> List.get(index)
+    if Bytes.length(key.bytes) != 32 do
+      Err("SOLANA_TX: account key must be 32 bytes")
+    else
+      append_pubkeys(
+        append_bytes(output, key.bytes) ?,
+        keys,
+        index + 1
+      )
+    end
+  end
+end
+
+fn append_account_indexes(
+  output :: Bytes,
+  indexes :: List < Int >,
+  index :: Int,
+  account_count :: Int
+) -> Bytes ! String do
+  if index >= List.length(indexes) do
+    Ok(output)
+  else
+    let account_index = indexes
+      |> List.get(index)
+    if account_index < 0 || account_index >= account_count do
+      Err("SOLANA_TX: instruction account index is out of range")
+    else
+      append_account_indexes(
+        append_uint8(output, account_index) ?,
+        indexes,
+        index + 1,
+        account_count
+      )
+    end
+  end
+end
+
+fn append_compiled_instructions(
+  output :: Bytes,
+  instructions :: List < CompiledInstruction >,
+  index :: Int,
+  account_count :: Int
+) -> Bytes ! String do
+  if index >= List.length(instructions) do
+    Ok(output)
+  else
+    let instruction = instructions
+      |> List.get(index)
+    if instruction.program_id_index < 0 || instruction.program_id_index >= account_count do
+      Err("SOLANA_TX: instruction program index is out of range")
+    else
+      if List.length(instruction.account_indexes) > 256 do
+        Err("SOLANA_TX: instruction exceeds 256 account indexes")
+      else
+        let with_program = append_uint8(
+          output,
+          instruction.program_id_index
+        ) ?
+        let with_account_count = append_short_u16(
+          with_program,
+          List.length(instruction.account_indexes)
+        ) ?
+        let with_accounts = append_account_indexes(
+          with_account_count,
+          instruction.account_indexes,
+          0,
+          account_count
+        ) ?
+        let with_data_count = append_short_u16(
+          with_accounts,
+          Bytes.length(instruction.data)
+        ) ?
+        append_compiled_instructions(
+          append_bytes(with_data_count, instruction.data) ?,
+          instructions,
+          index + 1,
+          account_count
+        )
+      end
+    end
+  end
+end
+
+fn legacy_account_count(message :: LegacyMessage) -> Int ! String do
+  let account_count = message.account_keys
+    |> List.length()
+  let header = message.header
+  if account_count > 256 do
+    Err("SOLANA_TX: legacy message exceeds 256 account keys")
+  else
+    if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
+      Err("SOLANA_TX: invalid legacy message header")
+    else
+      if List.length(message.instructions) > 256 do
+        Err("SOLANA_TX: legacy message exceeds 256 instructions")
+      else
+        if Bytes.length(message.recent_blockhash.bytes) != 32 do
+          Err("SOLANA_TX: recent blockhash must be 32 bytes")
+        else
+          Ok(account_count)
+        end
+      end
+    end
+  end
+end
+
+pub fn serialize_legacy_message(message :: LegacyMessage) -> Bytes ! String do
+  let account_count = (message
+    |> legacy_account_count()) ?
+  let bytes = append_uint8(
+    Bytes.empty(),
+    message.header.num_required_signatures
+  ) ?
+  let bytes = append_uint8(
+    bytes,
+    message.header.num_readonly_signed_accounts
+  ) ?
+  let bytes = append_uint8(
+    bytes,
+    message.header.num_readonly_unsigned_accounts
+  ) ?
+  let bytes = append_short_u16(bytes, account_count) ?
+  let bytes = append_pubkeys(bytes, message.account_keys, 0) ?
+  let bytes = append_bytes(bytes, message.recent_blockhash.bytes) ?
+  let bytes = append_short_u16(
+    bytes,
+    List.length(message.instructions)
+  ) ?
+  let bytes = append_compiled_instructions(
+    bytes,
+    message.instructions,
+    0,
+    account_count
+  ) ?
+  if Bytes.length(bytes) > 1232 do
+    Err("SOLANA_TX: serialized message exceeds 1232 bytes")
+  else
+    Ok(bytes)
+  end
 end
 
 struct InstructionReport do

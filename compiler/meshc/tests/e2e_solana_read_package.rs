@@ -333,9 +333,10 @@ fn solana_tx_package_inspects_jupiter_instruction() {
     fs::write(
         project.join("main.mpl"),
         r#"
-from Solana.Tx import instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json
+from Solana.Read import Hash, Pubkey
+from Solana.Tx import CompiledInstruction, LegacyMessage, MessageHeader, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, serialize_legacy_message
 
-fn main() do
+fn proof() -> Int!String do
   case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
     |> instruction_from_jupiter_json() do
     Err(error) -> println(error)
@@ -350,6 +351,44 @@ fn main() do
     Ok(instructions) -> instructions
       |> jupiter_instruction_set_report_json()
       |> println()
+  end
+
+  let message = LegacyMessage {
+    header: MessageHeader {
+      num_required_signatures: 1,
+      num_readonly_signed_accounts: 0,
+      num_readonly_unsigned_accounts: 1
+    },
+    account_keys: [
+      Pubkey { bytes: ("0000000000000000000000000000000000000000000000000000000000000000" |> Bytes.from_hex())? },
+      Pubkey { bytes: ("0101010101010101010101010101010101010101010101010101010101010101" |> Bytes.from_hex())? }
+    ],
+    recent_blockhash: Hash { bytes: ("0202020202020202020202020202020202020202020202020202020202020202" |> Bytes.from_hex())? },
+    instructions: [
+      CompiledInstruction {
+        program_id_index: 1,
+        account_indexes: [0],
+        data: ("0201010000" |> Bytes.from_hex())?
+      }
+    ]
+  }
+  case message
+    |> serialize_legacy_message() do
+    Ok(bytes) -> bytes
+      |> Bytes.to_hex()
+      |> println()
+    Err(error) -> println(error)
+  end
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Ok(_) -> 0
+    Err(error) -> do
+      println(error)
+      1
+    end
   end
 end
 "#,
@@ -377,7 +416,8 @@ end
         String::from_utf8_lossy(&run.stdout),
         concat!(
             "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n",
-            "{\"accountKeys\":[\"11111111111111111111111111111111\"],\"cleanupCount\":0,\"computeBudgetCount\":1,\"dataBytes\":6,\"instructionCount\":2,\"otherCount\":0,\"programIds\":[\"ComputeBudget111111111111111111111111111111\",\"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4\"],\"schemaVersion\":1,\"setupCount\":0,\"signerKeys\":[\"11111111111111111111111111111111\"],\"source\":\"jupiter-build\",\"tipCount\":0,\"writableKeys\":[\"11111111111111111111111111111111\"]}\n"
+            "{\"accountKeys\":[\"11111111111111111111111111111111\"],\"cleanupCount\":0,\"computeBudgetCount\":1,\"dataBytes\":6,\"instructionCount\":2,\"otherCount\":0,\"programIds\":[\"ComputeBudget111111111111111111111111111111\",\"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4\"],\"schemaVersion\":1,\"setupCount\":0,\"signerKeys\":[\"11111111111111111111111111111111\"],\"source\":\"jupiter-build\",\"tipCount\":0,\"writableKeys\":[\"11111111111111111111111111111111\"]}\n",
+            "0100010200000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020201010100050201010000\n"
         )
     );
 }
