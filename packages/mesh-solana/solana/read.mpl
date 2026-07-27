@@ -428,8 +428,8 @@ current_epoch :: U64) -> Int ! String do
         if U64.compare(pool.pool_token_supply, (U64.parse("0")) ?) <= 0 do
           Err("SOLANA_JITOSOL: pool token supply must be positive")
         else
-          if U64.compare(mint_state.supply, pool.pool_token_supply) != 0 do
-            Err("SOLANA_JITOSOL: mint supply does not match stake pool")
+          if U64.compare(mint_state.supply, pool.pool_token_supply) > 0 do
+            Err("SOLANA_JITOSOL: mint supply exceeds stake pool accounting")
           else
             if U64.compare(pool.last_update_epoch, current_epoch) != 0 do
               Err("SOLANA_JITOSOL: stake pool is stale for the current epoch")

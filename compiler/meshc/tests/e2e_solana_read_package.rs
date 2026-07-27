@@ -221,6 +221,13 @@ fn proof() -> Int!String do
     initialized: mint_state.initialized,
     freeze_authority: mint_state.freeze_authority
   }, epoch)
+  show_nav(pool_address, pool_state, mint_address, Mint {
+    mint_authority: mint_state.mint_authority,
+    supply: (U64.parse("10000000001"))?,
+    decimals: mint_state.decimals,
+    initialized: mint_state.initialized,
+    freeze_authority: mint_state.freeze_authority
+  }, epoch)
 
   show_pubkey("0")
   let zero = "11111111111111111111111111111111"
@@ -310,7 +317,7 @@ end
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "320000006:2\n18446744073709551615\n12345678900\n10000000000\n777\n10000000000\n9:true\n2000000000\n1\n11111111111111111111111111111111\n1234567890\nSOLANA_JITOSOL: mint supply does not match stake pool\nSOLANA_PUBKEY: invalid base58\n11111111111111111111111111111111\n64\n32\n9:true:320000006\n320000006\n320000006\ngetAccountInfo:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"getAccountInfo\",\"params\":[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]}\ngetMultipleAccounts:[[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\"],{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\ngetSlot:[{\"commitment\":\"finalized\"}]\ngetBlockHeight:[{\"commitment\":\"processed\"}]\ngetEpochInfo:[{\"commitment\":\"confirmed\"}]\n777:320000006\ngetLatestBlockhash:[{\"commitment\":\"confirmed\"}]\n320000006:11111111111111111111111111111111:320000156\ngetProgramAccounts:[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\",\"filters\":[{\"memcmp\":{\"offset\":0,\"bytes\":\"11111111111111111111111111111111\"}},{\"dataSize\":611}]}]\naccountSubscribe:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\nslotSubscribe:[]\n41:320000006:82\n42:320000006:320000005:319999974\ndone\n"
+        "320000006:2\n18446744073709551615\n12345678900\n10000000000\n777\n10000000000\n9:true\n2000000000\n1\n11111111111111111111111111111111\n1234567890\n1234567890\nSOLANA_JITOSOL: mint supply exceeds stake pool accounting\nSOLANA_PUBKEY: invalid base58\n11111111111111111111111111111111\n64\n32\n9:true:320000006\n320000006\n320000006\ngetAccountInfo:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"getAccountInfo\",\"params\":[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]}\ngetMultipleAccounts:[[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\"],{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\ngetSlot:[{\"commitment\":\"finalized\"}]\ngetBlockHeight:[{\"commitment\":\"processed\"}]\ngetEpochInfo:[{\"commitment\":\"confirmed\"}]\n777:320000006\ngetLatestBlockhash:[{\"commitment\":\"confirmed\"}]\n320000006:11111111111111111111111111111111:320000156\ngetProgramAccounts:[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\",\"filters\":[{\"memcmp\":{\"offset\":0,\"bytes\":\"11111111111111111111111111111111\"}},{\"dataSize\":611}]}]\naccountSubscribe:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\nslotSubscribe:[]\n41:320000006:82\n42:320000006:320000005:319999974\ndone\n"
     );
 }
 
