@@ -4,11 +4,12 @@
 //! directory, convert file paths to PascalCase module names, extract import
 //! declarations from parsed ASTs, and build a complete module dependency graph.
 
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use mesh_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
 use mesh_parser::ast::item::{Item, SourceFile};
-use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
+use mesh_pkg::manifest::{Dependency, Manifest, DEFAULT_ENTRYPOINT};
 
 /// Convert a snake_case string to PascalCase.
 ///
@@ -140,6 +141,46 @@ fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>,
     })?;
     package_roots.sort();
     Ok(package_roots)
+}
+
+fn discover_path_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String> {
+    let manifest_path = project_root.join("mesh.toml");
+    if !manifest_path.is_file() {
+        return Ok(Vec::new());
+    }
+    let mut roots = Vec::new();
+    let mut visited = BTreeSet::new();
+    collect_path_dependency_roots(
+        project_root,
+        &Manifest::from_file(&manifest_path)?,
+        &mut visited,
+        &mut roots,
+    )?;
+    roots.sort();
+    Ok(roots)
+}
+
+fn collect_path_dependency_roots(
+    package_root: &Path,
+    manifest: &Manifest,
+    visited: &mut BTreeSet<PathBuf>,
+    roots: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    for (name, dependency) in &manifest.dependencies {
+        let Dependency::Path { path } = dependency else {
+            continue;
+        };
+        let root = package_root.join(path).canonicalize().map_err(|error| {
+            format!("Failed to resolve path dependency `{name}` ({path}): {error}")
+        })?;
+        if !visited.insert(root.clone()) {
+            continue;
+        }
+        let dependency_manifest = Manifest::from_file(&root.join("mesh.toml"))?;
+        roots.push(root.clone());
+        collect_path_dependency_roots(&root, &dependency_manifest, visited, roots)?;
+    }
+    Ok(())
 }
 
 fn discover_installed_package_roots_recursive(
@@ -297,25 +338,29 @@ pub fn build_project_with_entrypoint_and_sources(
         module_parses.push(parse);
     }
 
-    // Phase 1b: Discover installed package modules from leaf package roots under
-    // .mesh/packages, including scoped layouts like <owner>/<package>@<version>.
+    // Phase 1b: Discover declared path dependencies and installed package
+    // modules under .mesh/packages.
+    let mut package_roots = discover_path_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
-        for package_root in discover_installed_package_roots(&packages_dir)? {
-            let pkg_files = discover_mesh_files(&package_root)?;
-            for relative_path in &pkg_files {
-                let name = match path_to_module_name(relative_path) {
-                    Some(n) => n,
-                    None => continue, // skip package-root main.mpl
-                };
-                let full_path = package_root.join(relative_path);
-                let source = std::fs::read_to_string(&full_path)
-                    .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
-                let parse = mesh_parser::parse(&source);
-                let _id = graph.add_module(name, full_path, false);
-                module_sources.push(source);
-                module_parses.push(parse);
-            }
+        package_roots.extend(discover_installed_package_roots(&packages_dir)?);
+    }
+    package_roots.sort();
+    package_roots.dedup();
+    for package_root in package_roots {
+        let pkg_files = discover_mesh_files(&package_root)?;
+        for relative_path in &pkg_files {
+            let name = match path_to_module_name(relative_path) {
+                Some(n) => n,
+                None => continue, // skip package-root main.mpl
+            };
+            let full_path = package_root.join(relative_path);
+            let source = std::fs::read_to_string(&full_path)
+                .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
+            let parse = mesh_parser::parse(&source);
+            let _id = graph.add_module(name, full_path, false);
+            module_sources.push(source);
+            module_parses.push(parse);
         }
     }
 
@@ -539,6 +584,40 @@ mod tests {
             .graph
             .resolve("Greeter@1.0.0.Support.Message")
             .is_none());
+    }
+
+    #[test]
+    fn test_build_project_discovers_path_dependency_modules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("app");
+        let dependency = tmp.path().join("shared");
+
+        fs::create_dir_all(root.clone()).unwrap();
+        fs::create_dir_all(dependency.join("support")).unwrap();
+        fs::write(
+            root.join("mesh.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nshared = { path = \"../shared\" }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("main.mpl"),
+            "from Support.Message import message\n\nfn main() do\n  println(message())\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            dependency.join("mesh.toml"),
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            dependency.join("support/message.mpl"),
+            "pub fn message() -> String do\n  \"hello from path dependency\"\nend\n",
+        )
+        .unwrap();
+
+        let project = build_project(&root).unwrap();
+
+        assert!(project.graph.resolve("Support.Message").is_some());
     }
 
     // ── Import extraction tests ─────────────────────────────────────────

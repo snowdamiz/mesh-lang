@@ -477,6 +477,43 @@ fn test_test_runs_tests_directory_target() {
 }
 
 #[test]
+fn test_test_runs_mesh_solana_path_dependency() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    let package = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../packages/mesh-solana")
+        .canonicalize()
+        .unwrap();
+    write_file(
+        &project.join("mesh.toml"),
+        &format!(
+            "[package]\nname = \"solana-path-dependency-test\"\nversion = \"0.1.0\"\n\n[dependencies]\nmesh-solana = {{ path = \"{}\" }}\n",
+            package.display()
+        ),
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/solana.test.mpl"),
+        r#"from Solana.Read import jitosol_mint, pubkey_string
+
+fn capability_matches() -> Bool do
+  case jitosol_mint() do
+    Err(_error) -> false
+    Ok(mint) -> (mint
+      |> pubkey_string()) == "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"
+  end
+end
+
+test("uses the Solana path package from meshc test") do
+  assert(capability_matches())
+end
+"#,
+    );
+
+    assert_meshc_test_target_succeeds(&project);
+}
+
+#[test]
 fn test_test_project_directory_target_succeeds_for_override_entry_without_root_main() {
     let dir = tempfile::tempdir().unwrap();
     let (project_dir, _, _) = write_override_entry_test_project(dir.path());

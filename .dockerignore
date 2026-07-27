@@ -2,6 +2,8 @@
 !Cargo.toml
 !Cargo.lock
 !compiler/**
+!packages/
+!packages/mesh-solana/**
 !tests/
 !tests/e2e/
 !tests/e2e/stdlib_list_contains.mpl

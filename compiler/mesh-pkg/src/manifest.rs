@@ -486,6 +486,22 @@ pub fn rewrite_manifest_entrypoint_source(
     manifest_source: &str,
     entrypoint: &Path,
 ) -> Result<String, String> {
+    rewrite_manifest_source(manifest_source, entrypoint, None)
+}
+
+pub fn rewrite_test_manifest_source(
+    manifest_source: &str,
+    entrypoint: &Path,
+    project_root: &Path,
+) -> Result<String, String> {
+    rewrite_manifest_source(manifest_source, entrypoint, Some(project_root))
+}
+
+fn rewrite_manifest_source(
+    manifest_source: &str,
+    entrypoint: &Path,
+    path_dependency_root: Option<&Path>,
+) -> Result<String, String> {
     let entrypoint_str = entrypoint.to_str().ok_or_else(|| {
         format!(
             "`[package].entrypoint` must be valid UTF-8, got '{}'",
@@ -509,6 +525,34 @@ pub fn rewrite_manifest_entrypoint_source(
         "entrypoint".to_string(),
         toml::Value::String(normalized_entrypoint.to_string_lossy().into_owned()),
     );
+
+    if let Some(root) = path_dependency_root {
+        if let Some(dependencies) = manifest_table
+            .get_mut("dependencies")
+            .and_then(toml::Value::as_table_mut)
+        {
+            for (name, dependency) in dependencies {
+                let Some(path_value) = dependency
+                    .as_table_mut()
+                    .and_then(|table| table.get_mut("path"))
+                else {
+                    continue;
+                };
+                let Some(path) = path_value.as_str().map(str::to_owned) else {
+                    continue;
+                };
+                if Path::new(&path).is_absolute() {
+                    continue;
+                }
+                let absolute = root.join(&path).canonicalize().map_err(|error| {
+                    format!(
+                        "Failed to resolve path dependency `{name}` ({path}) for test manifest: {error}"
+                    )
+                })?;
+                *path_value = toml::Value::String(absolute.to_string_lossy().into_owned());
+            }
+        }
+    }
 
     toml::to_string_pretty(&manifest_value)
         .map_err(|error| format!("Failed to serialize manifest rewrite: {}", error))

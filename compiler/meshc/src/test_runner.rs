@@ -25,7 +25,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use mesh_pkg::manifest::{
-    resolve_entrypoint, rewrite_manifest_entrypoint_source, Manifest, DEFAULT_ENTRYPOINT,
+    resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
 use mesh_typeck::diagnostics::DiagnosticOptions;
 
@@ -148,7 +148,11 @@ fn resolve_test_files(target: Option<&Path>) -> Result<Vec<PathBuf>, String> {
 }
 
 fn synthetic_test_manifest_source(test_project: &ResolvedTestProject) -> Result<String, String> {
-    rewrite_manifest_entrypoint_source(&test_project.manifest_source, Path::new(DEFAULT_ENTRYPOINT))
+    rewrite_test_manifest_source(
+        &test_project.manifest_source,
+        Path::new(DEFAULT_ENTRYPOINT),
+        &test_project.project_dir,
+    )
 }
 
 fn prepare_temp_test_project(
@@ -1345,6 +1349,10 @@ mod tests {
             "pub fn answer() -> Int do\n  42\nend\n",
         );
         write_file(
+            &temp.path().join("shared/mesh.toml"),
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        );
+        write_file(
             &project_dir.join("tests/support.mpl"),
             "pub fn check() -> String do\n  \"support\"\nend\n",
         );
@@ -1393,7 +1401,13 @@ mod tests {
         let entrypoint = resolve_entrypoint(tmp.path(), Some(&manifest)).unwrap();
 
         assert_eq!(entrypoint, PathBuf::from(DEFAULT_ENTRYPOINT));
-        assert!(manifest.dependencies.contains_key("shared"));
+        match &manifest.dependencies["shared"] {
+            mesh_pkg::manifest::Dependency::Path { path } => assert_eq!(
+                Path::new(path),
+                temp.path().join("shared").canonicalize().unwrap()
+            ),
+            dependency => panic!("expected path dependency, got {dependency:?}"),
+        }
         assert!(!tmp.path().join("lib/start.mpl").exists());
         assert!(tmp.path().join(DEFAULT_ENTRYPOINT).exists());
     }
