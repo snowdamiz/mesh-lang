@@ -422,7 +422,13 @@ fn proof() -> Int!String do
       AddressTableLookup {
         account_key: Pubkey { bytes: ("0303030303030303030303030303030303030303030303030303030303030303" |> Bytes.from_hex())? },
         writable_indexes: [4],
-        readonly_indexes: [5]
+        readonly_indexes: [5],
+        writable_addresses: [
+          Pubkey { bytes: ("0404040404040404040404040404040404040404040404040404040404040404" |> Bytes.from_hex())? }
+        ],
+        readonly_addresses: [
+          Pubkey { bytes: ("0505050505050505050505050505050505050505050505050505050505050505" |> Bytes.from_hex())? }
+        ]
       }
     ]
   }
@@ -476,7 +482,7 @@ end
             "{\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"instructionCount\":1,\"loadedReadonlyAccounts\":0,\"loadedWritableAccounts\":0,\"lookupTableKeys\":[],\"messageBytes\":110,\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"requiredSignatures\":1,\"schemaVersion\":1,\"version\":\"legacy\"}\n",
             "simulateTransaction:175\n",
             "8001000102000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202010102000202aabb01030303030303030303030303030303030303030303030303030303030303030301040105\n",
-            "{\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"instructionCount\":1,\"loadedReadonlyAccounts\":1,\"loadedWritableAccounts\":1,\"lookupTableKeys\":[\"CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8\"],\"messageBytes\":146,\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"requiredSignatures\":1,\"schemaVersion\":1,\"version\":\"v0\"}\n"
+            "{\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\",\"GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq\",\"LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY\"],\"instructionCount\":1,\"loadedReadonlyAccountKeys\":[\"LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY\"],\"loadedReadonlyAccounts\":1,\"loadedWritableAccountKeys\":[\"GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq\"],\"loadedWritableAccounts\":1,\"lookupTableKeys\":[\"CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8\"],\"messageBytes\":146,\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"requiredSignatures\":1,\"schemaVersion\":1,\"staticAccountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"version\":\"v0\"}\n"
         )
     );
 }

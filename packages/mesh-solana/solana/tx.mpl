@@ -23,6 +23,8 @@ pub struct AddressTableLookup do
   account_key :: Pubkey
   writable_indexes :: List < Int >
   readonly_indexes :: List < Int >
+  writable_addresses :: List < Pubkey >
+  readonly_addresses :: List < Pubkey >
 end
 
 pub struct MessageV0 do
@@ -218,6 +220,24 @@ fn append_pubkeys(output :: Bytes, keys :: List < Pubkey >, index :: Int) -> Byt
   end
 end
 
+fn validate_pubkeys(
+  keys :: List < Pubkey >,
+  index :: Int,
+  label :: String
+) -> Int ! String do
+  if index >= List.length(keys) do
+    Ok(index)
+  else
+    let key = keys
+      |> List.get(index)
+    if Bytes.length(key.bytes) != 32 do
+      Err("SOLANA_TX: #{label} key must be 32 bytes")
+    else
+      validate_pubkeys(keys, index + 1, label)
+    end
+  end
+end
+
 fn append_account_indexes(
   output :: Bytes,
   indexes :: List < Int >,
@@ -320,27 +340,37 @@ end
 pub fn serialize_legacy_message(message :: LegacyMessage) -> Bytes ! String do
   let account_count = (message
     |> legacy_account_count()) ?
-  let bytes = append_uint8(
+  let with_signatures = append_uint8(
     Bytes.empty(),
     message.header.num_required_signatures
   ) ?
-  let bytes = append_uint8(
-    bytes,
+  let with_readonly_signers = append_uint8(
+    with_signatures,
     message.header.num_readonly_signed_accounts
   ) ?
-  let bytes = append_uint8(
-    bytes,
+  let with_readonly_unsigned = append_uint8(
+    with_readonly_signers,
     message.header.num_readonly_unsigned_accounts
   ) ?
-  let bytes = append_short_u16(bytes, account_count) ?
-  let bytes = append_pubkeys(bytes, message.account_keys, 0) ?
-  let bytes = append_bytes(bytes, message.recent_blockhash.bytes) ?
-  let bytes = append_short_u16(
-    bytes,
+  let with_account_count = append_short_u16(
+    with_readonly_unsigned,
+    account_count
+  ) ?
+  let with_account_keys = append_pubkeys(
+    with_account_count,
+    message.account_keys,
+    0
+  ) ?
+  let with_blockhash = append_bytes(
+    with_account_keys,
+    message.recent_blockhash.bytes
+  ) ?
+  let with_instruction_count = append_short_u16(
+    with_blockhash,
     List.length(message.instructions)
   ) ?
   let bytes = append_compiled_instructions(
-    bytes,
+    with_instruction_count,
     message.instructions,
     0,
     account_count,
@@ -369,7 +399,13 @@ fn loaded_account_count(
       |> List.length()
     if Bytes.length(lookup.account_key.bytes) != 32 do
       Err("SOLANA_TX: address lookup table key must be 32 bytes")
+    else if writable_count != List.length(lookup.writable_addresses) || readonly_count != List.length(lookup.readonly_addresses) do
+      Err("SOLANA_TX: address lookup indexes and resolved addresses differ")
     else
+      (lookup.writable_addresses
+        |> validate_pubkeys(0, "loaded writable account")) ?
+      (lookup.readonly_addresses
+        |> validate_pubkeys(0, "loaded readonly account")) ?
       if writable_count > 256 || readonly_count > 256 do
         Err("SOLANA_TX: address lookup exceeds 256 indexes")
       else
@@ -990,6 +1026,28 @@ fn lookup_table_keys(
   end
 end
 
+fn loaded_address_strings(
+  lookups :: List < AddressTableLookup >,
+  index :: Int,
+  writable :: Bool,
+  keys :: List < String >
+) -> List < String > do
+  if index >= List.length(lookups) do
+    keys
+  else
+    let lookup = lookups
+      |> List.get(index)
+    let addresses = if writable do
+      lookup.writable_addresses
+    else
+      lookup.readonly_addresses
+    end
+    addresses
+      |> pubkey_strings(0, keys)
+      |4> loaded_address_strings(lookups, index + 1, writable)
+  end
+end
+
 fn loaded_accounts(
   lookups :: List < AddressTableLookup >,
   index :: Int,
@@ -1045,14 +1103,38 @@ pub fn message_v0_report_json(
     0,
     0
   )
+  let static_keys = pubkey_strings(
+    message.static_account_keys,
+    0,
+    List.new()
+  )
+  let writable_keys = loaded_address_strings(
+    message.address_table_lookups,
+    0,
+    true,
+    List.new()
+  )
+  let readonly_keys = loaded_address_strings(
+    message.address_table_lookups,
+    0,
+    false,
+    List.new()
+  )
   Ok(json {
     schemaVersion : 1,
     version : "v0",
     requiredSignatures : message.header.num_required_signatures,
-    accountKeys : pubkey_strings(
-      message.static_account_keys,
+    staticAccountKeys : static_keys,
+    accountKeys : loaded_address_strings(
+      message.address_table_lookups,
       0,
-      List.new()
+      false,
+      loaded_address_strings(
+        message.address_table_lookups,
+        0,
+        true,
+        static_keys
+      )
     ),
     programIds : compiled_program_ids(
       message.static_account_keys,
@@ -1068,6 +1150,8 @@ pub fn message_v0_report_json(
     ),
     loadedWritableAccounts : List.get(loaded, 0),
     loadedReadonlyAccounts : List.get(loaded, 1),
+    loadedWritableAccountKeys : writable_keys,
+    loadedReadonlyAccountKeys : readonly_keys,
     messageBytes : Bytes.length(bytes)
   })
 end
