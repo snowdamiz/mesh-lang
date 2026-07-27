@@ -938,6 +938,140 @@ fn append_unique(values :: List < String >, value :: String) -> List < String > 
   end
 end
 
+fn pubkey_strings(
+  keys :: List < Pubkey >,
+  index :: Int,
+  values :: List < String >
+) -> List < String > do
+  if index >= List.length(keys) do
+    values
+  else
+    keys
+      |> List.get(index)
+      |> pubkey_string()
+      |2> List.append(values)
+      |3> pubkey_strings(keys, index + 1)
+  end
+end
+
+fn compiled_program_ids(
+  keys :: List < Pubkey >,
+  instructions :: List < CompiledInstruction >,
+  index :: Int,
+  values :: List < String >
+) -> List < String > do
+  if index >= List.length(instructions) do
+    values
+  else
+    let instruction = instructions
+      |> List.get(index)
+    keys
+      |> List.get(instruction.program_id_index)
+      |> pubkey_string()
+      |2> append_unique(values)
+      |4> compiled_program_ids(keys, instructions, index + 1)
+  end
+end
+
+fn lookup_table_keys(
+  lookups :: List < AddressTableLookup >,
+  index :: Int,
+  keys :: List < String >
+) -> List < String > do
+  if index >= List.length(lookups) do
+    keys
+  else
+    let lookup = lookups
+      |> List.get(index)
+    lookup.account_key
+      |> pubkey_string()
+      |2> List.append(keys)
+      |3> lookup_table_keys(lookups, index + 1)
+  end
+end
+
+fn loaded_accounts(
+  lookups :: List < AddressTableLookup >,
+  index :: Int,
+  writable :: Int,
+  readonly :: Int
+) -> List < Int > do
+  if index >= List.length(lookups) do
+    [writable, readonly]
+  else
+    let lookup = lookups
+      |> List.get(index)
+    loaded_accounts(
+      lookups,
+      index + 1,
+      writable + List.length(lookup.writable_indexes),
+      readonly + List.length(lookup.readonly_indexes)
+    )
+  end
+end
+
+pub fn legacy_message_report_json(
+  message :: LegacyMessage
+) -> String ! String do
+  let bytes = (message
+    |> serialize_legacy_message()) ?
+  Ok(json {
+    schemaVersion : 1,
+    version : "legacy",
+    requiredSignatures : message.header.num_required_signatures,
+    accountKeys : pubkey_strings(message.account_keys, 0, List.new()),
+    programIds : compiled_program_ids(
+      message.account_keys,
+      message.instructions,
+      0,
+      List.new()
+    ),
+    instructionCount : List.length(message.instructions),
+    lookupTableKeys : List.new(),
+    loadedWritableAccounts : 0,
+    loadedReadonlyAccounts : 0,
+    messageBytes : Bytes.length(bytes)
+  })
+end
+
+pub fn message_v0_report_json(
+  message :: MessageV0
+) -> String ! String do
+  let bytes = (message
+    |> serialize_message_v0()) ?
+  let loaded = loaded_accounts(
+    message.address_table_lookups,
+    0,
+    0,
+    0
+  )
+  Ok(json {
+    schemaVersion : 1,
+    version : "v0",
+    requiredSignatures : message.header.num_required_signatures,
+    accountKeys : pubkey_strings(
+      message.static_account_keys,
+      0,
+      List.new()
+    ),
+    programIds : compiled_program_ids(
+      message.static_account_keys,
+      message.instructions,
+      0,
+      List.new()
+    ),
+    instructionCount : List.length(message.instructions),
+    lookupTableKeys : lookup_table_keys(
+      message.address_table_lookups,
+      0,
+      List.new()
+    ),
+    loadedWritableAccounts : List.get(loaded, 0),
+    loadedReadonlyAccounts : List.get(loaded, 1),
+    messageBytes : Bytes.length(bytes)
+  })
+end
+
 fn collect_account(report :: JupiterInstructionReport, account :: AccountMeta) -> JupiterInstructionReport do
   let key = account.pubkey
     |> pubkey_string()
