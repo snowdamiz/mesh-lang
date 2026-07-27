@@ -1510,6 +1510,17 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
         );
         self.known_functions.insert(
+            "mesh_http_stage_timeout".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::String, MirType::Int],
+                Box::new(MirType::Int),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_http_max_response_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
             "mesh_http_query".to_string(),
             MirType::FnPtr(
                 vec![MirType::Int, MirType::String, MirType::String],
@@ -1559,6 +1570,17 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             "mesh_http_client_close".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
+        );
+        self.known_functions.insert(
+            "mesh_http_retry_class".to_string(),
+            MirType::FnPtr(
+                vec![MirType::String, MirType::String],
+                Box::new(MirType::String),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_http_metrics".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
             "mesh_ws_client_options".to_string(),
@@ -13750,6 +13772,8 @@ fn map_builtin_name(name: &str) -> String {
         "http_header" => "mesh_http_header".to_string(),
         "http_body" => "mesh_http_body".to_string(),
         "http_timeout" => "mesh_http_timeout".to_string(),
+        "http_stage_timeout" => "mesh_http_stage_timeout".to_string(),
+        "http_max_response_bytes" => "mesh_http_max_response_bytes".to_string(),
         "http_query" => "mesh_http_query".to_string(),
         "http_json" => "mesh_http_json".to_string(),
         "http_send" => "mesh_http_send".to_string(),
@@ -13760,6 +13784,8 @@ fn map_builtin_name(name: &str) -> String {
         "http_client" => "mesh_http_client".to_string(),
         "http_send_with" => "mesh_http_send_with".to_string(),
         "http_client_close" => "mesh_http_client_close".to_string(),
+        "http_retry_class" => "mesh_http_retry_class".to_string(),
+        "http_metrics" => "mesh_http_metrics".to_string(),
         "ws_client_options"
         | "ws_client_connect_timeout"
         | "ws_client_heartbeat_timeout"
@@ -14816,6 +14842,27 @@ pub fn lower_to_mir(
             ("body".to_string(), MirType::Ptr), // *mut MeshString
             ("headers".to_string(), MirType::Ptr), // *mut MeshMap
         ],
+    });
+    lowerer.structs.push(MirStructDef {
+        name: "HttpClientMetrics".to_string(),
+        fields: [
+            "requests",
+            "in_flight",
+            "dns_micros",
+            "connect_micros",
+            "tls_micros",
+            "dns_failures",
+            "connect_failures",
+            "tls_failures",
+            "timeouts",
+            "first_byte_micros",
+            "total_micros",
+            "response_bytes",
+            "cancellations",
+        ]
+        .into_iter()
+        .map(|name| (name.to_string(), MirType::Int))
+        .collect(),
     });
     lowerer.structs.push(MirStructDef {
         name: "WsMessage".to_string(),

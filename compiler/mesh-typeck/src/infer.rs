@@ -765,6 +765,20 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         )),
     );
     http_client_mod.insert(
+        "stage_timeout".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::Con(TyCon::new("Atom")), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
+    http_client_mod.insert(
+        "max_response_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
+    http_client_mod.insert(
         "query".to_string(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::string(), Ty::string()],
@@ -798,7 +812,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     http_client_mod.insert(
         "stream_bytes".to_string(),
         Scheme::mono(Ty::fun(
-            vec![http_req_t.clone(), stream_cb_t],
+            vec![http_req_t.clone(), Ty::fun(vec![Ty::bytes()], Ty::string())],
             Ty::int(), // cancel handle
         )),
     );
@@ -824,6 +838,17 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     http_client_mod.insert(
         "client_close".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Tuple(vec![]))),
+    );
+    http_client_mod.insert(
+        "retry_class".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::Con(TyCon::new("Atom")), Ty::string()],
+            Ty::string(),
+        )),
+    );
+    http_client_mod.insert(
+        "metrics".to_string(),
+        Scheme::mono(Ty::fun(vec![], Ty::Con(TyCon::new("HttpClientMetrics")))),
     );
 
     modules.insert("Http".to_string(), http_client_mod);
@@ -3413,6 +3438,25 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("status".to_string(), Ty::int()),
             ("body".to_string(), Ty::string()),
             ("headers".to_string(), Ty::map(Ty::string(), Ty::string())),
+        ],
+    });
+    type_registry.register_struct(StructDefInfo {
+        name: "HttpClientMetrics".to_string(),
+        generic_params: vec![],
+        fields: vec![
+            ("requests".to_string(), Ty::int()),
+            ("in_flight".to_string(), Ty::int()),
+            ("dns_micros".to_string(), Ty::int()),
+            ("connect_micros".to_string(), Ty::int()),
+            ("tls_micros".to_string(), Ty::int()),
+            ("dns_failures".to_string(), Ty::int()),
+            ("connect_failures".to_string(), Ty::int()),
+            ("tls_failures".to_string(), Ty::int()),
+            ("timeouts".to_string(), Ty::int()),
+            ("first_byte_micros".to_string(), Ty::int()),
+            ("total_micros".to_string(), Ty::int()),
+            ("response_bytes".to_string(), Ty::int()),
+            ("cancellations".to_string(), Ty::int()),
         ],
     });
     type_registry.register_struct(StructDefInfo {

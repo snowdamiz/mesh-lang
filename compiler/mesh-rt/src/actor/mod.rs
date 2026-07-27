@@ -88,6 +88,15 @@ pub(crate) struct CooperativeSender<T> {
     waiter: Option<ProcessId>,
 }
 
+impl<T> Clone for CooperativeSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            waiter: self.waiter,
+        }
+    }
+}
+
 impl<T> CooperativeSender<T> {
     pub(crate) fn send(&self, value: T) -> Result<(), std::sync::mpsc::SendError<T>> {
         self.sender.send(value)?;

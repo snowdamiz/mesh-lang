@@ -693,6 +693,20 @@ pub fn register_builtins(
             http_req_t.clone(),
         )),
     );
+    env.insert(
+        "http_stage_timeout".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::Con(TyCon::new("Atom")), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
+    env.insert(
+        "http_max_response_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
     // Http.query(req, key, val) -> Request
     env.insert(
         "http_query".into(),
@@ -732,7 +746,7 @@ pub fn register_builtins(
     env.insert(
         "http_stream_bytes".into(),
         Scheme::mono(Ty::fun(
-            vec![http_req_t.clone(), stream_cb_t],
+            vec![http_req_t.clone(), Ty::fun(vec![Ty::bytes()], Ty::string())],
             Ty::int(), // cancel handle
         )),
     );
@@ -759,6 +773,17 @@ pub fn register_builtins(
     env.insert(
         "http_client_close".into(),
         Scheme::mono(Ty::fun(vec![http_client_handle_t], Ty::Tuple(vec![]))),
+    );
+    env.insert(
+        "http_retry_class".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::Con(TyCon::new("Atom")), Ty::string()],
+            Ty::string(),
+        )),
+    );
+    env.insert(
+        "http_metrics".into(),
+        Scheme::mono(Ty::fun(vec![], Ty::Con(TyCon::new("HttpClientMetrics")))),
     );
 
     // ── Scheduler-aware WebSocket client ─────────────────────────────────

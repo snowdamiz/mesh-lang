@@ -910,6 +910,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_http_stage_timeout(handle: i64, stage: ptr, ms: i64) -> i64
+    module.add_function(
+        "mesh_http_stage_timeout",
+        i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_http_max_response_bytes(handle: i64, bytes: i64) -> i64
+    module.add_function(
+        "mesh_http_max_response_bytes",
+        timeout_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_http_query(handle: i64, key: ptr, val: ptr) -> i64
     let query_ty = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false);
     module.add_function(
@@ -980,6 +994,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_http_client_close",
         close_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_http_retry_class(method: ptr, error: ptr) -> ptr
+    module.add_function(
+        "mesh_http_retry_class",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_http_metrics() -> ptr (HttpClientMetrics)
+    module.add_function(
+        "mesh_http_metrics",
+        ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
 
