@@ -12,7 +12,25 @@ pub struct Instruction do
   data :: Bytes
 end
 
+pub struct JupiterInstructionSet do
+  compute_budget :: List < Instruction >
+  setup :: List < Instruction >
+  other :: List < Instruction >
+  swap :: Instruction
+  cleanup :: Option < Instruction >
+  tip :: Option < Instruction >
+end
+
 struct InstructionReport do
+  account_keys :: List < String >
+  signer_keys :: List < String >
+  writable_keys :: List < String >
+end
+
+struct JupiterInstructionReport do
+  instruction_count :: Int
+  data_bytes :: Int
+  program_ids :: List < String >
   account_keys :: List < String >
   signer_keys :: List < String >
   writable_keys :: List < String >
@@ -110,6 +128,108 @@ pub fn instruction_from_jupiter_json(raw :: String) -> Instruction ! String do
   end
 end
 
+fn instruction_list(values :: Json, index :: Int, total :: Int, instructions :: List < Instruction >) -> List < Instruction > ! String do
+  if index >= total do
+    Ok(instructions)
+  else
+    instruction_list(
+      values,
+      index + 1,
+      total,
+      instructions
+        |> List.append(((values
+          |> Json.array_get(index)) ?
+          |> Json.encode()
+          |> instruction_from_jupiter_json()) ?)
+    )
+  end
+end
+
+fn instruction_array_field(root :: Json, field :: String) -> List < Instruction > ! String do
+  case root
+    |> Json.object_get(field) do
+    Err( _) -> Err("SOLANA_TX: missing field #{field}")
+    Ok(values) -> case values
+      |> Json.array_length() do
+      Err( _) -> Err("SOLANA_TX: field #{field} must be an array")
+      Ok(total) -> if total > 64 do
+        Err("SOLANA_TX: field #{field} exceeds 64 instructions")
+      else
+        instruction_list(values, 0, total, List.new())
+      end
+    end
+  end
+end
+
+fn instruction_field(root :: Json, field :: String) -> Instruction ! String do
+  case root
+    |> Json.object_get(field) do
+    Err( _) -> Err("SOLANA_TX: missing field #{field}")
+    Ok(value) -> value
+      |> Json.encode()
+      |> instruction_from_jupiter_json()
+  end
+end
+
+fn optional_instruction_field(root :: Json, field :: String) -> Option < Instruction > ! String do
+  case root
+    |> Json.object_get(field) do
+    Err( _) -> Ok(None)
+    Ok(value) -> if value
+      |> Json.is_null() do
+      Ok(None)
+    else
+      Ok(Some((value
+        |> Json.encode()
+        |> instruction_from_jupiter_json()) ?))
+    end
+  end
+end
+
+fn option_count(value :: Option < Instruction >) -> Int do
+  case value do
+    None -> 0
+    Some( _) -> 1
+  end
+end
+
+fn add_count(total :: Int, value :: Int) -> Int do
+  total + value
+end
+
+fn instruction_set_count(value :: JupiterInstructionSet) -> Int do
+  1
+    |> add_count(List.length(value.compute_budget))
+    |> add_count(List.length(value.setup))
+    |> add_count(List.length(value.other))
+    |> add_count(option_count(value.cleanup))
+    |> add_count(option_count(value.tip))
+end
+
+pub fn jupiter_instruction_set_from_json(raw :: String) -> JupiterInstructionSet ! String do
+  let root = (raw
+    |> Json.parse()) ?
+  let instructions = JupiterInstructionSet {
+    compute_budget : (root
+      |> instruction_array_field("computeBudgetInstructions")) ?,
+    setup : (root
+      |> instruction_array_field("setupInstructions")) ?,
+    other : (root
+      |> instruction_array_field("otherInstructions")) ?,
+    swap : (root
+      |> instruction_field("swapInstruction")) ?,
+    cleanup : (root
+      |> optional_instruction_field("cleanupInstruction")) ?,
+    tip : (root
+      |> optional_instruction_field("tipInstruction")) ?
+  }
+  if instruction_set_count(instructions) > 64 do
+    Err("SOLANA_TX: Jupiter instruction set exceeds 64 instructions")
+  else
+    Ok(instructions)
+  end
+end
+
 fn append_if(values :: List < String >, include :: Bool, value :: String) -> List < String > do
   if include do
     values
@@ -158,5 +278,107 @@ pub fn instruction_report_json(instruction :: Instruction) -> String do
       |> Bytes.to_base64(),
     dataBytes : instruction.data
       |> Bytes.length()
+  }
+end
+
+fn append_unique(values :: List < String >, value :: String) -> List < String > do
+  if List.contains(values, value) do
+    values
+  else
+    values
+      |> List.append(value)
+  end
+end
+
+fn collect_account(report :: JupiterInstructionReport, account :: AccountMeta) -> JupiterInstructionReport do
+  let key = account.pubkey
+    |> pubkey_string()
+  %{report |
+    account_keys : report.account_keys
+      |> append_unique(key),
+    signer_keys : report.signer_keys
+      |> append_unique_if(account.signer, key),
+    writable_keys : report.writable_keys
+      |> append_unique_if(account.writable, key)
+  }
+end
+
+fn append_unique_if(values :: List < String >, include :: Bool, value :: String) -> List < String > do
+  if include do
+    values
+      |> append_unique(value)
+  else
+    values
+  end
+end
+
+fn collect_accounts(report :: JupiterInstructionReport, accounts :: List < AccountMeta >, index :: Int) -> JupiterInstructionReport do
+  if index >= List.length(accounts) do
+    report
+  else
+    report
+      |> collect_account(List.get(accounts, index))
+      |> collect_accounts(accounts, index + 1)
+  end
+end
+
+fn collect_instruction(report :: JupiterInstructionReport, instruction :: Instruction) -> JupiterInstructionReport do
+  %{report |
+    instruction_count : report.instruction_count + 1,
+    data_bytes : report.data_bytes + Bytes.length(instruction.data),
+    program_ids : report.program_ids
+      |> append_unique(instruction.program_id
+        |> pubkey_string())
+  }
+    |> collect_accounts(instruction.accounts, 0)
+end
+
+fn collect_instructions(report :: JupiterInstructionReport, instructions :: List < Instruction >, index :: Int) -> JupiterInstructionReport do
+  if index >= List.length(instructions) do
+    report
+  else
+    report
+      |> collect_instruction(List.get(instructions, index))
+      |> collect_instructions(instructions, index + 1)
+  end
+end
+
+fn collect_optional_instruction(report :: JupiterInstructionReport, instruction :: Option < Instruction >) -> JupiterInstructionReport do
+  case instruction do
+    None -> report
+    Some(value) -> report
+      |> collect_instruction(value)
+  end
+end
+
+pub fn jupiter_instruction_set_report_json(instructions :: JupiterInstructionSet) -> String do
+  let report = JupiterInstructionReport {
+    instruction_count : 0,
+    data_bytes : 0,
+    program_ids : List.new(),
+    account_keys : List.new(),
+    signer_keys : List.new(),
+    writable_keys : List.new()
+  }
+    |> collect_instructions(instructions.compute_budget, 0)
+    |> collect_instructions(instructions.setup, 0)
+    |> collect_instructions(instructions.other, 0)
+    |> collect_instruction(instructions.swap)
+    |> collect_optional_instruction(instructions.cleanup)
+    |> collect_optional_instruction(instructions.tip)
+  json {
+    schemaVersion : 1,
+    source : "jupiter-build",
+    instructionCount : report.instruction_count,
+    computeBudgetCount : List.length(instructions.compute_budget),
+    setupCount : List.length(instructions.setup),
+    otherCount : List.length(instructions.other),
+    cleanupCount : option_count(instructions.cleanup),
+    tipCount : option_count(instructions.tip),
+    dataBytes : report.data_bytes,
+    programIds : report.program_ids,
+    accountKeys : report.account_keys,
+    signerKeys : report.signer_keys,
+    writableKeys : report.writable_keys
   }
 end

@@ -6,8 +6,9 @@ The package provides canonical `Pubkey`, `Signature`, and `Hash` parsing;
 typed JSON-RPC requests/responses; account, slot, and block-height decoding;
 program-account filters; WebSocket account/program/slot subscriptions; SPL
 token account and mint layouts; and the SPL stake-pool fields used by JitoSOL.
-It also ingests bounded Jupiter raw-instruction JSON into typed account metadata
-and emits a program, signer, writable-account, and data report for allowlisting.
+It also ingests bounded Jupiter raw-instruction JSON—individually or as a build
+instruction set—into typed account metadata and emits program, signer,
+writable-account, and data reports for allowlisting.
 
 The account decoders validate the SPL stake-pool and token-program owners.
 `jitosol_nav` then validates the deployed Jito stake-pool and mint addresses,

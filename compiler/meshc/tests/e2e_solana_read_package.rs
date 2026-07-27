@@ -333,7 +333,7 @@ fn solana_tx_package_inspects_jupiter_instruction() {
     fs::write(
         project.join("main.mpl"),
         r#"
-from Solana.Tx import instruction_from_jupiter_json, instruction_report_json
+from Solana.Tx import instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json
 
 fn main() do
   case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
@@ -341,6 +341,14 @@ fn main() do
     Err(error) -> println(error)
     Ok(instruction) -> instruction
       |> instruction_report_json()
+      |> println()
+  end
+
+  case """{"computeBudgetInstructions":[{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}],"setupInstructions":[],"swapInstruction":{"programId":"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4","accounts":[{"pubkey":"11111111111111111111111111111111","isSigner":true,"isWritable":true}],"data":"BAUG"},"cleanupInstruction":null,"otherInstructions":[],"addressesByLookupTableAddress":{}}"""
+    |> jupiter_instruction_set_from_json() do
+    Err(error) -> println(error)
+    Ok(instructions) -> instructions
+      |> jupiter_instruction_set_report_json()
       |> println()
   end
 end
@@ -367,6 +375,9 @@ end
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n"
+        concat!(
+            "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n",
+            "{\"accountKeys\":[\"11111111111111111111111111111111\"],\"cleanupCount\":0,\"computeBudgetCount\":1,\"dataBytes\":6,\"instructionCount\":2,\"otherCount\":0,\"programIds\":[\"ComputeBudget111111111111111111111111111111\",\"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4\"],\"schemaVersion\":1,\"setupCount\":0,\"signerKeys\":[\"11111111111111111111111111111111\"],\"source\":\"jupiter-build\",\"tipCount\":0,\"writableKeys\":[\"11111111111111111111111111111111\"]}\n"
+        )
     );
 }
