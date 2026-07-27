@@ -1,4 +1,4 @@
-from Solana.Read import Hash, Pubkey, pubkey, pubkey_string
+from Solana.Read import Hash, Pubkey, pubkey, pubkey_string, spl_token_program
 
 pub struct MessageHeader do
   num_required_signatures :: Int
@@ -96,6 +96,74 @@ pub fn compute_unit_price_instruction(micro_lamports :: U64) -> Instruction ! St
       |> U64.to_string()
       |> Bytes.write_uint_le(8)) ?)
       |2> append_bytes(uint8(3) ?)) ?
+  })
+end
+
+fn checked_account_meta(
+  key :: Pubkey,
+  signer :: Bool,
+  writable :: Bool
+) -> AccountMeta ! String do
+  if Bytes.length(key.bytes) != 32 do
+    Err("SOLANA_TX: instruction account key must be 32 bytes")
+  else
+    Ok(AccountMeta {
+      pubkey : key,
+      signer : signer,
+      writable : writable
+    })
+  end
+end
+
+pub fn transfer_checked_instruction(
+  source :: Pubkey,
+  mint :: Pubkey,
+  destination :: Pubkey,
+  authority :: Pubkey,
+  amount :: U64,
+  decimals :: Int
+) -> Instruction ! String do
+  if decimals < 0 || decimals > 255 do
+    Err("SOLANA_TX: token decimals are out of u8 range")
+  else
+    let amount_bytes = (amount
+      |> U64.to_string()
+      |> Bytes.write_uint_le(8)) ?
+    let with_discriminator = (amount_bytes
+      |2> append_bytes(uint8(12) ?)) ?
+    Ok(Instruction {
+      program_id : spl_token_program() ?,
+      accounts : [
+        checked_account_meta(source, false, true) ?,
+        checked_account_meta(mint, false, false) ?,
+        checked_account_meta(destination, false, true) ?,
+        checked_account_meta(authority, true, false) ?
+      ],
+      data : append_uint8(with_discriminator, decimals) ?
+    })
+  end
+end
+
+pub fn create_associated_token_idempotent_instruction(
+  payer :: Pubkey,
+  associated_account :: Pubkey,
+  wallet :: Pubkey,
+  mint :: Pubkey
+) -> Instruction ! String do
+  let token_program = spl_token_program() ?
+  Ok(Instruction {
+    program_id : ("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+      |> pubkey()) ?,
+    accounts : [
+      checked_account_meta(payer, true, true) ?,
+      checked_account_meta(associated_account, false, true) ?,
+      checked_account_meta(wallet, false, false) ?,
+      checked_account_meta(mint, false, false) ?,
+      checked_account_meta(("11111111111111111111111111111111"
+        |> pubkey()) ?, false, false) ?,
+      checked_account_meta(token_program, false, false) ?
+    ],
+    data : uint8(1) ?
   })
 end
 
