@@ -359,7 +359,7 @@ fn solana_tx_package_inspects_jupiter_instruction() {
         project.join("main.mpl"),
         r#"
 from Solana.Read import Hash, Pubkey
-from Solana.Tx import AddressTableLookup, CompiledInstruction, LegacyMessage, MessageHeader, MessageV0, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, legacy_message_report_json, message_v0_report_json, serialize_legacy_message, serialize_message_v0, serialize_unsigned_legacy_transaction, simulate_transaction_request
+from Solana.Tx import AccountMeta, AddressTableLookup, CompiledInstruction, Instruction, LegacyMessage, MessageHeader, MessageV0, compile_legacy_message, compile_message_v0, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, jupiter_instructions, legacy_message_report_json, message_v0_report_json, serialize_legacy_message, serialize_message_v0, serialize_unsigned_legacy_transaction, simulate_transaction_request
 
 fn proof() -> Int!String do
   case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
@@ -370,13 +370,14 @@ fn proof() -> Int!String do
       |> println()
   end
 
-  case """{"computeBudgetInstructions":[{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}],"setupInstructions":[],"swapInstruction":{"programId":"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4","accounts":[{"pubkey":"11111111111111111111111111111111","isSigner":true,"isWritable":true}],"data":"BAUG"},"cleanupInstruction":null,"otherInstructions":[],"addressesByLookupTableAddress":{}}"""
-    |> jupiter_instruction_set_from_json() do
-    Err(error) -> println(error)
-    Ok(instructions) -> instructions
-      |> jupiter_instruction_set_report_json()
-      |> println()
+  let jupiter = ("""{"computeBudgetInstructions":[{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}],"setupInstructions":[],"swapInstruction":{"programId":"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4","accounts":[{"pubkey":"11111111111111111111111111111111","isSigner":true,"isWritable":true}],"data":"BAUG"},"cleanupInstruction":null,"otherInstructions":[],"addressesByLookupTableAddress":{}}"""
+    |> jupiter_instruction_set_from_json())?
+  if List.length(jupiter_instructions(jupiter)) != 2 do
+    return Err("Jupiter instruction order differs")
   end
+  jupiter
+    |> jupiter_instruction_set_report_json()
+    |> println()
 
   let message = LegacyMessage {
     header: MessageHeader {
@@ -397,6 +398,36 @@ fn proof() -> Int!String do
       }
     ]
   }
+  let compiled_message = (message.account_keys
+    |> List.get(0)
+    |> compile_legacy_message(
+      message.recent_blockhash,
+      [
+        Instruction {
+          program_id: message.account_keys
+            |> List.get(1),
+          accounts: [
+            AccountMeta {
+              pubkey: message.account_keys
+                |> List.get(0),
+              signer: true,
+              writable: true
+            }
+          ],
+          data: ("0201010000"
+            |> Bytes.from_hex())?
+        }
+      ]
+    ))?
+  let compiled_legacy_hex = (compiled_message
+    |> serialize_legacy_message()) ?
+    |> Bytes.to_hex()
+  let manual_legacy_hex = (message
+    |> serialize_legacy_message()) ?
+    |> Bytes.to_hex()
+  if compiled_legacy_hex != manual_legacy_hex do
+    return Err("compiled legacy message differs")
+  end
   case message
     |> serialize_legacy_message() do
     Ok(bytes) -> bytes
@@ -439,6 +470,81 @@ fn proof() -> Int!String do
       }
     ]
   }
+  let v0_lookup = v0.address_table_lookups
+    |> List.get(0)
+  let compiled_v0 = (message.account_keys
+    |> List.get(0)
+    |> compile_message_v0(
+      message.recent_blockhash,
+      [
+        Instruction {
+          program_id: message.account_keys
+            |> List.get(1),
+          accounts: [
+            AccountMeta {
+              pubkey: message.account_keys
+                |> List.get(0),
+              signer: true,
+              writable: true
+            },
+            AccountMeta {
+              pubkey: v0_lookup.writable_addresses
+                |> List.get(0),
+              signer: false,
+              writable: true
+            }
+          ],
+          data: ("aabb"
+            |> Bytes.from_hex())?
+        }
+      ],
+      v0.address_table_lookups
+    ))?
+  let compiled_v0_hex = (compiled_v0
+    |> serialize_message_v0()) ?
+    |> Bytes.to_hex()
+  let manual_v0_hex = (v0
+    |> serialize_message_v0()) ?
+    |> Bytes.to_hex()
+  if compiled_v0_hex != manual_v0_hex do
+    return Err("compiled v0 message differs")
+  end
+  let duplicate_rejected = case message.account_keys
+    |> List.get(0)
+    |> compile_message_v0(
+      message.recent_blockhash,
+      [
+        Instruction {
+          program_id: message.account_keys
+            |> List.get(1),
+          accounts: [
+            AccountMeta {
+              pubkey: v0_lookup.writable_addresses
+                |> List.get(0),
+              signer: false,
+              writable: true
+            }
+          ],
+          data: ("aabb"
+            |> Bytes.from_hex())?
+        }
+      ],
+      [
+        AddressTableLookup {
+          account_key: v0_lookup.account_key,
+          writable_indexes: v0_lookup.writable_indexes,
+          readonly_indexes: v0_lookup.readonly_indexes,
+          writable_addresses: v0_lookup.writable_addresses,
+          readonly_addresses: v0_lookup.writable_addresses
+        }
+      ]
+    ) do
+    Err(_) -> true
+    Ok(_) -> false
+  end
+  if !duplicate_rejected do
+    return Err("duplicate loaded address accepted")
+  end
   case v0
     |> serialize_message_v0() do
     Ok(bytes) -> bytes

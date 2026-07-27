@@ -1,4 +1,4 @@
-from Solana.Read import Hash, Pubkey, RpcRequest, RpcResponse, pubkey, pubkey_string, rpc_request, spl_token_program
+from Solana.Read import Hash, Pubkey, RpcRequest, RpcResponse, pubkey, pubkey_equal, pubkey_string, rpc_request, spl_token_program
 
 pub struct MessageHeader do
   num_required_signatures :: Int
@@ -63,6 +63,13 @@ pub struct JupiterInstructionSet do
   swap :: Instruction
   cleanup :: Option < Instruction >
   tip :: Option < Instruction >
+end
+
+struct KeyMeta do
+  pubkey :: Pubkey
+  signer :: Bool
+  writable :: Bool
+  invoked :: Bool
 end
 
 fn uint8(value :: Int) -> Bytes ! String do
@@ -176,6 +183,316 @@ pub fn create_associated_token_idempotent_instruction(
     ],
     data : uint8(1) ?
   })
+end
+
+fn merge_key_meta(
+  values :: List < KeyMeta >,
+  key :: Pubkey,
+  signer :: Bool,
+  writable :: Bool,
+  invoked :: Bool,
+  index :: Int,
+  found :: Bool,
+  output :: List < KeyMeta >
+) -> List < KeyMeta > do
+  if index >= List.length(values) do
+    if found do
+      output
+    else
+      output |> List.append(KeyMeta {
+        pubkey : key,
+        signer : signer,
+        writable : writable,
+        invoked : invoked
+      })
+    end
+  else
+    let current = values
+      |> List.get(index)
+    if pubkey_equal(current.pubkey, key) do
+      merge_key_meta(
+        values,
+        key,
+        signer,
+        writable,
+        invoked,
+        index + 1,
+        true,
+        output |> List.append(KeyMeta {
+          pubkey : current.pubkey,
+          signer : current.signer || signer,
+          writable : current.writable || writable,
+          invoked : current.invoked || invoked
+        })
+      )
+    else
+      merge_key_meta(
+        values,
+        key,
+        signer,
+        writable,
+        invoked,
+        index + 1,
+        found,
+        current
+          |2> List.append(output)
+      )
+    end
+  end
+end
+
+fn collect_account_metas(
+  values :: List < KeyMeta >,
+  accounts :: List < AccountMeta >,
+  index :: Int
+) -> List < KeyMeta > do
+  if index >= List.length(accounts) do
+    values
+  else
+    let account = accounts
+      |> List.get(index)
+    values
+      |> merge_key_meta(
+        account.pubkey,
+        account.signer,
+        account.writable,
+        false,
+        0,
+        false,
+        List.new()
+      )
+      |> collect_account_metas(accounts, index + 1)
+  end
+end
+
+fn collect_instruction_metas(
+  values :: List < KeyMeta >,
+  instructions :: List < Instruction >,
+  index :: Int
+) -> List < KeyMeta > do
+  if index >= List.length(instructions) do
+    values
+  else
+    let instruction = instructions
+      |> List.get(index)
+    values
+      |> collect_account_metas(instruction.accounts, 0)
+      |> merge_key_meta(
+        instruction.program_id,
+        false,
+        false,
+        true,
+        0,
+        false,
+        List.new()
+      )
+      |> collect_instruction_metas(instructions, index + 1)
+  end
+end
+
+fn key_category(meta :: KeyMeta) -> Int do
+  if meta.signer do
+    if meta.writable do 0 else 1 end
+  else
+    if meta.writable do 2 else 3 end
+  end
+end
+
+fn category_keys(
+  values :: List < KeyMeta >,
+  category :: Int,
+  index :: Int,
+  output :: List < Pubkey >
+) -> List < Pubkey > do
+  if index >= List.length(values) do
+    output
+  else
+    let meta = values
+      |> List.get(index)
+    let next = if key_category(meta) == category do
+      output
+        |> List.append(meta.pubkey)
+    else
+      output
+    end
+    category_keys(values, category, index + 1, next)
+  end
+end
+
+fn append_pubkey_values(
+  output :: List < Pubkey >,
+  values :: List < Pubkey >,
+  index :: Int
+) -> List < Pubkey > do
+  if index >= List.length(values) do
+    output
+  else
+    values
+      |> List.get(index)
+      |2> List.append(output)
+      |> append_pubkey_values(values, index + 1)
+  end
+end
+
+fn ordered_keys(values :: List < KeyMeta >) -> List < Pubkey > do
+  values
+    |> category_keys(0, 0, List.new())
+    |> append_pubkey_values(
+      category_keys(values, 1, 0, List.new()),
+      0
+    )
+    |> append_pubkey_values(
+      category_keys(values, 2, 0, List.new()),
+      0
+    )
+    |> append_pubkey_values(
+      category_keys(values, 3, 0, List.new()),
+      0
+    )
+end
+
+fn category_count(
+  values :: List < KeyMeta >,
+  category :: Int,
+  index :: Int,
+  count :: Int
+) -> Int do
+  if index >= List.length(values) do
+    count
+  else
+    category_count(
+      values,
+      category,
+      index + 1,
+      count + if key_category(List.get(values, index)) == category do
+        1
+      else
+        0
+      end
+    )
+  end
+end
+
+fn header_from_metas(values :: List < KeyMeta >) -> MessageHeader do
+  MessageHeader {
+    num_required_signatures : category_count(values, 0, 0, 0) +
+      category_count(values, 1, 0, 0),
+    num_readonly_signed_accounts : category_count(values, 1, 0, 0),
+    num_readonly_unsigned_accounts : category_count(values, 3, 0, 0)
+  }
+end
+
+fn pubkey_index(
+  values :: List < Pubkey >,
+  key :: Pubkey,
+  index :: Int
+) -> Int ! String do
+  if index >= List.length(values) do
+    Err("SOLANA_TX: instruction references an uncompiled account")
+  else
+    if pubkey_equal(List.get(values, index), key) do
+      Ok(index)
+    else
+      pubkey_index(values, key, index + 1)
+    end
+  end
+end
+
+fn compile_account_indexes(
+  accounts :: List < AccountMeta >,
+  keys :: List < Pubkey >,
+  index :: Int,
+  output :: List < Int >
+) -> List < Int > ! String do
+  if index >= List.length(accounts) do
+    Ok(output)
+  else
+    compile_account_indexes(
+      accounts,
+      keys,
+      index + 1,
+      output
+        |> List.append(pubkey_index(
+          keys,
+          List.get(accounts, index).pubkey,
+          0
+        ) ?)
+    )
+  end
+end
+
+fn compile_instructions(
+  instructions :: List < Instruction >,
+  keys :: List < Pubkey >,
+  index :: Int,
+  output :: List < CompiledInstruction >
+) -> List < CompiledInstruction > ! String do
+  if index >= List.length(instructions) do
+    Ok(output)
+  else
+    let instruction = instructions
+      |> List.get(index)
+    compile_instructions(
+      instructions,
+      keys,
+      index + 1,
+      output
+        |> List.append(CompiledInstruction {
+          program_id_index : pubkey_index(
+            keys,
+            instruction.program_id,
+            0
+          ) ?,
+          account_indexes : compile_account_indexes(
+            instruction.accounts,
+            keys,
+            0,
+            List.new()
+          ) ?,
+          data : instruction.data
+        })
+    )
+  end
+end
+
+fn compiled_key_metas(
+  payer :: Pubkey,
+  instructions :: List < Instruction >
+) -> List < KeyMeta > do
+  [KeyMeta {
+    pubkey : payer,
+    signer : true,
+    writable : true,
+    invoked : false
+  }]
+    |> collect_instruction_metas(instructions, 0)
+end
+
+pub fn compile_legacy_message(
+  payer :: Pubkey,
+  recent_blockhash :: Hash,
+  instructions :: List < Instruction >
+) -> LegacyMessage ! String do
+  if List.length(instructions) == 0 do
+    Err("SOLANA_TX: message requires at least one instruction")
+  else
+    let metas = payer
+      |> compiled_key_metas(instructions)
+    let keys = metas
+      |> ordered_keys()
+    Ok(LegacyMessage {
+      header : metas
+        |> header_from_metas(),
+      account_keys : keys,
+      recent_blockhash : recent_blockhash,
+      instructions : compile_instructions(
+        instructions,
+        keys,
+        0,
+        List.new()
+      ) ?
+    })
+  end
 end
 
 fn short_u16(value :: Int) -> Bytes ! String do
@@ -415,6 +732,249 @@ fn loaded_account_count(
           total + writable_count + readonly_count
         )
       end
+    end
+  end
+end
+
+fn pubkey_occurrences(
+  values :: List < Pubkey >,
+  key :: Pubkey,
+  index :: Int,
+  count :: Int
+) -> Int do
+  if index >= List.length(values) do
+    count
+  else
+    pubkey_occurrences(
+      values,
+      key,
+      index + 1,
+      count + if pubkey_equal(List.get(values, index), key) do 1 else 0 end
+    )
+  end
+end
+
+fn lookup_occurrences(
+  lookups :: List < AddressTableLookup >,
+  key :: Pubkey,
+  index :: Int,
+  count :: Int
+) -> Int do
+  if index >= List.length(lookups) do
+    count
+  else
+    let lookup = lookups
+      |> List.get(index)
+    lookup_occurrences(
+      lookups,
+      key,
+      index + 1,
+      count +
+        pubkey_occurrences(lookup.writable_addresses, key, 0, 0) +
+        pubkey_occurrences(lookup.readonly_addresses, key, 0, 0)
+    )
+  end
+end
+
+fn key_meta_index(
+  values :: List < KeyMeta >,
+  key :: Pubkey,
+  index :: Int
+) -> Int do
+  if index >= List.length(values) do
+    -1
+  else
+    if pubkey_equal(List.get(values, index).pubkey, key) do
+      index
+    else
+      key_meta_index(values, key, index + 1)
+    end
+  end
+end
+
+fn validate_loaded_addresses(
+  metas :: List < KeyMeta >,
+  lookups :: List < AddressTableLookup >,
+  addresses :: List < Pubkey >,
+  writable :: Bool,
+  index :: Int
+) -> Int ! String do
+  if index >= List.length(addresses) do
+    Ok(index)
+  else
+    let key = addresses
+      |> List.get(index)
+    if lookup_occurrences(lookups, key, 0, 0) != 1 do
+      Err("SOLANA_TX: loaded account appears more than once")
+    else
+      let meta_index = key
+        |2> key_meta_index(metas, 0)
+      if meta_index < 0 do
+        validate_loaded_addresses(
+          metas,
+          lookups,
+          addresses,
+          writable,
+          index + 1
+        )
+      else
+        let meta = metas
+          |> List.get(meta_index)
+        if meta.signer || meta.invoked do
+          Err("SOLANA_TX: signer or program account cannot be loaded")
+        else if meta.writable != writable do
+          Err("SOLANA_TX: loaded account privilege differs from instruction")
+        else
+          validate_loaded_addresses(
+            metas,
+            lookups,
+            addresses,
+            writable,
+            index + 1
+          )
+        end
+      end
+    end
+  end
+end
+
+fn validate_loaded_metas(
+  metas :: List < KeyMeta >,
+  lookups :: List < AddressTableLookup >,
+  index :: Int
+) -> Int ! String do
+  if index >= List.length(lookups) do
+    Ok(index)
+  else
+    let lookup = lookups
+      |> List.get(index)
+    validate_loaded_addresses(
+      metas,
+      lookups,
+      lookup.writable_addresses,
+      true,
+      0
+    ) ?
+    validate_loaded_addresses(
+      metas,
+      lookups,
+      lookup.readonly_addresses,
+      false,
+      0
+    ) ?
+    validate_loaded_metas(metas, lookups, index + 1)
+  end
+end
+
+fn static_key_metas(
+  metas :: List < KeyMeta >,
+  lookups :: List < AddressTableLookup >,
+  index :: Int,
+  output :: List < KeyMeta >
+) -> List < KeyMeta > do
+  if index >= List.length(metas) do
+    output
+  else
+    let meta = metas
+      |> List.get(index)
+    static_key_metas(
+      metas,
+      lookups,
+      index + 1,
+      if lookup_occurrences(lookups, meta.pubkey, 0, 0) == 0 do
+        output
+          |> List.append(meta)
+      else
+        output
+      end
+    )
+  end
+end
+
+fn loaded_pubkeys(
+  lookups :: List < AddressTableLookup >,
+  writable :: Bool,
+  index :: Int,
+  output :: List < Pubkey >
+) -> List < Pubkey > do
+  if index >= List.length(lookups) do
+    output
+  else
+    let lookup = lookups
+      |> List.get(index)
+    output
+      |> append_pubkey_values(
+        if writable do
+          lookup.writable_addresses
+        else
+          lookup.readonly_addresses
+        end,
+        0
+      )
+      |4> loaded_pubkeys(lookups, writable, index + 1)
+  end
+end
+
+pub fn compile_message_v0(
+  payer :: Pubkey,
+  recent_blockhash :: Hash,
+  instructions :: List < Instruction >,
+  address_table_lookups :: List < AddressTableLookup >
+) -> MessageV0 ! String do
+  if List.length(instructions) == 0 do
+    Err("SOLANA_TX: message requires at least one instruction")
+  else
+    let metas = payer
+      |> compiled_key_metas(instructions)
+    let loaded_count = loaded_account_count(
+      address_table_lookups,
+      0,
+      0
+    ) ?
+    validate_loaded_metas(metas, address_table_lookups, 0) ?
+    let static_metas = static_key_metas(
+      metas,
+      address_table_lookups,
+      0,
+      List.new()
+    )
+    let static_keys = static_metas
+      |> ordered_keys()
+    let keys = static_keys
+      |> append_pubkey_values(
+        loaded_pubkeys(
+          address_table_lookups,
+          true,
+          0,
+          List.new()
+        ),
+        0
+      )
+      |> append_pubkey_values(
+        loaded_pubkeys(
+          address_table_lookups,
+          false,
+          0,
+          List.new()
+        ),
+        0
+      )
+    if List.length(static_keys) + loaded_count > 256 do
+      Err("SOLANA_TX: v0 message exceeds 256 resolved accounts")
+    else
+      Ok(MessageV0 {
+        header : static_metas
+          |> header_from_metas(),
+        static_account_keys : static_keys,
+        recent_blockhash : recent_blockhash,
+        instructions : compile_instructions(
+          instructions,
+          keys,
+          0,
+          List.new()
+        ) ?,
+        address_table_lookups : address_table_lookups
+      })
     end
   end
 end
@@ -912,6 +1472,44 @@ pub fn jupiter_instruction_set_from_json(raw :: String) -> JupiterInstructionSet
   else
     Ok(instructions)
   end
+end
+
+fn append_instruction_values(
+  output :: List < Instruction >,
+  values :: List < Instruction >,
+  index :: Int
+) -> List < Instruction > do
+  if index >= List.length(values) do
+    output
+  else
+    values
+      |> List.get(index)
+      |2> List.append(output)
+      |> append_instruction_values(values, index + 1)
+  end
+end
+
+fn append_optional_instruction(
+  output :: List < Instruction >,
+  value :: Option < Instruction >
+) -> List < Instruction > do
+  case value do
+    None -> output
+    Some(instruction) -> output
+      |> List.append(instruction)
+  end
+end
+
+pub fn jupiter_instructions(
+  value :: JupiterInstructionSet
+) -> List < Instruction > do
+  List.new()
+    |> append_instruction_values(value.compute_budget, 0)
+    |> append_instruction_values(value.setup, 0)
+    |> List.append(value.swap)
+    |> append_optional_instruction(value.cleanup)
+    |> append_instruction_values(value.other, 0)
+    |> append_optional_instruction(value.tip)
 end
 
 fn append_if(values :: List < String >, include :: Bool, value :: String) -> List < String > do
