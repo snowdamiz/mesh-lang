@@ -457,75 +457,101 @@ Mesh provides a fluent builder API for making outbound HTTP requests via the `Ht
 
 ### Fluent Builder
 
-Build a request step by step, then send it:
+Builder functions return the same single-use request handle, so pipe them:
 
 ```mesh
 fn main() do
-  let req = Http.build(:get, "https://api.example.com/data")
-  let req = Http.header(req, "Authorization", "Bearer token")
-  let req = Http.timeout(req, 5000)
-  let result = Http.send(req)
-  case result do
-    Ok(resp) -> println(resp)
-    Err(e) -> println("error: #{e}")
+  let request = Http.build(:get, "https://api.example.com/data")
+    |> Http.header("Authorization", "Bearer token")
+    |> Http.query("market", "SOL/USDC")
+    |> Http.timeout(30_000)
+    |> Http.stage_timeout(:resolve, 2_000)
+    |> Http.stage_timeout(:connect, 5_000)
+    |> Http.stage_timeout(:send, 5_000)
+    |> Http.stage_timeout(:first_byte, 10_000)
+    |> Http.stage_timeout(:body, 10_000)
+    |> Http.max_response_bytes(1_048_576)
+
+  case Http.send(request) do
+    Ok(response) -> println("#{response.status}: #{response.body}")
+    Err(error) -> println("error: #{error}")
   end
 end
 ```
 
 | Function | Description |
 |----------|-------------|
-| `Http.build(method, url)` | Create a request. `method` is an atom: `:get`, `:post`, `:put`, `:delete` |
+| `Http.build(method, url)` | Create a request for `:get`, `:head`, `:post`, `:put`, `:patch`, `:delete`, or `:options` |
 | `Http.header(req, key, value)` | Add a request header |
-| `Http.body(req, s)` | Set the request body (for POST/PUT) |
-| `Http.timeout(req, ms)` | Set a per-request timeout in milliseconds |
-| `Http.send(req)` | Execute the request — returns `Result<Response, String>` |
+| `Http.query(req, key, value)` | Add a percent-encoded query parameter |
+| `Http.body(req, value)` | Set a POST, PUT, or PATCH body |
+| `Http.json(req, value)` | Set a body and the JSON content type |
+| `Http.timeout(req, ms)` | Set the total timeout |
+| `Http.stage_timeout(req, stage, ms)` | Set `:resolve`, `:connect`, `:send`, `:first_byte`, or `:body` timeout |
+| `Http.max_response_bytes(req, bytes)` | Set the buffered or streamed response limit |
+| `Http.send(req)` | Yield while executing; return `Result<HttpResponse, String>` |
 
-`Http.send` returns `Ok(response_body_as_string)` on 2xx, `Err(message)` on network failure or non-2xx status.
+`HttpResponse` has `status`, `body`, and `headers` fields. HTTP status errors such as 404 are successful protocol responses and therefore return `Ok`; inspect `status`. Network, timeout, invalid UTF-8, and body-limit failures return `Err`.
+
+Timeouts must be between 1 and 120,000 milliseconds. Responses default to an 8 MiB limit and cannot be configured above 64 MiB.
 
 ### POST Requests
 
 ```mesh
 fn main() do
-  let req = Http.build(:post, "https://api.example.com/items")
-  let req = Http.header(req, "Content-Type", "application/json")
-  let req = Http.body(req, json { name: "widget", price: 9 })
-  let result = Http.send(req)
-  case result do
-    Ok(resp) -> println("created: #{resp}")
-    Err(e) -> println("error: #{e}")
+  let request = Http.build(:post, "https://api.example.com/items")
+    |> Http.json(json { name: "widget", price: 9 })
+    |> Http.max_response_bytes(65_536)
+
+  case Http.send(request) do
+    Ok(response) -> println("created: #{response.body}")
+    Err(error) -> println("error: #{error}")
   end
 end
 ```
 
 ### Streaming
 
-For large responses, use `Http.stream` to receive the body chunk by chunk without buffering the full response in memory:
+`Http.stream` emits valid UTF-8 `String` chunks. `Http.stream_bytes` emits binary-safe `Bytes`. Each callback completes before the next bounded 8 KiB chunk is read, providing backpressure.
 
 ```mesh
 fn main() do
-  let req = Http.build(:get, "https://example.com/large-file")
-  let _handle = Http.stream(req, fn chunk do
-    println(chunk)
-    "ok"
-  end)
+  let handle = Http.build(:get, "https://example.com/large-file")
+    |> Http.max_response_bytes(8_388_608)
+    |> Http.stream_bytes(fn chunk do
+      println(Bytes.to_hex(chunk))
+      "continue"
+    end)
+
+  Timer.sleep(100)
+  Http.cancel(handle)
 end
 ```
 
-The callback runs for each chunk. Return `"ok"` to continue or `"stop"` to cancel the stream.
+Return `"stop"` from a callback to end the stream, or pass the returned handle to `Http.cancel`. Streaming begins on a dedicated I/O thread and does not block a scheduler worker. The callback API has no error channel; a setup or read failure ends the stream and is visible through `Http.metrics`.
+
+### Cancellation
+
+The request handle is also its cancellation handle. Retain a copy and send it to another actor before calling `Http.send` or `Http.send_with`; that actor can call `Http.cancel(request)` while the caller is suspended. Cancellation wakes the caller immediately. The bounded stage timeout still limits any underlying OS I/O that is already in progress.
+
+Calling `Http.cancel` or `Http.client_close` more than once is safe.
 
 ### Keep-Alive Client
 
-Reuse a connection pool across multiple requests to the same host:
+Reuse one connection pool across requests to the same origin:
 
 ```mesh
+fn fetch(client :: Int, url :: String) do
+  case Http.build(:get, url) |2> Http.send_with(client) do
+    Ok(response) -> println(response.body)
+    Err(error) -> println(error)
+  end)
+end
+
 fn main() do
   let client = Http.client()
-  let req = Http.build(:get, "https://api.example.com/data")
-  let result = Http.send_with(client, req)
-  case result do
-    Ok(resp) -> println(resp)
-    Err(e) -> println(e)
-  end
+  fetch(client, "https://api.example.com/data")
+  fetch(client, "https://api.example.com/health")
   Http.client_close(client)
 end
 ```
@@ -534,8 +560,24 @@ end
 |----------|-------------|
 | `Http.client()` | Create a keep-alive HTTP client handle |
 | `Http.send_with(client, req)` | Send request reusing the client's connection pool |
-| `Http.stream(req, fn chunk -> ... end)` | Stream response body chunk by chunk |
+| `Http.stream(req, callback)` | Stream UTF-8 text with callback backpressure |
+| `Http.stream_bytes(req, callback)` | Stream `Bytes` with callback backpressure |
+| `Http.cancel(handle)` | Cancel a pending/active request or stream |
 | `Http.client_close(client)` | Close the client and release connections |
+
+### Retries and Metrics
+
+Mesh never retries HTTP requests automatically. `Http.retry_class(method, error)` returns `"safe_retry"` for transient GET, HEAD, and OPTIONS failures, `"unsafe_retry"` for transient writes, and `"do_not_retry"` for permanent failures. The caller owns retry count, backoff, and idempotency policy.
+
+`Http.metrics()` returns cumulative process-wide metrics:
+
+| Field | Meaning |
+|-------|---------|
+| `requests`, `in_flight`, `cancellations` | Request count, current gauge, and cancellation count |
+| `dns_micros`, `connect_micros`, `tls_micros` | Time spent creating new connections; pooled requests do not repeat these stages |
+| `first_byte_micros`, `total_micros` | Cumulative time to first byte and total request time |
+| `dns_failures`, `connect_failures`, `tls_failures`, `timeouts` | Classified failure counts |
+| `response_bytes` | Successfully read or streamed bytes |
 
 ## What's Next?
 
