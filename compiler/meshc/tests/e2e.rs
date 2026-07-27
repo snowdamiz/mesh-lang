@@ -6139,6 +6139,40 @@ end
     );
 }
 
+/// MESH-NUM-001: opaque wide integers parse and calculate only through checked APIs.
+#[test]
+fn e2e_wide_integer_operations() {
+    let source = read_fixture("wide_integer_operations.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "18446744073709551615\n7\nu64 addition overflow\nu64 does not fit Int\n340282366920938463463374607431768211455\nu128 subtraction overflow\n-1\n-170141183460469231731687303715884105728\n-42\ni128 addition overflow\n-42\n"
+    );
+}
+
+/// Wide integers require an explicit checked conversion before entering `Int`.
+#[test]
+fn e2e_wide_integer_does_not_implicitly_convert_to_int() {
+    let error = compile_expect_error(
+        r##"
+fn accepts_int(value :: Int) do
+  println("#{value}")
+end
+
+fn main() do
+  case U64.parse("42") do
+    Ok(value) -> accepts_int(value)
+    Err(error) -> println(error)
+  end
+end
+"##,
+    );
+    assert!(
+        error.contains("expected Int, found U64"),
+        "expected the U64/Int boundary to fail type checking, got:\n{error}"
+    );
+}
+
 // ── Phase 136: DateTime stdlib tests ─────────────────────────────────────────
 
 /// Phase 136: DateTime.utc_now() returns a plausible UTC timestamp (DTIME-01).

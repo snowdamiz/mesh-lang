@@ -41,6 +41,39 @@ end
 | `Bytes.read_uint_le(bytes, offset, width)` | `Result<String, String>` | Read a 1, 2, 4, or 8-byte unsigned integer as a full-range decimal string |
 | `Bytes.write_uint_le(value, width)` | `Result<Bytes, String>` | Write a decimal unsigned integer at width 1, 2, 4, or 8 |
 
+## Wide integers
+
+`U64`, `U128`, and `I128` are opaque integer values for protocol fields that
+do not fit Mesh `Int`. Construction and arithmetic are checked. Convert to
+`Int` only when the value is known to fit.
+
+```mesh
+case U64.parse("18446744073709551615") do
+  Ok(value) -> do
+    value |> U64.to_string() |> println()
+    case value |> U64.to_int() do
+      Ok(number) -> println("#{number}")
+      Err(error) -> println(error)
+    end
+  end
+  Err(error) -> println(error)
+end
+```
+
+Each module exposes the same surface:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `U64.parse(text)` | `Result<U64, String>` | Checked decimal parse |
+| `U64.compare(left, right)` | `Int` | `-1`, `0`, or `1` |
+| `U64.add(left, right)` | `Result<U64, String>` | Checked addition |
+| `U64.subtract(left, right)` | `Result<U64, String>` | Checked subtraction |
+| `U64.to_int(value)` | `Result<Int, String>` | Bounded conversion |
+| `U64.to_string(value)` | `String` | Canonical decimal string |
+
+Replace `U64` with `U128` or `I128` for the corresponding width and
+signedness. `Bytes.read_uint_le` decimal output can be passed to `U64.parse`.
+
 ## Crypto
 
 The `Crypto` module provides cryptographic hashing, HMAC signatures, UUIDs, and constant-time comparison.

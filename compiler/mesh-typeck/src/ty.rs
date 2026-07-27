@@ -116,6 +116,18 @@ impl Ty {
         Ty::Con(TyCon::new("Bytes"))
     }
 
+    pub fn u64() -> Ty {
+        Ty::Con(TyCon::new("U64"))
+    }
+
+    pub fn u128() -> Ty {
+        Ty::Con(TyCon::new("U128"))
+    }
+
+    pub fn i128() -> Ty {
+        Ty::Con(TyCon::new("I128"))
+    }
+
     /// Create a `Json` newtype.
     ///
     /// Json auto-coerces to String at call sites (the unify function handles this).

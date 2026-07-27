@@ -45,6 +45,7 @@ pub mod random;
 pub mod regex;
 pub mod string;
 pub mod test; // Phase 138
+pub mod wide_num;
 pub mod ws;
 
 // Re-export key functions for convenient Rust-side access and testing.

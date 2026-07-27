@@ -1316,6 +1316,30 @@ impl<'a> Lowerer<'a> {
             "mesh_bytes_write_uint_le".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr)),
         );
+        for prefix in ["u64", "u128", "i128"] {
+            self.known_functions.insert(
+                format!("mesh_{prefix}_parse"),
+                MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+            );
+            self.known_functions.insert(
+                format!("mesh_{prefix}_compare"),
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)),
+            );
+            for operation in ["add", "subtract"] {
+                self.known_functions.insert(
+                    format!("mesh_{prefix}_{operation}"),
+                    MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+                );
+            }
+            self.known_functions.insert(
+                format!("mesh_{prefix}_to_int"),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+            self.known_functions.insert(
+                format!("mesh_{prefix}_to_string"),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+            );
+        }
         // DateTime functions (Phase 136)
         // utc_now() -> DateTime (i64)
         self.known_functions.insert(
@@ -13498,6 +13522,9 @@ const STDLIB_MODULES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "U64",
+    "U128",
+    "I128",
     "Crypto",   // Phase 135
     "Base64",   // Phase 135
     "Hex",      // Phase 135
@@ -13591,6 +13618,10 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_from_hex" => "mesh_bytes_from_hex".to_string(),
         "bytes_read_uint_le" => "mesh_bytes_read_uint_le".to_string(),
         "bytes_write_uint_le" => "mesh_bytes_write_uint_le".to_string(),
+        "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_to_int"
+        | "u64_to_string" | "u128_parse" | "u128_compare" | "u128_add" | "u128_subtract"
+        | "u128_to_int" | "u128_to_string" | "i128_parse" | "i128_compare" | "i128_add"
+        | "i128_subtract" | "i128_to_int" | "i128_to_string" => format!("mesh_{name}"),
         // DateTime functions (Phase 136)
         "datetime_utc_now" => "mesh_datetime_utc_now".to_string(),
         "datetime_from_iso8601" => "mesh_datetime_from_iso8601".to_string(),

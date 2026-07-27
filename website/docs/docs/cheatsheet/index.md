@@ -453,6 +453,12 @@ case Bytes.to_utf8(raw) do
   Err(e) -> println(e)
 end
 
+# Checked wide integers
+case U64.parse("18446744073709551615") do
+  Ok(value) -> value |> U64.to_string() |> println()
+  Err(e) -> println(e)
+end
+
 let b64 = Base64.encode("hello")
 case Base64.decode(b64) do
   Ok(s) -> println(s)

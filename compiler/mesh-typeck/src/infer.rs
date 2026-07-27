@@ -206,6 +206,37 @@ struct FnConstraints {
 
 use std::collections::HashMap;
 
+fn wide_integer_module(ty: Ty) -> HashMap<String, Scheme> {
+    let result = || Ty::result(ty.clone(), Ty::string());
+    let mut module = HashMap::new();
+    module.insert(
+        "parse".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], result())),
+    );
+    module.insert(
+        "compare".to_string(),
+        Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], Ty::int())),
+    );
+    for operation in ["add", "subtract"] {
+        module.insert(
+            operation.to_string(),
+            Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),
+        );
+    }
+    module.insert(
+        "to_int".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![ty.clone()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    module.insert(
+        "to_string".to_string(),
+        Scheme::mono(Ty::fun(vec![ty], Ty::string())),
+    );
+    module
+}
+
 /// Build the stdlib module namespace registry.
 ///
 /// Maps module names (e.g., "String", "IO", "Env") to their exported
@@ -445,6 +476,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
     );
     modules.insert("Bytes".to_string(), bytes_mod);
+
+    modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
+    modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
+    modules.insert("I128".to_string(), wide_integer_module(Ty::i128()));
 
     // ── Crypto module (Phase 135) ────────────────────────────────────
     let mut crypto_mod = HashMap::new();
@@ -3261,6 +3296,9 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "U64",
+    "U128",
+    "I128",
     "Crypto",   // Phase 135
     "Base64",   // Phase 135
     "Hex",      // Phase 135

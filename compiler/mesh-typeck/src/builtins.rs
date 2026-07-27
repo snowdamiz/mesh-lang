@@ -14,6 +14,35 @@ use crate::traits::{
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
+fn register_wide_integer(env: &mut TypeEnv, prefix: &str, ty: Ty) {
+    let result = || Ty::result(ty.clone(), Ty::string());
+    env.insert(
+        format!("{prefix}_parse"),
+        Scheme::mono(Ty::fun(vec![Ty::string()], result())),
+    );
+    env.insert(
+        format!("{prefix}_compare"),
+        Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], Ty::int())),
+    );
+    for operation in ["add", "subtract"] {
+        env.insert(
+            format!("{prefix}_{operation}"),
+            Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),
+        );
+    }
+    env.insert(
+        format!("{prefix}_to_int"),
+        Scheme::mono(Ty::fun(
+            vec![ty.clone()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        format!("{prefix}_to_string"),
+        Scheme::mono(Ty::fun(vec![ty], Ty::string())),
+    );
+}
+
 /// Register all built-in types and functions into the environment.
 ///
 /// After this call, the environment contains:
@@ -42,6 +71,9 @@ pub fn register_builtins(
     env.insert("Float".into(), Scheme::mono(Ty::float()));
     env.insert("String".into(), Scheme::mono(Ty::string()));
     env.insert("Bytes".into(), Scheme::mono(Ty::bytes()));
+    env.insert("U64".into(), Scheme::mono(Ty::u64()));
+    env.insert("U128".into(), Scheme::mono(Ty::u128()));
+    env.insert("I128".into(), Scheme::mono(Ty::i128()));
     env.insert("Bool".into(), Scheme::mono(Ty::bool()));
 
     // ── Actor type constructor ────────────────────────────────────
@@ -396,6 +428,10 @@ pub fn register_builtins(
         "bytes_write_uint_le".into(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
     );
+
+    register_wide_integer(env, "u64", Ty::u64());
+    register_wide_integer(env, "u128", Ty::u128());
+    register_wide_integer(env, "i128", Ty::i128());
 
     // ── Standard library: Crypto functions (Phase 135) ─────────────────────
 

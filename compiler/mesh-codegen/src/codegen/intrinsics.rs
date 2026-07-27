@@ -663,6 +663,30 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // ── Checked wide integers ────────────────────────────────────────────────
+
+    for prefix in ["u64", "u128", "i128"] {
+        for operation in ["parse", "to_int", "to_string"] {
+            module.add_function(
+                &format!("mesh_{prefix}_{operation}"),
+                ptr_type.fn_type(&[ptr_type.into()], false),
+                Some(inkwell::module::Linkage::External),
+            );
+        }
+        module.add_function(
+            &format!("mesh_{prefix}_compare"),
+            i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+        for operation in ["add", "subtract"] {
+            module.add_function(
+                &format!("mesh_{prefix}_{operation}"),
+                ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+                Some(inkwell::module::Linkage::External),
+            );
+        }
+    }
+
     // ── DateTime functions (Phase 136) ───────────────────────────────────────
 
     // mesh_datetime_utc_now() -> i64
