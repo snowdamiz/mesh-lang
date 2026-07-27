@@ -145,7 +145,7 @@ fn solana_read_package_decodes_rpc_spl_and_jitosol_state() {
 
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("solana-read-proof");
-    let package = project.join(".mesh/packages/mesh-solana@0.1.0");
+    let package = project.join(".mesh/packages/mesh-solana@0.2.0");
     fs::create_dir_all(package.join("solana")).unwrap();
     fs::copy(
         package_source().join("mesh.toml"),
@@ -326,7 +326,7 @@ fn solana_tx_package_inspects_jupiter_instruction() {
 
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("solana-tx-proof");
-    let package = project.join(".mesh/packages/mesh-solana@0.1.0");
+    let package = project.join(".mesh/packages/mesh-solana@0.2.0");
     fs::create_dir_all(package.join("solana")).unwrap();
     fs::copy(
         package_source().join("mesh.toml"),
@@ -352,7 +352,7 @@ fn solana_tx_package_inspects_jupiter_instruction() {
         project.join("main.mpl"),
         r#"
 from Solana.Read import Hash, Pubkey
-from Solana.Tx import AddressTableLookup, CompiledInstruction, LegacyMessage, MessageHeader, MessageV0, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, serialize_legacy_message, serialize_message_v0
+from Solana.Tx import AddressTableLookup, CompiledInstruction, LegacyMessage, MessageHeader, MessageV0, instruction_from_jupiter_json, instruction_report_json, jupiter_instruction_set_from_json, jupiter_instruction_set_report_json, legacy_message_report_json, message_v0_report_json, serialize_legacy_message, serialize_message_v0, serialize_unsigned_legacy_transaction, simulate_transaction_request
 
 fn proof() -> Int!String do
   case """{"programId":"ComputeBudget111111111111111111111111111111","accounts":[],"data":"AQID"}"""
@@ -397,6 +397,15 @@ fn proof() -> Int!String do
       |> println()
     Err(error) -> println(error)
   end
+  (message |> legacy_message_report_json())? |> println()
+  let unsigned = (message |> serialize_unsigned_legacy_transaction())?
+  let simulation = (unsigned |2> simulate_transaction_request(
+    7,
+    "confirmed",
+    false,
+    None
+  ))?
+  println(simulation.method <> ":" <> Int.to_string(Bytes.length(unsigned)))
 
   let v0 = MessageV0 {
     header: message.header,
@@ -424,6 +433,7 @@ fn proof() -> Int!String do
       |> println()
     Err(error) -> println(error)
   end
+  (v0 |> message_v0_report_json())? |> println()
   Ok(0)
 end
 
@@ -463,7 +473,10 @@ end
             "{\"accountCount\":0,\"accountKeys\":[],\"dataBase64\":\"AQID\",\"dataBytes\":3,\"programId\":\"ComputeBudget111111111111111111111111111111\",\"schemaVersion\":1,\"signerKeys\":[],\"writableKeys\":[]}\n",
             "{\"accountKeys\":[\"11111111111111111111111111111111\"],\"cleanupCount\":0,\"computeBudgetCount\":1,\"dataBytes\":6,\"instructionCount\":2,\"otherCount\":0,\"programIds\":[\"ComputeBudget111111111111111111111111111111\",\"JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4\"],\"schemaVersion\":1,\"setupCount\":0,\"signerKeys\":[\"11111111111111111111111111111111\"],\"source\":\"jupiter-build\",\"tipCount\":0,\"writableKeys\":[\"11111111111111111111111111111111\"]}\n",
             "0100010200000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020201010100050201010000\n",
-            "8001000102000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202010102000202aabb01030303030303030303030303030303030303030303030303030303030303030301040105\n"
+            "{\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"instructionCount\":1,\"loadedReadonlyAccounts\":0,\"loadedWritableAccounts\":0,\"lookupTableKeys\":[],\"messageBytes\":110,\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"requiredSignatures\":1,\"schemaVersion\":1,\"version\":\"legacy\"}\n",
+            "simulateTransaction:175\n",
+            "8001000102000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202010102000202aabb01030303030303030303030303030303030303030303030303030303030303030301040105\n",
+            "{\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"instructionCount\":1,\"loadedReadonlyAccounts\":1,\"loadedWritableAccounts\":1,\"lookupTableKeys\":[\"CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8\"],\"messageBytes\":146,\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"requiredSignatures\":1,\"schemaVersion\":1,\"version\":\"v0\"}\n"
         )
     );
 }
