@@ -349,6 +349,66 @@ Room membership is automatically cleaned up when a connection disconnects -- you
 
 In a distributed cluster, `Ws.broadcast` automatically forwards messages to room members on other nodes.
 
+## WebSocket Client
+
+`WsClient` is the outbound client surface. It accepts `ws://` and certificate-validated `wss://` URLs, yields while connecting or waiting for a message, and bounds both message size and the inbound queue.
+
+```mesh
+fn exchange(connection :: Int) -> Int!String do
+  WsClient.send_text(connection, "subscribe")?
+  (("0102" |> Bytes.from_hex())? |2> WsClient.send_bytes(connection))?
+
+  let message = WsClient.recv(connection, 5_000)?
+  if message.kind == "text" do
+    case Bytes.to_utf8(message.data) do
+      Ok(text) -> println(text)
+      Err(error) -> println(error)
+    end
+  else if message.kind == "binary" do
+    println(Bytes.to_hex(message.data))
+  else
+    println("closed: #{message.close_code}:#{message.close_reason}")
+  end
+
+  WsClient.close(connection, 1_000, "done")?
+  Ok(0)
+end
+
+fn main() do
+  let options = WsClient.options()
+    |> WsClient.connect_timeout(5_000)
+    |> WsClient.heartbeat_timeout(30_000)
+    |> WsClient.max_message_bytes(1_048_576)
+    |> WsClient.queue_capacity(256)
+
+  case WsClient.connect("wss://example.com/feed", options) do
+    Ok(connection) -> case exchange(connection) do
+      Ok(_) -> println("done")
+      Err(error) -> println(error)
+    end
+    Err(error) -> println(error)
+  end
+end
+```
+
+| Function | Description |
+|----------|-------------|
+| `WsClient.options()` | Create a single-use options handle |
+| `WsClient.connect_timeout(options, ms)` | Set the DNS/TCP/TLS/upgrade timeout |
+| `WsClient.heartbeat_timeout(options, ms)` | Set the ping/pong liveness timeout |
+| `WsClient.max_message_bytes(options, bytes)` | Bound inbound and outbound text or binary messages, including fragments |
+| `WsClient.queue_capacity(options, messages)` | Bound unread inbound messages |
+| `WsClient.connect(url, options)` | Connect and consume the options handle |
+| `WsClient.send_text(connection, text)` | Send a masked text frame |
+| `WsClient.send_bytes(connection, bytes)` | Send a masked binary frame |
+| `WsClient.recv(connection, timeout_ms)` | Receive a `WsMessage`; only one receiver may wait per connection |
+| `WsClient.close(connection, code, reason)` | Send a close frame and release the handle |
+| `WsClient.reconnect_delay(attempt, base_ms, max_ms, jitter_ppm)` | Return bounded exponential backoff with jitter |
+
+`WsMessage.kind` is `"text"`, `"binary"`, or `"close"`; payload bytes are in `data`, and close details are in `close_code` and `close_reason`. Queue overflow closes the connection with a `BACKPRESSURE` error rather than dropping data silently. Heartbeat timeout and other disconnects are observable errors.
+
+Reconnect is deliberately explicit. After an interruption, the caller chooses whether to reconnect, uses `reconnect_delay`, restores subscriptions, and checks source sequence numbers for regressions. The runtime never restores subscriptions or retries writes implicitly.
+
 ## TLS
 
 Both the HTTP and WebSocket servers support TLS for encrypted connections. Provide paths to a PEM certificate and private key file:
