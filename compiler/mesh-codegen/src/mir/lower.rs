@@ -2179,6 +2179,16 @@ impl<'a> Lowerer<'a> {
             "mesh_json_as_bool".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
+        for name in [
+            "mesh_json_value_as_int",
+            "mesh_json_value_as_float",
+            "mesh_json_value_as_bool",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
         self.known_functions.insert(
             "mesh_json_null".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
@@ -13932,6 +13942,12 @@ fn map_builtin_name(name: &str) -> String {
         "json_encode_bool" => "mesh_json_encode_bool".to_string(),
         "json_encode_map" => "mesh_json_encode_map".to_string(),
         "json_encode_list" => "mesh_json_encode_list".to_string(),
+        "json_object_get" => "mesh_json_object_get".to_string(),
+        "json_array_get" => "mesh_json_array_get".to_string(),
+        "json_as_int" => "mesh_json_value_as_int".to_string(),
+        "json_as_float" => "mesh_json_value_as_float".to_string(),
+        "json_as_string" => "mesh_json_as_string".to_string(),
+        "json_as_bool" => "mesh_json_value_as_bool".to_string(),
         "json_from_int" => "mesh_json_from_int".to_string(),
         "json_from_float" => "mesh_json_from_float".to_string(),
         "json_from_bool" => "mesh_json_from_bool".to_string(),

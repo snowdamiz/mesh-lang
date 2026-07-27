@@ -6166,6 +6166,16 @@ fn e2e_wide_integer_operations() {
     );
 }
 
+#[test]
+fn e2e_json_structured_access() {
+    let source = read_fixture("json_structured_access.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "second\ntrue\n7\n1.5\nmissing field: missing\ndone\n"
+    );
+}
+
 /// Wide integers require an explicit checked conversion before entering `Int`.
 #[test]
 fn e2e_wide_integer_does_not_implicitly_convert_to_int() {

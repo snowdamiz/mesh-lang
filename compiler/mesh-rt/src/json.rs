@@ -443,6 +443,57 @@ pub extern "C" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
     }
 }
 
+fn boxed_scalar_result<T>(value: T) -> *mut u8 {
+    unsafe {
+        let payload = mesh_gc_alloc_actor(
+            std::mem::size_of::<T>() as u64,
+            std::mem::align_of::<T>().max(8) as u64,
+        ) as *mut T;
+        payload.write(value);
+        alloc_result(0, payload.cast()).cast()
+    }
+}
+
+/// Public `Json.as_int` ABI. Unlike the internal deriving helper above, this
+/// boxes the scalar payload for ordinary Mesh `Result` pattern matching.
+#[no_mangle]
+pub extern "C" fn mesh_json_value_as_int(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let result = mesh_json_as_int(json) as *mut MeshResult;
+        if (*result).tag == 0 {
+            boxed_scalar_result((*result).value as i64)
+        } else {
+            result.cast()
+        }
+    }
+}
+
+/// Public `Json.as_float` ABI.
+#[no_mangle]
+pub extern "C" fn mesh_json_value_as_float(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let result = mesh_json_as_float(json) as *mut MeshResult;
+        if (*result).tag == 0 {
+            boxed_scalar_result(f64::from_bits((*result).value as u64))
+        } else {
+            result.cast()
+        }
+    }
+}
+
+/// Public `Json.as_bool` ABI.
+#[no_mangle]
+pub extern "C" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
+    unsafe {
+        let result = mesh_json_as_bool(json) as *mut MeshResult;
+        if (*result).tag == 0 {
+            boxed_scalar_result((*result).value != std::ptr::null_mut())
+        } else {
+            result.cast()
+        }
+    }
+}
+
 /// Return a MeshJson null value. Used for Option::None encoding.
 #[no_mangle]
 pub extern "C" fn mesh_json_null() -> *mut u8 {

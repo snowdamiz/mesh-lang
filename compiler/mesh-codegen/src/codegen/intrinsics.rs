@@ -1691,6 +1691,17 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in [
+        "mesh_json_value_as_int",
+        "mesh_json_value_as_float",
+        "mesh_json_value_as_bool",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
     // mesh_json_null() -> ptr
     module.add_function(
         "mesh_json_null",

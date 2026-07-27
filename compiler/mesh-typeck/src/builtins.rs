@@ -1452,6 +1452,34 @@ pub fn register_builtins(
         "json_encode_list".into(),
         Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::string())),
     );
+    env.insert(
+        "json_object_get".into(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone(), Ty::string()],
+            Ty::result(json_t.clone(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "json_array_get".into(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone(), Ty::int()],
+            Ty::result(json_t.clone(), Ty::string()),
+        )),
+    );
+    for (name, value) in [
+        ("json_as_int", Ty::int()),
+        ("json_as_float", Ty::float()),
+        ("json_as_string", Ty::string()),
+        ("json_as_bool", Ty::bool()),
+    ] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![json_t.clone()],
+                Ty::result(value, Ty::string()),
+            )),
+        );
+    }
 
     // ── Standard library: HTTP functions (Phase 8 Plan 05) ────────────
 

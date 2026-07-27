@@ -1442,6 +1442,48 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "encode_list".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())),
     );
+    json_mod.insert(
+        "object_get".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone(), Ty::string()],
+            Ty::result(json_t.clone(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "array_get".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone(), Ty::int()],
+            Ty::result(json_t.clone(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "as_int".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "as_float".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::float(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "as_string".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+    json_mod.insert(
+        "as_bool".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![json_t.clone()],
+            Ty::result(Ty::bool(), Ty::string()),
+        )),
+    );
     // Phase 103: JSON field extraction (no DB roundtrip)
     // Json.get(json_string, key) -> String
     json_mod.insert(
