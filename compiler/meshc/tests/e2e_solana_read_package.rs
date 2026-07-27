@@ -93,6 +93,18 @@ fn solana_read_package_decodes_rpc_spl_and_jitosol_state() {
         },
     })
     .to_string();
+    let latest_blockhash_response = json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "result": {
+            "context": { "slot": 320_000_006u64 },
+            "value": {
+                "blockhash": "11111111111111111111111111111111",
+                "lastValidBlockHeight": 320_000_156u64,
+            },
+        },
+    })
+    .to_string();
     let multiple_accounts_response = json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -152,7 +164,7 @@ fn solana_read_package_decodes_rpc_spl_and_jitosol_state() {
     .unwrap();
 
     let source = r##"
-from Solana.Read import AccountInfo, Mint, Pubkey, StakePoolState, account_info, account_notification, account_subscribe_request, block_height_from_response, data_size_filter, epoch_info_from_response, get_account_info_request, get_block_height_request, get_epoch_info_request, get_multiple_accounts_request, get_slot_request, hash_value, jitosol_mint, jitosol_nav, jitosol_stake_pool, memcmp_filter, mint, multiple_accounts_from_response, program_accounts_request, pubkey, pubkey_string, rpc_request_json, rpc_response, signature, signature_string, slot_from_response, slot_notification, slot_subscribe_request, stake_pool, token_account
+from Solana.Read import AccountInfo, Mint, Pubkey, StakePoolState, account_info, account_notification, account_subscribe_request, block_height_from_response, data_size_filter, epoch_info_from_response, get_account_info_request, get_block_height_request, get_epoch_info_request, get_latest_blockhash_request, get_multiple_accounts_request, get_slot_request, hash_string, hash_value, jitosol_mint, jitosol_nav, jitosol_stake_pool, latest_blockhash_from_response, memcmp_filter, mint, multiple_accounts_from_response, program_accounts_request, pubkey, pubkey_string, rpc_request_json, rpc_response, signature, signature_string, slot_from_response, slot_notification, slot_subscribe_request, stake_pool, token_account
 
 fn show_pubkey(value :: String) do
   case value |> pubkey() do
@@ -237,6 +249,11 @@ fn proof() -> Int!String do
   let epoch_info = ((("""__EPOCH_INFO_RESPONSE__""" |> rpc_response())?)
     |> epoch_info_from_response())?
   println("#{U64.to_string(epoch_info.epoch)}:#{U64.to_string(epoch_info.absolute_slot)}")
+  let blockhash_request = (11 |> get_latest_blockhash_request("confirmed"))?
+  println("#{blockhash_request.method}:#{blockhash_request.params_json}")
+  let latest_blockhash = ((("""__LATEST_BLOCKHASH_RESPONSE__""" |> rpc_response())?)
+    |> latest_blockhash_from_response())?
+  println("#{U64.to_string(latest_blockhash.context_slot)}:#{hash_string(latest_blockhash.blockhash)}:#{U64.to_string(latest_blockhash.last_valid_block_height)}")
   let filters = [
     (memcmp_filter(0, "11111111111111111111111111111111"))?,
     (data_size_filter(611))?
@@ -265,6 +282,7 @@ end
     .replace("__TOKEN_ACCOUNT__", &token_account)
     .replace("__RPC_RESPONSE__", &rpc_response)
     .replace("__EPOCH_INFO_RESPONSE__", &epoch_info_response)
+    .replace("__LATEST_BLOCKHASH_RESPONSE__", &latest_blockhash_response)
     .replace(
         "__MULTIPLE_ACCOUNTS_RESPONSE__",
         &multiple_accounts_response,
@@ -292,7 +310,7 @@ end
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "320000006:2\n18446744073709551615\n12345678900\n10000000000\n777\n10000000000\n9:true\n2000000000\n1\n11111111111111111111111111111111\n1234567890\nSOLANA_JITOSOL: mint supply does not match stake pool\nSOLANA_PUBKEY: invalid base58\n11111111111111111111111111111111\n64\n32\n9:true:320000006\n320000006\n320000006\ngetAccountInfo:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"getAccountInfo\",\"params\":[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]}\ngetMultipleAccounts:[[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\"],{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\ngetSlot:[{\"commitment\":\"finalized\"}]\ngetBlockHeight:[{\"commitment\":\"processed\"}]\ngetEpochInfo:[{\"commitment\":\"confirmed\"}]\n777:320000006\ngetProgramAccounts:[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\",\"filters\":[{\"memcmp\":{\"offset\":0,\"bytes\":\"11111111111111111111111111111111\"}},{\"dataSize\":611}]}]\naccountSubscribe:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\nslotSubscribe:[]\n41:320000006:82\n42:320000006:320000005:319999974\ndone\n"
+        "320000006:2\n18446744073709551615\n12345678900\n10000000000\n777\n10000000000\n9:true\n2000000000\n1\n11111111111111111111111111111111\n1234567890\nSOLANA_JITOSOL: mint supply does not match stake pool\nSOLANA_PUBKEY: invalid base58\n11111111111111111111111111111111\n64\n32\n9:true:320000006\n320000006\n320000006\ngetAccountInfo:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"getAccountInfo\",\"params\":[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]}\ngetMultipleAccounts:[[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\"],{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\ngetSlot:[{\"commitment\":\"finalized\"}]\ngetBlockHeight:[{\"commitment\":\"processed\"}]\ngetEpochInfo:[{\"commitment\":\"confirmed\"}]\n777:320000006\ngetLatestBlockhash:[{\"commitment\":\"confirmed\"}]\n320000006:11111111111111111111111111111111:320000156\ngetProgramAccounts:[\"Jito4APyf642JPZPx3hGc6WWJ8zPKtRbRs4P815Awbb\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\",\"filters\":[{\"memcmp\":{\"offset\":0,\"bytes\":\"11111111111111111111111111111111\"}},{\"dataSize\":611}]}]\naccountSubscribe:[\"J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn\",{\"commitment\":\"confirmed\",\"encoding\":\"base64\"}]\nslotSubscribe:[]\n41:320000006:82\n42:320000006:320000005:319999974\ndone\n"
     );
 }
 

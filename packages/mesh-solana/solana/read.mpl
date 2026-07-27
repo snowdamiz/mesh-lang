@@ -23,6 +23,12 @@ pub struct EpochInfo do
   absolute_slot :: U64
 end
 
+pub struct LatestBlockhash do
+  context_slot :: U64
+  blockhash :: Hash
+  last_valid_block_height :: U64
+end
+
 pub struct RpcRequest do
   id :: Int
   method :: String
@@ -562,6 +568,13 @@ pub fn get_epoch_info_request(id :: Int, commitment :: String) -> RpcRequest ! S
     |> commitment_params()) ?)
 end
 
+pub fn get_latest_blockhash_request(id :: Int, commitment :: String) -> RpcRequest ! String do
+  rpc_request(id,
+  "getLatestBlockhash",
+  (commitment
+    |> commitment_params()) ?)
+end
+
 pub fn memcmp_filter(offset :: Int, bytes :: String) -> ProgramAccountFilter ! String do
   if offset < 0 do
     Err("SOLANA_FILTER: memcmp offset must be non-negative")
@@ -730,6 +743,26 @@ pub fn epoch_info_from_response(response :: RpcResponse) -> EpochInfo ! String d
     absolute_slot : (result
       |> u64_field("absoluteSlot", "EPOCH_INFO")) ?
   })
+end
+
+pub fn latest_blockhash_from_response(response :: RpcResponse) -> LatestBlockhash ! String do
+  let result = (response
+    |> require_rpc_result()) ?
+  let context = Json.get(result, "context")
+  let value = Json.get(result, "value")
+  let blockhash = Json.get(value, "blockhash")
+  if context == "" || value == "" || blockhash == "" do
+    Err("SOLANA_LATEST_BLOCKHASH: missing context, value, or blockhash")
+  else
+    Ok(LatestBlockhash {
+      context_slot : (context
+        |> u64_field("slot", "LATEST_BLOCKHASH")) ?,
+      blockhash : (blockhash
+        |> hash_value()) ?,
+      last_valid_block_height : (value
+        |> u64_field("lastValidBlockHeight", "LATEST_BLOCKHASH")) ?
+    })
+  end
 end
 
 fn accounts_loop(values :: Json, index :: Int, total :: Int, accounts :: List < AccountInfo >) -> List < AccountInfo > ! String do
