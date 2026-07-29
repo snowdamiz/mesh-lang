@@ -69,14 +69,14 @@ onMounted(() => {
           </h2>
           <p class="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
             Benchmarked on dedicated Fly.io machines — 2 vCPU, 4 GB RAM, same region, private network. The comparison
-            that matters is Elixir: the same actor model, compiled to a native binary.
+            shown here is one minimal HTTP/1.1 endpoint, not a general application-performance claim.
           </p>
         </div>
         <div class="flex items-baseline gap-4 lg:flex-col lg:items-end lg:gap-1 lg:text-right">
           <div class="font-display l-grad-text text-6xl font-extrabold tracking-tight sm:text-7xl">2.3×</div>
           <div class="max-w-[16rem] font-mono text-[11.5px] leading-relaxed tracking-[0.06em] text-muted-foreground">
             Elixir's throughput,<br class="hidden lg:block" />
-            at less than half the latency
+            with 59% lower median latency
           </div>
         </div>
       </div>
@@ -136,7 +136,7 @@ onMounted(() => {
         <div class="l-card p-6 sm:p-7">
           <div class="flex items-baseline justify-between gap-2">
             <span class="font-mono text-xs font-semibold tracking-[0.08em] text-foreground">memory</span>
-            <span class="font-mono text-[10px] text-muted-foreground">MB at startup · lower ↓</span>
+            <span class="font-mono text-[10px] text-muted-foreground">MB startup baseline · lower ↓</span>
           </div>
           <div class="mt-6 space-y-4.5">
             <div v-for="(item, i) in memory" :key="item.lang">
@@ -151,7 +151,7 @@ onMounted(() => {
               </div>
             </div>
           </div>
-          <p class="mt-4 font-mono text-[10px] text-muted-foreground">peak RSS before load</p>
+          <p class="mt-4 font-mono text-[10px] text-muted-foreground">recorded before load</p>
         </div>
       </div>
 

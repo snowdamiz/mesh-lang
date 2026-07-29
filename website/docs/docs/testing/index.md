@@ -15,6 +15,7 @@ Mesh includes a first-class testing framework accessible via `meshc test`. Test 
 meshc test my-app
 meshc test my-app/tests
 meshc test my-app/tests/config.test.mpl
+meshc test --quiet my-app
 ```
 
 `meshc test` discovers all `*.test.mpl` files under the requested project root or directory target, compiles and runs each independently, and prints a summary:
@@ -27,6 +28,8 @@ test string operations/length ... ok
 ```
 
 On failure, the output includes the failing assertion, the expected and actual values, and the file/test name. The exit code is non-zero if any test fails.
+
+`--quiet` prints compact progress dots instead of every test name.
 
 ## Writing Tests
 
@@ -41,7 +44,7 @@ end
 
 test("string operations") do
   assert(String.length("hello") == 5)
-  assert_eq("hello", String.downcase("HELLO"))
+  assert_eq("hello", String.to_lower("HELLO"))
 end
 ```
 
@@ -60,7 +63,7 @@ test("assertions") do
   assert_eq(42, 40 + 2)
   assert_ne("hello", "world")
   assert_raises fn() do
-    panic("intentional")
+    assert(false)
   end
 end
 ```
@@ -107,21 +110,18 @@ end
 
 ## Mock Actors
 
-Use `Test.mock_actor` to spawn a lightweight actor in a test. The actor runs a callback for each message it receives:
+Use `Test.mock_actor` to spawn a lightweight actor owned by the current test:
 
 ```mesh
-test("mock actor messaging") do
-  let me = self()
-  let mock = Test.mock_actor(fn msg do
-    send(me, msg)
-    "ok"
+test("mock actor lifecycle") do
+  let mock = Test.mock_actor(fn _message do
+    "handled"
   end)
   send(mock, "hello")
-  assert_receive "hello", 500
 end
 ```
 
-`Test.mock_actor(fn msg -> ... end)` returns a `Pid` you can `send` messages to. The mock callback must return a string — `"ok"` to continue, `"stop"` to terminate the mock.
+`Test.mock_actor(fn(String) -> String)` returns a test-owned `Pid` you can send strings to. The helper checks for messages with a 100 ms idle timeout, ignores the callback's return value, and has no `"ok"`/`"stop"` control protocol. Mesh tracks mock PIDs and cleans them up between tests. Treat it as a lifecycle and cleanup helper; when message payload or callback behavior matters, define a normal actor in the test file and use `assert_receive` to verify observable messages.
 
 ## assert_receive
 
@@ -153,6 +153,6 @@ meshc test --coverage my-app
 
 ## What's Next?
 
-- [Standard Library](/docs/stdlib/) — Crypto, Encoding, DateTime modules
+- [Standard Library](/docs/stdlib/) — strings, collections, files, arithmetic, crypto, and time
 - [Developer Tools](/docs/tooling/) — meshc, meshpkg, formatter, REPL, LSP
 - [Concurrency](/docs/concurrency/) — actors and supervision for testing async code

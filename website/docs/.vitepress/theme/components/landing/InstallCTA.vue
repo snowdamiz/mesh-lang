@@ -49,14 +49,14 @@ onMounted(() => {
           style="border-color: oklch(1 0 0 / 0.16); color: oklch(0.87 0.03 170);"
         >
           <span class="l-ping" />
-          zero to cluster
+          install the toolchain
         </span>
 
         <h2 class="font-display mx-auto mt-7 max-w-3xl text-[clamp(2.5rem,6.5vw,4.25rem)] font-extrabold leading-[1.04]" style="color: oklch(0.97 0.008 170);">
-          One <em class="l-fancy" style="color: oklch(0.85 0.15 163);">command</em> to the fleet.
+          One <em class="l-fancy" style="color: oklch(0.85 0.15 163);">command</em> to get started.
         </h2>
         <p class="mx-auto mt-5 max-w-md text-base leading-relaxed" style="color: oklch(0.75 0.02 180);">
-          Install the toolchain and boot your first clustered server in minutes. macOS, Linux, and Windows.
+          Use the command below on macOS or Linux. The getting-started guide includes the Windows PowerShell installer.
         </p>
 
         <!-- Install pill -->

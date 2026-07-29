@@ -134,16 +134,16 @@ def main() -> None:
 
     # Brand pill
     pill_x, pill_y = 80, 72
-    pill_w, pill_h = 150, 30
+    pill_w, pill_h = 170, 30
     draw.rounded_rectangle((pill_x, pill_y, pill_x + pill_w, pill_y + pill_h), radius=15, fill=(16, 19, 27, 214), outline=(255, 255, 255, 42), width=1)
     draw.ellipse((pill_x + 14, pill_y + 11, pill_x + 22, pill_y + 19), fill=SUCCESS)
     draw.text((pill_x + 30, pill_y + 6), 'meshlang.dev', font=pill_font, fill='#d7dbe5')
 
     # Left column copy
-    title = 'Built for distributed\nsystems.'
+    title = 'Typed systems.\nNative speed.'
     draw.multiline_text((80, 132), title, font=title_font, fill=TEXT, spacing=6)
 
-    subtitle = 'One public app URL. Server-side runtime placement. Operator truth stays on meshc cluster.'
+    subtitle = 'An actor-based language for native services, packages, and runtime-managed clusters.'
     subtitle_lines = wrap_text(subtitle, subtitle_font, 540)
     subtitle_y = 350
     for i, line in enumerate(subtitle_lines):
@@ -151,7 +151,7 @@ def main() -> None:
 
     badge_y = 462
     badge_x = 80
-    for badge in ['@cluster', 'LLVM native', 'Type-safe', 'One public URL']:
+    for badge in ['Actors', 'LLVM native', 'Static types', 'ABI packages']:
         badge_x += draw_badge(draw, badge_x, badge_y, badge, badge_font) + 12
 
     # Code panel
@@ -168,15 +168,15 @@ def main() -> None:
     line_gap = 29
     line = 0
     code_lines = [
-        [('# One annotation to distribute', MUTED_2)],
-        [('@cluster', ACCENT_SOFT), (' pub fn ', '#c6cbda'), ('process_order', '#c084fc'), ('(id) do', '#c6cbda')],
-        [('let ', '#c6cbda'), ('order', '#d7dbe5'), (' = Repo.find(pool, id)', '#9aa4b7')],
-        [('Payment.charge(order)', '#d7dbe5')],
+        [('# Explicit clustered work', MUTED_2)],
+        [('@cluster', ACCENT_SOFT), ('(2)', '#c6cbda')],
+        [('pub fn ', '#c6cbda'), ('read_model', '#c084fc'), ('() -> String do', '#c6cbda')],
+        [('  "ready"', '#9aa4b7')],
         [('end', '#c6cbda')],
         [],
-        [('# Runtime-owned failover', MUTED_2)],
-        [('let key = "order-42"', '#9aa4b7')],
-        [('Continuity.submit(key, process_order)', '#9aa4b7')],
+        [('# Typed asynchronous result', MUTED_2)],
+        [('let job = Job.async(fn -> 42 end)', '#9aa4b7')],
+        [('Job.await_timeout(job, 1_000)', '#9aa4b7')],
     ]
     for segments in code_lines:
         if not segments:

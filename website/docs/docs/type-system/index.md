@@ -5,7 +5,29 @@ description: "Static typing and inference in Mesh: generics, enums, traits, alia
 
 # Type System
 
-Mesh has a powerful static type system with full type inference. You rarely need to write type annotations -- the compiler figures out types from context. When you do annotate, you get compile-time safety guarantees.
+Mesh has a static Hindley-Milner-style type system with local and function inference, unification, let polymorphism, algebraic data types, and trait constraints. You rarely need to annotate local values, but annotations make public contracts and native boundaries explicit.
+
+## Core Type Forms
+
+| Type form | Meaning |
+|-----------|---------|
+| `Int`, `Float`, `Bool`, `String` | Literal scalar types |
+| `Bytes` | Opaque binary data |
+| `U64`, `U128`, `I128` | Checked wide protocol integers |
+| `Json` | Typed JSON value, implicitly compatible with `String` at call sites |
+| `Atom`, `Regex` | Symbol and compiled-regex values |
+| `()` | Unit; `nil` is the equivalent value spelling |
+| `(A, B)` | Tuple |
+| `Fun(A, B) -> R` | Function |
+| `List<T>`, `Map<K, V>` | Parametric collections |
+| `Set` | Immutable set of `Int` values |
+| `Range` | Integer range value |
+| `Queue` | Immutable queue of `Int` values |
+| `Option<T>` / `T?` | Optional value |
+| `Result<T, E>` / `T!E` | Success or failure |
+| `Pid<M>` | Actor identity whose mailbox accepts `M` |
+
+`U64`, `U128`, and `I128` are not alternate literal types. They are opaque checked values constructed through their modules, and their arithmetic functions return `Result` on overflow or underflow.
 
 ## Type Inference
 
@@ -37,6 +59,19 @@ fn double(x :: Int) -> Int do
 end
 ```
 
+The compiler also generalizes reusable bindings. The same identity function can be called at unrelated types:
+
+```mesh
+fn identity(value) do
+  value
+end
+
+let number = identity(42)
+let text = identity("mesh")
+```
+
+Recursive functions and functions declared later in the same module are registered before their bodies are checked, so mutually recursive definitions can refer to one another.
+
 ### When to Annotate
 
 Type annotations are optional in many places, but recommended for:
@@ -45,46 +80,73 @@ Type annotations are optional in many places, but recommended for:
 - **Complex generic functions** -- helps the compiler and your teammates
 - **Public interfaces** -- documents the contract
 
-## Generics
+## Generics and Trait Bounds
 
-Generic functions and types let you write code that works with any type. Use angle brackets to declare type parameters:
+Generic functions and types let you write code that works with any type. Declare type parameters in angle brackets:
 
 ```mesh
 struct Box<T> do
   value :: T
 end deriving(Display, Eq)
 
+fn wrap<T>(value :: T) -> Box<T> do
+  Box { value: value }
+end
+
+fn choose<A>(condition :: Bool, left :: A, right :: A) -> A do
+  if condition do
+    left
+  else
+    right
+  end
+end
+
 fn main() do
-  let b1 = Box { value: 42 }
-  let b2 = Box { value: 42 }
-  let bs = Box { value: "hello" }
+  let b1 = wrap(42)
+  let b2 = wrap(42)
+  let bs = wrap("hello")
   println("${b1}")
   println("${bs}")
   println("${b1 == b2}")
 end
 ```
 
-Generic functions use the same angle bracket syntax:
+Add a `where` clause when the function body needs a trait operation:
 
 ```mesh
-fn apply(f :: Fun(Int) -> String, x :: Int) -> String do
-  f(x)
+fn render<T>(value :: T) -> String where T: Display do
+  value.to_string()
 end
 
-fn apply2(f :: Fun(Int, Int) -> Int, a :: Int, b :: Int) -> Int do
-  f(a, b)
+fn same<T>(left :: T, right :: T) -> Bool where T: Eq do
+  left == right
 end
 
-fn main() do
-  let result = apply(fn x -> "${x}" end, 42)
-  println(result)
-
-  let sum = apply2(fn a, b -> a + b end, 10, 20)
-  println("${sum}")
+fn combine<A, B>(left :: A, right :: B) -> String where A: Display, B: Display do
+  left.to_string() <> right.to_string()
 end
 ```
 
-Function types are written as `Fun(ParamTypes) -> ReturnType`. A zero-argument function type is `Fun() -> ReturnType`.
+Bounds are comma-separated and trait names may be qualified. They are checked at each call site.
+
+### Function Types
+
+Use `Fun(ParamTypes) -> ReturnType` when a value is itself callable:
+
+```mesh
+fn apply<A, B>(f :: Fun(A) -> B, value :: A) -> B do
+  f(value)
+end
+
+fn run_thunk(thunk :: Fun() -> Int) -> Int do
+  thunk()
+end
+
+let text = apply(fn n -> "value=#{n}" end, 42)
+let answer = run_thunk(fn -> 42 end)
+```
+
+Closures infer captured environment types separately from their callable parameter and result types.
 
 ## Type Aliases
 
@@ -135,7 +197,18 @@ Type aliases are useful when you want to:
 - Document the intended use of a parameter without creating a new distinct type
 - Share a type name across modules without repeating the underlying type definition
 
-Type aliases in v13.0 are non-generic -- `type Pair<T> = {T, T}` is not yet supported. Use structs for parameterized types.
+Aliases can be generic:
+
+```mesh
+type Pair<A, B> = (A, B)
+type StringResult<T> = Result<T, String>
+type Handler<Input, Output> = Fun(Input) -> Output
+
+let pair :: Pair<Int, String> = (1, "one")
+let result :: StringResult<Int> = Ok(42)
+```
+
+Generic arguments are substituted into the target type, and the alias remains transparent.
 
 ## Structs
 
@@ -159,6 +232,12 @@ fn main() do
   println("${p == q}")
   println("${p == r}")
 end
+```
+
+Every declared field is required, and unknown fields are rejected. Struct values are immutable; create a copy with selected fields replaced using `%{base | field: value}`:
+
+```mesh
+let moved = %{p | x: p.x + 10}
 ```
 
 Structs can be generic:
@@ -185,6 +264,26 @@ type Color do
   Blue
 end
 ```
+
+Sum types can be generic, and variants can carry positional or named fields:
+
+```mesh
+type Outcome<T> do
+  Pending
+  Complete(value :: T)
+  Failed(reason :: String)
+end
+
+fn is_complete<T>(outcome :: Outcome<T>) -> Bool do
+  case outcome do
+    Pending -> false
+    Complete(_) -> true
+    Failed(_) -> false
+  end
+end
+```
+
+Variant constructors are available unqualified (`Complete(value)`) and qualified (`Outcome.Complete(value)`). Patterns destructure both positional and named variant fields by position.
 
 Variants are used directly by name. Pattern match on them with `case`:
 
@@ -280,39 +379,49 @@ fn main() do
 end
 ```
 
-### Built-in Traits
-
-Mesh provides several built-in traits:
-
-| Trait | Purpose |
-|-------|---------|
-| `Eq` | Equality comparison (`==`, `!=`) |
-| `Ord` | Ordering comparison (`<`, `>`, `<=`, `>=`) |
-| `Display` | String representation for `println` and `"${...}"` |
-| `Debug` | Detailed debug output |
-| `Hash` | Hashing for use in maps and sets |
-| `Json` | JSON serialization and deserialization |
-
-### Trait Bounds on Functions
-
-Function type annotations can use the `Fun()` type to accept functions as arguments, enabling higher-order programming:
+Interfaces can be generic and can declare required associated types. An interface method with a body is a default method; an implementation may omit it:
 
 ```mesh
-fn apply(f :: Fun(Int) -> String, x :: Int) -> String do
-  f(x)
-end
+interface Named do
+  fn name(self) -> String
 
-fn run_thunk(thunk :: Fun() -> Int) -> Int do
-  thunk()
-end
-
-fn main() do
-  let result = apply(fn x -> "${x}" end, 42)
-  println(result)
-  let val = run_thunk(fn -> 99 end)
-  println("${val}")
+  fn label(self) -> String do
+    "name=" <> self.name()
+  end
 end
 ```
+
+A method without a `self` parameter is static. User-defined conversion methods can be called through the destination type, as in `Wrapper.from(value)`. The compiler-provided `default()` function is resolved from context:
+
+```mesh
+let value :: Int = default()
+```
+
+An `impl` must provide every required method and associated type with a matching signature. Overlapping implementations for the same trait and type are rejected. If multiple in-scope interfaces provide an equally valid method name, the compiler reports the candidates instead of choosing one arbitrarily.
+
+### Built-in Traits
+
+Mesh provides these compiler-known traits:
+
+| Trait | Contract |
+|-------|----------|
+| `Add`, `Sub`, `Mul`, `Div`, `Mod` | Binary numeric operators with associated `Output` |
+| `Neg` | Unary `-` with associated `Output` |
+| `Eq` | `==` and `!=` |
+| `Ord` | `<`, `>`, `<=`, `>=`, plus `compare` returning `Ordering` |
+| `Not` | Boolean negation |
+| `Display` | `to_string()` and interpolation |
+| `Debug` | `inspect()` |
+| `Hash` | `hash()` returning an `Int` hash value |
+| `Default` | Static `default()` constructor |
+| `Iterator` | `next()` with associated `Item` |
+| `Iterable` | `iter()` with associated `Item` and `Iter` |
+| `From<S>`, `Into<T>` | Infallible conversion |
+| `TryFrom<S>`, `TryInto<T>` | Fallible conversion |
+
+`Option`, `Result`, and `Ordering` are built-in sum types. `Ordering` has `Less`, `Equal`, and `Greater` constructors.
+
+`deriving(Json)` is convenient syntax that generates `ToJson` and `FromJson` implementations; the derived capability is not a single interface literally named `Json`. Likewise, `deriving(Row)` generates row decoding support and `deriving(Schema)` generates schema metadata.
 
 ## Deriving
 
@@ -332,9 +441,18 @@ fn main() do
 end
 ```
 
+An explicit deriving clause is selective: only the listed capabilities are generated. `deriving()` explicitly generates none. For backward compatibility, omitting the clause has defaults:
+
+| Definition | No `deriving` clause |
+|------------|----------------------|
+| Struct | `Debug`, `Eq`, `Ord`, `Hash` |
+| Sum type | `Debug`, `Eq`, `Ord` |
+
+`Display`, `Json`, `Row`, and `Schema` are never enabled by omission; list them explicitly.
+
 ### Deriving on Sum Types
 
-Sum types support deriving the same traits:
+Sum types support `Eq`, `Ord`, `Display`, `Debug`, `Hash`, and `Json`:
 
 ```mesh
 type Color do
@@ -390,14 +508,29 @@ end
 
 ### Available Derives
 
-| Derive | What it generates |
-|--------|-------------------|
-| `Eq` | Structural equality comparison |
-| `Ord` | Structural ordering (field-by-field or variant order) |
-| `Display` | Human-readable string representation |
-| `Debug` | Detailed debug string representation |
-| `Hash` | Hash value computation |
-| `Json` | JSON serialization and deserialization |
+| Derive | Struct | Sum type | What it generates |
+|--------|:------:|:--------:|-------------------|
+| `Eq` | Yes | Yes | Structural equality |
+| `Ord` | Yes | Yes | Structural ordering |
+| `Display` | Yes | Yes | Human-readable `to_string()` |
+| `Debug` | Yes | Yes | Detailed `inspect()` |
+| `Hash` | Yes | Yes | Hash value |
+| `Json` | Yes | Yes | `to_json()` and static `from_json(...)` |
+| `Row` | Yes | No | Static row decoding |
+| `Schema` | Yes | No | Static database-schema metadata |
+
+An explicit `Ord` derive requires `Eq` in the same list:
+
+```mesh
+struct Coordinate do
+  x :: Int
+  y :: Int
+end deriving(Eq, Ord)
+```
+
+`deriving(Json)` validates every stored field. Directly supported values include `Int`, `Float`, `Bool`, `String`, generic parameters, `Option`, `List`, `Map<String, V>`, and nested values that implement `ToJson`.
+
+`deriving(Row)` accepts `Int`, `Float`, `Bool`, `String`, and `Option` of those types. `deriving(Schema)` is for structs and emits metadata used by the database/query APIs, including table, fields, primary key, relationships, field types, and column accessors.
 
 ## Associated Types
 
@@ -428,6 +561,8 @@ end
 
 Use `Self.Item` in method signatures to reference the associated type. The compiler resolves it to the concrete type from each implementation.
 
+Every implementation must bind each required associated type exactly once. Missing and undeclared bindings are compile errors.
+
 Interfaces can have multiple associated types:
 
 ```mesh
@@ -440,7 +575,7 @@ end
 
 ## Numeric Traits
 
-Mesh provides built-in traits for arithmetic operators. Implement them to use `+`, `-`, `*`, `/` with your custom types:
+Mesh provides built-in traits for arithmetic operators. Implement them to use `+`, `-`, `*`, `/`, and `%` with your custom types:
 
 | Trait | Operator | Method |
 |-------|----------|--------|
@@ -448,6 +583,7 @@ Mesh provides built-in traits for arithmetic operators. Implement them to use `+
 | `Sub` | `-` | `sub(self, other)` |
 | `Mul` | `*` | `mul(self, other)` |
 | `Div` | `/` | `div(self, other)` |
+| `Mod` | `%` | `mod(self, other)` |
 | `Neg` | `-` (unary) | `neg(self)` |
 
 Each numeric trait has an associated `type Output` that determines the result type:
@@ -502,6 +638,19 @@ fn main() do
   println("${w.value}")
 end
 ```
+
+### Automatic Into
+
+Every `impl From<Source> for Target` also makes `Into<Target>` available on the source. Give the result an annotation when the target is otherwise ambiguous:
+
+```mesh
+fn main() do
+  let w :: Wrapper = 21.into()
+  println("#{w.value}")
+end
+```
+
+You do not write the corresponding `Into` implementation yourself.
 
 ### Built-in Conversions
 

@@ -5,7 +5,7 @@ import { useScrollReveal } from '@/composables/useScrollReveal'
 interface SimNode {
   id: number
   label: string
-  role: 'primary' | 'worker'
+  controlRole: 'leader' | 'voter'
   status: 'up' | 'down' | 'joining'
   x: number
   y: number
@@ -28,9 +28,9 @@ const BLADE_W = 150
 const BLADE_H = 64
 
 const nodes = ref<SimNode[]>([
-  { id: 0, label: 'node-1', role: 'primary', status: 'up', x: BLADE_X, y: 16 },
-  { id: 1, label: 'node-2', role: 'worker', status: 'up', x: BLADE_X, y: 108 },
-  { id: 2, label: 'node-3', role: 'worker', status: 'up', x: BLADE_X, y: 200 },
+  { id: 0, label: 'node-1', controlRole: 'leader', status: 'up', x: BLADE_X, y: 16 },
+  { id: 1, label: 'node-2', controlRole: 'voter', status: 'up', x: BLADE_X, y: 108 },
+  { id: 2, label: 'node-3', controlRole: 'voter', status: 'up', x: BLADE_X, y: 200 },
 ])
 
 const log = ref<LogEntry[]>([])
@@ -110,25 +110,25 @@ function kill(node: SimNode) {
   node.status = 'down'
   push('fail', `${node.label} heartbeat lost`)
 
-  const wasPrimary = node.role === 'primary'
+  const wasLeader = node.controlRole === 'leader'
   const survivors = nodes.value.filter((n) => n.status === 'up')
 
-  after(400, () => push('info', `rerouting ${2 + rand(5)} in-flight calls → ${survivors.map((n) => n.label).join(', ')}`))
+  after(400, () => push('info', `shifting eligible new calls → ${survivors.map((n) => n.label).join(', ')}`))
 
-  if (wasPrimary) {
-    after(800, () => push('warn', 'primary lost — electing successor'))
+  if (wasLeader) {
+    after(800, () => push('warn', 'controller leader lost — electing successor'))
     after(1200, () => {
       const successor = nodes.value.find((n) => n.status === 'up')
       if (successor) {
-        successor.role = 'primary'
-        node.role = 'worker'
-        push('ok', `${successor.label} promoted to primary`)
+        successor.controlRole = 'leader'
+        node.controlRole = 'voter'
+        push('ok', `${successor.label} elected controller leader`)
       }
     })
   }
 
-  after(wasPrimary ? 1650 : 1100, () => {
-    push('ok', 'work resumed — 0 requests dropped')
+  after(wasLeader ? 1650 : 1100, () => {
+    push('ok', 'routing shifted to surviving nodes')
     clusterState.value = 'RECOVERING'
   })
 
@@ -153,10 +153,10 @@ function killRandom() {
 function boot() {
   if (booted) return
   booted = true
-  after(200, () => push('ok', 'node-1 joined · role=primary'))
-  after(500, () => push('ok', 'node-2 joined · role=worker'))
-  after(750, () => push('ok', 'node-3 joined · role=worker'))
-  after(1100, () => push('info', 'mesh formed — 3 nodes behind one public url'))
+  after(200, () => push('ok', 'node-1 joined · controller+worker · leader'))
+  after(500, () => push('ok', 'node-2 joined · controller+worker · voter'))
+  after(750, () => push('ok', 'node-3 joined · controller+worker · voter'))
+  after(1100, () => push('info', 'mesh formed — 3 ready worker nodes'))
 }
 
 onMounted(() => {
@@ -174,7 +174,7 @@ onMounted(() => {
     io.observe(panel.value)
   }
 
-  // Request counter — routing never stops, even mid-failover
+  // Illustrative new-request counter while at least one ready worker remains.
   intervals.push(
     setInterval(() => {
       if (visible && upCount.value > 0) routed.value += 2 + rand(6)
@@ -218,18 +218,19 @@ const levelColor: Record<LogEntry['level'], string> = {
 
         <div class="reveal reveal-d1 mt-6 flex flex-wrap items-end justify-between gap-6">
           <h2 class="font-display text-4xl font-extrabold leading-[1.05] text-foreground sm:text-[2.75rem]">
-            Kill a node.<br /><em class="l-fancy">Nothing</em> drops.
+            Simulate node loss.<br />Explore <em class="l-fancy">recovery.</em>
           </h2>
           <p class="max-w-sm text-base leading-relaxed text-muted-foreground">
-            Failover belongs to the runtime, not your incident channel. Try it — click any node below, including the
-            primary.
+            This interactive panel illustrates topology and rerouting; it is not a live cluster or a zero-loss
+            guarantee. Actual recovery depends on quorum, replicas, readiness, continuity policy, and stable operation
+            identity. Click any node below to explore the sequence.
           </p>
         </div>
 
         <!-- Live cluster panel -->
         <div ref="panel" class="reveal-zoom reveal-d1 l-card mt-10 overflow-hidden">
           <div class="flex items-center justify-between gap-4 border-b border-border px-5 py-3.5 sm:px-6">
-            <span class="min-w-0 truncate font-mono text-[11.5px] tracking-[0.04em] text-muted-foreground">mesh://cluster — live topology</span>
+            <span class="min-w-0 truncate font-mono text-[11.5px] tracking-[0.04em] text-muted-foreground">mesh://cluster — illustrative topology</span>
             <button class="l-fault-btn shrink-0" :disabled="busy" @click="killRandom">
               ⚡ inject fault
             </button>
@@ -238,7 +239,7 @@ const levelColor: Record<LogEntry['level'], string> = {
           <div class="grid lg:grid-cols-[1.15fr_1fr]">
             <!-- Topology: one ingress fanning out to a rack of blades -->
             <div class="relative border-b border-border lg:border-b-0 lg:border-r">
-              <svg viewBox="0 0 440 280" class="mx-auto block w-full max-w-xl p-4" role="img" aria-label="Interactive cluster topology — one public URL routing to three Mesh servers; click a server to simulate failure">
+              <svg viewBox="0 0 440 280" class="mx-auto block w-full max-w-xl p-4" role="img" aria-label="Illustrative application ingress routing to three controller and worker nodes; click a server to simulate failure">
                 <!-- Traffic arriving from the internet -->
                 <line x1="0" y1="140" x2="22" y2="140" stroke="currentColor" stroke-width="1.25" class="text-foreground/20" />
                 <circle r="2.5" fill="var(--l-accent)" opacity="0.8">
@@ -254,8 +255,8 @@ const levelColor: Record<LogEntry['level'], string> = {
                     <ellipse cx="74" cy="126" rx="3.5" ry="8" />
                     <line x1="66" y1="126" x2="82" y2="126" />
                   </g>
-                  <text x="74" y="152" text-anchor="middle" font-family="var(--font-mono)" font-size="10.5" font-weight="700" class="fill-foreground select-none">one url</text>
-                  <text x="74" y="166" text-anchor="middle" font-family="var(--font-mono)" font-size="8.5" class="fill-current text-muted-foreground select-none">:443 · load-balanced</text>
+                  <text x="74" y="152" text-anchor="middle" font-family="var(--font-mono)" font-size="10.5" font-weight="700" class="fill-foreground select-none">app ingress</text>
+                  <text x="74" y="166" text-anchor="middle" font-family="var(--font-mono)" font-size="8.5" class="fill-current text-muted-foreground select-none">external · load-balanced</text>
                 </g>
 
                 <!-- Fan-out edges + packets -->
@@ -293,9 +294,9 @@ const levelColor: Record<LogEntry['level'], string> = {
                     :stroke-dasharray="node.status === 'down' ? '4 4' : 'none'"
                     :opacity="node.status === 'down' ? 0.6 : 1"
                   />
-                  <!-- primary marker -->
+                  <!-- consensus-leader marker; every illustrated node is also a worker -->
                   <rect
-                    v-if="node.role === 'primary' && node.status === 'up'"
+                    v-if="node.controlRole === 'leader' && node.status === 'up'"
                     :x="node.x" :y="node.y + 12" width="3" :height="BLADE_H - 24" rx="1.5"
                     fill="var(--l-accent)"
                   />
@@ -315,8 +316,8 @@ const levelColor: Record<LogEntry['level'], string> = {
                     :x="node.x + BLADE_W - 14" :y="node.y + 28" text-anchor="end"
                     font-family="var(--font-mono)" font-size="9"
                     class="select-none"
-                    :fill="node.status !== 'up' ? nodeColor(node) : node.role === 'primary' ? 'var(--l-accent)' : 'var(--muted-foreground)'"
-                  >{{ node.status === 'up' ? node.role : node.status === 'down' ? 'offline' : 'joining…' }}</text>
+                    :fill="node.status !== 'up' ? nodeColor(node) : node.controlRole === 'leader' ? 'var(--l-accent)' : 'var(--muted-foreground)'"
+                  >{{ node.status === 'up' ? `${node.controlRole} · worker` : node.status === 'down' ? 'offline' : 'joining…' }}</text>
                   <!-- load bar: survivors absorb the dead node's share -->
                   <rect
                     :x="node.x + 20" :y="node.y + 40" width="114" height="6" rx="3"
@@ -359,7 +360,7 @@ const levelColor: Record<LogEntry['level'], string> = {
             </span>
             <span class="l-chip">nodes <span class="font-bold text-foreground tabular-nums">{{ upCount }}/3</span></span>
             <span class="l-chip">routed <span class="font-bold text-foreground tabular-nums">{{ routed.toLocaleString('en-US') }}</span></span>
-            <span class="l-chip">dropped <span class="font-bold tabular-nums" :style="{ color: 'var(--ok)' }">0</span></span>
+            <span class="l-chip">mode <span class="font-bold text-foreground">illustrative</span></span>
           </div>
         </div>
       </div>

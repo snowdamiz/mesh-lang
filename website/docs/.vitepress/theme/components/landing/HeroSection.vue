@@ -8,13 +8,16 @@ const { theme } = useData()
 const highlightedHtml = ref('')
 
 const heroCode = `# work.mpl
-@cluster pub fn add() -> Int do
+@cluster
+pub fn add() -> Int do
   1 + 1
 end
 
 # api/router.mpl
-from Api.Todos import handle_get_todo,
+from Api.Todos import (
+  handle_get_todo,
   handle_list_todos
+)
 
 pub fn build_router() do
   HTTP.router()
@@ -127,8 +130,9 @@ onMounted(async () => {
           </h1>
 
           <p class="l-enter mt-8 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg" style="text-wrap: pretty; animation-delay: 0.18s">
-            Mesh is a compiled language where distribution is a language primitive. One annotation spreads work across
-            machines — failover, load balancing, and the whole server stack owned by the runtime, not your infra.
+            Mesh is a compiled language with typed actors and distribution in the programming model. Declare eligible
+            work with <span class="font-mono text-foreground">@cluster</span>; the runtime applies the routing,
+            continuity, and capacity policy in your manifest.
           </p>
 
           <div class="l-enter mt-10 flex flex-col gap-3 sm:flex-row sm:items-center" style="animation-delay: 0.28s">
@@ -162,8 +166,8 @@ onMounted(async () => {
               v-else
               class="max-w-full overflow-x-auto px-6 py-4 font-mono text-[0.8125rem] leading-[1.9] text-foreground"><code>{{ heroCode }}</code></pre>
             <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-2.5 font-mono text-[11px] text-muted-foreground">
-              <span>distribution: <span class="text-foreground">1 annotation</span></span>
-              <span>orchestration config: <span class="text-foreground">0 lines</span></span>
+              <span>work declaration: <span class="text-foreground">@cluster</span></span>
+              <span>runtime policy: <span class="text-foreground">mesh.toml</span></span>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Package Details
-description: Browse Mesh package details, install commands, version history, and README content from the public registry.
+description: Browse Mesh package details, install commands, immutable versions, and any documentation exposed by the public registry.
 ---
 
 <script setup>

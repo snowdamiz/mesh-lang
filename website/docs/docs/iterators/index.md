@@ -1,15 +1,22 @@
 ---
 title: Iterators
-description: Lazy iterator pipelines in Mesh with Iter.from, map, filter, reduce, collect, and custom Iterable types.
+description: Lazy list-iterator pipelines in Mesh with Iter.from, combinators, terminals, collection, and the Iterable protocol used by for-in.
 ---
 
 # Iterators
 
-Mesh provides a lazy iterator protocol for composing data transformations as pipelines. Instead of creating intermediate lists at each step, iterators process elements one at a time -- no extra allocations until you collect the final result. Combined with the pipe operator `|>`, iterator pipelines read naturally from left to right.
+Mesh provides lazy iterator adapters for composing list transformations as pipelines, plus `Iterable` and `Iterator` interfaces that power `for...in`. Instead of creating an intermediate list at each lazy step, iterator adapters process elements as a terminal or collect operation requests them. Combined with `|>`, pipelines read from left to right.
+
+The two entry points have different scopes:
+
+- `Iter.from(list)` currently accepts `List<T>` and starts a lazy pipeline.
+- `for value in source` accepts built-in lists, maps, sets, ranges, and user-defined `Iterable` or `Iterator` values.
+
+Do not use `Iter.from(map)` or `Iter.from(set)`; those are not part of the current typed API.
 
 ## Creating Iterators
 
-Use `Iter.from()` to create an iterator from any collection:
+Use `Iter.from()` to create an iterator from a list:
 
 ```mesh
 fn main() do
@@ -22,7 +29,19 @@ fn main() do
 end
 ```
 
-`Iter.from()` works with lists, maps, and sets. The returned iterator is lazy -- it does nothing until you consume it with a terminal operation or collect.
+The returned list iterator is consumed as a terminal operation or collect requests values. A pipeline is single-pass: after a terminal operation has exhausted an iterator, create another iterator if you need to traverse the list again.
+
+### Eager List Operations vs Lazy Iterators
+
+The prelude functions `map`, `filter`, and `reduce` (and their `List` module equivalents) operate directly on a `List`. `map` and `filter` eagerly return new lists:
+
+```mesh
+let doubled = map([1, 2, 3], fn x -> x * 2 end)
+let positive = filter(doubled, fn x -> x > 0 end)
+let total = reduce(positive, 0, fn acc, x -> acc + x end)
+```
+
+The `Iter.map` and `Iter.filter` functions below instead return lazy adapter handles. Use the eager list operations when you immediately need a list; use `Iter` when you want to compose work and materialize once.
 
 ### Custom Iterables
 
@@ -62,6 +81,35 @@ end
 ```
 
 The `Iterable` interface requires two associated types (`Item` and `Iter`) and an `iter` method that returns an iterator handle.
+
+The compiler-known `Iterator` contract has an associated `Item` type and a
+`next(self)` operation. Semantically, `next` either yields the next `Item` or
+signals exhaustion. Implement the existing contract with
+`impl Iterator for MyIterator`; do not redeclare the interface in application
+code.
+
+A value that directly implements `Iterator` can also appear on the right side of `in`.
+
+### `for...in` Sources
+
+`for...in` is a list-producing comprehension over these sources:
+
+| Source | Binding |
+|--------|---------|
+| `start..end` | `Int`; the end is exclusive |
+| `List<T>` | `T` |
+| `Map<K, V>` | `{key, value}` destructuring, or one name for the key |
+| `Set` | `Int` |
+| `Iterable` | its associated `Item` |
+| `Iterator` | its associated `Item` |
+
+An optional `when` clause filters before the body. The result is always `List<BodyType>`:
+
+```mesh
+let squares = for n in 0..10 when n % 2 == 0 do
+  n * n
+end
+```
 
 ## Lazy Combinators
 
@@ -139,13 +187,13 @@ end
 
 ### enumerate
 
-`Iter.enumerate` pairs each element with its zero-based index, producing `{index, value}` tuples:
+`Iter.enumerate` pairs each element with its zero-based index, producing `(index, value)` tuples:
 
 ```mesh
 fn main() do
   let list = [10, 20, 30]
 
-  # Enumerate produces 3 pairs: {0, 10}, {1, 20}, {2, 30}
+  # Enumerate produces 3 pairs: (0, 10), (1, 20), (2, 30)
   let n = Iter.from(list) |> Iter.enumerate() |> Iter.count()
   println(n.to_string())
 end
@@ -226,17 +274,19 @@ Both `any` and `all` short-circuit -- `any` stops as soon as it finds a match, a
 
 ### find
 
-`Iter.find` returns the first element that satisfies the predicate:
+The typed search operation is currently `List.find`, which returns `Option<T>`:
 
 ```mesh
 fn main() do
   let list = [1, 2, 3, 4, 5]
-  let found = Iter.from(list) |> Iter.find(fn x -> x > 3 end)
-  println(found.to_string())
+  case List.find(list, fn x -> x > 3 end) do
+    Some(value) -> println(value.to_string())
+    None -> println("not found")
+  end
 end
 ```
 
-Like `any`, `find` short-circuits as soon as a matching element is found.
+The runtime contains a short-circuiting `Iter.find` operation, but the current static `Iter` signature exposes its result as an opaque handle rather than `Option<T>`. Until that signature is typed, prefer `List.find` in Mesh source.
 
 ### reduce
 
@@ -256,7 +306,7 @@ fn main() do
 end
 ```
 
-The first argument to `reduce` is the initial accumulator value. The function receives the current accumulator and the next element, and returns the new accumulator.
+The first argument to `reduce` is the initial accumulator value. In the current iterator API, the accumulator and element have the same type; the function receives the current accumulator and next element and returns that type.
 
 ## Collecting Results
 
@@ -301,7 +351,8 @@ end
 
 ### Set.collect
 
-`Set.collect` gathers elements into a set, automatically removing duplicates:
+`Set.collect` gathers integer elements into a set, automatically removing
+duplicates:
 
 ```mesh
 fn main() do
@@ -329,6 +380,27 @@ fn main() do
   println(abc)
 end
 ```
+
+## API Summary
+
+| Operation | Result | Notes |
+|-----------|--------|-------|
+| `Iter.from(list)` | List iterator | `list` must be `List<T>` |
+| `Iter.map(iter, fn)` | Lazy iterator | Transforms each value |
+| `Iter.filter(iter, fn)` | Lazy iterator | Predicate must return `Bool` |
+| `Iter.take(iter, n)` | Lazy iterator | Stops after at most `n` values |
+| `Iter.skip(iter, n)` | Lazy iterator | Discards the first `n` values |
+| `Iter.enumerate(iter)` | Lazy iterator of `(index, value)` | Index starts at zero |
+| `Iter.zip(left, right)` | Lazy iterator of pairs | Stops with the shorter input |
+| `Iter.count(iter)` | `Int` | Consumes the iterator |
+| `Iter.sum(iter)` | `Int` | Integer elements only |
+| `Iter.any(iter, fn)` | `Bool` | Short-circuits on `true` |
+| `Iter.all(iter, fn)` | `Bool` | Short-circuits on `false` |
+| `Iter.reduce(iter, initial, fn)` | accumulator type | Element and accumulator types currently match |
+| `List.collect(iter)` | `List<T>` | Materializes all remaining values |
+| `Map.collect(iter)` | `Map<K, V>` | Input values are key-value pairs |
+| `Set.collect(iter)` | `Set` | Integer elements; removes duplicates |
+| `String.collect(iter)` | `String` | Input values are strings |
 
 ## Building Pipelines
 

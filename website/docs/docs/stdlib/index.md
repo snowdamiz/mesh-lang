@@ -1,11 +1,134 @@
 ---
 title: Standard Library
-description: Bytes, cryptography, encoding, and date/time utilities in Mesh
+description: Strings, collections, files, regex, checked arithmetic, bytes, cryptography, encoding, and time in Mesh
 ---
 
 # Standard Library
 
-Mesh ships a set of stdlib modules for binary data, cryptography, encoding, and date/time operations. All modules are available without any imports — use them directly in your Mesh programs.
+Mesh's standard library is available without package installation. Module-qualified functions can be used directly; `import Module` is optional. Concurrency, web, database, iterator, and distributed modules have dedicated guides, while this page covers the general-purpose modules.
+
+## Strings
+
+String indexing is by Unicode code point rather than byte. `String.slice(text, start, end)` uses a zero-based, exclusive end and clamps both positions to the string's bounds.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `String.length(text)` | `Int` | Count Unicode code points |
+| `String.slice(text, start, end)` | `String` | Return a clamped code-point slice |
+| `String.contains(text, needle)` | `Bool` | Test for a substring |
+| `String.starts_with(text, prefix)` | `Bool` | Test the beginning |
+| `String.ends_with(text, suffix)` | `Bool` | Test the ending |
+| `String.trim(text)` | `String` | Remove surrounding whitespace |
+| `String.to_upper(text)` | `String` | Unicode uppercase conversion |
+| `String.to_lower(text)` | `String` | Unicode lowercase conversion |
+| `String.replace(text, from, to)` | `String` | Replace every occurrence |
+| `String.split(text, delimiter)` | `List<String>` | Split on a literal delimiter |
+| `String.join(parts, separator)` | `String` | Join a list of strings |
+| `String.to_int(text)` | `Option<Int>` | Parse a signed integer after trimming |
+| `String.to_float(text)` | `Option<Float>` | Parse a float after trimming |
+| `String.from(value)` | `String` | Convert an `Int`, `Float`, or `Bool` |
+| `String.collect(iterator)` | `String` | Consume a string-producing iterator |
+
+The `<>` operator concatenates two strings. `println(value)` writes to standard output with a newline, and `print(value)` writes without one.
+
+## Input, Environment, and Files
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `IO.read_line()` | `Result<String, String>` | Read one line from standard input |
+| `IO.eprintln(text)` | `Unit` | Write a line to standard error |
+| `Env.get(name, default)` | `String` | Read an environment variable or use a default |
+| `Env.get_int(name, default)` | `Int` | Read a decimal environment variable or use a default |
+| `Env.args()` | `List<String>` | Return native command-line arguments |
+| `File.read(path)` | `Result<String, String>` | Read a UTF-8 text file |
+| `File.write(path, text)` | `Result<Unit, String>` | Create or replace a text file |
+| `File.append(path, text)` | `Result<Unit, String>` | Append text, creating the file when needed |
+| `File.exists(path)` | `Bool` | Test whether a path exists |
+| `File.delete(path)` | `Result<Unit, String>` | Delete a file |
+
+File operations return error text instead of terminating the program:
+
+```mesh
+case File.read("settings.txt") do
+  Ok(contents) -> println(contents)
+  Err(error) -> IO.eprintln("settings: #{error}")
+end
+```
+
+## Regular Expressions
+
+Use `~r/pattern/` for a literal pattern. Literal flags are `i` (case-insensitive), `m` (multi-line), and `s` (dot matches newlines). Use `Regex.compile` for a pattern known only at runtime.
+
+```mesh
+fn main() do
+  let identifier = ~r/^[a-z][a-z0-9_]*$/i
+  if Regex.is_match(identifier, "mesh_14") do
+    println("valid")
+  end
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Regex.compile(pattern)` | `Result<Regex, String>` | Compile a dynamic pattern |
+| `Regex.is_match(regex, text)` | `Bool` | Test whether the pattern matches |
+| `Regex.captures(regex, text)` | `Option<List<String>>` | Return the whole match followed by capture groups |
+| `Regex.replace(regex, text, replacement)` | `String` | Replace every non-overlapping match |
+| `Regex.split(regex, text)` | `List<String>` | Split text at matches |
+
+## Eager Collections
+
+Lists and maps are polymorphic. Sets and queues currently store `Int` values. Collection updates are immutable: keep the returned collection.
+
+### Lists
+
+| Functions | Purpose |
+|-----------|---------|
+| `List.new`, `List.length`, `List.append` | Create, count, and append |
+| `List.head`, `List.tail`, `List.get`, `List.last`, `List.nth` | Positional access |
+| `List.concat`, `List.reverse`, `List.take`, `List.drop` | Reshape a list |
+| `List.map`, `List.filter`, `List.reduce`, `List.flat_map`, `List.flatten` | Transform and fold |
+| `List.find`, `List.any`, `List.all`, `List.contains` | Search and predicates |
+| `List.sort` | Sort with a comparator returning a negative, zero, or positive `Int` |
+| `List.zip`, `List.enumerate` | Pair lists or attach zero-based indices |
+| `List.collect` | Consume an iterator into a list |
+
+`List.head`, `List.tail`, `List.get`, `List.last`, and `List.nth` require an existing element. Check the length or use `List.find`, which returns `Option<T>`, when absence is expected.
+
+### Maps and Sets
+
+| Functions | Purpose |
+|-----------|---------|
+| `Map.new`, `Map.put`, `Map.get`, `Map.delete`, `Map.has_key`, `Map.size` | Core map operations |
+| `Map.keys`, `Map.values`, `Map.merge` | Inspect or combine maps |
+| `Map.to_list`, `Map.from_list`, `Map.collect` | Convert `(key, value)` tuples |
+| `Set.new`, `Set.add`, `Set.remove`, `Set.contains`, `Set.size` | Core integer-set operations |
+| `Set.union`, `Set.intersection`, `Set.difference` | Set algebra |
+| `Set.to_list`, `Set.from_list`, `Set.collect` | Convert integer sets |
+
+`Map.get` requires an existing key; call `Map.has_key` first when absence is normal.
+
+### Tuples, Ranges, and Queues
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Tuple.first(tuple)` | `Int` | First integer element |
+| `Tuple.second(tuple)` | `Int` | Second integer element |
+| `Tuple.nth(tuple, index)` | `Int` | Integer element at a zero-based index |
+| `Tuple.size(tuple)` | `Int` | Tuple arity |
+| `Range.new(start, end)` | `Range` | Create the half-open range `[start, end)` |
+| `Range.length(range)` | `Int` | Number of integers in the range |
+| `Range.to_list(range)` | `List<Int>` | Materialize a range |
+| `Range.map(range, fn)` | `List<Int>` | Map its integers |
+| `Range.filter(range, predicate)` | `List<Int>` | Retain matching integers |
+| `Queue.new()` | `Queue` | Create an empty integer FIFO |
+| `Queue.push(queue, value)` | `Queue` | Return a queue with a value appended |
+| `Queue.pop(queue)` | `Tuple` | Return `(front_value, remaining_queue)` |
+| `Queue.peek(queue)` | `Int` | Read the front value |
+| `Queue.size(queue)` | `Int` | Count queued values |
+| `Queue.is_empty(queue)` | `Bool` | Test for an empty queue |
+
+`Queue.pop` and `Queue.peek` require a non-empty queue.
 
 ## Bytes
 
@@ -68,11 +191,56 @@ Each module exposes the same surface:
 | `U64.compare(left, right)` | `Int` | `-1`, `0`, or `1` |
 | `U64.add(left, right)` | `Result<U64, String>` | Checked addition |
 | `U64.subtract(left, right)` | `Result<U64, String>` | Checked subtraction |
+| `U64.multiply(left, right)` | `Result<U64, String>` | Checked multiplication |
+| `U64.divide(left, right)` | `Result<U64, String>` | Checked integer division; division by zero is an error |
 | `U64.to_int(value)` | `Result<Int, String>` | Bounded conversion |
 | `U64.to_string(value)` | `String` | Canonical decimal string |
 
 Replace `U64` with `U128` or `I128` for the corresponding width and
-signedness. `Bytes.read_uint_le` decimal output can be passed to `U64.parse`.
+signedness: for example, `U128.multiply(left, right)` performs checked
+128-bit unsigned multiplication. `Bytes.read_uint_le` decimal output can be
+passed to `U64.parse`.
+
+## Checked Integer Arithmetic
+
+Normal `Int` operators are convenient for ordinary arithmetic. Use `Checked` at financial, protocol, and resource-accounting boundaries where overflow or invalid division must be returned as data.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Checked.add(left, right)` | `Result<Int, String>` | Checked addition |
+| `Checked.sub(left, right)` | `Result<Int, String>` | Checked subtraction |
+| `Checked.mul(left, right)` | `Result<Int, String>` | Checked multiplication |
+| `Checked.div(left, right)` | `Result<Int, String>` | Checked division, including zero and minimum-value overflow |
+| `Checked.abs(value)` | `Result<Int, String>` | Checked absolute value |
+| `Checked.mul_div(a, b, denominator, rounding)` | `Result<Int, String>` | Multiply through a wide intermediate, divide, and round |
+| `Checked.rescale(raw, from_scale, to_scale, rounding)` | `Result<Int, String>` | Convert a fixed-point integer between decimal scales |
+
+Rounding is explicit: `:toward_zero`, `:floor`, `:ceil`, `:half_away_from_zero`, or `:half_even`.
+
+```mesh
+case Checked.mul_div(1_005, 1, 100, :half_even) do
+  Ok(value) -> println("#{value}")
+  Err(error) -> println(error)
+end
+```
+
+## Math and Numeric Conversion
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Math.abs(value)` | Same numeric type | Absolute value |
+| `Math.min(left, right)` | Same numeric type | Smaller value |
+| `Math.max(left, right)` | Same numeric type | Larger value |
+| `Math.pi` | `Float` | π constant |
+| `Math.pow(base, exponent)` | `Float` | Floating-point power |
+| `Math.sqrt(value)` | `Float` | Square root |
+| `Math.floor(value)` | `Int` | Round down |
+| `Math.ceil(value)` | `Int` | Round up |
+| `Math.round(value)` | `Int` | Round to the nearest integer |
+| `Int.to_float(value)` | `Float` | Convert an integer |
+| `Int.to_string(value)` | `String` | Decimal formatting |
+| `Float.to_int(value)` | `Int` | Convert a float to an integer |
+| `Float.from(value)` | `Float` | Convert an integer to a float |
 
 ## Crypto
 
@@ -126,7 +294,10 @@ end
 
 ### Base64
 
-The `Base64` module encodes and decodes binary data in Base64 format. Decoding returns `Result<String, String>` because the input may be malformed.
+The `Base64` module encodes and decodes the UTF-8 bytes of `String` values.
+Decoding returns `Result<String, String>` because the input may be malformed or
+decode to invalid UTF-8. Use `Bytes.to_base64` and `Bytes.from_base64` for
+arbitrary binary values.
 
 ```mesh
 fn main() do
@@ -156,7 +327,9 @@ end
 
 ### Hex
 
-The `Hex` module encodes binary data as lowercase hexadecimal. Decoding is case-insensitive and returns `Result<String, String>`.
+The `Hex` module encodes and decodes the UTF-8 bytes of `String` values.
+Decoding is case-insensitive and returns `Result<String, String>`. Use
+`Bytes.to_hex` and `Bytes.from_hex` for arbitrary binary values.
 
 ```mesh
 fn main() do
@@ -207,11 +380,15 @@ end
 
 ```mesh
 fn main() do
-  let dt = DateTime.from_unix_ms(1705316200000)
-  let ms = DateTime.to_unix_ms(dt)
+  case DateTime.from_unix_ms(1705316200000) do
+    Ok(dt) -> println("#{DateTime.to_unix_ms(dt)}")
+    Err(error) -> println(error)
+  end
 
-  let dt2 = DateTime.from_unix_secs(1705316200)
-  let secs = DateTime.to_unix_secs(dt2)
+  case DateTime.from_unix_secs(1705316200) do
+    Ok(dt) -> println("#{DateTime.to_unix_secs(dt)}")
+    Err(error) -> println(error)
+  end
 end
 ```
 
@@ -231,9 +408,12 @@ fn main() do
 end
 ```
 
-`DateTime.add(dt, n, unit)` supports units: `:second`, `:minute`, `:hour`, `:day`. Negative `n` subtracts.
+`DateTime.add(dt, n, unit)` supports `:ms`, `:second`, `:minute`, `:hour`,
+`:day`, and `:week`. Negative `n` subtracts.
 
-`DateTime.diff(dt1, dt2, unit)` returns a `Float` representing how much later `dt1` is than `dt2` in the given unit. Negative if `dt1` is earlier.
+`DateTime.diff(dt1, dt2, unit)` accepts the same units and returns a `Float`
+representing how much later `dt1` is than `dt2`. It is negative if `dt1` is
+earlier.
 
 ### Comparison
 
@@ -255,17 +435,44 @@ end
 | `DateTime.utc_now()` | `DateTime` | Current UTC time |
 | `DateTime.from_iso8601(s)` | `Result<DateTime, String>` | Parse ISO 8601 string |
 | `DateTime.to_iso8601(dt)` | `String` | Format as ISO 8601 (`"...Z"`) |
-| `DateTime.from_unix_ms(n)` | `DateTime` | From Unix milliseconds |
-| `DateTime.from_unix_secs(n)` | `DateTime` | From Unix seconds |
+| `DateTime.from_unix_ms(n)` | `Result<DateTime, String>` | Validate Unix milliseconds |
+| `DateTime.from_unix_secs(n)` | `Result<DateTime, String>` | Validate Unix seconds |
 | `DateTime.to_unix_ms(dt)` | `Int` | To Unix milliseconds |
 | `DateTime.to_unix_secs(dt)` | `Int` | To Unix seconds |
-| `DateTime.add(dt, n, unit)` | `DateTime` | Add duration (`:second`, `:minute`, `:hour`, `:day`) |
+| `DateTime.add(dt, n, unit)` | `DateTime` | Add duration (`:ms`, `:second`, `:minute`, `:hour`, `:day`, `:week`) |
 | `DateTime.diff(dt1, dt2, unit)` | `Float` | Signed difference in given unit |
 | `DateTime.is_before(dt1, dt2)` | `Bool` | True if dt1 is before dt2 |
 | `DateTime.is_after(dt1, dt2)` | `Bool` | True if dt1 is after dt2 |
 
+## Monotonic Time and Durations
+
+Use `DateTime` for timestamps that people or external systems need to read. Use `Monotonic` for elapsed time and deadlines; it cannot jump when the wall clock changes.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Monotonic.now_nanos()` | `Int` | Nanoseconds since a process-local monotonic origin |
+| `Monotonic.elapsed(start, finish)` | `Result<Int, String>` | Checked non-negative difference |
+| `Duration.millis(value)` | `Result<Int, String>` | Convert non-negative milliseconds to nanoseconds |
+| `Duration.seconds(value)` | `Result<Int, String>` | Convert non-negative seconds to nanoseconds |
+
+Both duration conversions detect negative inputs and integer overflow. Their nanosecond results can be passed to APIs such as `Channel.recv`.
+
+## Deterministic Randomness
+
+`Random` threads generator state explicitly, making runs reproducible:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Random.seed(seed)` | `Int` | Create a deterministic state |
+| `Random.next_int(state, min, max)` | `Tuple` | Return `(next_state, value)` over the inclusive range |
+| `Random.next_unit_ppm(state)` | `Tuple` | Return `(next_state, value)` from `0` through `999_999` |
+
+This generator is not suitable for secrets. Use `Crypto.uuid4` for cryptographically random identifiers.
+
 ## What's Next?
 
+- [Concurrency](/docs/concurrency/) — actors, jobs, timers, and bounded channels
+- [Iterators](/docs/iterators/) — lazy pipelines and collection terminals
 - [Testing](/docs/testing/) — write and run tests with `meshc test`
 - [Developer Tools](/docs/tooling/) — meshc, meshpkg, formatter, REPL, LSP
 - [Web](/docs/web/) — HTTP server, client, and WebSocket

@@ -18,8 +18,9 @@ const columns = [
     links: [
       { label: 'Getting Started', href: '/docs/getting-started/' },
       { label: 'Language Guide', href: '/docs/language-basics/' },
-      { label: 'Cheatsheet', href: '/docs/cheatsheet/' },
+      { label: 'Complete Reference', href: '/docs/reference/' },
       { label: 'Standard Library', href: '/docs/stdlib/' },
+      { label: 'Developer Tools', href: '/docs/tooling/' },
     ],
   },
   {
@@ -28,7 +29,8 @@ const columns = [
       { label: 'Concurrency', href: '/docs/concurrency/' },
       { label: 'Web & HTTP', href: '/docs/web/' },
       { label: 'Databases', href: '/docs/databases/' },
-      { label: 'Testing', href: '/docs/testing/' },
+      { label: 'Native Packages', href: '/docs/native-packages/' },
+      { label: 'Packages & Registry', href: '/docs/packages/' },
     ],
   },
   {

@@ -1,11 +1,11 @@
 ---
 title: Language Basics
-description: "Core Mesh syntax and semantics: variables, functions, strings, control flow, modules, results, options, and pipes."
+description: "Core Mesh syntax and semantics: literals, bindings, functions, patterns, control flow, collections, modules, results, options, and pipes."
 ---
 
 # Language Basics
 
-This guide covers the core features of the Mesh programming language. After reading this, you will understand how to work with variables, types, functions, pattern matching, control flow, the pipe operator, error handling, and modules.
+This guide covers the core Mesh language. After reading it, you can write modules that use literals, immutable bindings, functions and closures, pattern matching, control flow, collections, pipes, and typed error propagation.
 
 ## Variables
 
@@ -43,20 +43,116 @@ fn main() do
 end
 ```
 
+Tuple destructuring is supported in bindings:
+
+```mesh
+fn main() do
+  let (name, age) = ("Ada", 36)
+  println("#{name} is #{age}")
+end
+```
+
+Bindings can use `_` when a value is intentionally unused:
+
+```mesh
+let _ = do_work()
+```
+
+## Comments and Statement Boundaries
+
+Mesh supports line comments, documentation comments, module documentation, and nested block comments:
+
+```mesh
+# A regular line comment
+## Documentation for the declaration that follows
+##! Documentation for this module
+
+#=
+  A block comment.
+  #= Block comments can nest. =#
+=#
+```
+
+Newlines normally end statements. A semicolon can separate statements on the same line:
+
+```mesh
+let x = 1; let y = 2
+```
+
+Newlines are not statement boundaries inside parentheses, brackets, or braces. Pipe expressions also support explicit leading and trailing continuation forms, described in [Multi-Line Pipes](#multi-line-pipes).
+
 ## Basic Types
 
-Mesh has the following built-in types:
+Mesh has the following core types:
 
-| Type     | Description              | Examples              |
-|----------|--------------------------|-----------------------|
-| `Int`    | Integer numbers          | `42`, `0`, `-5`       |
-| `Float`  | Floating-point numbers   | `3.14`, `0.5`         |
-| `String` | Text strings             | `"hello"`, `"Mesh"`   |
-| `Bool`   | Boolean values           | `true`, `false`       |
+| Type | Description | Example |
+|------|-------------|---------|
+| `Int` | Signed machine integer | `42`, `-5`, `0xff` |
+| `Float` | Floating-point number | `3.14`, `1.0e6` |
+| `String` | UTF-8 text | `"hello"` |
+| `Bool` | Boolean value | `true`, `false` |
+| `Bytes` | Opaque binary data | `Bytes.from_utf8("hello")` |
+| `U64`, `U128`, `I128` | Checked wide protocol integers | `U64.parse("18446744073709551615")` |
+| `Json` | A typed JSON value | `json { status: "ok" }` |
+| `Atom` | A symbolic value | `:ok`, `:not_found` |
+| `Regex` | A compiled regular expression | `~r/[a-z]+/i` |
+| `()` | Unit, the absence of a useful value | `()`, `nil` |
+| `(A, B)` | Tuple | `(1, "one")` |
+| `List<T>` | Immutable sequence | `[1, 2, 3]` |
+| `Map<K, V>` | Immutable key-value collection | `%{"a" => 1}` |
+| `Set` | Immutable unique collection of `Int` values | `Set.new()` |
+| `Range` | Integer range value | `Range.new(0, 10)` |
+| `Queue` | Immutable queue of `Int` values | `Queue.new()` |
+| `Pid<M>` | Actor identity accepting messages of type `M` | returned by `spawn(...)` |
+| `Option<T>` | Optional value | `Some(42)`, `None`; shorthand `Int?` |
+| `Result<T, E>` | Success or failure | `Ok(42)`, `Err("failed")`; shorthand `Int!String` |
+| `Fun(A) -> B` | Function value | `fn x -> x + 1 end` |
+
+`Int`, `Float`, `String`, and `Bool` have literal syntax. `U64`, `U128`, and `I128` are opaque checked values intended for full-width protocol fields; construct and operate on them with their modules rather than `Int` literals or arithmetic operators.
+
+### Numeric Literals
+
+Integer literals can use decimal, hexadecimal, binary, or octal notation. Underscores are ignored:
+
+```mesh
+let decimal = 1_000_000
+let hex = 0xff_ff
+let binary = 0b1111_0000
+let octal = 0o777
+let scientific = 1.25e3
+```
+
+### Unit and `nil`
+
+`()` is the Unit value. `nil` is an equivalent spelling and is useful when a value is required syntactically but carries no information:
+
+```mesh
+fn log_done() do
+  println("done")
+  nil
+end
+```
+
+### Atoms and Regular Expressions
+
+Atoms are lightweight symbolic values. An atom begins with `:` followed by a lowercase letter or underscore:
+
+```mesh
+let status = :ready
+let unit = :millisecond
+```
+
+Regex literals use `~r/.../` and accept `i` (case-insensitive), `m` (multiline), and `s` (dot matches newline) flags:
+
+```mesh
+let digits = ~r/\d+/
+let name = ~r/^[a-z]+$/im
+let matched = Regex.is_match(digits, "item-42")
+```
 
 ### String Interpolation
 
-Strings support two interpolation syntaxes -- `#{}` (preferred, v12.0) and `${}` (also valid). Any expression inside the braces is evaluated and converted to a string:
+Strings support two interpolation syntaxes -- `#{}` (preferred, v12.0) and `${}` (also valid). Expressions inside the braces are evaluated and rendered through their `Display` implementations:
 
 ```mesh
 fn main() do
@@ -70,7 +166,9 @@ end
 
 ### Heredoc Strings
 
-Use triple-quote `"""..."""` for multiline strings. Heredocs support interpolation and do not require escape sequences for special characters:
+Use triple-quote `"""..."""` for multiline strings. Heredocs support
+interpolation, and ordinary quote characters and newlines can appear directly
+until the closing triple quote:
 
 ```mesh
 fn main() do
@@ -100,7 +198,7 @@ end
 
 ### Boolean Logic
 
-Boolean values support `and`, `or`, and `not` operators:
+Boolean values support `and`, `or`, and `not`. Symbolic `&&`, `||`, and `!` spellings are also available:
 
 ```mesh
 fn main() do
@@ -111,6 +209,26 @@ fn main() do
   end
 end
 ```
+
+### Operators and Precedence
+
+From lowest to highest precedence, Mesh groups operators as follows:
+
+| Group | Operators |
+|-------|-----------|
+| Pipes | `|>`, `|N>` |
+| Boolean or | `or`, `||` |
+| Boolean and | `and`, `&&` |
+| Equality | `==`, `!=` |
+| Ordering | `<`, `>`, `<=`, `>=` |
+| Range in a `for` source | `..` |
+| Concatenation | `<>`, `++` |
+| Addition | `+`, `-` |
+| Multiplication | `*`, `/`, `%` |
+| Prefix | `-`, `not`, `!` |
+| Postfix | calls, field access, `?` |
+
+`<>` concatenates strings and `++` concatenates lists. Parentheses can make any grouping explicit.
 
 ## Functions
 
@@ -133,6 +251,14 @@ end
 
 The last expression in a function body is the return value -- there is no need for an explicit `return` keyword (though `return` is available for early exits).
 
+`def` is an exact synonym for `fn` on named functions:
+
+```mesh
+def greet(name :: String) -> String do
+  "Hello, #{name}!"
+end
+```
+
 ### One-Line Functions
 
 For simple functions, you can use the concise `=` syntax:
@@ -146,6 +272,45 @@ fn main() do
   println("${square(6)}")
 end
 ```
+
+### Generic Functions and Bounds
+
+Declare type parameters after the function name. Mesh generalizes inferred local bindings and functions, so reusable code can remain polymorphic:
+
+```mesh
+fn identity<T>(value :: T) -> T do
+  value
+end
+
+fn main() do
+  println("#{identity(42)}")
+  println(identity("mesh"))
+end
+```
+
+Use a `where` clause when an operation requires a trait:
+
+```mesh
+fn render<T>(value :: T) -> String where T: Display do
+  value.to_string()
+end
+```
+
+Multiple bounds are comma-separated: `where T: Display, U: Eq`. See [Type System](/docs/type-system/#generics-and-trait-bounds) for inference and trait details.
+
+### Keyword Arguments
+
+A run of `name: value` arguments at the end of a call is collected into one final `Map` argument:
+
+```mesh
+fn request(path :: String, options :: Map<String, String>) -> String do
+  path
+end
+
+let result = request("/events", method: "POST", content_type: "application/json")
+```
+
+Positional arguments must come before keyword arguments. This is syntax sugar for passing a map; it does not add default or reordered named parameters to a function declaration.
 
 ### Multi-Clause Functions
 
@@ -166,7 +331,7 @@ fn main() do
 end
 ```
 
-The compiler tries each clause in order and uses the first one that matches.
+The compiler tries each clause in order and uses the first one that matches. Clauses for the same function and arity must be consecutive, and a catch-all clause must be last. Functions can reuse a name at different arities.
 
 ### Guard Clauses
 
@@ -188,6 +353,26 @@ fn main() do
 end
 ```
 
+### Direct Tail Recursion
+
+A direct call to the current function in tail position is lowered to a loop, so
+this accumulator-style recursion does not grow the call stack:
+
+```mesh
+fn sum_to(n :: Int, total :: Int) -> Int do
+  if n <= 0 do
+    total
+  else
+    sum_to(n - 1, total + n)
+  end
+end
+```
+
+Tail positions include the final expression of blocks, `if` branches,
+`case`/`match` arms, `let` continuations, explicit `return`, and actor receive
+arms or timeouts. Mutual recursion and self-calls followed by more work are
+ordinary calls and are not eliminated.
+
 ### Closures
 
 Anonymous functions (closures) are created with `fn...end`:
@@ -205,6 +390,8 @@ Closures capture variables from their surrounding scope. There are two syntax fo
 
 - **Arrow syntax** for one-line closures: `fn x -> x * 2 end`
 - **Do-end syntax** for multi-line closures: `fn x do ... end`
+- **Zero-argument syntax**: `fn -> 42 end` or `fn do ... end`
+- **Multi-clause syntax**: `fn 0 -> "zero" | n -> "non-zero" end`
 
 ```mesh
 fn main() do
@@ -225,9 +412,21 @@ fn main() do
 end
 ```
 
+A call can also take a trailing closure:
+
+```mesh
+fn with_value(value :: Int, block :: Fun(Int) -> Int) -> Int do
+  block(value)
+end
+
+let result = with_value(10) do |value|
+  value * 2
+end
+```
+
 ## Pattern Matching
 
-The `case` expression matches a value against patterns and executes the first matching branch:
+The `case` expression matches a value against patterns and executes the first matching branch. `match` is an equivalent spelling:
 
 ```mesh
 fn describe(x :: Int) -> String do
@@ -246,6 +445,36 @@ end
 ```
 
 The `_` pattern is a wildcard that matches anything.
+
+Every unguarded `case` or `match` must cover all possible values. The compiler reports a non-exhaustive match as an error and warns about redundant arms. An arm with a `when` guard does not count as exhaustive because the guard may be false.
+
+### Pattern Forms
+
+Patterns can bind names and decompose tuples and constructors:
+
+| Pattern | Meaning |
+|---------|---------|
+| `_` | Match anything without binding it |
+| `name` | Match anything and bind it |
+| `42`, `-1`, `"ok"`, `true`, `nil` | Literal pattern |
+| `(left, right)` | Tuple pattern |
+| `Some(value)`, `Result.Ok(value)` | Constructor pattern |
+| `head :: tail` | Match a non-empty list as its head and tail |
+| `left | right` | Or-pattern; both sides must bind the same names |
+| `pattern as whole` | Match a pattern and also bind the complete value |
+
+```mesh
+fn describe_pair(value) -> String do
+  case value do
+    (0, y) -> "on y axis at #{y}"
+    (x, 0) -> "on x axis at #{x}"
+    (x, y) as _point when x == y -> "diagonal at #{x}"
+    _ -> "other"
+  end
+end
+```
+
+List literal patterns such as `[first, second]` and struct patterns are not part of the current grammar. Use `head :: tail`, tuples, or sum-type constructors instead.
 
 ### Matching on Constructors
 
@@ -269,6 +498,27 @@ end
 fn main() do
   let c = Red
   println(color_name(c))
+end
+```
+
+Variants can be qualified with their type or module when that makes the source clearer:
+
+```mesh
+case result do
+  Result.Ok(value) -> value
+  Result.Err(_) -> 0
+end
+```
+
+### Guards
+
+`case`, `match`, function clauses, and multi-clause closures can use a `when` guard. Guards must evaluate to `Bool` and are syntactically limited to literals and names, comparisons, boolean operators, grouping, and named function calls:
+
+```mesh
+case score do
+  n when n >= 90 -> "excellent"
+  n when n >= 60 -> "passing"
+  _ -> "retry"
 end
 ```
 
@@ -319,7 +569,7 @@ end
 
 ### For Loops
 
-The `for...in` loop iterates over ranges and collections:
+The `for...in` expression iterates over ranges and collections:
 
 ```mesh
 fn main() do
@@ -329,6 +579,8 @@ fn main() do
   end
 end
 ```
+
+`start..end` is end-exclusive, so `0..5` yields `0`, `1`, `2`, `3`, and `4`.
 
 For loops can also iterate over lists:
 
@@ -356,7 +608,7 @@ fn main() do
 end
 ```
 
-The `for` expression with a body returns a list of the results, making it work like a list comprehension.
+Every `for` expression returns a list containing one body result per accepted element, making it a list comprehension even when the body is used primarily for side effects.
 
 #### Map Iteration
 
@@ -550,7 +802,7 @@ end
 
 ### The Try Operator
 
-The `?` operator unwraps a result if it is `Ok`, or propagates the error if it is `Err`:
+The postfix `?` operator works with both `Result` and `Option`. It unwraps `Ok(value)` or `Some(value)`; `Err(error)` or `None` returns immediately from the enclosing function:
 
 ```mesh
 fn step1(x :: Int) -> Int!String do
@@ -583,6 +835,17 @@ end
 ```
 
 The `?` after `step1(x)` means: if `step1` returns `Ok(value)`, bind `value` to `a` and continue; if it returns `Err(e)`, immediately return `Err(e)` from the current function. This keeps error handling concise without deeply nested pattern matches.
+
+When the enclosing `Result` uses a different error type, Mesh looks for a matching `From<SourceError>` implementation and converts the error during propagation. See [From/Into Conversion](/docs/type-system/#from-into-conversion).
+
+For `Option`, the enclosing function must return `Option`:
+
+```mesh
+fn first_positive(values :: List<Int>) -> Int? do
+  let value = List.find(values, fn n -> n > 0 end)?
+  Some(value)
+end
+```
 
 ### Handling Results with Pattern Matching
 
@@ -618,7 +881,7 @@ fn main() do
 end
 ```
 
-The `import` statement makes a module available. You can also import specific functions directly:
+The `import` statement makes a module available. You can also import specific public names directly:
 
 ```mesh
 from String import length
@@ -628,6 +891,39 @@ fn main() do
   println("${n}")
 end
 ```
+
+Selective imports can be comma-separated or parenthesized across lines:
+
+```mesh
+from Geometry import (
+  Point,
+  distance,
+  translate,
+)
+```
+
+Glob imports are not supported. Private names cannot be imported.
+
+You can define a module explicitly with `module ... do ... end` and export declarations with `pub`:
+
+```mesh
+pub module Geometry do
+  pub struct Point do
+    x :: Float
+    y :: Float
+  end
+
+  pub fn origin() -> Point do
+    Point { x: 0.0, y: 0.0 }
+  end
+
+  fn internal_helper() -> Int do
+    0
+  end
+end
+```
+
+`pub` is available on functions, modules, structs, interfaces, supervisors, sum types, and type aliases. Actors, services, impl blocks, imports, and local bindings are not declared `pub`.
 
 ### Standard Library Modules
 
@@ -639,6 +935,50 @@ Mesh includes several built-in modules:
 | `Map`    | Key-value maps              | `Map.new()`, `Map.put(m, k, v)` |
 | `Set`    | Unique value sets           | `Set.new()`, `Set.add(s, v)`    |
 | `String` | String manipulation         | `String.length(s)`              |
+
+## Clustered and Native Function Declarations
+
+Mesh has two source decorators for function boundaries. They are declarations with compiler-defined behavior, not general-purpose annotations.
+
+### `@cluster`
+
+`@cluster` marks a public function as runtime-owned clustered work. The uncounted form uses the default total copy count of two; `@cluster(N)` requests an explicit total copy count:
+
+```mesh
+@cluster
+pub fn refresh_cache() -> Int do
+  1
+end
+
+@cluster(3)
+pub fn rebuild_index() -> Int do
+  3
+end
+```
+
+The decorated target must resolve to one public, non-overloaded function. The removed `clustered(work)` spelling is not supported. See [Autonomous Clusters](/docs/autonomous-clusters/) for deployment and runtime policy.
+
+### `@native`
+
+`@native("symbol")` declares a Mesh signature implemented by a symbol in a checksum-verified static library:
+
+```mesh
+@native("mesh_math_add")
+pub fn add(left :: Int, right :: Int) -> Int
+
+@native("mesh_decode")
+pub fn decode(input :: Bytes) -> Bytes!String
+```
+
+A native declaration:
+
+- must be `pub` and have no Mesh body;
+- must give every parameter and the return value an explicit type;
+- cannot have generic parameters, a `where` clause, or a guard;
+- can pass `Int`, `Float`, `Bool`, `String`, `Bytes`, `U64`, `U128`, and `I128`;
+- can additionally return `Option` or `Result` containing supported ABI values.
+
+The package's `[native]` manifest entry selects ABI version 1 bindings and a SHA-256-pinned archive for the exact target. The package manager never executes a native build script.
 
 ### Working with Lists
 
@@ -676,6 +1016,15 @@ end
 
 Note that `Map.put` returns a new map -- all collections in Mesh are immutable.
 
+Map literals use `%{key => value}`:
+
+```mesh
+fn main() do
+  let scores = %{"Ada" => 10, "Lin" => 9}
+  println("#{Map.size(scores)}")
+end
+```
+
 ## JSON Literals
 
 Use `json { }` to construct JSON objects without manual string escaping or interpolation:
@@ -683,7 +1032,7 @@ Use `json { }` to construct JSON objects without manual string escaping or inter
 ```mesh
 # Simple object literal
 let response = json { status: "ok", count: 42 }
-# response is a String: {"status":"ok","count":42}
+# response has type Json and encodes as {"status":"ok","count":42}
 
 # Multi-line (same result)
 let event = json {
@@ -713,7 +1062,7 @@ let outer = json { result: inner, ok: true }
 # outer is: {"result":{"code":200},"ok":true}
 ```
 
-The result of `json { }` auto-coerces to `String` and can be passed anywhere a `String` is expected — for example, directly to `HTTP.response` or `Ws.broadcast`:
+The result of `json { }` has type `Json`. `Json` is implicitly compatible with `String` at call sites, so it can be passed directly to APIs such as `HTTP.response` or `Ws.broadcast` without manual encoding:
 
 ```mesh
 HTTP.response(200, json { status: "ok", affected: n })
@@ -771,7 +1120,17 @@ end
 
 Because aliases are transparent, a `UserId` value satisfies any `Int` constraint and an `Email` value satisfies any `String` constraint.
 
-> **Note:** Type aliases are not generic in v13.0. Parameterized aliases like `type Pair<T> = {T, T}` are not yet supported.
+Aliases can be generic:
+
+```mesh
+type Pair<A, B> = (A, B)
+type StringResult<T> = Result<T, String>
+
+let pair :: Pair<Int, String> = (1, "one")
+let result :: StringResult<Int> = Ok(42)
+```
+
+Type arguments are substituted into the aliased type, and the result remains transparent at runtime.
 
 See [Type System](/docs/type-system/) for full trait and type documentation.
 

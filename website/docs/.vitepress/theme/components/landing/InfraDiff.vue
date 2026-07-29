@@ -7,17 +7,20 @@ const { observe } = useScrollReveal()
 const root = ref<HTMLElement>()
 
 const removed = [
-  'docker-compose.redis.yml',
-  'kafka/ (14 config files)',
-  'k8s/work-queue-operator.yaml',
-  'terraform/queues.tf',
-  'retry + backoff glue code',
-  'service-discovery sidecar',
+  'application-side worker selection',
+  'client-visible worker topology',
+  'per-handler retry loops',
+  'sticky execution routing',
+  'ad hoc continuity records',
+  'application-owned pressure scoring',
 ]
 
 const routerCode = `from Api.Health import handle_health
-from Api.Todos import handle_create_todo,
-  handle_get_todo, handle_list_todos
+from Api.Todos import (
+  handle_create_todo,
+  handle_get_todo,
+  handle_list_todos
+)
 
 pub fn build_router() do
   HTTP.router()
@@ -51,18 +54,18 @@ onMounted(async () => {
         <!-- Copy + diff -->
         <div class="min-w-0">
           <h2 class="font-display text-4xl font-extrabold leading-[1.05] text-foreground sm:text-[2.75rem]">
-            Delete the orchestration <em class="l-fancy">layer.</em>
+            Keep orchestration out<br />of your <em class="l-fancy">handlers.</em>
           </h2>
           <p class="mt-5 max-w-md text-base leading-relaxed text-muted-foreground">
-            Distributing work usually means adopting a queue, a broker, an operator, and the config to keep them alive.
-            In Mesh the annotation <em class="not-italic font-mono text-foreground text-[0.9em]">@cluster</em> is the
-            entire contract — the runtime owns placement, retries, and failover.
+            In a configured autonomous cluster, <em class="not-italic font-mono text-foreground text-[0.9em]">@cluster</em>
+            declares eligible work and the runtime owns execution placement, continuity, and pressure-aware routing.
+            Public ingress, credentials, and provider configuration remain deployment responsibilities.
           </p>
 
           <div class="l-window mt-8">
             <div class="l-window-head">
               <span>infra.diff</span>
-              <span class="shrink-0">−6 systems · +1 annotation</span>
+              <span class="shrink-0">runtime-owned concerns</span>
             </div>
             <div class="px-5 py-4 font-mono text-[13px] leading-[2.1]">
               <div
@@ -101,7 +104,7 @@ onMounted(async () => {
               v-else
               class="max-w-full flex-1 overflow-x-auto px-6 py-4 font-mono text-[0.8125rem] leading-[1.9] text-foreground"><code>{{ routerCode }}</code></pre>
             <div class="border-t border-border px-5 py-2.5 font-mono text-[11px] text-muted-foreground">
-              wrap a route in <span class="text-foreground">HTTP.clustered(...)</span> — the fleet takes it from there
+              declare the work, wrap the route, then configure the runtime contract in <span class="text-foreground">mesh.toml</span>
             </div>
           </div>
         </div>

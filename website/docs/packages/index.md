@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Packages
-description: Browse and search Mesh packages, installation commands, version history, and published READMEs.
+description: Browse and search Mesh package metadata, installation commands, and immutable version history.
 ---
 
 <script setup>

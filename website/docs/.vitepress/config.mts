@@ -7,10 +7,10 @@ import meshDark from './theme/shiki/mesh-dark.json'
 
 const SITE_URL = 'https://meshlang.dev'
 const SITE_NAME = 'Mesh Programming Language'
-const DEFAULT_DESCRIPTION = 'One public app URL fronts multiple Mesh nodes. Runtime placement stays server-side, and operator truth stays on meshc cluster.'
+const DEFAULT_DESCRIPTION = 'Mesh is a statically typed, actor-based programming language for native services and distributed systems.'
 const SOCIAL_IMAGE_PATH = '/og-image-v2.png'
 const SOCIAL_IMAGE_URL = `${SITE_URL}${SOCIAL_IMAGE_PATH}`
-const SOCIAL_IMAGE_ALT = 'Mesh social preview card reading “Built for distributed systems” with one public app URL, server-side runtime placement, and operator truth on meshc cluster.'
+const SOCIAL_IMAGE_ALT = 'Mesh social preview card reading “Typed systems. Native speed.” with current @cluster and Job examples.'
 const SITE_LOGO_URL = `${SITE_URL}/logo-icon-black.svg`
 const INDEX_ROBOTS = 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
 const NOINDEX_ROBOTS = 'noindex,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
@@ -44,7 +44,7 @@ function pageDescription(pageData: PageData): string {
     return DEFAULT_DESCRIPTION
   }
 
-  return 'Documentation for Mesh, the programming language built for distributed systems, typed concurrency, and native backends.'
+  return 'Documentation for Mesh language syntax, typed concurrency, native services, packages, databases, and distributed systems.'
 }
 
 function pageOgType(relativePath: string): 'website' | 'article' {
@@ -93,6 +93,8 @@ function pageStructuredData(pageData: PageData, title: string, description: stri
       'actors',
       'fault tolerance',
       'native compilation',
+      'static type systems',
+      'native interoperability',
     ]
   }
 
@@ -217,7 +219,7 @@ export default defineConfig({
 
   themeConfig: {
     nav: [
-      { text: 'Docs', link: '/docs/' },
+      { text: 'Docs', link: '/docs/getting-started/' },
       { text: 'Packages', link: 'https://packages.meshlang.dev', target: '_blank' },
     ],
     search: { provider: 'local' },
@@ -260,6 +262,14 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Interop & Ecosystem',
+          collapsed: false,
+          items: [
+            { text: 'Native Packages', link: '/docs/native-packages/', icon: 'Blocks' } as any,
+            { text: 'Packages & Registry', link: '/docs/packages/', icon: 'PackageOpen' } as any,
+          ],
+        },
+        {
           text: 'Distribution',
           collapsed: false,
           items: [
@@ -291,6 +301,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Syntax Cheatsheet', link: '/docs/cheatsheet/', icon: 'ClipboardList' } as any,
+            { text: 'Complete Reference', link: '/docs/reference/', icon: 'ListTree' } as any,
           ],
         },
         {
