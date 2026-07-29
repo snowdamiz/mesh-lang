@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vitepress dev docs",
+    "prebuild": "node --test scripts/tests/docs-current-surface.test.mjs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
     "generate:og": "python3 scripts/generate-og-image.py"

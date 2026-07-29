@@ -1,11 +1,11 @@
 ---
 title: Web
-description: HTTP servers, routing, middleware, WebSocket, and TLS in Mesh
+description: HTTP servers and clients, JSON, WebSocket servers and clients, routing, middleware, TLS, limits, and graceful shutdown in Mesh
 ---
 
 # Web
 
-Mesh includes a built-in HTTP server and WebSocket server, so you can build web applications without external dependencies. This guide covers creating HTTP servers with routing and middleware, handling JSON, building real-time WebSocket applications with rooms and broadcasting, and securing connections with TLS.
+Mesh includes HTTP and WebSocket servers and scheduler-aware outbound clients, so you can build web applications without external packages. The uppercase `HTTP` module is the inbound server surface; lowercase `Http` is the outbound client.
 
 > **Autonomous clusters:** This page explains web primitives. Continue with [Autonomous Clusters](/docs/autonomous-clusters/) for adaptive ingress routing and admission control.
 
@@ -29,11 +29,14 @@ The server listens on the specified port and dispatches incoming requests to the
 
 ### Creating Responses
 
-Use `HTTP.response` to create a response with a status code and body:
+Use `HTTP.response` to create a response with a status code and body. Responses default to `application/json; charset=utf-8`, even when the body is plain text. Use `HTTP.response_with_headers` to add headers or override `Content-Type`:
 
 ```mesh
 fn handler(request) do
-  HTTP.response(200, json { status: "ok" })
+  let headers = Map.new()
+    |> Map.put("Cache-Control", "no-store")
+    |> Map.put("Content-Type", "application/json; charset=utf-8")
+  HTTP.response_with_headers(200, json { status: "ok" }, headers)
 end
 ```
 
@@ -43,7 +46,7 @@ Common status codes: `200` (OK), `201` (Created), `400` (Bad Request), `401` (Un
 
 ### Basic Routes
 
-Use `HTTP.route` to register a handler for a path. Routes are matched in the order they are added:
+Use `HTTP.route` to register a handler for a path. The router checks exact paths first, parameterized paths second, and wildcards last. Within each category, the first registered match wins:
 
 ```mesh
 fn home_handler(request) do
@@ -130,9 +133,19 @@ The `Request` module provides accessors for reading request data:
 | `Request.method(request)` | `String` | HTTP method (GET, POST, etc.) |
 | `Request.path(request)` | `String` | Request path |
 | `Request.body(request)` | `String` | Request body |
-| `Request.header(request, name)` | `Option` | Header value by name |
-| `Request.query(request, name)` | `Option` | Query parameter by name |
-| `Request.param(request, name)` | `Option` | Path parameter by name |
+| `Request.header(request, name)` | `Option<String>` | Header value by name |
+| `Request.query(request, name)` | `Option<String>` | Query parameter by name |
+| `Request.param(request, name)` | `Option<String>` | Path parameter by name |
+| `HTTP.request_id(request)` | `String` | Runtime-generated request correlation ID |
+| `HTTP.idempotency_key(request)` | `Option<String>` | Validated idempotency key, when supplied |
+
+The server bounds each request: the request line and complete header section are limited to 8 KiB, at most 100 headers are accepted, and the body is limited to 1 MiB. Requests using `Transfer-Encoding` are rejected; send a bounded `Content-Length`.
+
+`HTTP.idempotency_key` reads the case-insensitive `Idempotency-Key` header. Keys must contain 1–255 visible ASCII bytes with no surrounding whitespace; an invalid key makes the server return `400` before the route handler runs.
+
+### Graceful Shutdown
+
+Call `Process.install_shutdown_signals()` before serving to translate native `SIGINT` and `SIGTERM` into a shutdown request. `HTTP.serve` and `HTTP.serve_tls` then stop accepting new connections and drain connections they already accepted. Application code can trigger the same path with `Process.request_shutdown()`.
 
 ## Middleware
 
@@ -212,25 +225,53 @@ let outer = json { result: inner, ok: true }
 
 ### Json Module
 
-Mesh also provides a `Json` module for encoding and decoding JSON data. Use `Json.encode` and `Json.parse` for serialization:
+`Json.parse` creates a structured `Json` value. Navigation and scalar conversion are checked, so a missing field, out-of-range array index, or unexpected type returns `Err`:
 
 ```mesh
 fn main() do
-  # Encode a map to a JSON string
-  let m = Map.new()
-  let m = Map.put(m, "name", "Alice")
-  let m = Map.put(m, "age", "30")
-  let json_str = Json.encode(m)
-  println(json_str)
-
-  # Parse a JSON string
-  let result = Json.parse("{\"key\": \"value\"}")
-  case result do
-    Ok(data) -> println("parsed")
-    Err(msg) -> println("error: ${msg}")
+  case Json.parse("{\"users\":[{\"name\":\"Ada\"}],\"cursor\":null}") do
+    Ok(root) ->
+      case Json.object_get(root, "users") do
+        Ok(users) ->
+          case Json.array_get(users, 0) do
+            Ok(user) ->
+              case Json.object_get(user, "name") do
+                Ok(name) -> case Json.as_string(name) do
+                  Ok(text) -> println(text)
+                  Err(error) -> println(error)
+                end
+                Err(error) -> println(error)
+              end
+            Err(error) -> println(error)
+          end
+        Err(error) -> println(error)
+      end
+    Err(error) -> println("invalid JSON: #{error}")
   end
 end
 ```
+
+`JSON` is an alias of the same module. `Json.encode` additionally accepts structs with `deriving(Json)`.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Json.parse(text)` | `Result<Json, String>` | Parse one JSON value |
+| `Json.encode(value)` | `String` | Encode a `Json` value or a value with JSON support |
+| `Json.encode_string(value)` | `String` | Encode a JSON string scalar |
+| `Json.encode_int(value)` | `String` | Encode an integer scalar |
+| `Json.encode_bool(value)` | `String` | Encode a boolean scalar |
+| `Json.encode_map(value)` | `String` | Encode a map |
+| `Json.encode_list(value)` | `String` | Encode a list |
+| `Json.object_get(value, key)` | `Result<Json, String>` | Read an object member |
+| `Json.array_get(value, index)` | `Result<Json, String>` | Read a checked zero-based array element |
+| `Json.array_length(value)` | `Result<Int, String>` | Read an array's length |
+| `Json.is_null(value)` | `Bool` | Test for JSON `null` |
+| `Json.as_string(value)` | `Result<String, String>` | Require a JSON string |
+| `Json.as_int(value)` | `Result<Int, String>` | Require an integral JSON number in `Int` range |
+| `Json.as_float(value)` | `Result<Float, String>` | Require a JSON number |
+| `Json.as_bool(value)` | `Result<Bool, String>` | Require a JSON boolean |
+
+The older `Json.get(json_text, key)`, `Json.get_nested(json_text, first, second)`, and `Json.is_string(json_text, key)` helpers operate on JSON text and return lossy scalar strings. Prefer `Json.parse` plus the checked structured accessors for new code.
 
 ### Struct Serialization with deriving(Json)
 
@@ -273,17 +314,18 @@ end
 Mesh includes a built-in WebSocket server for real-time bidirectional communication. Create a WebSocket server with `Ws.serve`, providing three lifecycle callbacks:
 
 ```mesh
-# Derived from runtime API
-fn on_connect(conn) do
-  Ws.send(conn, "Welcome!")
+fn on_connect(conn, path, headers) do
+  println("connected on #{path}")
+  let _ = Ws.send(conn, "Welcome!")
+  1
 end
 
 fn on_message(conn, msg) do
-  Ws.send(conn, msg)
+  let _ = Ws.send(conn, msg)
 end
 
-fn on_close(conn) do
-  println("client disconnected")
+fn on_close(conn, code, reason) do
+  println("client disconnected: #{code} #{reason}")
 end
 
 fn main() do
@@ -295,20 +337,24 @@ end
 
 | Callback | Arguments | Purpose |
 |----------|-----------|---------|
-| `on_connect` | `(conn)` | Called when a client connects. Use `conn` to send messages or join rooms. |
+| `on_connect` | `(conn, path, headers)` | Called after the upgrade with the request path and `Map<String, String>` headers; return nonzero to accept or `0` to reject with close code 1008 |
 | `on_message` | `(conn, msg)` | Called for each message from the client. |
-| `on_close` | `(conn)` | Called when the client disconnects. Cleanup is automatic. |
+| `on_close` | `(conn, code, reason)` | Called with the close code and reason. Cleanup is automatic. |
 
 Each WebSocket connection runs as an isolated actor. If a handler crashes, only that connection is affected -- the server continues accepting new connections.
+
+`Ws.serve` starts its accept loop on a background thread and returns after binding the port. Keep the native process alive with your HTTP server or other application work.
 
 ### Sending Messages
 
 Use `Ws.send` to send a text message to a specific connection:
 
 ```mesh
-# Derived from runtime API
 fn on_message(conn, msg) do
-  Ws.send(conn, "Echo: " <> msg)
+  let status = Ws.send(conn, "Echo: " <> msg)
+  if status != 0 do
+    println("send failed")
+  end
 end
 ```
 
@@ -317,18 +363,18 @@ end
 Rooms provide pub/sub messaging. Connections can join named rooms and broadcast messages to all room members:
 
 ```mesh
-# Derived from runtime API
-fn on_connect(conn) do
-  Ws.join(conn, "lobby")
-  Ws.send(conn, "Welcome to the lobby!")
+fn on_connect(conn, path, headers) do
+  let _ = Ws.join(conn, "lobby")
+  let _ = Ws.send(conn, "Welcome to the lobby!")
+  1
 end
 
 fn on_message(conn, msg) do
   # Broadcast to all connections in the room
-  Ws.broadcast("lobby", msg)
+  let _ = Ws.broadcast("lobby", msg)
 end
 
-fn on_close(conn) do
+fn on_close(conn, code, reason) do
   # Room membership is automatically cleaned up on disconnect
   println("client left")
 end
@@ -338,12 +384,13 @@ fn main() do
 end
 ```
 
-| Function | Description |
-|----------|-------------|
-| `Ws.join(conn, room)` | Subscribe a connection to a named room |
-| `Ws.leave(conn, room)` | Unsubscribe a connection from a room |
-| `Ws.broadcast(room, msg)` | Send a message to all connections in a room |
-| `Ws.broadcast_except(room, msg, conn)` | Send to all in a room except one connection |
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Ws.send(conn, message)` | `Int` | Send text; `0` indicates success |
+| `Ws.join(conn, room)` | `Int` | Subscribe a connection to a named room |
+| `Ws.leave(conn, room)` | `Int` | Unsubscribe a connection from a room |
+| `Ws.broadcast(room, msg)` | `Int` | Send to every room member; returns the local write-failure count |
+| `Ws.broadcast_except(room, msg, conn)` | `Int` | Send to all room members except one local connection |
 
 Room membership is automatically cleaned up when a connection disconnects -- you do not need to manually call `Ws.leave` in the `on_close` callback.
 
@@ -405,18 +452,17 @@ end
 | `WsClient.close(connection, code, reason)` | Send a close frame and release the handle |
 | `WsClient.reconnect_delay(attempt, base_ms, max_ms, jitter_ppm)` | Return bounded exponential backoff with jitter |
 
+Options default to a 10-second connect timeout, 30-second heartbeat timeout, 1 MiB message limit, and 256-message queue. Connect timeouts must be 1–120,000 ms, heartbeat timeouts 1,000–300,000 ms, message limits 1 byte–16 MiB, and queue capacities 1–65,536. Setters retain the fluent handle; `connect` performs validation and consumes it.
+
 `WsMessage.kind` is `"text"`, `"binary"`, or `"close"`; payload bytes are in `data`, and close details are in `close_code` and `close_reason`. Queue overflow closes the connection with a `BACKPRESSURE` error rather than dropping data silently. Heartbeat timeout and other disconnects are observable errors.
 
-Reconnect is deliberately explicit. After an interruption, the caller chooses whether to reconnect, uses `reconnect_delay`, restores subscriptions, and checks source sequence numbers for regressions. The runtime never restores subscriptions or retries writes implicitly.
+Reconnect is deliberately explicit. After an interruption, the caller chooses whether to reconnect, uses `reconnect_delay`, restores subscriptions, and checks source sequence numbers for regressions. The helper accepts attempts `0..62`, positive `base_ms <= max_ms`, and jitter from `0` to `1_000_000` parts per million. The runtime never restores subscriptions or retries writes implicitly.
 
 ## TLS
 
-Both the HTTP and WebSocket servers support TLS for encrypted connections. Provide paths to a PEM certificate and private key file:
-
-### HTTPS
+`HTTP.serve_tls` serves HTTPS with a PEM certificate and private key:
 
 ```mesh
-# Derived from runtime API
 fn handler(request) do
   HTTP.response(200, "Secure hello!")
 end
@@ -428,28 +474,7 @@ fn main() do
 end
 ```
 
-### Secure WebSocket (WSS)
-
-```mesh
-# Derived from runtime API
-fn on_connect(conn) do
-  Ws.send(conn, "Secure connection!")
-end
-
-fn on_message(conn, msg) do
-  Ws.send(conn, msg)
-end
-
-fn on_close(conn) do
-  println("disconnected")
-end
-
-fn main() do
-  Ws.serve_tls(on_connect, on_message, on_close, 9443, "cert.pem", "key.pem")
-end
-```
-
-The TLS functions are identical to their non-TLS counterparts, with two additional arguments for the certificate and key file paths. The server handles TLS negotiation automatically using rustls.
+The server performs TLS negotiation with rustls. The current inbound `Ws` module exposes plain `Ws.serve`; terminate WSS at a trusted reverse proxy. The outbound `WsClient` supports certificate-validated `wss://` connections directly.
 
 ## HTTP Client
 
@@ -545,7 +570,7 @@ fn fetch(client :: Int, url :: String) do
   case Http.build(:get, url) |2> Http.send_with(client) do
     Ok(response) -> println(response.body)
     Err(error) -> println(error)
-  end)
+  end
 end
 
 fn main() do

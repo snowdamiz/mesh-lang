@@ -165,7 +165,110 @@ Scale-down proceeds through Ready, Draining, Terminating, and Removed. Draining 
 
 ## Application APIs
 
-The read-only `Cluster` APIs expose capacity, pressure, role, and lifecycle state. HTTP request accessors expose the request ID and optional idempotency key. Application request code cannot mutate desired capacity; administrative changes require the authenticated operator channel.
+Application code gets read-only cluster introspection. It cannot mutate desired capacity; administrative changes require the authenticated operator channel.
+
+```mesh
+fn readiness(request) do
+  let capacity = Cluster.capacity()
+  let telemetry = Cluster.telemetry()
+  HTTP.response(
+    200,
+    json {
+      role: Cluster.role(),
+      state: Cluster.state(),
+      ready_nodes: Map.get(capacity, "ready_nodes"),
+      runnable_actors: Map.get(telemetry, "runnable_actors")
+    }
+  )
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Cluster.capacity()` | `Map<String, Int>` | Local scheduler bounds and cluster node counts |
+| `Cluster.pressure()` | `Map<String, String>` | Normalized pressure, dominant signal, and completeness |
+| `Cluster.telemetry()` | `Map<String, Int>` | Fixed-name local runtime counters and gauges |
+| `Cluster.role()` | `String` | Configured role string, such as `"gateway,worker"` |
+| `Cluster.state()` | `String` | Current local lifecycle state |
+
+### Capacity and Pressure Fields
+
+`Cluster.capacity()` contains:
+
+| Field | Meaning |
+|-------|---------|
+| `local_active_workers` | Scheduler workers currently active |
+| `local_min_workers`, `local_max_workers` | Configured local elasticity bounds |
+| `desired_nodes` | Consensus-committed desired capacity |
+| `observed_nodes` | Capacity objects observed through the driver |
+| `ready_nodes` | Nodes eligible to serve |
+| `draining_nodes` | Nodes currently draining |
+
+`Cluster.pressure()` returns decimal `score`, the `dominant_signal` name, and `telemetry_complete` as `"true"` or `"false"`. These are strings so the score retains its normalized decimal representation.
+
+### Telemetry Fields
+
+`Cluster.telemetry()` exposes fixed `Int` fields:
+
+| Group | Fields |
+|-------|--------|
+| Scheduler | `active_workers`, `configured_workers`, `runnable_actors`, `global_run_queue_depth`, `scheduler_busy_nanoseconds_total`, `scheduler_idle_nanoseconds_total` |
+| Mailboxes | `mailbox_messages`, `mailbox_depth_p50`, `mailbox_depth_p95`, `mailbox_depth_max` |
+| HTTP | `http_connections`, `http_inflight_requests`, `http_queued_requests`, `http_queued_bytes`, `http_rejected_requests_total`, `http_outstanding_reservations`, `http_queue_wait_p95_nanoseconds`, `http_service_p95_nanoseconds`, `http_end_to_end_p95_nanoseconds` |
+| Remote dispatch | `remote_dispatch_queued_items`, `remote_dispatch_queued_bytes`, `remote_dispatch_timeouts_total`, `remote_dispatch_retries_total`, `remote_dispatch_circuit_rejections_total`, `remote_dispatch_queue_rejections_total`, `remote_dispatch_open_circuits` |
+| Process | `process_resident_memory_bytes`, `cpu_available_parallelism` |
+
+All duration fields are nanoseconds. Process resident memory is `0` when the platform cannot report it. These values describe the local process; use the authenticated operator snapshots for a versioned cluster-wide operational view.
+
+### Request Identity Accessors
+
+```mesh
+fn create_order(request) do
+  let request_id = HTTP.request_id(request)
+  case HTTP.idempotency_key(request) do
+    Some(key) -> HTTP.response(202, json { request_id: request_id, key: key })
+    None -> HTTP.response(400, json { error: "Idempotency-Key is required" })
+  end
+end
+```
+
+`HTTP.request_id(request) -> String` always returns the runtime correlation ID. `HTTP.idempotency_key(request) -> Option<String>` returns a validated caller key when present.
+
+## Advanced Continuity API
+
+Clustered HTTP handlers normally use `HTTP.clustered`, which owns continuity submission, reservation, completion, and replay. The `Continuity` module is available for custom admitted work that needs the same record model:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Continuity.submit(request_key, payload_hash, ingress, owner, replica, required_replicas, routed_remotely, fell_back_locally)` | `Result<ContinuitySubmitDecision, String>` | Submit explicitly placed work |
+| `Continuity.submit_declared_work(runtime_name, request_key, payload_hash, replica_hint)` | `Result<ContinuitySubmitDecision, String>` | Submit work for an `@cluster` declaration |
+| `Continuity.status(request_key)` | `Result<ContinuityRecord, String>` | Read the current record |
+| `Continuity.authority_status()` | `Result<ContinuityAuthorityStatus, String>` | Read role, promotion epoch, and replication health |
+| `Continuity.mark_completed(request_key, attempt_id, execution_node)` | `Result<ContinuityRecord, String>` | Complete the current fenced attempt |
+| `Continuity.acknowledge_replica(request_key, attempt_id)` | `Result<ContinuityRecord, String>` | Acknowledge replica preparation |
+
+For declared work, the registered `@cluster` policy is authoritative. The final `replica_hint` argument must be non-negative for API compatibility, but it does not override the declaration's replica count.
+
+`ContinuitySubmitDecision` contains:
+
+| Field | Values or meaning |
+|-------|-------------------|
+| `outcome` | `"created"`, `"duplicate"`, `"conflict"`, or `"rejected"` |
+| `conflict_reason` | Empty unless submission conflicted |
+| `record` | The current `ContinuityRecord` |
+
+`ContinuityRecord` exposes the exact fields below:
+
+| Group | Fields |
+|-------|--------|
+| Identity and fence | `request_key`, `payload_hash`, `attempt_id` |
+| Progress | `phase`, `result`, `error` |
+| Placement | `ingress_node`, `owner_node`, `replica_node`, `execution_node` |
+| Replication | `replication_count`, `replica_status`, `replication_health` |
+| Authority | `cluster_role`, `promotion_epoch` |
+| Routing | `routed_remotely`, `fell_back_locally` |
+
+`phase` is `"submitted"`, `"completed"`, or `"rejected"`; `result` is `"pending"`, `"succeeded"`, or `"rejected"`. Treat `attempt_id` and the ownership fields as fences: never complete a different or older attempt.
 
 ## Operational safety
 

@@ -29,14 +29,20 @@ end`,
   },
   {
     name: 'WebSockets',
-    desc: 'Same server, same process',
+    desc: 'Connections, rooms, broadcast',
     file: 'api/live.mpl',
-    code: `fn on_connect(conn) do
-  Ws.send(conn, "welcome")
+    code: `fn on_connect(conn, _path, _headers) -> Int do
+  let _ = Ws.join(conn, "updates")
+  1
 end
 
-fn on_message(conn, msg :: String) do
-  Ws.broadcast(conn, msg)
+fn on_message(_conn, msg :: String) do
+  let _ = Ws.broadcast("updates", msg)
+  nil
+end
+
+fn on_close(_conn, _code, _reason) do
+  println("socket closed")
 end`,
   },
   {
@@ -44,17 +50,16 @@ end`,
     desc: 'Driver and connection pool',
     file: 'storage/todos.mpl',
     code: `fn list_open(pool :: PoolHandle) do
-  Pg.query(pool,
+  Pool.query(pool,
     "select * from todos where completed = $1",
     ["false"])
 end`,
   },
   {
     name: 'SQLite',
-    desc: 'Embedded storage',
+    desc: 'Caller-owned embedded connection',
     file: 'storage/local.mpl',
-    code: `fn record_event(kind :: String) do
-  let db = Sqlite.open("app.db")
+    code: `fn record_event(db :: SqliteConn, kind :: String) -> Int ! String do
   Sqlite.execute(db,
     "insert into events (kind) values (?1)",
     [kind])
@@ -66,8 +71,8 @@ end`,
     file: 'storage/queries.mpl',
     code: `fn open_todos() do
   Query.from("todos")
-    |> Query.where("completed", "false")
-    |> Query.order_by("created_at", "desc")
+    |> Query.where(:completed, "false")
+    |> Query.order_by(:created_at, :desc)
     |> Query.limit(20)
 end`,
   },
@@ -84,29 +89,29 @@ end`,
 end`,
   },
   {
-    name: 'Rate limiting',
-    desc: 'Per-route throttles',
-    file: 'api/todos.mpl',
-    code: `fn handle_create_todo(request) do
-  if allow_write(get_rate_limiter()) do
-    create_todo(request)
+    name: 'Bytes',
+    desc: 'Binary-safe values and codecs',
+    file: 'protocol/frame.mpl',
+    code: `fn decode_key(encoded :: String) -> Bytes ! String do
+  let raw = Bytes.from_base58(encoded)?
+  if Bytes.length(raw) == 32 do
+    Ok(raw)
   else
-    HTTP.response(429, json { error : "rate limited" })
+    Err("expected a 32-byte key")
   end
 end`,
   },
   {
-    name: 'Workers',
-    desc: 'Background jobs',
-    file: 'workers/emails.mpl',
-    code: `actor email_worker() do
-  receive do
-    job -> deliver_email(job)
+    name: 'Jobs',
+    desc: 'Typed asynchronous results',
+    file: 'workers/report.mpl',
+    code: `fn load_report() -> String ! String do
+  let job = Job.async(fn -> build_report() end)
+  case Job.await_timeout(job, 1000) do
+    Ok(report) -> Ok(report)
+    Err(reason) -> Err(reason)
   end
-end
-
-let worker = spawn(email_worker)
-send(worker, welcome_email)`,
+end`,
   },
   {
     name: 'Actors',
@@ -129,8 +134,10 @@ send(pid, 1)`,
   Json.encode(todo)
 end
 
-fn title_from_body(body :: String) -> String do
-  String.trim(Json.get(body, "title"))
+fn title_from_body(body :: String) -> String ! String do
+  let root = Json.parse(body)?
+  let title = Json.object_get(root, "title")?
+  Json.as_string(title)
 end`,
   },
   {
@@ -138,7 +145,7 @@ end`,
     desc: 'Config from the environment',
     file: 'config.mpl',
     code: `fn database_url() -> String do
-  Env.get("DATABASE_URL")
+  Env.get("DATABASE_URL", "postgres://localhost/app")
 end
 
 fn missing_required_env(name :: String) -> String do
@@ -211,11 +218,11 @@ onUnmounted(() => {
 
       <div class="reveal reveal-d1 mt-6 flex flex-wrap items-end justify-between gap-6">
         <h2 class="font-display text-4xl font-extrabold leading-[1.05] text-foreground sm:text-[2.75rem]">
-          The whole server,<br />no <em class="l-fancy">packages.</em>
+          Server primitives<br /><em class="l-fancy">included.</em>
         </h2>
         <p class="max-w-sm text-base leading-relaxed text-muted-foreground">
-          Everything a production backend needs ships in the standard library. No package hunting, no driver setup, no
-          glue code — zero external dependencies.
+          HTTP, WebSockets, database drivers, structured JSON, actors, jobs, binary values, and testing ship with the
+          toolchain. Use packages for ecosystem-specific protocols and native libraries.
         </p>
       </div>
 
@@ -271,7 +278,7 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center justify-between border-t border-border px-5 py-2.5 font-mono text-[11px] text-muted-foreground">
             <span>module <span class="text-foreground">{{ String(active + 1).padStart(2, '0') }}</span> / {{ modules.length }}</span>
-            <span>0 dependencies</span>
+            <span>built in</span>
           </div>
         </div>
       </div>
@@ -288,16 +295,16 @@ onUnmounted(() => {
           <Radar class="size-5" />
         </span>
         <p class="text-sm leading-relaxed text-muted-foreground">
-          <span class="font-semibold text-foreground">Observatory</span>
-          — cluster topology, actor traces, and live data flow. Monitoring built into the runtime, not bolted on.
-          No Prometheus, no Grafana, no sidecars.
+          <span class="font-semibold text-foreground">Bounded runtime telemetry</span>
+          — <span class="font-mono">Cluster.telemetry()</span> exposes scheduler, mailbox, HTTP, dispatch, process, and
+          resource counters; <span class="font-mono">meshc cluster</span> provides the operator and continuity views.
         </p>
         <span
           class="inline-flex w-fit shrink-0 items-center gap-2 rounded-md px-2.5 py-1 font-mono text-[10.5px] font-bold tracking-[0.1em] sm:ml-auto"
           :style="{ background: 'color-mix(in oklab, var(--warn) 16%, transparent)', color: 'var(--warn)' }"
         >
           <span class="l-blink size-1.5 rounded-full" :style="{ backgroundColor: 'var(--warn)' }" />
-          coming soon
+          available
         </span>
       </div>
     </div>

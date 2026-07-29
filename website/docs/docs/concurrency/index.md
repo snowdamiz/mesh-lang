@@ -1,11 +1,11 @@
 ---
 title: Concurrency
-description: Mesh concurrency guide covering actors, mailboxes, message passing, supervision, timers, and fault-tolerant patterns.
+description: Actors, typed messages, services, supervision, jobs, timers, channels, and process lifecycle in Mesh
 ---
 
 # Concurrency
 
-Mesh uses the actor model for concurrency, inspired by Erlang/Elixir. Actors are lightweight processes that communicate via message passing. They are isolated, supervised, and fault-tolerant.
+Mesh uses the actor model for concurrency, inspired by Erlang/Elixir. Actors are lightweight processes that communicate by message passing. Jobs, scheduler-aware timers, and bounded channels cover common work that does not need a long-lived actor.
 
 > **Autonomous clusters:** This guide teaches the concurrency model. Continue with [Autonomous Clusters](/docs/autonomous-clusters/) for runtime-owned elasticity and [Distributed Proof](/docs/distributed-proof/) for release verification.
 
@@ -16,9 +16,9 @@ In Mesh, actors are independent units of computation that do not share memory. E
 - Has its own **mailbox** for receiving messages
 - Communicates exclusively via **message passing**
 - Runs **concurrently** with other actors
-- Is **isolated** -- one actor crashing does not bring down others
+- Is **isolated by default** -- an unlinked actor crashing does not bring down other actors
 
-This model eliminates entire classes of concurrency bugs like data races, deadlocks, and shared-state corruption.
+This model avoids shared-memory data races and shared-state corruption. Application-level waiting cycles are still possible—for example, two services that synchronously call each other—so keep synchronous dependencies acyclic.
 
 ## Spawning Actors
 
@@ -38,11 +38,26 @@ fn main() do
 end
 ```
 
-The `spawn` function returns a **PID** (process identifier) that you use to communicate with the actor. Actors run concurrently with the function that spawned them.
+The `spawn` function returns a **PID** (process identifier) that you use to communicate with the actor. Actors run concurrently with the function that spawned them. Actor parameters become arguments to `spawn`:
+
+```mesh
+actor counter(total :: Int) do
+  receive do
+    amount -> counter(total + amount)
+  end
+end
+
+fn main() do
+  let pid = spawn(counter, 0)
+  send(pid, 5)
+end
+```
+
+Mesh infers `Pid<T>` from the actor's received message type. Sending a value of the wrong type is a compile-time error. Inside an actor, `self()` returns its own PID.
 
 ## Message Passing
 
-Actors communicate by sending and receiving messages. Use `send` to deliver a message to an actor's mailbox, and `receive` to wait for and pattern match on incoming messages:
+Actors communicate by sending and receiving messages. Use `send` to deliver a message to an actor's mailbox, and `receive` to wait for the next message:
 
 ```mesh
 actor worker() do
@@ -65,9 +80,20 @@ end
 Key points about message passing:
 
 - Messages are processed **one at a time** from the actor's mailbox
-- `receive` blocks until a matching message arrives
-- Pattern matching in `receive` blocks works just like `case` expressions
+- `receive` blocks until the next message arrives
+- The current compiler executes the first receive arm; use a single variable or wildcard arm and perform any branching in its body
 - You can spawn multiple actors and send messages to each independently
+
+A receive can provide a timeout in milliseconds. The receive expression returns either the message arm's value or the timeout arm's value:
+
+```mesh
+actor worker() do
+  let result = receive do
+    value -> value
+  after 1_000 -> 0 end
+  println("#{result}")
+end
+```
 
 Actors can also perform computation before responding. Here is an actor that runs a function when it receives a message:
 
@@ -99,29 +125,42 @@ Actors can be linked so that failures propagate between them. If one linked acto
 ```mesh
 actor linked_worker() do
   receive do
-    msg -> println("linked worker done")
+    _ -> println("linked worker done")
   end
 end
 
 actor linker() do
+  let worker = spawn(linked_worker)
+  link(worker)
   receive do
-    msg -> println("linker done")
+    message -> send(worker, message)
   end
 end
 
 fn main() do
-  let w = spawn(linked_worker)
-  let l = spawn(linker)
-  send(w, 1)
-  send(l, 1)
-  println("link test done")
+  let linker_pid = spawn(linker)
+  send(linker_pid, 1)
 end
 ```
 
 - **`link(pid)`** -- bidirectionally links two actors. If one dies, the other receives an exit signal.
-- **`monitor(pid)`** -- unidirectionally monitors an actor. The monitoring actor receives a notification if the monitored actor dies, but not vice versa.
+- **`Process.monitor(pid)`** -- creates a one-way monitor and returns its reference; it returns sentinel `0` outside actor context.
+- **`Process.demonitor(reference)`** -- removes a monitor and returns `0` on success or `1` outside actor context or when the reference is unknown.
 
 Linking is the foundation for building fault-tolerant systems: supervisors use links to detect and restart failed actors.
+
+An actor can also declare a termination callback for cleanup:
+
+```mesh
+actor worker() do
+  receive do
+    _ -> println("work complete")
+  end
+terminate do
+  println("cleaning up")
+end
+end
+```
 
 ## Supervision
 
@@ -159,6 +198,7 @@ end
 | `one_for_one` | Only the failed child is restarted |
 | `one_for_all` | All children are restarted when one fails |
 | `rest_for_one` | The failed child and all children started after it are restarted |
+| `simple_one_for_one` | Accepted template strategy; dynamic child start/terminate operations are not exposed by the current Mesh source API |
 
 ### Child Specifications
 
@@ -168,7 +208,7 @@ Each `child` block configures how the supervisor manages that actor:
 |--------|---------|
 | `start` | Function that spawns the child actor |
 | `restart` | Restart policy: `permanent` (always), `transient` (only on abnormal exit), `temporary` (never) |
-| `shutdown` | Milliseconds to wait for graceful shutdown |
+| `shutdown` | Positive milliseconds to wait for graceful shutdown, or `brutal_kill` |
 
 ### Restart Limits
 
@@ -176,6 +216,8 @@ Each `child` block configures how the supervisor manages that actor:
 - **`max_seconds`** -- the time window in seconds
 
 If a child exceeds the restart limit, the supervisor itself shuts down, escalating the failure to its parent supervisor.
+
+When omitted, the strategy defaults to `one_for_one`, `max_restarts` to `3`, and `max_seconds` to `5`.
 
 ## Services (GenServer)
 
@@ -215,7 +257,7 @@ end
 ### Service Anatomy
 
 - **`init`** -- called when the service starts, returns the initial state
-- **`call`** -- synchronous request/response. The handler receives the current state and returns a tuple `(reply, new_state)`
+- **`call`** -- synchronous request/response. The handler receives the current state and returns a tuple `(new_state, reply)`
 - **`cast`** -- asynchronous fire-and-forget. The handler receives the current state and returns the new state
 
 ### Starting and Calling Services
@@ -282,7 +324,139 @@ fn main() do
 end
 ```
 
+Service calls are synchronous and wait for a reply. Casts are asynchronous. Prefer a cast, a direct actor message, or a job when the caller must remain independent of the service's response time.
+
+## Jobs
+
+`Job` runs finite work on lightweight actors and returns failures through `Result`.
+
+```mesh
+fn main() do
+  let job = Job.async(fn() -> 21 * 2 end)
+  case Job.await_timeout(job, 1_000) do
+    Ok(value) -> println("#{value}")
+    Err(error) -> println("job failed: #{error}")
+  end
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Job.async(fn)` | `Pid<T>` | Run a zero-argument function in an actor linked to the caller |
+| `Job.await(job)` | `Result<T, String>` | Wait without a timeout |
+| `Job.await_timeout(job, timeout_ms)` | `Result<T, String>` | Wait up to the given number of milliseconds |
+| `Job.map(values, fn)` | `List<Result<U, String>>` | Run one job per list element and collect replies as they complete |
+
+Job replies go to the actor that started them. The current await collector does not correlate a mailbox reply with the PID argument, so await a job from its original caller and do not mix overlapping `Job.async` calls with unrelated mailbox traffic. A timed-out job is not cancelled; its eventual reply remains in the caller's mailbox. `Job.map` exposes each completion's success or failure instead of failing the whole batch at the first error, but its result order is completion order rather than input order.
+
+## Timers
+
+Timers use monotonic deadlines. Sleeping an actor yields its scheduler worker so other actors can run.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Timer.sleep(milliseconds)` | `Unit` | Suspend the current actor until the delay expires |
+| `Timer.send_after(pid, milliseconds, message)` | `Unit` | Deliver a typed message after a delay |
+
+```mesh
+actor reminder() do
+  receive do
+    message -> println(message)
+  after 5_000 -> println("no reminder received") end
+end
+
+fn main() do
+  let pid = spawn(reminder)
+  Timer.send_after(pid, 100, "time to stretch")
+  Timer.sleep(200)
+end
+```
+
+## Bounded Channels
+
+`Channel` provides bounded, in-process queues for `Int` values. Creation and queue operations return `Result`; producers use `try_send` and never wait for space.
+
+```mesh
+fn main() do
+  case Channel.bounded_bytes(128, 1_024, :reject_newest) do
+    Ok(channel) ->
+      let _ = Channel.try_send(channel, 42)
+      case Duration.millis(10) do
+        Ok(timeout) -> case Channel.recv(channel, timeout) do
+          Ok(value) -> println("#{value}")
+          Err(error) -> println(error)
+        end
+        Err(error) -> println(error)
+      end
+    Err(error) -> println(error)
+  end
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Channel.bounded(item_capacity, policy)` | `Result<Int, String>` | Create a queue bounded by item count |
+| `Channel.bounded_bytes(item_capacity, byte_capacity, policy)` | `Result<Int, String>` | Apply both item and byte bounds |
+| `Channel.try_send(channel, value)` | `Result<Int, String>` | Enqueue an `Int` immediately or report backpressure |
+| `Channel.recv(channel, timeout_nanos)` | `Result<Int, String>` | Dequeue, waiting for at most that many nanoseconds; `0` polls |
+| `Channel.depth(channel)` | `Int` | Current item count, or `-1` for an unknown handle |
+| `Channel.byte_depth(channel)` | `Int` | Current queued bytes, or `-1` for an unknown handle |
+| `Channel.dropped(channel)` | `Int` | Values rejected or replaced, or `-1` for an unknown handle |
+
+Overflow policies are:
+
+- `:reject_newest` — keep queued values and return `Err("channel full")` for the new value.
+- `:drop_oldest` — discard the oldest value and enqueue the new value.
+- `:latest_only` — discard every queued value and retain only the newest.
+
+`Channel.recv` takes nanoseconds. Use `Duration.millis` or `Duration.seconds` to make the unit explicit and to detect overflow.
+
+Each queued `Int` consumes eight bytes, so `bounded_bytes` uses the smaller of `item_capacity` and `byte_capacity / 8`. `try_send` returns `Ok(0)` on acceptance and may return `"channel busy"` instead of waiting for the shared registry lock. `recv` polls synchronously, so keep waits short when calling it from an actor; a long wait occupies that scheduler worker.
+
+## Process Names and Shutdown
+
+`Process` manages actors within the current runtime and coordinates graceful shutdown.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Process.register(name, pid)` | `Int` | Register a local name; `0` is success and `1` is failure |
+| `Process.whereis(name)` | `Pid` | Resolve a local name; PID `0` means not found |
+| `Process.monitor(pid)` | `Int` | Monitor an actor; returns reference `0` outside actor context |
+| `Process.demonitor(reference)` | `Int` | Remove a monitor; `0` is success and `1` is failure |
+| `Process.install_shutdown_signals()` | `Unit` | Treat native `SIGINT` and `SIGTERM` as shutdown requests |
+| `Process.shutdown_requested()` | `Bool` | Read the process-wide shutdown flag |
+| `Process.request_shutdown()` | `Unit` | Set the shutdown flag programmatically |
+| `Process.exit(status)` | `Unit` | Exit the native process with a status code |
+
+HTTP servers observe the same shutdown flag: after shutdown is requested they stop accepting new connections and drain connections already accepted.
+
+Create and remove monitors from the actor that owns them. Calls to
+`Process.monitor` outside actor context return reference `0`;
+`Process.demonitor` returns `1` outside actor context or for an unknown
+reference.
+
+## Deterministic Random Values
+
+`Random` is a deterministic, explicitly state-threaded pseudo-random generator. It is useful for simulations, scheduling choices, and reproducible tests; it is not a cryptographic random source.
+
+```mesh
+fn main() do
+  let state = Random.seed(42)
+  let next = Random.next_int(state, 1, 100)
+  let next_state = Tuple.first(next)
+  let value = Tuple.second(next)
+  println("state=#{next_state}, value=#{value}")
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Random.seed(seed)` | `Int` | Normalize a deterministic generator state |
+| `Random.next_int(state, min, max)` | `Tuple` | Return `(next_state, value)` with `min <= value <= max` |
+| `Random.next_unit_ppm(state)` | `Tuple` | Return `(next_state, value)` where `0 <= value < 1_000_000` |
+
 ## Next Steps
 
 - [Type System](/docs/type-system/) -- structs, generics, traits, and deriving
+- [Distributed Mesh](/docs/distributed/) -- remote actors and global process names
 - [Syntax Cheatsheet](/docs/cheatsheet/) -- quick reference for all Mesh syntax

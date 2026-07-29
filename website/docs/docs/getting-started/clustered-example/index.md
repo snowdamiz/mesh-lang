@@ -84,7 +84,8 @@ The runtime automatically starts the source-declared `@cluster` handler and clos
 meshc build .
 ```
 
-That produces `./hello_cluster` in the project root.
+Because the project argument is `.`, that produces `./output` in the project
+root. Pass `--output hello_cluster` if you prefer a named executable.
 
 ## Run two local nodes
 
@@ -99,7 +100,7 @@ MESH_DISCOVERY_SEED=localhost \
 MESH_CLUSTER_PORT=4370 \
 MESH_CONTINUITY_ROLE=primary \
 MESH_CONTINUITY_PROMOTION_EPOCH=0 \
-./hello_cluster
+./output
 ```
 
 ### Terminal 2 — standby
@@ -111,7 +112,7 @@ MESH_DISCOVERY_SEED=localhost \
 MESH_CLUSTER_PORT=4370 \
 MESH_CONTINUITY_ROLE=standby \
 MESH_CONTINUITY_PROMOTION_EPOCH=0 \
-./hello_cluster
+./output
 ```
 
 Both terminals should log a runtime bootstrap line showing the resolved node name, cluster port, and discovery seed.
@@ -161,13 +162,16 @@ Use diagnostics when you need the broader cluster view after checking membership
 
 Take the public follow-on ladder in order: honest local SQLite starter, shared/deployable PostgreSQL starter, then autonomous cluster operations and proof.
 
-- `meshc init --template todo-api --db sqlite my_local_todo` — the honest local-only single-node starter. It matches [SQLite Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md): generated package tests, local `/health`, and no `work.mpl`, `HTTP.clustered(...)`, or `meshc cluster` story.
-- `meshc init --template todo-api --db postgres my_shared_todo` — the serious shared/deployable starter. It matches [PostgreSQL Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md): route-free `work.mpl`, PostgreSQL-backed state, clustered reads plus an idempotent clustered `POST /todos`, local `/health` plus unsafe-keyless `PUT` and `DELETE`, and the staged deploy + failover proof chain on the proof pages.
+- `meshc init --template todo-api --db sqlite my_local_todo` — the honest local-only single-node starter with generated package tests, local `/health`, and no `work.mpl`, `HTTP.clustered(...)`, or `meshc cluster` story. The [SQLite Todo example](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) is the maintained reference application.
+- `meshc init --template todo-api --db postgres my_shared_todo` — the generated shared/deployable base: route-free `work.mpl`, PostgreSQL-backed state, clustered reads plus an idempotent clustered `POST /todos`, and local `/health` plus unsafe-keyless `PUT` and `DELETE`. The [PostgreSQL Todo example](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) adds the proof-specific pressure route and two-replica mutation setup used by the autonomous release proof.
 - [Autonomous Clusters](/docs/autonomous-clusters/) — production routing, continuity, and capacity configuration.
 
 ## Need the release proof?
 
-Use [Distributed Proof](/docs/distributed-proof/) for the repository-owned Docker/PostgreSQL autoscaling, chaos, performance, and continuity gates.
+Use [Distributed Proof](/docs/distributed-proof/) for the repository-owned
+Docker/PostgreSQL autoscaling gate. The [Developer Tools](/docs/tooling/#proof-commands)
+reference lists the separate chaos, performance, continuity-soak, and Fly
+commands.
 
 ## What to read next
 

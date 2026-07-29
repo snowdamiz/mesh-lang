@@ -42,14 +42,28 @@ You should see the Mesh version number printed for each command.
 
 ### Alternative: Build from source
 
-If you are contributing to Mesh or targeting an environment outside the public installer coverage, build from source instead. Treat this as an alternative workflow, not the primary public install path:
+If you are contributing to Mesh or targeting an environment outside the public
+installer coverage, build from source instead. A source build requires:
+
+- a current Rust toolchain;
+- LLVM 21, with `LLVM_SYS_211_PREFIX` pointing to that installation when it is
+  not discoverable automatically; and
+- `clang` plus the linker and system libraries for the target you are building.
+
+Then install both commands:
 
 ```bash
 git clone https://github.com/hyperpush-org/mesh-lang.git
 cd mesh-lang
+export LLVM_SYS_211_PREFIX=/path/to/llvm-21
 cargo install --path compiler/meshc
 cargo install --path compiler/meshpkg
 ```
+
+The repository's default LLVM path targets Apple Silicon Homebrew. Override it
+on Intel macOS, Linux, or Windows. Cross-compiling also needs a working target
+linker and sysroot; `rustup target add` alone does not provide those native
+tools.
 
 ## Hello World
 
@@ -72,10 +86,13 @@ Compile and run it:
 
 ```bash
 meshc build .
-./hello
+./output
 ```
 
 You should see `Hello, World!` printed to the terminal.
+
+When the project directory argument is `.`, the default executable name is
+`output`. Use `meshc build . --output hello` when you want a named binary.
 
 `main.mpl` remains the default executable entrypoint. If you need a different startup file later, use the optional `[package].entrypoint = "lib/start.mpl"` setting in `mesh.toml`.
 
@@ -94,6 +111,8 @@ Keep the public first-contact ladder explicit and ordered: clustered scaffold fi
 - [Clustered Example](/docs/getting-started/clustered-example/) -- the scaffold-first clustered tutorial using `meshc init --clustered`
 - [SQLite Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-sqlite/README.md) -- the honest local-only single-node Todo starter
 - [PostgreSQL Todo starter](https://github.com/hyperpush-org/mesh-lang/blob/main/examples/todo-postgres/README.md) -- the serious shared/deployable Todo starter and the proof-page handoff for staged deploy + failover.
+- [Packages and Registry](/docs/packages/) -- exact-version dependencies, lockfiles, publishing, and the shipped Borsh, Anchor, and Solana packages
+- [Native Packages](/docs/native-packages/) -- manifest-gated `@native` bindings and checksummed static libraries
 - [Autonomous Clusters](/docs/autonomous-clusters/) -- configure routing, continuity, and capacity drivers
 - [Distributed Proof](/docs/distributed-proof/) -- run the self-contained Docker/PostgreSQL release proof
 
