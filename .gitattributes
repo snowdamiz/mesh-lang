@@ -1,0 +1,10 @@
+# Mesh sources use .mpl, which Linguist assigns to JetBrains MPS — its only
+# claimant, so the extension match short-circuits before any content is
+# examined. That badges this repository as MPS and, because the MPS entry has
+# `tm_scope: none`, renders every Mesh file as unhighlighted plain text.
+#
+# Linguist accepts only languages it already ships, so "Mesh" cannot be
+# declared. Elixir is the closest structural match — it shares `do`/`end`
+# blocks and `|>` pipes, which Rust's grammar would break on — so it restores
+# highlighting at the cost of an inexact label.
+*.mpl linguist-language=Elixir
