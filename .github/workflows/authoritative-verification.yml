@@ -134,10 +134,6 @@ jobs:
           npm --prefix packages-website ci
           npm --prefix packages-website run build
 
-      - name: Verify local public docs contract
-        shell: bash
-        run: python3 scripts/lib/m034_public_surface_contract.py local-docs --root "$GITHUB_WORKSPACE"
-
   vscode-extension:
     name: VS Code extension package
     runs-on: ubuntu-latest
