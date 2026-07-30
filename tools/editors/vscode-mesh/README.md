@@ -9,15 +9,37 @@ VS Code is a **first-class** editor host in the public Mesh tooling contract. Th
 
 ## Features
 
-- **Syntax Highlighting** -- shared TextMate grammar with verified scoping for keywords, `@cluster` / `@cluster(N)` decorators, types, literals, comments, module-qualified calls, and both `#{...}` plus `${...}` interpolation in double- and triple-quoted strings
-- **Language Configuration** -- bracket matching, auto-closing pairs, and Mesh-specific indentation for `do`/`end` blocks
+- **Syntax Highlighting** -- the shared Mesh TextMate grammar used by both VS Code and the documentation site, with compiler-derived coverage for every keyword and every visible operator, delimiter, and punctuation token plus the current built-in type and language-DSL surface
+- **Language Configuration** -- line and nested-block comment commands, bracket matching, auto-closing pairs, and Mesh-specific indentation and folding for multiline `do`/`end` blocks
 - **Verified LSP Diagnostics** -- real-time parse and type errors from the Mesh compiler
 - **Verified Hover** -- inferred type information on hover
 - **Verified Go to Definition** -- same-file go-to-definition inside backend-shaped project code
 - **Verified Document Formatting** -- format the current Mesh document through `meshc lsp`
 - **Verified Signature Help** -- parameter hints with active-parameter tracking for function calls
 
-The current transport-level regression suite exercises the LSP path over real stdio JSON-RPC against a small backend-shaped Mesh project, so the documented editor experience stays tied to the same bounded tooling surface as the CLI. The editor-host smoke remains intentionally bounded to same-file go-to-definition inside backend-shaped project code plus clean diagnostics and hover for a manifest-first override-entry fixture rooted by `mesh.toml` + `lib/start.mpl`. The bundled syntax grammar is also verified through the shared VS Code/docs parity corpus, including `@cluster`, `@cluster(N)`, and both `#{...}` plus `${...}` inside double- and triple-quoted strings.
+### Highlighting coverage
+
+The bundled grammar recognizes:
+
+- declarations and names for functions, handlers, modules, structs, sum types, type aliases, actors, services, supervisors, and interfaces
+- imports, multi-segment module paths, bare function calls, Unicode identifiers, built-in types, and constructors
+- `@cluster`, `@cluster(N)`, and `@native(...)`
+- ORM schema forms including `table`, `primary_key`, `timestamps`, `belongs_to`, `has_one`, `has_many`, and `deriving(...)`
+- supervisor clauses and values, including child specifications, restart strategies, and shutdown behavior
+- maps and struct updates, result and optional types, patterns and wildcards, pipes and slot pipes, ranges, annotations, and the rest of the compiler's operator and punctuation vocabulary
+- numbers, atoms, single- and physical-multiline regular expressions, line comments, nested block comments, escaped strings, and both `#{...}` plus `${...}` interpolation in double- and triple-quoted strings
+
+Qualified calls are recognized structurally as module paths followed by a call, rather than from a hard-coded method-name list. Calls such as `Query.where(...)` and `Repo.one(...)`, as well as database, web, concurrency, distributed-runtime, numeric, binary, and multi-segment package namespaces, therefore receive module/function scopes without requiring the grammar to enumerate every ORM or package API.
+
+The syntax layer is lexical TextMate highlighting. `meshc lsp` does not currently advertise an LSP semantic-tokens provider, so highlighting does not resolve whether a name refers to a compiler built-in, an official package, a user module, or another symbol with the same spelling. This repository also does not ship a Tree-sitter grammar. Neovim uses its own classic Vim grammar rather than this TextMate file.
+
+An unterminated multiline token such as `~r/...` remains open to the end of the
+document in the lexical grammar; `meshc lsp` supplies the corresponding
+compiler diagnostic.
+
+Declaration-name scoping is deliberately conservative where item and expression contexts have the same token shape. Private parameterless forms beginning `fn name do`, `fn name when ...`, or `fn name -> ...` keep the name's ordinary identifier scope, while uppercase `fn Name(...)` forms that overlap constructor-pattern closures retain non-declaration constructor/type scopes. Their keywords, guards, annotations, types, operators, and bodies are still highlighted, and the compiler/LSP parses them normally. Public functions, `def` declarations, interface methods, conventional lowercase private `fn name(...)` declarations, generic declarations, and direct `fn name = ...` declarations receive declaration-name scopes.
+
+The shared grammar regression suite tokenizes the same fixtures through TextMate and the documentation site's Shiki integration. It derives the canonical keyword, operator, delimiter, and punctuation vocabulary from `compiler/mesh-common/src/token.rs`; the significant `Newline` punctuation token is tracked structurally but has no visible glyph to scope. The suite separately checks the current built-in types and representative core, ORM, supervisor, native-package, and namespaced-module forms. The transport-level regression suite exercises the LSP path over real stdio JSON-RPC against a small backend-shaped Mesh project, so the documented editor experience stays tied to the same bounded tooling surface as the CLI. The editor-host smoke remains intentionally bounded to same-file go-to-definition inside backend-shaped project code plus clean diagnostics and hover for a manifest-first override-entry fixture rooted by `mesh.toml` + `lib/start.mpl`.
 
 ## Installation
 

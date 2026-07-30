@@ -2,7 +2,7 @@
   "name": "mesh-lang",
   "displayName": "Mesh Language",
   "description": "Mesh language support — syntax highlighting, diagnostics, hover, go-to-definition, completions, and signature help",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "OpenWorthTechnologies",
   "license": "MIT",
   "icon": "images/icon.png",

@@ -58,6 +58,21 @@ Bindings can use `_` when a value is intentionally unused:
 let _ = do_work()
 ```
 
+### Identifiers
+
+An identifier starts with `_` or a Unicode alphabetic code point. Each
+remaining character may be `_` or a Unicode alphanumeric code point, so names
+are not limited to ASCII:
+
+```mesh
+let κόσμος = "world"
+let 四季 = 4
+let _private = true
+```
+
+Reserved keywords are exact ASCII words. For example, `let` begins a binding,
+while `letπ` is an ordinary identifier.
+
 ## Comments and Statement Boundaries
 
 Mesh supports line comments, documentation comments, module documentation, and nested block comments:
@@ -149,6 +164,18 @@ let digits = ~r/\d+/
 let name = ~r/^[a-z]+$/im
 let matched = Regex.is_match(digits, "item-42")
 ```
+
+The pattern itself may span physical source lines until its closing unescaped
+`/`. Flags still follow that closing delimiter:
+
+```mesh
+let two_lines = ~r/^first$
+^second$/ms
+```
+
+Here, the physical newline is part of the pattern. The `m` flag separately
+changes how `^` and `$` match within the input; it is not what permits the
+literal to span source lines.
 
 ### String Interpolation
 

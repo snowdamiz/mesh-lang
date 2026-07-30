@@ -37,7 +37,7 @@
     },
     {
       "name": "Keywords Control",
-      "scope": ["keyword.control.mesh"],
+      "scope": ["keyword.control.mesh", "keyword.other"],
       "settings": {
         "foreground": "#4a4a60",
         "fontStyle": "bold"
@@ -52,8 +52,16 @@
       }
     },
     {
+      "name": "Decorators",
+      "scope": ["storage.modifier.annotation"],
+      "settings": {
+        "foreground": "#4a4a60",
+        "fontStyle": "bold"
+      }
+    },
+    {
       "name": "Keywords Operator",
-      "scope": ["keyword.operator.mesh"],
+      "scope": ["keyword.operator"],
       "settings": {
         "foreground": "#585868",
         "fontStyle": "bold"
@@ -120,6 +128,14 @@
       "scope": ["constant.character.escape"],
       "settings": {
         "foreground": "#7a8a68"
+      }
+    },
+    {
+      "name": "Invalid",
+      "scope": ["invalid.illegal"],
+      "settings": {
+        "foreground": "#b42318",
+        "fontStyle": "underline"
       }
     },
     {

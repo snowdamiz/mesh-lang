@@ -18,6 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout tag history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a commit merged to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error title=Unmerged extension tag::$GITHUB_REF_NAME must point to a commit reachable from origin/main."
+            exit 1
+          fi
+
       - name: Check marketplace secrets
         shell: bash
         env:
@@ -64,14 +79,14 @@ jobs:
           echo "Publishing verified VSIX: $VERIFIED_VSIX_PATH"
 
       - name: Publish to Open VSX Registry
-        uses: HaaLeo/publish-vscode-extension@v2
+        uses: HaaLeo/publish-vscode-extension@ca5561daa085dee804bf9f37fe0165785a9b14db # v2.0.0
         with:
           pat: ${{ secrets.OPEN_VSX_TOKEN }}
           extensionFile: ${{ needs.proof.outputs.verified_vsix_path }}
           skipDuplicate: true
 
       - name: Publish to Visual Studio Marketplace
-        uses: HaaLeo/publish-vscode-extension@v2
+        uses: HaaLeo/publish-vscode-extension@ca5561daa085dee804bf9f37fe0165785a9b14db # v2.0.0
         with:
           pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
           registryUrl: https://marketplace.visualstudio.com

@@ -114,22 +114,32 @@ jobs:
             website/package-lock.json
             packages-website/package-lock.json
 
-      - name: Verify local public docs contract
-        shell: bash
-        run: python3 scripts/lib/m034_public_surface_contract.py local-docs --root "$GITHUB_WORKSPACE"
-
       - name: Build website docs
         run: |
           npm --prefix website ci
           npm --prefix website run build
+
+      - name: Verify Neovim syntax parity
+        shell: bash
+        env:
+          NVIM_SHA256: ab757a1fd9ad307d53d2df4045698906a7ca3993d92260dd8fe49108712d57d0
+        run: |
+          curl -sSfL https://github.com/neovim/neovim/releases/download/v0.12.1/nvim-linux-x86_64.tar.gz -o "$RUNNER_TEMP/nvim.tar.gz"
+          echo "$NVIM_SHA256  $RUNNER_TEMP/nvim.tar.gz" | sha256sum --check
+          tar xzf "$RUNNER_TEMP/nvim.tar.gz" -C "$RUNNER_TEMP"
+          NEOVIM_BIN="$RUNNER_TEMP/nvim-linux-x86_64/bin/nvim" bash scripts/verify-m036-s02.sh syntax
 
       - name: Build packages website
         run: |
           npm --prefix packages-website ci
           npm --prefix packages-website run build
 
+      - name: Verify local public docs contract
+        shell: bash
+        run: python3 scripts/lib/m034_public_surface_contract.py local-docs --root "$GITHUB_WORKSPACE"
+
   vscode-extension:
-    name: VS Code extension compile
+    name: VS Code extension package
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -143,10 +153,9 @@ jobs:
           cache: npm
           cache-dependency-path: tools/editors/vscode-mesh/package-lock.json
 
-      - name: Build extension
-        run: |
-          npm --prefix tools/editors/vscode-mesh ci
-          npm --prefix tools/editors/vscode-mesh run compile
+      - name: Verify and package extension
+        shell: bash
+        run: bash scripts/verify-m034-s04-extension.sh --package-only
 
   autonomous-cluster-proof:
     name: Autonomous cluster proof

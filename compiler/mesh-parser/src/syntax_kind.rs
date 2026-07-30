@@ -71,7 +71,7 @@ pub enum SyntaxKind {
     BREAK_KW,
     CONTINUE_KW,
 
-    // ── Operators (24) ─────────────────────────────────────────────────
+    // ── Operators (25) ─────────────────────────────────────────────────
     PLUS,
     MINUS,
     STAR,
@@ -506,7 +506,7 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (48)
+            // Keywords (49)
             TokenKind::Actor,
             TokenKind::After,
             TokenKind::Alias,
@@ -556,7 +556,7 @@ mod tests {
             TokenKind::With,
             TokenKind::Break,
             TokenKind::Continue,
-            // Operators (24)
+            // Operators (25)
             TokenKind::Plus,
             TokenKind::Minus,
             TokenKind::Star,

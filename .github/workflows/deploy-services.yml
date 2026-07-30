@@ -10,11 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-fly-${{ github.ref_name }}
+  group: deploy-fly-production
   cancel-in-progress: false
 
 jobs:
   secrets-preflight:
+    if: github.ref == 'refs/heads/main'
     name: Verify deploy secrets
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -40,7 +41,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.76
 
       - name: Deploy registry to Fly.io
         run: flyctl deploy --remote-only
@@ -50,6 +53,7 @@ jobs:
 
   deploy-packages-website:
     name: Deploy mesh-packages website
+    needs: secrets-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -57,7 +61,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: 0.4.76
 
       - name: Deploy packages website to Fly.io
         run: flyctl deploy --remote-only
