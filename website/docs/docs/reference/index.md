@@ -46,6 +46,7 @@ supported.
 | Module documentation | `##! module documentation` |
 | Nested block comment | `#= outer #= inner =# outer =#` |
 | Statements | Significant newlines or `;` |
+| Identifier | Starts with `_` or a Unicode alphabetic code point; later characters may be `_` or a Unicode alphanumeric code point |
 | Integer | Decimal, `0x` hexadecimal, `0b` binary, or `0o` octal; `_` separators are accepted |
 | Float | Decimal and scientific notation |
 | Boolean | `true`, `false` |
@@ -53,7 +54,7 @@ supported.
 | String | `"text"`, with escapes and interpolation |
 | Heredoc | `"""multiline text"""` |
 | Atom | `:name`, using lowercase letters, digits, and underscores |
-| Regex | `~r/pattern/ims`; supported flags are `i`, `m`, and `s` |
+| Regex | `~r/pattern/ims`; the pattern may span physical source lines until an unescaped `/`; supported flags are `i`, `m`, and `s` |
 | List | `[one, two]` |
 | Tuple | `(one, two)` |
 | Map | `%{key => value}` |
@@ -63,6 +64,9 @@ supported.
 
 Both `"#{expression}"` and `"${expression}"` interpolate. The `#{...}` form is
 preferred in new code.
+
+Reserved keywords are exact ASCII identifiers: `let` is a keyword, but `letπ`
+is a valid ordinary identifier.
 
 `json { ... }` has static type `Json`. It is implicitly compatible with
 `String` at APIs that consume encoded JSON, but structured access remains

@@ -68,32 +68,32 @@
     {
       "id": "docs-language-basics-preferred-hash",
       "path": "website/docs/docs/language-basics/index.md",
-      "startLine": 65,
-      "endLine": 65,
+      "startLine": 188,
+      "endLine": 188,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },
     {
       "id": "docs-language-basics-heredoc-hash",
       "path": "website/docs/docs/language-basics/index.md",
-      "startLine": 78,
-      "endLine": 80,
+      "startLine": 204,
+      "endLine": 206,
       "expectedForms": ["hash"],
       "expectedStringKind": "triple"
     },
     {
       "id": "docs-cheatsheet-dollar",
       "path": "website/docs/docs/cheatsheet/index.md",
-      "startLine": 44,
-      "endLine": 44,
+      "startLine": 63,
+      "endLine": 63,
       "expectedForms": ["dollar"],
       "expectedStringKind": "double"
     },
     {
       "id": "docs-cheatsheet-heredoc-hash",
       "path": "website/docs/docs/cheatsheet/index.md",
-      "startLine": 46,
-      "endLine": 48,
+      "startLine": 66,
+      "endLine": 68,
       "expectedForms": ["hash"],
       "expectedStringKind": "triple"
     },

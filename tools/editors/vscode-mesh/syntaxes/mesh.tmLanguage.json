@@ -4,17 +4,27 @@
   "scopeName": "source.mesh",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#strings" },
     { "include": "#regex-literals" },
     { "include": "#atoms" },
-    { "include": "#strings" },
+    { "include": "#invalid-tokens" },
     { "include": "#numbers" },
-    { "include": "#module-calls" },
     { "include": "#decorators" },
+    { "include": "#interface-block" },
+    { "include": "#supervisor-block" },
+    { "include": "#declarations" },
+    { "include": "#imports" },
+    { "include": "#contextual-keywords" },
+    { "include": "#module-calls" },
     { "include": "#keywords" },
+    { "include": "#builtins" },
     { "include": "#types" },
+    { "include": "#maps" },
     { "include": "#operators" },
-    { "include": "#functions" },
-    { "include": "#variables" }
+    { "include": "#function-calls" },
+    { "include": "#wildcards" },
+    { "include": "#variables" },
+    { "include": "#punctuation" }
   ],
   "repository": {
     "comments": {
@@ -32,10 +42,16 @@
           "match": "#[^#=].*$|#$"
         },
         {
-          "name": "comment.block.mesh",
-          "begin": "#=",
-          "end": "=#"
+          "include": "#block-comment"
         }
+      ]
+    },
+    "block-comment": {
+      "name": "comment.block.mesh",
+      "begin": "#=",
+      "end": "=#",
+      "patterns": [
+        { "include": "#block-comment" }
       ]
     },
     "strings": {
@@ -130,11 +146,10 @@
     "module-calls": {
       "patterns": [
         {
-          "match": "\\b([A-Z][a-zA-Z0-9_]*)(\\.)(\\w+)(?=\\s*\\()",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])((?:\\p{Lu}[\\p{Alphabetic}\\p{N}_]*\\.)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?=\\s*\\()",
           "captures": {
             "1": { "name": "entity.name.type.module.mesh" },
-            "2": { "name": "punctuation.accessor.mesh" },
-            "3": { "name": "entity.name.function.mesh" }
+            "2": { "name": "entity.name.function.mesh" }
           }
         }
       ]
@@ -142,20 +157,27 @@
     "decorators": {
       "patterns": [
         {
-          "match": "(@)(cluster)(\\()([0-9][0-9_]*)(\\))",
+          "match": "(@)(\\s*)(cluster)(\\s*)(\\()(\\s*)([0-9][0-9_]*)(\\s*)(\\))",
           "captures": {
             "1": { "name": "punctuation.definition.annotation.mesh" },
-            "2": { "name": "storage.modifier.annotation.cluster.mesh" },
-            "3": { "name": "punctuation.section.group.begin.mesh" },
-            "4": { "name": "constant.numeric.integer.mesh" },
-            "5": { "name": "punctuation.section.group.end.mesh" }
+            "3": { "name": "storage.modifier.annotation.cluster.mesh" },
+            "5": { "name": "punctuation.section.group.begin.mesh" },
+            "7": { "name": "constant.numeric.integer.mesh" },
+            "9": { "name": "punctuation.section.group.end.mesh" }
           }
         },
         {
-          "match": "(@)(cluster)\\b",
+          "match": "(@)(\\s*)(cluster)(?![\\p{Alphabetic}\\p{N}_])",
           "captures": {
             "1": { "name": "punctuation.definition.annotation.mesh" },
-            "2": { "name": "storage.modifier.annotation.cluster.mesh" }
+            "3": { "name": "storage.modifier.annotation.cluster.mesh" }
+          }
+        },
+        {
+          "match": "(@)(\\s*)(native)(?![\\p{Alphabetic}\\p{N}_])(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.mesh" },
+            "3": { "name": "storage.modifier.annotation.native.mesh" }
           }
         }
       ]
@@ -164,7 +186,7 @@
       "patterns": [
         {
           "name": "constant.language.atom.mesh",
-          "match": ":[a-zA-Z_][a-zA-Z0-9_]*"
+          "match": ":[a-z_][\\p{Alphabetic}\\p{N}_]*"
         }
       ]
     },
@@ -172,7 +194,405 @@
       "patterns": [
         {
           "name": "string.regexp.mesh",
-          "match": "~r/(?:[^/\\\\]|\\\\.)*(?:/[ims]*)?"
+          "begin": "~r/(?=(?:[^/\\\\]|\\\\.)*$)",
+          "end": "(?<!\\\\)(?:\\\\\\\\)*/[ims]*(?![A-Za-z])"
+        },
+        {
+          "name": "string.regexp.mesh",
+          "match": "~r/(?:[^/\\\\]|\\\\.)*/[ims]*(?![A-Za-z])"
+        }
+      ]
+    },
+    "invalid-tokens": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.slot-pipe.mesh",
+          "match": "\\|0*[01]>"
+        },
+        {
+          "name": "invalid.illegal.slot-pipe.mesh",
+          "match": "\\|[0-9]+(?![0-9]*>)"
+        }
+      ]
+    },
+    "interface-block": {
+      "begin": "(?:^|(?<=;))[\\t ]*(?:(pub)((?:[\\t ]|#=.*=#)+))?(interface)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?:[\\t ]*<[^\\r\\n>]+>)?((?:[\\t ]|#=.*=#)+)(do)(?![\\p{Alphabetic}\\p{N}_])",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.mesh" },
+        "2": { "name": "comment.block.mesh" },
+        "3": { "name": "keyword.declaration.mesh" },
+        "4": { "name": "comment.block.mesh" },
+        "5": { "name": "entity.name.type.mesh" },
+        "6": { "name": "comment.block.mesh" },
+        "7": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        { "include": "#interface-method-declarations" },
+        { "include": "#balanced-do-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "interface-method-declarations": {
+      "patterns": [
+        {
+          "match": "^[\\t ]*(fn|def)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.function.mesh" }
+          }
+        }
+      ]
+    },
+    "supervisor-block": {
+      "begin": "(?:^|(?<=;))[\\t ]*(?:(pub)((?:[\\t ]|#=.*=#)+))?(supervisor)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)((?:[\\t ]|#=.*=#)+)(do)(?![\\p{Alphabetic}\\p{N}_])",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.mesh" },
+        "2": { "name": "comment.block.mesh" },
+        "3": { "name": "keyword.declaration.mesh" },
+        "4": { "name": "comment.block.mesh" },
+        "5": { "name": "entity.name.type.mesh" },
+        "6": { "name": "comment.block.mesh" },
+        "7": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        { "include": "#supervisor-child-block" },
+        { "include": "#supervisor-top-clauses" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "supervisor-child-block": {
+      "begin": "(?:^|(?<=;))[\\t ]*(child)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)((?:[\\t ]|#=.*=#)+)(do)(?![\\p{Alphabetic}\\p{N}_])",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.supervisor.mesh" },
+        "2": { "name": "comment.block.mesh" },
+        "3": { "name": "entity.name.type.mesh" },
+        "4": { "name": "comment.block.mesh" },
+        "5": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        { "include": "#supervisor-child-clauses" },
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "#balanced-do-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "closure-block": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])(fn)(?![\\p{Alphabetic}\\p{N}_])(?!(?:[\\t ]|#=.*=#)+(?:[\\p{Ll}_][\\p{Alphabetic}\\p{N}_]*(?:[\\t ]|#=.*=#)*\\(|[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?:[\\t ]|#=.*=#)*(?:<|=)))",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(->)|(?<![\\p{Alphabetic}\\p{N}_])(do)(?![\\p{Alphabetic}\\p{N}_])",
+          "endCaptures": {
+            "1": { "name": "keyword.operator.arrow.mesh" },
+            "2": { "name": "keyword.control.mesh" }
+          },
+          "patterns": [
+            { "include": "#function-type-arrow" },
+            { "include": "#closure-block" },
+            { "include": "#balanced-control-block" },
+            { "include": "source.mesh" }
+          ]
+        },
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "#balanced-do-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "function-type-arrow": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])(Fun)(?![\\p{Alphabetic}\\p{N}_])(?=\\s*\\()",
+      "beginCaptures": {
+        "1": { "name": "support.type.mesh" }
+      },
+      "end": "(->)",
+      "endCaptures": {
+        "1": { "name": "keyword.operator.arrow.mesh" }
+      },
+      "patterns": [
+        { "include": "#function-type-arrow" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "balanced-control-block": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])(if|case|match|while|for|receive)(?![\\p{Alphabetic}\\p{N}_])",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(?<![\\p{Alphabetic}\\p{N}_])(do)(?![\\p{Alphabetic}\\p{N}_])",
+          "endCaptures": {
+            "0": { "name": "keyword.control.mesh" }
+          },
+          "patterns": [
+            { "include": "#closure-block" },
+            { "include": "#balanced-control-block" },
+            { "include": "source.mesh" }
+          ]
+        },
+        { "include": "#else-if-comment-header" },
+        { "include": "#else-if-header" },
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "#balanced-do-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "else-if-comment-header": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])(else)(?![\\p{Alphabetic}\\p{N}_])(?=[\\t ]*#=)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])(do)(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(?<![\\p{Alphabetic}\\p{N}_])(if)(?![\\p{Alphabetic}\\p{N}_])",
+          "endCaptures": {
+            "0": { "name": "keyword.control.mesh" }
+          },
+          "patterns": [
+            { "include": "source.mesh" }
+          ]
+        },
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "else-if-header": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])(else)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*(?:if)(?![\\p{Alphabetic}\\p{N}_]))",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])(do)(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        {
+          "begin": "\\G",
+          "end": "(?<![\\p{Alphabetic}\\p{N}_])(if)(?![\\p{Alphabetic}\\p{N}_])",
+          "endCaptures": {
+            "0": { "name": "keyword.control.mesh" }
+          },
+          "patterns": [
+            { "include": "source.mesh" }
+          ]
+        },
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "balanced-do-block": {
+      "begin": "(?<![\\p{Alphabetic}\\p{N}_])do(?![\\p{Alphabetic}\\p{N}_])",
+      "beginCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "end": "(?<![\\p{Alphabetic}\\p{N}_])end(?![\\p{Alphabetic}\\p{N}_])",
+      "endCaptures": {
+        "0": { "name": "keyword.control.mesh" }
+      },
+      "patterns": [
+        { "include": "#closure-block" },
+        { "include": "#balanced-control-block" },
+        { "include": "#balanced-do-block" },
+        { "include": "source.mesh" }
+      ]
+    },
+    "supervisor-top-clauses": {
+      "patterns": [
+        {
+          "match": "(?:^|(?<=;))[\\t ]*(strategy)((?:[\\t ]|#=.*=#)*)(:)((?:[\\t ]|#=.*=#)*)(one_for_one|one_for_all|rest_for_one|simple_one_for_one)(?![\\p{Alphabetic}\\p{N}_])",
+          "captures": {
+            "1": { "name": "keyword.other.supervisor.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "punctuation.separator.key-value.mesh" },
+            "4": { "name": "comment.block.mesh" },
+            "5": { "name": "constant.language.supervisor.mesh" }
+          }
+        },
+        {
+          "match": "(?:^|(?<=;))[\\t ]*(max_restarts|max_seconds)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*:)",
+          "captures": {
+            "1": { "name": "keyword.other.supervisor.mesh" }
+          }
+        }
+      ]
+    },
+    "supervisor-child-clauses": {
+      "patterns": [
+        {
+          "match": "(?:^|(?<=;))[\\t ]*(restart)((?:[\\t ]|#=.*=#)*)(:)((?:[\\t ]|#=.*=#)*)(permanent|transient|temporary)(?![\\p{Alphabetic}\\p{N}_])",
+          "captures": {
+            "1": { "name": "keyword.other.supervisor.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "punctuation.separator.key-value.mesh" },
+            "4": { "name": "comment.block.mesh" },
+            "5": { "name": "constant.language.supervisor.mesh" }
+          }
+        },
+        {
+          "match": "(?:^|(?<=;))[\\t ]*(shutdown)((?:[\\t ]|#=.*=#)*)(:)((?:[\\t ]|#=.*=#)*)(brutal_kill)(?![\\p{Alphabetic}\\p{N}_])",
+          "captures": {
+            "1": { "name": "keyword.other.supervisor.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "punctuation.separator.key-value.mesh" },
+            "4": { "name": "comment.block.mesh" },
+            "5": { "name": "constant.language.supervisor.mesh" }
+          }
+        },
+        {
+          "match": "(?:^|(?<=;))[\\t ]*(start|restart|shutdown)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*:)",
+          "captures": {
+            "1": { "name": "keyword.other.supervisor.mesh" }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(pub)((?:[\\t ]|#=.*=#)+)(fn|def)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?=(?:[\\t ]|#=.*=#)*(?:<|\\(|->|where(?![\\p{Alphabetic}\\p{N}_])|when(?![\\p{Alphabetic}\\p{N}_])|=|do(?![\\p{Alphabetic}\\p{N}_])))",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "keyword.declaration.mesh" },
+            "4": { "name": "comment.block.mesh" },
+            "5": { "name": "entity.name.function.mesh" }
+          }
+        },
+        {
+          "match": "^[\\t ]*(def)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?=(?:[\\t ]|#=.*=#)*(?:<|\\(|->|where(?![\\p{Alphabetic}\\p{N}_])|when(?![\\p{Alphabetic}\\p{N}_])|=|do(?![\\p{Alphabetic}\\p{N}_])))",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.function.mesh" }
+          }
+        },
+        {
+          "match": "^[\\t ]*(fn)((?:[\\t ]|#=.*=#)+)([\\p{Ll}_][\\p{Alphabetic}\\p{N}_]*|_[\\p{Alphabetic}\\p{N}_]*)(?=(?:[\\t ]|#=.*=#)*\\()",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.function.mesh" }
+          }
+        },
+        {
+          "match": "^[\\t ]*(fn)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?=(?:[\\t ]|#=.*=#)*(?:<|=))",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.function.mesh" }
+          }
+        },
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(call|cast)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)(?=(?:[\\t ]|#=.*=#)*(?:\\(|::|do(?![\\p{Alphabetic}\\p{N}_])))",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.function.mesh" }
+          }
+        },
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(module)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.type.module.mesh" }
+          }
+        },
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(struct|type|actor|service|supervisor|interface)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.type.mesh" }
+          }
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(from)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?:\\.[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)*)((?:[\\t ]|#=.*=#)+)(import)(?![\\p{Alphabetic}\\p{N}_])",
+          "captures": {
+            "1": { "name": "keyword.control.import.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.type.module.mesh" },
+            "4": { "name": "comment.block.mesh" },
+            "5": { "name": "keyword.control.import.mesh" }
+          }
+        },
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(import)((?:[\\t ]|#=.*=#)+)([\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?:\\.[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*)*)",
+          "captures": {
+            "1": { "name": "keyword.control.import.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "entity.name.type.module.mesh" }
+          }
+        }
+      ]
+    },
+    "contextual-keywords": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(end)((?:[\\t ]|#=.*=#)+)(deriving)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*\\()",
+          "captures": {
+            "1": { "name": "keyword.control.mesh" },
+            "2": { "name": "comment.block.mesh" },
+            "3": { "name": "keyword.other.orm.mesh" }
+          }
+        },
+        {
+          "name": "keyword.other.orm.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])table(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*\")"
+        },
+        {
+          "name": "keyword.other.orm.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])primary_key(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*:[a-z_][\\p{Alphabetic}\\p{N}_]*)"
+        },
+        {
+          "name": "keyword.other.orm.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])timestamps(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*(?:true|false)(?![\\p{Alphabetic}\\p{N}_]))"
+        },
+        {
+          "name": "keyword.other.orm.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(?:belongs_to|has_many|has_one)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*:[a-z_][\\p{Alphabetic}\\p{N}_]*(?:[\\t ]|#=.*=#)*,)"
+        },
+        {
+          "name": "keyword.operator.pattern.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])as(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)+[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?![\\p{Alphabetic}\\p{N}_]))"
         }
       ]
     },
@@ -180,27 +600,31 @@
       "patterns": [
         {
           "name": "keyword.control.mesh",
-          "match": "\\b(if|else|case|match|when|do|end|return|from|import|for|while|cond|break|continue)\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(if|else|case|match|when|do|end|return|import|for|while|cond|break|continue)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "keyword.declaration.mesh",
-          "match": "\\b(fn|let|def|type|struct|module|interface|impl|pub|actor|service|supervisor|call|cast|trait|alias|json)\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(fn|let|def|type|struct|module|interface|impl|pub|actor|service|supervisor|call|cast|trait|alias|json)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "keyword.operator.mesh",
-          "match": "\\b(and|or|not|in|where|with|as|spawn|send|receive|self|link|monitor|terminate|trap|after)\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(and|or|not|in|where|with|spawn|send|receive|self|link|monitor|terminate|trap|after)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "constant.language.mesh",
-          "match": "\\b(true|false|nil)\\b"
-        },
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(true|false|nil)(?![\\p{Alphabetic}\\p{N}_])"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
         {
           "name": "support.type.mesh",
-          "match": "\\b(Int|Float|String|Bool|Unit|Pid|Option|Result|List|Map|Set|Queue|Json)\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(Atom|Bool|BootstrapStatus|Bytes|ContinuityAuthorityStatus|ContinuityRecord|ContinuitySubmitDecision|DateTime|Float|Fun|HttpClientMetrics|HttpResponse|I128|Int|Json|List|ListIterator|Map|MapIterator|Never|Option|Ordering|PgConn|Pid|PoolHandle|Queue|Range|RangeIterator|Regex|Request|Response|Result|Router|Set|SetIterator|SqliteConn|String|Tuple|U128|U64|Unit|WsMessage)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "support.function.mesh",
-          "match": "\\b(Some|None|Ok|Err)\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(Some|None|Ok|Err|Less|Equal|Greater)(?![\\p{Alphabetic}\\p{N}_])"
         }
       ]
     },
@@ -208,7 +632,18 @@
       "patterns": [
         {
           "name": "entity.name.type.mesh",
-          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])\\p{Lu}[\\p{Alphabetic}\\p{N}_]*(?![\\p{Alphabetic}\\p{N}_])"
+        }
+      ]
+    },
+    "maps": {
+      "patterns": [
+        {
+          "match": "(%)(\\{)",
+          "captures": {
+            "1": { "name": "punctuation.definition.map.mesh" },
+            "2": { "name": "punctuation.section.mapping.begin.mesh" }
+          }
         }
       ]
     },
@@ -244,7 +679,11 @@
         },
         {
           "name": "keyword.operator.pipe.mesh",
-          "match": "\\|[0-9]*>"
+          "match": "\\|>"
+        },
+        {
+          "name": "keyword.operator.pipe.slot.mesh",
+          "match": "\\|0*(?:[2-9]|[1-9][0-9]+)>"
         },
         {
           "name": "keyword.operator.arrow.mesh",
@@ -259,6 +698,14 @@
           "match": "==|!=|<=|>=|<|>"
         },
         {
+          "name": "keyword.operator.result.mesh",
+          "match": "!"
+        },
+        {
+          "name": "keyword.operator.pattern.mesh",
+          "match": "\\|(?![|>0-9])"
+        },
+        {
           "name": "keyword.operator.arithmetic.mesh",
           "match": "\\+|-|\\*|/|%"
         },
@@ -268,15 +715,19 @@
         }
       ]
     },
-    "functions": {
+    "function-calls": {
       "patterns": [
         {
           "name": "entity.name.function.mesh",
-          "match": "\\b(fn|def)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-          "captures": {
-            "1": { "name": "keyword.declaration.mesh" },
-            "2": { "name": "entity.name.function.mesh" }
-          }
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "wildcards": {
+      "patterns": [
+        {
+          "name": "variable.language.wildcard.mesh",
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])_(?![\\p{Alphabetic}\\p{N}_])"
         }
       ]
     },
@@ -284,7 +735,55 @@
       "patterns": [
         {
           "name": "variable.other.mesh",
-          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])[\\p{Alphabetic}_][\\p{Alphabetic}\\p{N}_]*(?![\\p{Alphabetic}\\p{N}_])"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.group.begin.mesh",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.group.end.mesh",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.mesh",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.mesh",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.section.braces.begin.mesh",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.braces.end.mesh",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.separator.comma.mesh",
+          "match": ","
+        },
+        {
+          "name": "punctuation.accessor.mesh",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.separator.key-value.mesh",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.terminator.statement.mesh",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.definition.annotation.mesh",
+          "match": "@"
         }
       ]
     }

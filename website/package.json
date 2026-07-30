@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vitepress dev docs",
-    "prebuild": "node --test scripts/tests/docs-current-surface.test.mjs",
+    "prebuild": "node --test scripts/tests/docs-current-surface.test.mjs scripts/tests/verify-m036-s01-syntax-parity.test.mjs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
     "generate:og": "python3 scripts/generate-og-image.py"

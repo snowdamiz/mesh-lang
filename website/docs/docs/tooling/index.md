@@ -805,18 +805,70 @@ The JSON-RPC transport is shared across editors, but Mesh only publishes repo-ow
 | First-class | VS Code and Neovim | Public docs, editor-specific READMEs, and repo-owned proof cover the published install/run path. |
 | Best-effort | Emacs, Helix, Zed, Sublime Text, TextMate reuse, and similar setups | Reuse the shared `meshc lsp` transport or VS Code TextMate grammar, but Mesh does not publish repo-owned editor-host smoke for these integrations. |
 
+### Syntax-highlighting model
+
+VS Code and this documentation site use the same repo-owned TextMate grammar:
+`tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json`. VitePress loads that
+grammar into Shiki, so fenced `mesh` examples and VS Code are checked against
+the same scopes. Neovim does not consume that file; its repo-owned support pack
+uses a separate classic Vim grammar at
+`tools/editors/neovim-mesh/syntax/mesh.vim`.
+
+Both editor grammars cover the current audited language surface:
+
+- every compiler keyword and every visible operator, delimiter, and punctuation
+  token, with regression probes derived from
+  `compiler/mesh-common/src/token.rs`; the significant `Newline` punctuation
+  token is tracked as vocabulary but has no visible glyph to scope
+- declarations, imports and multi-segment module paths, calls, Unicode
+  identifiers, current built-in types, and constructors
+- `@cluster`, `@cluster(N)`, and `@native(...)`
+- ORM schema clauses and relationships, supervisor clauses and values, maps and
+  struct updates, result and optional types, patterns and wildcards, pipes and
+  slot pipes, atoms, single- and physical-multiline regular expressions, nested
+  block comments, and string interpolation
+
+Qualified calls are recognized by their structure, not by an exhaustive list
+of module or method names. This gives calls such as `Query.where(...)` and
+`Repo.one(...)` appropriate module/function scopes and also accommodates the
+database, web, concurrency, distributed-runtime, numeric, binary, and
+multi-segment official or user package namespaces as their APIs evolve.
+
+These are lexical grammars. `meshc lsp` does not currently advertise a
+semantic-tokens provider, so syntax colors do not resolve whether a name is a
+compiler built-in, an official package, a user module, or another symbol with
+the same spelling. Mesh also does not currently ship a Tree-sitter grammar.
+Diagnostics, hover, navigation, completion, symbols, formatting, and signature
+help remain the separate LSP capabilities listed above.
+
+An unterminated multiline token such as `~r/...` remains open to the end of the
+document in these lexical grammars; `meshc lsp` supplies the corresponding
+compiler diagnostic.
+
+Declaration-name scoping is deliberately conservative where item and expression
+contexts have the same token shape. Private parameterless forms beginning
+`fn name do`, `fn name when ...`, or `fn name -> ...` keep the name's ordinary
+identifier scope, while uppercase `fn Name(...)` forms that overlap
+constructor-pattern closures retain non-declaration constructor/type scopes.
+Their keywords, guards, annotations, types,
+operators, and bodies are still highlighted, and the compiler/LSP parse them
+normally. Public functions, `def` declarations, interface methods,
+conventional lowercase private `fn name(...)` declarations, generic
+declarations, and direct `fn name = ...` declarations receive declaration-name
+scopes.
+
 ### VS Code
 
 VS Code is a first-class editor host in the public Mesh tooling contract. The
 official Mesh extension provides syntax highlighting, diagnostics, hover,
 same-file go-to-definition, completion, document symbols, document formatting,
-and signature help. Its shared grammar covers `@cluster`, `@cluster(N)`,
-`#{...}`, and `${...}` in double- and triple-quoted strings.
+and signature help. Its shared grammar provides the TextMate side of the
+syntax-highlighting model described above.
 
 #### VS Code features
 
-- **Syntax highlighting** via the shared TextMate grammar used by VS Code and the docs, with verified coverage for Mesh keywords, operators, comments, and both `#{...}` plus `${...}` interpolation in double- and triple-quoted strings
-- **Language configuration** for bracket matching, auto-closing pairs, and automatic indentation of `do`/`end` blocks
+- **Syntax highlighting** via the shared TextMate grammar used by VS Code and the docs, including the compiler-derived token vocabulary and the current core, ORM, supervisor, native-package, and namespaced-module forms
+- **Language configuration** for line and nested-block comment commands, bracket matching, auto-closing pairs, and automatic indentation and folding of multiline `do`/`end` blocks
 - **LSP integration** that starts `meshc lsp` automatically and exposes
   diagnostics, hover, go-to-definition, completion, document symbols,
   formatting, and signature help
@@ -864,7 +916,7 @@ Without an explicit override, the extension checks workspace-local
 
 ### Neovim
 
-Neovim is a first-class editor host in the public Mesh tooling contract for the audited classic syntax plus native `meshc lsp` path already proven in `scripts/verify-m036-s02.sh`. The repo-owned support pack lives in `tools/editors/neovim-mesh/` and requires **Neovim 0.11+**.
+Neovim is a first-class editor host in the public Mesh tooling contract for the audited classic syntax plus native `meshc lsp` path already proven in `scripts/verify-m036-s02.sh`. That audited syntax now covers the current structural language surface described above. Its separate classic Vim grammar is not the shared TextMate grammar used by VS Code and the docs. The repo-owned support pack lives in `tools/editors/neovim-mesh/` and requires **Neovim 0.11+**.
 
 #### Neovim installation
 
@@ -908,7 +960,7 @@ Use the Neovim-specific verifier below when you only need to replay this pack's 
 NEOVIM_BIN="${NEOVIM_BIN:-nvim}" bash scripts/verify-m036-s02.sh
 ```
 
-That proof is intentionally bounded to the shared syntax corpus plus the native `meshc lsp` path. It does not imply Tree-sitter support or support for third-party Neovim plugin-manager packaging.
+That proof exercises the interpolation/decorator corpus, the current language-surface fixture, compiler-derived keyword/operator/delimiter/visible-punctuation probes, and the native `meshc lsp` path. It does not imply semantic-token or Tree-sitter support, or support for third-party Neovim plugin-manager packaging.
 
 ### Best-effort editors
 

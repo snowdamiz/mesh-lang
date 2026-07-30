@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PACKAGE_ONLY=false
+case "${1:-}" in
+  "")
+    ;;
+  --package-only)
+    PACKAGE_ONLY=true
+    shift
+    ;;
+  *)
+    echo "usage: $0 [--package-only]" >&2
+    exit 2
+    ;;
+esac
+if [[ "$#" -ne 0 ]]; then
+  echo "usage: $0 [--package-only]" >&2
+  exit 2
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -8,6 +26,7 @@ TMP_ROOT="$ROOT_DIR/.tmp/m034-s04"
 VERIFY_ROOT="$TMP_ROOT/verify"
 EXTENSION_ROOT="$ROOT_DIR/tools/editors/vscode-mesh"
 PACKAGE_JSON_PATH="$EXTENSION_ROOT/package.json"
+LANGUAGE_CONFIG_PATH="$EXTENSION_ROOT/language-configuration.json"
 VSIX_HELPER_PATH="$EXTENSION_ROOT/scripts/vsix-path.mjs"
 README_PATH="$EXTENSION_ROOT/README.md"
 TOOLING_DOC_PATH="$ROOT_DIR/website/docs/docs/tooling/index.md"
@@ -197,7 +216,7 @@ printf '%s\n' "$EXPECTED_TAG_VALUE" >"$EXPECTED_TAG_PATH"
 
 set_phase "prereq-sweep"
 echo "==> [prereq-sweep] extension tag/docs/workflow contract"
-if ! python3 - "$PACKAGE_JSON_PATH" "$README_PATH" "$TOOLING_DOC_PATH" "$PUBLISH_WORKFLOW_PATH" "$EXTENSION_VERSION" "$EXPECTED_TAG_VALUE" "$RELATIVE_VSIX_PATH" >"$VERIFY_ROOT/prereq-sweep.log" 2>&1 <<'PY'
+if ! python3 - "$PACKAGE_JSON_PATH" "$README_PATH" "$TOOLING_DOC_PATH" "$PUBLISH_WORKFLOW_PATH" "$LANGUAGE_CONFIG_PATH" "$EXTENSION_VERSION" "$EXPECTED_TAG_VALUE" "$RELATIVE_VSIX_PATH" >"$VERIFY_ROOT/prereq-sweep.log" 2>&1 <<'PY'
 from pathlib import Path
 import json
 import re
@@ -207,9 +226,10 @@ package_json_path = Path(sys.argv[1])
 readme_path = Path(sys.argv[2])
 tooling_doc_path = Path(sys.argv[3])
 publish_workflow_path = Path(sys.argv[4])
-expected_version = sys.argv[5]
-expected_tag = sys.argv[6]
-relative_vsix_path = sys.argv[7]
+language_config_path = Path(sys.argv[5])
+expected_version = sys.argv[6]
+expected_tag = sys.argv[7]
+relative_vsix_path = sys.argv[8]
 
 errors = []
 
@@ -233,6 +253,118 @@ try:
     package_json = json.loads(package_json_path.read_text())
 except Exception as exc:  # pragma: no cover - surfaced by verifier
     raise SystemExit(f"failed to read {package_json_path}: {exc}")
+
+try:
+    language_config = json.loads(language_config_path.read_text())
+except Exception as exc:  # pragma: no cover - surfaced by verifier
+    raise SystemExit(f"failed to read {language_config_path}: {exc}")
+
+block_comment = (language_config.get("comments") or {}).get("blockComment")
+if block_comment != ["#=", "=#"]:
+    errors.append(
+        "language configuration must expose Mesh block comments as ['#=', '=#']"
+    )
+
+def check_regex_contract(label, pattern_source, matching_lines, rejected_lines):
+    if not isinstance(pattern_source, str):
+        errors.append(f"language configuration {label} must be a regex string")
+        return
+    try:
+        pattern = re.compile(pattern_source)
+    except re.error as exc:
+        errors.append(f"language configuration {label} is not a valid regex: {exc}")
+        return
+
+    for line in matching_lines:
+        if pattern.search(line) is None:
+            errors.append(f"{label} must match {line!r}")
+    for line in rejected_lines:
+        if pattern.search(line) is not None:
+            errors.append(f"{label} must not match {line!r}")
+
+indentation_rules = language_config.get("indentationRules") or {}
+check_regex_contract(
+    "increaseIndentPattern",
+    indentation_rules.get("increaseIndentPattern"),
+    [
+        "fn main() do",
+        "  if ready do # condition",
+        "  call Get() :: Int do |state|",
+        "  else # fallback",
+        "  else if retryable do",
+        "  start: fn -> Builder.make() do",
+    ],
+    [
+        "fn identity(value) = value",
+        "fn typed_expression -> Int = 42",
+        "fn ping -> Int",
+        "let mapper = fn value -> value end",
+        "let thunk = fn do 42 end",
+        "start: fn -> spawn(Worker) end",
+        "# if ready do",
+        "let marker = \"do\"",
+        "let value = 1 # do",
+    ],
+)
+check_regex_contract(
+    "decreaseIndentPattern",
+    indentation_rules.get("decreaseIndentPattern"),
+    [
+        "end",
+        "  end deriving(Json)",
+        "end; max_seconds: 7",
+        "else",
+        "  else if retryable do",
+    ],
+    [
+        "let mapper = fn value -> value end",
+        "end_value = 1",
+        "elsewhere = true",
+        "# end",
+    ],
+)
+
+folding_markers = (language_config.get("folding") or {}).get("markers") or {}
+check_regex_contract(
+    "folding.markers.start",
+    folding_markers.get("start"),
+    [
+        "fn main() do",
+        "  if ready do # condition",
+        "  call Get() :: Int do |state|",
+        "  start: fn -> Builder.make() do",
+    ],
+    [
+        "fn identity(value) = value",
+        "fn typed_expression -> Int = 42",
+        "fn ping -> Int",
+        "let mapper = fn value -> value end",
+        "let thunk = fn do 42 end",
+        "start: fn -> spawn(Worker) end",
+        "# if ready do",
+        "let marker = \"do\"",
+        "let value = 1 # do",
+    ],
+)
+check_regex_contract(
+    "folding.markers.end",
+    folding_markers.get("end"),
+    [
+        "end",
+        "  end deriving(Json)",
+        "end; max_seconds: 7",
+        "end)",
+        "  end,",
+    ],
+    [
+        "let mapper = fn value -> value end",
+        "let thunk = fn do 42 end",
+        "# end",
+        "#= end =#",
+        "let marker = \"end\"",
+        "end_value = 1",
+    ],
+)
 
 actual_version = package_json.get("version")
 if actual_version != expected_version:
@@ -295,6 +427,9 @@ if not workflow_lines.intersection(accepted_trigger_examples):
 print(f"package version: {expected_version}")
 print(f"expected tag: {expected_tag}")
 print(f"expected VSIX path: {relative_vsix_path}")
+print("ok: language configuration exposes #= ... =# block comments")
+print("ok: language configuration indentation regexes distinguish multiline blocks")
+print("ok: language configuration folding markers ignore inline closures and lexical text")
 for path, needles in required_doc_checks.items():
     for needle in needles:
         print(f"ok: {path} contains {needle!r}")
@@ -354,9 +489,12 @@ manifest_path = Path(sys.argv[2])
 required_entries = [
     "extension/package.json",
     "extension/out/extension.js",
+    "extension/LICENSE.txt",
     "extension/readme.md",
     "extension/changelog.md",
     "extension/images/icon.png",
+    "extension/language-configuration.json",
+    "extension/syntaxes/mesh.tmLanguage.json",
 ]
 runtime_roots = [
     "extension/node_modules/vscode-languageclient",
@@ -404,6 +542,14 @@ if errors:
 PY
 then
   fail_phase "zip-audit" "VSIX content audit failed for ${RELATIVE_VSIX_PATH}" "$VERIFY_ROOT/zip-audit.log"
+fi
+
+if [[ "$PACKAGE_ONLY" == true ]]; then
+  printf 'ok\n' >"$STATUS_PATH"
+  printf 'package-only-complete\n' >"$CURRENT_PHASE_PATH"
+  rm -f "$FAILED_PHASE_PATH"
+  echo "verify-m034-s04-extension: package-only ok"
+  exit 0
 fi
 
 run_command \
