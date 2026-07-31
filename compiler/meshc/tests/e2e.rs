@@ -789,6 +789,65 @@ fn e2e_struct_in_result_roundtrip() {
     assert_eq!(output, "141\n-1\n60\n");
 }
 
+#[test]
+fn e2e_case_bindings_with_the_same_name_keep_their_own_struct_type() {
+    let output = compile_and_run(
+        r#"
+struct Small do
+  value :: Int
+end
+
+struct Large do
+  one :: Int
+  two :: Int
+  three :: Int
+  four :: Int
+  five :: Int
+  six :: Int
+  seven :: Int
+  eight :: Int
+  nine :: Int
+  ten :: Int
+  eleven :: Int
+  twelve :: Int
+end
+
+fn small() -> Small ! String do
+  Ok(Small { value: 7 })
+end
+
+fn large() -> Large ! String do
+  Ok(Large {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12
+  })
+end
+
+fn main() do
+  case small() do
+    Ok(event) -> println("${event.value}")
+    Err(reason) -> println(reason)
+  end
+  case large() do
+    Ok(event) -> println("${event.twelve}")
+    Err(reason) -> println(reason)
+  end
+end
+"#,
+    );
+    assert_eq!(output, "7\n12\n");
+}
+
 /// Ordering pattern match: compare(3, 5) returns Less, matched to 1.
 #[test]
 fn e2e_ordering_pattern_match() {

@@ -154,7 +154,11 @@ impl<'ctx> CodeGen<'ctx> {
             // If already bound by a guard node for this arm, just update the
             // store so the value is current (guard pre-binds for guard-expr
             // evaluation but the scrutinee may differ between case expressions).
-            if let Some(&existing_alloca) = self.locals.get(name) {
+            if let Some(&existing_alloca) = self
+                .locals
+                .get(name)
+                .filter(|_| self.local_types.get(name) == Some(ty))
+            {
                 let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
                 let llvm_ty = self.llvm_type(ty);
                 let val = if should_deref_boxed_payload(ty, &val, &llvm_ty) {
