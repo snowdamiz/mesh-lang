@@ -3,10 +3,10 @@
 //! `MeshBytes` deliberately has no implicit relationship with `MeshString`.
 //! UTF-8 conversion is explicit and fallible in the bytes-to-string direction.
 
-use std::hint::black_box;
 use std::ptr;
 
 use base64::{engine::general_purpose, Engine as _};
+use subtle::ConstantTimeEq;
 
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
@@ -260,13 +260,7 @@ pub extern "C" fn mesh_bytes_secure_equals(left: *const MeshBytes, right: *const
     unsafe {
         let left = (*left).as_slice();
         let right = (*right).as_slice();
-        let mut difference = left.len() ^ right.len();
-        for index in 0..left.len().max(right.len()) {
-            let a = left.get(index).copied().unwrap_or(0);
-            let b = right.get(index).copied().unwrap_or(0);
-            difference |= (a ^ b) as usize;
-        }
-        (black_box(difference) == 0) as i8
+        left.ct_eq(right).unwrap_u8() as i8
     }
 }
 

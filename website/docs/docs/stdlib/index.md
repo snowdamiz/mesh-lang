@@ -269,7 +269,6 @@ end
 fn main() do
   let mac = Crypto.hmac_sha256("secret-key", "message")
   let mac512 = Crypto.hmac_sha512("secret-key", "message")
-  let ok = Crypto.secure_compare(mac, mac)   # true — constant-time equality
 end
 ```
 
@@ -277,7 +276,8 @@ end
 |----------|---------|-------------|
 | `Crypto.hmac_sha256(key, msg)` | `String` | HMAC-SHA256 as lowercase hex |
 | `Crypto.hmac_sha512(key, msg)` | `String` | HMAC-SHA512 as lowercase hex |
-| `Crypto.secure_compare(a, b)` | `Bool` | Constant-time string comparison (safe for token verification) |
+
+Cryptographic values should use `Bytes`; compare them with `Bytes.secure_equals`.
 
 ### UUID
 

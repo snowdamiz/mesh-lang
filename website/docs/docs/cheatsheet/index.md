@@ -654,7 +654,6 @@ See [Testing](/docs/testing/) for full guide.
 let h256 = Crypto.sha256("hello")
 let h512 = Crypto.sha512("hello")
 let mac = Crypto.hmac_sha256("key", "msg")
-let ok = Crypto.secure_compare("a", "a")   # Bool, constant-time
 let id = Crypto.uuid4()                    # UUID v4 string
 
 # Encoding

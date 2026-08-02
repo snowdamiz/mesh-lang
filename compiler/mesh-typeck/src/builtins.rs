@@ -452,10 +452,6 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
     );
     env.insert(
-        "crypto_secure_compare".into(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
-    );
-    env.insert(
         "crypto_uuid4".into(),
         Scheme::mono(Ty::fun(vec![], Ty::string())),
     );

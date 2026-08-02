@@ -503,11 +503,6 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "hmac_sha512".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
     );
-    // Crypto.secure_compare(a, b) -> Bool
-    crypto_mod.insert(
-        "secure_compare".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::bool())),
-    );
     // Crypto.uuid4() -> String
     crypto_mod.insert(
         "uuid4".to_string(),

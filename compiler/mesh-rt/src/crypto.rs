@@ -1,12 +1,11 @@
 //! Cryptographic and encoding functions for the Mesh standard library.
 //!
 //! Provides mesh_crypto_sha256, mesh_crypto_sha512, mesh_crypto_hmac_sha256,
-//! mesh_crypto_hmac_sha512, mesh_crypto_secure_compare, mesh_crypto_uuid4,
+//! mesh_crypto_hmac_sha512, mesh_crypto_uuid4,
 //! mesh_base64_encode, mesh_base64_decode, mesh_base64_encode_url,
 //! mesh_base64_decode_url, mesh_hex_encode, and mesh_hex_decode.
 //!
 //! All hash functions return lowercase hex-encoded strings.
-//! secure_compare is constant-time (no short-circuit on length mismatch).
 //! uuid4 produces RFC 4122 v4 UUIDs using the rand 0.9 API.
 //! Base64 uses the base64 0.22 crate (already in Cargo.toml).
 //! Hex encoding uses inline format loop (no new dependency).
@@ -17,7 +16,6 @@ use base64::{engine::general_purpose, Engine as _};
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use sha2::{Digest, Sha256, Sha512};
-use std::hint::black_box;
 
 type HmacSha256 = Hmac<Sha256>;
 type HmacSha512 = Hmac<Sha512>;
@@ -98,37 +96,6 @@ pub extern "C" fn mesh_crypto_hmac_sha512(
             .map(|b| format!("{:02x}", b))
             .collect();
         mesh_string_new(hex.as_ptr(), hex.len() as u64)
-    }
-}
-
-/// Crypto.secure_compare(a, b) -> Bool
-///
-/// Constant-time string comparison. Returns 1 (true) if `a == b`, 0 (false) otherwise.
-/// CRITICAL: Does NOT short-circuit on length mismatch — all bytes are always compared.
-/// This prevents timing attacks that would reveal the length of secret values.
-///
-/// Uses std::hint::black_box to prevent LLVM from eliminating the accumulation loop.
-#[no_mangle]
-pub extern "C" fn mesh_crypto_secure_compare(a: *const MeshString, b: *const MeshString) -> i8 {
-    unsafe {
-        let a_bytes = (*a).as_str().as_bytes();
-        let b_bytes = (*b).as_str().as_bytes();
-        // Constant-time: NEVER short-circuit on length mismatch — accumulate all diffs
-        let max_len = a_bytes.len().max(b_bytes.len());
-        let mut diff: u8 = 0;
-        for i in 0..max_len {
-            let a_byte = if i < a_bytes.len() { a_bytes[i] } else { 0 };
-            let b_byte = if i < b_bytes.len() { b_bytes[i] } else { 0 };
-            diff |= a_byte ^ b_byte;
-        }
-        // XOR length difference into diff — length itself is not leaked
-        diff |= (a_bytes.len() ^ b_bytes.len()) as u8;
-        // black_box prevents LLVM from eliminating the accumulation loop
-        if black_box(diff) == 0 {
-            1
-        } else {
-            0
-        }
     }
 }
 

@@ -6131,12 +6131,16 @@ fn e2e_crypto_hmac() {
     assert_eq!(lines[1], "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737");
 }
 
-/// Phase 135: Crypto.secure_compare returns true for equal strings, false otherwise (CRYPTO-05).
 #[test]
-fn e2e_crypto_secure_compare() {
-    let source = read_fixture("crypto_secure_compare.mpl");
-    let output = compile_and_run(&source);
-    assert_eq!(output, "true\nfalse\nfalse\n");
+fn e2e_crypto_rejects_string_secret_comparison() {
+    let error = compile_expect_error(
+        r#"
+fn main() do
+  println("${Crypto.secure_compare("secret", "secret")}")
+end
+"#,
+    );
+    assert!(error.contains("Crypto"), "unexpected error: {error}");
 }
 
 /// Phase 135: Crypto.uuid4() returns a well-formed 36-character UUID v4 string (CRYPTO-06).
@@ -6208,7 +6212,7 @@ fn e2e_bytes_operations() {
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "0\n3\n255\nbyte index out of bounds\n0041\ninvalid utf-8\n/wBB\nHello World\ntrue\n305419896\nffffffffffffffff\n"
+        "0\nfalse\n3\n255\nbyte index out of bounds\n0041\ninvalid utf-8\n/wBB\nHello World\ntrue\n305419896\nffffffffffffffff\n"
     );
 }
 

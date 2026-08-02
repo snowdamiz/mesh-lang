@@ -7,11 +7,18 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::Duration;
+
+// ponytail: serialize compile-heavy actor proofs; remove when isolated builds stay below deadlines.
+static ACTOR_E2E_LOCK: Mutex<()> = Mutex::new(());
 
 /// Helper: compile a Mesh source and run the binary with a timeout.
 /// Returns stdout on success. Panics on compilation failure or timeout.
 fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
+    let _guard = ACTOR_E2E_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");

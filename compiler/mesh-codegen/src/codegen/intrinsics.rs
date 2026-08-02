@@ -530,14 +530,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_crypto_secure_compare(a: ptr, b: ptr) -> i8 (Bool — NOT ptr_type!)
-    let secure_cmp_ty = i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
-    module.add_function(
-        "mesh_crypto_secure_compare",
-        secure_cmp_ty,
-        Some(inkwell::module::Linkage::External),
-    );
-
     // mesh_crypto_uuid4() -> ptr
     let uuid4_ty = ptr_type.fn_type(&[], false);
     module.add_function(

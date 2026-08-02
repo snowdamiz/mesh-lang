@@ -1216,14 +1216,6 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::String),
             ),
         );
-        // Crypto: (String, String) -> Bool
-        self.known_functions.insert(
-            "mesh_crypto_secure_compare".to_string(),
-            MirType::FnPtr(
-                vec![MirType::String, MirType::String],
-                Box::new(MirType::Bool),
-            ),
-        );
         // Crypto: () -> String (uuid4 — zero args)
         self.known_functions.insert(
             "mesh_crypto_uuid4".to_string(),
@@ -13847,7 +13839,6 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_sha512" => "mesh_crypto_sha512".to_string(),
         "crypto_hmac_sha256" => "mesh_crypto_hmac_sha256".to_string(),
         "crypto_hmac_sha512" => "mesh_crypto_hmac_sha512".to_string(),
-        "crypto_secure_compare" => "mesh_crypto_secure_compare".to_string(),
         "crypto_uuid4" => "mesh_crypto_uuid4".to_string(),
         // Base64 functions (Phase 135)
         "base64_encode" => "mesh_base64_encode".to_string(),

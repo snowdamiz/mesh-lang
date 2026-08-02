@@ -1388,6 +1388,10 @@ mod tests {
             &project_dir.join("app.mpl"),
             "pub fn answer() -> Int do\n  42\nend\n",
         );
+        write_file(
+            &temp.path().join("shared/mesh.toml"),
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        );
 
         let test_project = resolve_test_project(Some(&project_dir)).unwrap();
         prepare_temp_test_project(
