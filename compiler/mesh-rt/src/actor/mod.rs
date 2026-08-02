@@ -23,7 +23,7 @@
 //! - `mesh_actor_spawn(fn_ptr, args, args_size, priority)` -- spawn an actor
 //! - `mesh_actor_self()` -- get current actor's PID
 //! - `mesh_reduction_check()` -- decrement reductions, yield if exhausted
-//! - `mesh_actor_send(target_pid, msg_ptr, msg_size)` -- send message to actor
+//! - `mesh_actor_send(target_pid, msg_ptr, msg_size)` -- send and return delivery status
 //! - `mesh_actor_receive(timeout_ms)` -- receive message from mailbox
 //! - `mesh_actor_link(target_pid)` -- bidirectional link to target actor
 //! - `mesh_actor_set_terminate(pid, callback_fn_ptr)` -- set terminate callback
@@ -45,7 +45,7 @@ pub mod supervisor;
 pub use child_spec::{ChildSpec, ChildState, ChildType, RestartType, ShutdownType, Strategy};
 pub use heap::{ActorHeap, MessageBuffer};
 pub use link::{decode_exit_signal, encode_exit_signal, propagate_exit, EXIT_SIGNAL_TAG};
-pub use mailbox::Mailbox;
+pub use mailbox::{Mailbox, MailboxPushError};
 pub use process::{
     ExitReason, Message, Priority, Process, ProcessId, ProcessState, TerminateCallback,
     DEFAULT_REDUCTIONS, DEFAULT_STACK_SIZE,
@@ -406,13 +406,13 @@ fn try_trigger_gc() {
 /// of the message data (if available), or 0 for empty messages. Future phases
 /// will use compiler-generated type tags.
 #[no_mangle]
-pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
     // Locality check: upper 16 bits == 0 means local PID.
     // Single shift+compare -- essentially free on modern CPUs.
     if target_pid >> 48 == 0 {
-        local_send(target_pid, msg_ptr, msg_size);
+        local_send(target_pid, msg_ptr, msg_size)
     } else {
-        dist_send(target_pid, msg_ptr, msg_size);
+        dist_send(target_pid, msg_ptr, msg_size)
     }
 }
 
@@ -420,8 +420,16 @@ pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
 ///
 /// Deep-copies the message bytes into a `MessageBuffer`, pushes it into
 /// the target actor's FIFO mailbox, and wakes the target if it is Waiting.
-pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
-    let sched = global_scheduler();
+pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
+    local_send_with_scheduler(global_scheduler(), target_pid, msg_ptr, msg_size)
+}
+
+fn local_send_with_scheduler(
+    sched: &Scheduler,
+    target_pid: u64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+) -> i64 {
     let pid = ProcessId(target_pid);
 
     // Deep-copy the message bytes.
@@ -446,7 +454,12 @@ pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
     // Look up the target process and push message.
     if let Some(proc_arc) = sched.get_process(pid) {
         let mut proc = proc_arc.lock();
-        proc.mailbox.push(msg);
+        if let Err(error) = proc.mailbox.try_push(msg) {
+            return match error {
+                MailboxPushError::Full => 2,
+                MailboxPushError::MessageTooLarge => 3,
+            };
+        }
 
         // If the target is Waiting, wake it up.
         if matches!(proc.state, ProcessState::Waiting) {
@@ -456,6 +469,9 @@ pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
                 sched.wake_process(pid);
             }
         }
+        0
+    } else {
+        1
     }
 }
 
@@ -464,13 +480,13 @@ pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
 ///
 /// Extracts the node_id from the upper 16 bits of the target PID, looks
 /// up the corresponding NodeSession, and writes a DIST_SEND message to
-/// the TLS stream. Silently drops on any failure (unknown node, no
-/// session, write error) -- Phase 66 will add :nodedown notifications.
+/// the TLS stream. Returns a nonzero status when the node is unavailable
+/// or the write fails.
 #[cold]
-fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
+fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
     let state = match crate::dist::node::node_state() {
         Some(s) => s,
-        None => return, // Node not started; silently drop
+        None => return 4,
     };
 
     let node_id = (target_pid >> 48) as u16;
@@ -478,7 +494,7 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
         let map = state.node_id_map.read();
         match map.get(&node_id) {
             Some(name) => name.clone(),
-            None => return, // Unknown node; silently drop
+            None => return 4,
         }
     };
 
@@ -486,7 +502,7 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
         let sessions = state.sessions.read();
         match sessions.get(&node_name) {
             Some(s) => std::sync::Arc::clone(s),
-            None => return, // Not connected; silently drop
+            None => return 4,
         }
     };
 
@@ -499,16 +515,22 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
         payload.extend_from_slice(slice);
     }
 
-    // Write to TLS stream; silently drop on error (Phase 66 adds :nodedown)
-    let mut stream = session.stream.lock().unwrap();
-    let _ = crate::dist::node::write_msg(&mut *stream, &payload);
+    // Write to the active TLS session and report failure to the caller.
+    let mut stream = match session.stream.lock() {
+        Ok(stream) => stream,
+        Err(_) => return 5,
+    };
+    match crate::dist::node::write_msg(&mut *stream, &payload) {
+        Ok(()) => 0,
+        Err(_) => 5,
+    }
 }
 
 /// Send a message to a named process on a remote node.
 ///
 /// Called from compiled Mesh code for `send({name, node}, msg)` syntax.
 /// If the target node is ourselves, performs a local registry lookup + send.
-/// Silently drops if node not started, name not found, or session unavailable.
+/// Returns a nonzero status if the target cannot be reached.
 #[no_mangle]
 pub extern "C" fn mesh_actor_send_named(
     name_ptr: *const u8,
@@ -517,7 +539,7 @@ pub extern "C" fn mesh_actor_send_named(
     node_len: u64,
     msg_ptr: *const u8,
     msg_size: u64,
-) {
+) -> i64 {
     let name =
         unsafe { std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)) };
     let node =
@@ -525,20 +547,20 @@ pub extern "C" fn mesh_actor_send_named(
 
     let (name, node) = match (name, node) {
         (Ok(n), Ok(nd)) => (n, nd),
-        _ => return,
+        _ => return 1,
     };
 
     let state = match crate::dist::node::node_state() {
         Some(s) => s,
-        None => return,
+        None => return 4,
     };
 
     // If target node is ourselves, do local registry lookup + send
     if node == state.name {
         if let Some(pid) = crate::actor::registry::global_registry().whereis(name) {
-            local_send(pid.as_u64(), msg_ptr, msg_size);
+            return local_send(pid.as_u64(), msg_ptr, msg_size);
         }
-        return;
+        return 1;
     }
 
     // Look up remote session
@@ -546,7 +568,7 @@ pub extern "C" fn mesh_actor_send_named(
         let sessions = state.sessions.read();
         match sessions.get(node) {
             Some(s) => std::sync::Arc::clone(s),
-            None => return,
+            None => return 4,
         }
     };
 
@@ -561,8 +583,14 @@ pub extern "C" fn mesh_actor_send_named(
         payload.extend_from_slice(slice);
     }
 
-    let mut stream = session.stream.lock().unwrap();
-    let _ = crate::dist::node::write_msg(&mut *stream, &payload);
+    let mut stream = match session.stream.lock() {
+        Ok(stream) => stream,
+        Err(_) => return 5,
+    };
+    match crate::dist::node::write_msg(&mut *stream, &payload) {
+        Ok(()) => 0,
+        Err(_) => 5,
+    }
 }
 
 /// Receive a message from the current actor's mailbox.
@@ -1980,6 +2008,49 @@ mod tests {
         let popped = proc_arc.lock().mailbox.pop().unwrap();
         assert_eq!(popped.buffer.type_tag, 99);
         assert_eq!(popped.buffer.data, vec![42, 43, 44, 45]);
+    }
+
+    #[test]
+    fn observable_send_reports_missing_and_bounded_mailboxes() {
+        let sched = Scheduler::new(1);
+        let target_pid = create_test_process(&sched);
+        let process = sched.get_process(target_pid).unwrap();
+        process.lock().mailbox = Arc::new(Mailbox::bounded(1, 4));
+        let four_bytes = [1, 2, 3, 4];
+        let five_bytes = [1, 2, 3, 4, 5];
+
+        assert_eq!(
+            local_send_with_scheduler(
+                &sched,
+                target_pid.as_u64(),
+                four_bytes.as_ptr(),
+                four_bytes.len() as u64,
+            ),
+            0
+        );
+        assert_eq!(
+            local_send_with_scheduler(
+                &sched,
+                target_pid.as_u64(),
+                four_bytes.as_ptr(),
+                four_bytes.len() as u64,
+            ),
+            2
+        );
+        process.lock().mailbox.pop();
+        assert_eq!(
+            local_send_with_scheduler(
+                &sched,
+                target_pid.as_u64(),
+                five_bytes.as_ptr(),
+                five_bytes.len() as u64,
+            ),
+            3
+        );
+        assert_eq!(
+            local_send_with_scheduler(&sched, u64::MAX, std::ptr::null(), 0),
+            1
+        );
     }
 
     #[test]

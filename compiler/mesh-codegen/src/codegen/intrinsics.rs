@@ -127,8 +127,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> void
-    let send_ty = void_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
+    // mesh_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> i64
+    let send_ty = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
     module.add_function(
         "mesh_actor_send",
         send_ty,
@@ -2980,10 +2980,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ),
     );
 
-    // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> void
+    // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> i64
     module.add_function(
         "mesh_actor_send_named",
-        void_type.fn_type(
+        i64_type.fn_type(
             &[
                 ptr_type.into(),
                 i64_type.into(),

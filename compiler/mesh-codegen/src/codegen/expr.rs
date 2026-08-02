@@ -3174,16 +3174,18 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_actor_send(target_pid, msg_ptr, msg_size)
         let send_fn = get_intrinsic(&self.module, "mesh_actor_send");
-        self.builder
+        let call = self
+            .builder
             .build_call(
                 send_fn,
                 &[target_val.into(), msg_ptr.into(), msg_size.into()],
-                "",
+                "send_status",
             )
             .map_err(|e| e.to_string())?;
 
-        // Send returns Unit.
-        Ok(self.context.struct_type(&[], false).const_zero().into())
+        call.try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "mesh_actor_send returned void".to_string())
     }
 
     /// Codegen for Timer.send_after(pid, ms, msg).

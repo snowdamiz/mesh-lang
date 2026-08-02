@@ -373,7 +373,7 @@ end
 | --- | --- |
 | `actor name(args) do ... end` | Define an actor |
 | `spawn(function, args...)` | Start an actor and return `Pid<M>` |
-| `send(pid, message)` | Type-check and enqueue a message |
+| `send(pid, message)` | Type-check and enqueue a message, returning an observable `Int` status |
 | `receive do ... end` | Wait for the next mailbox message |
 | `after timeout -> ...` | Receive timeout arm |
 | `self()` | Current actor PID; actor context only |

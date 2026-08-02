@@ -4305,7 +4305,7 @@ impl<'a> Lowerer<'a> {
             "mesh_actor_send".to_string(),
             MirType::FnPtr(
                 vec![MirType::Int, MirType::Ptr, MirType::Int],
-                Box::new(MirType::Unit),
+                Box::new(MirType::Int),
             ),
         );
 
@@ -14898,7 +14898,7 @@ impl<'a> Lowerer<'a> {
             .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
             .unwrap_or_default();
 
-        // send(target, message) -> Unit
+        // send(target, message) -> Int status
         let (target, message) = if args.len() >= 2 {
             let mut iter = args.into_iter();
             let target = Box::new(iter.next().unwrap());
@@ -14914,7 +14914,7 @@ impl<'a> Lowerer<'a> {
         MirExpr::ActorSend {
             target,
             message,
-            ty: MirType::Unit,
+            ty: MirType::Int,
         }
     }
 

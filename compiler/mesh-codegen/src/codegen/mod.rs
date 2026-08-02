@@ -2236,12 +2236,12 @@ mod tests {
         let body = MirExpr::ActorSend {
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             message: Box::new(MirExpr::IntLit(99, MirType::Int)),
-            ty: MirType::Unit,
+            ty: MirType::Int,
         };
         let ir = compile_fn_to_ir(
             vec![("pid".to_string(), MirType::Pid(None))],
             body,
-            MirType::Unit,
+            MirType::Int,
         );
         assert!(
             ir.contains("mesh_actor_send"),

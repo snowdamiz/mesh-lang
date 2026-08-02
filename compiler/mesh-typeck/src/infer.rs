@@ -12243,7 +12243,7 @@ fn infer_spawn(
 ///
 /// If pid is `Pid<M>`, validates that message has type M.
 /// If pid is untyped `Pid`, accepts any message type.
-/// Returns Unit (fire-and-forget).
+/// Returns an observable delivery status code.
 fn infer_send(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -12323,7 +12323,7 @@ fn infer_send(
         }
     }
 
-    Ok(Ty::Tuple(vec![]))
+    Ok(Ty::int())
 }
 
 /// Infer the type of a receive expression.

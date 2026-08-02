@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 /// Helper: compile a Mesh source and run the binary with a timeout.
 /// Returns stdout on success. Panics on compilation failure or timeout.
 fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
@@ -357,4 +360,26 @@ end
 "#;
     let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output.trim(), "77");
+}
+
+#[test]
+fn actor_send_returns_an_observable_delivery_status() {
+    artifacts::ensure_mesh_rt_staticlib();
+    let source = r#"
+actor sink() do
+  receive do
+    _ -> println("received")
+  end
+end
+
+fn main() do
+  let pid = spawn(sink)
+  let status :: Int = send(pid, 42)
+  println(Int.to_string(status))
+  Timer.sleep(100)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 30);
+    assert!(output.lines().any(|line| line == "0"), "{output}");
+    assert!(output.lines().any(|line| line == "received"), "{output}");
 }

@@ -80,6 +80,7 @@ end
 Key points about message passing:
 
 - Messages are processed **one at a time** from the actor's mailbox
+- `send` returns `0` when enqueued or written, `1` when the target is missing, `2` when the mailbox is full, `3` when the message exceeds the mailbox byte limit, `4` when a remote node is unavailable, and `5` when a remote write fails
 - `receive` blocks until the next message arrives
 - The current compiler executes the first receive arm; use a single variable or wildcard arm and perform any branching in its body
 - You can spawn multiple actors and send messages to each independently

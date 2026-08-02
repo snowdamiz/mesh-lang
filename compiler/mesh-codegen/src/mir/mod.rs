@@ -343,7 +343,7 @@ pub enum MirExpr {
         target: Box<MirExpr>,
         /// Message to send.
         message: Box<MirExpr>,
-        /// Result type (Unit -- fire-and-forget).
+        /// Observable delivery status code.
         ty: MirType,
     },
     /// Receive a message (blocking). Contains compiled match arms.

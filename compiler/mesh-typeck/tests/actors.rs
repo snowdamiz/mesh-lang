@@ -101,6 +101,14 @@ fn test_send_typed_pid_correct_type() {
 }
 
 #[test]
+fn test_send_returns_observable_status() {
+    let result = check_source(
+        "actor sink() do\nreceive do\n_ -> nil\nend\nend\nlet pid = spawn(sink)\nlet status :: Int = send(pid, 42)\nstatus",
+    );
+    assert_no_errors(&result);
+}
+
+#[test]
 fn test_send_typed_pid_wrong_type() {
     // Send a String to a Pid<Int> -- should produce type error.
     let result = check_source(
