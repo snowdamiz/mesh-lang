@@ -99,6 +99,38 @@ fn test_let_binding_with_usage() {
     assert_result_type(&result, Ty::int());
 }
 
+#[test]
+fn test_refutable_tuple_let_pattern_is_rejected() {
+    let result = check_source("let (0, value) = (0, 42)\nvalue");
+    assert_has_error(
+        &result,
+        |error| {
+            matches!(
+                error,
+                TypeError::InvalidLetPattern { reason, .. }
+                    if reason.contains("refutable patterns are not allowed")
+            )
+        },
+        "InvalidLetPattern(refutable)",
+    );
+}
+
+#[test]
+fn test_tuple_let_pattern_rejects_duplicate_binders() {
+    let result = check_source("let (value, value) = (1, 2)\nvalue");
+    assert_has_error(
+        &result,
+        |error| {
+            matches!(
+                error,
+                TypeError::InvalidLetPattern { reason, .. }
+                    if reason.contains("must be unique")
+            )
+        },
+        "InvalidLetPattern(duplicate binder)",
+    );
+}
+
 // ── Function Inference ─────────────────────────────────────────────────
 
 #[test]

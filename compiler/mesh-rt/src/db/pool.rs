@@ -7,8 +7,7 @@
 //! ## Functions
 //!
 //! - `mesh_pool_open`: Create a pool with configurable min/max/timeout
-//! - `mesh_pool_checkout`: Borrow a connection (blocks with timeout)
-//! - `mesh_pool_checkin`: Return a connection (auto-ROLLBACK if dirty)
+//! - Runtime-internal checkout/checkin with lease provenance validation
 //! - `mesh_pool_query`: Auto checkout-use-checkin for SELECT
 //! - `mesh_pool_execute`: Auto checkout-use-checkin for INSERT/UPDATE/DELETE
 //! - `mesh_pool_close`: Drain all connections, prevent new checkouts
@@ -16,13 +15,14 @@
 //! Pool handles are opaque u64 values (Box::into_raw), same pattern as
 //! PgConn/SqliteConn handles.
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
 
 use super::pg::{
-    mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_query, mesh_pg_query_as,
-    pg_simple_command, PgConn,
+    mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
+    mesh_pg_query_as, mesh_pg_query_values, pg_simple_command, PgConn,
 };
 use crate::io::alloc_result;
 use crate::string::{mesh_string_new, MeshString};
@@ -38,6 +38,8 @@ struct PooledConn {
 struct PoolInner {
     url: String,
     idle: Vec<PooledConn>,
+    /// Handles currently checked out by this exact pool.
+    leased: HashSet<u64>,
     active_count: usize,
     total_created: usize,
     #[allow(dead_code)]
@@ -78,7 +80,7 @@ unsafe fn create_connection(url: &str) -> Result<u64, String> {
     let result_ptr = mesh_pg_connect(url_mesh as *const MeshString);
     let r = &*(result_ptr as *const crate::io::MeshResult);
     if r.tag == 0 {
-        Ok(r.value as u64)
+        Ok(unbox_u64_payload(r.value))
     } else {
         // Extract the error message string from the MeshString value
         let err_str = &*(r.value as *const MeshString);
@@ -98,10 +100,10 @@ unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
 /// Returns true if healthy, false if dead.
 unsafe fn health_check(handle: u64) -> bool {
     let conn = &mut *(handle as *mut PgConn);
-    pg_simple_command(conn, "SELECT 1").is_ok()
+    !conn.is_broken() && pg_simple_command(conn, "SELECT 1").is_ok()
 }
 
-// ── Public API ───────────────────────────────────────────────────────────
+// ── Public scoped API and runtime-internal leasing ───────────────────────
 
 /// Create a PostgreSQL connection pool.
 ///
@@ -152,6 +154,7 @@ pub extern "C" fn mesh_pool_open(
             inner: Mutex::new(PoolInner {
                 url: url_str.to_string(),
                 idle,
+                leased: HashSet::new(),
                 active_count: 0,
                 total_created: min,
                 min_conns: min,
@@ -176,8 +179,7 @@ pub extern "C" fn mesh_pool_open(
 /// Returns an idle connection, creates a new one if under max, or blocks
 /// with timeout if pool is exhausted. Performs health check on idle
 /// connections before returning them.
-#[no_mangle]
-pub extern "C" fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
+pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
     unsafe {
         let pool = &*(pool_handle as *const PgPool);
         let timeout = Duration::from_millis({
@@ -197,12 +199,15 @@ pub extern "C" fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
             if let Some(conn) = inner.idle.pop() {
                 // Health check: validate connection before returning
                 if health_check(conn.handle) {
+                    if !inner.leased.insert(conn.handle) {
+                        return err_result("pool detected duplicate connection bookkeeping");
+                    }
                     inner.active_count += 1;
                     return alloc_result(0, box_u64_payload(conn.handle)) as *mut u8;
                 } else {
                     // Connection is dead -- close it and try next
                     mesh_pg_close(conn.handle);
-                    inner.total_created -= 1;
+                    inner.total_created = inner.total_created.saturating_sub(1);
                     continue;
                 }
             }
@@ -218,13 +223,28 @@ pub extern "C" fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
 
                 match create_connection(&url) {
                     Ok(handle) => {
+                        let mut inner = pool.inner.lock();
+                        if inner.closed {
+                            inner.total_created = inner.total_created.saturating_sub(1);
+                            inner.active_count = inner.active_count.saturating_sub(1);
+                            drop(inner);
+                            mesh_pg_close(handle);
+                            return err_result("pool is closed");
+                        }
+                        if !inner.leased.insert(handle) {
+                            inner.total_created = inner.total_created.saturating_sub(1);
+                            inner.active_count = inner.active_count.saturating_sub(1);
+                            drop(inner);
+                            mesh_pg_close(handle);
+                            return err_result("pool detected duplicate connection bookkeeping");
+                        }
                         return alloc_result(0, box_u64_payload(handle)) as *mut u8;
                     }
                     Err(e) => {
                         // Undo the reservation
                         let mut inner = pool.inner.lock();
-                        inner.total_created -= 1;
-                        inner.active_count -= 1;
+                        inner.total_created = inner.total_created.saturating_sub(1);
+                        inner.active_count = inner.active_count.saturating_sub(1);
                         return err_result(&format!("pool connect: {}", e));
                     }
                 }
@@ -249,38 +269,37 @@ pub extern "C" fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
 /// If the connection has an active transaction (txn_status != 'I'),
 /// sends ROLLBACK to clean it up. If ROLLBACK fails, the connection
 /// is destroyed instead of returned to idle.
-#[no_mangle]
-pub extern "C" fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
+pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
     unsafe {
+        if pool_handle == 0 || conn_handle == 0 {
+            return;
+        }
         let pool = &*(pool_handle as *const PgPool);
 
         {
-            let inner = pool.inner.lock();
-            if inner.closed {
-                // Pool is closed -- just destroy the connection
-                mesh_pg_close(conn_handle);
-                // Note: total_created/active_count will be cleaned up by close
+            let mut inner = pool.inner.lock();
+            // Reject foreign and already-returned handles before dereferencing
+            // them. This is the runtime backstop for pool provenance.
+            if !inner.leased.remove(&conn_handle) {
                 return;
             }
         }
 
         // Transaction cleanup (POOL-05): ROLLBACK if not idle
         let conn = &mut *(conn_handle as *mut PgConn);
-        if conn.txn_status != b'I' {
-            if pg_simple_command(conn, "ROLLBACK").is_err() {
-                // Connection is broken -- close it instead of returning to idle
-                mesh_pg_close(conn_handle);
-                let mut inner = pool.inner.lock();
-                inner.total_created -= 1;
-                inner.active_count -= 1;
-                pool.available.notify_one();
-                return;
-            }
+        let discard = conn.is_broken()
+            || (conn.txn_status != b'I' && pg_simple_command(conn, "ROLLBACK").is_err());
+        let mut inner = pool.inner.lock();
+        inner.active_count = inner.active_count.saturating_sub(1);
+        if discard || inner.closed {
+            inner.total_created = inner.total_created.saturating_sub(1);
+            drop(inner);
+            mesh_pg_close(conn_handle);
+            pool.available.notify_one();
+            return;
         }
 
-        // Return to idle
-        let mut inner = pool.inner.lock();
-        inner.active_count -= 1;
+        // Return to idle.
         inner.idle.push(PooledConn {
             handle: conn_handle,
             last_used: Instant::now(),
@@ -353,6 +372,44 @@ pub extern "C" fn mesh_pool_execute(
     }
 }
 
+#[no_mangle]
+pub extern "C" fn mesh_pool_query_values(
+    pool_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let checkout = mesh_pool_checkout(pool_handle);
+        let result = &*(checkout as *const crate::io::MeshResult);
+        if result.tag != 0 {
+            return checkout;
+        }
+        let conn_handle = unbox_u64_payload(result.value);
+        let query = mesh_pg_query_values(conn_handle, sql, params);
+        mesh_pool_checkin(pool_handle, conn_handle);
+        query
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_pool_execute_values(
+    pool_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        let checkout = mesh_pool_checkout(pool_handle);
+        let result = &*(checkout as *const crate::io::MeshResult);
+        if result.tag != 0 {
+            return checkout;
+        }
+        let conn_handle = unbox_u64_payload(result.value);
+        let execute = mesh_pg_execute_values(conn_handle, sql, params);
+        mesh_pool_checkin(pool_handle, conn_handle);
+        execute
+    }
+}
+
 /// Execute a SELECT query with automatic checkout-use-checkin and map rows through a callback.
 ///
 /// # Signature
@@ -408,6 +465,7 @@ pub extern "C" fn mesh_pool_close(pool_handle: u64) {
             inner.closed = true;
             // Drain all idle connections
             idle_conns = inner.idle.drain(..).map(|c| c.handle).collect();
+            inner.total_created = inner.total_created.saturating_sub(idle_conns.len());
         }
 
         // Close idle connections outside the lock
@@ -427,9 +485,104 @@ mod tests {
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
     use crate::string::mesh_string_new;
+    use std::io::Write;
+    use std::net::{TcpListener, TcpStream};
+    use std::thread;
 
     fn mk_str(s: &[u8]) -> *mut MeshString {
         mesh_string_new(s.as_ptr(), s.len() as u64)
+    }
+
+    #[test]
+    fn checkin_discards_connection_after_partial_wire_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.write_all(&[b'D', 0, 0, 0, 8, 0]).unwrap();
+        });
+        let mut conn = PgConn::from_test_stream(TcpStream::connect(address).unwrap());
+
+        assert!(conn.read_wire_message().is_err());
+        assert!(conn.is_broken());
+        assert_eq!(
+            conn.read_wire_message().unwrap_err(),
+            "PostgreSQL connection is unusable"
+        );
+        server.join().unwrap();
+
+        let conn_handle = Box::into_raw(Box::new(conn)) as u64;
+        let pool_handle = Box::into_raw(Box::new(PgPool {
+            inner: Mutex::new(PoolInner {
+                url: String::new(),
+                idle: Vec::new(),
+                leased: HashSet::from([conn_handle]),
+                active_count: 1,
+                total_created: 1,
+                min_conns: 0,
+                max_conns: 1,
+                checkout_timeout_ms: 100,
+                closed: false,
+            }),
+            available: Condvar::new(),
+        })) as u64;
+
+        mesh_pool_checkin(pool_handle, conn_handle);
+
+        let pool = unsafe { &*(pool_handle as *const PgPool) };
+        let inner = pool.inner.lock();
+        assert_eq!(inner.total_created, 0);
+        assert_eq!(inner.active_count, 0);
+        assert!(inner.idle.is_empty());
+        drop(inner);
+        unsafe { drop(Box::from_raw(pool_handle as *mut PgPool)) };
+    }
+
+    #[test]
+    fn checkin_ignores_connection_not_leased_by_pool() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || listener.accept().unwrap());
+        let conn = PgConn::from_test_stream(TcpStream::connect(address).unwrap());
+        let conn_handle = Box::into_raw(Box::new(conn)) as u64;
+        drop(server.join().unwrap());
+
+        let pool_handle = Box::into_raw(Box::new(PgPool {
+            inner: Mutex::new(PoolInner {
+                url: String::new(),
+                idle: Vec::new(),
+                leased: HashSet::new(),
+                active_count: 1,
+                total_created: 1,
+                min_conns: 0,
+                max_conns: 1,
+                checkout_timeout_ms: 100,
+                closed: false,
+            }),
+            available: Condvar::new(),
+        })) as u64;
+
+        mesh_pool_checkin(pool_handle, conn_handle);
+
+        let pool = unsafe { &*(pool_handle as *const PgPool) };
+        let (active_count, total_created, idle_handle) = {
+            let mut inner = pool.inner.lock();
+            (
+                inner.active_count,
+                inner.total_created,
+                inner.idle.pop().map(|conn| conn.handle),
+            )
+        };
+        if let Some(handle) = idle_handle {
+            mesh_pg_close(handle);
+        } else {
+            mesh_pg_close(conn_handle);
+        }
+        unsafe { drop(Box::from_raw(pool_handle as *mut PgPool)) };
+
+        assert_eq!(active_count, 1);
+        assert_eq!(total_created, 1);
+        assert!(idle_handle.is_none());
     }
 
     #[test]

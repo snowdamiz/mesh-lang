@@ -354,7 +354,7 @@ impl<'a> Lowerer<'a> {
             .map(|(name, modes)| (name.clone(), modes.clone()))
             .collect();
         for (name, modes) in typeck.function_ownership.iter() {
-            if name.starts_with("crypto_") {
+            if name.starts_with("crypto_") || name.starts_with("bytes_builder_") {
                 ownership_signatures
                     .entry(format!("mesh_{name}"))
                     .or_insert_with(|| modes.clone());
@@ -364,6 +364,11 @@ impl<'a> Lowerer<'a> {
             ownership_signatures
                 .entry(alias.to_string())
                 .or_insert_with(|| vec![ParamOwnership::Consume]);
+        }
+        for alias in ["Secret.concat", "secret_concat", "mesh_secret_concat"] {
+            ownership_signatures
+                .entry(alias.to_string())
+                .or_insert_with(|| vec![ParamOwnership::Consume, ParamOwnership::Consume]);
         }
 
         Lowerer {
@@ -476,6 +481,9 @@ impl<'a> Lowerer<'a> {
 
         match ty {
             Ty::Con(constructor) => {
+                if constructor.name == "PgConn" {
+                    return Some(MirResourceDestructor::PgConnection);
+                }
                 if self.registry.sum_type_defs.contains_key(&constructor.name) {
                     return self.resource_sum_destructor_inner(&constructor.name, &[], visiting);
                 }
@@ -579,6 +587,14 @@ impl<'a> Lowerer<'a> {
             .cloned()
             .zip(arguments.iter())
             .collect();
+        // Generic sum payloads use the base MIR definition's storage layout.
+        // In particular, Result<T, E> stores T/E behind a pointer even when the
+        // concrete semantic type is an unboxed integer handle such as PgConn.
+        let storage_variants = self
+            .sum_types
+            .iter()
+            .find(|sum| sum.name == name)
+            .map(|sum| sum.variants.clone());
         let variants = definition
             .variants
             .iter()
@@ -594,6 +610,16 @@ impl<'a> Lowerer<'a> {
                         }
                     })
                     .collect::<Vec<_>>();
+                let field_types = storage_variants
+                    .as_ref()
+                    .and_then(|variants| variants.iter().find(|variant| variant.tag == tag as u8))
+                    .map(|variant| variant.fields.clone())
+                    .unwrap_or_else(|| {
+                        concrete_fields
+                            .iter()
+                            .map(|field_ty| resolve_type(field_ty, self.registry, false))
+                            .collect()
+                    });
                 let resource_fields = concrete_fields
                     .iter()
                     .enumerate()
@@ -608,10 +634,7 @@ impl<'a> Lowerer<'a> {
                     .collect::<Vec<_>>();
                 (!resource_fields.is_empty()).then(|| MirResourceVariant {
                     tag: tag as u8,
-                    field_types: concrete_fields
-                        .iter()
-                        .map(|field_ty| resolve_type(field_ty, self.registry, false))
-                        .collect(),
+                    field_types,
                     resource_fields,
                 })
             })
@@ -2087,8 +2110,34 @@ impl<'a> Lowerer<'a> {
             );
         }
         self.known_functions.insert(
+            "mesh_bytes_builder_new".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        for name in [
+            "mesh_bytes_builder_write_u8",
+            "mesh_bytes_builder_write_u16_be",
+            "mesh_bytes_builder_write_u32_be",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_bytes_builder_write_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_bytes_builder_finish".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_secret_random".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_secret_concat".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
             "mesh_secret_destroy".to_string(),
@@ -3238,6 +3287,15 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        for name in ["mesh_pg_execute_values", "mesh_pg_query_values"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
         // ── Phase 57: PG Transaction functions ──────────────────────────
         // mesh_pg_begin(conn: i64) -> ptr (Result)
         self.known_functions.insert(
@@ -3368,14 +3426,6 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Unit)),
         );
         self.known_functions.insert(
-            "mesh_pool_checkout".to_string(),
-            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
-        );
-        self.known_functions.insert(
-            "mesh_pool_checkin".to_string(),
-            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Unit)),
-        );
-        self.known_functions.insert(
             "mesh_pool_query".to_string(),
             MirType::FnPtr(
                 vec![MirType::Int, MirType::Ptr, MirType::Ptr],
@@ -3389,6 +3439,15 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        for name in ["mesh_pool_execute_values", "mesh_pool_query_values"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
         // ── Phase 58: Row Parsing & Struct-to-Row Mapping ─────────────────
         self.known_functions.insert(
             "mesh_row_from_row_get".to_string(),
@@ -8956,113 +9015,125 @@ impl<'a> Lowerer<'a> {
     // ── Block lowering ───────────────────────────────────────────────
 
     fn lower_block(&mut self, block: &Block) -> MirExpr {
-        // Collect all children in source order as MIR expressions.
-        // Let bindings insert the variable into scope (for subsequent children)
-        // and are wrapped to nest the remaining block as the body.
-        let mut parts: Vec<(MirExpr, Option<Ty>)> = Vec::new();
+        enum Part {
+            Binding {
+                name: String,
+                ty: MirType,
+                value: MirExpr,
+                resource_ty: Option<Ty>,
+            },
+            Destructure {
+                pattern: MirPattern,
+                value: MirExpr,
+                resources: Vec<(String, Ty)>,
+            },
+            Expr(MirExpr),
+        }
 
+        let mut parts = Vec::new();
         for child in block.syntax().children() {
             if let Some(item) = Item::cast(child.clone()) {
                 match item {
                     Item::LetBinding(ref let_) => {
-                        let name = let_
-                            .name()
-                            .and_then(|n| n.text())
-                            .unwrap_or_else(|| "_".to_string());
-                        let (value, resource_ty) = if let Some(init) = let_.initializer() {
-                            let resource_ty = self
-                                .get_ty(init.syntax().text_range())
-                                .filter(|ty| self.registry.is_resource_type(ty))
-                                .cloned();
-                            (self.lower_expr(&init), resource_ty)
+                        let initializer = let_.initializer();
+                        let initializer_ty = initializer
+                            .as_ref()
+                            .and_then(|init| self.get_ty(init.syntax().text_range()))
+                            .cloned();
+                        let value = initializer
+                            .map(|init| self.lower_expr(&init))
+                            .unwrap_or(MirExpr::Unit);
+
+                        if let Some(pattern) = let_.pattern() {
+                            let resources = self.resource_pattern_bindings(&pattern);
+                            let pattern =
+                                self.lower_pattern_with_expected(&pattern, initializer_ty.as_ref());
+                            parts.push(Part::Destructure {
+                                pattern,
+                                value,
+                                resources,
+                            });
                         } else {
-                            (MirExpr::Unit, None)
-                        };
-                        let ty = value.ty().clone();
-                        self.insert_var(name.clone(), ty.clone());
-                        parts.push((
-                            MirExpr::Let {
+                            let name = let_
+                                .name()
+                                .and_then(|name| name.text())
+                                .unwrap_or_else(|| "_".to_string());
+                            let ty = value.ty().clone();
+                            let resource_ty =
+                                initializer_ty.filter(|ty| self.registry.is_resource_type(ty));
+                            self.insert_var(name.clone(), ty.clone());
+                            parts.push(Part::Binding {
                                 name,
                                 ty,
-                                value: Box::new(value),
-                                body: Box::new(MirExpr::Unit), // placeholder; nested below
-                            },
-                            resource_ty,
-                        ));
+                                value,
+                                resource_ty,
+                            });
+                        }
                     }
-                    Item::FnDef(ref fn_def) => {
-                        self.lower_fn_def(fn_def);
-                    }
+                    Item::FnDef(ref fn_def) => self.lower_fn_def(fn_def),
                     _ => {}
                 }
                 continue;
             }
             if let Some(expr) = Expr::cast(child) {
-                let mir = self.lower_expr(&expr);
-                parts.push((mir, None));
+                parts.push(Part::Expr(self.lower_expr(&expr)));
             }
         }
 
-        // Build the final expression. Let bindings need to nest their body
-        // over subsequent parts. We build from the end backwards:
-        // [Let(x), expr1, Let(y), expr2] becomes:
-        // Let(x, Block([expr1, Let(y, expr2)]))
-        if parts.is_empty() {
-            return MirExpr::Unit;
-        }
-
-        // Fold from right to left: each Let wraps everything after it as its body.
-        let (last, last_resource_ty) = parts.pop().unwrap();
-        let mut result = match last {
-            MirExpr::Let {
-                name,
-                ty,
-                value,
-                body,
-            } => {
-                let body = if let Some(resource_ty) = last_resource_ty {
-                    self.wrap_resource_scope(*body, &name, &resource_ty)
-                } else {
-                    *body
-                };
-                MirExpr::Let {
-                    name,
-                    ty,
-                    value,
-                    body: Box::new(body),
-                }
-            }
-            other => other,
-        };
-        while let Some((part, resource_ty)) = parts.pop() {
+        let mut result = None;
+        for part in parts.into_iter().rev() {
             match part {
-                MirExpr::Let {
+                Part::Binding {
                     name,
                     ty,
                     value,
-                    body: _,
+                    resource_ty,
                 } => {
-                    let body = if let Some(resource_ty) = resource_ty {
-                        self.wrap_resource_scope(result, &name, &resource_ty)
-                    } else {
-                        result
+                    let body = result.take().unwrap_or(MirExpr::Unit);
+                    let body = match resource_ty {
+                        Some(resource_ty) => self.wrap_resource_scope(body, &name, &resource_ty),
+                        None => body,
                     };
-                    result = MirExpr::Let {
+                    result = Some(MirExpr::Let {
                         name,
                         ty,
-                        value,
+                        value: Box::new(value),
                         body: Box::new(body),
-                    };
+                    });
                 }
-                other => {
-                    // Non-let expression before result: wrap in a Block.
-                    let ty = effective_return_type(&result);
-                    result = MirExpr::Block(vec![other, result], ty);
+                Part::Destructure {
+                    pattern,
+                    value,
+                    resources,
+                } => {
+                    let mut body = result.take().unwrap_or(MirExpr::Unit);
+                    for (name, resource_ty) in resources.into_iter().rev() {
+                        body = self.wrap_resource_scope(body, &name, &resource_ty);
+                    }
+                    let ty = effective_return_type(&body);
+                    result = Some(MirExpr::Match {
+                        scrutinee: Box::new(value),
+                        arms: vec![MirMatchArm {
+                            pattern,
+                            guard: None,
+                            body,
+                        }],
+                        ty,
+                    });
+                }
+                Part::Expr(expression) => {
+                    result = Some(match result.take() {
+                        Some(tail) => {
+                            let ty = effective_return_type(&tail);
+                            MirExpr::Block(vec![expression, tail], ty)
+                        }
+                        None => expression,
+                    });
                 }
             }
         }
 
-        result
+        result.unwrap_or(MirExpr::Unit)
     }
 
     // ── Let binding lowering ─────────────────────────────────────────
@@ -9227,22 +9298,27 @@ impl<'a> Lowerer<'a> {
     fn lower_name_ref(&self, name_ref: &NameRef) -> MirExpr {
         let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
         let range = name_ref.syntax().text_range();
+        let resolved_ty = self.resolve_range(range);
 
         // Check if this is a nullary variant constructor (e.g., Red, None, Point).
         // These are NameRef nodes that refer to sum type variants with no fields.
-        for (_, sum_info) in &self.registry.sum_type_defs {
-            for variant in &sum_info.variants {
-                if variant.name == name && variant.fields.is_empty() {
-                    let ty_name = &sum_info.name;
-                    let mir_ty = MirType::SumType(ty_name.clone());
-                    return MirExpr::ConstructVariant {
-                        type_name: ty_name.clone(),
-                        variant: name,
-                        fields: vec![],
-                        ty: mir_ty,
-                    };
+        if let Some(base_name) =
+            find_type_for_variant(&name, Some(&resolved_ty), self.registry, Some(0))
+        {
+            let concrete_name = match &resolved_ty {
+                MirType::SumType(name)
+                    if name == &base_name || name.starts_with(&format!("{base_name}_")) =>
+                {
+                    name.clone()
                 }
-            }
+                _ => base_name,
+            };
+            return MirExpr::ConstructVariant {
+                type_name: concrete_name.clone(),
+                variant: name,
+                fields: vec![],
+                ty: MirType::SumType(concrete_name),
+            };
         }
 
         // Check non-global scopes first for local variables. This ensures pattern
@@ -9270,7 +9346,7 @@ impl<'a> Lowerer<'a> {
 
         // Map builtin function names to their runtime equivalents.
         let mapped_name = map_builtin_name(&name);
-        let ty = self.resolve_range(range);
+        let ty = resolved_ty;
 
         // Apply module-qualified naming to user-defined functions (Phase 41).
         // This ensures call sites match the qualified definition names.
@@ -10067,28 +10143,23 @@ impl<'a> Lowerer<'a> {
 
         // Check if this is a variant constructor call (e.g., Circle(5.0)).
         if let MirExpr::Var(ref name, _) = callee {
-            for (_, sum_info) in &self.registry.sum_type_defs {
-                for variant in &sum_info.variants {
-                    if variant.name == *name && !variant.fields.is_empty() {
-                        let base_name = &sum_info.name;
-                        let concrete_name = match &ty {
-                            MirType::SumType(name)
-                                if name == base_name
-                                    || name.starts_with(&format!("{base_name}_")) =>
-                            {
-                                name.clone()
-                            }
-                            _ => base_name.clone(),
-                        };
-                        let mir_ty = MirType::SumType(concrete_name.clone());
-                        return MirExpr::ConstructVariant {
-                            type_name: concrete_name,
-                            variant: name.clone(),
-                            fields: args,
-                            ty: mir_ty,
-                        };
+            if let Some(base_name) =
+                find_type_for_variant(name, Some(&ty), self.registry, Some(args.len()))
+            {
+                let concrete_name = match &ty {
+                    MirType::SumType(name)
+                        if name == &base_name || name.starts_with(&format!("{base_name}_")) =>
+                    {
+                        name.clone()
                     }
-                }
+                    _ => base_name,
+                };
+                return MirExpr::ConstructVariant {
+                    type_name: concrete_name.clone(),
+                    variant: name.clone(),
+                    fields: args,
+                    ty: MirType::SumType(concrete_name),
+                };
             }
         }
 
@@ -10555,6 +10626,7 @@ impl<'a> Lowerer<'a> {
                         // Convert to prefixed name: String.length -> string_length
                         let prefix = match base_name.as_str() {
                             "WsClient" => "ws_client".to_string(),
+                            "BytesBuilder" => "bytes_builder".to_string(),
                             _ => base_name.to_lowercase(),
                         };
                         let prefixed = format!("{prefix}_{field}");
@@ -11146,6 +11218,24 @@ impl<'a> Lowerer<'a> {
 
     // ── Pattern lowering ─────────────────────────────────────────────
 
+    fn resource_pattern_bindings(&self, pattern: &Pattern) -> Vec<(String, Ty)> {
+        pattern
+            .syntax()
+            .descendants()
+            .filter_map(Pattern::cast)
+            .filter_map(|pattern| match pattern {
+                Pattern::Ident(identifier) => {
+                    let name = identifier.name()?.text().to_string();
+                    let ty = self.get_ty(identifier.syntax().text_range())?.clone();
+                    (!name.starts_with(|character: char| character.is_uppercase())
+                        && self.registry.is_resource_type(&ty))
+                    .then_some((name, ty))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     fn lower_pattern(&mut self, pat: &Pattern) -> MirPattern {
         self.lower_pattern_with_expected(pat, None)
     }
@@ -11166,7 +11256,10 @@ impl<'a> Lowerer<'a> {
                 // they must be lowered as Constructor patterns for correct
                 // pattern matching codegen (switch on tag).
                 if name.starts_with(|c: char| c.is_uppercase()) {
-                    if let Some(type_name) = find_type_for_variant(&name, self.registry) {
+                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry, false));
+                    if let Some(type_name) =
+                        find_type_for_variant(&name, expected_mir.as_ref(), self.registry, None)
+                    {
                         let variant_fields = self
                             .registry
                             .sum_type_defs
@@ -11236,7 +11329,9 @@ impl<'a> Lowerer<'a> {
                     tn.text().to_string()
                 } else {
                     // Find the type name from the registry for unqualified constructors.
-                    find_type_for_variant(&variant_name, self.registry).unwrap_or_default()
+                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry, false));
+                    find_type_for_variant(&variant_name, expected_mir.as_ref(), self.registry, None)
+                        .unwrap_or_default()
                 };
 
                 let expected_fields = self
@@ -11303,9 +11398,21 @@ impl<'a> Lowerer<'a> {
             }
 
             Pattern::Tuple(tuple) => {
-                let pats: Vec<MirPattern> =
-                    tuple.patterns().map(|p| self.lower_pattern(&p)).collect();
-                MirPattern::Tuple(pats)
+                let expected_elements = match expected {
+                    Some(Ty::Tuple(elements)) => Some(elements.as_slice()),
+                    _ => None,
+                };
+                let patterns = tuple
+                    .patterns()
+                    .enumerate()
+                    .map(|(index, pattern)| {
+                        self.lower_pattern_with_expected(
+                            &pattern,
+                            expected_elements.and_then(|elements| elements.get(index)),
+                        )
+                    })
+                    .collect();
+                MirPattern::Tuple(patterns)
             }
 
             Pattern::Or(or) => {
@@ -12944,7 +13051,11 @@ impl<'a> Lowerer<'a> {
 
         // The expression type of `expr?` is the unwrapped success type T,
         // as determined by the type checker.
-        let success_ty = self.resolve_range(try_expr.syntax().text_range());
+        let success_ty = match self.resolve_range(try_expr.syntax().text_range()) {
+            // Tuple expressions use the heap-backed runtime representation.
+            MirType::Tuple(_) => MirType::Ptr,
+            ty => ty,
+        };
 
         // Determine if operand is Result or Option by examining the MirType.
         match &operand_ty {
@@ -12970,6 +13081,19 @@ impl<'a> Lowerer<'a> {
                 args.get(1)
             }
             _ => None,
+        }
+    }
+
+    fn same_try_error_type(left: &Ty, right: &Ty) -> bool {
+        if left == right {
+            return true;
+        }
+
+        match (left, right) {
+            (Ty::Con(con), Ty::App(app, args)) | (Ty::App(app, args), Ty::Con(con)) => {
+                args.is_empty() && matches!(app.as_ref(), Ty::Con(app) if app == con)
+            }
+            _ => false,
         }
     }
 
@@ -13093,7 +13217,7 @@ impl<'a> Lowerer<'a> {
 
         let needs_from_conversion = error_types
             .as_ref()
-            .map(|(operand, function)| operand != function)
+            .map(|(operand, function)| !Self::same_try_error_type(operand, function))
             .unwrap_or_else(|| match (&operand_err_name, &fn_err_name) {
                 (Some(op_err), Some(fn_err)) => op_err != fn_err,
                 _ => false,
@@ -14772,6 +14896,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "BytesBuilder",
     "Secret",
     "U64",
     "U128",
@@ -14894,7 +15019,14 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_write_u16_be" => "mesh_bytes_write_u16_be".to_string(),
         "bytes_write_u32_be" => "mesh_bytes_write_u32_be".to_string(),
         "bytes_write_u64_be" => "mesh_bytes_write_u64_be".to_string(),
+        "bytes_builder_new" => "mesh_bytes_builder_new".to_string(),
+        "bytes_builder_write_u8" => "mesh_bytes_builder_write_u8".to_string(),
+        "bytes_builder_write_u16_be" => "mesh_bytes_builder_write_u16_be".to_string(),
+        "bytes_builder_write_u32_be" => "mesh_bytes_builder_write_u32_be".to_string(),
+        "bytes_builder_write_bytes" => "mesh_bytes_builder_write_bytes".to_string(),
+        "bytes_builder_finish" => "mesh_bytes_builder_finish".to_string(),
         "secret_random" => "mesh_secret_random".to_string(),
+        "secret_concat" => "mesh_secret_concat".to_string(),
         "secret_destroy" => "mesh_secret_destroy".to_string(),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
@@ -15161,6 +15293,8 @@ fn map_builtin_name(name: &str) -> String {
         "pg_close" => "mesh_pg_close".to_string(),
         "pg_execute" => "mesh_pg_execute".to_string(),
         "pg_query" => "mesh_pg_query".to_string(),
+        "pg_execute_values" => "mesh_pg_execute_values".to_string(),
+        "pg_query_values" => "mesh_pg_query_values".to_string(),
         // ── Phase 57: PG Transaction functions ──────────────────────────
         "pg_begin" => "mesh_pg_begin".to_string(),
         "pg_commit" => "mesh_pg_commit".to_string(),
@@ -15194,10 +15328,10 @@ fn map_builtin_name(name: &str) -> String {
         // ── Phase 57: Connection Pool functions ─────────────────────────
         "pool_open" => "mesh_pool_open".to_string(),
         "pool_close" => "mesh_pool_close".to_string(),
-        "pool_checkout" => "mesh_pool_checkout".to_string(),
-        "pool_checkin" => "mesh_pool_checkin".to_string(),
         "pool_query" => "mesh_pool_query".to_string(),
         "pool_execute" => "mesh_pool_execute".to_string(),
+        "pool_query_values" => "mesh_pool_query_values".to_string(),
+        "pool_execute_values" => "mesh_pool_execute_values".to_string(),
         // ── Phase 58: Struct-to-Row Mapping ───────────────────────────────
         "pg_query_as" => "mesh_pg_query_as".to_string(),
         "pool_query_as" => "mesh_pool_query_as".to_string(),
@@ -15563,16 +15697,39 @@ fn extract_negative_literal(node: &mesh_parser::cst::SyntaxNode) -> i64 {
     0
 }
 
-/// Find the type name that contains a given variant name.
-fn find_type_for_variant(variant: &str, registry: &mesh_typeck::TypeRegistry) -> Option<String> {
-    for (type_name, info) in &registry.sum_type_defs {
-        for v in &info.variants {
-            if v.name == variant {
-                return Some(type_name.clone());
-            }
+/// Find the type name that contains a variant, preferring the type inferred at
+/// the use site when separate modules export constructors with the same name.
+fn find_type_for_variant(
+    variant: &str,
+    expected: Option<&MirType>,
+    registry: &mesh_typeck::TypeRegistry,
+    arity: Option<usize>,
+) -> Option<String> {
+    let contains_variant = |info: &&mesh_typeck::SumTypeDefInfo| {
+        info.variants.iter().any(|value| {
+            value.name == variant && arity.is_none_or(|arity| value.fields.len() == arity)
+        })
+    };
+
+    if let Some(MirType::SumType(expected_name)) = expected {
+        if let Some((type_name, _)) = registry
+            .sum_type_defs
+            .iter()
+            .filter(|(type_name, info)| {
+                (expected_name == *type_name || expected_name.starts_with(&format!("{type_name}_")))
+                    && contains_variant(info)
+            })
+            .max_by_key(|(type_name, _)| type_name.len())
+        {
+            return Some(type_name.clone());
         }
     }
-    None
+
+    registry
+        .sum_type_defs
+        .iter()
+        .find(|(_, info)| contains_variant(info))
+        .map(|(type_name, _)| type_name.clone())
 }
 
 /// Collect bindings introduced by a list of patterns (for constructor pattern bindings).
@@ -16875,6 +17032,33 @@ mod tests {
     }
 
     #[test]
+    fn try_on_same_non_generic_error_does_not_call_from_itself() {
+        let mir = lower(
+            "type ProofError do\n\
+               InvalidFixture\n\
+             end\n\
+             fn proof() -> Int ! ProofError do\n\
+               let value = case true do\n\
+                 true -> Ok(1)\n\
+                 false -> Err(InvalidFixture)\n\
+               end ?\n\
+               Ok(value)\n\
+             end",
+        );
+        let proof = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "proof")
+            .expect("proof function");
+
+        assert!(
+            !format!("{:?}", proof.body).contains("From_ProofError__from__ProofError"),
+            "same-error propagation must not synthesize a From call: {:?}",
+            proof.body
+        );
+    }
+
+    #[test]
     fn nested_resource_scopes_preserve_generic_result_return_type() {
         let mir = lower(
             "fn nested() -> Int ! CryptoError do\n\
@@ -16968,6 +17152,44 @@ mod tests {
                         && matches!(variant.resource_fields.as_slice(), [field]
                             if field.index == 0
                                 && matches!(field.destructor, MirResourceDestructor::Opaque)))
+        ));
+    }
+
+    #[test]
+    fn pg_connection_result_drop_keeps_boxed_sum_storage_and_handle_semantics() {
+        let mir = lower(
+            "fn discard(url :: String) do\n\
+               let connection = Pg.connect(url)\n\
+               nil\n\
+             end",
+        );
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        assert!(matches!(
+            find_destructor(&discard.body),
+            Some(MirResourceDestructor::SumVariants(variants))
+                if matches!(variants.as_slice(), [variant]
+                    if variant.tag == 0
+                        && variant.field_types == [MirType::Ptr]
+                        && matches!(variant.resource_fields.as_slice(), [field]
+                            if field.index == 0
+                                && field.ty == MirType::Int
+                                && matches!(field.destructor, MirResourceDestructor::PgConnection)))
         ));
     }
 
@@ -17299,6 +17521,19 @@ mod tests {
             }
         }
         assert!(has_destroy(&function.body), "body: {:?}", function.body);
+    }
+
+    #[test]
+    fn secret_concat_lowers_to_the_runtime_and_moves_both_inputs() {
+        let mir = lower(
+            "fn join(first :: SecretBytes, second :: SecretBytes) do\n  Secret.concat(first, second)\nend",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "join")
+            .expect("join function");
+        assert!(find_call_to(&function.body, "mesh_secret_concat"));
     }
 
     #[test]

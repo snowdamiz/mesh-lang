@@ -106,6 +106,8 @@ pub enum MirType {
 pub enum MirResourceDestructor {
     /// A trusted opaque runtime handle destroyed by `mesh_resource_destroy`.
     Opaque,
+    /// A raw PostgreSQL connection handle closed by `mesh_pg_close`.
+    PgConnection,
     /// A by-value tuple or struct containing resource-bearing fields.
     Aggregate(Vec<MirResourceField>),
     /// A general tagged union whose resource-bearing variants require distinct

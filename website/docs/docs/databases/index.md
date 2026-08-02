@@ -75,16 +75,18 @@ end
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Pg.connect(url)` | `Result<PgConn, String>` | Open one PostgreSQL connection |
-| `Pg.close(connection)` | `Unit` | Close it |
-| `Pg.execute(connection, sql, params)` | `Result<Int, String>` | Execute parameterized SQL |
-| `Pg.query(connection, sql, params)` | `Result<List<Map<String, String>>, String>` | Query rows as string maps |
+| `Pg.close(connection)` | `Unit` | Consume and close it |
+| `Pg.execute(connection, sql, params)` | `Result<Int, String>` | Borrow it to execute parameterized SQL |
+| `Pg.query(connection, sql, params)` | `Result<List<Map<String, String>>, String>` | Borrow it to query rows as string maps |
 | `Pg.query_as(connection, sql, params, decoder)` | `Result<List<Result<T, String>>, String>` | Decode every returned row |
 | `Pg.begin(connection)` | `Result<Unit, String>` | Begin a transaction |
 | `Pg.commit(connection)` | `Result<Unit, String>` | Commit |
 | `Pg.rollback(connection)` | `Result<Unit, String>` | Roll back |
-| `Pg.transaction(connection, fn)` | `Result<Unit, String>` | Run a callback and commit or roll back |
+| `Pg.transaction(connection, fn)` | `Result<Unit, String>` | Borrow it for a callback whose `PgConn` parameter is also declared `borrow` |
 
-PostgreSQL placeholders are `$1`, `$2`, and so on.
+`PgConn` is affine: assignments and ordinary function parameters move it,
+database operations borrow it, and `Pg.close` consumes it. It cannot cross an
+actor boundary. PostgreSQL placeholders are `$1`, `$2`, and so on.
 
 ### Pool API
 
@@ -92,13 +94,12 @@ PostgreSQL placeholders are `$1`, `$2`, and so on.
 |----------|---------|-------------|
 | `Pool.open(url, min, max, timeout_ms)` | `Result<PoolHandle, String>` | Create a bounded PostgreSQL pool |
 | `Pool.close(pool)` | `Unit` | Close all pooled connections |
-| `Pool.checkout(pool)` | `Result<PgConn, String>` | Borrow a connection |
-| `Pool.checkin(pool, connection)` | `Unit` | Return a borrowed connection |
 | `Pool.execute(pool, sql, params)` | `Result<Int, String>` | Execute using a checked-out connection |
 | `Pool.query(pool, sql, params)` | `Result<List<Map<String, String>>, String>` | Query using a checked-out connection |
 | `Pool.query_as(pool, sql, params, decoder)` | `Result<List<Result<T, String>>, String>` | Query and decode each row |
 
-Always return a manually checked-out connection with `Pool.checkin`. Prefer `Pool.query`, `Pool.execute`, and `Repo` when you do not need a multi-statement transaction.
+Pool leases are runtime-internal so their provenance cannot be forged. Use the
+scoped `Pool.query`, `Pool.execute`, typed value variants, or `Repo` APIs.
 
 ## Struct Row Decoding
 
@@ -281,7 +282,7 @@ let query = Query.from("accounts")
 | `Repo.insert_or_update_expr(pool, table, fields, conflict_fields, updates)` | Upsert with expression updates |
 | `Repo.insert_changeset(pool, table, changeset)` | Insert a valid changeset |
 | `Repo.update_changeset(pool, table, id, changeset)` | Update from a valid changeset |
-| `Repo.transaction(pool, fn)` | Check out a connection, call `fn(connection)`, and commit `Ok` or roll back `Err` |
+| `Repo.transaction(pool, fn)` | Run `fn(connection :: borrow PgConn)` and commit `Ok` or roll back `Err` |
 
 Expression writes make updates such as counters and server-side timestamps atomic:
 
@@ -298,7 +299,9 @@ Repo.update_where_expr(
 )
 ```
 
-`Repo.transaction` always returns its checked-out connection to the pool. The callback receives that transaction's PostgreSQL connection and must return a `Result`; a callback failure or runtime exception rolls the transaction back.
+`Repo.transaction` always returns its checked-out connection to the pool. The
+callback must declare its PostgreSQL parameter as `borrow PgConn` and return a
+`Result`; a callback failure or runtime exception rolls the transaction back.
 
 ### Raw Repository Escape Hatches
 

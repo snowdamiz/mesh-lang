@@ -582,6 +582,38 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Bytes".to_string(), bytes_mod);
 
+    let bytes_builder = Ty::bytes_builder();
+    let builder_result = |value| Ty::result(value, Ty::binary_error());
+    let mut builder_mod = HashMap::new();
+    builder_mod.insert(
+        "new".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            builder_result(bytes_builder.clone()),
+        )),
+    );
+    for name in ["write_u8", "write_u16_be", "write_u32_be"] {
+        builder_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![bytes_builder.clone(), Ty::int()],
+                builder_result(Ty::Tuple(vec![])),
+            )),
+        );
+    }
+    builder_mod.insert(
+        "write_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_builder.clone(), Ty::bytes()],
+            builder_result(Ty::Tuple(vec![])),
+        )),
+    );
+    builder_mod.insert(
+        "finish".to_string(),
+        Scheme::mono(Ty::fun(vec![bytes_builder], builder_result(Ty::bytes()))),
+    );
+    modules.insert("BytesBuilder".to_string(), builder_mod);
+
     let mut secret_mod = HashMap::new();
     secret_mod.insert(
         "random".to_string(),
@@ -593,6 +625,13 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     secret_mod.insert(
         "destroy".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
+    );
+    secret_mod.insert(
+        "concat".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::secret_bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
     );
     modules.insert("Secret".to_string(), secret_mod);
 
@@ -2077,6 +2116,23 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )),
     );
+    pg_mod.insert(
+        "execute_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::db_value())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    pg_mod.insert(
+        "query_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::db_value())],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
     // Pg.begin: fn(PgConn) -> Result<Unit, String>
     pg_mod.insert(
         "begin".to_string(),
@@ -2257,22 +2313,6 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "close".to_string(),
         Scheme::mono(Ty::fun(vec![pool_handle_t.clone()], Ty::Tuple(vec![]))),
     );
-    // Pool.checkout: fn(PoolHandle) -> Result<PgConn, String>
-    pool_mod.insert(
-        "checkout".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![pool_handle_t.clone()],
-            Ty::result(pg_conn_t.clone(), Ty::string()),
-        )),
-    );
-    // Pool.checkin: fn(PoolHandle, PgConn) -> Unit
-    pool_mod.insert(
-        "checkin".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![pool_handle_t.clone(), pg_conn_t.clone()],
-            Ty::Tuple(vec![]),
-        )),
-    );
     // Pool.query: fn(PoolHandle, String, List<String>) -> Result<List<Map<String, String>>, String>
     pool_mod.insert(
         "query".to_string(),
@@ -2286,6 +2326,31 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "execute".to_string(),
         Scheme::mono(Ty::fun(
             vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    pool_mod.insert(
+        "query_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![
+                pool_handle_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
+    pool_mod.insert(
+        "execute_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![
+                pool_handle_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
             Ty::result(Ty::int(), Ty::string()),
         )),
     );
@@ -3174,14 +3239,27 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.transaction(PoolHandle, fn(Ptr) -> Ptr) -> Ptr  (pool, callback -> Result<Ptr, String>)
-        // Closure calling convention: MIR lowerer splits closure into (fn_ptr, env_ptr)
+        // Repo.transaction(PoolHandle, fn(borrow PgConn) -> Result<T, String>)
+        //   -> Result<T, String>
+        // Ownership mode is enforced separately; the HM type records the
+        // scoped connection and preserves the callback's success value.
+        let transaction_value = TyVar(99992);
+        let transaction_value_ty = Ty::Var(transaction_value);
         repo_mod.insert(
             "transaction".to_string(),
-            Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::fun(vec![ptr_t.clone()], ptr_t.clone())],
-                ptr_t.clone(),
-            )),
+            Scheme {
+                vars: vec![transaction_value],
+                ty: Ty::fun(
+                    vec![
+                        pool_t.clone(),
+                        Ty::fun(
+                            vec![pg_conn_t.clone()],
+                            Ty::result(transaction_value_ty.clone(), Ty::string()),
+                        ),
+                    ],
+                    Ty::result(transaction_value_ty, Ty::string()),
+                ),
+            },
         );
         // ── Phase 103: Extended Repo Write Operations ────────────────────
         // Repo.update_where(PoolHandle, String, Map<String,String>, Ptr) -> Result<Map<String,String>, String>  (pool, table, fields_map, query)
@@ -3528,6 +3606,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "BytesBuilder",
     "Secret",
     "U64",
     "U128",
@@ -3575,6 +3654,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     builtins::register_builtins(&mut ctx, &mut env, &mut trait_registry);
     register_builtin_sum_types(&mut ctx, &mut env, &mut type_registry);
     register_crypto_v2_types(&mut type_registry);
+    // A connection is a unique raw runtime capability. Treating it as a value
+    // would permit aliases to close or concurrently mutate the same PgConn.
+    type_registry.register_resource_type("PgConn");
 
     // Register stdlib struct types for field access (Phase 137+)
     // Layouts MUST match the Mesh-facing runtime structs allocated in mesh-rt.
@@ -4092,7 +4174,12 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 }
 
 fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
-    for resource in ["X25519PrivateKey", "SigningPrivateKey", "AeadKey"] {
+    for resource in [
+        "BytesBuilder",
+        "X25519PrivateKey",
+        "SigningPrivateKey",
+        "AeadKey",
+    ] {
         type_registry.register_resource_type(resource);
     }
 
@@ -4249,6 +4336,27 @@ fn register_builtin_sum_types(
         variants: crypto_error_variants.clone(),
     });
     register_variant_constructors(ctx, env, "CryptoError", &[], &crypto_error_variants);
+
+    let db_value_variants = vec![
+        VariantInfo {
+            name: "Text".to_string(),
+            fields: vec![VariantFieldInfo::Positional(Ty::string())],
+        },
+        VariantInfo {
+            name: "Binary".to_string(),
+            fields: vec![VariantFieldInfo::Positional(Ty::bytes())],
+        },
+        VariantInfo {
+            name: "Null".to_string(),
+            fields: vec![],
+        },
+    ];
+    type_registry.register_sum_type(SumTypeDefInfo {
+        name: "DbValue".to_string(),
+        generic_params: vec![],
+        variants: db_value_variants.clone(),
+    });
+    register_variant_constructors(ctx, env, "DbValue", &[], &db_value_variants);
 
     // ── Ordering (Less | Equal | Greater) ────────────────────────────────
     //
@@ -5860,6 +5968,7 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
     ) || type_registry.struct_defs.contains_key(name)
         || type_registry.sum_type_defs.contains_key(name)
         || type_registry.type_aliases.contains_key(name)
+        || type_registry.resource_types.contains(name)
 }
 
 /// Validate all registered type aliases have resolvable target types.
@@ -6613,6 +6722,13 @@ fn infer_let_binding(
     trait_registry: &TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    if let Some(pattern) = let_.pattern() {
+        if let Err(error) = validate_let_destructuring_pattern(&pattern) {
+            ctx.errors.push(error.clone());
+            return Err(error);
+        }
+    }
+
     ctx.enter_level();
 
     let init_expr = let_.initializer().ok_or_else(|| {
@@ -6683,6 +6799,52 @@ fn infer_let_binding(
     types.insert(let_.syntax().text_range(), resolved.clone());
 
     Ok(resolved)
+}
+
+fn validate_let_destructuring_pattern(pattern: &Pattern) -> Result<(), TypeError> {
+    let mut binders = FxHashSet::default();
+    validate_let_destructuring_element(pattern, &mut binders)
+}
+
+fn validate_let_destructuring_element(
+    pattern: &Pattern,
+    binders: &mut FxHashSet<String>,
+) -> Result<(), TypeError> {
+    match pattern {
+        Pattern::Tuple(tuple) => {
+            for element in tuple.patterns() {
+                validate_let_destructuring_element(&element, binders)?;
+            }
+            Ok(())
+        }
+        Pattern::Wildcard(_) => Ok(()),
+        Pattern::Ident(identifier) => {
+            let name = identifier
+                .name()
+                .map(|token| token.text().to_string())
+                .unwrap_or_default();
+            let binder = name.trim_start_matches('_');
+            if !binder.chars().next().is_some_and(char::is_lowercase) {
+                return Err(TypeError::InvalidLetPattern {
+                    reason: "tuple let binders must start with a lowercase letter".to_string(),
+                    span: identifier.syntax().text_range(),
+                });
+            }
+
+            if !binders.insert(name.clone()) {
+                return Err(TypeError::InvalidLetPattern {
+                    reason: format!("tuple let binders must be unique; `{name}` is repeated"),
+                    span: identifier.syntax().text_range(),
+                });
+            }
+
+            Ok(())
+        }
+        _ => Err(TypeError::InvalidLetPattern {
+            reason: "refutable patterns are not allowed in tuple let bindings".to_string(),
+            span: pattern.syntax().text_range(),
+        }),
+    }
 }
 
 /// Infer a named function definition: `fn name(params) [-> RetType] [where T: Trait] do body end`

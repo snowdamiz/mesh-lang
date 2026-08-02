@@ -50,6 +50,12 @@ fn group_fits_on_line(col: usize, flat_width: usize, max_width: usize) -> bool {
     flat_width <= max_width.saturating_sub(col)
 }
 
+fn trim_line_end(out: &mut String) {
+    while matches!(out.as_bytes().last(), Some(b' ' | b'\t')) {
+        out.pop();
+    }
+}
+
 /// Render a `FormatIR` tree as a formatted string respecting the given config.
 ///
 /// The algorithm uses a stack-based approach: at each `Group`, it measures
@@ -79,6 +85,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
                     col += 1;
                 }
                 Mode::Break => {
+                    trim_line_end(&mut out);
                     out.push('\n');
                     let indent_str = " ".repeat(cmd.indent);
                     out.push_str(&indent_str);
@@ -87,6 +94,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
             },
 
             FormatIR::Hardline => {
+                trim_line_end(&mut out);
                 out.push('\n');
                 let indent_str = " ".repeat(cmd.indent);
                 out.push_str(&indent_str);
@@ -152,6 +160,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
     }
 
     // Ensure output ends with a newline (canonical formatting).
+    trim_line_end(&mut out);
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }

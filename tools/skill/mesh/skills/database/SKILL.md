@@ -49,7 +49,7 @@ Rules:
 1. `Pg.connect(connection_string) -> Result<Conn, String>` — connects to PostgreSQL.
 2. `Pg.execute(conn, sql, params) -> Result<Int, String>` — DDL and DML.
 3. `Pg.query(conn, sql, params) -> Result<List<Map<String, String>>, String>` — SELECT.
-4. `Pg.close(conn)` — closes the connection.
+4. `Pg.close(conn)` — consumes and closes the affine connection capability.
 5. Parameters use `$1`, `$2`, ... placeholders (PostgreSQL syntax).
 6. Params passed as `List<String>`.
 7. Same row map pattern as SQLite: all values are String.
@@ -153,7 +153,7 @@ end)
 ## Gotchas
 
 Rules:
-1. Always close connections with `Sqlite.close(db)` / `Pg.close(conn)` — connections are not auto-closed.
+1. Always close SQLite connections with `Sqlite.close(db)`. `PgConn` is affine and closes automatically at scope exit; use `Pg.close(conn)` to release it earlier.
 2. SQLite parameters use `?` placeholders; PostgreSQL uses `$1`, `$2`, ...
 3. Row map values are always `String` — no implicit type conversion without `deriving(Row)`.
 4. For `INSERT`/`UPDATE`/`DELETE` without `RETURNING`, use `execute` (not `query`).

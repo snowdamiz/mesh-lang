@@ -175,6 +175,8 @@ pub fn register_builtins(
     env.insert("Float".into(), Scheme::mono(Ty::float()));
     env.insert("String".into(), Scheme::mono(Ty::string()));
     env.insert("Bytes".into(), Scheme::mono(Ty::bytes()));
+    env.insert("BytesBuilder".into(), Scheme::mono(Ty::bytes_builder()));
+    env.insert("DbValue".into(), Scheme::mono(Ty::db_value()));
     env.insert("U64".into(), Scheme::mono(Ty::u64()));
     env.insert("U128".into(), Scheme::mono(Ty::u128()));
     env.insert("I128".into(), Scheme::mono(Ty::i128()));
@@ -578,6 +580,39 @@ pub fn register_builtins(
             Scheme::mono(Ty::fun(vec![Ty::u64()], checked_bytes_result())),
         );
     }
+    let bytes_builder = Ty::bytes_builder();
+    let builder_result = |value| Ty::result(value, Ty::binary_error());
+    env.insert(
+        "bytes_builder_new".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            builder_result(bytes_builder.clone()),
+        )),
+    );
+    for name in [
+        "bytes_builder_write_u8",
+        "bytes_builder_write_u16_be",
+        "bytes_builder_write_u32_be",
+    ] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![bytes_builder.clone(), Ty::int()],
+                builder_result(Ty::Tuple(vec![])),
+            )),
+        );
+    }
+    env.insert(
+        "bytes_builder_write_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![bytes_builder.clone(), Ty::bytes()],
+            builder_result(Ty::Tuple(vec![])),
+        )),
+    );
+    env.insert(
+        "bytes_builder_finish".into(),
+        Scheme::mono(Ty::fun(vec![bytes_builder], builder_result(Ty::bytes()))),
+    );
 
     env.insert(
         "secret_random".into(),
@@ -589,6 +624,13 @@ pub fn register_builtins(
     env.insert(
         "secret_destroy".into(),
         Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
+    );
+    env.insert(
+        "secret_concat".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::secret_bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
     );
 
     register_wide_integer(env, "u64", Ty::u64());
@@ -1833,6 +1875,23 @@ pub fn register_builtins(
             Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )),
     );
+    env.insert(
+        "pg_execute_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::db_value())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "pg_query_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![pg_conn_t.clone(), Ty::string(), Ty::list(Ty::db_value())],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
 
     // ── Phase 57: PG Transaction functions ──────────────────────────
     // Pg.begin(PgConn) -> Result<Unit, String>
@@ -1918,22 +1977,6 @@ pub fn register_builtins(
         "pool_close".into(),
         Scheme::mono(Ty::fun(vec![pool_handle_t.clone()], Ty::Tuple(vec![]))),
     );
-    // Pool.checkout(PoolHandle) -> Result<PgConn, String>
-    env.insert(
-        "pool_checkout".into(),
-        Scheme::mono(Ty::fun(
-            vec![pool_handle_t.clone()],
-            Ty::result(pg_conn_t.clone(), Ty::string()),
-        )),
-    );
-    // Pool.checkin(PoolHandle, PgConn) -> Unit
-    env.insert(
-        "pool_checkin".into(),
-        Scheme::mono(Ty::fun(
-            vec![pool_handle_t.clone(), pg_conn_t.clone()],
-            Ty::Tuple(vec![]),
-        )),
-    );
     // Pool.query(PoolHandle, String, List<String>) -> Result<List<Map<String, String>>, String>
     env.insert(
         "pool_query".into(),
@@ -1947,6 +1990,31 @@ pub fn register_builtins(
         "pool_execute".into(),
         Scheme::mono(Ty::fun(
             vec![pool_handle_t.clone(), Ty::string(), Ty::list(Ty::string())],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "pool_query_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                pool_handle_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
+    env.insert(
+        "pool_execute_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                pool_handle_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
             Ty::result(Ty::int(), Ty::string()),
         )),
     );

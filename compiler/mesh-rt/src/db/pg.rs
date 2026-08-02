@@ -15,6 +15,7 @@
 //! (local development). The wire protocol is implemented from scratch using
 //! `std::net::TcpStream` and crypto crates from the RustCrypto project.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
@@ -29,12 +30,33 @@ use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use rustls_pki_types::ServerName;
 use sha2::Sha256;
 
-use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
-use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
+use crate::bytes::{mesh_bytes_new, MeshBytes};
+use crate::collections::list::{
+    mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
+};
+use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
+use crate::gc::mesh_gc_alloc_actor;
 use crate::io::alloc_result;
 use crate::string::{mesh_string_new, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
+
+// ponytail: fixed safety caps; make these pool options if legitimate workloads need larger cells.
+const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_PG_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_PG_RESULT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_PG_VALUES: usize = i16::MAX as usize;
+const MAX_PG_ROWS: usize = 100_000;
+const DB_VALUE_TEXT: u8 = 0;
+const DB_VALUE_BINARY: u8 = 1;
+const DB_VALUE_NULL: u8 = 2;
+
+/// ABI mirror of the compiler's `{ Text(String), Binary(Bytes), Null }` sum.
+#[repr(C)]
+pub struct MeshDbValue {
+    pub tag: u8,
+    pub payload: *mut u8,
+}
 
 // ── Stream Abstraction ─────────────────────────────────────────────────
 
@@ -75,6 +97,47 @@ pub(super) struct PgConn {
     /// b'I' = idle (not in transaction), b'T' = in transaction block,
     /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
     pub(super) txn_status: u8,
+    broken: bool,
+}
+
+impl PgConn {
+    fn write_wire_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        if self.broken {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "PostgreSQL connection is unusable",
+            ));
+        }
+        let result = self.stream.write_all(bytes);
+        if result.is_err() {
+            self.broken = true;
+        }
+        result
+    }
+
+    pub(super) fn read_wire_message(&mut self) -> Result<(u8, Vec<u8>), String> {
+        if self.broken {
+            return Err("PostgreSQL connection is unusable".to_string());
+        }
+        let result = read_message(&mut self.stream);
+        if result.is_err() {
+            self.broken = true;
+        }
+        result
+    }
+
+    pub(super) fn is_broken(&self) -> bool {
+        self.broken
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_test_stream(stream: TcpStream) -> Self {
+        Self {
+            stream: PgStream::Plain(stream),
+            txn_status: b'I',
+            broken: false,
+        }
+    }
 }
 
 // ── SSL Mode ───────────────────────────────────────────────────────────
@@ -252,6 +315,114 @@ fn write_bind(buf: &mut Vec<u8>, params: &[&str]) {
     buf.extend_from_slice(&body);
 }
 
+#[derive(Clone, Copy)]
+enum BindValue<'a> {
+    Text(&'a [u8]),
+    Binary(&'a [u8]),
+    Null,
+}
+
+/// Write a Bind message with per-value parameter and result formats.
+fn write_bind_values(
+    buf: &mut Vec<u8>,
+    params: &[BindValue<'_>],
+    result_formats: &[i16],
+) -> Result<(), String> {
+    if params.len() > MAX_PG_VALUES {
+        return Err(format!(
+            "too many PostgreSQL parameters: {} (maximum {})",
+            params.len(),
+            MAX_PG_VALUES
+        ));
+    }
+    if result_formats.len() > MAX_PG_VALUES {
+        return Err(format!(
+            "too many PostgreSQL result columns: {} (maximum {})",
+            result_formats.len(),
+            MAX_PG_VALUES
+        ));
+    }
+    for format in result_formats {
+        if !matches!(format, 0 | 1) {
+            return Err(format!("invalid PostgreSQL format code: {format}"));
+        }
+    }
+
+    // Preflight the complete frame before copying any parameter bytes. This keeps
+    // a valid set of individually bounded values from growing an oversized buffer.
+    let mut body_len = 8_usize
+        .checked_add(
+            params
+                .len()
+                .checked_mul(2)
+                .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?,
+        )
+        .and_then(|len| len.checked_add(result_formats.len().checked_mul(2)?))
+        .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?;
+    for (index, param) in params.iter().enumerate() {
+        let value_len = match param {
+            BindValue::Text(bytes) | BindValue::Binary(bytes) => {
+                if bytes.len() > MAX_DB_VALUE_BYTES {
+                    return Err(format!(
+                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+                    ));
+                }
+                bytes.len()
+            }
+            BindValue::Null => 0,
+        };
+        body_len = body_len
+            .checked_add(4)
+            .and_then(|len| len.checked_add(value_len))
+            .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?;
+    }
+    let message_len = body_len
+        .checked_add(4)
+        .filter(|len| *len <= MAX_PG_MESSAGE_BYTES)
+        .ok_or_else(|| {
+            format!(
+                "PostgreSQL Bind message exceeds {} byte limit",
+                MAX_PG_MESSAGE_BYTES
+            )
+        })?;
+
+    let mut body = Vec::with_capacity(body_len);
+    body.push(0); // unnamed portal
+    body.push(0); // unnamed statement
+    body.extend_from_slice(&(params.len() as i16).to_be_bytes());
+    for param in params {
+        body.extend_from_slice(
+            &match param {
+                BindValue::Binary(_) => 1_i16,
+                BindValue::Text(_) | BindValue::Null => 0_i16,
+            }
+            .to_be_bytes(),
+        );
+    }
+
+    body.extend_from_slice(&(params.len() as i16).to_be_bytes());
+    for param in params {
+        match param {
+            BindValue::Text(bytes) | BindValue::Binary(bytes) => {
+                body.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                body.extend_from_slice(bytes);
+            }
+            BindValue::Null => body.extend_from_slice(&(-1_i32).to_be_bytes()),
+        }
+    }
+
+    body.extend_from_slice(&(result_formats.len() as i16).to_be_bytes());
+    for format in result_formats {
+        body.extend_from_slice(&format.to_be_bytes());
+    }
+    debug_assert_eq!(body.len(), body_len);
+
+    buf.push(b'B');
+    buf.extend_from_slice(&(message_len as i32).to_be_bytes());
+    buf.extend_from_slice(&body);
+    Ok(())
+}
+
 /// Write Describe (Portal) message: Byte1('D') Int32(len) Byte1('P') String("")
 fn write_describe_portal(buf: &mut Vec<u8>) {
     buf.push(b'D');
@@ -259,6 +430,14 @@ fn write_describe_portal(buf: &mut Vec<u8>) {
     buf.extend_from_slice(&len.to_be_bytes());
     buf.push(b'P'); // Portal variant
     buf.push(0); // unnamed portal
+}
+
+/// Write Describe (Statement) for the unnamed prepared statement.
+fn write_describe_statement(buf: &mut Vec<u8>) {
+    buf.push(b'D');
+    buf.extend_from_slice(&6_i32.to_be_bytes());
+    buf.push(b'S');
+    buf.push(0);
 }
 
 /// Write Execute message: Byte1('E') Int32(len) String("") Int32(0)
@@ -388,13 +567,15 @@ fn read_message(stream: &mut PgStream) -> Result<(u8, Vec<u8>), String> {
     stream
         .read_exact(&mut len_buf)
         .map_err(|e| format!("read length: {}", e))?;
-    let len = i32::from_be_bytes(len_buf) as usize;
+    let len = i32::from_be_bytes(len_buf);
 
-    if len < 4 {
-        return Err("invalid message length".to_string());
+    if len < 4 || len as usize > MAX_PG_MESSAGE_BYTES {
+        return Err(format!(
+            "invalid PostgreSQL message length: {len} (maximum {MAX_PG_MESSAGE_BYTES})"
+        ));
     }
 
-    let body_len = len - 4;
+    let body_len = len as usize - 4;
     let mut body = vec![0u8; body_len];
     if body_len > 0 {
         stream
@@ -617,6 +798,221 @@ fn format_pg_error_string(pg_err: &PgError) -> String {
     )
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct PgColumn {
+    name: String,
+    oid: u32,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RowValue<'a> {
+    Text(&'a str),
+    Binary(&'a [u8]),
+    Null,
+}
+
+fn parse_row_description(body: &[u8]) -> Result<Vec<PgColumn>, String> {
+    if body.len() < 2 {
+        return Err("invalid PostgreSQL RowDescription".to_string());
+    }
+    let count = i16::from_be_bytes([body[0], body[1]]);
+    if count < 0 || count as usize > MAX_PG_VALUES {
+        return Err(format!("invalid PostgreSQL column count: {count}"));
+    }
+
+    let mut offset = 2;
+    let mut columns = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let name_len = body
+            .get(offset..)
+            .and_then(|remaining| remaining.iter().position(|byte| *byte == 0))
+            .ok_or_else(|| "unterminated PostgreSQL column name".to_string())?;
+        let name_end = offset + name_len;
+        let name = std::str::from_utf8(&body[offset..name_end])
+            .map_err(|_| "PostgreSQL column name is not UTF-8".to_string())?
+            .to_string();
+        offset = name_end + 1;
+        let fields = body
+            .get(offset..offset + 18)
+            .ok_or_else(|| "truncated PostgreSQL RowDescription".to_string())?;
+        let oid = u32::from_be_bytes([fields[6], fields[7], fields[8], fields[9]]);
+        columns.push(PgColumn { name, oid });
+        offset += 18;
+    }
+    if offset != body.len() {
+        return Err("trailing bytes in PostgreSQL RowDescription".to_string());
+    }
+    Ok(columns)
+}
+
+fn parse_typed_row<'a>(body: &'a [u8], columns: &[PgColumn]) -> Result<Vec<RowValue<'a>>, String> {
+    if body.len() < 2 {
+        return Err("invalid PostgreSQL DataRow".to_string());
+    }
+    let count = i16::from_be_bytes([body[0], body[1]]);
+    if count < 0 || count as usize != columns.len() {
+        return Err(format!(
+            "PostgreSQL row has {count} columns; expected {}",
+            columns.len()
+        ));
+    }
+
+    let mut offset = 2;
+    let mut values = Vec::with_capacity(columns.len());
+    for column in columns {
+        let length_bytes = body
+            .get(offset..offset + 4)
+            .ok_or_else(|| "truncated PostgreSQL DataRow length".to_string())?;
+        let length = i32::from_be_bytes([
+            length_bytes[0],
+            length_bytes[1],
+            length_bytes[2],
+            length_bytes[3],
+        ]);
+        offset += 4;
+        if length == -1 {
+            values.push(RowValue::Null);
+            continue;
+        }
+        if length < 0 || length as usize > MAX_DB_VALUE_BYTES {
+            return Err(format!(
+                "PostgreSQL column `{}` exceeds {MAX_DB_VALUE_BYTES} byte limit",
+                column.name
+            ));
+        }
+        let end = offset
+            .checked_add(length as usize)
+            .filter(|end| *end <= body.len())
+            .ok_or_else(|| format!("truncated PostgreSQL column `{}`", column.name))?;
+        let bytes = &body[offset..end];
+        offset = end;
+        if column.oid == 17 {
+            values.push(RowValue::Binary(bytes));
+        } else {
+            values.push(RowValue::Text(std::str::from_utf8(bytes).map_err(
+                |_| format!("PostgreSQL text column `{}` is not UTF-8", column.name),
+            )?));
+        }
+    }
+    if offset != body.len() {
+        return Err("trailing bytes in PostgreSQL DataRow".to_string());
+    }
+    Ok(values)
+}
+
+fn validate_typed_sql(sql: &str) -> Result<(), String> {
+    if sql.as_bytes().contains(&0) {
+        return Err("PostgreSQL query contains a NUL byte".to_string());
+    }
+    if sql
+        .len()
+        .checked_add(9)
+        .filter(|len| *len <= MAX_PG_MESSAGE_BYTES)
+        .is_none()
+    {
+        return Err(format!(
+            "PostgreSQL query exceeds {} byte message limit",
+            MAX_PG_MESSAGE_BYTES
+        ));
+    }
+    Ok(())
+}
+
+fn add_result_bytes(total: usize, row_bytes: usize) -> Result<usize, String> {
+    total
+        .checked_add(row_bytes)
+        .filter(|total| *total <= MAX_PG_RESULT_BYTES)
+        .ok_or_else(|| format!("PostgreSQL result exceeds {MAX_PG_RESULT_BYTES} byte limit"))
+}
+
+fn typed_row_result_cost(body: &[u8], columns: &[PgColumn]) -> Result<usize, String> {
+    // Includes the result-list slot, final map, GC headers, keys, tagged values,
+    // and a payload allocation for every cell. The wire body already includes
+    // each non-null payload, so nulls are deliberately over-counted.
+    let column_names = columns.iter().try_fold(0_usize, |total, column| {
+        total.checked_add(column.name.len())
+    });
+    body.len()
+        .checked_add(40)
+        .and_then(|cost| columns.len().checked_mul(96)?.checked_add(cost))
+        .and_then(|cost| cost.checked_add(column_names?))
+        .ok_or_else(|| "PostgreSQL decoded result size overflow".to_string())
+}
+
+unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbValue {
+    let value = mesh_gc_alloc_actor(
+        std::mem::size_of::<MeshDbValue>() as u64,
+        std::mem::align_of::<MeshDbValue>() as u64,
+    ) as *mut MeshDbValue;
+    value.write(MeshDbValue { tag, payload });
+    value
+}
+
+unsafe fn typed_row_to_map(body: &[u8], columns: &[PgColumn]) -> Result<*mut u8, String> {
+    let values = parse_typed_row(body, columns)?;
+    let mut entries = Vec::<[u64; 2]>::with_capacity(columns.len());
+    let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
+    for (column, value) in columns.iter().zip(values) {
+        let value = match value {
+            RowValue::Text(text) => alloc_db_value(DB_VALUE_TEXT, rust_str_to_mesh(text)),
+            RowValue::Binary(bytes) => alloc_db_value(
+                DB_VALUE_BINARY,
+                mesh_bytes_new(bytes.as_ptr(), bytes.len() as u64) as *mut u8,
+            ),
+            RowValue::Null => alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()),
+        };
+        if let Some(index) = indexes.get(column.name.as_str()).copied() {
+            entries[index][1] = value as u64;
+        } else {
+            indexes.insert(column.name.as_str(), entries.len());
+            entries.push([rust_str_to_mesh(&column.name) as u64, value as u64]);
+        }
+    }
+    Ok(mesh_map_from_string_entries(&entries))
+}
+
+fn prepare_typed_statement(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>, String> {
+    validate_typed_sql(sql)?;
+    let mut request = Vec::new();
+    write_parse(&mut request, sql);
+    write_describe_statement(&mut request);
+    write_sync(&mut request);
+    conn.write_wire_all(&request)
+        .map_err(|error| format!("send prepare: {error}"))?;
+
+    let mut columns = None;
+    let mut error = None;
+    loop {
+        let (tag, body) = conn
+            .read_wire_message()
+            .map_err(|read_error| format!("read prepare: {read_error}"))?;
+        match tag {
+            b'1' | b't' | b'N' => {} // ParseComplete, ParameterDescription, NoticeResponse
+            b'T' if error.is_none() => match parse_row_description(&body) {
+                Ok(description) => columns = Some(description),
+                Err(description_error) => {
+                    conn.broken = true;
+                    return Err(description_error);
+                }
+            },
+            b'n' => columns = Some(Vec::new()), // NoData
+            b'E' if error.is_none() => {
+                error = Some(format_pg_error_string(&parse_error_response_full(&body)))
+            }
+            b'Z' => {
+                conn.txn_status = body.first().copied().unwrap_or(b'I');
+                break;
+            }
+            _ => {}
+        }
+    }
+    if let Some(error) = error {
+        Err(error)
+    } else {
+        columns.ok_or_else(|| "PostgreSQL prepare returned no row description".to_string())
+    }
+}
+
 // ── MeshString / MeshResult Helpers ────────────────────────────────────
 
 /// Extract a Rust &str from a raw MeshString pointer.
@@ -653,6 +1049,62 @@ unsafe fn extract_params(params: *mut u8) -> Vec<String> {
         result.push(param_str.to_string());
     }
     result
+}
+
+unsafe fn extract_db_values<'a>(params: *mut u8) -> Result<Vec<BindValue<'a>>, String> {
+    if params.is_null() {
+        return Err("invalid PostgreSQL parameter list".to_string());
+    }
+    let len = mesh_list_length(params) as usize;
+    if len > MAX_PG_VALUES {
+        return Err(format!(
+            "too many PostgreSQL parameters: {len} (maximum {MAX_PG_VALUES})"
+        ));
+    }
+
+    let mut result = Vec::with_capacity(len);
+    for index in 0..len {
+        let value = mesh_list_get(params, index as i64) as *const MeshDbValue;
+        if value.is_null() {
+            return Err(format!("invalid PostgreSQL parameter at index {index}"));
+        }
+        match (*value).tag {
+            DB_VALUE_TEXT => {
+                let text = (*value).payload as *const MeshString;
+                if text.is_null() {
+                    return Err(format!("invalid text parameter at index {index}"));
+                }
+                let bytes = (*text).as_str().as_bytes();
+                if bytes.len() > MAX_DB_VALUE_BYTES {
+                    return Err(format!(
+                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+                    ));
+                }
+                result.push(BindValue::Text(bytes));
+            }
+            DB_VALUE_BINARY => {
+                let bytes = (*value).payload as *const MeshBytes;
+                if bytes.is_null() {
+                    return Err(format!("invalid binary parameter at index {index}"));
+                }
+                let len = usize::try_from((*bytes).len)
+                    .map_err(|_| format!("invalid binary parameter length at index {index}"))?;
+                if len > MAX_DB_VALUE_BYTES {
+                    return Err(format!(
+                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+                    ));
+                }
+                result.push(BindValue::Binary((*bytes).as_slice()));
+            }
+            DB_VALUE_NULL => result.push(BindValue::Null),
+            tag => {
+                return Err(format!(
+                    "invalid DbValue tag {tag} at PostgreSQL parameter index {index}"
+                ))
+            }
+        }
+    }
+    Ok(result)
 }
 
 // ── Parse CommandComplete tag for row count ────────────────────────────
@@ -916,9 +1368,14 @@ pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
         let conn = Box::new(PgConn {
             stream,
             txn_status: last_txn_status,
+            broken: false,
         });
         let handle = Box::into_raw(conn) as u64;
-        alloc_result(0, handle as *mut u8) as *mut u8
+        // Result payloads with integer semantics are represented by pointers to
+        // boxed integers. This keeps direct `Pg.connect(...) ?` unwrapping
+        // consistent with SQLite and the other integer-returning DB APIs.
+        let payload = Box::into_raw(Box::new(handle)) as *mut u8;
+        alloc_result(0, payload) as *mut u8
     }
 }
 
@@ -969,7 +1426,7 @@ pub extern "C" fn mesh_pg_execute(
         write_execute(&mut buf);
         write_sync(&mut buf);
 
-        if let Err(e) = conn.stream.write_all(&buf) {
+        if let Err(e) = conn.write_wire_all(&buf) {
             return err_result(&format!("send execute: {}", e));
         }
 
@@ -978,7 +1435,7 @@ pub extern "C" fn mesh_pg_execute(
 
         // Read messages until ReadyForQuery
         loop {
-            let (tag, body) = match read_message(&mut conn.stream) {
+            let (tag, body) = match conn.read_wire_message() {
                 Ok(m) => m,
                 Err(e) => return err_result(&format!("read execute: {}", e)),
             };
@@ -1044,7 +1501,7 @@ pub extern "C" fn mesh_pg_query(
         write_execute(&mut buf);
         write_sync(&mut buf);
 
-        if let Err(e) = conn.stream.write_all(&buf) {
+        if let Err(e) = conn.write_wire_all(&buf) {
             return err_result(&format!("send query: {}", e));
         }
 
@@ -1054,7 +1511,7 @@ pub extern "C" fn mesh_pg_query(
 
         // Read messages until ReadyForQuery
         loop {
-            let (tag, body) = match read_message(&mut conn.stream) {
+            let (tag, body) = match conn.read_wire_message() {
                 Ok(m) => m,
                 Err(e) => return err_result(&format!("read query: {}", e)),
             };
@@ -1154,6 +1611,158 @@ pub extern "C" fn mesh_pg_query(
 
 // ── Transaction Management ─────────────────────────────────────────────
 
+/// Execute an unnamed prepared statement with typed `DbValue` parameters.
+#[no_mangle]
+pub extern "C" fn mesh_pg_execute_values(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        if conn_handle == 0 || sql.is_null() {
+            return err_result("invalid PostgreSQL execute_values arguments");
+        }
+        let conn = &mut *(conn_handle as *mut PgConn);
+        let sql = mesh_str_to_rust(sql);
+        if let Err(error) = validate_typed_sql(sql) {
+            return err_result(&error);
+        }
+        let params = match extract_db_values(params) {
+            Ok(params) => params,
+            Err(error) => return err_result(&error),
+        };
+
+        let mut request = Vec::new();
+        write_parse(&mut request, sql);
+        if let Err(error) = write_bind_values(&mut request, &params, &[]) {
+            return err_result(&error);
+        }
+        write_execute(&mut request);
+        write_sync(&mut request);
+        if let Err(error) = conn.write_wire_all(&request) {
+            return err_result(&format!("send execute_values: {error}"));
+        }
+
+        let mut rows_affected = 0_i64;
+        let mut error = None;
+        loop {
+            let (tag, body) = match conn.read_wire_message() {
+                Ok(message) => message,
+                Err(read_error) => {
+                    return err_result(&format!("read execute_values: {read_error}"))
+                }
+            };
+            match tag {
+                b'1' | b'2' | b'D' | b'N' => {}
+                b'C' => {
+                    let command = String::from_utf8_lossy(&body);
+                    rows_affected = parse_command_tag(command.trim_end_matches('\0'));
+                }
+                b'E' if error.is_none() => {
+                    error = Some(format_pg_error_string(&parse_error_response_full(&body)))
+                }
+                b'Z' => {
+                    conn.txn_status = body.first().copied().unwrap_or(b'I');
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(error) = error {
+            err_result(&error)
+        } else {
+            alloc_result(0, Box::into_raw(Box::new(rows_affected)) as *mut u8) as *mut u8
+        }
+    }
+}
+
+/// Query typed values while keeping non-BYTEA columns in PostgreSQL text format.
+#[no_mangle]
+pub extern "C" fn mesh_pg_query_values(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+) -> *mut u8 {
+    unsafe {
+        if conn_handle == 0 || sql.is_null() {
+            return err_result("invalid PostgreSQL query_values arguments");
+        }
+        let conn = &mut *(conn_handle as *mut PgConn);
+        let sql = mesh_str_to_rust(sql);
+        let params = match extract_db_values(params) {
+            Ok(params) => params,
+            Err(error) => return err_result(&error),
+        };
+        let columns = match prepare_typed_statement(conn, sql) {
+            Ok(columns) => columns,
+            Err(error) => return err_result(&error),
+        };
+        let formats: Vec<i16> = columns
+            .iter()
+            .map(|column| if column.oid == 17 { 1 } else { 0 })
+            .collect();
+
+        let mut request = Vec::new();
+        if let Err(error) = write_bind_values(&mut request, &params, &formats) {
+            return err_result(&error);
+        }
+        write_execute(&mut request);
+        write_sync(&mut request);
+        if let Err(error) = conn.write_wire_all(&request) {
+            return err_result(&format!("send query_values: {error}"));
+        }
+
+        let mut rows = Vec::new();
+        let mut row_count = 0_usize;
+        // Final Result and list allocations, including actor-GC headers.
+        let mut result_bytes = 64_usize;
+        let mut error = None;
+        loop {
+            let (tag, body) = match conn.read_wire_message() {
+                Ok(message) => message,
+                Err(read_error) => return err_result(&format!("read query_values: {read_error}")),
+            };
+            match tag {
+                b'2' | b'C' | b'N' => {}
+                b'D' if error.is_none() => match typed_row_result_cost(&body, &columns)
+                    .and_then(|cost| add_result_bytes(result_bytes, cost))
+                {
+                    Err(size_error) => error = Some(size_error),
+                    Ok(_) if row_count == MAX_PG_ROWS => {
+                        error = Some(format!("PostgreSQL result exceeds {MAX_PG_ROWS} row limit"))
+                    }
+                    Ok(next_result_bytes) => match typed_row_to_map(&body, &columns) {
+                        Ok(row) => {
+                            rows.push(row as u64);
+                            row_count += 1;
+                            result_bytes = next_result_bytes;
+                        }
+                        Err(row_error) => {
+                            conn.broken = true;
+                            return err_result(&row_error);
+                        }
+                    },
+                },
+                b'E' if error.is_none() => {
+                    error = Some(format_pg_error_string(&parse_error_response_full(&body)))
+                }
+                b'Z' => {
+                    conn.txn_status = body.first().copied().unwrap_or(b'I');
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(error) = error {
+            err_result(&error)
+        } else {
+            alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
+        }
+    }
+}
+
 /// Send a simple SQL command (BEGIN/COMMIT/ROLLBACK) using the Simple Query protocol.
 /// Returns Ok(()) or Err(error_message). Updates conn.txn_status from ReadyForQuery.
 pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
@@ -1164,14 +1773,14 @@ pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), Stri
     let len = (body.len() + 4) as i32;
     buf.extend_from_slice(&len.to_be_bytes());
     buf.extend_from_slice(body.as_bytes());
-    conn.stream
-        .write_all(&buf)
+    conn.write_wire_all(&buf)
         .map_err(|e| format!("send {}: {}", sql, e))?;
 
     let mut error_msg: Option<String> = None;
     loop {
-        let (tag, body) =
-            read_message(&mut conn.stream).map_err(|e| format!("read {}: {}", sql, e))?;
+        let (tag, body) = conn
+            .read_wire_message()
+            .map_err(|e| format!("read {}: {}", sql, e))?;
         match tag {
             b'C' => {} // CommandComplete
             b'E' => {
@@ -1507,7 +2116,11 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
     }
 
     Ok(NativePgConn {
-        inner: PgConn { stream, txn_status },
+        inner: PgConn {
+            stream,
+            txn_status,
+            broken: false,
+        },
     })
 }
 
@@ -1524,16 +2137,17 @@ pub fn native_pg_execute(
     write_sync(&mut buf);
 
     conn.inner
-        .stream
-        .write_all(&buf)
+        .write_wire_all(&buf)
         .map_err(|e| format!("send execute: {}", e))?;
 
     let mut rows_affected: i64 = 0;
     let mut error_msg: Option<String> = None;
 
     loop {
-        let (tag, body) =
-            read_message(&mut conn.inner.stream).map_err(|e| format!("read execute: {}", e))?;
+        let (tag, body) = conn
+            .inner
+            .read_wire_message()
+            .map_err(|e| format!("read execute: {}", e))?;
         match tag {
             b'1' | b'2' => {}
             b'C' => {
@@ -1573,8 +2187,7 @@ pub fn native_pg_query(
     write_sync(&mut buf);
 
     conn.inner
-        .stream
-        .write_all(&buf)
+        .write_wire_all(&buf)
         .map_err(|e| format!("send query: {}", e))?;
 
     let mut columns: Vec<String> = Vec::new();
@@ -1582,8 +2195,10 @@ pub fn native_pg_query(
     let mut error_msg: Option<String> = None;
 
     loop {
-        let (tag, body) =
-            read_message(&mut conn.inner.stream).map_err(|e| format!("read query: {}", e))?;
+        let (tag, body) = conn
+            .inner
+            .read_wire_message()
+            .map_err(|e| format!("read query: {}", e))?;
         match tag {
             b'1' | b'2' | b'n' => {} // ParseComplete, BindComplete, NoData
             b'T' => {
@@ -1655,4 +2270,184 @@ pub fn native_pg_close(mut conn: NativePgConn) {
     let mut buf = Vec::new();
     write_terminate(&mut buf);
     let _ = conn.inner.stream.write_all(&buf);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bytes::mesh_bytes_new;
+    use crate::collections::list::{mesh_list_append, mesh_list_new};
+    use crate::collections::map::{mesh_map_entry_value, mesh_map_size};
+    use crate::gc::mesh_rt_init;
+
+    #[test]
+    fn typed_bind_keeps_binary_parameter_bytes_raw() {
+        let params = [
+            BindValue::Text(b"inbox"),
+            BindValue::Binary(&[0, 0xff, 0x80]),
+            BindValue::Null,
+        ];
+        let mut message = Vec::new();
+
+        write_bind_values(&mut message, &params, &[]).unwrap();
+
+        assert_eq!(message[0], b'B');
+        assert!(message.windows(3).any(|bytes| bytes == [0, 0xff, 0x80]));
+        assert!(!message.windows(4).any(|bytes| bytes == b"AP+A"));
+        assert_eq!(&message[7..15], &[0, 3, 0, 0, 0, 1, 0, 0]);
+    }
+
+    #[test]
+    fn typed_bind_rejects_aggregate_message_before_encoding() {
+        let chunk = vec![0; MAX_DB_VALUE_BYTES];
+        let params = [BindValue::Binary(&chunk); 4];
+        let mut message = vec![b'X'];
+
+        let error = write_bind_values(&mut message, &params, &[]).unwrap_err();
+
+        assert!(error.contains("Bind message exceeds"));
+        assert_eq!(message, [b'X']);
+    }
+
+    #[test]
+    fn mesh_db_values_extract_text_binary_and_null_without_conversion() {
+        mesh_rt_init();
+        let text = mesh_string_new(b"inbox".as_ptr(), 5) as *mut u8;
+        let binary = mesh_bytes_new([0, 0xff, 0x80].as_ptr(), 3) as *mut u8;
+        let values = [
+            Box::into_raw(Box::new(MeshDbValue {
+                tag: DB_VALUE_TEXT,
+                payload: text,
+            })),
+            Box::into_raw(Box::new(MeshDbValue {
+                tag: DB_VALUE_BINARY,
+                payload: binary,
+            })),
+            Box::into_raw(Box::new(MeshDbValue {
+                tag: DB_VALUE_NULL,
+                payload: std::ptr::null_mut(),
+            })),
+        ];
+        let params = values.iter().fold(mesh_list_new(), |list, value| {
+            mesh_list_append(list, *value as u64)
+        });
+
+        let extracted = unsafe { extract_db_values(params) }.unwrap();
+
+        assert!(matches!(extracted[0], BindValue::Text(b"inbox")));
+        assert!(matches!(
+            extracted[1],
+            BindValue::Binary(bytes) if bytes == [0, 0xff, 0x80]
+        ));
+        assert!(matches!(extracted[2], BindValue::Null));
+    }
+
+    #[test]
+    fn typed_row_decodes_bytea_as_raw_bytes_and_other_columns_as_text() {
+        fn column(body: &mut Vec<u8>, name: &str, oid: u32) {
+            body.extend_from_slice(name.as_bytes());
+            body.push(0);
+            body.extend_from_slice(&0_u32.to_be_bytes()); // table oid
+            body.extend_from_slice(&0_i16.to_be_bytes()); // attribute number
+            body.extend_from_slice(&oid.to_be_bytes());
+            body.extend_from_slice(&(-1_i16).to_be_bytes()); // type size
+            body.extend_from_slice(&(-1_i32).to_be_bytes()); // type modifier
+            body.extend_from_slice(&0_i16.to_be_bytes()); // statement description format
+        }
+
+        let mut description = 3_i16.to_be_bytes().to_vec();
+        column(&mut description, "label", 25);
+        column(&mut description, "payload", 17);
+        column(&mut description, "gone", 17);
+        let columns = parse_row_description(&description).unwrap();
+
+        let mut row = 3_i16.to_be_bytes().to_vec();
+        row.extend_from_slice(&5_i32.to_be_bytes());
+        row.extend_from_slice(b"inbox");
+        row.extend_from_slice(&3_i32.to_be_bytes());
+        row.extend_from_slice(&[0, 0xff, 0x80]);
+        row.extend_from_slice(&(-1_i32).to_be_bytes());
+
+        let values = parse_typed_row(&row, &columns).unwrap();
+
+        assert!(matches!(values[0], RowValue::Text("inbox")));
+        assert!(matches!(
+            values[1],
+            RowValue::Binary(bytes) if bytes == [0, 0xff, 0x80]
+        ));
+        assert!(matches!(values[2], RowValue::Null));
+    }
+
+    #[test]
+    fn typed_row_map_keeps_the_last_duplicate_column_value() {
+        mesh_rt_init();
+        let columns = [
+            PgColumn {
+                name: "payload".to_string(),
+                oid: 25,
+            },
+            PgColumn {
+                name: "payload".to_string(),
+                oid: 17,
+            },
+        ];
+        let mut row = 2_i16.to_be_bytes().to_vec();
+        row.extend_from_slice(&3_i32.to_be_bytes());
+        row.extend_from_slice(b"old");
+        row.extend_from_slice(&1_i32.to_be_bytes());
+        row.push(0xff);
+
+        let map = unsafe { typed_row_to_map(&row, &columns) }.unwrap();
+        let value = mesh_map_entry_value(map, 0) as *const MeshDbValue;
+
+        assert_eq!(mesh_map_size(map), 1);
+        assert_eq!(unsafe { (*value).tag }, DB_VALUE_BINARY);
+    }
+
+    #[test]
+    fn typed_row_rejects_oversized_and_truncated_cells() {
+        let columns = [PgColumn {
+            name: "payload".to_string(),
+            oid: 17,
+        }];
+        let mut oversized = 1_i16.to_be_bytes().to_vec();
+        oversized.extend_from_slice(&((MAX_DB_VALUE_BYTES + 1) as i32).to_be_bytes());
+
+        let oversized_error = parse_typed_row(&oversized, &columns).unwrap_err();
+
+        assert!(oversized_error.contains("exceeds"));
+
+        let mut truncated = 1_i16.to_be_bytes().to_vec();
+        truncated.extend_from_slice(&3_i32.to_be_bytes());
+        truncated.push(0xff);
+
+        let truncated_error = parse_typed_row(&truncated, &columns).unwrap_err();
+
+        assert!(truncated_error.contains("truncated"));
+    }
+
+    #[test]
+    fn typed_result_budget_rejects_aggregate_rows() {
+        assert_eq!(
+            add_result_bytes(MAX_PG_RESULT_BYTES - 1, 1).unwrap(),
+            MAX_PG_RESULT_BYTES
+        );
+        assert!(add_result_bytes(MAX_PG_RESULT_BYTES, 1).is_err());
+        assert!(add_result_bytes(usize::MAX, 1).is_err());
+    }
+
+    #[test]
+    fn typed_result_budget_counts_decoded_null_row_overhead() {
+        let columns = [PgColumn {
+            name: "payload".to_string(),
+            oid: 17,
+        }];
+        let mut row = 1_i16.to_be_bytes().to_vec();
+        row.extend_from_slice(&(-1_i32).to_be_bytes());
+
+        let cost = typed_row_result_cost(&row, &columns).unwrap();
+
+        assert!(cost > row.len());
+        assert!(add_result_bytes(MAX_PG_RESULT_BYTES - cost + 1, cost).is_err());
+    }
 }

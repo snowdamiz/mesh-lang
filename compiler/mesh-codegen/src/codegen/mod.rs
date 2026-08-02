@@ -28,7 +28,7 @@ use inkwell::targets::{
 use inkwell::types::StructType;
 use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::OptimizationLevel;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mir::{MirFunction, MirModule, MirNativeFunction, MirStructDef, MirSumTypeDef, MirType};
 use crate::DeclaredRuntimeRegistration;
@@ -109,6 +109,29 @@ pub struct CodeGen<'ctx> {
     /// Parameter names for the current tail-recursive function, in order.
     /// Used by TailCall codegen to know which allocas to store into.
     pub(crate) tce_param_names: Vec<String>,
+}
+
+fn sum_type_layout_dependencies_ready(
+    ty: &MirType,
+    known_names: &FxHashSet<String>,
+    layouts: &FxHashMap<String, StructType<'_>>,
+) -> bool {
+    match ty {
+        MirType::SumType(name) => {
+            let dependency = if known_names.contains(name) {
+                Some(name.as_str())
+            } else {
+                name.split('_')
+                    .next()
+                    .filter(|base| known_names.contains(*base))
+            };
+            dependency.is_none_or(|dependency| layouts.contains_key(dependency))
+        }
+        MirType::Tuple(elements) => elements
+            .iter()
+            .all(|element| sum_type_layout_dependencies_ready(element, known_names, layouts)),
+        _ => true,
+    }
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -246,7 +269,7 @@ impl<'ctx> CodeGen<'ctx> {
         for s in &mir.structs {
             self.context.opaque_struct_type(&s.name);
         }
-        self.create_sum_type_layouts(&mir.sum_types);
+        self.create_sum_type_layouts(&mir.sum_types)?;
         self.create_struct_types(&mir.structs);
         for s in &mir.structs {
             self.mir_struct_defs
@@ -357,9 +380,37 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) {
-        let target_data = self.target_machine.get_target_data();
-        for st in sum_types {
+    fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), String> {
+        let known_names = sum_types
+            .iter()
+            .map(|sum_type| sum_type.name.clone())
+            .collect::<FxHashSet<_>>();
+        let mut remaining = sum_types.iter().collect::<Vec<_>>();
+
+        while !remaining.is_empty() {
+            let Some(index) = remaining.iter().position(|sum_type| {
+                sum_type.variants.iter().all(|variant| {
+                    variant.fields.iter().all(|field| {
+                        sum_type_layout_dependencies_ready(
+                            field,
+                            &known_names,
+                            &self.sum_type_layouts,
+                        )
+                    })
+                })
+            }) else {
+                let names = remaining
+                    .iter()
+                    .map(|sum_type| sum_type.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(format!(
+                    "recursive by-value sum type layout dependency: {names}"
+                ));
+            };
+
+            let st = remaining.remove(index);
+            let target_data = self.target_machine.get_target_data();
             let layout = create_sum_type_layout(
                 self.context,
                 st,
@@ -370,6 +421,8 @@ impl<'ctx> CodeGen<'ctx> {
             self.sum_type_layouts.insert(st.name.clone(), layout);
             self.sum_type_defs.insert(st.name.clone(), st.clone());
         }
+
+        Ok(())
     }
 
     // ── Function declaration and compilation ─────────────────────────

@@ -100,6 +100,63 @@ pub extern "C" fn mesh_secret_random(length: i64) -> *mut MeshResult {
     }
 }
 
+/// Concatenate two actor-owned secrets without exposing either as ordinary bytes.
+/// Both inputs are consumed on success or failure.
+#[no_mangle]
+pub extern "C" fn mesh_secret_concat(
+    first: *mut MeshSecretHandle,
+    second: *mut MeshSecretHandle,
+) -> *mut MeshResult {
+    let Some(pid) = crate::actor::stack::get_current_pid() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let Some(process) = scheduler.get_process(pid) else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let mut process = process.lock();
+    if matches!(process.state, ProcessState::Exited(_)) {
+        drop(process);
+        return crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0);
+    }
+    let (Some(first_handle), Some(second_handle)) = (
+        validate_handle_pointer(&process, first),
+        validate_handle_pointer(&process, second),
+    ) else {
+        destroy_resource_for_process(&process, first, Some(ResourceKind::SecretBytes));
+        destroy_resource_for_process(&process, second, Some(ResourceKind::SecretBytes));
+        drop(process);
+        return crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0);
+    };
+
+    let result = match secret_table()
+        .lock()
+        .concat_secrets(pid, first_handle, second_handle)
+    {
+        Ok(handle) => Ok(allocate_handle(&mut process, handle)),
+        Err(error) => Err(error),
+    };
+    drop(process);
+
+    match result {
+        Ok(handle) => alloc_result(0, handle.cast()),
+        Err(ConcatSecretError::InvalidLength { maximum, actual }) => crypto_error(
+            CryptoErrorTag::InvalidLength,
+            i64::try_from(maximum).unwrap_or(i64::MAX),
+            i64::try_from(actual).unwrap_or(i64::MAX),
+        ),
+        Err(ConcatSecretError::Resource(ResourceError::ResourceLimitExceeded)) => {
+            crypto_error(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
+        Err(ConcatSecretError::Resource(ResourceError::WrongKind)) => {
+            crypto_error(CryptoErrorTag::InvalidKey, 0, 0)
+        }
+        Err(ConcatSecretError::Resource(_)) => crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0),
+    }
+}
+
 /// Explicitly destroy a secret owned by the current actor.
 ///
 /// Null, stale, foreign, wrong-kind, and already-destroyed handles are no-ops.
@@ -401,6 +458,12 @@ enum CreateSecretError {
     EntropyUnavailable,
     ResourceLimitExceeded,
     OwnerExited,
+}
+
+#[derive(Debug)]
+enum ConcatSecretError {
+    InvalidLength { maximum: usize, actual: usize },
+    Resource(ResourceError),
 }
 
 struct ResourceTable {
@@ -906,6 +969,55 @@ impl ResourceTable {
         }
         self.release_usage(owner, entry.bytes.len());
         Ok(entry.bytes)
+    }
+
+    fn concat_secrets(
+        &mut self,
+        owner: ProcessId,
+        first: ResourceHandle,
+        second: ResourceHandle,
+    ) -> Result<ResourceHandle, ConcatSecretError> {
+        let first_length = self
+            .validate(owner, first, ResourceKind::SecretBytes)
+            .map(|bytes| bytes.len());
+        let second_length = self
+            .validate(owner, second, ResourceKind::SecretBytes)
+            .map(|bytes| bytes.len());
+        let (first_length, second_length) = match (first_length, second_length) {
+            (Ok(first_length), Ok(second_length)) if first != second => {
+                (first_length, second_length)
+            }
+            (first_result, second_result) => {
+                let error = first_result
+                    .err()
+                    .or_else(|| second_result.err())
+                    .unwrap_or(ResourceError::StaleHandle);
+                drop(self.destroy_kind(owner, first, ResourceKind::SecretBytes));
+                drop(self.destroy_kind(owner, second, ResourceKind::SecretBytes));
+                return Err(ConcatSecretError::Resource(error));
+            }
+        };
+        let total_length = first_length
+            .checked_add(second_length)
+            .unwrap_or(usize::MAX);
+        let first_bytes = self
+            .consume(owner, first, ResourceKind::SecretBytes)
+            .map_err(ConcatSecretError::Resource)?;
+        let second_bytes = self
+            .consume(owner, second, ResourceKind::SecretBytes)
+            .map_err(ConcatSecretError::Resource)?;
+        if total_length > self.limits.max_secret_bytes {
+            return Err(ConcatSecretError::InvalidLength {
+                maximum: self.limits.max_secret_bytes,
+                actual: total_length,
+            });
+        }
+
+        let mut combined = Zeroizing::new(vec![0; total_length].into_boxed_slice());
+        combined[..first_length].copy_from_slice(&first_bytes);
+        combined[first_length..].copy_from_slice(&second_bytes);
+        self.insert(owner, ResourceKind::SecretBytes, combined)
+            .map_err(ConcatSecretError::Resource)
     }
 
     fn consume_and_retype<E>(
@@ -1879,6 +1991,53 @@ mod tests {
 
         assert_eq!(secret.len(), 32);
         assert_eq!(mem::size_of::<MeshSecretHandle>(), 12);
+    }
+
+    #[test]
+    fn concat_consumes_inputs_and_keeps_only_the_combined_secret() {
+        let owner = ProcessId(130);
+        let mut table = ResourceTable::new(Limits::for_tests(8, 8, 64, 64, 64));
+        let first = table
+            .insert_secret(owner, vec![1, 2].into_boxed_slice())
+            .expect("first secret");
+        let second = table
+            .insert_secret(owner, vec![3, 4, 5].into_boxed_slice())
+            .expect("second secret");
+
+        let combined = table
+            .concat_secrets(owner, first, second)
+            .expect("combined secret");
+
+        assert_eq!(
+            table.with_resource(owner, combined, ResourceKind::SecretBytes, |bytes| bytes
+                .to_vec()),
+            Ok(vec![1, 2, 3, 4, 5])
+        );
+        assert_eq!(
+            table.validate(owner, first, ResourceKind::SecretBytes),
+            Err(ResourceError::StaleHandle)
+        );
+        assert_eq!(
+            table.validate(owner, second, ResourceKind::SecretBytes),
+            Err(ResourceError::StaleHandle)
+        );
+        assert_eq!(table.usage.get(&owner).map_or(0, |usage| usage.secrets), 1);
+
+        let mut bounded = ResourceTable::new(Limits::for_tests(8, 8, 16, 8, 16));
+        let oversized_first = bounded
+            .insert_secret(owner, vec![1; 5].into_boxed_slice())
+            .expect("bounded first secret");
+        let oversized_second = bounded
+            .insert_secret(owner, vec![2; 4].into_boxed_slice())
+            .expect("bounded second secret");
+        assert!(matches!(
+            bounded.concat_secrets(owner, oversized_first, oversized_second),
+            Err(ConcatSecretError::InvalidLength {
+                maximum: 8,
+                actual: 9
+            })
+        ));
+        assert!(bounded.usage.get(&owner).is_none());
     }
 
     #[test]

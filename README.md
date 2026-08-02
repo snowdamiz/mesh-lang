@@ -210,7 +210,7 @@ function-level reference.
 | System and time | `IO`, `Env`, `File`, `Math`, `Int`, `Float`, `DateTime`, `Monotonic`, `Duration`, `Random`, `Crypto` |
 | Concurrency | `Job`, `Timer`, `Channel`, `Process`, `Test` |
 | Web | `HTTP`, `Request`, `Ws`, `Http`, `WsClient` |
-| Databases | `Sqlite`, `Pg`, `Pool`, `Orm`, `Expr`, `Query`, `Repo`, `Changeset`, `Migration` |
+| Databases | `DbValue`, `Sqlite`, `Pg`, `Pool`, `Orm`, `Expr`, `Query`, `Repo`, `Changeset`, `Migration` |
 | Distribution | `Node`, `Global`, `Continuity`, `Cluster` |
 
 Important operational distinctions:

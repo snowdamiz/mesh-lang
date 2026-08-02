@@ -114,15 +114,18 @@ pub use db::migration::{
 pub use db::orm::{
     mesh_orm_build_delete, mesh_orm_build_insert, mesh_orm_build_select, mesh_orm_build_update,
 };
-pub use db::pg::{mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_query};
+pub use db::pg::{
+    mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
+    mesh_pg_query_values,
+};
 pub use db::pg_schema::{
     mesh_pg_create_daily_partitions_ahead, mesh_pg_create_extension, mesh_pg_create_gin_index,
     mesh_pg_create_range_partitioned_table, mesh_pg_drop_partition,
     mesh_pg_list_daily_partitions_before,
 };
 pub use db::pool::{
-    mesh_pool_checkin, mesh_pool_checkout, mesh_pool_close, mesh_pool_execute, mesh_pool_open,
-    mesh_pool_query,
+    mesh_pool_close, mesh_pool_execute, mesh_pool_execute_values, mesh_pool_open, mesh_pool_query,
+    mesh_pool_query_values,
 };
 pub use db::query::{
     mesh_query_fragment, mesh_query_from, mesh_query_group_by, mesh_query_group_by_raw,
@@ -276,7 +279,8 @@ pub use regex::{
     mesh_regex_replace, mesh_regex_split,
 };
 pub use secret::{
-    mesh_resource_destroy, mesh_secret_destroy, mesh_secret_random, MeshSecretHandle,
+    mesh_resource_destroy, mesh_secret_concat, mesh_secret_destroy, mesh_secret_random,
+    MeshSecretHandle,
 };
 pub use storage_wrapping::{
     mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,

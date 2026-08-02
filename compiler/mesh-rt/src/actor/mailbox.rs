@@ -10,38 +10,91 @@ use parking_lot::Mutex;
 
 use super::process::Message;
 
+pub const DEFAULT_MAILBOX_MAX_ITEMS: usize = 1024;
+pub const DEFAULT_MAILBOX_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MailboxPushError {
+    Full,
+    MessageTooLarge,
+}
+
+struct MailboxState {
+    queue: VecDeque<Message>,
+    bytes: usize,
+    rejected: u64,
+}
+
 /// A thread-safe FIFO mailbox for an actor.
 ///
 /// Messages are appended to the back (`push`) and removed from the front
 /// (`pop`), ensuring strict FIFO delivery order. The internal queue is
 /// protected by a `parking_lot::Mutex` for efficient cross-thread access.
 pub struct Mailbox {
-    queue: Mutex<VecDeque<Message>>,
+    state: Mutex<MailboxState>,
+    max_items: usize,
+    max_bytes: usize,
 }
 
 impl Mailbox {
     /// Create a new empty mailbox.
     pub fn new() -> Self {
+        Self::bounded(DEFAULT_MAILBOX_MAX_ITEMS, DEFAULT_MAILBOX_MAX_BYTES)
+    }
+
+    pub fn bounded(max_items: usize, max_bytes: usize) -> Self {
         Mailbox {
-            queue: Mutex::new(VecDeque::new()),
+            state: Mutex::new(MailboxState {
+                queue: VecDeque::new(),
+                bytes: 0,
+                rejected: 0,
+            }),
+            max_items,
+            max_bytes,
         }
     }
 
     /// Append a message to the back of the mailbox (FIFO enqueue).
     pub fn push(&self, msg: Message) {
+        // Legacy fire-and-forget sends intentionally discard backpressure; callers
+        // that need delivery feedback use Process.try_send.
+        let _ = self.try_push(msg);
+    }
+
+    pub fn try_push(&self, msg: Message) -> Result<(), MailboxPushError> {
+        let message_bytes = msg.buffer.data.len();
         let depth = {
-            let mut queue = self.queue.lock();
-            queue.push_back(msg);
-            queue.len()
+            let mut state = self.state.lock();
+            if message_bytes > self.max_bytes {
+                state.rejected = state.rejected.saturating_add(1);
+                return Err(MailboxPushError::MessageTooLarge);
+            }
+            if state.queue.len() >= self.max_items
+                || state.bytes.saturating_add(message_bytes) > self.max_bytes
+            {
+                state.rejected = state.rejected.saturating_add(1);
+                return Err(MailboxPushError::Full);
+            }
+            state.bytes += message_bytes;
+            state.queue.push_back(msg);
+            state.queue.len()
         };
         crate::dist::telemetry::runtime_telemetry().record_mailbox_enqueue(depth);
+        Ok(())
     }
 
     /// Remove and return the front message (FIFO dequeue).
     ///
     /// Returns `None` if the mailbox is empty.
     pub fn pop(&self) -> Option<Message> {
-        let message = self.queue.lock().pop_front();
+        let message = {
+            let mut state = self.state.lock();
+            let message = state.queue.pop_front();
+            if let Some(message) = &message {
+                state.bytes -= message.buffer.data.len();
+            }
+            message
+        };
         if message.is_some() {
             crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
         }
@@ -50,12 +103,20 @@ impl Mailbox {
 
     /// Check if the mailbox is empty.
     pub fn is_empty(&self) -> bool {
-        self.queue.lock().is_empty()
+        self.state.lock().queue.is_empty()
     }
 
     /// Return the number of messages in the mailbox.
     pub fn len(&self) -> usize {
-        self.queue.lock().len()
+        self.state.lock().queue.len()
+    }
+
+    pub fn byte_len(&self) -> usize {
+        self.state.lock().bytes
+    }
+
+    pub fn rejected(&self) -> u64 {
+        self.state.lock().rejected
     }
 
     /// Selectively remove the first message matching a predicate.
@@ -70,11 +131,14 @@ impl Mailbox {
     where
         F: Fn(&Message) -> bool,
     {
-        let mut queue = self.queue.lock();
-        for i in 0..queue.len() {
-            if predicate(&queue[i]) {
-                let message = queue.remove(i);
-                drop(queue);
+        let mut state = self.state.lock();
+        for i in 0..state.queue.len() {
+            if predicate(&state.queue[i]) {
+                let message = state.queue.remove(i);
+                if let Some(message) = &message {
+                    state.bytes -= message.buffer.data.len();
+                }
+                drop(state);
                 if message.is_some() {
                     crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
                 }
@@ -87,7 +151,7 @@ impl Mailbox {
 
 impl Drop for Mailbox {
     fn drop(&mut self) {
-        let remaining = self.queue.get_mut().len();
+        let remaining = self.state.get_mut().queue.len();
         if remaining > 0 {
             crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(remaining);
         }
@@ -102,8 +166,12 @@ impl Default for Mailbox {
 
 impl std::fmt::Debug for Mailbox {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let len = self.len();
-        f.debug_struct("Mailbox").field("len", &len).finish()
+        let state = self.state.lock();
+        f.debug_struct("Mailbox")
+            .field("len", &state.queue.len())
+            .field("bytes", &state.bytes)
+            .field("rejected", &state.rejected)
+            .finish()
     }
 }
 
@@ -165,6 +233,34 @@ mod tests {
 
         mb.pop();
         assert_eq!(mb.len(), 1);
+    }
+
+    #[test]
+    fn bounded_mailbox_rejects_new_messages_at_item_limit() {
+        let mb = Mailbox::bounded(2, 1024);
+
+        assert_eq!(mb.try_push(make_msg(&[1], 1)), Ok(()));
+        assert_eq!(mb.try_push(make_msg(&[2], 2)), Ok(()));
+        assert_eq!(mb.try_push(make_msg(&[3], 3)), Err(MailboxPushError::Full));
+        assert_eq!(mb.len(), 2);
+    }
+
+    #[test]
+    fn bounded_mailbox_tracks_and_enforces_payload_bytes() {
+        let mb = Mailbox::bounded(4, 3);
+
+        assert_eq!(mb.try_push(make_msg(&[1, 2], 1)), Ok(()));
+        assert_eq!(mb.byte_len(), 2);
+        assert_eq!(
+            mb.try_push(make_msg(&[3, 4], 2)),
+            Err(MailboxPushError::Full)
+        );
+        assert_eq!(mb.pop().unwrap().buffer.data, [1, 2]);
+        assert_eq!(mb.byte_len(), 0);
+        assert_eq!(
+            mb.try_push(make_msg(&[1, 2, 3, 4], 3)),
+            Err(MailboxPushError::MessageTooLarge)
+        );
     }
 
     #[test]

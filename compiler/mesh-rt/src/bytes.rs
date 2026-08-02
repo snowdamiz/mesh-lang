@@ -8,6 +8,7 @@ use std::ptr;
 use base64::{engine::general_purpose, Engine as _};
 use subtle::ConstantTimeEq;
 
+use crate::actor::heap::GC_HEADER_SIZE;
 use crate::collections::list::{
     mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
 };
@@ -22,6 +23,52 @@ const BASE58: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrst
 pub struct MeshBytes {
     pub len: u64,
     // bytes follow immediately after this header
+}
+
+// ponytail: one 64 KiB frame ceiling; add per-actor public-byte quotas before raising it.
+const MAX_BYTES_BUILDER_BYTES: usize = 64 * 1024;
+const BYTES_BUILDER_MAGIC: u64 = 0x4d45_5348_4255_494c;
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+enum BinaryErrorTag {
+    InvalidLimit = 0,
+    InvalidLength = 2,
+    InvalidValue = 6,
+    OutputTooLarge = 7,
+}
+
+#[derive(Clone, Copy)]
+enum BuilderError {
+    Invalid,
+    Limit,
+}
+
+#[repr(C)]
+struct MeshBinaryError {
+    tag: u8,
+}
+
+#[repr(C)]
+struct MeshBytesBuilder {
+    magic: u64,
+    len: u64,
+    maximum: u64,
+    finished: u8,
+    _padding: [u8; 7],
+    // bytes follow immediately after this header
+}
+
+impl MeshBytesBuilder {
+    const HEADER_SIZE: usize = std::mem::size_of::<Self>();
+
+    unsafe fn data_ptr(&self) -> *const u8 {
+        (self as *const Self as *const u8).add(Self::HEADER_SIZE)
+    }
+
+    unsafe fn data_ptr_mut(&mut self) -> *mut u8 {
+        (self as *mut Self as *mut u8).add(Self::HEADER_SIZE)
+    }
 }
 
 impl MeshBytes {
@@ -69,6 +116,13 @@ fn ok_u64(value: u64) -> *mut MeshResult {
     alloc_result(0, mesh_u64_new(value).cast())
 }
 
+fn binary_error(tag: BinaryErrorTag) -> *mut MeshResult {
+    let value = mesh_gc_alloc_actor(std::mem::size_of::<MeshBinaryError>() as u64, 8)
+        as *mut MeshBinaryError;
+    unsafe { value.write(MeshBinaryError { tag: tag as u8 }) };
+    alloc_result(1, value.cast())
+}
+
 fn allocate(len: usize) -> *mut MeshBytes {
     let Some(total) = MeshBytes::HEADER_SIZE.checked_add(len) else {
         return ptr::null_mut();
@@ -82,6 +136,91 @@ fn allocate(len: usize) -> *mut MeshBytes {
         (*value).len = len as u64;
         value
     }
+}
+
+fn allocate_builder(maximum: usize) -> *mut MeshBytesBuilder {
+    let Some(total) = MeshBytesBuilder::HEADER_SIZE.checked_add(maximum) else {
+        return ptr::null_mut();
+    };
+    unsafe {
+        let builder = mesh_gc_alloc_actor(total as u64, 8) as *mut MeshBytesBuilder;
+        builder.write(MeshBytesBuilder {
+            magic: BYTES_BUILDER_MAGIC,
+            len: 0,
+            maximum: maximum as u64,
+            finished: 0,
+            _padding: [0; 7],
+        });
+        builder
+    }
+}
+
+fn with_live_builder<R>(
+    pointer: *mut MeshBytesBuilder,
+    operation: impl FnOnce(&mut MeshBytesBuilder) -> Result<R, BuilderError>,
+) -> Result<R, BuilderError> {
+    if pointer.is_null() {
+        return Err(BuilderError::Invalid);
+    }
+    let owner = crate::actor::stack::get_current_pid().ok_or(BuilderError::Invalid)?;
+    let scheduler = crate::actor::GLOBAL_SCHEDULER
+        .get()
+        .ok_or(BuilderError::Invalid)?;
+    let process = scheduler.get_process(owner).ok_or(BuilderError::Invalid)?;
+    let process = process.lock();
+    let mut current = process.heap.all_objects_head();
+    while !current.is_null() {
+        let header = unsafe { &*current };
+        let next = header.next;
+        let data_pointer = unsafe { (current as *const u8).add(GC_HEADER_SIZE) };
+        if !header.is_free()
+            && data_pointer == pointer.cast::<u8>()
+            && header.size as usize >= MeshBytesBuilder::HEADER_SIZE
+        {
+            let builder = unsafe { &mut *pointer };
+            let maximum = usize::try_from(builder.maximum).map_err(|_| BuilderError::Invalid)?;
+            let length = usize::try_from(builder.len).map_err(|_| BuilderError::Invalid)?;
+            let allocation_size = MeshBytesBuilder::HEADER_SIZE
+                .checked_add(maximum)
+                .ok_or(BuilderError::Invalid)?;
+            if builder.magic != BYTES_BUILDER_MAGIC
+                || maximum > MAX_BYTES_BUILDER_BYTES
+                || length > maximum
+                || allocation_size > header.size as usize
+                || builder.finished != 0
+            {
+                return Err(BuilderError::Invalid);
+            }
+            return operation(builder);
+        }
+        current = next;
+    }
+    Err(BuilderError::Invalid)
+}
+
+unsafe fn append_builder(builder: &mut MeshBytesBuilder, input: &[u8]) -> Result<(), BuilderError> {
+    let end = (builder.len as usize)
+        .checked_add(input.len())
+        .filter(|end| *end <= builder.maximum as usize)
+        .ok_or(BuilderError::Limit)?;
+    if !input.is_empty() {
+        ptr::copy_nonoverlapping(
+            input.as_ptr(),
+            builder.data_ptr_mut().add(builder.len as usize),
+            input.len(),
+        );
+    }
+    builder.len = end as u64;
+    Ok(())
+}
+
+fn write_builder(pointer: *mut MeshBytesBuilder, input: &[u8]) -> *mut MeshResult {
+    with_live_builder(pointer, |builder| unsafe { append_builder(builder, input) })
+        .map(|()| alloc_result(0, ptr::null_mut()))
+        .unwrap_or_else(|builder_error| match builder_error {
+            BuilderError::Invalid => binary_error(BinaryErrorTag::InvalidLength),
+            BuilderError::Limit => binary_error(BinaryErrorTag::OutputTooLarge),
+        })
 }
 
 fn base58_encode(input: &[u8]) -> String {
@@ -197,6 +336,81 @@ pub extern "C" fn mesh_bytes_copy_to(
 #[no_mangle]
 pub extern "C" fn mesh_bytes_empty() -> *mut MeshBytes {
     mesh_bytes_new(ptr::null(), 0)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_new(maximum: i64) -> *mut MeshResult {
+    let Ok(maximum) = usize::try_from(maximum) else {
+        return binary_error(BinaryErrorTag::InvalidLimit);
+    };
+    if maximum > MAX_BYTES_BUILDER_BYTES {
+        return binary_error(BinaryErrorTag::InvalidLimit);
+    }
+    let builder = allocate_builder(maximum);
+    if builder.is_null() {
+        binary_error(BinaryErrorTag::InvalidLimit)
+    } else {
+        alloc_result(0, builder.cast())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_write_u8(builder: *mut u8, value: i64) -> *mut MeshResult {
+    let Ok(value) = u8::try_from(value) else {
+        return binary_error(BinaryErrorTag::InvalidValue);
+    };
+    write_builder(builder.cast(), &[value])
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_write_u16_be(builder: *mut u8, value: i64) -> *mut MeshResult {
+    let Ok(value) = u16::try_from(value) else {
+        return binary_error(BinaryErrorTag::InvalidValue);
+    };
+    write_builder(builder.cast(), &value.to_be_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_write_u32_be(builder: *mut u8, value: i64) -> *mut MeshResult {
+    let Ok(value) = u32::try_from(value) else {
+        return binary_error(BinaryErrorTag::InvalidValue);
+    };
+    write_builder(builder.cast(), &value.to_be_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_write_bytes(
+    builder: *mut u8,
+    value: *const MeshBytes,
+) -> *mut MeshResult {
+    if value.is_null() {
+        return binary_error(BinaryErrorTag::InvalidValue);
+    }
+    unsafe { write_builder(builder.cast(), (*value).as_slice()) }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_builder_finish(builder: *mut u8) -> *mut MeshResult {
+    let finished = with_live_builder(builder.cast(), |builder| {
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(builder.len as usize)
+            .map_err(|_| BuilderError::Limit)?;
+        unsafe {
+            bytes.extend_from_slice(std::slice::from_raw_parts(
+                builder.data_ptr(),
+                builder.len as usize,
+            ))
+        };
+        builder.finished = 1;
+        Ok(bytes)
+    });
+    finished
+        .map(|bytes| ok_bytes(&bytes))
+        .unwrap_or_else(|builder_error| match builder_error {
+            BuilderError::Invalid => binary_error(BinaryErrorTag::InvalidLength),
+            BuilderError::Limit => binary_error(BinaryErrorTag::OutputTooLarge),
+        })
 }
 
 #[no_mangle]
@@ -655,6 +869,47 @@ mod tests {
                     .checked_add(slice_len as usize)
                     .is_some_and(|end| end <= len);
             unsafe { assert_eq!((*slice).tag == 0, in_bounds) };
+        }
+    }
+
+    #[test]
+    fn property_bytes_builder_never_exceeds_declared_allocation() {
+        let mut rng = StdRng::seed_from_u64(0x4255_494c_4445_525f);
+
+        for maximum in 0..=64usize {
+            let words = (MeshBytesBuilder::HEADER_SIZE + maximum).div_ceil(8);
+            let mut allocation = vec![0u64; words];
+            let builder = allocation.as_mut_ptr().cast::<MeshBytesBuilder>();
+            unsafe {
+                builder.write(MeshBytesBuilder {
+                    magic: BYTES_BUILDER_MAGIC,
+                    len: 0,
+                    maximum: maximum as u64,
+                    finished: 0,
+                    _padding: [0; 7],
+                });
+            }
+            let mut expected = Vec::new();
+
+            for _ in 0..64 {
+                let input: Vec<u8> = (0..rng.random_range(0..=8)).map(|_| rng.random()).collect();
+                let fits = expected
+                    .len()
+                    .checked_add(input.len())
+                    .is_some_and(|end| end <= maximum);
+                let result = unsafe { append_builder(&mut *builder, &input) };
+                assert_eq!(result.is_ok(), fits);
+                if fits {
+                    expected.extend_from_slice(&input);
+                }
+                unsafe {
+                    assert_eq!((*builder).len as usize, expected.len());
+                    assert_eq!(
+                        std::slice::from_raw_parts((*builder).data_ptr(), expected.len()),
+                        expected
+                    );
+                }
+            }
         }
     }
 }

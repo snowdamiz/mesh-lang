@@ -104,6 +104,17 @@ pub extern "C" fn mesh_map_new_typed(key_type: i64) -> *mut u8 {
     unsafe { alloc_map(0, key_type as u64) }
 }
 
+pub(crate) fn mesh_map_from_string_entries(entries: &[[u64; 2]]) -> *mut u8 {
+    unsafe {
+        let map = alloc_map(entries.len() as u64, KEY_TYPE_STR);
+        *(map as *mut u64) = entries.len() as u64;
+        if !entries.is_empty() {
+            ptr::copy_nonoverlapping(entries.as_ptr(), map_entries_mut(map), entries.len());
+        }
+        map
+    }
+}
+
 /// Ensure a map has string key_type. If the map is empty and has integer key_type,
 /// returns a new empty map with string key_type. Otherwise returns the map unchanged.
 /// Used by codegen to tag maps before the first string-key put.

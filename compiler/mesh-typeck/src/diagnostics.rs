@@ -144,6 +144,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UndefinedType { .. } => "E0045",
         TypeError::NativeDeclarationInvalid { .. } => "E0052",
         TypeError::ResourceViolation { .. } => "E0053",
+        TypeError::InvalidLetPattern { .. } => "E0054",
     }
 }
 
@@ -512,6 +513,7 @@ pub fn render_json_diagnostic(
                 | TypeError::SlotPipeOutOfRange { span, .. }
                 | TypeError::UndefinedType { span, .. }
                 | TypeError::NativeDeclarationInvalid { span, .. }
+                | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
@@ -1949,6 +1951,22 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("use a public, fully annotated, non-generic signature and a C identifier symbol")
+                .finish()
+        }
+        TypeError::InvalidLetPattern { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("invalid let destructuring pattern")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(reason)
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
+                )
                 .finish()
         }
         TypeError::ResourceViolation { reason, span } => {

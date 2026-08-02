@@ -116,8 +116,20 @@ impl Ty {
         Ty::Con(TyCon::new("Bytes"))
     }
 
+    pub fn db_value() -> Ty {
+        Ty::Con(TyCon::new("DbValue"))
+    }
+
     pub fn bytes_error() -> Ty {
         Ty::Con(TyCon::new("BytesError"))
+    }
+
+    pub fn binary_error() -> Ty {
+        Ty::Con(TyCon::new("BinaryError"))
+    }
+
+    pub fn bytes_builder() -> Ty {
+        Ty::Con(TyCon::new("BytesBuilder"))
     }
 
     pub fn secret_bytes() -> Ty {

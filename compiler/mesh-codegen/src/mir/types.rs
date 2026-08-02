@@ -65,6 +65,17 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) 
 
 /// Resolve a type constructor (no type arguments).
 fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
+    // These nominal types are opaque to Mesh code, but their runtime ABI is an
+    // unboxed u64 handle. Keep that representation even when a handle is also
+    // registered as an affine resource for ownership checking.
+    if matches!(con.name.as_str(), "SqliteConn" | "PgConn" | "PoolHandle") {
+        return MirType::Int;
+    }
+
+    if registry.sum_type_defs.contains_key(&con.name) {
+        return MirType::SumType(con.name.clone());
+    }
+
     if registry.is_resource_name(&con.name)
         && registry
             .struct_defs
@@ -81,13 +92,6 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "String" => MirType::String,
         "Unit" | "()" => MirType::Unit,
         "Pid" => MirType::Pid(None),
-        // SqliteConn is an opaque u64 handle, lowered to Int for GC safety (SQLT-07).
-        // The GC never traces integer values, so the connection won't be corrupted.
-        "SqliteConn" => MirType::Int,
-        // PgConn is an opaque u64 handle, lowered to Int for GC safety (same as SqliteConn).
-        "PgConn" => MirType::Int,
-        // PoolHandle is an opaque u64 handle, lowered to Int for GC safety (same as PgConn/SqliteConn).
-        "PoolHandle" => MirType::Int,
         // DateTime is an i64 Unix milliseconds value at the ABI level (Phase 136).
         // Must be lowered to Int to avoid LLVM opaque struct allocation errors.
         "DateTime" => MirType::Int,
@@ -423,6 +427,27 @@ mod tests {
     }
 
     #[test]
+    fn resolve_resource_sum_as_sum_type() {
+        use mesh_typeck::SumTypeDefInfo;
+
+        let mut reg = empty_registry();
+        reg.register_resource_type("DecryptOutcome");
+        reg.sum_type_defs.insert(
+            "DecryptOutcome".to_string(),
+            SumTypeDefInfo {
+                name: "DecryptOutcome".to_string(),
+                generic_params: vec![],
+                variants: vec![],
+            },
+        );
+
+        assert_eq!(
+            resolve_type(&Ty::Con(TyCon::new("DecryptOutcome")), &reg, false),
+            MirType::SumType("DecryptOutcome".to_string())
+        );
+    }
+
+    #[test]
     fn generic_resource_result_keeps_nominal_payload_identity() {
         use mesh_typeck::SumTypeDefInfo;
 
@@ -488,6 +513,18 @@ mod tests {
         assert_eq!(
             resolve_type(&Ty::Con(TyCon::new("SqliteConn")), &reg, false),
             MirType::Int,
+        );
+    }
+
+    #[test]
+    fn resolve_registered_pg_conn_resource_to_int() {
+        let mut reg = empty_registry();
+        reg.register_resource_type("PgConn");
+
+        assert_eq!(
+            resolve_type(&Ty::Con(TyCon::new("PgConn")), &reg, false),
+            MirType::Int,
+            "PgConn is an affine resource at type-check time but remains a u64 ABI handle",
         );
     }
 

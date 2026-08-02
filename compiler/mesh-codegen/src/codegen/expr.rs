@@ -463,6 +463,68 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(continue_block);
                 Ok(())
             }
+            MirResourceDestructor::PgConnection => {
+                let function = self.current_function();
+                let continue_block = self
+                    .context
+                    .append_basic_block(function, "pg_connection_closed");
+                let handle = if value.is_int_value() {
+                    value.into_int_value()
+                } else if value.is_pointer_value() && matches!(resource_ty, MirType::Int) {
+                    // Generic Result/Option payloads use pointer storage even
+                    // when their concrete semantic value is an integer handle.
+                    let boxed_handle = value.into_pointer_value();
+                    let is_null = self
+                        .builder
+                        .build_is_null(boxed_handle, "pg_connection_box_is_empty")
+                        .map_err(|error| error.to_string())?;
+                    let unbox_block = self
+                        .context
+                        .append_basic_block(function, "pg_connection_unbox");
+                    self.builder
+                        .build_conditional_branch(is_null, continue_block, unbox_block)
+                        .map_err(|error| error.to_string())?;
+                    self.builder.position_at_end(unbox_block);
+                    self.builder
+                        .build_load(
+                            self.context.i64_type(),
+                            boxed_handle,
+                            "pg_connection_handle",
+                        )
+                        .map_err(|error| error.to_string())?
+                        .into_int_value()
+                } else {
+                    return Err(format!(
+                        "PostgreSQL connection resource lowered to incompatible value: {resource_ty:?}"
+                    ));
+                };
+                let is_zero = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        handle,
+                        handle.get_type().const_zero(),
+                        "pg_connection_is_closed",
+                    )
+                    .map_err(|error| error.to_string())?;
+                let close_block = self
+                    .context
+                    .append_basic_block(function, "pg_connection_close");
+                self.builder
+                    .build_conditional_branch(is_zero, continue_block, close_block)
+                    .map_err(|error| error.to_string())?;
+
+                self.builder.position_at_end(close_block);
+                let close = get_intrinsic(&self.module, "mesh_pg_close");
+                self.builder
+                    .build_call(close, &[handle.into()], "")
+                    .map_err(|error| error.to_string())?;
+                self.builder
+                    .build_unconditional_branch(continue_block)
+                    .map_err(|error| error.to_string())?;
+                self.builder.position_at_end(continue_block);
+                Ok(())
+            }
             MirResourceDestructor::Aggregate(fields) => {
                 let aggregate = if value.is_pointer_value() {
                     self.builder

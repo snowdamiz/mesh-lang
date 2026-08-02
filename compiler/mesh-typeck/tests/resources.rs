@@ -96,6 +96,26 @@ fn repeated_direct_borrows_do_not_move_the_argument() {
 }
 
 #[test]
+fn bytes_builder_writes_borrow_and_finish_consumes() {
+    let valid = check_source(
+        "fn build() do\n  case BytesBuilder.new(8) do\n    Err(_) -> nil\n    Ok(builder) -> do\n      let _ = BytesBuilder.write_u8(builder, 1)\n      let _ = BytesBuilder.write_bytes(builder, Bytes.empty())\n      let _ = BytesBuilder.finish(builder)\n      nil\n    end\n  end\nend",
+    );
+    assert!(
+        valid.errors.is_empty(),
+        "builder writes must preserve ownership: {:?}",
+        valid.errors
+    );
+
+    let misuse = check_source(
+        "fn build() do\n  case BytesBuilder.new(8) do\n    Err(_) -> nil\n    Ok(builder) -> do\n      let _ = BytesBuilder.finish(builder)\n      let _ = BytesBuilder.write_u8(builder, 1)\n      nil\n    end\n  end\nend",
+    );
+    assert_eq!(
+        resource_violations(&misuse),
+        ["resource `builder` was used after it moved"]
+    );
+}
+
+#[test]
 fn secret_destroy_is_a_compiler_known_consume_call() {
     let result = check_source(
         "fn misuse(secret :: SecretBytes) do\n  Secret.destroy(secret)\n  Secret.destroy(secret)\nend",
@@ -104,6 +124,26 @@ fn secret_destroy_is_a_compiler_known_consume_call() {
     assert_eq!(
         resource_violations(&result),
         ["resource `secret` was used after it moved"]
+    );
+}
+
+#[test]
+fn secret_concat_consumes_both_inputs() {
+    let valid = check_source(
+        "fn join(first :: SecretBytes, second :: SecretBytes) -> Result<SecretBytes, CryptoError> do\n  Secret.concat(first, second)\nend",
+    );
+    assert!(
+        valid.errors.is_empty(),
+        "valid concat failed: {:?}",
+        valid.errors
+    );
+
+    let misuse = check_source(
+        "fn join(first :: SecretBytes, second :: SecretBytes) do\n  let joined = Secret.concat(first, second)\n  Secret.destroy(first)\nend",
+    );
+    assert_eq!(
+        resource_violations(&misuse),
+        ["resource `first` was used after it moved"]
     );
 }
 
@@ -265,6 +305,18 @@ fn extracting_a_resource_field_moves_the_whole_parent() {
     assert_eq!(
         resource_violations(&result),
         ["resource `pair` was used after it moved"]
+    );
+}
+
+#[test]
+fn resource_struct_update_moves_the_base() {
+    let result = check_source(
+        "resource struct Vault do\n  secret :: SecretBytes\n  generation :: Int\nend\nfn misuse(vault :: Vault) do\n  let updated = %{vault | generation: 2}\n  vault\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource `vault` was used after it moved"]
     );
 }
 
@@ -528,6 +580,79 @@ fn resource_tuple_construction_moves_resource_elements() {
 }
 
 #[test]
+fn tuple_destructuring_tracks_resource_element_moves() {
+    let result = check_source(
+        "fn misuse(pair :: (SecretBytes, Int)) do\n  let (secret, _) = pair\n  Secret.destroy(secret)\n  Secret.destroy(secret)\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource `secret` was used after it moved"]
+    );
+}
+
+#[test]
+fn rejects_resource_wildcards_in_let_and_case_patterns() {
+    let result = check_source(
+        "fn discard_pair(pair :: (SecretBytes, Int)) do\n  let (_, value) = pair\n  value\nend\nfn discard_result(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(_) -> nil\n    Err(_) -> nil\n  end\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource value cannot be discarded with `_` in a pattern",
+            "resource value cannot be discarded with `_` in a pattern",
+        ]
+    );
+}
+
+#[test]
+fn case_resource_bindings_must_be_consumed() {
+    let result = check_source(
+        "fn consume(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend\nfn discard(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) -> nil\n    Err(_) -> nil\n  end\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource pattern binding `secret` must be consumed in this arm"]
+    );
+}
+
+#[test]
+fn case_resource_bindings_must_be_consumed_on_every_exit() {
+    let result = check_source(
+        "fn discard_on_one_path(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) -> if consume do Secret.destroy(secret) else nil end\n    Err(_) -> nil\n  end\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource pattern binding `secret` must be consumed in this arm"]
+    );
+}
+
+#[test]
+fn guarded_resource_bindings_reject_the_guard_failure_exit() {
+    let result = check_source(
+        "fn guarded(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) when consume -> Secret.destroy(secret)\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource pattern binding `secret` must be consumed in this arm"]
+    );
+}
+
+#[test]
+fn rejects_resource_bearing_parameter_patterns() {
+    let result = check_source("fn consume((secret, _)) = Secret.destroy(secret)");
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource-bearing parameter patterns are unsupported"]
+    );
+}
+
+#[test]
 fn rejects_resource_arguments_to_generic_borrow_parameters() {
     let result = check_source(
         "fn leak<T>(value :: borrow T) do\n  println(value)\nend\nfn misuse(secret :: SecretBytes) do\n  leak(secret)\nend",
@@ -655,6 +780,20 @@ fn imported_resource_types_remain_affine() {
     assert_eq!(
         resource_violations(&result),
         ["resource `secret` was used after it moved"]
+    );
+}
+
+#[test]
+fn imported_resource_sum_types_remain_affine() {
+    let result = check_with_module(
+        "Secrets",
+        "pub type Outcome do\n  Kept(secret :: SecretBytes)\n  Empty\nend",
+        "from Secrets import Outcome\nfn misuse(outcome :: Outcome) do\n  let moved = outcome\n  outcome\nend",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        ["resource `outcome` was used after it moved"]
     );
 }
 

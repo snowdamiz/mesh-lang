@@ -48,6 +48,68 @@ fn binary_package_enforces_canonical_reader_limits() {
         r##"
 from Binary.Reader import BinaryError, BinaryReader, finish, read_fixed, read_u16_be, read_u8, read_vector, reader
 
+fn build_canonical() -> Bytes ! BinaryError do
+  let builder = BytesBuilder.new(9) ?
+  BytesBuilder.write_u8(builder, 1) ?
+  BytesBuilder.write_u16_be(builder, 9029) ?
+  BytesBuilder.write_u32_be(builder, 1737075661) ?
+  BytesBuilder.write_bytes(builder, Bytes.from_utf8("xy")) ?
+  BytesBuilder.finish(builder)
+end
+
+fn reject_builder_overflow() -> Int ! BinaryError do
+  let builder = BytesBuilder.new(1) ?
+  BytesBuilder.write_u16_be(builder, 1) ?
+  Ok(0)
+end
+
+fn reject_builder_value() -> Int ! BinaryError do
+  let builder = BytesBuilder.new(1) ?
+  BytesBuilder.write_u8(builder, 256) ?
+  Ok(0)
+end
+
+fn reject_builder_limit() -> Int ! BinaryError do
+  let _ = BytesBuilder.new(65537) ?
+  Ok(0)
+end
+
+fn probe_reader(input :: Bytes, length :: Int) do
+  let maximum = if length % 3 == 0 do length else length - 1 end
+  case reader(input, maximum) do
+    Err(_) -> nil
+    Ok(state) -> do
+      case read_fixed(state, length % 7) do
+        Err(_) -> nil
+        Ok((state, _)) -> case finish(state) do
+            Err(_) -> nil
+            Ok(_) -> nil
+          end
+        Ok(_) -> nil
+      end
+      case read_u16_be(state) do
+        Err(_) -> nil
+        Ok(_) -> nil
+      end
+      case read_vector(state, length) do
+        Err(_) -> nil
+        Ok(_) -> nil
+      end
+    end
+  end
+end
+
+fn fuzz_reader_lengths() do
+  let seed = Bytes.from_utf8("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+  for length in 0..65 do
+    case Bytes.slice(seed, 0, length) do
+      Err(_) -> nil
+      Ok(input) -> probe_reader(input, length)
+    end
+  end
+  println("reader-property")
+end
+
 fn decode(input :: Bytes) -> Int ! BinaryError do
   let state = reader(input, 10) ?
   case read_u8(state) do
@@ -123,6 +185,30 @@ fn reject_invalid_length(input :: Bytes) -> Int ! BinaryError do
 end
 
 fn proof() -> Int ! String do
+  case build_canonical() do
+    Ok(bytes) -> bytes |> Bytes.to_hex() |> println()
+    Err(_) -> println("unexpected-builder-error")
+  end
+
+  case reject_builder_overflow() do
+    Ok(_) -> println("unexpected-builder-overflow-success")
+    Err(OutputTooLarge) -> println("builder-overflow")
+    Err(_) -> println("unexpected-builder-overflow-error")
+  end
+  case reject_builder_value() do
+    Ok(_) -> println("unexpected-builder-value-success")
+    Err(InvalidValue) -> println("builder-value")
+    Err(_) -> println("unexpected-builder-value-error")
+  end
+
+  case reject_builder_limit() do
+    Ok(_) -> println("unexpected-builder-limit-success")
+    Err(InvalidLimit) -> println("builder-limit")
+    Err(_) -> println("unexpected-builder-limit-error")
+  end
+
+  fuzz_reader_lengths()
+
   let valid = Bytes.from_hex("01234500000003aabbcc") ?
   case decode(valid) do
     Ok(_) -> println("valid")
@@ -187,6 +273,6 @@ end
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "1\n9029\naabbcc\nvalid\ntrailing\noversized\ntruncated\nlimit\ninvalid\n"
+        "0123456789abcd7879\nbuilder-overflow\nbuilder-value\nbuilder-limit\nreader-property\n1\n9029\naabbcc\nvalid\ntrailing\noversized\ntruncated\nlimit\ninvalid\n"
     );
 }

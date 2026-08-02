@@ -2,8 +2,11 @@
 
 use mesh_parser::ast::expr::{
     CallExpr, CaseExpr, ClosureExpr, Expr, IfExpr, NameRef, ReceiveExpr, StructLiteral,
+    StructUpdate,
 };
-use mesh_parser::ast::item::{ActorDef, Block, FnDef, Item, LetBinding, ModuleDef, ParamOwnership};
+use mesh_parser::ast::item::{
+    ActorDef, Block, FnDef, Item, LetBinding, ModuleDef, Param, ParamOwnership,
+};
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
 use mesh_parser::{Parse, SyntaxKind};
@@ -19,6 +22,7 @@ use crate::{ImportContext, ModuleExports};
 struct Binding {
     ty: Ty,
     moved: bool,
+    definitely_moved: bool,
     borrowed: bool,
 }
 
@@ -172,6 +176,52 @@ pub(crate) fn check(
     };
     signatures.insert("Secret.destroy".to_string(), destroy_signature.clone());
     signatures.insert("secret_destroy".to_string(), destroy_signature);
+    let concat_signature = FunctionSignature {
+        modes: vec![ParamOwnership::Consume, ParamOwnership::Consume],
+        formal_types: vec![Some(Ty::secret_bytes()), Some(Ty::secret_bytes())],
+    };
+    signatures.insert("Secret.concat".to_string(), concat_signature.clone());
+    signatures.insert("secret_concat".to_string(), concat_signature);
+    let bytes_builder = Ty::bytes_builder();
+    for name in [
+        "bytes_builder_write_u8",
+        "bytes_builder_write_u16_be",
+        "bytes_builder_write_u32_be",
+        "bytes_builder_write_bytes",
+    ] {
+        let signature = FunctionSignature {
+            modes: vec![ParamOwnership::Borrow, ParamOwnership::Move],
+            formal_types: vec![Some(bytes_builder.clone()), None],
+        };
+        signatures.insert(name.to_string(), signature.clone());
+        signatures.insert(
+            format!("BytesBuilder.{}", name.trim_start_matches("bytes_builder_")),
+            signature,
+        );
+    }
+    let finish_builder = FunctionSignature {
+        modes: vec![ParamOwnership::Consume],
+        formal_types: vec![Some(bytes_builder)],
+    };
+    signatures.insert("BytesBuilder.finish".to_string(), finish_builder.clone());
+    signatures.insert("bytes_builder_finish".to_string(), finish_builder);
+
+    register_pg_signature(&mut signatures, "close", vec![ParamOwnership::Consume]);
+    for (operation, arity) in [
+        ("execute", 3),
+        ("query", 3),
+        ("execute_values", 3),
+        ("query_values", 3),
+        ("begin", 1),
+        ("commit", 1),
+        ("rollback", 1),
+        ("transaction", 2),
+        ("query_as", 4),
+    ] {
+        let mut modes = vec![ParamOwnership::Move; arity];
+        modes[0] = ParamOwnership::Borrow;
+        register_pg_signature(&mut signatures, operation, modes);
+    }
 
     register_crypto_signature(
         &mut signatures,
@@ -237,6 +287,8 @@ pub(crate) fn check(
         errors: Vec::new(),
     };
 
+    checker.check_resource_parameter_patterns(parse);
+    checker.check_resource_pattern_wildcards(parse);
     for binding in &top_level_bindings {
         checker.check_top_level_binding(binding);
     }
@@ -355,7 +407,70 @@ fn register_crypto_signature(
     signatures.insert(format!("crypto_{name}"), signature);
 }
 
+fn register_pg_signature(
+    signatures: &mut FxHashMap<String, FunctionSignature>,
+    name: &str,
+    modes: Vec<ParamOwnership>,
+) {
+    let mut formal_types = vec![None; modes.len()];
+    formal_types[0] = Some(Ty::Con(crate::ty::TyCon::new("PgConn")));
+    let signature = FunctionSignature {
+        modes,
+        formal_types,
+    };
+    for alias in [
+        format!("Pg.{name}"),
+        format!("pg_{name}"),
+        format!("mesh_pg_{name}"),
+    ] {
+        signatures.insert(alias, signature.clone());
+    }
+}
+
 impl Checker<'_> {
+    fn check_resource_parameter_patterns(&mut self, parse: &Parse) {
+        for parameter in parse.syntax().descendants().filter_map(Param::cast) {
+            let Some(pattern) = parameter.pattern() else {
+                continue;
+            };
+            if !self.pattern_is_resource(&pattern) {
+                continue;
+            }
+
+            // ponytail: synthesize branch-local drop scopes before permitting implicit resource discards.
+            self.errors.push(TypeError::ResourceViolation {
+                reason: "resource-bearing parameter patterns are unsupported".to_string(),
+                span: pattern.syntax().text_range(),
+            });
+        }
+    }
+
+    fn check_resource_pattern_wildcards(&mut self, parse: &Parse) {
+        for pattern in parse.syntax().descendants().filter_map(Pattern::cast) {
+            if !matches!(pattern, Pattern::Wildcard(_)) {
+                continue;
+            }
+            let belongs_to_rejected_parameter = pattern
+                .syntax()
+                .ancestors()
+                .find_map(Param::cast)
+                .and_then(|parameter| parameter.pattern())
+                .is_some_and(|parameter_pattern| self.pattern_is_resource(&parameter_pattern));
+            if !belongs_to_rejected_parameter && self.pattern_is_resource(&pattern) {
+                self.errors.push(TypeError::ResourceViolation {
+                    reason: "resource value cannot be discarded with `_` in a pattern".to_string(),
+                    span: pattern.syntax().text_range(),
+                });
+            }
+        }
+    }
+
+    fn pattern_is_resource(&self, pattern: &Pattern) -> bool {
+        self.types
+            .get(&pattern.syntax().text_range())
+            .is_some_and(|ty| self.registry.is_resource_type(ty))
+    }
+
     fn check_top_level_binding(&mut self, binding: &LetBinding) {
         let ty = binding
             .initializer()
@@ -543,7 +658,9 @@ impl Checker<'_> {
         };
         self.check_expr(&initializer, usage);
 
-        if let (Some(name), Some(ty)) =
+        if let Some(pattern) = binding.pattern() {
+            self.bind_pattern(&pattern);
+        } else if let (Some(name), Some(ty)) =
             (binding.name().and_then(|name| name.text()), initializer_ty)
         {
             self.insert(name, ty);
@@ -555,6 +672,7 @@ impl Checker<'_> {
             Expr::NameRef(name) => self.check_name(name, usage),
             Expr::CallExpr(call) => self.check_call(call),
             Expr::StructLiteral(literal) => self.check_struct_literal(literal),
+            Expr::StructUpdate(update) => self.check_struct_update(update),
             Expr::IfExpr(if_expr) => self.check_if(if_expr),
             Expr::CaseExpr(case_expr) => self.check_case(case_expr),
             Expr::ReceiveExpr(receive_expr) => self.check_receive(receive_expr),
@@ -755,6 +873,37 @@ impl Checker<'_> {
 
     fn check_call(&mut self, call: &CallExpr) {
         let callee = call.callee();
+        let callee_name = callee.as_ref().and_then(direct_callee_name);
+        let transaction_api = match callee_name.as_deref() {
+            Some("Pg.transaction" | "pg_transaction") => Some("Pg.transaction"),
+            Some("Repo.transaction" | "repo_transaction") => Some("Repo.transaction"),
+            _ => None,
+        };
+        if let Some(transaction_api) = transaction_api {
+            let callback = call
+                .arg_list()
+                .and_then(|arguments| arguments.args().nth(1));
+            if let Some(callback) = callback {
+                let borrows_connection = match &callback {
+                    Expr::ClosureExpr(closure) => closure
+                        .param_list()
+                        .and_then(|parameters| parameters.params().next())
+                        .is_some_and(|parameter| parameter.ownership() == ParamOwnership::Borrow),
+                    callback => direct_callee_name(callback)
+                        .and_then(|name| self.signatures.get(&name))
+                        .and_then(|signature| signature.modes.first())
+                        .is_some_and(|mode| *mode == ParamOwnership::Borrow),
+                };
+                if !borrows_connection {
+                    self.errors.push(TypeError::ResourceViolation {
+                        reason: format!(
+                            "{transaction_api} callback must borrow its PgConn parameter"
+                        ),
+                        span: callback.syntax().text_range(),
+                    });
+                }
+            }
+        }
         if let Some(Expr::FieldAccess(access)) = &callee {
             if let Some(base) = access.base().filter(|base| self.expr_is_resource(base)) {
                 let field = access
@@ -782,7 +931,6 @@ impl Checker<'_> {
         if let Some(callee) = &callee {
             self.check_expr(callee, Usage::Read);
         }
-        let callee_name = callee.as_ref().and_then(direct_callee_name);
         let signature = callee_name
             .as_ref()
             .and_then(|name| self.signatures.get(name).cloned());
@@ -872,6 +1020,27 @@ impl Checker<'_> {
         }
     }
 
+    fn check_struct_update(&mut self, update: &StructUpdate) {
+        if let Some(base) = update.base_expr() {
+            let usage = if self.expr_is_resource(&base) {
+                Usage::Move
+            } else {
+                Usage::Read
+            };
+            self.check_expr(&base, usage);
+        }
+        for field in update.override_fields() {
+            if let Some(value) = field.value() {
+                let usage = if self.expr_is_resource(&value) {
+                    Usage::Move
+                } else {
+                    Usage::Read
+                };
+                self.check_expr(&value, usage);
+            }
+        }
+    }
+
     fn check_closure(&mut self, closure: &ClosureExpr) {
         // ponytail: closure types do not carry affine environment metadata yet;
         // reject resource captures until closure values can move and drop that environment.
@@ -942,8 +1111,7 @@ impl Checker<'_> {
         let else_scopes = self.scopes.clone();
 
         self.scopes = before_branches;
-        self.merge_moved_states(&then_scopes);
-        self.merge_moved_states(&else_scopes);
+        self.merge_branch_states(&[then_scopes, else_scopes]);
     }
 
     fn check_case(&mut self, case_expr: &CaseExpr) {
@@ -965,23 +1133,34 @@ impl Checker<'_> {
         for arm in case_expr.arms() {
             self.scopes = before_arms.clone();
             self.scopes.push(FxHashMap::default());
-            if let Some(pattern) = arm.pattern() {
-                self.bind_pattern(&pattern);
+            let pattern = arm.pattern();
+            if let Some(pattern) = &pattern {
+                self.bind_pattern(pattern);
             }
-            if let Some(guard) = arm.guard() {
+            let guard = arm.guard();
+            let has_guard = guard.is_some();
+            if has_guard {
+                if let Some(pattern) = &pattern {
+                    self.check_unconsumed_pattern_resources(pattern);
+                }
+            }
+            if let Some(guard) = guard {
                 self.check_expr(&guard, Usage::Read);
             }
             if let Some(body) = arm.body() {
                 self.check_expr(&body, Usage::Move);
+            }
+            if !has_guard {
+                if let Some(pattern) = &pattern {
+                    self.check_unconsumed_pattern_resources(pattern);
+                }
             }
             self.scopes.pop();
             arm_states.push(self.scopes.clone());
         }
 
         self.scopes = before_arms;
-        for arm_state in &arm_states {
-            self.merge_moved_states(arm_state);
-        }
+        self.merge_branch_states(&arm_states);
     }
 
     fn check_receive(&mut self, receive_expr: &ReceiveExpr) {
@@ -991,11 +1170,32 @@ impl Checker<'_> {
         for arm in receive_expr.arms() {
             self.scopes = before_arms.clone();
             self.scopes.push(FxHashMap::default());
-            if let Some(pattern) = arm.pattern() {
-                self.bind_pattern(&pattern);
+            let pattern = arm.pattern();
+            if let Some(pattern) = &pattern {
+                self.bind_pattern(pattern);
+            }
+            let guard = arm
+                .syntax()
+                .children_with_tokens()
+                .any(|element| element.kind() == SyntaxKind::WHEN_KW)
+                .then(|| arm.syntax().children().find_map(Expr::cast))
+                .flatten();
+            let has_guard = guard.is_some();
+            if has_guard {
+                if let Some(pattern) = &pattern {
+                    self.check_unconsumed_pattern_resources(pattern);
+                }
+            }
+            if let Some(guard) = guard {
+                self.check_expr(&guard, Usage::Read);
             }
             if let Some(body) = arm.body() {
                 self.check_expr(&body, Usage::Move);
+            }
+            if !has_guard {
+                if let Some(pattern) = &pattern {
+                    self.check_unconsumed_pattern_resources(pattern);
+                }
             }
             self.scopes.pop();
             arm_states.push(self.scopes.clone());
@@ -1013,9 +1213,7 @@ impl Checker<'_> {
         }
 
         self.scopes = before_arms;
-        for arm_state in &arm_states {
-            self.merge_moved_states(arm_state);
-        }
+        self.merge_branch_states(&arm_states);
     }
 
     fn check_while(&mut self, while_expr: &mesh_parser::ast::expr::WhileExpr) {
@@ -1134,12 +1332,97 @@ impl Checker<'_> {
         }
     }
 
+    fn check_unconsumed_pattern_resources(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::Ident(identifier) => {
+                let Some(name) = identifier.name().map(|name| name.text().to_string()) else {
+                    return;
+                };
+                if name.starts_with(|character: char| character.is_uppercase()) {
+                    return;
+                }
+                self.check_unconsumed_resource_binding(&name, identifier.syntax().text_range());
+            }
+            Pattern::Tuple(tuple) => {
+                for child in tuple.patterns() {
+                    self.check_unconsumed_pattern_resources(&child);
+                }
+            }
+            Pattern::Constructor(constructor) => {
+                for field in constructor.fields() {
+                    self.check_unconsumed_pattern_resources(&field);
+                }
+            }
+            Pattern::Or(or_pattern) => {
+                if let Some(first) = or_pattern.alternatives().next() {
+                    self.check_unconsumed_pattern_resources(&first);
+                }
+            }
+            Pattern::As(as_pattern) => {
+                if let Some(inner) = as_pattern.pattern() {
+                    self.check_unconsumed_pattern_resources(&inner);
+                }
+                if let Some(binding) = as_pattern.binding_name() {
+                    self.check_unconsumed_resource_binding(binding.text(), binding.text_range());
+                }
+            }
+            Pattern::Cons(cons_pattern) => {
+                if let Some(head) = cons_pattern.head() {
+                    self.check_unconsumed_pattern_resources(&head);
+                }
+                if let Some(tail) = cons_pattern.tail() {
+                    self.check_unconsumed_pattern_resources(&tail);
+                }
+            }
+            Pattern::Wildcard(_) | Pattern::Literal(_) => {}
+        }
+    }
+
+    fn check_unconsumed_resource_binding(&mut self, name: &str, span: TextRange) {
+        let is_unconsumed_resource = self
+            .scopes
+            .last()
+            .and_then(|scope| scope.get(name))
+            .is_some_and(|binding| {
+                self.registry.is_resource_type(&binding.ty) && !binding.definitely_moved
+            });
+        if is_unconsumed_resource {
+            self.errors.push(TypeError::ResourceViolation {
+                reason: format!("resource pattern binding `{name}` must be consumed in this arm"),
+                span,
+            });
+        }
+    }
+
     fn merge_moved_states(&mut self, branch: &[FxHashMap<String, Binding>]) {
         for (scope, branch_scope) in self.scopes.iter_mut().zip(branch) {
             for (name, binding) in scope {
                 if branch_scope.get(name).is_some_and(|state| state.moved) {
                     binding.moved = true;
                 }
+            }
+        }
+    }
+
+    fn merge_branch_states(&mut self, branches: &[Vec<FxHashMap<String, Binding>>]) {
+        if branches.is_empty() {
+            return;
+        }
+
+        for (scope_index, scope) in self.scopes.iter_mut().enumerate() {
+            for (name, binding) in scope {
+                binding.moved |= branches.iter().any(|branch| {
+                    branch
+                        .get(scope_index)
+                        .and_then(|scope| scope.get(name))
+                        .is_some_and(|state| state.moved)
+                });
+                binding.definitely_moved = branches.iter().all(|branch| {
+                    branch
+                        .get(scope_index)
+                        .and_then(|scope| scope.get(name))
+                        .is_some_and(|state| state.definitely_moved)
+                });
             }
         }
     }
@@ -1173,6 +1456,7 @@ impl Checker<'_> {
                 });
             } else {
                 binding.moved = true;
+                binding.definitely_moved = true;
             }
         }
     }
@@ -1190,6 +1474,7 @@ impl Checker<'_> {
                 Binding {
                     ty,
                     moved: false,
+                    definitely_moved: false,
                     borrowed,
                 },
             );

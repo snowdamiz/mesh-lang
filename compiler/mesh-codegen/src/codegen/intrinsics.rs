@@ -780,8 +780,39 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         );
     }
     module.add_function(
+        "mesh_bytes_builder_new",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_bytes_builder_write_u8",
+        "mesh_bytes_builder_write_u16_be",
+        "mesh_bytes_builder_write_u32_be",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_bytes_builder_write_bytes",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_bytes_builder_finish",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
         "mesh_secret_random",
         ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_concat",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
@@ -2256,6 +2287,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in ["mesh_pg_execute_values", "mesh_pg_query_values"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Phase 57: PostgreSQL Transactions ──────────────────────────────
 
@@ -2449,20 +2487,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_pool_checkout(pool: i64) -> ptr (MeshResult)
-    module.add_function(
-        "mesh_pool_checkout",
-        ptr_type.fn_type(&[i64_type.into()], false),
-        Some(inkwell::module::Linkage::External),
-    );
-
-    // mesh_pool_checkin(pool: i64, conn: i64) -> void
-    module.add_function(
-        "mesh_pool_checkin",
-        void_type.fn_type(&[i64_type.into(), i64_type.into()], false),
-        Some(inkwell::module::Linkage::External),
-    );
-
     // mesh_pool_query(pool: i64, sql: ptr, params: ptr) -> ptr (MeshResult)
     module.add_function(
         "mesh_pool_query",
@@ -2476,6 +2500,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in ["mesh_pool_execute_values", "mesh_pool_query_values"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Phase 58: Row Parsing & Struct-to-Row Mapping ────────────────────
 
@@ -4260,6 +4291,8 @@ mod tests {
         assert!(module.get_function("mesh_pg_close").is_some());
         assert!(module.get_function("mesh_pg_execute").is_some());
         assert!(module.get_function("mesh_pg_query").is_some());
+        assert!(module.get_function("mesh_pg_execute_values").is_some());
+        assert!(module.get_function("mesh_pg_query_values").is_some());
 
         // Phase 57: PostgreSQL Transactions
         assert!(module.get_function("mesh_pg_begin").is_some());
@@ -4304,10 +4337,10 @@ mod tests {
         // Phase 57: Connection Pool
         assert!(module.get_function("mesh_pool_open").is_some());
         assert!(module.get_function("mesh_pool_close").is_some());
-        assert!(module.get_function("mesh_pool_checkout").is_some());
-        assert!(module.get_function("mesh_pool_checkin").is_some());
         assert!(module.get_function("mesh_pool_query").is_some());
         assert!(module.get_function("mesh_pool_execute").is_some());
+        assert!(module.get_function("mesh_pool_query_values").is_some());
+        assert!(module.get_function("mesh_pool_execute_values").is_some());
 
         // Phase 58: Row Parsing & Struct-to-Row Mapping
         assert!(module.get_function("mesh_row_from_row_get").is_some());

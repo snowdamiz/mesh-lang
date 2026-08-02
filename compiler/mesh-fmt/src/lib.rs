@@ -362,6 +362,20 @@ mod edge_case_tests {
     }
 
     #[test]
+    fn blank_lines_in_sum_types_have_no_indentation() {
+        let result = fmt("type Error do\nFirst\nSecond\nend");
+        for (index, line) in result.lines().enumerate() {
+            assert_eq!(
+                line.trim_end(),
+                line,
+                "line {} has trailing whitespace: {:?}",
+                index + 1,
+                line
+            );
+        }
+    }
+
+    #[test]
     fn trailing_newline() {
         // Every formatted output should end with exactly one newline.
         let result = fmt("let x = 1");

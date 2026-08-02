@@ -234,3 +234,46 @@ end
     );
     assert_eq!(String::from_utf8_lossy(&run.stdout), "crypto-ok\n");
 }
+
+#[test]
+fn result_tuple_destructuring_binds_and_consumes_resource_elements() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "secret-result-tuple",
+        r#"
+fn allocate() -> Result < (SecretBytes, Int), CryptoError > do
+  let secret = Secret.random(1) ?
+  Ok((secret, 42))
+end
+
+fn proof() -> Int ! CryptoError do
+  let (secret, value) = allocate() ?
+  Secret.destroy(secret)
+  Ok(value)
+end
+
+fn main() do
+  case proof() do
+    Ok(value) -> println("${value}")
+    Err(_) -> println("failed")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("secret-result-tuple"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "secret tuple proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
+}
