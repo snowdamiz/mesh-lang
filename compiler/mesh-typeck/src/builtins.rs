@@ -364,9 +364,22 @@ pub fn register_builtins(
     // ── Standard library: binary-safe Bytes ────────────────────────────────
 
     let bytes_result = || Ty::result(Ty::bytes(), Ty::string());
+    let checked_bytes_result = || Ty::result(Ty::bytes(), Ty::bytes_error());
     env.insert(
         "bytes_empty".into(),
         Scheme::mono(Ty::fun(vec![], Ty::bytes())),
+    );
+    env.insert(
+        "bytes_from_list".into(),
+        Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], checked_bytes_result())),
+    );
+    env.insert(
+        "bytes_to_list".into(),
+        Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::list(Ty::int()))),
+    );
+    env.insert(
+        "bytes_repeat".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], checked_bytes_result())),
     );
     env.insert(
         "bytes_length".into(),
@@ -428,6 +441,39 @@ pub fn register_builtins(
         "bytes_write_uint_le".into(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
     );
+    for name in ["bytes_read_u16_be", "bytes_read_u16_le"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::int()],
+                Ty::result(Ty::int(), Ty::bytes_error()),
+            )),
+        );
+    }
+    for name in [
+        "bytes_read_u32_be",
+        "bytes_read_u32_le",
+        "bytes_read_u64_be",
+        "bytes_read_u64_le",
+    ] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::int()],
+                Ty::result(Ty::u64(), Ty::bytes_error()),
+            )),
+        );
+    }
+    env.insert(
+        "bytes_write_u16_be".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], checked_bytes_result())),
+    );
+    for name in ["bytes_write_u32_be", "bytes_write_u64_be"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(vec![Ty::u64()], checked_bytes_result())),
+        );
+    }
 
     register_wide_integer(env, "u64", Ty::u64());
     register_wide_integer(env, "u128", Ty::u128());

@@ -16,7 +16,7 @@
 //! - `Fail`: Emit mesh_panic + unreachable
 
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::{BasicValueEnum, PointerValue};
+use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::intrinsics::get_intrinsic;
@@ -697,23 +697,42 @@ impl<'ctx> CodeGen<'ctx> {
         match path {
             AccessPath::Root => Ok(scrutinee_alloca),
 
-            AccessPath::TupleField(parent, index) => {
-                let parent_ptr =
-                    self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                let llvm_parent_ty = self.llvm_type(&parent_ty);
+            AccessPath::TupleField(parent, index, element_ty) => {
+                // Tuples use the runtime layout `{ u64 len, u64 elements[] }`,
+                // including when a generic constructor stores the tuple as Ptr.
+                let parent_val =
+                    self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
+                let tuple_ptr = match parent_val {
+                    BasicValueEnum::PointerValue(value) => value,
+                    other => {
+                        return Err(format!(
+                            "TupleField parent is not a runtime tuple pointer: {:?}",
+                            other.get_type()
+                        ));
+                    }
+                };
 
-                // GEP into tuple struct
-                let field_ptr = self
+                let nth_fn = get_intrinsic(&self.module, "mesh_tuple_nth");
+                let element = self
                     .builder
-                    .build_struct_gep(
-                        llvm_parent_ty.into_struct_type(),
-                        parent_ptr,
-                        *index as u32,
+                    .build_call(
+                        nth_fn,
+                        &[
+                            tuple_ptr.into(),
+                            self.context
+                                .i64_type()
+                                .const_int(*index as u64, false)
+                                .into(),
+                        ],
                         "tuple_field",
                     )
-                    .map_err(|e| e.to_string())?;
-                Ok(field_ptr)
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_tuple_nth returned void")?
+                    .into_int_value();
+
+                self.materialize_tuple_element_ptr(element, element_ty)
             }
 
             AccessPath::VariantField(parent, variant_name, index) => {
@@ -905,6 +924,47 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Materialize a uniformly stored tuple element as an addressable value.
+    ///
+    /// `mesh_tuple_nth` returns the raw u64 slot. One-slot values can be loaded
+    /// from a temporary u64 alloca; larger aggregates were boxed by
+    /// `codegen_make_tuple`, so their slot is already an address.
+    fn materialize_tuple_element_ptr(
+        &self,
+        value: IntValue<'ctx>,
+        element_ty: &MirType,
+    ) -> Result<PointerValue<'ctx>, String> {
+        if matches!(
+            element_ty,
+            MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _)
+        ) {
+            let aggregate_ty = self.llvm_type(element_ty).into_struct_type();
+            let size = self
+                .target_machine
+                .get_target_data()
+                .get_store_size(&aggregate_ty);
+            if size > 8 {
+                return self
+                    .builder
+                    .build_int_to_ptr(
+                        value,
+                        self.context.ptr_type(inkwell::AddressSpace::default()),
+                        "tuple_boxed_element",
+                    )
+                    .map_err(|e| e.to_string());
+            }
+        }
+
+        let alloca = self
+            .builder
+            .build_alloca(self.context.i64_type(), "tuple_element")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(alloca, value)
+            .map_err(|e| e.to_string())?;
+        Ok(alloca)
+    }
+
     /// Resolve the MIR type at a given access path.
     fn resolve_path_type(
         &self,
@@ -914,16 +974,7 @@ impl<'ctx> CodeGen<'ctx> {
         match path {
             AccessPath::Root => Ok(scrutinee_ty.clone()),
 
-            AccessPath::TupleField(parent, index) => {
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                match parent_ty {
-                    MirType::Tuple(elems) => elems
-                        .get(*index)
-                        .cloned()
-                        .ok_or_else(|| format!("Tuple field {} out of bounds", index)),
-                    _ => Err(format!("TupleField on non-tuple type: {:?}", parent_ty)),
-                }
-            }
+            AccessPath::TupleField(_, _, element_ty) => Ok(element_ty.clone()),
 
             AccessPath::VariantField(parent, variant_name, index) => {
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;

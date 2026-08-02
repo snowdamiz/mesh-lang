@@ -8,9 +8,13 @@ use std::ptr;
 use base64::{engine::general_purpose, Engine as _};
 use subtle::ConstantTimeEq;
 
+use crate::collections::list::{
+    mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
+};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
+use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
 
 const BASE58: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -59,6 +63,10 @@ fn ok_int(value: i64) -> *mut MeshResult {
         *result = value;
         alloc_result(0, result.cast())
     }
+}
+
+fn ok_u64(value: u64) -> *mut MeshResult {
+    alloc_result(0, mesh_u64_new(value).cast())
 }
 
 fn allocate(len: usize) -> *mut MeshBytes {
@@ -189,6 +197,64 @@ pub extern "C" fn mesh_bytes_copy_to(
 #[no_mangle]
 pub extern "C" fn mesh_bytes_empty() -> *mut MeshBytes {
     mesh_bytes_new(ptr::null(), 0)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_from_list(values: *mut u8) -> *mut MeshResult {
+    if values.is_null() {
+        return error("invalid byte list");
+    }
+    let len = mesh_list_length(values);
+    let Ok(len) = usize::try_from(len) else {
+        return error("byte length overflow");
+    };
+    for index in 0..len {
+        if mesh_list_get(values, index as i64) > u8::MAX as u64 {
+            return error("byte value out of range");
+        }
+    }
+    let bytes = allocate(len);
+    if bytes.is_null() {
+        return error("byte length overflow");
+    }
+    unsafe {
+        for index in 0..len {
+            *(*bytes).data_ptr_mut().add(index) = mesh_list_get(values, index as i64) as u8;
+        }
+    }
+    alloc_result(0, bytes.cast())
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_to_list(bytes: *const MeshBytes) -> *mut u8 {
+    if bytes.is_null() {
+        return mesh_list_builder_new(0);
+    }
+    unsafe {
+        let values = mesh_list_builder_new((*bytes).len as i64);
+        for byte in (*bytes).as_slice() {
+            mesh_list_builder_push(values, *byte as u64);
+        }
+        values
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_repeat(byte: i64, count: i64) -> *mut MeshResult {
+    if !(0..=u8::MAX as i64).contains(&byte) {
+        return error("byte value out of range");
+    }
+    let Ok(count) = usize::try_from(count) else {
+        return error("byte count out of range");
+    };
+    let bytes = allocate(count);
+    if bytes.is_null() {
+        return error("byte length overflow");
+    }
+    unsafe {
+        ptr::write_bytes((*bytes).data_ptr_mut(), byte as u8, count);
+    }
+    alloc_result(0, bytes.cast())
 }
 
 #[no_mangle]
@@ -354,6 +420,130 @@ pub extern "C" fn mesh_bytes_from_hex(text: *const MeshString) -> *mut MeshResul
     }
 }
 
+fn read_uint(
+    bytes: *const MeshBytes,
+    offset: i64,
+    width: usize,
+    big_endian: bool,
+) -> Result<u64, &'static str> {
+    if bytes.is_null() || offset < 0 {
+        return Err("unsigned integer read out of bounds");
+    }
+    unsafe {
+        let offset = offset as u64;
+        if offset
+            .checked_add(width as u64)
+            .is_none_or(|end| end > (*bytes).len)
+        {
+            return Err("unsigned integer read out of bounds");
+        }
+        let mut encoded = [0u8; 8];
+        let destination = if big_endian {
+            encoded[8 - width..].as_mut_ptr()
+        } else {
+            encoded.as_mut_ptr()
+        };
+        ptr::copy_nonoverlapping((*bytes).data_ptr().add(offset as usize), destination, width);
+        Ok(if big_endian {
+            u64::from_be_bytes(encoded)
+        } else {
+            u64::from_le_bytes(encoded)
+        })
+    }
+}
+
+fn read_int_result(
+    bytes: *const MeshBytes,
+    offset: i64,
+    width: usize,
+    big_endian: bool,
+) -> *mut MeshResult {
+    read_uint(bytes, offset, width, big_endian)
+        .map(|value| ok_int(value as i64))
+        .unwrap_or_else(error)
+}
+
+fn read_u64_result(
+    bytes: *const MeshBytes,
+    offset: i64,
+    width: usize,
+    big_endian: bool,
+) -> *mut MeshResult {
+    read_uint(bytes, offset, width, big_endian)
+        .map(ok_u64)
+        .unwrap_or_else(error)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u16_be(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_int_result(bytes, offset, 2, true)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u16_le(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_int_result(bytes, offset, 2, false)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u32_be(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_u64_result(bytes, offset, 4, true)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u32_le(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_u64_result(bytes, offset, 4, false)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u64_be(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_u64_result(bytes, offset, 8, true)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_read_u64_le(bytes: *const MeshBytes, offset: i64) -> *mut MeshResult {
+    read_u64_result(bytes, offset, 8, false)
+}
+
+fn write_uint(value: u64, width: usize, big_endian: bool) -> *mut MeshResult {
+    if width < 8 && value >= (1u64 << (width * 8)) {
+        return error("unsigned integer does not fit width");
+    }
+    let encoded = if big_endian {
+        value.to_be_bytes()
+    } else {
+        value.to_le_bytes()
+    };
+    if big_endian {
+        ok_bytes(&encoded[8 - width..])
+    } else {
+        ok_bytes(&encoded[..width])
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_write_u16_be(value: i64) -> *mut MeshResult {
+    if value < 0 {
+        return error("unsigned integer does not fit width");
+    }
+    write_uint(value as u64, 2, true)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_write_u32_be(value: *const MeshWideNum) -> *mut MeshResult {
+    if value.is_null() {
+        return error("invalid unsigned integer");
+    }
+    unsafe { write_uint(mesh_u64_value(value), 4, true) }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_bytes_write_u64_be(value: *const MeshWideNum) -> *mut MeshResult {
+    if value.is_null() {
+        return error("invalid unsigned integer");
+    }
+    unsafe { write_uint(mesh_u64_value(value), 8, true) }
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_bytes_read_uint_le(
     bytes: *const MeshBytes,
@@ -363,26 +553,15 @@ pub extern "C" fn mesh_bytes_read_uint_le(
     if offset < 0 || !matches!(width, 1 | 2 | 4 | 8) {
         return error("invalid unsigned integer width or offset");
     }
-    unsafe {
-        let offset = offset as u64;
-        if offset
-            .checked_add(width as u64)
-            .is_none_or(|end| end > (*bytes).len)
-        {
-            return error("unsigned integer read out of bounds");
-        }
-        let mut little_endian = [0u8; 8];
-        ptr::copy_nonoverlapping(
-            (*bytes).data_ptr().add(offset as usize),
-            little_endian.as_mut_ptr(),
-            width as usize,
-        );
-        let value = u64::from_le_bytes(little_endian).to_string();
-        alloc_result(
-            0,
-            mesh_string_new(value.as_ptr(), value.len() as u64) as *mut u8,
-        )
-    }
+    read_uint(bytes, offset, width as usize, false)
+        .map(|value| {
+            let value = value.to_string();
+            alloc_result(
+                0,
+                mesh_string_new(value.as_ptr(), value.len() as u64) as *mut u8,
+            )
+        })
+        .unwrap_or_else(error)
 }
 
 #[no_mangle]
@@ -397,10 +576,7 @@ pub extern "C" fn mesh_bytes_write_uint_le(
         let Ok(value) = (*value).as_str().parse::<u64>() else {
             return error("invalid unsigned integer");
         };
-        if width < 8 && value >= (1u64 << (width * 8)) {
-            return error("unsigned integer does not fit width");
-        }
-        ok_bytes(&value.to_le_bytes()[..width as usize])
+        write_uint(value, width as usize, false)
     }
 }
 
@@ -408,6 +584,7 @@ pub extern "C" fn mesh_bytes_write_uint_le(
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+    use rand::{rngs::StdRng, Rng, SeedableRng};
 
     #[test]
     fn binary_codecs_and_native_copy_round_trip() {
@@ -435,6 +612,49 @@ mod tests {
                 (*((*decoded).value as *const MeshBytes)).as_slice(),
                 input.as_slice()
             );
+        }
+    }
+
+    #[test]
+    fn hostile_byte_ranges_never_panic_or_bypass_bounds() {
+        mesh_rt_init();
+        let mut rng = StdRng::seed_from_u64(0x4d45_5348_4259_5445);
+
+        for _ in 0..512 {
+            let len = rng.random_range(0..=64usize);
+            let input: Vec<u8> = (0..len).map(|_| rng.random()).collect();
+            let bytes = mesh_bytes_copy_from(input.as_ptr(), len as u64);
+            let offset = match rng.random_range(0..4) {
+                0 => -1,
+                1 => len as i64,
+                2 => len as i64 + 1,
+                _ => rng.random_range(0..=len as i64),
+            };
+
+            for (width, read) in [
+                (2, mesh_bytes_read_u16_be as extern "C" fn(_, _) -> _),
+                (2, mesh_bytes_read_u16_le),
+                (4, mesh_bytes_read_u32_be),
+                (4, mesh_bytes_read_u32_le),
+                (8, mesh_bytes_read_u64_be),
+                (8, mesh_bytes_read_u64_le),
+            ] {
+                let result = read(bytes, offset);
+                let in_bounds = offset >= 0
+                    && (offset as usize)
+                        .checked_add(width)
+                        .is_some_and(|end| end <= len);
+                unsafe { assert_eq!((*result).tag == 0, in_bounds) };
+            }
+
+            let slice_len = rng.random_range(-1..=len as i64 + 1);
+            let slice = mesh_bytes_slice(bytes, offset, slice_len);
+            let in_bounds = offset >= 0
+                && slice_len >= 0
+                && (offset as usize)
+                    .checked_add(slice_len as usize)
+                    .is_some_and(|end| end <= len);
+            unsafe { assert_eq!((*slice).tag == 0, in_bounds) };
         }
     }
 }

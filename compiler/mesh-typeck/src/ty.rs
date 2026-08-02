@@ -116,6 +116,10 @@ impl Ty {
         Ty::Con(TyCon::new("Bytes"))
     }
 
+    pub fn bytes_error() -> Ty {
+        Ty::Con(TyCon::new("BytesError"))
+    }
+
     pub fn u64() -> Ty {
         Ty::Con(TyCon::new("U64"))
     }

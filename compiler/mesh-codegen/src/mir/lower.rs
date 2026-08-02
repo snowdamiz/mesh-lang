@@ -1253,6 +1253,16 @@ impl<'a> Lowerer<'a> {
             "mesh_bytes_empty".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
+        for name in ["mesh_bytes_from_list", "mesh_bytes_to_list"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_bytes_repeat".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Ptr)),
+        );
         self.known_functions.insert(
             "mesh_bytes_length".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int)),
@@ -1323,6 +1333,29 @@ impl<'a> Lowerer<'a> {
             "mesh_bytes_write_uint_le".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr)),
         );
+        for name in [
+            "mesh_bytes_read_u16_be",
+            "mesh_bytes_read_u16_le",
+            "mesh_bytes_read_u32_be",
+            "mesh_bytes_read_u32_le",
+            "mesh_bytes_read_u64_be",
+            "mesh_bytes_read_u64_le",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_bytes_write_u16_be".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_bytes_write_u32_be", "mesh_bytes_write_u64_be"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
         for prefix in ["u64", "u128", "i128"] {
             self.known_functions.insert(
                 format!("mesh_{prefix}_parse"),
@@ -13850,6 +13883,9 @@ fn map_builtin_name(name: &str) -> String {
         "hex_decode" => "mesh_hex_decode".to_string(),
         // Binary-safe Bytes functions
         "bytes_empty" => "mesh_bytes_empty".to_string(),
+        "bytes_from_list" => "mesh_bytes_from_list".to_string(),
+        "bytes_to_list" => "mesh_bytes_to_list".to_string(),
+        "bytes_repeat" => "mesh_bytes_repeat".to_string(),
         "bytes_length" => "mesh_bytes_length".to_string(),
         "bytes_get" => "mesh_bytes_get".to_string(),
         "bytes_slice" => "mesh_bytes_slice".to_string(),
@@ -13865,6 +13901,15 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_from_hex" => "mesh_bytes_from_hex".to_string(),
         "bytes_read_uint_le" => "mesh_bytes_read_uint_le".to_string(),
         "bytes_write_uint_le" => "mesh_bytes_write_uint_le".to_string(),
+        "bytes_read_u16_be" => "mesh_bytes_read_u16_be".to_string(),
+        "bytes_read_u16_le" => "mesh_bytes_read_u16_le".to_string(),
+        "bytes_read_u32_be" => "mesh_bytes_read_u32_be".to_string(),
+        "bytes_read_u32_le" => "mesh_bytes_read_u32_le".to_string(),
+        "bytes_read_u64_be" => "mesh_bytes_read_u64_be".to_string(),
+        "bytes_read_u64_le" => "mesh_bytes_read_u64_le".to_string(),
+        "bytes_write_u16_be" => "mesh_bytes_write_u16_be".to_string(),
+        "bytes_write_u32_be" => "mesh_bytes_write_u32_be".to_string(),
+        "bytes_write_u64_be" => "mesh_bytes_write_u64_be".to_string(),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"

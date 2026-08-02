@@ -23,8 +23,8 @@ use crate::mir::{MirExpr, MirLiteral, MirType};
 pub enum AccessPath {
     /// The scrutinee itself.
     Root,
-    /// Field N of a tuple.
-    TupleField(Box<AccessPath>, usize),
+    /// Field N of a runtime tuple, with its concrete element type.
+    TupleField(Box<AccessPath>, usize, MirType),
     /// Field N of a variant (variant name for disambiguation).
     VariantField(Box<AccessPath>, String, usize),
     /// Named field of a struct.

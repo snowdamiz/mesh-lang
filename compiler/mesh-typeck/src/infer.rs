@@ -407,10 +407,23 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     // ── Bytes module ──────────────────────────────────────────────────
     let bytes_t = Ty::bytes();
     let bytes_result = || Ty::result(Ty::bytes(), Ty::string());
+    let checked_bytes_result = || Ty::result(Ty::bytes(), Ty::bytes_error());
     let mut bytes_mod = HashMap::new();
     bytes_mod.insert(
         "empty".to_string(),
         Scheme::mono(Ty::fun(vec![], bytes_t.clone())),
+    );
+    bytes_mod.insert(
+        "from_list".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], checked_bytes_result())),
+    );
+    bytes_mod.insert(
+        "to_list".to_string(),
+        Scheme::mono(Ty::fun(vec![bytes_t.clone()], Ty::list(Ty::int()))),
+    );
+    bytes_mod.insert(
+        "repeat".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], checked_bytes_result())),
     );
     bytes_mod.insert(
         "length".to_string(),
@@ -475,6 +488,34 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "write_uint_le".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], bytes_result())),
     );
+    for name in ["read_u16_be", "read_u16_le"] {
+        bytes_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![bytes_t.clone(), Ty::int()],
+                Ty::result(Ty::int(), Ty::bytes_error()),
+            )),
+        );
+    }
+    for name in ["read_u32_be", "read_u32_le", "read_u64_be", "read_u64_le"] {
+        bytes_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![bytes_t.clone(), Ty::int()],
+                Ty::result(Ty::u64(), Ty::bytes_error()),
+            )),
+        );
+    }
+    bytes_mod.insert(
+        "write_u16_be".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], checked_bytes_result())),
+    );
+    for name in ["write_u32_be", "write_u64_be"] {
+        bytes_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::u64()], checked_bytes_result())),
+        );
+    }
     modules.insert("Bytes".to_string(), bytes_mod);
 
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));

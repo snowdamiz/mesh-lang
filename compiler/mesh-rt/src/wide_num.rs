@@ -12,6 +12,14 @@ pub struct MeshWideNum {
     high: u64,
 }
 
+pub(crate) fn mesh_u64_new(value: u64) -> *mut MeshWideNum {
+    allocate(value as u128)
+}
+
+pub(crate) unsafe fn mesh_u64_value(value: *const MeshWideNum) -> u64 {
+    bits(value) as u64
+}
+
 fn allocate(bits: u128) -> *mut MeshWideNum {
     unsafe {
         let value = mesh_gc_alloc_actor(

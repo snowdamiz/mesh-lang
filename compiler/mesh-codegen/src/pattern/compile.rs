@@ -967,6 +967,26 @@ fn column_has_tuples(matrix: &PatMatrix, col: usize) -> bool {
         .any(|row| col < row.patterns.len() && matches!(&row.patterns[col], MirPattern::Tuple(_)))
 }
 
+/// Recover the concrete runtime type represented by a sub-pattern.
+///
+/// Generic constructor layouts intentionally erase payloads to `Ptr`. Tuple
+/// patterns still retain enough type information in their elements for codegen
+/// to unpack the heap-backed runtime tuple correctly.
+fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
+    match pattern {
+        MirPattern::Var(_, ty) => Some(ty.clone()),
+        MirPattern::Literal(MirLiteral::Int(_)) => Some(MirType::Int),
+        MirPattern::Literal(MirLiteral::Float(_)) => Some(MirType::Float),
+        MirPattern::Literal(MirLiteral::Bool(_)) => Some(MirType::Bool),
+        MirPattern::Literal(MirLiteral::String(_)) => Some(MirType::String),
+        MirPattern::Constructor { type_name, .. } => Some(MirType::SumType(type_name.clone())),
+        // Tuple values use the heap-backed runtime representation.
+        MirPattern::Tuple(_) | MirPattern::ListCons { .. } => Some(MirType::Ptr),
+        MirPattern::Or(alternatives) => alternatives.iter().find_map(pattern_type_hint),
+        MirPattern::Wildcard => None,
+    }
+}
+
 /// Expand a tuple column into its sub-columns.
 /// Tuple patterns become their element patterns; wildcards/variables
 /// become wildcard elements.
@@ -1000,7 +1020,20 @@ fn expand_tuple_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
     // Build sub-column types from the parent tuple type.
     let sub_types: Vec<MirType> = match parent_type {
         MirType::Tuple(elems) => elems.clone(),
-        _ => vec![MirType::Unit; arity],
+        _ => (0..arity)
+            .map(|index| {
+                matrix
+                    .rows
+                    .iter()
+                    .find_map(|row| match row.patterns.get(col) {
+                        Some(MirPattern::Tuple(elements)) => {
+                            elements.get(index).and_then(pattern_type_hint)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or(MirType::Unit)
+            })
+            .collect(),
     };
 
     let mut new_rows = Vec::new();
@@ -1058,8 +1091,13 @@ fn expand_tuple_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
     let mut new_types = Vec::new();
 
     for i in 0..arity {
-        new_paths.push(AccessPath::TupleField(Box::new(parent_path.clone()), i));
-        new_types.push(sub_types.get(i).cloned().unwrap_or(MirType::Unit));
+        let sub_type = sub_types.get(i).cloned().unwrap_or(MirType::Unit);
+        new_paths.push(AccessPath::TupleField(
+            Box::new(parent_path.clone()),
+            i,
+            sub_type.clone(),
+        ));
+        new_types.push(sub_type);
     }
 
     for (i, path) in matrix.column_paths.iter().enumerate() {
@@ -1651,7 +1689,11 @@ mod tests {
             } => {
                 assert_eq!(
                     *scrutinee_path,
-                    AccessPath::TupleField(Box::new(AccessPath::Root), 0)
+                    AccessPath::TupleField(
+                        Box::new(AccessPath::Root),
+                        0,
+                        MirType::SumType("Option".to_string())
+                    )
                 );
                 assert!(cases.len() >= 2);
 
@@ -1945,7 +1987,7 @@ mod tests {
                     success,
                     ..
                 } => {
-                    matches!(scrutinee_path, AccessPath::TupleField(_, _))
+                    matches!(scrutinee_path, AccessPath::TupleField(_, _, _))
                         || contains_tuple_field_test(success)
                         || contains_tuple_field_test(failure)
                 }
@@ -1955,7 +1997,7 @@ mod tests {
                     default,
                     ..
                 } => {
-                    matches!(scrutinee_path, AccessPath::TupleField(_, _))
+                    matches!(scrutinee_path, AccessPath::TupleField(_, _, _))
                         || cases.iter().any(|(_, t)| contains_tuple_field_test(t))
                         || default
                             .as_ref()

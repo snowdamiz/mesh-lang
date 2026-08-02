@@ -595,6 +595,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in ["mesh_bytes_from_list", "mesh_bytes_to_list"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_bytes_repeat",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     module.add_function(
         "mesh_bytes_length",
         i64_type.fn_type(&[ptr_type.into()], false),
@@ -664,6 +676,32 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in [
+        "mesh_bytes_read_u16_be",
+        "mesh_bytes_read_u16_le",
+        "mesh_bytes_read_u32_be",
+        "mesh_bytes_read_u32_le",
+        "mesh_bytes_read_u64_be",
+        "mesh_bytes_read_u64_le",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
+        "mesh_bytes_write_u16_be",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in ["mesh_bytes_write_u32_be", "mesh_bytes_write_u64_be"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Checked wide integers ────────────────────────────────────────────────
 

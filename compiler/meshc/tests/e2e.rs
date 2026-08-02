@@ -6212,8 +6212,25 @@ fn e2e_bytes_operations() {
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "0\nfalse\n3\n255\nbyte index out of bounds\n0041\ninvalid utf-8\n/wBB\nHello World\ntrue\n305419896\nffffffffffffffff\n"
+        "0\nfalse\n3\n255\nbyte index out of bounds\n0041\ninvalid utf-8\n/wBB\nHello World\ntrue\n305419896\nffffffffffffffff\n001234ff\n4\n255\ninvalid-byte\nababab\ninvalid-byte\n4660\n13330\n305419896\n2018915346\n1311768467463790320\n17356517385562371090\nread-error\n1234\n12345678\nffffffffffffffff\nwrite-error\n"
     );
+}
+
+#[test]
+fn e2e_bytes_errors_are_nominal() {
+    let error = compile_expect_error(
+        r#"
+fn accepts_text_error(value :: Result<Bytes, String>) do
+  nil
+end
+
+fn main() do
+  accepts_text_error(Bytes.repeat(1, 1))
+end
+"#,
+    );
+    assert!(error.contains("BytesError"), "unexpected error: {error}");
+    assert!(error.contains("String"), "unexpected error: {error}");
 }
 
 /// `Bytes` never crosses a UTF-8 boundary without an explicit conversion.

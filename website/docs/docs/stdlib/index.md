@@ -148,6 +148,9 @@ end
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Bytes.empty()` | `Bytes` | Empty byte sequence |
+| `Bytes.from_list(values)` | `Result<Bytes, BytesError>` | Copy checked integer byte values (0 through 255) |
+| `Bytes.to_list(bytes)` | `List<Int>` | Copy bytes to integer values |
+| `Bytes.repeat(byte, count)` | `Result<Bytes, BytesError>` | Construct a checked repeated byte sequence |
 | `Bytes.length(bytes)` | `Int` | Byte length |
 | `Bytes.get(bytes, index)` | `Result<Int, String>` | Byte value at a checked index |
 | `Bytes.slice(bytes, start, length)` | `Result<Bytes, String>` | Checked subrange |
@@ -161,8 +164,24 @@ end
 | `Bytes.from_base58(text)` | `Result<Bytes, String>` | Base58 decode |
 | `Bytes.to_hex(bytes)` | `String` | Lowercase hexadecimal |
 | `Bytes.from_hex(text)` | `Result<Bytes, String>` | Decode case-insensitive hexadecimal |
+| `Bytes.read_u16_be(bytes, offset)` | `Result<Int, BytesError>` | Read a checked big-endian 16-bit integer |
+| `Bytes.read_u32_be(bytes, offset)` | `Result<U64, BytesError>` | Read a checked big-endian 32-bit integer |
+| `Bytes.read_u64_be(bytes, offset)` | `Result<U64, BytesError>` | Read a checked big-endian 64-bit integer |
+| `Bytes.read_u16_le(bytes, offset)` | `Result<Int, BytesError>` | Read a checked little-endian 16-bit integer |
+| `Bytes.read_u32_le(bytes, offset)` | `Result<U64, BytesError>` | Read a checked little-endian 32-bit integer |
+| `Bytes.read_u64_le(bytes, offset)` | `Result<U64, BytesError>` | Read a checked little-endian 64-bit integer |
+| `Bytes.write_u16_be(value)` | `Result<Bytes, BytesError>` | Write a checked big-endian 16-bit integer |
+| `Bytes.write_u32_be(value)` | `Result<Bytes, BytesError>` | Write a checked big-endian 32-bit integer |
+| `Bytes.write_u64_be(value)` | `Result<Bytes, BytesError>` | Write a big-endian 64-bit integer |
 | `Bytes.read_uint_le(bytes, offset, width)` | `Result<String, String>` | Read a 1, 2, 4, or 8-byte unsigned integer as a full-range decimal string |
 | `Bytes.write_uint_le(value, width)` | `Result<Bytes, String>` | Write a decimal unsigned integer at width 1, 2, 4, or 8 |
+
+Checked construction and fixed-width APIs use the nominal `BytesError` type;
+handle failures with `Err(_)` without depending on runtime error text.
+
+The `mesh-binary` source package adds a bounded immutable `BinaryReader`.
+Its vectors use a canonical unsigned 32-bit big-endian length prefix, and
+`finish` rejects trailing bytes.
 
 ## Wide integers
 
