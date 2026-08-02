@@ -110,7 +110,13 @@ fn resolve_test_project(target: Option<&Path>) -> Result<ResolvedTestProject, St
     let manifest_source = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read '{}': {}", manifest_path.display(), e))?;
     let manifest = Manifest::from_file(&manifest_path)?;
-    let entry_relative_path = resolve_entrypoint(&project_dir, Some(&manifest))?;
+    let entry_relative_path = if manifest.package.entrypoint.is_none()
+        && !project_dir.join(DEFAULT_ENTRYPOINT).exists()
+    {
+        PathBuf::from(DEFAULT_ENTRYPOINT)
+    } else {
+        resolve_entrypoint(&project_dir, Some(&manifest))?
+    };
 
     Ok(ResolvedTestProject {
         project_dir,
@@ -1332,6 +1338,31 @@ mod tests {
             "{err}"
         );
         assert!(err.contains(&orphan.display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn resolve_test_project_accepts_library_without_executable_entrypoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_dir = temp.path().join("library");
+        write_file(
+            &project_dir.join("mesh.toml"),
+            "[package]\nname = \"library\"\nversion = \"0.1.0\"\n",
+        );
+        write_file(
+            &project_dir.join("library.mpl"),
+            "pub fn answer() -> Int do\n  42\nend\n",
+        );
+        write_file(
+            &project_dir.join("tests/library.test.mpl"),
+            "test(\"ok\") do\n  assert(true)\nend\n",
+        );
+
+        let resolved = resolve_test_project(Some(&project_dir)).unwrap();
+
+        assert_eq!(
+            resolved.entry_relative_path,
+            PathBuf::from(DEFAULT_ENTRYPOINT)
+        );
     }
 
     #[test]
