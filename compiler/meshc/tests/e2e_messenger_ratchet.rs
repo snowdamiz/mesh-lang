@@ -68,7 +68,7 @@ from Identity.Device import AccountKeys, DeviceKeys, IdentityError, Verification
 from Prekeys.Bundle import OneTimePrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_signed_prekey
 from Protocol.V1 import AccountIdentity, DeviceCredential, InitialMessage, PrekeyBundle, encode_initial_message
 from Session.Handshake import RatchetState, SessionError, initiate, receive_initial
-from Session.Ratchet import DecryptOutcome, RatchetError, RatchetMessage, decrypt, encrypt
+from Session.Ratchet import DecryptOutcome, RatchetError, RatchetMessage, decode_ratchet_message, decrypt, encode_ratchet_message, encrypt
 from Session.Snapshot import ReplacementOutcome, SnapshotError, SnapshotOutcome, replace_session, restore, snapshot
 
 type ProofError do
@@ -154,6 +154,35 @@ fn encoded_initial(value :: InitialMessage) -> Bytes ! ProofError do
   case encode_initial_message(value) do
     Err(_) -> Err(InvalidFixture)
     Ok(encoded) -> Ok(encoded)
+  end
+end
+
+fn wire_message(value :: RatchetMessage) -> RatchetMessage ! ProofError do
+  let encoded = case encode_ratchet_message(value) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(bytes) -> Ok(bytes)
+  end ?
+  let trailing = case Bytes.concat(encoded, Bytes.from_utf8("x")) do
+    Err(_) -> Err(InvalidFixture)
+    Ok(bytes) -> Ok(bytes)
+  end ?
+  let truncated = case Bytes.slice(encoded, 0, Bytes.length(encoded) - 1) do
+    Err(_) -> Err(InvalidFixture)
+    Ok(bytes) -> Ok(bytes)
+  end ?
+  let _ = case decode_ratchet_message(trailing) do
+    Err(InvalidMessage) -> Ok(nil)
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(_) -> Err(InvalidFixture)
+  end ?
+  let _ = case decode_ratchet_message(truncated) do
+    Err(InvalidMessage) -> Ok(nil)
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(_) -> Err(InvalidFixture)
+  end ?
+  case decode_ratchet_message(encoded) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(decoded) -> Ok(decoded)
   end
 end
 
@@ -400,6 +429,10 @@ fn proof() -> Int ! ProofError do
     Err(error) -> Err(RatchetProblem(error))
     Ok(value) -> Ok(value)
   end ?
+  let first_message = wire_message(first_message) ?
+  let second_message = wire_message(second_message) ?
+  let third_message = wire_message(third_message) ?
+  let fourth_message = wire_message(fourth_message) ?
   let bob_session = accept_message(bob_session, third_message, associated_data, third)
   let wrapping_key = storage_key() ?
   let (persisted_session, blob_v1) = sealed(
