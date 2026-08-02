@@ -40,6 +40,8 @@ fn handler(request) do
 end
 ```
 
+For encrypted envelopes and other binary payloads, use `Request.body_bytes(request)` and `HTTP.response_bytes(status, bytes)`. Binary responses default to `application/octet-stream`.
+
 Common status codes: `200` (OK), `201` (Created), `400` (Bad Request), `401` (Unauthorized), `404` (Not Found), `500` (Internal Server Error).
 
 ## Routing
@@ -133,6 +135,7 @@ The `Request` module provides accessors for reading request data:
 | `Request.method(request)` | `String` | HTTP method (GET, POST, etc.) |
 | `Request.path(request)` | `String` | Request path |
 | `Request.body(request)` | `String` | Request body |
+| `Request.body_bytes(request)` | `Bytes` | Byte-exact request body |
 | `Request.header(request, name)` | `Option<String>` | Header value by name |
 | `Request.query(request, name)` | `Option<String>` | Query parameter by name |
 | `Request.param(request, name)` | `Option<String>` | Path parameter by name |
@@ -510,13 +513,14 @@ end
 | `Http.header(req, key, value)` | Add a request header |
 | `Http.query(req, key, value)` | Add a percent-encoded query parameter |
 | `Http.body(req, value)` | Set a POST, PUT, or PATCH body |
+| `Http.body_bytes(req, value)` | Set a byte-exact POST, PUT, or PATCH body |
 | `Http.json(req, value)` | Set a body and the JSON content type |
 | `Http.timeout(req, ms)` | Set the total timeout |
 | `Http.stage_timeout(req, stage, ms)` | Set `:resolve`, `:connect`, `:send`, `:first_byte`, or `:body` timeout |
 | `Http.max_response_bytes(req, bytes)` | Set the buffered or streamed response limit |
 | `Http.send(req)` | Yield while executing; return `Result<HttpResponse, String>` |
 
-`HttpResponse` has `status`, `body`, and `headers` fields. HTTP status errors such as 404 are successful protocol responses and therefore return `Ok`; inspect `status`. Network, timeout, invalid UTF-8, and body-limit failures return `Err`.
+`HttpResponse` has `status`, `body`, `body_bytes`, and `headers` fields. `body_bytes` always preserves the exact response bytes; `body` is empty when the payload is not valid UTF-8. HTTP status errors such as 404 are successful protocol responses and therefore return `Ok`; inspect `status`. Network, timeout, and body-limit failures return `Err`.
 
 Timeouts must be between 1 and 120,000 milliseconds. Responses default to an 8 MiB limit and cannot be configured above 64 MiB.
 

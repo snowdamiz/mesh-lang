@@ -23,9 +23,9 @@ pub mod router;
 pub mod server;
 
 pub use client::{
-    mesh_http_body, mesh_http_build, mesh_http_cancel, mesh_http_client, mesh_http_client_close,
-    mesh_http_header, mesh_http_json, mesh_http_max_response_bytes, mesh_http_metrics,
-    mesh_http_query, mesh_http_retry_class, mesh_http_send, mesh_http_send_with,
+    mesh_http_body, mesh_http_body_bytes, mesh_http_build, mesh_http_cancel, mesh_http_client,
+    mesh_http_client_close, mesh_http_header, mesh_http_json, mesh_http_max_response_bytes,
+    mesh_http_metrics, mesh_http_query, mesh_http_retry_class, mesh_http_send, mesh_http_send_with,
     mesh_http_stage_timeout, mesh_http_stream, mesh_http_stream_bytes, mesh_http_timeout,
 };
 pub use router::{
@@ -33,8 +33,8 @@ pub use router::{
     mesh_http_route_put, mesh_http_router, mesh_http_use_middleware,
 };
 pub use server::{
-    mesh_http_idempotency_key, mesh_http_request_body, mesh_http_request_header,
-    mesh_http_request_id, mesh_http_request_method, mesh_http_request_param,
-    mesh_http_request_path, mesh_http_request_query, mesh_http_response_new, mesh_http_serve,
-    mesh_http_serve_tls,
+    mesh_http_idempotency_key, mesh_http_request_body, mesh_http_request_body_bytes,
+    mesh_http_request_header, mesh_http_request_id, mesh_http_request_method,
+    mesh_http_request_param, mesh_http_request_path, mesh_http_request_query,
+    mesh_http_response_bytes_new, mesh_http_response_new, mesh_http_serve, mesh_http_serve_tls,
 };

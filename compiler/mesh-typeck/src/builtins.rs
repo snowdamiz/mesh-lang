@@ -948,6 +948,13 @@ pub fn register_builtins(
             http_req_t.clone(),
         )),
     );
+    env.insert(
+        "http_body_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::bytes()],
+            http_req_t.clone(),
+        )),
+    );
     // Http.timeout(req, ms) -> Request
     env.insert(
         "http_timeout".into(),
@@ -1803,6 +1810,10 @@ pub fn register_builtins(
         "http_response".into(),
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())),
     );
+    env.insert(
+        "http_response_bytes".into(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::bytes()], response_t.clone())),
+    );
     // HTTP.response_with_headers(Int, String, Map<K, V>) -> Response
     {
         let k_var = TyVar(92000);
@@ -2114,6 +2125,10 @@ pub fn register_builtins(
     env.insert(
         "request_body".into(),
         Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    env.insert(
+        "request_body_bytes".into(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::bytes())),
     );
     // Request.header(Request, String) -> Option<String>
     env.insert(

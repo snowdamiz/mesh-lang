@@ -1,5 +1,8 @@
 #![cfg(unix)]
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -130,5 +133,77 @@ end
     assert_eq!(timings[2], 0, "plain HTTP unexpectedly recorded TLS time");
     assert!(timings[3] > 0, "first-byte timing was not recorded");
     assert!(timings[4] >= timings[3], "total time preceded first byte");
+    server.join().unwrap();
+}
+
+#[test]
+fn mesh_http_client_preserves_binary_request_and_response_bodies() {
+    artifacts::ensure_mesh_rt_staticlib();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let headers = read_request(&mut stream);
+        assert!(headers.starts_with("POST /binary HTTP/1.1\r\n"));
+        assert!(headers
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case("content-length: 3")));
+        let mut body = [0u8; 3];
+        stream.read_exact(&mut body).unwrap();
+        assert_eq!(body, [0x00, 0xff, 0x80]);
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: 3\r\nConnection: close\r\n\r\n\x00\xff\x80",
+            )
+            .unwrap();
+    });
+
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("http-binary-client");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::write(
+        project.join("main.mpl"),
+        format!(
+            r##"
+fn main() do
+  case Bytes.from_list([0, 255, 128]) do
+    Err(_) -> println("fixture:error")
+    Ok(body) -> do
+      let request = Http.build(:post, "http://127.0.0.1:{port}/binary")
+        |> Http.body_bytes(body)
+        |> Http.max_response_bytes(3)
+      case Http.send(request) do
+        Err(error) -> println("http:error:" <> error)
+        Ok(response) -> println(Bytes.to_hex(response.body_bytes))
+      end
+    end
+  end
+end
+"##
+        ),
+    )
+    .unwrap();
+
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join("http-binary-client"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "Mesh HTTP client failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "00ff80\n");
     server.join().unwrap();
 }

@@ -988,6 +988,13 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         )),
     );
     http_client_mod.insert(
+        "body_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::bytes()],
+            http_req_t.clone(),
+        )),
+    );
+    http_client_mod.insert(
         "timeout".to_string(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::int()],
@@ -1802,6 +1809,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         "response".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], response_t.clone())),
     );
+    http_mod.insert(
+        "response_bytes".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::bytes()], response_t.clone())),
+    );
     // Phase 88: response_with_headers(Int, String, Map<K, V>) -> Response
     {
         let k_var = TyVar(92000);
@@ -1916,6 +1927,10 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     request_mod.insert(
         "body".to_string(),
         Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::string())),
+    );
+    request_mod.insert(
+        "body_bytes".to_string(),
+        Scheme::mono(Ty::fun(vec![request_t.clone()], Ty::bytes())),
     );
     request_mod.insert(
         "header".to_string(),
@@ -3769,6 +3784,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("status".to_string(), Ty::int()),
             ("body".to_string(), Ty::string()),
             ("headers".to_string(), Ty::map(Ty::string(), Ty::string())),
+            ("body_bytes".to_string(), Ty::bytes()),
         ],
     });
     type_registry.register_struct(StructDefInfo {

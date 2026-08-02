@@ -17,7 +17,7 @@ use ureq::{Agent, Error as UreqError, RequestBuilder};
 use url::Url;
 
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
-use crate::bytes::mesh_bytes_new;
+use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::alloc_result;
@@ -83,7 +83,7 @@ impl MeshRequestData {
 #[derive(Debug)]
 struct WorkerResponse {
     status: i64,
-    body: String,
+    body: Vec<u8>,
     headers: Vec<(String, String)>,
 }
 
@@ -102,6 +102,7 @@ pub struct MeshClientResponse {
     pub status: i64,
     pub body: *mut u8,
     pub headers: *mut u8,
+    pub body_bytes: *mut u8,
 }
 
 #[repr(C)]
@@ -389,6 +390,15 @@ pub extern "C" fn mesh_http_body(handle: u64, body: *const MeshString) -> u64 {
         return 0;
     }
     let body = unsafe { (*body).as_str().as_bytes().to_vec() };
+    update_request(handle, |request| request.body = Some(body))
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_http_body_bytes(handle: u64, body: *const MeshBytes) -> u64 {
+    if body.is_null() {
+        return 0;
+    }
+    let body = unsafe { (*body).as_slice().to_vec() };
     update_request(handle, |request| request.body = Some(body))
 }
 
@@ -711,15 +721,23 @@ fn execute_request(
             )
         })
         .collect();
+    let maximum = request.max_response_bytes;
     let body = response
         .body_mut()
         .with_config()
-        .limit(request.max_response_bytes as u64)
-        .read_to_string()
+        .limit(maximum.saturating_add(1) as u64)
+        .read_to_vec()
         .map_err(|error| {
             record_error(&error);
-            format_error(&error)
+            if matches!(error, UreqError::BodyExceedsLimit(_)) {
+                format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
+            } else {
+                format_error(&error)
+            }
         })?;
+    if body.len() > maximum {
+        return Err(format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes"));
+    }
     if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err("CANCELLED: HTTP request".to_string());
     }
@@ -744,7 +762,9 @@ fn mesh_error(message: impl AsRef<str>) -> *mut u8 {
 
 fn mesh_response(response: WorkerResponse) -> *mut u8 {
     unsafe {
-        let body = mesh_string_new(response.body.as_ptr(), response.body.len() as u64);
+        let body_text = std::str::from_utf8(&response.body).unwrap_or("");
+        let body = mesh_string_new(body_text.as_ptr(), body_text.len() as u64);
+        let body_bytes = mesh_bytes_new(response.body.as_ptr(), response.body.len() as u64);
         let mut headers = mesh_map_new_typed(1);
         for (name, value) in response.headers {
             let name = mesh_string_new(name.as_ptr(), name.len() as u64);
@@ -758,6 +778,7 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
         (*output).status = response.status;
         (*output).body = body.cast();
         (*output).headers = headers.cast();
+        (*output).body_bytes = body_bytes.cast();
         alloc_result(0, output.cast()).cast()
     }
 }

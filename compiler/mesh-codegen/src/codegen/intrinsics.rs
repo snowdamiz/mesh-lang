@@ -1104,6 +1104,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         body_ty,
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_http_body_bytes",
+        body_ty,
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mesh_http_timeout(handle: i64, ms: i64) -> i64
     let timeout_ty = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
@@ -2139,6 +2144,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_http_response_bytes_new",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mesh_http_response_with_headers(status: i64, body: ptr, headers: ptr) -> ptr
     module.add_function(
@@ -2164,6 +2174,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // mesh_http_request_body(req: ptr) -> ptr
     module.add_function(
         "mesh_http_request_body",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_http_request_body_bytes",
         ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );

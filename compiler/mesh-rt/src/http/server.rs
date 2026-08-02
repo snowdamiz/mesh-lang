@@ -27,6 +27,7 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 use rustls_pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 
 use crate::actor;
+use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::string::{mesh_string_new, MeshString};
@@ -122,6 +123,8 @@ pub struct MeshHttpRequest {
     pub request_id: *mut u8,
     /// Validated caller idempotency key, or null when absent.
     pub idempotency_key: *mut u8,
+    /// Request body as byte-exact MeshBytes.
+    pub body_bytes: *mut u8,
 }
 
 /// HTTP response returned by Mesh handler functions.
@@ -137,6 +140,8 @@ pub struct MeshHttpResponse {
     /// Optional response headers as MeshMap (string keys -> string values).
     /// Null when no custom headers are set (backward compatible).
     pub headers: *mut u8,
+    /// Byte-exact response body, or null for a text response.
+    pub body_bytes: *mut u8,
 }
 
 // ── Response constructor ───────────────────────────────────────────────
@@ -153,6 +158,7 @@ pub extern "C" fn mesh_http_response_new(status: i64, body: *const MeshString) -
         (*ptr).status = status;
         (*ptr).body = body as *mut u8;
         (*ptr).headers = std::ptr::null_mut();
+        (*ptr).body_bytes = std::ptr::null_mut();
         ptr as *mut u8
     }
 }
@@ -175,6 +181,23 @@ pub extern "C" fn mesh_http_response_with_headers(
         (*ptr).status = status;
         (*ptr).body = body as *mut u8;
         (*ptr).headers = headers;
+        (*ptr).body_bytes = std::ptr::null_mut();
+        ptr as *mut u8
+    }
+}
+
+/// Create a byte-exact HTTP response.
+#[no_mangle]
+pub extern "C" fn mesh_http_response_bytes_new(status: i64, body: *const MeshBytes) -> *mut u8 {
+    unsafe {
+        let ptr = mesh_gc_alloc_actor(
+            std::mem::size_of::<MeshHttpResponse>() as u64,
+            std::mem::align_of::<MeshHttpResponse>() as u64,
+        ) as *mut MeshHttpResponse;
+        (*ptr).status = status;
+        (*ptr).body = std::ptr::null_mut();
+        (*ptr).headers = std::ptr::null_mut();
+        (*ptr).body_bytes = body as *mut u8;
         ptr as *mut u8
     }
 }
@@ -190,7 +213,7 @@ const CLUSTERED_ROUTE_REMOTE_HEADER: &str = "X-Mesh-Routed-Remotely";
 struct TransportHttpRequest {
     method: String,
     path: String,
-    body: String,
+    body: Vec<u8>,
     query_params: Vec<(String, String)>,
     headers: Vec<(String, String)>,
     path_params: Vec<(String, String)>,
@@ -201,7 +224,7 @@ struct TransportHttpRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TransportHttpResponse {
     status: i64,
-    body: String,
+    body: Vec<u8>,
     headers: Vec<(String, String)>,
 }
 
@@ -215,6 +238,14 @@ fn mesh_string_ptr_to_owned(ptr: *mut u8) -> String {
 
 fn mesh_string_to_ptr(value: &str) -> *mut u8 {
     mesh_string_new(value.as_ptr(), value.len() as u64) as *mut u8
+}
+
+fn mesh_bytes_ptr_to_owned(ptr: *mut u8) -> Vec<u8> {
+    if ptr.is_null() {
+        Vec::new()
+    } else {
+        unsafe { (*(ptr as *const MeshBytes)).as_slice().to_vec() }
+    }
 }
 
 fn mesh_map_to_pairs(map_ptr: *mut u8) -> Result<Vec<(String, String)>, String> {
@@ -261,7 +292,11 @@ fn mesh_request_to_transport(request_ptr: *mut u8) -> Result<TransportHttpReques
     Ok(TransportHttpRequest {
         method: mesh_string_ptr_to_owned(request.method),
         path: mesh_string_ptr_to_owned(request.path),
-        body: mesh_string_ptr_to_owned(request.body),
+        body: if request.body_bytes.is_null() {
+            mesh_string_ptr_to_owned(request.body).into_bytes()
+        } else {
+            mesh_bytes_ptr_to_owned(request.body_bytes)
+        },
         query_params: mesh_map_to_pairs(request.query_params)?,
         headers: mesh_map_to_pairs(request.headers)?,
         path_params: mesh_map_to_pairs(request.path_params)?,
@@ -279,7 +314,9 @@ fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
         ) as *mut MeshHttpRequest;
         (*req_ptr).method = mesh_string_to_ptr(&request.method);
         (*req_ptr).path = mesh_string_to_ptr(&request.path);
-        (*req_ptr).body = mesh_string_to_ptr(&request.body);
+        (*req_ptr).body = std::str::from_utf8(&request.body)
+            .map(mesh_string_to_ptr)
+            .unwrap_or_else(|_| mesh_string_to_ptr(""));
         (*req_ptr).query_params = pairs_to_mesh_map(&request.query_params);
         (*req_ptr).headers = pairs_to_mesh_map(&request.headers);
         (*req_ptr).path_params = pairs_to_mesh_map(&request.path_params);
@@ -289,6 +326,8 @@ fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
             .as_deref()
             .map(mesh_string_to_ptr)
             .unwrap_or(std::ptr::null_mut());
+        (*req_ptr).body_bytes =
+            mesh_bytes_new(request.body.as_ptr(), request.body.len() as u64) as *mut u8;
         req_ptr as *mut u8
     }
 }
@@ -299,15 +338,44 @@ fn mesh_response_to_transport(response_ptr: *mut u8) -> Result<TransportHttpResp
     }
 
     let response = unsafe { &*(response_ptr as *const MeshHttpResponse) };
+    let binary_body = !response.body_bytes.is_null();
+    let mut headers = mesh_map_to_pairs(response.headers)?;
+    if binary_body
+        && !headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        headers.push((
+            "Content-Type".to_string(),
+            "application/octet-stream".to_string(),
+        ));
+    }
     Ok(TransportHttpResponse {
         status: response.status,
-        body: mesh_string_ptr_to_owned(response.body),
-        headers: mesh_map_to_pairs(response.headers)?,
+        body: if binary_body {
+            mesh_bytes_ptr_to_owned(response.body_bytes)
+        } else {
+            mesh_string_ptr_to_owned(response.body).into_bytes()
+        },
+        headers,
     })
 }
 
 fn transport_response_to_mesh(response: &TransportHttpResponse) -> *mut u8 {
-    let body = mesh_string_to_ptr(&response.body) as *const MeshString;
+    if response.headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-type")
+            && value.eq_ignore_ascii_case("application/octet-stream")
+    }) {
+        let body = mesh_bytes_new(response.body.as_ptr(), response.body.len() as u64);
+        let response_ptr = mesh_http_response_bytes_new(response.status, body);
+        unsafe {
+            (*(response_ptr as *mut MeshHttpResponse)).headers =
+                pairs_to_mesh_map(&response.headers);
+        }
+        return response_ptr;
+    }
+    let body_text = std::str::from_utf8(&response.body).unwrap_or("");
+    let body = mesh_string_to_ptr(body_text) as *const MeshString;
     if response.headers.is_empty() {
         mesh_http_response_new(response.status, body)
     } else {
@@ -326,6 +394,36 @@ fn encode_len_prefixed_string(
     payload.extend_from_slice(&len.to_le_bytes());
     payload.extend_from_slice(value.as_bytes());
     Ok(())
+}
+
+fn encode_len_prefixed_bytes(
+    payload: &mut Vec<u8>,
+    value: &[u8],
+    label: &str,
+) -> Result<(), String> {
+    let len = u32::try_from(value.len())
+        .map_err(|_| format!("mesh_http_transport_{}_too_large:{}", label, value.len()))?;
+    payload.extend_from_slice(&len.to_le_bytes());
+    payload.extend_from_slice(value);
+    Ok(())
+}
+
+fn decode_len_prefixed_bytes(
+    payload: &[u8],
+    pos: &mut usize,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    if *pos + 4 > payload.len() {
+        return Err(format!("mesh_http_transport_{}_len_missing", label));
+    }
+    let len = u32::from_le_bytes(payload[*pos..*pos + 4].try_into().unwrap()) as usize;
+    *pos += 4;
+    if *pos + len > payload.len() {
+        return Err(format!("mesh_http_transport_{}_truncated", label));
+    }
+    let value = payload[*pos..*pos + len].to_vec();
+    *pos += len;
+    Ok(value)
 }
 
 fn decode_len_prefixed_string(
@@ -391,7 +489,7 @@ fn encode_transport_request(request: &TransportHttpRequest) -> Result<Vec<u8>, S
     let mut payload = Vec::new();
     encode_len_prefixed_string(&mut payload, &request.method, "request_method")?;
     encode_len_prefixed_string(&mut payload, &request.path, "request_path")?;
-    encode_len_prefixed_string(&mut payload, &request.body, "request_body")?;
+    encode_len_prefixed_bytes(&mut payload, &request.body, "request_body")?;
     encode_string_pairs(&mut payload, &request.query_params, "request_query_params")?;
     encode_string_pairs(&mut payload, &request.headers, "request_headers")?;
     encode_string_pairs(&mut payload, &request.path_params, "request_path_params")?;
@@ -413,7 +511,7 @@ fn decode_transport_request(payload: &[u8]) -> Result<TransportHttpRequest, Stri
     let mut pos = 0usize;
     let method = decode_len_prefixed_string(payload, &mut pos, "request_method")?;
     let path = decode_len_prefixed_string(payload, &mut pos, "request_path")?;
-    let body = decode_len_prefixed_string(payload, &mut pos, "request_body")?;
+    let body = decode_len_prefixed_bytes(payload, &mut pos, "request_body")?;
     let query_params = decode_string_pairs(payload, &mut pos, "request_query_params")?;
     let headers = decode_string_pairs(payload, &mut pos, "request_headers")?;
     let path_params = decode_string_pairs(payload, &mut pos, "request_path_params")?;
@@ -458,7 +556,7 @@ fn decode_transport_request(payload: &[u8]) -> Result<TransportHttpRequest, Stri
 fn encode_transport_response(response: &TransportHttpResponse) -> Result<Vec<u8>, String> {
     let mut payload = Vec::new();
     payload.extend_from_slice(&response.status.to_le_bytes());
-    encode_len_prefixed_string(&mut payload, &response.body, "response_body")?;
+    encode_len_prefixed_bytes(&mut payload, &response.body, "response_body")?;
     encode_string_pairs(&mut payload, &response.headers, "response_headers")?;
     Ok(payload)
 }
@@ -472,7 +570,7 @@ fn decode_transport_response(payload: &[u8]) -> Result<TransportHttpResponse, St
     pos += 8;
     let response = TransportHttpResponse {
         status,
-        body: decode_len_prefixed_string(payload, &mut pos, "response_body")?,
+        body: decode_len_prefixed_bytes(payload, &mut pos, "response_body")?,
         headers: decode_string_pairs(payload, &mut pos, "response_headers")?,
     };
     if pos != payload.len() {
@@ -561,7 +659,7 @@ pub(crate) fn build_clustered_http_route_identity(
         path_parameters: &request.path_params,
         query_parameters: &request.query_params,
         semantic_headers: &semantic_headers,
-        body: request.body.as_bytes(),
+        body: &request.body,
         tenant_scope,
     }
     .hash()?;
@@ -719,6 +817,12 @@ pub extern "C" fn mesh_http_request_path(req: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_http_request_body(req: *mut u8) -> *mut u8 {
     unsafe { (*(req as *const MeshHttpRequest)).body }
+}
+
+/// Get the byte-exact request body.
+#[no_mangle]
+pub extern "C" fn mesh_http_request_body_bytes(req: *mut u8) -> *mut u8 {
+    unsafe { (*(req as *const MeshHttpRequest)).body_bytes }
 }
 
 /// Get the value of a request header by name. Returns MeshOption
@@ -1438,8 +1542,11 @@ fn process_request(
         let path = mesh_string_new(path_str.as_ptr(), path_str.len() as u64) as *mut u8;
 
         // Body from parsed request.
-        let body_bytes = parsed.body;
-        let body = mesh_string_new(body_bytes.as_ptr(), body_bytes.len() as u64) as *mut u8;
+        let body_value = parsed.body;
+        let body = std::str::from_utf8(&body_value)
+            .map(mesh_string_to_ptr)
+            .unwrap_or_else(|_| mesh_string_to_ptr(""));
+        let body_bytes = mesh_bytes_new(body_value.as_ptr(), body_value.len() as u64) as *mut u8;
 
         let request_id_value = match crate::dist::identity::request_id_generator().next() {
             Ok(request_id) => request_id.to_string(),
@@ -1495,6 +1602,7 @@ fn process_request(
             (*mesh_req).path_params = path_params_map;
             (*mesh_req).request_id = request_id;
             (*mesh_req).idempotency_key = idempotency_key;
+            (*mesh_req).body_bytes = body_bytes;
             mesh_req as *mut u8
         };
 
@@ -1552,15 +1660,19 @@ fn process_request(
         // Extract response from the Mesh response pointer.
         let resp = &*(response_ptr as *const MeshHttpResponse);
         let status_code = resp.status as u16;
-        let body_str = if resp.body.is_null() {
-            ""
+        let body = if resp.body_bytes.is_null() {
+            if resp.body.is_null() {
+                Vec::new()
+            } else {
+                let body_mesh = &*(resp.body as *const MeshString);
+                body_mesh.as_bytes().to_vec()
+            }
         } else {
-            let body_mesh = &*(resp.body as *const MeshString);
-            body_mesh.as_str()
+            (*(resp.body_bytes as *const MeshBytes)).as_slice().to_vec()
         };
 
         // Extract custom headers from the response if present.
-        let extra_headers = if resp.headers.is_null() {
+        let mut extra_headers = if resp.headers.is_null() {
             None
         } else {
             let headers_map = resp.headers;
@@ -1585,7 +1697,20 @@ fn process_request(
             }
         };
 
-        (status_code, body_str.as_bytes().to_vec(), extra_headers)
+        if !resp.body_bytes.is_null()
+            && !extra_headers.as_ref().is_some_and(|headers| {
+                headers
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            })
+        {
+            extra_headers.get_or_insert_with(Vec::new).push((
+                "Content-Type".to_string(),
+                "application/octet-stream".to_string(),
+            ));
+        }
+
+        (status_code, body, extra_headers)
     }
 }
 
@@ -1643,6 +1768,7 @@ mod tests {
                 .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
                 .map(|(_, value)| mesh_string_to_ptr(value))
                 .unwrap_or(std::ptr::null_mut());
+            (*req_ptr).body_bytes = mesh_bytes_new(body.as_ptr(), body.len() as u64) as *mut u8;
             req_ptr as *mut u8
         }
     }
@@ -1851,7 +1977,7 @@ mod tests {
 
         assert_eq!(decoded.method, "POST");
         assert_eq!(decoded.path, "/todos/42");
-        assert_eq!(decoded.body, "{\"title\":\"mesh\"}");
+        assert_eq!(decoded.body, b"{\"title\":\"mesh\"}");
         assert_eq!(decoded.query_params, owned_pairs(&[("limit", "10")]));
         assert_eq!(
             decoded.headers,
@@ -1902,8 +2028,33 @@ mod tests {
         let decoded = mesh_response_to_transport(decoded_ptr).expect("decoded response");
 
         assert_eq!(decoded.status, 201);
-        assert_eq!(decoded.body, "{\"created\":true}");
+        assert_eq!(decoded.body, b"{\"created\":true}");
         assert_eq!(decoded.headers, owned_pairs(&[("X-Test", "yes")]));
+    }
+
+    #[test]
+    fn http_transport_roundtrip_preserves_non_utf8_bodies() {
+        mesh_rt_init();
+        let binary = [0, 0xff, 0x80];
+        let request_ptr = build_test_request("POST", "/binary", "", &[], &[], &[]);
+        unsafe {
+            (*(request_ptr as *mut MeshHttpRequest)).body_bytes =
+                mesh_bytes_new(binary.as_ptr(), binary.len() as u64) as *mut u8;
+        }
+
+        let request_payload = encode_http_request_payload(request_ptr).unwrap();
+        let decoded_request = decode_http_request_payload(&request_payload).unwrap();
+        assert_eq!(
+            mesh_bytes_ptr_to_owned(mesh_http_request_body_bytes(decoded_request)),
+            binary
+        );
+
+        let response_ptr =
+            mesh_http_response_bytes_new(200, mesh_bytes_new(binary.as_ptr(), binary.len() as u64));
+        let response_payload = encode_http_response_payload(response_ptr).unwrap();
+        let decoded_response = decode_http_response_payload(&response_payload).unwrap();
+        let response = unsafe { &*(decoded_response as *const MeshHttpResponse) };
+        assert_eq!(mesh_bytes_ptr_to_owned(response.body_bytes), binary);
     }
 
     #[test]
@@ -2146,7 +2297,7 @@ mod tests {
 
         assert_eq!(CLUSTERED_ROUTE_HANDLER_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(response.status, 200);
-        assert_eq!(response.body, "{\"echo\":\"payload\"}");
+        assert_eq!(response.body, b"{\"echo\":\"payload\"}");
         assert_eq!(response.headers, owned_pairs(&[("X-Clustered", "true")]));
     }
 }

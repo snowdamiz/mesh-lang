@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, MutexGuard};
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn meshc_build_guard() -> MutexGuard<'static, ()> {
     static BUILD_LOCK: Mutex<()> = Mutex::new(());
     BUILD_LOCK
@@ -924,6 +927,46 @@ fn e2e_http_server_runtime() {
     );
 
     // ServerGuard Drop will kill the server process.
+}
+
+#[test]
+fn e2e_http_server_preserves_binary_request_and_response_bodies() {
+    artifacts::ensure_mesh_rt_staticlib();
+    let source = r#"
+fn echo(request :: Request) -> Response do
+  HTTP.response_bytes(200, Request.body_bytes(request))
+end
+
+fn main() do
+  HTTP.router()
+    |> HTTP.on_post("/binary", echo)
+    |> HTTP.serve(18085)
+end
+"#;
+    let mut guard = compile_and_start_server(source);
+    wait_for_server_ready(&mut guard);
+
+    let mut stream = std::net::TcpStream::connect("127.0.0.1:18085").unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    stream
+        .write_all(
+            b"POST /binary HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/octet-stream\r\nContent-Length: 3\r\nConnection: close\r\n\r\n\x00\xff\x80",
+        )
+        .unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let separator = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .expect("HTTP response separator");
+    let headers = String::from_utf8(response[..separator].to_vec()).unwrap();
+    assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"), "{headers}");
+    assert!(headers
+        .lines()
+        .any(|line| line.eq_ignore_ascii_case("content-type: application/octet-stream")));
+    assert_eq!(&response[separator + 4..], &[0x00, 0xff, 0x80]);
 }
 
 #[test]

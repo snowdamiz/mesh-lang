@@ -2435,6 +2435,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Int)),
         );
         self.known_functions.insert(
+            "mesh_http_body_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
             "mesh_http_timeout".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
         );
@@ -3180,6 +3184,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int, MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_http_response_bytes_new".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_http_response_with_headers".to_string(),
             MirType::FnPtr(
                 vec![MirType::Int, MirType::String, MirType::Ptr],
@@ -3197,6 +3205,10 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             "mesh_http_request_body".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+        );
+        self.known_functions.insert(
+            "mesh_http_request_body_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
             "mesh_http_request_header".to_string(),
@@ -15237,6 +15249,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_build" => "mesh_http_build".to_string(),
         "http_header" => "mesh_http_header".to_string(),
         "http_body" => "mesh_http_body".to_string(),
+        "http_body_bytes" => "mesh_http_body_bytes".to_string(),
         "http_timeout" => "mesh_http_timeout".to_string(),
         "http_stage_timeout" => "mesh_http_stage_timeout".to_string(),
         "http_max_response_bytes" => "mesh_http_max_response_bytes".to_string(),
@@ -15425,11 +15438,13 @@ fn map_builtin_name(name: &str) -> String {
         "http_serve" => "mesh_http_serve".to_string(),
         "http_serve_tls" => "mesh_http_serve_tls".to_string(),
         "http_response" => "mesh_http_response_new".to_string(),
+        "http_response_bytes" => "mesh_http_response_bytes_new".to_string(),
         "http_response_with_headers" => "mesh_http_response_with_headers".to_string(),
         // Request accessor functions (prefixed form from module-qualified access)
         "request_method" => "mesh_http_request_method".to_string(),
         "request_path" => "mesh_http_request_path".to_string(),
         "request_body" => "mesh_http_request_body".to_string(),
+        "request_body_bytes" => "mesh_http_request_body_bytes".to_string(),
         "request_header" => "mesh_http_request_header".to_string(),
         "request_query" => "mesh_http_request_query".to_string(),
         // Phase 51: Path parameter accessor
@@ -16383,6 +16398,7 @@ pub fn lower_to_mir(
             ("status".to_string(), MirType::Int),
             ("body".to_string(), MirType::Ptr), // *mut MeshString
             ("headers".to_string(), MirType::Ptr), // *mut MeshMap
+            ("body_bytes".to_string(), MirType::Ptr), // *mut MeshBytes
         ],
     });
     lowerer.structs.push(MirStructDef {
