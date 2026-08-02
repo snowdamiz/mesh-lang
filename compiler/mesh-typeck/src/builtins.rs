@@ -632,6 +632,46 @@ pub fn register_builtins(
             Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
         )),
     );
+    let secret_map = Ty::secret_map();
+    env.insert(
+        "secret_map_new".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            Ty::result(secret_map.clone(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_map_insert".into(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes(), Ty::secret_bytes()],
+            Ty::result(Ty::Tuple(vec![]), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_map_contains".into(),
+        Scheme::mono(Ty::fun(vec![secret_map.clone(), Ty::bytes()], Ty::bool())),
+    );
+    env.insert(
+        "secret_map_copy".into(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_map_delete".into(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes()],
+            Ty::result(Ty::Tuple(vec![]), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_map_merge".into(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), secret_map],
+            Ty::result(Ty::Tuple(vec![]), Ty::crypto_error()),
+        )),
+    );
 
     register_wide_integer(env, "u64", Ty::u64());
     register_wide_integer(env, "u128", Ty::u128());

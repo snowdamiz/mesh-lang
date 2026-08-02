@@ -2,6 +2,7 @@
 
 use crate::actor::heap::{GcHeader, GC_HEADER_SIZE};
 use crate::actor::{Process, ProcessId, ProcessState};
+use crate::bytes::MeshBytes;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use parking_lot::Mutex;
@@ -17,6 +18,8 @@ const MAX_SECRET_SLOTS: usize = 65_536;
 const MAX_SECRETS_PER_ACTOR: usize = 4_096;
 const MAX_SECRET_BYTES_PER_ACTOR: usize = 4 * 1024 * 1024;
 const MAX_TOTAL_SECRET_BYTES: usize = 64 * 1024 * 1024;
+const MAX_SECRET_MAP_CAPACITY: usize = 64;
+const MAX_SECRET_MAP_KEY_BYTES: usize = 128;
 const HANDLE_ALIGNMENT: usize = mem::align_of::<GcHeader>();
 
 #[repr(u8)]
@@ -157,6 +160,193 @@ pub extern "C" fn mesh_secret_concat(
     }
 }
 
+fn secret_map_error_result(error: SecretMapError) -> *mut MeshResult {
+    let tag = match error {
+        SecretMapError::InvalidCapacity | SecretMapError::CapacityExceeded => {
+            CryptoErrorTag::ResourceLimitExceeded
+        }
+        SecretMapError::InvalidKey | SecretMapError::DuplicateKey => CryptoErrorTag::InvalidKey,
+        SecretMapError::InvalidEncoding => CryptoErrorTag::InternalFailure,
+        SecretMapError::Resource(ResourceError::ResourceLimitExceeded) => {
+            CryptoErrorTag::ResourceLimitExceeded
+        }
+        SecretMapError::Resource(ResourceError::WrongKind) => CryptoErrorTag::InvalidKey,
+        SecretMapError::Resource(
+            ResourceError::StaleHandle | ResourceError::WrongOwner | ResourceError::OwnerExited,
+        ) => CryptoErrorTag::SecretDestroyed,
+    };
+    crypto_error(tag, 0, 0)
+}
+
+fn with_current_secret_process<R>(
+    operation: impl FnOnce(&mut Process) -> Result<R, SecretMapError>,
+) -> Result<R, SecretMapError> {
+    let owner = crate::actor::stack::get_current_pid()
+        .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
+    let scheduler = crate::actor::GLOBAL_SCHEDULER
+        .get()
+        .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
+    let process = scheduler
+        .get_process(owner)
+        .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
+    let mut process = process.lock();
+    live_owner(&process).map_err(SecretMapError::Resource)?;
+    operation(&mut process)
+}
+
+unsafe fn public_secret_map_key(key: *const MeshBytes) -> Result<Vec<u8>, SecretMapError> {
+    if key.is_null() || (*key).len == 0 || (*key).len > MAX_SECRET_MAP_KEY_BYTES as u64 {
+        return Err(SecretMapError::InvalidKey);
+    }
+    Ok((*key).as_slice().to_vec())
+}
+
+/// Create a zeroizing, actor-owned map with a fixed entry bound.
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_new(capacity: i64) -> *mut MeshResult {
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return secret_map_error_result(SecretMapError::InvalidCapacity);
+    };
+    match with_current_secret_process(|process| {
+        let handle = secret_table()
+            .lock()
+            .insert_secret_map(process.pid, capacity)?;
+        Ok(allocate_handle(process, handle))
+    }) {
+        Ok(handle) => alloc_result(0, handle.cast()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
+/// Move one secret into a borrowed map. The secret is destroyed on every error.
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_insert(
+    map: *mut MeshSecretHandle,
+    key: *const MeshBytes,
+    value: *mut MeshSecretHandle,
+) -> *mut MeshResult {
+    let key = match unsafe { public_secret_map_key(key) } {
+        Ok(key) => key,
+        Err(error) => {
+            destroy_resource_for_current_actor(value, Some(ResourceKind::SecretBytes));
+            return secret_map_error_result(error);
+        }
+    };
+    match with_current_secret_process(|process| {
+        let map = validate_handle_pointer(process, map)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
+        let value_handle = validate_handle_pointer(process, value)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
+        let (map, value_handle) = match (map, value_handle) {
+            (Ok(map), Ok(value_handle)) => (map, value_handle),
+            (_, error) => {
+                destroy_resource_for_process(process, value, Some(ResourceKind::SecretBytes));
+                return Err(error
+                    .err()
+                    .unwrap_or(SecretMapError::Resource(ResourceError::StaleHandle)));
+            }
+        };
+        secret_table()
+            .lock()
+            .secret_map_insert(process.pid, map, &key, value_handle)
+    }) {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_contains(
+    map: *const MeshSecretHandle,
+    key: *const MeshBytes,
+) -> i8 {
+    let Ok(key) = (unsafe { public_secret_map_key(key) }) else {
+        return 0;
+    };
+    with_current_secret_process(|process| {
+        let handle = validate_handle_pointer(process, map)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle))?;
+        secret_table()
+            .lock()
+            .secret_map_contains(process.pid, handle, &key)
+    })
+    .unwrap_or(false) as i8
+}
+
+/// Copy a stored key into a new affine secret while leaving the map unchanged.
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_copy(
+    map: *const MeshSecretHandle,
+    key: *const MeshBytes,
+) -> *mut MeshResult {
+    let key = match unsafe { public_secret_map_key(key) } {
+        Ok(key) => key,
+        Err(error) => return secret_map_error_result(error),
+    };
+    match with_current_secret_process(|process| {
+        let map = validate_handle_pointer(process, map)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle))?;
+        let copied = secret_table()
+            .lock()
+            .secret_map_copy(process.pid, map, &key)?;
+        Ok(allocate_handle(process, copied))
+    }) {
+        Ok(handle) => alloc_result(0, handle.cast()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_delete(
+    map: *mut MeshSecretHandle,
+    key: *const MeshBytes,
+) -> *mut MeshResult {
+    let key = match unsafe { public_secret_map_key(key) } {
+        Ok(key) => key,
+        Err(error) => return secret_map_error_result(error),
+    };
+    match with_current_secret_process(|process| {
+        let map = validate_handle_pointer(process, map)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle))?;
+        secret_table()
+            .lock()
+            .secret_map_delete(process.pid, map, &key)
+            .map(|_| ())
+    }) {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
+/// Atomically merge a speculative map into a committed map and consume it.
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_merge(
+    target: *mut MeshSecretHandle,
+    source: *mut MeshSecretHandle,
+) -> *mut MeshResult {
+    match with_current_secret_process(|process| {
+        let target_handle = validate_handle_pointer(process, target)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
+        let source_handle = validate_handle_pointer(process, source)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
+        let (target_handle, source_handle) = match (target_handle, source_handle) {
+            (Ok(target_handle), Ok(source_handle)) => (target_handle, source_handle),
+            (_, error) => {
+                destroy_resource_for_process(process, source, Some(ResourceKind::SecretMap));
+                return Err(error
+                    .err()
+                    .unwrap_or(SecretMapError::Resource(ResourceError::StaleHandle)));
+            }
+        };
+        secret_table()
+            .lock()
+            .secret_map_merge(process.pid, target_handle, source_handle)
+    }) {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
 /// Explicitly destroy a secret owned by the current actor.
 ///
 /// Null, stale, foreign, wrong-kind, and already-destroyed handles are no-ops.
@@ -218,6 +408,7 @@ pub(crate) enum ResourceKind {
     SigningPrivateKey = 3,
     AeadKey = 4,
     StorageKey = 5,
+    SecretMap = 6,
 }
 
 impl ResourceKind {
@@ -228,6 +419,7 @@ impl ResourceKind {
             value if value == Self::SigningPrivateKey as u32 => Some(Self::SigningPrivateKey),
             value if value == Self::AeadKey as u32 => Some(Self::AeadKey),
             value if value == Self::StorageKey as u32 => Some(Self::StorageKey),
+            value if value == Self::SecretMap as u32 => Some(Self::SecretMap),
             _ => None,
         }
     }
@@ -466,6 +658,124 @@ enum ConcatSecretError {
     Resource(ResourceError),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SecretMapError {
+    Resource(ResourceError),
+    InvalidCapacity,
+    InvalidKey,
+    InvalidEncoding,
+    CapacityExceeded,
+    DuplicateKey,
+}
+
+impl From<ResourceError> for SecretMapError {
+    fn from(error: ResourceError) -> Self {
+        Self::Resource(error)
+    }
+}
+
+struct SecretMapData {
+    capacity: u16,
+    entries: Vec<(Vec<u8>, Zeroizing<Box<[u8]>>)>,
+}
+
+impl SecretMapData {
+    fn empty(capacity: usize) -> Result<Self, SecretMapError> {
+        if !(1..=MAX_SECRET_MAP_CAPACITY).contains(&capacity) {
+            return Err(SecretMapError::InvalidCapacity);
+        }
+        Ok(Self {
+            capacity: capacity as u16,
+            entries: Vec::new(),
+        })
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, SecretMapError> {
+        if bytes.len() < 4 {
+            return Err(SecretMapError::InvalidEncoding);
+        }
+        let capacity = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let count = u16::from_be_bytes([bytes[2], bytes[3]]) as usize;
+        if capacity == 0 || capacity as usize > MAX_SECRET_MAP_CAPACITY || count > capacity as usize
+        {
+            return Err(SecretMapError::InvalidEncoding);
+        }
+
+        let mut offset = 4usize;
+        let mut entries = Vec::with_capacity(count);
+        for _ in 0..count {
+            let header_end = offset
+                .checked_add(6)
+                .ok_or(SecretMapError::InvalidEncoding)?;
+            let header = bytes
+                .get(offset..header_end)
+                .ok_or(SecretMapError::InvalidEncoding)?;
+            let key_length = u16::from_be_bytes([header[0], header[1]]) as usize;
+            let value_length =
+                u32::from_be_bytes([header[2], header[3], header[4], header[5]]) as usize;
+            if !(1..=MAX_SECRET_MAP_KEY_BYTES).contains(&key_length)
+                || value_length == 0
+                || value_length > MAX_SECRET_BYTES
+            {
+                return Err(SecretMapError::InvalidEncoding);
+            }
+            let key_start = header_end;
+            let key_end = key_start
+                .checked_add(key_length)
+                .ok_or(SecretMapError::InvalidEncoding)?;
+            let value_end = key_end
+                .checked_add(value_length)
+                .ok_or(SecretMapError::InvalidEncoding)?;
+            let key = bytes
+                .get(key_start..key_end)
+                .ok_or(SecretMapError::InvalidEncoding)?
+                .to_vec();
+            let value = bytes
+                .get(key_end..value_end)
+                .ok_or(SecretMapError::InvalidEncoding)?;
+            if entries.iter().any(|(existing, _)| existing == &key) {
+                return Err(SecretMapError::InvalidEncoding);
+            }
+            entries.push((key, Zeroizing::new(value.to_vec().into_boxed_slice())));
+            offset = value_end;
+        }
+        if offset != bytes.len() {
+            return Err(SecretMapError::InvalidEncoding);
+        }
+        Ok(Self { capacity, entries })
+    }
+
+    fn encode(&self) -> Result<Zeroizing<Box<[u8]>>, SecretMapError> {
+        let mut encoded = Vec::with_capacity(4);
+        encoded.extend_from_slice(&self.capacity.to_be_bytes());
+        encoded.extend_from_slice(&(self.entries.len() as u16).to_be_bytes());
+        for (key, value) in &self.entries {
+            let key_length = u16::try_from(key.len()).map_err(|_| SecretMapError::InvalidKey)?;
+            let value_length =
+                u32::try_from(value.len()).map_err(|_| SecretMapError::InvalidEncoding)?;
+            encoded.extend_from_slice(&key_length.to_be_bytes());
+            encoded.extend_from_slice(&value_length.to_be_bytes());
+            encoded.extend_from_slice(key);
+            encoded.extend_from_slice(value);
+        }
+        if encoded.len() > MAX_SECRET_BYTES {
+            encoded.zeroize();
+            return Err(SecretMapError::Resource(
+                ResourceError::ResourceLimitExceeded,
+            ));
+        }
+        Ok(Zeroizing::new(encoded.into_boxed_slice()))
+    }
+}
+
+fn valid_secret_map_key(key: &[u8]) -> Result<(), SecretMapError> {
+    if (1..=MAX_SECRET_MAP_KEY_BYTES).contains(&key.len()) {
+        Ok(())
+    } else {
+        Err(SecretMapError::InvalidKey)
+    }
+}
+
 struct ResourceTable {
     slots: Vec<Slot>,
     free_slots: Vec<u32>,
@@ -702,6 +1012,16 @@ impl ResourceTable {
         self.insert(owner, ResourceKind::SecretBytes, Zeroizing::new(bytes))
     }
 
+    fn insert_secret_map(
+        &mut self,
+        owner: ProcessId,
+        capacity: usize,
+    ) -> Result<ResourceHandle, SecretMapError> {
+        let encoded = SecretMapData::empty(capacity)?.encode()?;
+        self.insert(owner, ResourceKind::SecretMap, encoded)
+            .map_err(SecretMapError::Resource)
+    }
+
     fn insert(
         &mut self,
         owner: ProcessId,
@@ -795,6 +1115,189 @@ impl ResourceTable {
             generation: slot.generation,
             kind: kind as u32,
         })
+    }
+
+    fn replace_resource_bytes(
+        &mut self,
+        owner: ProcessId,
+        handle: ResourceHandle,
+        expected_kind: ResourceKind,
+        bytes: Zeroizing<Box<[u8]>>,
+    ) -> Result<(), ResourceError> {
+        let old_length = self
+            .validate_entry(owner, handle, expected_kind)?
+            .bytes
+            .len();
+        let new_length = bytes.len();
+        if new_length > self.limits.max_secret_bytes {
+            return Err(ResourceError::ResourceLimitExceeded);
+        }
+        let usage = self.usage.get(&owner).ok_or(ResourceError::StaleHandle)?;
+        let next_actor_bytes = usage
+            .bytes
+            .checked_sub(old_length)
+            .and_then(|value| value.checked_add(new_length))
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let next_total_bytes = self
+            .total_bytes
+            .checked_sub(old_length)
+            .and_then(|value| value.checked_add(new_length))
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        if next_actor_bytes > self.limits.max_bytes_per_actor
+            || next_total_bytes > self.limits.max_total_bytes
+        {
+            return Err(ResourceError::ResourceLimitExceeded);
+        }
+
+        let entry = self
+            .slots
+            .get_mut(handle.slot as usize)
+            .and_then(|slot| slot.entry.as_mut())
+            .ok_or(ResourceError::StaleHandle)?;
+        let old = mem::replace(&mut entry.bytes, bytes);
+        self.usage
+            .get_mut(&owner)
+            .expect("validated owner usage")
+            .bytes = next_actor_bytes;
+        self.total_bytes = next_total_bytes;
+        drop(old);
+        Ok(())
+    }
+
+    fn secret_map_contains(
+        &self,
+        owner: ProcessId,
+        map: ResourceHandle,
+        key: &[u8],
+    ) -> Result<bool, SecretMapError> {
+        valid_secret_map_key(key)?;
+        let data = SecretMapData::decode(self.validate(owner, map, ResourceKind::SecretMap)?)?;
+        Ok(data.entries.iter().any(|(candidate, _)| candidate == key))
+    }
+
+    fn secret_map_copy(
+        &mut self,
+        owner: ProcessId,
+        map: ResourceHandle,
+        key: &[u8],
+    ) -> Result<ResourceHandle, SecretMapError> {
+        valid_secret_map_key(key)?;
+        let data = SecretMapData::decode(self.validate(owner, map, ResourceKind::SecretMap)?)?;
+        let value = data
+            .entries
+            .iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| Zeroizing::new(value.to_vec().into_boxed_slice()))
+            .ok_or(SecretMapError::InvalidKey)?;
+        self.insert(owner, ResourceKind::SecretBytes, value)
+            .map_err(SecretMapError::Resource)
+    }
+
+    fn secret_map_insert(
+        &mut self,
+        owner: ProcessId,
+        map: ResourceHandle,
+        key: &[u8],
+        value: ResourceHandle,
+    ) -> Result<(), SecretMapError> {
+        let result = self.secret_map_insert_inner(owner, map, key, value);
+        if result.is_err() {
+            drop(self.destroy_kind(owner, value, ResourceKind::SecretBytes));
+        }
+        result
+    }
+
+    fn secret_map_insert_inner(
+        &mut self,
+        owner: ProcessId,
+        map: ResourceHandle,
+        key: &[u8],
+        value: ResourceHandle,
+    ) -> Result<(), SecretMapError> {
+        valid_secret_map_key(key)?;
+        self.validate(owner, value, ResourceKind::SecretBytes)?;
+        let mut data =
+            SecretMapData::decode(self.validate(owner, map, ResourceKind::SecretMap)?)?;
+        if data.entries.iter().any(|(candidate, _)| candidate == key) {
+            return Err(SecretMapError::DuplicateKey);
+        }
+        if data.entries.len() >= data.capacity as usize {
+            return Err(SecretMapError::CapacityExceeded);
+        }
+        let value = self.consume(owner, value, ResourceKind::SecretBytes)?;
+        data.entries.push((key.to_vec(), value));
+        let encoded = data.encode()?;
+        self.replace_resource_bytes(owner, map, ResourceKind::SecretMap, encoded)?;
+        Ok(())
+    }
+
+    fn secret_map_delete(
+        &mut self,
+        owner: ProcessId,
+        map: ResourceHandle,
+        key: &[u8],
+    ) -> Result<bool, SecretMapError> {
+        valid_secret_map_key(key)?;
+        let mut data =
+            SecretMapData::decode(self.validate(owner, map, ResourceKind::SecretMap)?)?;
+        let Some(index) = data
+            .entries
+            .iter()
+            .position(|(candidate, _)| candidate == key)
+        else {
+            return Ok(false);
+        };
+        data.entries.remove(index);
+        let encoded = data.encode()?;
+        self.replace_resource_bytes(owner, map, ResourceKind::SecretMap, encoded)?;
+        Ok(true)
+    }
+
+    fn secret_map_merge(
+        &mut self,
+        owner: ProcessId,
+        target: ResourceHandle,
+        source: ResourceHandle,
+    ) -> Result<(), SecretMapError> {
+        if target == source {
+            return Err(SecretMapError::DuplicateKey);
+        }
+        let result = self.secret_map_merge_inner(owner, target, source);
+        if result.is_err() {
+            drop(self.destroy_kind(owner, source, ResourceKind::SecretMap));
+        }
+        result
+    }
+
+    fn secret_map_merge_inner(
+        &mut self,
+        owner: ProcessId,
+        target: ResourceHandle,
+        source: ResourceHandle,
+    ) -> Result<(), SecretMapError> {
+        let mut target_data =
+            SecretMapData::decode(self.validate(owner, target, ResourceKind::SecretMap)?)?;
+        let source_data =
+            SecretMapData::decode(self.validate(owner, source, ResourceKind::SecretMap)?)?;
+        if source_data.entries.iter().any(|(source_key, _)| {
+            target_data
+                .entries
+                .iter()
+                .any(|(target_key, _)| target_key == source_key)
+        }) {
+            return Err(SecretMapError::DuplicateKey);
+        }
+        target_data.entries.extend(source_data.entries);
+        let excess = target_data
+            .entries
+            .len()
+            .saturating_sub(target_data.capacity as usize);
+        target_data.entries.drain(..excess);
+        let encoded = target_data.encode()?;
+        let consumed = self.consume(owner, source, ResourceKind::SecretMap)?;
+        self.replace_resource_bytes(owner, target, ResourceKind::SecretMap, encoded)?;
+        drop(consumed);
+        Ok(())
     }
 
     fn with_resource<R>(
@@ -1233,6 +1736,102 @@ mod tests {
                 ) || kind == ResourceKind::SecretBytes
             );
         }
+    }
+
+    #[test]
+    fn secret_map_bounds_copies_and_deletes_zeroizing_values() {
+        let owner = ProcessId(55);
+        let mut table = ResourceTable::new(Limits::for_tests(16, 16, 4096, 1024, 4096));
+        let map = table.insert_secret_map(owner, 2).expect("create map");
+        let first = table
+            .insert_secret(owner, vec![0x11; 32].into_boxed_slice())
+            .expect("first key");
+        table
+            .secret_map_insert(owner, map, b"first", first)
+            .expect("store first key");
+
+        assert!(table
+            .secret_map_contains(owner, map, b"first")
+            .expect("contains first"));
+        let copied = table
+            .secret_map_copy(owner, map, b"first")
+            .expect("copy first");
+        assert_eq!(
+            table
+                .validate(owner, copied, ResourceKind::SecretBytes)
+                .expect("copied key"),
+            &[0x11; 32]
+        );
+
+        let second = table
+            .insert_secret(owner, vec![0x22; 32].into_boxed_slice())
+            .expect("second key");
+        table
+            .secret_map_insert(owner, map, b"second", second)
+            .expect("store second key");
+        let excess = table
+            .insert_secret(owner, vec![0x33; 32].into_boxed_slice())
+            .expect("excess key");
+        assert_eq!(
+            table.secret_map_insert(owner, map, b"third", excess),
+            Err(SecretMapError::CapacityExceeded)
+        );
+        assert!(matches!(
+            table.validate(owner, excess, ResourceKind::SecretBytes),
+            Err(ResourceError::StaleHandle)
+        ));
+
+        assert!(table
+            .secret_map_delete(owner, map, b"first")
+            .expect("delete first"));
+        assert!(!table
+            .secret_map_contains(owner, map, b"first")
+            .expect("first removed"));
+        assert!(!table
+            .secret_map_delete(owner, map, b"first")
+            .expect("repeat delete"));
+
+        let source = table
+            .insert_secret_map(owner, 2)
+            .expect("create source map");
+        let moved = table
+            .insert_secret(owner, vec![0x44; 32].into_boxed_slice())
+            .expect("source key");
+        table
+            .secret_map_insert(owner, source, b"moved", moved)
+            .expect("store source key");
+        table
+            .secret_map_merge(owner, map, source)
+            .expect("merge source map");
+        assert!(table
+            .secret_map_contains(owner, map, b"moved")
+            .expect("merged key"));
+        assert!(matches!(
+            table.validate(owner, source, ResourceKind::SecretMap),
+            Err(ResourceError::StaleHandle)
+        ));
+
+        let newest = table
+            .insert_secret_map(owner, 1)
+            .expect("create newest map");
+        let newest_key = table
+            .insert_secret(owner, vec![0x55; 32].into_boxed_slice())
+            .expect("newest key");
+        table
+            .secret_map_insert(owner, newest, b"newest", newest_key)
+            .expect("store newest key");
+        table
+            .secret_map_merge(owner, map, newest)
+            .expect("bounded merge evicts oldest key");
+        assert!(!table
+            .secret_map_contains(owner, map, b"second")
+            .expect("oldest evicted"));
+        assert!(table
+            .secret_map_contains(owner, map, b"moved")
+            .expect("newer retained"));
+        assert!(table
+            .secret_map_contains(owner, map, b"newest")
+            .expect("newest retained"));
     }
 
     #[test]

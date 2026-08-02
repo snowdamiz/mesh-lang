@@ -97,7 +97,7 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "DateTime" => MirType::Int,
         // Collection types, Json, HTTP types, and iterator handles are opaque pointers at LLVM level.
         "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json" | "Bytes"
-        | "BytesError" | "SecretBytes"
+        | "BytesError" | "SecretBytes" | "SecretMap"
         | "U64" | "U128" | "I128"
         | "Router" | "Request" | "Response"
         | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"

@@ -327,6 +327,14 @@ fn effective_return_type(expr: &MirExpr) -> MirType {
     }
 }
 
+fn runtime_value_type(ty: MirType) -> MirType {
+    if matches!(ty, MirType::Tuple(_)) {
+        MirType::Ptr
+    } else {
+        ty
+    }
+}
+
 /// Map a MIR type to its PostgreSQL SQL type string.
 ///
 /// Used by `generate_schema_metadata` to produce `__field_types__()` entries.
@@ -369,6 +377,30 @@ impl<'a> Lowerer<'a> {
             ownership_signatures
                 .entry(alias.to_string())
                 .or_insert_with(|| vec![ParamOwnership::Consume, ParamOwnership::Consume]);
+        }
+        for operation in ["insert", "contains", "copy", "delete"] {
+            let mut modes = vec![ParamOwnership::Borrow, ParamOwnership::Move];
+            if operation == "insert" {
+                modes.push(ParamOwnership::Consume);
+            }
+            for alias in [
+                format!("SecretMap.{operation}"),
+                format!("secret_map_{operation}"),
+                format!("mesh_secret_map_{operation}"),
+            ] {
+                ownership_signatures
+                    .entry(alias)
+                    .or_insert_with(|| modes.clone());
+            }
+        }
+        for alias in [
+            "SecretMap.merge",
+            "secret_map_merge",
+            "mesh_secret_map_merge",
+        ] {
+            ownership_signatures
+                .entry(alias.to_string())
+                .or_insert_with(|| vec![ParamOwnership::Borrow, ParamOwnership::Consume]);
         }
 
         Lowerer {
@@ -649,7 +681,10 @@ impl<'a> Lowerer<'a> {
         destructor: MirResourceDestructor,
     ) -> MirExpr {
         MirExpr::ResourceDrop {
-            value: Box::new(MirExpr::Var(name.to_string(), resource_ty.clone())),
+            value: Box::new(MirExpr::Var(
+                name.to_string(),
+                runtime_value_type(resource_ty.clone()),
+            )),
             resource_ty: resource_ty.clone(),
             destructor,
         }
@@ -904,6 +939,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::StructUpdate {
                 base,
                 overrides,
+                resource_overrides,
                 ty,
             } => MirExpr::StructUpdate {
                 base: Box::new(self.cleanup_before_exits(*base, cleanup, loop_depth)),
@@ -913,6 +949,7 @@ impl<'a> Lowerer<'a> {
                         (field, self.cleanup_before_exits(value, cleanup, loop_depth))
                     })
                     .collect(),
+                resource_overrides,
                 ty,
             },
             MirExpr::FieldAccess { object, field, ty } => MirExpr::FieldAccess {
@@ -2143,6 +2180,27 @@ impl<'a> Lowerer<'a> {
             "mesh_secret_destroy".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
         );
+        self.known_functions.insert(
+            "mesh_secret_map_new".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_secret_map_insert".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_secret_map_contains".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)),
+        );
+        for operation in ["copy", "delete", "merge"] {
+            self.known_functions.insert(
+                format!("mesh_secret_map_{operation}"),
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
         for prefix in ["u64", "u128", "i128"] {
             self.known_functions.insert(
                 format!("mesh_{prefix}_parse"),
@@ -4377,7 +4435,11 @@ impl<'a> Lowerer<'a> {
                             .name()
                             .map(|name| name.text().to_string())
                             .unwrap_or_else(|| "_".to_string()),
-                        resolve_type(ty, self.registry, matches!(ty, Ty::Fun(..))),
+                        runtime_value_type(resolve_type(
+                            ty,
+                            self.registry,
+                            matches!(ty, Ty::Fun(..)),
+                        )),
                     )
                 })
                 .collect();
@@ -4385,11 +4447,11 @@ impl<'a> Lowerer<'a> {
                 name: base_name,
                 symbol: native.symbol().unwrap_or_default(),
                 params,
-                return_type: resolve_type(
+                return_type: runtime_value_type(resolve_type(
                     return_ty,
                     self.registry,
                     matches!(return_ty.as_ref(), Ty::Fun(..)),
-                ),
+                )),
             });
             return;
         }
@@ -4458,6 +4520,7 @@ impl<'a> Lowerer<'a> {
                             mir_ty = recovered;
                         }
                     }
+                    let mir_ty = runtime_value_type(mir_ty);
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     if param.ownership() != ParamOwnership::Borrow
                         && self.registry.is_resource_type(param_ty)
@@ -4472,7 +4535,8 @@ impl<'a> Lowerer<'a> {
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = self.resolve_range(param.syntax().text_range());
+                    let mir_ty =
+                        runtime_value_type(self.resolve_range(param.syntax().text_range()));
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     if param.ownership() != ParamOwnership::Borrow
                         && self
@@ -4489,7 +4553,11 @@ impl<'a> Lowerer<'a> {
         }
 
         let return_type = if let Some(Ty::Fun(_, ret)) = concrete_fn_ty.or(fn_ty_raw) {
-            resolve_type(ret, self.registry, matches!(ret.as_ref(), Ty::Fun(..)))
+            runtime_value_type(resolve_type(
+                ret,
+                self.registry,
+                matches!(ret.as_ref(), Ty::Fun(..)),
+            ))
         } else {
             MirType::Unit
         };
@@ -10627,6 +10695,7 @@ impl<'a> Lowerer<'a> {
                         let prefix = match base_name.as_str() {
                             "WsClient" => "ws_client".to_string(),
                             "BytesBuilder" => "bytes_builder".to_string(),
+                            "SecretMap" => "secret_map".to_string(),
                             _ => base_name.to_lowercase(),
                         };
                         let prefixed = format!("{prefix}_{field}");
@@ -11289,6 +11358,11 @@ impl<'a> Lowerer<'a> {
                 let ty = expected
                     .map(|ty| resolve_type(ty, self.registry, false))
                     .unwrap_or_else(|| self.resolve_range(ident.syntax().text_range()));
+                let ty = if matches!(ty, MirType::Tuple(_)) {
+                    MirType::Ptr
+                } else {
+                    ty
+                };
                 self.insert_var(name.clone(), ty.clone());
                 MirPattern::Var(name, ty)
             }
@@ -13539,9 +13613,13 @@ impl<'a> Lowerer<'a> {
     // ── Struct update lowering ────────────────────────────────────────
 
     fn lower_struct_update(&mut self, update: &StructUpdate) -> MirExpr {
-        let base = update
-            .base_expr()
-            .map(|e| self.lower_expr(&e))
+        let base_expr = update.base_expr();
+        let base_typeck = base_expr
+            .as_ref()
+            .and_then(|expression| self.get_ty(expression.syntax().text_range()))
+            .cloned();
+        let base = base_expr
+            .map(|expression| self.lower_expr(&expression))
             .unwrap_or(MirExpr::Unit);
 
         let overrides: Vec<(String, MirExpr)> = update
@@ -13557,11 +13635,33 @@ impl<'a> Lowerer<'a> {
             })
             .collect();
 
+        let override_indices = base_typeck
+            .as_ref()
+            .map(|base_ty| {
+                overrides
+                    .iter()
+                    .filter_map(|(field, _)| self.resource_field_index(base_ty, field))
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+        let resource_overrides = base_typeck
+            .as_ref()
+            .and_then(|base_ty| self.resource_destructor(base_ty))
+            .and_then(|destructor| match destructor {
+                MirResourceDestructor::Aggregate(fields) => Some(fields),
+                _ => None,
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|field| override_indices.contains(&field.index))
+            .collect();
+
         let ty = self.resolve_range(update.syntax().text_range());
 
         MirExpr::StructUpdate {
             base: Box::new(base),
             overrides,
+            resource_overrides,
             ty,
         }
     }
@@ -14898,6 +14998,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Bytes",
     "BytesBuilder",
     "Secret",
+    "SecretMap",
     "U64",
     "U128",
     "I128",
@@ -15028,6 +15129,12 @@ fn map_builtin_name(name: &str) -> String {
         "secret_random" => "mesh_secret_random".to_string(),
         "secret_concat" => "mesh_secret_concat".to_string(),
         "secret_destroy" => "mesh_secret_destroy".to_string(),
+        "secret_map_new"
+        | "secret_map_insert"
+        | "secret_map_contains"
+        | "secret_map_copy"
+        | "secret_map_delete"
+        | "secret_map_merge" => format!("mesh_{name}"),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"
@@ -17437,6 +17544,45 @@ mod tests {
             }
             other => panic!("expected field projection resource move, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn resource_struct_update_records_the_replaced_field_destructor() {
+        let mir = lower(
+            "resource struct KeyState do\n\
+               current :: SecretBytes\n\
+               previous :: SecretBytes\n\
+             end\n\
+             fn replace(state :: KeyState, next :: SecretBytes) do\n\
+               %{state | current: next}\n\
+             end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "replace")
+            .unwrap();
+
+        fn find_update(expression: &MirExpr) -> Option<&[MirResourceField]> {
+            match expression {
+                MirExpr::StructUpdate {
+                    resource_overrides, ..
+                } => Some(resource_overrides),
+                MirExpr::Let { value, body, .. } => {
+                    find_update(value).or_else(|| find_update(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_update),
+                _ => None,
+            }
+        }
+
+        let resource_overrides = find_update(&function.body).expect("expected struct update");
+        assert_eq!(resource_overrides.len(), 1);
+        assert_eq!(resource_overrides[0].index, 0);
+        assert!(matches!(
+            resource_overrides[0].destructor,
+            MirResourceDestructor::Opaque
+        ));
     }
 
     #[test]

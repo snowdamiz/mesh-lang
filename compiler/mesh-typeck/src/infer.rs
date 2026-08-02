@@ -635,6 +635,50 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     );
     modules.insert("Secret".to_string(), secret_mod);
 
+    let secret_map = Ty::secret_map();
+    let secret_map_result = |value| Ty::result(value, Ty::crypto_error());
+    let mut secret_map_mod = HashMap::new();
+    secret_map_mod.insert(
+        "new".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            secret_map_result(secret_map.clone()),
+        )),
+    );
+    secret_map_mod.insert(
+        "insert".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes(), Ty::secret_bytes()],
+            secret_map_result(Ty::Tuple(vec![])),
+        )),
+    );
+    secret_map_mod.insert(
+        "contains".to_string(),
+        Scheme::mono(Ty::fun(vec![secret_map.clone(), Ty::bytes()], Ty::bool())),
+    );
+    secret_map_mod.insert(
+        "copy".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes()],
+            secret_map_result(Ty::secret_bytes()),
+        )),
+    );
+    secret_map_mod.insert(
+        "delete".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::bytes()],
+            secret_map_result(Ty::Tuple(vec![])),
+        )),
+    );
+    secret_map_mod.insert(
+        "merge".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), secret_map],
+            secret_map_result(Ty::Tuple(vec![])),
+        )),
+    );
+    modules.insert("SecretMap".to_string(), secret_map_mod);
+
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
     modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
     modules.insert("I128".to_string(), wide_integer_module(Ty::i128()));
@@ -3608,6 +3652,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Bytes",
     "BytesBuilder",
     "Secret",
+    "SecretMap",
     "U64",
     "U128",
     "I128",
@@ -4176,6 +4221,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
     for resource in [
         "BytesBuilder",
+        "SecretMap",
         "X25519PrivateKey",
         "SigningPrivateKey",
         "AeadKey",
@@ -5960,6 +6006,7 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
             | "Regex"
             | "Bytes"
             | "SecretBytes"
+            | "SecretMap"
             | "CryptoError"
             | "X25519PrivateKey"
             | "SigningPrivateKey"

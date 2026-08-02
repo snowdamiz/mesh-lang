@@ -148,6 +148,27 @@ fn secret_concat_consumes_both_inputs() {
 }
 
 #[test]
+fn secret_map_borrows_the_store_and_consumes_inserted_secrets() {
+    let valid = check_source(
+        "fn store(map :: SecretMap, secret :: SecretBytes) do\n  let _ = SecretMap.insert(map, Bytes.from_utf8(\"key\"), secret)\n  let _ = SecretMap.contains(map, Bytes.from_utf8(\"key\"))\n  map\nend",
+    );
+    assert!(
+        valid.errors.is_empty(),
+        "valid secret map operations failed: {:?}",
+        valid.errors
+    );
+    assert!(valid.type_registry.is_resource_name("SecretMap"));
+
+    let misuse = check_source(
+        "fn store(map :: SecretMap, secret :: SecretBytes) do\n  let _ = SecretMap.insert(map, Bytes.from_utf8(\"key\"), secret)\n  Secret.destroy(secret)\nend",
+    );
+    assert_eq!(
+        resource_violations(&misuse),
+        ["resource `secret` was used after it moved"]
+    );
+}
+
+#[test]
 fn ordinary_structs_containing_resources_are_affine() {
     let result = check_source(
         "struct Vault do\n  secret :: SecretBytes\nend\nfn misuse(secret :: SecretBytes) do\n  let vault = Vault { secret: secret }\n  let moved = vault\n  vault\nend",

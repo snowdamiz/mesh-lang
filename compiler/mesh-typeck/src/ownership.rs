@@ -182,6 +182,29 @@ pub(crate) fn check(
     };
     signatures.insert("Secret.concat".to_string(), concat_signature.clone());
     signatures.insert("secret_concat".to_string(), concat_signature);
+    let secret_map = Ty::secret_map();
+    for name in ["insert", "contains", "copy", "delete"] {
+        let arity = if name == "insert" { 3 } else { 2 };
+        let mut modes = vec![ParamOwnership::Borrow; arity];
+        let mut formal_types = vec![None; arity];
+        formal_types[0] = Some(secret_map.clone());
+        if name == "insert" {
+            modes[2] = ParamOwnership::Consume;
+            formal_types[2] = Some(Ty::secret_bytes());
+        }
+        let signature = FunctionSignature {
+            modes,
+            formal_types,
+        };
+        signatures.insert(format!("SecretMap.{name}"), signature.clone());
+        signatures.insert(format!("secret_map_{name}"), signature);
+    }
+    let merge_signature = FunctionSignature {
+        modes: vec![ParamOwnership::Borrow, ParamOwnership::Consume],
+        formal_types: vec![Some(secret_map.clone()), Some(secret_map)],
+    };
+    signatures.insert("SecretMap.merge".to_string(), merge_signature.clone());
+    signatures.insert("secret_map_merge".to_string(), merge_signature);
     let bytes_builder = Ty::bytes_builder();
     for name in [
         "bytes_builder_write_u8",

@@ -136,6 +136,10 @@ impl Ty {
         Ty::Con(TyCon::new("SecretBytes"))
     }
 
+    pub fn secret_map() -> Ty {
+        Ty::Con(TyCon::new("SecretMap"))
+    }
+
     pub fn crypto_error() -> Ty {
         Ty::Con(TyCon::new("CryptoError"))
     }

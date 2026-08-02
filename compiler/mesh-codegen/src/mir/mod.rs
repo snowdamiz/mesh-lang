@@ -267,6 +267,9 @@ pub enum MirExpr {
     StructUpdate {
         base: Box<MirExpr>,
         overrides: Vec<(std::string::String, MirExpr)>,
+        /// Resource-bearing base fields replaced by this update. Codegen destroys
+        /// their old values after the replacement expression succeeds.
+        resource_overrides: Vec<MirResourceField>,
         ty: MirType,
     },
     /// Field access on a struct.

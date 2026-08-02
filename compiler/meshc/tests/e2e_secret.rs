@@ -80,6 +80,64 @@ end
 }
 
 #[test]
+fn secret_map_keeps_bounded_keys_affine_across_the_native_abi() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "secret-map-proof",
+        r#"
+fn proof() -> Int ! CryptoError do
+  let committed = SecretMap.new(2) ?
+  let first_key = Bytes.from_utf8("first")
+  let first = Secret.random(32) ?
+  SecretMap.insert(committed, first_key, first) ?
+  let copied = SecretMap.copy(committed, first_key) ?
+  Secret.destroy(copied)
+
+  let candidate = SecretMap.new(1) ?
+  let second_key = Bytes.from_utf8("second")
+  let second = Secret.random(32) ?
+  SecretMap.insert(candidate, second_key, second) ?
+  SecretMap.merge(committed, candidate) ?
+  if SecretMap.contains(committed, second_key) do
+    SecretMap.delete(committed, first_key) ?
+    if SecretMap.contains(committed, first_key) do
+      println("delete-failed")
+    else
+      println("secret-map-ok")
+    end
+  else
+    println("merge-failed")
+  end
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Ok(_) -> nil
+    Err(_) -> println("secret-map-error")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("secret-map-proof"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "secret map proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "secret-map-ok\n");
+}
+
+#[test]
 fn secret_values_are_rejected_at_public_data_boundaries() {
     let cases = [
         (

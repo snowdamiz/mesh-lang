@@ -279,8 +279,9 @@ pub use regex::{
     mesh_regex_replace, mesh_regex_split,
 };
 pub use secret::{
-    mesh_resource_destroy, mesh_secret_concat, mesh_secret_destroy, mesh_secret_random,
-    MeshSecretHandle,
+    mesh_resource_destroy, mesh_secret_concat, mesh_secret_destroy, mesh_secret_map_contains,
+    mesh_secret_map_copy, mesh_secret_map_delete, mesh_secret_map_insert, mesh_secret_map_merge,
+    mesh_secret_map_new, mesh_secret_random, MeshSecretHandle,
 };
 pub use storage_wrapping::{
     mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,

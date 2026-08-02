@@ -766,7 +766,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(variant_ty, parent_ptr, (*index + 1) as u32, "variant_field")
                     .map_err(|e| e.to_string())?;
-                if matches!(storage_ty, MirType::Ptr)
+                if matches!(storage_ty, MirType::Ptr | MirType::Struct(_))
                     && !matches!(
                         semantic_ty,
                         MirType::Ptr | MirType::String | MirType::Pid(_)
@@ -926,7 +926,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// `mesh_tuple_nth` returns the raw u64 slot. One-slot values can be loaded
     /// from a temporary u64 alloca; larger aggregates were boxed by
     /// `codegen_make_tuple`, so their slot is already an address.
-    fn materialize_tuple_element_ptr(
+    pub(super) fn materialize_tuple_element_ptr(
         &self,
         value: IntValue<'ctx>,
         element_ty: &MirType,

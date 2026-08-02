@@ -825,6 +825,32 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         void_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_secret_map_new",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_map_insert",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_map_contains",
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_secret_map_copy",
+        "mesh_secret_map_delete",
+        "mesh_secret_map_merge",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Checked wide integers ────────────────────────────────────────────────
 

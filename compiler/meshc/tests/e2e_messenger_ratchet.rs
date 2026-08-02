@@ -41,7 +41,7 @@ fn copy_tree(source: &Path, destination: &Path) {
 }
 
 #[test]
-fn profile_a_ratchet_delivers_an_in_order_message() {
+fn profile_a_ratchet_delivers_out_of_order_messages_within_the_bound() {
     artifacts::ensure_mesh_rt_staticlib();
 
     let root = workspace_root();
@@ -68,7 +68,7 @@ from Identity.Device import AccountKeys, DeviceKeys, IdentityError, Verification
 from Prekeys.Bundle import OneTimePrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_signed_prekey
 from Protocol.V1 import AccountIdentity, DeviceCredential, InitialMessage, PrekeyBundle, encode_initial_message
 from Session.Handshake import RatchetState, SessionError, initiate, receive_initial
-from Session.Ratchet import DecryptOutcome, RatchetError, decrypt, encrypt
+from Session.Ratchet import DecryptOutcome, RatchetError, RatchetMessage, decrypt, encrypt
 
 type ProofError do
   IdentityProblem(error :: IdentityError)
@@ -154,16 +154,85 @@ fn encoded_initial(value :: InitialMessage) -> Bytes ! ProofError do
   end
 end
 
-fn opened(state :: consume RatchetState, value :: Bytes, expected :: Bytes) do
+fn opened(state :: consume RatchetState, value :: Bytes, expected :: Bytes) -> RatchetState do
   if Bytes.secure_equals(value, expected) do
-    println("in-order:ok")
+    println("ratchet:ok")
   else
-    println("in-order:wrong-plaintext")
+    println("ratchet:wrong-plaintext")
+  end
+  state
+end
+
+fn rejected(state :: consume RatchetState, error :: RatchetError) -> RatchetState do
+  println("ratchet:rejected")
+  state
+end
+
+fn accept_message(state :: consume RatchetState,
+message :: RatchetMessage,
+associated_data :: Bytes,
+expected :: Bytes) -> RatchetState do
+  case decrypt(state, message, associated_data) do
+    Opened(next, value) -> opened(next, value, expected)
+    Rejected(next, error) -> rejected(next, error)
   end
 end
 
-fn rejected(state :: consume RatchetState, error :: RatchetError) do
-  println("in-order:rejected")
+fn expect_replay(state :: consume RatchetState,
+message :: RatchetMessage,
+associated_data :: Bytes) -> RatchetState do
+  case decrypt(state, message, associated_data) do
+    Opened(next, _) -> do
+      println("replay:opened")
+      next
+    end
+    Rejected(next, Replay) -> do
+      println("replay:ok")
+      next
+    end
+    Rejected(next, _) -> do
+      println("replay:wrong-error")
+      next
+    end
+  end
+end
+
+fn expect_jump_rejection(state :: consume RatchetState,
+message :: RatchetMessage,
+associated_data :: Bytes) -> RatchetState do
+  case decrypt(state, message, associated_data) do
+    Opened(next, _) -> do
+      println("jump:opened")
+      next
+    end
+    Rejected(next, ExcessiveJump) -> do
+      println("jump:ok")
+      next
+    end
+    Rejected(next, _) -> do
+      println("jump:wrong-error")
+      next
+    end
+  end
+end
+
+fn expect_authentication_rejection(state :: consume RatchetState,
+message :: RatchetMessage,
+associated_data :: Bytes) -> RatchetState do
+  case decrypt(state, message, associated_data) do
+    Opened(next, _) -> do
+      println("authentication:opened")
+      next
+    end
+    Rejected(next, AuthenticationRejected) -> do
+      println("authentication:ok")
+      next
+    end
+    Rejected(next, _) -> do
+      println("authentication:wrong-error")
+      next
+    end
+  end
 end
 
 fn proof() -> Int ! ProofError do
@@ -218,20 +287,70 @@ fn proof() -> Int ! ProofError do
     Err(error) -> Err(SessionProblem(error))
     Ok(value) -> Ok(value)
   end ?
-  let plaintext = Bytes.from_utf8("ratcheted hello")
+  let first = Bytes.from_utf8("ratcheted one")
+  let second = Bytes.from_utf8("ratcheted two")
+  let third = Bytes.from_utf8("ratcheted three")
+  let fourth = Bytes.from_utf8("ratcheted four")
   let associated_data = Bytes.from_utf8("conversation-1")
-  let (_alice_session, message) = case encrypt(
+  let (alice_session, first_message) = case encrypt(
     alice_session,
-    plaintext,
+    first,
     associated_data
   ) do
     Err(error) -> Err(RatchetProblem(error))
     Ok(value) -> Ok(value)
   end ?
-  case decrypt(bob_session, message, associated_data) do
-    Opened(state, value) -> opened(state, value, plaintext)
-    Rejected(state, error) -> rejected(state, error)
-  end
+  let (alice_session, second_message) = case encrypt(
+    alice_session,
+    second,
+    associated_data
+  ) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(value) -> Ok(value)
+  end ?
+  let (alice_session, third_message) = case encrypt(
+    alice_session,
+    third,
+    associated_data
+  ) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(value) -> Ok(value)
+  end ?
+  let (alice_session, fourth_message) = case encrypt(
+    alice_session,
+    fourth,
+    associated_data
+  ) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(value) -> Ok(value)
+  end ?
+  let bob_session = accept_message(bob_session, third_message, associated_data, third)
+  let bob_session = accept_message(bob_session, first_message, associated_data, first)
+  let bob_session = accept_message(bob_session, second_message, associated_data, second)
+  let bob_session = expect_replay(bob_session, first_message, associated_data)
+  let excessive = %{fourth_message | message_number: 100}
+  let bob_session = expect_jump_rejection(bob_session, excessive, associated_data)
+  let bob_session = expect_authentication_rejection(
+    bob_session,
+    fourth_message,
+    Bytes.from_utf8("wrong-conversation")
+  )
+  let bob_session = accept_message(bob_session, fourth_message, associated_data, fourth)
+  let response = Bytes.from_utf8("ratcheted response")
+  let (_bob_session, response_message) = case encrypt(
+    bob_session,
+    response,
+    associated_data
+  ) do
+    Err(error) -> Err(RatchetProblem(error))
+    Ok(value) -> Ok(value)
+  end ?
+  let _alice_session = accept_message(
+    alice_session,
+    response_message,
+    associated_data,
+    response
+  )
   Ok(0)
 end
 
@@ -259,9 +378,14 @@ end
         .expect("run ratchet proof");
     assert!(
         run.status.success(),
-        "ratchet proof failed:\n{}",
-        String::from_utf8_lossy(&run.stderr)
+        "ratchet proof failed with {}:\nstdout:\n{}\nstderr:\n{}",
+        run.status,
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr),
     );
     assert!(run.stderr.is_empty(), "unexpected stderr: {:?}", run.stderr);
-    assert_eq!(String::from_utf8_lossy(&run.stdout), "in-order:ok\n");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "ratchet:ok\nratchet:ok\nratchet:ok\nreplay:ok\njump:ok\nauthentication:ok\nratchet:ok\nratchet:ok\n"
+    );
 }

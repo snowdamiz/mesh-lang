@@ -1242,6 +1242,66 @@ mod tests {
     }
 
     #[test]
+    fn resource_struct_update_destroys_the_replaced_value() {
+        let state_ty = MirType::Struct("KeyState".to_string());
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "replace_key".to_string(),
+                params: vec![
+                    ("state".to_string(), state_ty.clone()),
+                    ("next".to_string(), MirType::Ptr),
+                ],
+                return_type: state_ty.clone(),
+                body: MirExpr::StructUpdate {
+                    base: Box::new(MirExpr::ResourceMove {
+                        value: Box::new(MirExpr::Var("state".to_string(), state_ty.clone())),
+                        ty: state_ty.clone(),
+                        source: MirResourceMoveSource::Slot,
+                    }),
+                    overrides: vec![(
+                        "current".to_string(),
+                        MirExpr::ResourceMove {
+                            value: Box::new(MirExpr::Var("next".to_string(), MirType::Ptr)),
+                            ty: MirType::Ptr,
+                            source: MirResourceMoveSource::Slot,
+                        },
+                    )],
+                    resource_overrides: vec![MirResourceField {
+                        index: 0,
+                        ty: MirType::Ptr,
+                        destructor: MirResourceDestructor::Opaque,
+                    }],
+                    ty: state_ty.clone(),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "KeyState".to_string(),
+                fields: vec![
+                    ("current".to_string(), MirType::Ptr),
+                    ("previous".to_string(), MirType::Ptr),
+                ],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            1,
+            "the overwritten secret must be destroyed exactly once:\n{ir}"
+        );
+    }
+
+    #[test]
     fn resource_field_move_destroys_resource_siblings_before_zeroing_parent() {
         let pair_ty = MirType::Struct("DoubleSecret".to_string());
         let destructor = MirResourceDestructor::Aggregate(vec![
