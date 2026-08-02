@@ -832,3 +832,32 @@ fn qualified_imports_preserve_borrow_parameter_modes() {
         result.errors
     );
 }
+
+#[test]
+fn storage_wrapping_borrows_capabilities_and_restores_typed_resources() {
+    let result = check_source(
+        "fn round_trip(\
+           secret :: SecretBytes, \
+           private_key :: X25519PrivateKey, \
+           skipped :: SecretMap, \
+           wrapping_key :: StorageKey, \
+           context :: Bytes\
+         ) do\n\
+           let secret_blob = Secret.seal_for_storage(secret, wrapping_key, context)?\n\
+           let private_blob = X25519PrivateKey.seal_for_storage(private_key, wrapping_key, context)?\n\
+           let skipped_blob = SecretMap.seal_for_storage(skipped, wrapping_key, context)?\n\
+           let restored_secret = Secret.unseal_from_storage(secret_blob, wrapping_key, context)?\n\
+           let restored_private = X25519PrivateKey.unseal_from_storage(private_blob, wrapping_key, context)?\n\
+           let restored_skipped = SecretMap.unseal_from_storage(skipped_blob, wrapping_key, context)?\n\
+           Secret.destroy(restored_secret)\n\
+           Secret.destroy(secret)\n\
+           (restored_private, private_key, restored_skipped, skipped, wrapping_key)\n\
+         end",
+    );
+
+    assert!(
+        result.errors.is_empty(),
+        "storage APIs: {:?}",
+        result.errors
+    );
+}

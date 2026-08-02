@@ -632,6 +632,46 @@ pub fn register_builtins(
             Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
         )),
     );
+    env.insert(
+        "storage_key_ephemeral".into(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    for (name, input, output) in [
+        ("secret_seal_for_storage", Ty::secret_bytes(), Ty::bytes()),
+        ("secret_map_seal_for_storage", Ty::secret_map(), Ty::bytes()),
+        (
+            "x25519_private_key_seal_for_storage",
+            Ty::x25519_private_key(),
+            Ty::bytes(),
+        ),
+    ] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![input, Ty::storage_key(), Ty::bytes()],
+                Ty::result(output, Ty::crypto_error()),
+            )),
+        );
+    }
+    for (name, output) in [
+        ("secret_unseal_from_storage", Ty::secret_bytes()),
+        ("secret_map_unseal_from_storage", Ty::secret_map()),
+        (
+            "x25519_private_key_unseal_from_storage",
+            Ty::x25519_private_key(),
+        ),
+    ] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+                Ty::result(output, Ty::crypto_error()),
+            )),
+        );
+    }
     let secret_map = Ty::secret_map();
     env.insert(
         "secret_map_new".into(),

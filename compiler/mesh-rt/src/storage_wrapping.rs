@@ -10,8 +10,9 @@ use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::crypto::provider::{CryptoProvider, ProviderError, SystemProvider};
 use crate::io::{alloc_result, MeshResult};
 use crate::secret::{
-    commit_storage_counter, crypto_error, insert_owned_resource, insert_storage_key_resource,
-    prepare_owned_resource, prepare_storage_key_resource, validate_prepared_owned_resource,
+    commit_storage_counter, crypto_error, insert_ephemeral_storage_key_resource,
+    insert_owned_resource, insert_storage_key_resource, prepare_owned_resource,
+    prepare_storage_key_resource, validate_prepared_owned_resource,
     validate_prepared_storage_key_resource, CryptoErrorTag, MeshSecretHandle,
     MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey, ResourceError,
     ResourceKind, StorageKeyError,
@@ -80,6 +81,8 @@ enum SecretPurpose {
     SignedPrekey,
     OneTimePrekey,
     SkippedMessageKey,
+    SkippedKeyMap,
+    RatchetDhKey,
 }
 
 impl SecretPurpose {
@@ -96,6 +99,8 @@ impl SecretPurpose {
             9 => Ok(Self::SignedPrekey),
             10 => Ok(Self::OneTimePrekey),
             11 => Ok(Self::SkippedMessageKey),
+            12 => Ok(Self::SkippedKeyMap),
+            13 => Ok(Self::RatchetDhKey),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -108,10 +113,11 @@ impl SecretPurpose {
             | Self::HeaderKey
             | Self::AttachmentKey
             | Self::SkippedMessageKey => ResourceKind::SecretBytes,
+            Self::SkippedKeyMap => ResourceKind::SecretMap,
             Self::AccountAuthorizationKey | Self::DeviceSigningKey => {
                 ResourceKind::SigningPrivateKey
             }
-            Self::DeviceDhKey | Self::SignedPrekey | Self::OneTimePrekey => {
+            Self::DeviceDhKey | Self::SignedPrekey | Self::OneTimePrekey | Self::RatchetDhKey => {
                 ResourceKind::X25519PrivateKey
             }
         }
@@ -128,6 +134,20 @@ impl SecretPurpose {
                 | Self::OneTimePrekey
         )
     }
+}
+
+fn validate_plaintext_length(
+    expected_kind: ResourceKind,
+    length: usize,
+) -> Result<(), StorageFailure> {
+    if expected_kind == ResourceKind::SecretMap {
+        if length == 0 || length > MAX_PLAINTEXT_BYTES {
+            return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+        }
+    } else if length != PLAINTEXT_BYTES {
+        return Err(invalid_length(PLAINTEXT_BYTES, length));
+    }
+    Ok(())
 }
 
 fn validate_context(
@@ -209,9 +229,7 @@ fn seal_value(
     expected_kind: ResourceKind,
 ) -> Result<Vec<u8>, StorageFailure> {
     validate_context(context, expected_kind)?;
-    if plaintext.len() != PLAINTEXT_BYTES {
-        return Err(invalid_length(PLAINTEXT_BYTES, plaintext.len()));
-    }
+    validate_plaintext_length(expected_kind, plaintext.len())?;
     if storage_key_material.len() != STORAGE_KEY_MATERIAL_BYTES {
         return Err(failure(
             CryptoErrorTag::InvalidKey,
@@ -323,9 +341,7 @@ fn open_value(
         .map_err(provider_failure)?;
 
     // Purpose and plaintext semantics are checked only after authentication.
-    if plaintext.len() != PLAINTEXT_BYTES {
-        return Err(invalid_length(PLAINTEXT_BYTES, plaintext.len()));
-    }
+    validate_plaintext_length(expected_kind, plaintext.len())?;
     validate_context(context, expected_kind)?;
     let plaintext = std::mem::take(&mut *plaintext).into_boxed_slice();
     Ok(Zeroizing::new(plaintext))
@@ -368,9 +384,7 @@ fn prepare_seal(
     validate_context(context, expected_kind)?;
     let secret =
         prepare_owned_resource(process, secret, expected_kind).map_err(resource_failure)?;
-    if secret.bytes.len() != PLAINTEXT_BYTES {
-        return Err(invalid_length(PLAINTEXT_BYTES, secret.bytes.len()));
-    }
+    validate_plaintext_length(expected_kind, secret.bytes.len())?;
     let storage_key =
         prepare_storage_key_resource(process, wrapping_key).map_err(storage_key_failure)?;
     Ok(SealPreparation {
@@ -577,6 +591,31 @@ fn unseal_for_current_actor(
     Ok(handle)
 }
 
+/// Create a process-local storage key for snapshots that do not need to
+/// survive a process restart. Persistent applications must provision a
+/// platform-backed key through `mesh_storage_key_provision` instead.
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_ephemeral() -> *mut MeshResult {
+    let result = (|| {
+        let mut material = Zeroizing::new(vec![0u8; STORAGE_KEY_MATERIAL_BYTES]);
+        SystemProvider
+            .fill_random(&mut material)
+            .map_err(provider_failure)?;
+        let material = Zeroizing::new(std::mem::take(&mut *material).into_boxed_slice());
+        let process = current_process()?;
+        let handle = {
+            let mut process = process.lock();
+            insert_ephemeral_storage_key_resource(&mut process, material)
+                .map_err(resource_failure)?
+        };
+        Ok(handle)
+    })();
+    match result {
+        Ok(handle) => ok_result(handle),
+        Err(error) => error_result(error),
+    }
+}
+
 /// Provision a platform-backed storage key and durable nonce reservation
 /// callback. Native key material is borrowed only for this call.
 ///
@@ -663,6 +702,7 @@ macro_rules! storage_unseal_abi {
 }
 
 storage_seal_abi!(mesh_secret_seal_for_storage, ResourceKind::SecretBytes);
+storage_seal_abi!(mesh_secret_map_seal_for_storage, ResourceKind::SecretMap);
 storage_seal_abi!(
     mesh_signing_private_key_seal_for_storage,
     ResourceKind::SigningPrivateKey
@@ -673,6 +713,7 @@ storage_seal_abi!(
 );
 
 storage_unseal_abi!(mesh_secret_unseal_from_storage, ResourceKind::SecretBytes);
+storage_unseal_abi!(mesh_secret_map_unseal_from_storage, ResourceKind::SecretMap);
 storage_unseal_abi!(
     mesh_signing_private_key_unseal_from_storage,
     ResourceKind::SigningPrivateKey
@@ -719,7 +760,7 @@ mod tests {
         context.push(1);
         context.extend(0u8..32);
         context.extend(0x20u8..0x30);
-        if matches!(purpose, 1..=4 | 11) {
+        if matches!(purpose, 1..=4 | 11..=13) {
             context.extend(0x30u8..0x50);
         } else {
             context.extend_from_slice(&[0; 32]);
@@ -757,11 +798,12 @@ mod tests {
     fn every_registered_purpose_round_trips_to_its_exact_resource_kind() {
         let material = material();
 
-        for purpose in 1..=11 {
+        for purpose in 1..=13 {
             let kind = match purpose {
                 1..=5 | 11 => ResourceKind::SecretBytes,
+                12 => ResourceKind::SecretMap,
                 6..=7 => ResourceKind::SigningPrivateKey,
-                8..=10 => ResourceKind::X25519PrivateKey,
+                8..=10 | 13 => ResourceKind::X25519PrivateKey,
                 _ => unreachable!(),
             };
             let plaintext = vec![purpose as u8; PLAINTEXT_BYTES];
@@ -1178,6 +1220,7 @@ mod tests {
             0
         }
 
+        let _: extern "C" fn() -> *mut MeshResult = mesh_storage_key_ephemeral;
         let _: extern "C" fn(
             *const u8,
             u64,
@@ -1196,6 +1239,16 @@ mod tests {
             *const MeshSecretHandle,
             *const MeshBytes,
         ) -> *mut MeshResult = mesh_secret_unseal_from_storage;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshSecretHandle,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_secret_map_seal_for_storage;
+        let _: extern "C" fn(
+            *const MeshBytes,
+            *const MeshSecretHandle,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_secret_map_unseal_from_storage;
 
         let key = [0x11; 32];
         let prefix = [0x22; 4];

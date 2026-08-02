@@ -402,6 +402,38 @@ impl<'a> Lowerer<'a> {
                 .entry(alias.to_string())
                 .or_insert_with(|| vec![ParamOwnership::Borrow, ParamOwnership::Consume]);
         }
+        for (module, prefix) in [
+            ("Secret", "secret"),
+            ("SecretMap", "secret_map"),
+            ("X25519PrivateKey", "x25519_private_key"),
+        ] {
+            for alias in [
+                format!("{module}.seal_for_storage"),
+                format!("{prefix}_seal_for_storage"),
+                format!("mesh_{prefix}_seal_for_storage"),
+            ] {
+                ownership_signatures.entry(alias).or_insert_with(|| {
+                    vec![
+                        ParamOwnership::Borrow,
+                        ParamOwnership::Borrow,
+                        ParamOwnership::Move,
+                    ]
+                });
+            }
+            for alias in [
+                format!("{module}.unseal_from_storage"),
+                format!("{prefix}_unseal_from_storage"),
+                format!("mesh_{prefix}_unseal_from_storage"),
+            ] {
+                ownership_signatures.entry(alias).or_insert_with(|| {
+                    vec![
+                        ParamOwnership::Move,
+                        ParamOwnership::Borrow,
+                        ParamOwnership::Move,
+                    ]
+                });
+            }
+        }
 
         Lowerer {
             types: &typeck.types,
@@ -2173,6 +2205,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_storage_key_ephemeral".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_secret_concat".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
@@ -2200,6 +2236,17 @@ impl<'a> Lowerer<'a> {
                 format!("mesh_secret_map_{operation}"),
                 MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
             );
+        }
+        for prefix in ["secret", "secret_map", "x25519_private_key"] {
+            for operation in ["seal_for_storage", "unseal_from_storage"] {
+                self.known_functions.insert(
+                    format!("mesh_{prefix}_{operation}"),
+                    MirType::FnPtr(
+                        vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                        Box::new(MirType::Ptr),
+                    ),
+                );
+            }
         }
         for prefix in ["u64", "u128", "i128"] {
             self.known_functions.insert(
@@ -10696,6 +10743,8 @@ impl<'a> Lowerer<'a> {
                             "WsClient" => "ws_client".to_string(),
                             "BytesBuilder" => "bytes_builder".to_string(),
                             "SecretMap" => "secret_map".to_string(),
+                            "StorageKey" => "storage_key".to_string(),
+                            "X25519PrivateKey" => "x25519_private_key".to_string(),
                             _ => base_name.to_lowercase(),
                         };
                         let prefixed = format!("{prefix}_{field}");
@@ -14999,6 +15048,8 @@ const STDLIB_MODULES: &[&str] = &[
     "BytesBuilder",
     "Secret",
     "SecretMap",
+    "StorageKey",
+    "X25519PrivateKey",
     "U64",
     "U128",
     "I128",
@@ -15135,6 +15186,13 @@ fn map_builtin_name(name: &str) -> String {
         | "secret_map_copy"
         | "secret_map_delete"
         | "secret_map_merge" => format!("mesh_{name}"),
+        "storage_key_ephemeral" => format!("mesh_{name}"),
+        "secret_seal_for_storage"
+        | "secret_unseal_from_storage"
+        | "secret_map_seal_for_storage"
+        | "secret_map_unseal_from_storage"
+        | "x25519_private_key_seal_for_storage"
+        | "x25519_private_key_unseal_from_storage" => format!("mesh_{name}"),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"

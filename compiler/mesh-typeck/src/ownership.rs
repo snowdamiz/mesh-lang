@@ -205,6 +205,40 @@ pub(crate) fn check(
     };
     signatures.insert("SecretMap.merge".to_string(), merge_signature.clone());
     signatures.insert("secret_map_merge".to_string(), merge_signature);
+    for (module, prefix, resource) in [
+        ("Secret", "secret", Ty::secret_bytes()),
+        ("SecretMap", "secret_map", Ty::secret_map()),
+        (
+            "X25519PrivateKey",
+            "x25519_private_key",
+            Ty::x25519_private_key(),
+        ),
+    ] {
+        let seal = FunctionSignature {
+            modes: vec![
+                ParamOwnership::Borrow,
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+            ],
+            formal_types: vec![Some(resource), Some(Ty::storage_key()), Some(Ty::bytes())],
+        };
+        signatures.insert(format!("{module}.seal_for_storage"), seal.clone());
+        signatures.insert(format!("{prefix}_seal_for_storage"), seal);
+        let unseal = FunctionSignature {
+            modes: vec![
+                ParamOwnership::Move,
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+            ],
+            formal_types: vec![
+                Some(Ty::bytes()),
+                Some(Ty::storage_key()),
+                Some(Ty::bytes()),
+            ],
+        };
+        signatures.insert(format!("{module}.unseal_from_storage"), unseal.clone());
+        signatures.insert(format!("{prefix}_unseal_from_storage"), unseal);
+    }
     let bytes_builder = Ty::bytes_builder();
     for name in [
         "bytes_builder_write_u8",

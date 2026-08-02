@@ -284,10 +284,11 @@ pub use secret::{
     mesh_secret_map_new, mesh_secret_random, MeshSecretHandle,
 };
 pub use storage_wrapping::{
+    mesh_secret_map_seal_for_storage, mesh_secret_map_unseal_from_storage,
     mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,
     mesh_signing_private_key_seal_for_storage, mesh_signing_private_key_unseal_from_storage,
-    mesh_storage_key_provision, mesh_x25519_private_key_seal_for_storage,
-    mesh_x25519_private_key_unseal_from_storage,
+    mesh_storage_key_ephemeral, mesh_storage_key_provision,
+    mesh_x25519_private_key_seal_for_storage, mesh_x25519_private_key_unseal_from_storage,
 };
 pub use string::{
     mesh_bool_to_string, mesh_float_to_string, mesh_int_to_string, mesh_print, mesh_println,

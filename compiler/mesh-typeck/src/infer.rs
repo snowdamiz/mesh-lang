@@ -633,6 +633,20 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
         )),
     );
+    secret_mod.insert(
+        "seal_for_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::bytes(), Ty::crypto_error()),
+        )),
+    );
+    secret_mod.insert(
+        "unseal_from_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
     modules.insert("Secret".to_string(), secret_mod);
 
     let secret_map = Ty::secret_map();
@@ -673,11 +687,52 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     secret_map_mod.insert(
         "merge".to_string(),
         Scheme::mono(Ty::fun(
-            vec![secret_map.clone(), secret_map],
+            vec![secret_map.clone(), secret_map.clone()],
             secret_map_result(Ty::Tuple(vec![])),
         )),
     );
+    secret_map_mod.insert(
+        "seal_for_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone(), Ty::storage_key(), Ty::bytes()],
+            secret_map_result(Ty::bytes()),
+        )),
+    );
+    secret_map_mod.insert(
+        "unseal_from_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+            secret_map_result(secret_map.clone()),
+        )),
+    );
     modules.insert("SecretMap".to_string(), secret_map_mod);
+
+    let mut storage_key_mod = HashMap::new();
+    storage_key_mod.insert(
+        "ephemeral".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    modules.insert("StorageKey".to_string(), storage_key_mod);
+
+    let mut x25519_private_mod = HashMap::new();
+    x25519_private_mod.insert(
+        "seal_for_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::x25519_private_key(), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::bytes(), Ty::crypto_error()),
+        )),
+    );
+    x25519_private_mod.insert(
+        "unseal_from_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::x25519_private_key(), Ty::crypto_error()),
+        )),
+    );
+    modules.insert("X25519PrivateKey".to_string(), x25519_private_mod);
 
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
     modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
@@ -3653,6 +3708,8 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "BytesBuilder",
     "Secret",
     "SecretMap",
+    "StorageKey",
+    "X25519PrivateKey",
     "U64",
     "U128",
     "I128",
@@ -4222,6 +4279,7 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
     for resource in [
         "BytesBuilder",
         "SecretMap",
+        "StorageKey",
         "X25519PrivateKey",
         "SigningPrivateKey",
         "AeadKey",
@@ -6007,6 +6065,7 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
             | "Bytes"
             | "SecretBytes"
             | "SecretMap"
+            | "StorageKey"
             | "CryptoError"
             | "X25519PrivateKey"
             | "SigningPrivateKey"

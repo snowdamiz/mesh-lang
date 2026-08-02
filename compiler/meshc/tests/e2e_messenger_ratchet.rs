@@ -69,12 +69,15 @@ from Prekeys.Bundle import OneTimePrekeySecrets, PrekeyError, SignedPrekeySecret
 from Protocol.V1 import AccountIdentity, DeviceCredential, InitialMessage, PrekeyBundle, encode_initial_message
 from Session.Handshake import RatchetState, SessionError, initiate, receive_initial
 from Session.Ratchet import DecryptOutcome, RatchetError, RatchetMessage, decrypt, encrypt
+from Session.Snapshot import ReplacementOutcome, SnapshotError, SnapshotOutcome, replace_session, restore, snapshot
 
 type ProofError do
+  CryptoProblem(error :: CryptoError)
   IdentityProblem(error :: IdentityError)
   PrekeyProblem(error :: PrekeyError)
   SessionProblem(error :: SessionError)
   RatchetProblem(error :: RatchetError)
+  SnapshotProblem(error :: SnapshotError)
   InvalidFixture
 end
 
@@ -235,6 +238,79 @@ associated_data :: Bytes) -> RatchetState do
   end
 end
 
+fn storage_key() -> StorageKey ! ProofError do
+  case StorageKey.ephemeral() do
+    Err(error) -> Err(CryptoProblem(error))
+    Ok(value) -> Ok(value)
+  end
+end
+
+fn sealed(state :: consume RatchetState,
+wrapping_key :: borrow StorageKey,
+account_id :: Bytes,
+device_id :: Bytes,
+version :: U64) -> Result<(RatchetState, Bytes), ProofError> do
+  case snapshot(state, wrapping_key, account_id, device_id, version) do
+    SnapshotSealed(next, blob) -> Ok((next, blob))
+    SnapshotRejected(rejected, _) -> do
+      println("snapshot:seal-rejected")
+      Ok((rejected, Bytes.empty()))
+    end
+  end
+end
+
+fn restored(blob :: Bytes,
+wrapping_key :: borrow StorageKey,
+account_id :: Bytes,
+device_id :: Bytes,
+minimum_version :: U64) -> RatchetState ! ProofError do
+  case restore(blob, wrapping_key, account_id, device_id, minimum_version) do
+    Err(error) -> Err(SnapshotProblem(error))
+    Ok(state) -> do
+      println("snapshot:restored")
+      Ok(state)
+    end
+  end
+end
+
+fn replaced(current :: consume RatchetState,
+blob :: Bytes,
+wrapping_key :: borrow StorageKey,
+account_id :: Bytes,
+device_id :: Bytes) -> RatchetState ! ProofError do
+  case replace_session(current, blob, wrapping_key, account_id, device_id) do
+    ReplacementRejected(rejected, _) -> do
+      println("snapshot:replace-rejected")
+      Ok(rejected)
+    end
+    SessionReplaced(state) -> do
+      println("snapshot:replaced")
+      Ok(state)
+    end
+  end
+end
+
+fn rejects_rollback(current :: consume RatchetState,
+blob :: Bytes,
+wrapping_key :: borrow StorageKey,
+account_id :: Bytes,
+device_id :: Bytes) -> RatchetState do
+  case replace_session(current, blob, wrapping_key, account_id, device_id) do
+    SessionReplaced(state) -> do
+      println("snapshot:rollback-replaced")
+      state
+    end
+    ReplacementRejected(state, RollbackRejected) -> do
+      println("snapshot:rollback-ok")
+      state
+    end
+    ReplacementRejected(state, _) -> do
+      println("snapshot:rollback-wrong-error")
+      state
+    end
+  end
+end
+
 fn proof() -> Int ! ProofError do
   let created_at = wide("1700000000000") ?
   let expires_at = wide("1700604800000") ?
@@ -325,8 +401,44 @@ fn proof() -> Int ! ProofError do
     Ok(value) -> Ok(value)
   end ?
   let bob_session = accept_message(bob_session, third_message, associated_data, third)
+  let wrapping_key = storage_key() ?
+  let (persisted_session, blob_v1) = sealed(
+    bob_session,
+    wrapping_key,
+    bob_account.account_id,
+    bob_credential.device_id,
+    wide("1") ?
+  ) ?
+  let bob_session = restored(
+    blob_v1,
+    wrapping_key,
+    bob_account.account_id,
+    bob_credential.device_id,
+    wide("1") ?
+  ) ?
   let bob_session = accept_message(bob_session, first_message, associated_data, first)
   let bob_session = accept_message(bob_session, second_message, associated_data, second)
+  let (replacement_source, blob_v2) = sealed(
+    bob_session,
+    wrapping_key,
+    bob_account.account_id,
+    bob_credential.device_id,
+    wide("2") ?
+  ) ?
+  let bob_session = replaced(
+    persisted_session,
+    blob_v2,
+    wrapping_key,
+    bob_account.account_id,
+    bob_credential.device_id
+  ) ?
+  let bob_session = rejects_rollback(
+    bob_session,
+    blob_v1,
+    wrapping_key,
+    bob_account.account_id,
+    bob_credential.device_id
+  )
   let bob_session = expect_replay(bob_session, first_message, associated_data)
   let excessive = %{fourth_message | message_number: 100}
   let bob_session = expect_jump_rejection(bob_session, excessive, associated_data)
@@ -385,7 +497,7 @@ end
     );
     assert!(run.stderr.is_empty(), "unexpected stderr: {:?}", run.stderr);
     assert_eq!(
-        String::from_utf8_lossy(&run.stdout),
-        "ratchet:ok\nratchet:ok\nratchet:ok\nreplay:ok\njump:ok\nauthentication:ok\nratchet:ok\nratchet:ok\n"
+      String::from_utf8_lossy(&run.stdout),
+        "ratchet:ok\nsnapshot:restored\nratchet:ok\nratchet:ok\nsnapshot:replaced\nsnapshot:rollback-ok\nreplay:ok\njump:ok\nauthentication:ok\nratchet:ok\nratchet:ok\n"
     );
 }

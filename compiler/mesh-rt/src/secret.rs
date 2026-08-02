@@ -538,8 +538,13 @@ enum StorageCounterSource {
         context: usize,
         last_counter: Option<u64>,
     },
+    Ephemeral {
+        next_counter: u64,
+    },
     #[cfg(test)]
-    Deterministic { next_counter: u64 },
+    Deterministic {
+        next_counter: u64,
+    },
 }
 
 enum ResourceMetadata {
@@ -611,7 +616,6 @@ enum PreparedStorageCounter {
         reserve: MeshStorageCounterReserve,
         context: usize,
     },
-    #[cfg(test)]
     Reserved(u64),
 }
 
@@ -627,7 +631,6 @@ impl PreparedStorageCounter {
                     Err(StorageKeyError::ReservationFailed)
                 }
             }
-            #[cfg(test)]
             Self::Reserved(counter) => Ok(counter),
         }
     }
@@ -827,6 +830,19 @@ pub(crate) fn insert_storage_key_resource(
             context: context as usize,
             last_counter: None,
         },
+    )?;
+    Ok(allocate_handle(process, handle))
+}
+
+pub(crate) fn insert_ephemeral_storage_key_resource(
+    process: &mut Process,
+    material: Zeroizing<Box<[u8]>>,
+) -> Result<*mut MeshSecretHandle, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = secret_table().lock().insert_storage_key(
+        owner,
+        material,
+        StorageCounterSource::Ephemeral { next_counter: 0 },
     )?;
     Ok(allocate_handle(process, handle))
 }
@@ -1368,6 +1384,20 @@ impl ResourceTable {
             StorageCounterSource::Production {
                 reserve, context, ..
             } => PreparedStorageCounter::Production { reserve, context },
+            StorageCounterSource::Ephemeral { next_counter } => {
+                let incremented = next_counter
+                    .checked_add(1)
+                    .ok_or(StorageKeyError::CounterExhausted)?;
+                let entry = self
+                    .slots
+                    .get_mut(handle.slot as usize)
+                    .and_then(|slot| slot.entry.as_mut())
+                    .ok_or(StorageKeyError::Resource(ResourceError::StaleHandle))?;
+                entry.metadata = ResourceMetadata::StorageKey(StorageCounterSource::Ephemeral {
+                    next_counter: incremented,
+                });
+                PreparedStorageCounter::Reserved(next_counter)
+            }
             #[cfg(test)]
             StorageCounterSource::Deterministic { next_counter } => {
                 let incremented = next_counter
@@ -1416,6 +1446,13 @@ impl ResourceTable {
                 *last_counter = Some(counter);
                 if counter == u64::MAX {
                     Err(StorageKeyError::CounterExhausted)
+                } else {
+                    Ok(())
+                }
+            }
+            ResourceMetadata::StorageKey(StorageCounterSource::Ephemeral { next_counter }) => {
+                if counter.checked_add(1) != Some(*next_counter) {
+                    Err(StorageKeyError::CounterNotMonotonic)
                 } else {
                     Ok(())
                 }

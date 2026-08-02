@@ -140,6 +140,10 @@ impl Ty {
         Ty::Con(TyCon::new("SecretMap"))
     }
 
+    pub fn storage_key() -> Ty {
+        Ty::Con(TyCon::new("StorageKey"))
+    }
+
     pub fn crypto_error() -> Ty {
         Ty::Con(TyCon::new("CryptoError"))
     }

@@ -81,6 +81,8 @@ The context must bind the account, device, session, secret purpose, and
 snapshot version. A mismatched context must fail authentication without
 returning plaintext. Mobile hosts store or wrap the `StorageKey` with Keychain
 or Keystore and follow the versioned storage-wrapping callback contract.
+`StorageKey.ephemeral()` is process-local and exists for short-lived tools and
+tests; blobs sealed with it cannot be restored after that process exits.
 
 ## Required evidence
 
