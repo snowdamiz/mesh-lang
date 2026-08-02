@@ -25,8 +25,9 @@ pub enum AccessPath {
     Root,
     /// Field N of a runtime tuple, with its concrete element type.
     TupleField(Box<AccessPath>, usize, MirType),
-    /// Field N of a variant (variant name for disambiguation).
-    VariantField(Box<AccessPath>, String, usize),
+    /// Field N of a variant (variant name for disambiguation), retaining the
+    /// concrete semantic type even when a generic sum stores it as a pointer.
+    VariantField(Box<AccessPath>, String, usize, MirType),
     /// Named field of a struct.
     StructField(Box<AccessPath>, String),
     /// Head element of a list (first element).

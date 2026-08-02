@@ -1,7 +1,7 @@
 //! LSP textDocument/completion implementation for the Mesh language.
 //!
 //! Provides four tiers of code completions:
-//! 1. **Keywords** -- all 49 Mesh keywords, filtered by typed prefix
+//! 1. **Keywords** -- Mesh keywords and contextual syntax, filtered by typed prefix
 //! 2. **Built-in types** -- common types (Int, Float, String, etc.)
 //! 3. **Snippets** -- template expansions for common patterns (fn, let, struct, etc.)
 //! 4. **Scope-aware names** -- variables, functions, and types visible at the cursor
@@ -13,18 +13,20 @@ use mesh_parser::SyntaxNode;
 
 use crate::analysis::AnalysisResult;
 
-/// All 49 Mesh keywords.
+/// Mesh keywords and contextual syntax.
 const KEYWORDS: &[&str] = &[
     "actor",
     "after",
     "alias",
     "and",
     "break",
+    "borrow",
     "call",
     "case",
     "cast",
     "cond",
     "continue",
+    "consume",
     "def",
     "do",
     "else",
@@ -49,6 +51,7 @@ const KEYWORDS: &[&str] = &[
     "pub",
     "receive",
     "return",
+    "resource",
     "self",
     "send",
     "service",
@@ -68,8 +71,28 @@ const KEYWORDS: &[&str] = &[
 
 /// Built-in type names commonly used in Mesh.
 const BUILTIN_TYPES: &[&str] = &[
-    "Int", "Float", "String", "Bool", "List", "Map", "Set", "Option", "Result", "Queue", "Range",
+    "Int",
+    "Float",
+    "String",
+    "Bool",
+    "List",
+    "Map",
+    "Set",
+    "Option",
+    "Result",
+    "Queue",
+    "Range",
     "Pid",
+    "SecretBytes",
+    "CryptoError",
+    "X25519PrivateKey",
+    "X25519PublicKey",
+    "X25519KeyPair",
+    "SigningPrivateKey",
+    "SigningPublicKey",
+    "SigningKeyPair",
+    "Signature",
+    "AeadKey",
 ];
 
 /// Snippet definitions: (label, snippet_body).
@@ -451,6 +474,27 @@ mod tests {
     }
 
     #[test]
+    fn ownership_syntax_and_resource_types_are_completed() {
+        let items = completions_at("", 0, 0);
+        let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
+
+        for expected in [
+            "resource",
+            "borrow",
+            "consume",
+            "SecretBytes",
+            "X25519PrivateKey",
+            "SigningPrivateKey",
+            "AeadKey",
+        ] {
+            assert!(
+                labels.contains(&expected),
+                "missing completion `{expected}`"
+            );
+        }
+    }
+
+    #[test]
     fn scope_completion_finds_let_bindings() {
         // Parse "let x = 1\nlet y = 2\n" and verify both appear in scope completions at the end.
         let source = "let x = 1\nlet y = 2\n";
@@ -529,7 +573,8 @@ mod tests {
         let source = "";
         let items = completions_at(source, 0, 0);
 
-        // Should have all 49 keywords + 12 types + 11 snippets = 72 minimum.
+        // Keep a coarse floor so accidental table loss is visible without
+        // coupling this test to every future completion.
         assert!(
             items.len() >= 72,
             "expected at least 72 completions for empty prefix, got {}",

@@ -4,9 +4,10 @@
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use mesh_parser::ast::expr::{BinaryExpr, ForInExpr, IfExpr, Literal};
+use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, ForInExpr, IfExpr, Literal};
 use mesh_parser::ast::item::{
-    ClusteredDeclKind, ClusteredDeclSyntax, FnDef, LetBinding, SourceFile, StructDef, SumTypeDef,
+    ClusteredDeclKind, ClusteredDeclSyntax, FnDef, LetBinding, Param, ParamOwnership, SourceFile,
+    StructDef, SumTypeDef,
 };
 use mesh_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
 use mesh_parser::SyntaxKind;
@@ -542,6 +543,65 @@ fn fn_def_typed_params_and_return() {
 }
 
 #[test]
+fn fn_def_borrow_parameter() {
+    assert_snapshot!(source_and_debug(
+        "fn derive(root :: borrow SecretBytes) do\n  root\nend"
+    ), @r#"
+    SOURCE_FILE@0..44
+      FN_DEF@0..44
+        FN_KW@0..2 "fn"
+        NAME@2..8
+          IDENT@2..8 "derive"
+        PARAM_LIST@8..33
+          L_PAREN@8..9 "("
+          PARAM@9..32
+            IDENT@9..13 "root"
+            TYPE_ANNOTATION@13..32
+              COLON_COLON@13..15 "::"
+              OWNERSHIP_MODIFIER@15..21
+                IDENT@15..21 "borrow"
+              IDENT@21..32 "SecretBytes"
+          R_PAREN@32..33 ")"
+        DO_KW@33..35 "do"
+        BLOCK@35..41
+          NEWLINE@35..36 "\n"
+          NAME_REF@36..40
+            IDENT@36..40 "root"
+          NEWLINE@40..41 "\n"
+        END_KW@41..44 "end"
+      EOF@44..44 ""
+    "#);
+}
+
+#[test]
+fn fn_def_consume_parameter() {
+    assert_snapshot!(source_and_debug(
+        "fn destroy(secret :: consume SecretBytes) do\nend"
+    ), @r#"
+    SOURCE_FILE@0..43
+      FN_DEF@0..43
+        FN_KW@0..2 "fn"
+        NAME@2..9
+          IDENT@2..9 "destroy"
+        PARAM_LIST@9..37
+          L_PAREN@9..10 "("
+          PARAM@10..36
+            IDENT@10..16 "secret"
+            TYPE_ANNOTATION@16..36
+              COLON_COLON@16..18 "::"
+              OWNERSHIP_MODIFIER@18..25
+                IDENT@18..25 "consume"
+              IDENT@25..36 "SecretBytes"
+          R_PAREN@36..37 ")"
+        DO_KW@37..39 "do"
+        BLOCK@39..40
+          NEWLINE@39..40 "\n"
+        END_KW@40..43 "end"
+      EOF@43..43 ""
+    "#);
+}
+
+#[test]
 fn def_keyword() {
     assert_snapshot!(source_and_debug("def greet(name) do\n  \"hello\"\nend"));
 }
@@ -613,6 +673,74 @@ fn struct_pub_with_generics() {
     assert_snapshot!(source_and_debug(
         "pub struct Pair<A, B> do\n  first :: A\n  second :: B\nend"
     ));
+}
+
+#[test]
+fn opaque_resource_declaration() {
+    assert_snapshot!(source_and_debug("resource X25519PrivateKey"), @r#"
+    SOURCE_FILE@0..24
+      STRUCT_DEF@0..24
+        RESOURCE_MODIFIER@0..8
+          IDENT@0..8 "resource"
+        NAME@8..24
+          IDENT@8..24 "X25519PrivateKey"
+      EOF@24..24 ""
+    "#);
+}
+
+#[test]
+fn public_opaque_resource_declaration() {
+    assert_snapshot!(source_and_debug("pub resource StorageKey"), @r#"
+    SOURCE_FILE@0..21
+      STRUCT_DEF@0..21
+        VISIBILITY@0..3
+          PUB_KW@0..3 "pub"
+        RESOURCE_MODIFIER@3..11
+          IDENT@3..11 "resource"
+        NAME@11..21
+          IDENT@11..21 "StorageKey"
+      EOF@21..21 ""
+    "#);
+}
+
+#[test]
+fn resource_remains_contextual_outside_declaration_syntax() {
+    assert_snapshot!(source_and_debug("resource()"), @r#"
+    SOURCE_FILE@0..10
+      CALL_EXPR@0..10
+        NAME_REF@0..8
+          IDENT@0..8 "resource"
+        ARG_LIST@8..10
+          L_PAREN@8..9 "("
+          R_PAREN@9..10 ")"
+      EOF@10..10 ""
+    "#);
+}
+
+#[test]
+fn resource_struct_declaration() {
+    assert_snapshot!(source_and_debug(
+        "resource struct RatchetSecrets do\n  root_key :: SecretBytes\nend"
+    ), @r#"
+    SOURCE_FILE@0..56
+      STRUCT_DEF@0..56
+        RESOURCE_MODIFIER@0..8
+          IDENT@0..8 "resource"
+        STRUCT_KW@8..14 "struct"
+        NAME@14..28
+          IDENT@14..28 "RatchetSecrets"
+        DO_KW@28..30 "do"
+        NEWLINE@30..31 "\n"
+        STRUCT_FIELD@31..52
+          NAME@31..39
+            IDENT@31..39 "root_key"
+          TYPE_ANNOTATION@39..52
+            COLON_COLON@39..41 "::"
+            IDENT@41..52 "SecretBytes"
+        NEWLINE@52..53 "\n"
+        END_KW@53..56 "end"
+      EOF@56..56 ""
+    "#);
 }
 
 // ── Pattern Matching ────────────────────────────────────────────────
@@ -921,6 +1049,87 @@ fn ast_fn_def_with_return_type() {
 }
 
 #[test]
+fn ast_parameter_ownership_preserves_the_annotated_type() {
+    let p = parse(
+        "fn transfer(data :: Bytes, view :: borrow SecretBytes, owned :: consume SecretBytes) do\nend",
+    );
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let fn_def = p.tree().fn_defs().next().expect("should have fn def");
+    let params: Vec<_> = fn_def
+        .param_list()
+        .expect("should have params")
+        .params()
+        .collect();
+    assert_eq!(params.len(), 3);
+
+    assert_eq!(params[0].ownership(), ParamOwnership::Move);
+    assert_eq!(params[1].ownership(), ParamOwnership::Borrow);
+    assert_eq!(params[2].ownership(), ParamOwnership::Consume);
+    assert_eq!(
+        params[1]
+            .type_annotation()
+            .and_then(|annotation| annotation.type_name())
+            .map(|token| token.text().to_string()),
+        Some("SecretBytes".to_string())
+    );
+}
+
+#[test]
+fn lone_borrow_identifier_remains_a_type_name() {
+    let p = parse("fn view(value :: borrow) do\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let parameter = p
+        .tree()
+        .fn_defs()
+        .next()
+        .and_then(|function| function.param_list())
+        .and_then(|parameters| parameters.params().next())
+        .expect("should have parameter");
+    assert_eq!(parameter.ownership(), ParamOwnership::Move);
+    assert_eq!(
+        parameter
+            .type_annotation()
+            .and_then(|annotation| annotation.type_name())
+            .map(|token| token.text().to_string()),
+        Some("borrow".to_string())
+    );
+}
+
+#[test]
+fn closure_parameter_supports_borrow_ownership() {
+    let p = parse_expr("fn (root :: borrow SecretBytes) -> root end");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let closure = p
+        .syntax()
+        .children()
+        .find_map(ClosureExpr::cast)
+        .expect("should have closure");
+    let parameter = closure
+        .param_list()
+        .expect("should have parameter list")
+        .params()
+        .next()
+        .expect("should have parameter");
+    assert_eq!(parameter.ownership(), ParamOwnership::Borrow);
+}
+
+#[test]
+fn trailing_closure_parameter_supports_consume_ownership() {
+    let p = parse_expr("run() do |secret :: consume SecretBytes|\n  secret\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let parameter = p
+        .syntax()
+        .descendants()
+        .find_map(Param::cast)
+        .expect("should have trailing closure parameter");
+    assert_eq!(parameter.ownership(), ParamOwnership::Consume);
+}
+
+#[test]
 fn ast_let_binding_accessors() {
     let p = parse("let x :: Int = 5");
     assert!(p.ok(), "parse errors: {:?}", p.errors());
@@ -1008,6 +1217,33 @@ fn ast_struct_def_accessors() {
         "Float"
     );
     assert_eq!(fields[1].name().unwrap().text().unwrap(), "y");
+}
+
+#[test]
+fn ast_resource_def_accessors_distinguish_opaque_and_aggregate_resources() {
+    let p = parse(
+        "resource SecretBytes\nresource struct RatchetSecrets do\n  root_key :: SecretBytes\nend\nstruct PublicData do\n  value :: Bytes\nend",
+    );
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+
+    let definitions: Vec<_> = p
+        .tree()
+        .syntax()
+        .children()
+        .filter_map(StructDef::cast)
+        .collect();
+    assert_eq!(definitions.len(), 3);
+
+    assert!(definitions[0].is_declared_resource());
+    assert!(definitions[0].is_opaque_resource());
+    assert!(definitions[0].fields().next().is_none());
+
+    assert!(definitions[1].is_declared_resource());
+    assert!(!definitions[1].is_opaque_resource());
+    assert_eq!(definitions[1].fields().count(), 1);
+
+    assert!(!definitions[2].is_declared_resource());
+    assert!(!definitions[2].is_opaque_resource());
 }
 
 #[test]

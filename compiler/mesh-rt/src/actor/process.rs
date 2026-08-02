@@ -274,6 +274,10 @@ pub struct Process {
     /// Set when the actor defines a `terminate do ... end` block.
     pub terminate_callback: Option<TerminateCallback>,
 
+    /// Set when the scheduler has claimed responsibility for final callbacks,
+    /// notifications, process-table removal, and active-count accounting.
+    exit_finalization_started: bool,
+
     /// Base address of this actor's coroutine stack (highest address).
     /// Set when the coroutine body starts executing. Used by the GC to
     /// determine stack scanning bounds.
@@ -299,8 +303,55 @@ impl Process {
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             terminate_callback: None,
+            exit_finalization_started: false,
             stack_base: std::ptr::null(),
         }
+    }
+
+    /// Move a live actor between scheduler states without resurrecting an exit.
+    pub(crate) fn set_live_state(&mut self, state: ProcessState) -> bool {
+        debug_assert!(!matches!(&state, ProcessState::Exited(_)));
+        if matches!(self.state, ProcessState::Exited(_)) {
+            return false;
+        }
+        self.state = state;
+        true
+    }
+
+    /// Transition this process to an exited state, preserving the first reason,
+    /// and immediately destroy actor-owned secrets for forced exits.
+    pub(crate) fn mark_exited(&mut self, reason: ExitReason) -> bool {
+        if self.exit_finalization_started {
+            return false;
+        }
+        let transitioned = if matches!(self.state, ProcessState::Exited(_)) {
+            false
+        } else {
+            self.state = ProcessState::Exited(reason);
+            true
+        };
+        crate::secret::destroy_owned(self.pid);
+        transitioned
+    }
+
+    /// Claim exactly-once scheduler finalization and resolve the authoritative
+    /// exit reason. Natural exits defer secret cleanup until after terminate.
+    pub(crate) fn begin_exit_finalization(
+        &mut self,
+        fallback_reason: ExitReason,
+    ) -> Option<ExitReason> {
+        if self.exit_finalization_started {
+            return None;
+        }
+        let reason = match &self.state {
+            ProcessState::Exited(reason) => reason.clone(),
+            ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
+                self.state = ProcessState::Exited(fallback_reason.clone());
+                fallback_reason
+            }
+        };
+        self.exit_finalization_started = true;
+        Some(reason)
     }
 }
 
@@ -374,6 +425,20 @@ mod tests {
         assert!(proc.mailbox.is_empty()); // Mailbox::is_empty()
         assert!(proc.terminate_callback.is_none());
         assert!(matches!(proc.state, ProcessState::Ready));
+    }
+
+    #[test]
+    fn exited_process_preserves_first_reason_and_rejects_live_transitions() {
+        let mut process = Process::new(ProcessId::next(), Priority::Normal);
+
+        assert!(process.mark_exited(ExitReason::Killed));
+        assert!(!process.set_live_state(ProcessState::Ready));
+        assert!(!process.mark_exited(ExitReason::Normal));
+
+        assert!(matches!(
+            process.state,
+            ProcessState::Exited(ExitReason::Killed)
+        ));
     }
 
     #[test]

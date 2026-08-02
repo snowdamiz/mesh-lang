@@ -1001,8 +1001,9 @@ impl<'ctx> CodeGen<'ctx> {
 mod tests {
     use super::*;
     use crate::mir::{
-        BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirStructDef,
-        MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+        BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirResourceDestructor,
+        MirResourceField, MirResourceMoveSource, MirResourceVariant, MirStructDef, MirSumTypeDef,
+        MirType, MirVariantDef, UnaryOp,
     };
 
     fn empty_mir_module() -> MirModule {
@@ -1154,6 +1155,262 @@ mod tests {
         let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
         codegen.compile(&mir).unwrap();
         codegen.get_llvm_ir()
+    }
+
+    #[test]
+    fn resource_move_zeros_slot_and_drop_calls_destroy_only_when_non_null() {
+        let resource = MirType::Ptr;
+        let body = MirExpr::Block(
+            vec![
+                MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
+                    ty: resource.clone(),
+                    source: MirResourceMoveSource::Slot,
+                },
+                MirExpr::ResourceDrop {
+                    value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
+                    resource_ty: resource.clone(),
+                    destructor: MirResourceDestructor::Opaque,
+                },
+            ],
+            MirType::Unit,
+        );
+
+        let ir = compile_fn_to_ir(vec![("secret".to_string(), resource)], body, MirType::Unit);
+        assert!(
+            ir.contains("store ptr null"),
+            "move must invalidate its slot:\n{ir}"
+        );
+        assert!(
+            ir.contains("resource_is_null = icmp eq ptr"),
+            "drop must guard the destructor call:\n{ir}"
+        );
+        assert_eq!(ir.matches("call void @mesh_resource_destroy").count(), 1);
+    }
+
+    #[test]
+    fn resource_field_move_destroys_resource_siblings_before_zeroing_parent() {
+        let pair_ty = MirType::Struct("DoubleSecret".to_string());
+        let destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "take_first".to_string(),
+                params: vec![("pair".to_string(), pair_ty.clone())],
+                return_type: MirType::Ptr,
+                body: MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::FieldAccess {
+                        object: Box::new(MirExpr::Var("pair".to_string(), pair_ty.clone())),
+                        field: "first".to_string(),
+                        ty: MirType::Ptr,
+                    }),
+                    ty: MirType::Ptr,
+                    source: MirResourceMoveSource::Projection {
+                        parent_ty: pair_ty,
+                        parent_destructor: destructor,
+                        field_index: 0,
+                        nested_field_indices: vec![],
+                    },
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "DoubleSecret".to_string(),
+                fields: vec![
+                    ("first".to_string(), MirType::Ptr),
+                    ("second".to_string(), MirType::Ptr),
+                ],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            1,
+            "{ir}"
+        );
+        assert!(ir.contains("zeroinitializer, ptr %pair"), "{ir}");
+    }
+
+    #[test]
+    fn nested_resource_field_move_destroys_siblings_at_every_level() {
+        let inner_ty = MirType::Struct("InnerSecrets".to_string());
+        let outer_ty = MirType::Struct("OuterSecrets".to_string());
+        let inner_destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let outer_destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: inner_ty.clone(),
+                destructor: inner_destructor,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "take_nested".to_string(),
+                params: vec![("outer".to_string(), outer_ty.clone())],
+                return_type: MirType::Ptr,
+                body: MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::FieldAccess {
+                        object: Box::new(MirExpr::FieldAccess {
+                            object: Box::new(MirExpr::Var("outer".to_string(), outer_ty.clone())),
+                            field: "inner".to_string(),
+                            ty: inner_ty.clone(),
+                        }),
+                        field: "selected".to_string(),
+                        ty: MirType::Ptr,
+                    }),
+                    ty: MirType::Ptr,
+                    source: MirResourceMoveSource::Projection {
+                        parent_ty: outer_ty,
+                        parent_destructor: outer_destructor,
+                        field_index: 0,
+                        nested_field_indices: vec![0],
+                    },
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![
+                MirStructDef {
+                    name: "InnerSecrets".to_string(),
+                    fields: vec![
+                        ("selected".to_string(), MirType::Ptr),
+                        ("inner_sibling".to_string(), MirType::Ptr),
+                    ],
+                },
+                MirStructDef {
+                    name: "OuterSecrets".to_string(),
+                    fields: vec![
+                        ("inner".to_string(), inner_ty),
+                        ("outer_sibling".to_string(), MirType::Ptr),
+                    ],
+                },
+            ],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            2,
+            "one inner and one outer sibling must be destroyed:\n{ir}"
+        );
+        assert!(ir.contains("zeroinitializer, ptr %outer"), "{ir}");
+    }
+
+    #[test]
+    fn resource_result_drop_checks_each_resource_variant_then_destroys_payload() {
+        let result_ty = MirType::SumType("Result_SecretBytes_SecretBytes".to_string());
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "discard_result".to_string(),
+                params: vec![("result".to_string(), result_ty.clone())],
+                return_type: MirType::Unit,
+                body: MirExpr::ResourceDrop {
+                    value: Box::new(MirExpr::Var("result".to_string(), result_ty.clone())),
+                    resource_ty: result_ty,
+                    destructor: MirResourceDestructor::SumVariants(vec![
+                        MirResourceVariant {
+                            tag: 0,
+                            field_types: vec![MirType::Ptr],
+                            resource_fields: vec![MirResourceField {
+                                index: 0,
+                                ty: MirType::Ptr,
+                                destructor: MirResourceDestructor::Opaque,
+                            }],
+                        },
+                        MirResourceVariant {
+                            tag: 1,
+                            field_types: vec![MirType::Ptr],
+                            resource_fields: vec![MirResourceField {
+                                index: 0,
+                                ty: MirType::Ptr,
+                                destructor: MirResourceDestructor::Opaque,
+                            }],
+                        },
+                    ]),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("icmp eq i8 %resource_sum_tag").count(),
+            2,
+            "{ir}"
+        );
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            2,
+            "{ir}"
+        );
     }
 
     /// Helper: compile a module with declared-handler registrations and return LLVM IR.
@@ -1673,6 +1930,37 @@ mod tests {
             "Should have switch on tag: {}",
             ir
         );
+    }
+
+    #[test]
+    fn nested_sum_pattern_inside_generic_result_codegen_dereferences_payload() {
+        let parse = mesh_parser::parse(
+            "fn classify(result :: Result<Bytes, CryptoError>) do\n\
+               case result do\n\
+                 Err(InvalidLength(_, _)) -> 1\n\
+                 _ -> 0\n\
+               end\n\
+             end",
+        );
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "type errors: {:?}", typeck.errors);
+        let mut mir = crate::mir::lower::lower_to_mir(
+            &parse,
+            &typeck,
+            "",
+            &std::collections::HashSet::new(),
+            &std::collections::HashMap::new(),
+        )
+        .expect("nested generic sum should lower");
+        mir.functions.retain(|function| function.name == "classify");
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+
+        assert_eq!(ir.matches("switch i8").count(), 2, "{ir}");
+        assert!(ir.contains("boxed_variant_payload"), "{ir}");
     }
 
     #[test]
@@ -2587,11 +2875,11 @@ mod tests {
         );
 
         // Destructuring: should load through the heap pointer.
-        // The pattern match binding loads the ptr from the variant slot, then
-        // dereferences it to get the actual struct (deref_struct).
+        // The typed variant access path loads the pointer from the generic
+        // payload slot, then loads the actual struct from that allocation.
         assert!(
-            ir.contains("deref_struct"),
-            "Destructuring should dereference heap pointer (deref_struct): {}",
+            ir.contains("boxed_variant_payload") && ir.contains("load %TestPair.0"),
+            "Destructuring should dereference the boxed variant payload: {}",
             ir
         );
 

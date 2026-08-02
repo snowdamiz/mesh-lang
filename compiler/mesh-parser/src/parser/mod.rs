@@ -631,6 +631,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             SyntaxKind::FN_KW | SyntaxKind::DEF_KW => items::parse_fn_def(p),
             SyntaxKind::MODULE_KW => items::parse_module_def(p),
             SyntaxKind::STRUCT_KW => items::parse_struct_def(p),
+            SyntaxKind::IDENT if p.nth_text(1) == "resource" => items::parse_resource_def(p),
             SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
             SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
             SyntaxKind::TYPE_KW if p.nth(2) == SyntaxKind::IDENT => {
@@ -663,7 +664,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
                 }
             }
             _ => {
-                p.error("expected `fn`, `module`, `struct`, `interface`, `type`, or `supervisor` after `pub`");
+                p.error("expected `fn`, `module`, `struct`, `resource`, `interface`, `type`, or `supervisor` after `pub`");
             }
         },
 
@@ -690,6 +691,12 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
         // "from" is an IDENT, not a keyword -- check text
         SyntaxKind::IDENT if p.current_text() == "from" => {
             items::parse_from_import_decl(p);
+        }
+
+        // `resource` is contextual so it remains available as an identifier
+        // outside declaration position.
+        _ if items::starts_resource_def(p) => {
+            items::parse_resource_def(p);
         }
 
         SyntaxKind::STRUCT_KW => items::parse_struct_def(p),

@@ -216,6 +216,10 @@ pub enum SyntaxKind {
     TYPE_ANNOTATION,
     /// Visibility modifier: `pub`
     VISIBILITY,
+    /// Contextual resource declaration modifier: `resource`
+    RESOURCE_MODIFIER,
+    /// Contextual function parameter ownership modifier: `borrow` or `consume`
+    OWNERSHIP_MODIFIER,
     /// Wildcard pattern: `_`
     WILDCARD_PAT,
     /// Identifier pattern: `x`
@@ -683,6 +687,8 @@ mod tests {
             SyntaxKind::PATH,
             SyntaxKind::TYPE_ANNOTATION,
             SyntaxKind::VISIBILITY,
+            SyntaxKind::RESOURCE_MODIFIER,
+            SyntaxKind::OWNERSHIP_MODIFIER,
             SyntaxKind::WILDCARD_PAT,
             SyntaxKind::IDENT_PAT,
             SyntaxKind::LITERAL_PAT,

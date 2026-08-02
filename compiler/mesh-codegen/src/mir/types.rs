@@ -65,6 +65,15 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) 
 
 /// Resolve a type constructor (no type arguments).
 fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
+    if registry.is_resource_name(&con.name)
+        && registry
+            .struct_defs
+            .get(&con.name)
+            .is_none_or(|definition| definition.fields.is_empty())
+    {
+        return MirType::Ptr;
+    }
+
     match con.name.as_str() {
         "Int" => MirType::Int,
         "Float" => MirType::Float,
@@ -84,7 +93,7 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         "DateTime" => MirType::Int,
         // Collection types, Json, HTTP types, and iterator handles are opaque pointers at LLVM level.
         "List" | "Map" | "Set" | "Range" | "Queue" | "Tuple" | "Json" | "Bytes"
-        | "BytesError"
+        | "BytesError" | "SecretBytes"
         | "U64" | "U128" | "I128"
         | "Router" | "Request" | "Response"
         | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
@@ -164,7 +173,13 @@ pub fn mangle_type_name(base: &str, args: &[Ty], registry: &TypeRegistry) -> Str
     let mut name = base.to_string();
     for arg in args {
         name.push('_');
-        name.push_str(&mir_type_suffix(&resolve_type(arg, registry, false)));
+        let suffix = match arg {
+            Ty::Con(constructor) if registry.is_resource_name(&constructor.name) => {
+                constructor.name.clone()
+            }
+            _ => mir_type_suffix(&resolve_type(arg, registry, false)),
+        };
+        name.push_str(&suffix);
     }
     name
 }
@@ -245,6 +260,7 @@ mod tests {
             struct_defs: Default::default(),
             type_aliases: Default::default(),
             sum_type_defs: Default::default(),
+            resource_types: Default::default(),
         }
     }
 
@@ -362,6 +378,79 @@ mod tests {
         assert_eq!(
             resolve_type(&ty, &reg, false),
             MirType::Struct("Point".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_opaque_nominal_resource_to_ptr() {
+        use mesh_typeck::StructDefInfo;
+
+        let mut reg = empty_registry();
+        reg.register_resource_type("StorageKey");
+        reg.struct_defs.insert(
+            "StorageKey".to_string(),
+            StructDefInfo {
+                name: "StorageKey".to_string(),
+                generic_params: vec![],
+                fields: vec![],
+            },
+        );
+
+        assert_eq!(
+            resolve_type(&Ty::Con(TyCon::new("StorageKey")), &reg, false),
+            MirType::Ptr
+        );
+    }
+
+    #[test]
+    fn resolve_registered_crypto_error_as_sum_type() {
+        use mesh_typeck::SumTypeDefInfo;
+
+        let mut reg = empty_registry();
+        reg.sum_type_defs.insert(
+            "CryptoError".to_string(),
+            SumTypeDefInfo {
+                name: "CryptoError".to_string(),
+                generic_params: vec![],
+                variants: vec![],
+            },
+        );
+
+        assert_eq!(
+            resolve_type(&Ty::crypto_error(), &reg, false),
+            MirType::SumType("CryptoError".to_string())
+        );
+    }
+
+    #[test]
+    fn generic_resource_result_keeps_nominal_payload_identity() {
+        use mesh_typeck::SumTypeDefInfo;
+
+        let mut reg = empty_registry();
+        reg.sum_type_defs.insert(
+            "Result".to_string(),
+            SumTypeDefInfo {
+                name: "Result".to_string(),
+                generic_params: vec!["T".to_string(), "E".to_string()],
+                variants: vec![],
+            },
+        );
+        reg.sum_type_defs.insert(
+            "CryptoError".to_string(),
+            SumTypeDefInfo {
+                name: "CryptoError".to_string(),
+                generic_params: vec![],
+                variants: vec![],
+            },
+        );
+
+        assert_eq!(
+            resolve_type(
+                &Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+                &reg,
+                false,
+            ),
+            MirType::SumType("Result_SecretBytes_CryptoError".to_string())
         );
     }
 

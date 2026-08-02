@@ -52,6 +52,7 @@ fn module_exports(
         actor_defs: FxHashMap::default(),
         private_names,
         type_aliases: FxHashMap::default(),
+        ..ModuleExports::default()
     }
 }
 

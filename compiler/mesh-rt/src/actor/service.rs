@@ -75,9 +75,10 @@ pub extern "C" fn mesh_service_call(
 
         // Wake the target if it's waiting.
         if matches!(proc.state, super::process::ProcessState::Waiting) {
-            proc.state = super::process::ProcessState::Ready;
-            drop(proc);
-            sched.wake_process(target);
+            if proc.set_live_state(super::process::ProcessState::Ready) {
+                drop(proc);
+                sched.wake_process(target);
+            }
         }
     } else {
         return std::ptr::null();

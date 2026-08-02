@@ -1174,6 +1174,12 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut fields: Vec<FormatIR> = Vec::new();
     let mut in_body = false;
+    let is_opaque_resource = node
+        .children()
+        .any(|child| child.kind() == SyntaxKind::RESOURCE_MODIFIER)
+        && !node
+            .children_with_tokens()
+            .any(|child| child.kind() == SyntaxKind::STRUCT_KW);
 
     for child in node.children_with_tokens() {
         match child {
@@ -1211,6 +1217,10 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                             parts.push(walk_node(&n));
                             parts.push(sp());
                         }
+                        SyntaxKind::RESOURCE_MODIFIER => {
+                            parts.push(walk_node(&n));
+                            parts.push(sp());
+                        }
                         SyntaxKind::NAME | SyntaxKind::GENERIC_PARAM_LIST => {
                             parts.push(walk_node(&n));
                         }
@@ -1221,6 +1231,10 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                 }
             }
         }
+    }
+
+    if is_opaque_resource {
+        return ir::concat(parts);
     }
 
     if !fields.is_empty() {

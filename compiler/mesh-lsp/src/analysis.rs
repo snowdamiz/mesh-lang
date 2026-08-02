@@ -230,7 +230,8 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::SlotPositionConflict { span, .. } => Some(*span),
         TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
         TypeError::UndefinedType { span, .. }
-        | TypeError::NativeDeclarationInvalid { span, .. } => Some(*span),
+        | TypeError::NativeDeclarationInvalid { span, .. }
+        | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }
 
@@ -890,6 +891,8 @@ fn build_import_context(
                             actor_defs: exports.actor_defs.clone(),
                             private_names: exports.private_names.clone(),
                             type_aliases: exports.type_aliases.clone(),
+                            resource_types: exports.resource_types.clone(),
+                            function_ownership: exports.function_ownership.clone(),
                         },
                     );
                 }
@@ -1661,6 +1664,19 @@ mod tests {
         let diag = &result.diagnostics[0];
         // The error is for "undefined_var" which is on line 0.
         assert_eq!(diag.range.start.line, 0);
+    }
+
+    #[test]
+    fn analyze_resource_violation_produces_diagnostic() {
+        let source = "fn misuse(secret :: SecretBytes) do\n  let moved = secret\n  secret\nend";
+        let result = analyze_document("file:///test.mpl", source, &[]);
+
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.severity == Some(DiagnosticSeverity::ERROR)
+                && diagnostic
+                    .message
+                    .contains("resource `secret` was used after it moved")
+        }));
     }
 
     #[test]

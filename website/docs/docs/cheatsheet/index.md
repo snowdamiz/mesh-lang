@@ -651,9 +651,11 @@ See [Testing](/docs/testing/) for full guide.
 
 ```mesh
 # Crypto
-let h256 = Crypto.sha256("hello")
-let h512 = Crypto.sha512("hello")
-let mac = Crypto.hmac_sha256("key", "msg")
+let input = Bytes.from_utf8("hello")
+let h256 = Crypto.sha256(input)             # Bytes
+let h512 = Crypto.sha512(input)             # Bytes
+let h256_text = Crypto.sha256_hex(input)    # String presentation
+let secret = Secret.random(32)              # Result<SecretBytes, CryptoError>
 let id = Crypto.uuid4()                    # UUID v4 string
 
 # Encoding

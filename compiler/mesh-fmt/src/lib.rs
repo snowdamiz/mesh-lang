@@ -189,6 +189,14 @@ mod idempotency_tests {
     }
 
     #[test]
+    fn idempotent_resource_declarations_and_parameter_ownership() {
+        assert_idempotent(
+            "resource declarations and parameter ownership",
+            "resource SecretBytes\nresource struct RatchetSecrets do\nroot_key :: SecretBytes\nend\nfn rotate(root::borrow SecretBytes, next::consume SecretBytes) do\nnext\nend",
+        );
+    }
+
+    #[test]
     fn idempotent_sum_type() {
         assert_idempotent(
             "sum type",
@@ -481,6 +489,29 @@ mod snapshot_tests {
         struct Point do
           x :: Float
           y :: Float
+        end
+        ");
+    }
+
+    #[test]
+    fn snapshot_opaque_resource() {
+        let result = fmt("resource   SecretBytes");
+        insta::assert_snapshot!(result, @"resource SecretBytes
+");
+    }
+
+    #[test]
+    fn snapshot_resource_struct_and_parameter_ownership() {
+        let result = fmt(
+            "pub resource struct RatchetSecrets do\nroot_key::SecretBytes\nend\nfn rotate(root::borrow SecretBytes,next::consume SecretBytes)do\nnext\nend",
+        );
+        insta::assert_snapshot!(result, @r"
+        pub resource struct RatchetSecrets do
+          root_key :: SecretBytes
+        end
+
+        fn rotate(root :: borrow SecretBytes, next :: consume SecretBytes) do
+          next
         end
         ");
     }

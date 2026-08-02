@@ -396,7 +396,7 @@ impl Scheduler {
     pub fn create_main_process(&self) -> ProcessId {
         let pid = ProcessId::next();
         let mut process = Process::new(pid, Priority::Normal);
-        process.state = ProcessState::Running;
+        process.set_live_state(ProcessState::Running);
         let process = Arc::new(Mutex::new(process));
         self.process_table.write().insert(pid, process);
         // Do NOT increment active_count -- main thread is not scheduler-managed.
@@ -535,17 +535,25 @@ fn worker_loop(
 
         if let Some(req) = request {
             did_work = true;
+            let exited_reason = process_table.read().get(&req.pid).and_then(|process| {
+                let mut process = process.lock();
+                match &process.state {
+                    ProcessState::Exited(reason) => Some(reason.clone()),
+                    ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
+                        process.set_live_state(ProcessState::Running);
+                        None
+                    }
+                }
+            });
 
-            // Create coroutine on this thread.
-            let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
-
-            // Mark process as running.
-            if let Some(proc) = process_table.read().get(&req.pid) {
-                proc.lock().state = ProcessState::Running;
-            }
-
-            if resume_process(&process_table, &active_count, req.pid, &mut handle) {
-                suspended.push((req.pid, handle));
+            if let Some(reason) = exited_reason {
+                finalize_managed_process(&process_table, &active_count, req.pid, reason);
+            } else if process_table.read().contains_key(&req.pid) {
+                // Create the coroutine only after confirming the queued actor is live.
+                let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
+                if resume_process(&process_table, &active_count, req.pid, &mut handle) {
+                    suspended.push((req.pid, handle));
+                }
             }
         }
 
@@ -586,7 +594,7 @@ fn worker_loop(
                         if let Some(proc_arc) = process_table.read().get(pid) {
                             let mut proc = proc_arc.lock();
                             if matches!(proc.state, ProcessState::Waiting) {
-                                proc.state = ProcessState::Ready;
+                                proc.set_live_state(ProcessState::Ready);
                             }
                         }
                     }
@@ -628,6 +636,19 @@ fn resume_process(
     pid: ProcessId,
     handle: &mut CoroutineHandle,
 ) -> bool {
+    let exited_reason =
+        process_table
+            .read()
+            .get(&pid)
+            .and_then(|process| match &process.lock().state {
+                ProcessState::Exited(reason) => Some(reason.clone()),
+                _ => None,
+            });
+    if let Some(reason) = exited_reason {
+        finalize_managed_process(process_table, active_count, pid, reason);
+        return false;
+    }
+
     set_current_pid(pid);
     let result = handle.resume_catching_panic();
     clear_current_pid();
@@ -635,12 +656,23 @@ fn resume_process(
 
     match result {
         Ok(true) => {
-            if let Some(process) = process_table.read().get(&pid) {
+            let exited_reason = if let Some(process) = process_table.read().get(&pid) {
                 let mut process = process.lock();
                 process.reductions = DEFAULT_REDUCTIONS;
-                if !matches!(process.state, ProcessState::Waiting) {
-                    process.state = ProcessState::Ready;
+                match &process.state {
+                    ProcessState::Exited(reason) => Some(reason.clone()),
+                    ProcessState::Waiting => None,
+                    ProcessState::Ready | ProcessState::Running => {
+                        process.set_live_state(ProcessState::Ready);
+                        None
+                    }
                 }
+            } else {
+                None
+            };
+            if let Some(reason) = exited_reason {
+                finalize_managed_process(process_table, active_count, pid, reason);
+                return false;
             }
             true
         }
@@ -650,14 +682,28 @@ fn resume_process(
                 Err(message) => ExitReason::Error(message),
                 Ok(true) => unreachable!(),
             };
-            handle_process_exit(process_table, pid, reason);
-            let remaining = active_count
-                .fetch_sub(1, Ordering::SeqCst)
-                .saturating_sub(1);
-            crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
+            finalize_managed_process(process_table, active_count, pid, reason);
             false
         }
     }
+}
+
+fn finalize_managed_process(
+    process_table: &ProcessTable,
+    active_count: &AtomicU64,
+    pid: ProcessId,
+    reason: ExitReason,
+) {
+    if !handle_process_exit(process_table, pid, reason) {
+        return;
+    }
+    let previous = active_count
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+            Some(count.saturating_sub(1))
+        })
+        .expect("active-count update cannot fail");
+    let remaining = previous.saturating_sub(1);
+    crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
 }
 
 /// Try to get a spawn request from available sources.
@@ -710,21 +756,27 @@ fn try_get_request(
 /// Handle process exit: invoke terminate callback, propagate exit to links,
 /// clean up from process table.
 ///
-/// 1. FIRST: invoke terminate_callback if set (wrapped in catch_unwind for panic safety)
-/// 2. THEN: propagate exit signals to all linked processes
-/// 3. Mark the process as exited, then remove it after notifications and cleanup
-fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: ExitReason) {
-    // Extract terminate callback, linked PIDs, and monitored_by under a single lock.
-    let (terminate_cb, linked_pids, monitored_by_entries) = {
+/// 1. Claim finalization and preserve the first recorded exit reason
+/// 2. Invoke terminate_callback once (panic-safe)
+/// 3. Destroy remaining secrets, notify links/monitors, and remove the process
+fn handle_process_exit(
+    process_table: &ProcessTable,
+    pid: ProcessId,
+    fallback_reason: ExitReason,
+) -> bool {
+    // Claim finalization and extract callback/notification state under one lock.
+    let (reason, terminate_cb, linked_pids, monitored_by_entries) = {
         if let Some(proc_arc) = process_table.read().get(&pid) {
             let mut proc = proc_arc.lock();
+            let Some(reason) = proc.begin_exit_finalization(fallback_reason) else {
+                return false;
+            };
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
-            proc.state = ProcessState::Exited(reason.clone());
-            (cb, links, monitored_by)
+            (reason, cb, links, monitored_by)
         } else {
-            return;
+            return false;
         }
     };
 
@@ -733,7 +785,11 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
         invoke_terminate_callback(cb, &reason);
     }
 
-    // Step 2: Partition links into local and remote, then propagate.
+    // Natural exits keep resources live through terminate. Forced exits may
+    // already have destroyed them; this second cleanup is intentionally idempotent.
+    crate::secret::destroy_owned(pid);
+
+    // Step 3: Partition links into local and remote, then propagate.
     let (local_links, remote_links): (
         std::collections::HashSet<ProcessId>,
         std::collections::HashSet<ProcessId>,
@@ -767,7 +823,7 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
                 let buffer = super::heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
                 mon_proc.mailbox.push(super::process::Message { buffer });
                 if matches!(mon_proc.state, ProcessState::Waiting) {
-                    mon_proc.state = ProcessState::Ready;
+                    mon_proc.set_live_state(ProcessState::Ready);
                 }
             }
         } else {
@@ -794,6 +850,7 @@ fn handle_process_exit(process_table: &ProcessTable, pid: ProcessId, reason: Exi
 
     // Step 4: Release the completed actor and its private heap.
     process_table.write().remove(&pid);
+    true
 }
 
 /// Invoke a terminate callback, catching any panics to prevent them from
@@ -824,12 +881,208 @@ fn invoke_terminate_callback(cb: TerminateCallback, reason: &ExitReason) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::{AtomicU64, AtomicUsize};
 
     static SPAWN_COUNTER: AtomicU64 = AtomicU64::new(0);
+    static TERMINATE_CALLBACK_PID: AtomicU64 = AtomicU64::new(0);
+    static TERMINATE_CALLBACK_SECRET_COUNT: AtomicUsize = AtomicUsize::new(usize::MAX);
+    static FORCED_TERMINATE_COUNT: AtomicU64 = AtomicU64::new(0);
+    static FORCED_TERMINATE_REASON: AtomicU64 = AtomicU64::new(u64::MAX);
+    static IDEMPOTENT_TERMINATE_COUNT: AtomicU64 = AtomicU64::new(0);
 
     extern "C" fn increment_entry(_args: *const u8) {
         SPAWN_COUNTER.fetch_add(1, Ordering::SeqCst);
+    }
+
+    extern "C-unwind" fn panic_entry(_args: *const u8) {
+        panic!("lifecycle test panic");
+    }
+
+    extern "C" fn observe_terminate_resources(_state: *const u8, _reason: *const u8) {
+        let pid = ProcessId(TERMINATE_CALLBACK_PID.load(Ordering::SeqCst));
+        TERMINATE_CALLBACK_SECRET_COUNT.store(
+            crate::secret::owned_secret_count_for_test(pid),
+            Ordering::SeqCst,
+        );
+    }
+
+    extern "C" fn observe_forced_terminate(_state: *const u8, reason: *const u8) {
+        FORCED_TERMINATE_COUNT.fetch_add(1, Ordering::SeqCst);
+        FORCED_TERMINATE_REASON.store(unsafe { *reason } as u64, Ordering::SeqCst);
+    }
+
+    extern "C" fn observe_idempotent_terminate(_state: *const u8, _reason: *const u8) {
+        IDEMPOTENT_TERMINATE_COUNT.fetch_add(1, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn exited_suspended_actor_is_finalized_without_reentry() {
+        static ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+
+        extern "C-unwind" fn yield_once(_args: *const u8) {
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+            super::super::stack::yield_current();
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+
+        ENTRY_COUNT.store(0, Ordering::SeqCst);
+        let pid = ProcessId::next();
+        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
+        process_table.write().insert(
+            pid,
+            Arc::new(Mutex::new(Process::new(pid, Priority::Normal))),
+        );
+        let active_count = AtomicU64::new(1);
+        let mut handle = CoroutineHandle::new(yield_once as *const u8, std::ptr::null());
+
+        assert!(resume_process(
+            &process_table,
+            &active_count,
+            pid,
+            &mut handle
+        ));
+        assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
+        process_table
+            .read()
+            .get(&pid)
+            .unwrap()
+            .lock()
+            .mark_exited(ExitReason::Killed);
+
+        assert!(!resume_process(
+            &process_table,
+            &active_count,
+            pid,
+            &mut handle
+        ));
+        assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(active_count.load(Ordering::SeqCst), 0);
+        assert!(!process_table.read().contains_key(&pid));
+    }
+
+    #[test]
+    fn exit_set_during_timeslice_is_observed_at_yield() {
+        static ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+        static MAY_YIELD: AtomicBool = AtomicBool::new(false);
+
+        extern "C-unwind" fn yield_after_exit(_args: *const u8) {
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+            while !MAY_YIELD.load(Ordering::SeqCst) {
+                std::hint::spin_loop();
+            }
+            super::super::stack::yield_current();
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+
+        ENTRY_COUNT.store(0, Ordering::SeqCst);
+        MAY_YIELD.store(false, Ordering::SeqCst);
+        let pid = ProcessId::next();
+        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
+        process_table.write().insert(
+            pid,
+            Arc::new(Mutex::new(Process::new(pid, Priority::Normal))),
+        );
+        let active_count = AtomicU64::new(1);
+        let mut handle = CoroutineHandle::new(yield_after_exit as *const u8, std::ptr::null());
+
+        let retained = std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while ENTRY_COUNT.load(Ordering::SeqCst) == 0 {
+                    std::thread::yield_now();
+                }
+                process_table
+                    .read()
+                    .get(&pid)
+                    .unwrap()
+                    .lock()
+                    .mark_exited(ExitReason::Killed);
+                MAY_YIELD.store(true, Ordering::SeqCst);
+            });
+            resume_process(&process_table, &active_count, pid, &mut handle)
+        });
+
+        assert!(!retained);
+        assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(active_count.load(Ordering::SeqCst), 0);
+        assert!(!process_table.read().contains_key(&pid));
+    }
+
+    #[test]
+    fn queued_exited_actor_is_finalized_once_without_starting() {
+        static ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+
+        extern "C" fn should_not_run(_args: *const u8) {
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+
+        ENTRY_COUNT.store(0, Ordering::SeqCst);
+        FORCED_TERMINATE_COUNT.store(0, Ordering::SeqCst);
+        FORCED_TERMINATE_REASON.store(u64::MAX, Ordering::SeqCst);
+        let scheduler = Scheduler::new(1);
+        let target = scheduler.spawn(should_not_run as *const u8, std::ptr::null(), 0, 1);
+        let observer = scheduler.create_main_process();
+        let monitor_ref = 77;
+
+        {
+            let target_process = scheduler.get_process(target).unwrap();
+            let mut target_process = target_process.lock();
+            target_process.terminate_callback = Some(observe_forced_terminate);
+            target_process.links.insert(observer);
+            target_process.monitored_by.insert(monitor_ref, observer);
+        }
+        {
+            let observer_process = scheduler.get_process(observer).unwrap();
+            let mut observer_process = observer_process.lock();
+            observer_process.trap_exit = true;
+            observer_process.links.insert(target);
+            observer_process.monitors.insert(monitor_ref, target);
+        }
+        crate::secret::insert_test_secret(target);
+        scheduler
+            .get_process(target)
+            .unwrap()
+            .lock()
+            .mark_exited(ExitReason::Killed);
+
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(FORCED_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(FORCED_TERMINATE_REASON.load(Ordering::SeqCst), 2);
+        assert_eq!(scheduler.active_count(), 0);
+        assert!(scheduler.get_process(target).is_none());
+        assert_eq!(crate::secret::owned_secret_count_for_test(target), 0);
+
+        let observer_process = scheduler.get_process(observer).unwrap();
+        let observer_process = observer_process.lock();
+        assert_eq!(observer_process.mailbox.len(), 2);
+        let first_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
+        let second_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
+        assert_eq!(
+            [first_tag, second_tag],
+            [link::EXIT_SIGNAL_TAG, link::DOWN_SIGNAL_TAG]
+        );
+    }
+
+    #[test]
+    fn managed_process_finalization_is_idempotent() {
+        IDEMPOTENT_TERMINATE_COUNT.store(0, Ordering::SeqCst);
+        let pid = ProcessId::next();
+        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
+        let mut process = Process::new(pid, Priority::Normal);
+        process.terminate_callback = Some(observe_idempotent_terminate);
+        process.mark_exited(ExitReason::Killed);
+        process_table
+            .write()
+            .insert(pid, Arc::new(Mutex::new(process)));
+        let active_count = AtomicU64::new(1);
+
+        finalize_managed_process(&process_table, &active_count, pid, ExitReason::Normal);
+        finalize_managed_process(&process_table, &active_count, pid, ExitReason::Normal);
+
+        assert_eq!(IDEMPOTENT_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
+        assert_eq!(active_count.load(Ordering::SeqCst), 0);
     }
 
     /// Stable thread identifier using Hash of ThreadId.
@@ -903,6 +1156,37 @@ mod tests {
             sched.process_table.read().is_empty(),
             "completed actor heaps must not remain reachable"
         );
+    }
+
+    #[test]
+    fn normal_and_panicking_actors_destroy_owned_secrets() {
+        let sched = Scheduler::new(1);
+        let normal_pid = sched.spawn(increment_entry as *const u8, std::ptr::null(), 0, 1);
+        let panic_pid = sched.spawn(panic_entry as *const u8, std::ptr::null(), 0, 1);
+        TERMINATE_CALLBACK_PID.store(normal_pid.as_u64(), Ordering::SeqCst);
+        TERMINATE_CALLBACK_SECRET_COUNT.store(usize::MAX, Ordering::SeqCst);
+        sched
+            .get_process(normal_pid)
+            .unwrap()
+            .lock()
+            .terminate_callback = Some(observe_terminate_resources);
+        crate::secret::insert_test_secret(normal_pid);
+        crate::secret::insert_test_secret(panic_pid);
+
+        sched.signal_shutdown();
+        sched.run();
+
+        let normal_remaining = crate::secret::owned_secret_count_for_test(normal_pid);
+        let panic_remaining = crate::secret::owned_secret_count_for_test(panic_pid);
+        crate::secret::destroy_owned(normal_pid);
+        crate::secret::destroy_owned(panic_pid);
+        assert_eq!(
+            TERMINATE_CALLBACK_SECRET_COUNT.load(Ordering::SeqCst),
+            1,
+            "terminate callback must run before resource cleanup"
+        );
+        assert_eq!(normal_remaining, 0);
+        assert_eq!(panic_remaining, 0);
     }
 
     #[test]

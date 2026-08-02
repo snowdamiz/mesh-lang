@@ -120,6 +120,46 @@ impl Ty {
         Ty::Con(TyCon::new("BytesError"))
     }
 
+    pub fn secret_bytes() -> Ty {
+        Ty::Con(TyCon::new("SecretBytes"))
+    }
+
+    pub fn crypto_error() -> Ty {
+        Ty::Con(TyCon::new("CryptoError"))
+    }
+
+    pub fn x25519_private_key() -> Ty {
+        Ty::Con(TyCon::new("X25519PrivateKey"))
+    }
+
+    pub fn x25519_public_key() -> Ty {
+        Ty::Con(TyCon::new("X25519PublicKey"))
+    }
+
+    pub fn x25519_key_pair() -> Ty {
+        Ty::Con(TyCon::new("X25519KeyPair"))
+    }
+
+    pub fn signing_private_key() -> Ty {
+        Ty::Con(TyCon::new("SigningPrivateKey"))
+    }
+
+    pub fn signing_public_key() -> Ty {
+        Ty::Con(TyCon::new("SigningPublicKey"))
+    }
+
+    pub fn signature() -> Ty {
+        Ty::Con(TyCon::new("Signature"))
+    }
+
+    pub fn signing_key_pair() -> Ty {
+        Ty::Con(TyCon::new("SigningKeyPair"))
+    }
+
+    pub fn aead_key() -> Ty {
+        Ty::Con(TyCon::new("AeadKey"))
+    }
+
     pub fn u64() -> Ty {
         Ty::Con(TyCon::new("U64"))
     }

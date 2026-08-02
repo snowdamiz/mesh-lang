@@ -109,9 +109,10 @@ impl<T> CooperativeSender<T> {
         if let Some(process) = scheduler.get_process(pid) {
             let mut process = process.lock();
             if matches!(process.state, ProcessState::Waiting) {
-                process.state = ProcessState::Ready;
-                drop(process);
-                scheduler.wake_process(pid);
+                if process.set_live_state(ProcessState::Ready) {
+                    drop(process);
+                    scheduler.wake_process(pid);
+                }
             }
         }
         Ok(())
@@ -167,18 +168,18 @@ pub(crate) fn cooperative_recv_timeout<T>(
 
         if timer_registered {
             if let Some(process) = scheduler.get_process(pid) {
-                process.lock().state = ProcessState::Waiting;
+                process.lock().set_live_state(ProcessState::Waiting);
             }
             match receiver.try_recv() {
                 Ok(value) => {
                     if let Some(process) = scheduler.get_process(pid) {
-                        process.lock().state = ProcessState::Ready;
+                        process.lock().set_live_state(ProcessState::Ready);
                     }
                     return Ok(value);
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     if let Some(process) = scheduler.get_process(pid) {
-                        process.lock().state = ProcessState::Ready;
+                        process.lock().set_live_state(ProcessState::Ready);
                     }
                     return Err(std::sync::mpsc::RecvTimeoutError::Disconnected);
                 }
@@ -186,7 +187,7 @@ pub(crate) fn cooperative_recv_timeout<T>(
             }
             if std::time::Instant::now() >= deadline {
                 if let Some(process) = scheduler.get_process(pid) {
-                    process.lock().state = ProcessState::Ready;
+                    process.lock().set_live_state(ProcessState::Ready);
                 }
                 return Err(std::sync::mpsc::RecvTimeoutError::Timeout);
             }
@@ -449,10 +450,11 @@ pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) {
 
         // If the target is Waiting, wake it up.
         if matches!(proc.state, ProcessState::Waiting) {
-            proc.state = ProcessState::Ready;
-            // Signal the scheduler to re-enqueue this process.
-            drop(proc);
-            sched.wake_process(pid);
+            if proc.set_live_state(ProcessState::Ready) {
+                // Signal the scheduler to re-enqueue this process.
+                drop(proc);
+                sched.wake_process(pid);
+            }
         }
     }
 }
@@ -639,7 +641,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     loop {
         // Set state to Waiting.
         if let Some(proc_arc) = sched.get_process(my_pid) {
-            proc_arc.lock().state = ProcessState::Waiting;
+            proc_arc.lock().set_live_state(ProcessState::Waiting);
         }
 
         // Yield to scheduler -- we will be resumed when a message arrives
@@ -660,7 +662,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
             if std::time::Instant::now() >= deadline {
                 // Timeout expired, set back to Ready and return null.
                 if let Some(proc_arc) = sched.get_process(my_pid) {
-                    proc_arc.lock().state = ProcessState::Ready;
+                    proc_arc.lock().set_live_state(ProcessState::Ready);
                 }
                 return std::ptr::null();
             }
@@ -681,7 +683,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
             });
             if !has_others {
                 if let Some(proc_arc) = sched.get_process(my_pid) {
-                    proc_arc.lock().state = ProcessState::Ready;
+                    proc_arc.lock().set_live_state(ProcessState::Ready);
                 }
                 return std::ptr::null();
             }
@@ -752,9 +754,10 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
             if let Some(process) = scheduler.get_process(timer.pid) {
                 let mut process = process.lock();
                 if matches!(process.state, ProcessState::Waiting) {
-                    process.state = ProcessState::Ready;
-                    drop(process);
-                    scheduler.wake_process(timer.pid);
+                    if process.set_live_state(ProcessState::Ready) {
+                        drop(process);
+                        scheduler.wake_process(timer.pid);
+                    }
                 }
             }
         }
@@ -791,7 +794,7 @@ pub extern "C" fn mesh_timer_sleep(ms: i64) {
             return;
         }
         if let Some(process) = scheduler.get_process(pid) {
-            process.lock().state = ProcessState::Waiting;
+            process.lock().set_live_state(ProcessState::Waiting);
         }
         if timer_wake_sender()
             .try_send(TimerWake { deadline, pid })
@@ -800,7 +803,7 @@ pub extern "C" fn mesh_timer_sleep(ms: i64) {
             // Fail boundedly without stranding the actor. Saturating the timer
             // queue is exceptional; this fallback blocks only the current worker.
             if let Some(process) = scheduler.get_process(pid) {
-                process.lock().state = ProcessState::Running;
+                process.lock().set_live_state(ProcessState::Running);
             }
             std::thread::sleep(deadline.saturating_duration_since(now));
             return;
@@ -943,25 +946,28 @@ pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
 ///
 /// The scheduler shuts down when the active process count reaches zero
 /// (i.e., all spawned actors have completed or been force-terminated).
+fn exit_main_process(sched: &Scheduler, main_pid: Option<ProcessId>) {
+    if let Some(pid) = main_pid {
+        if let Some(proc_arc) = sched.get_process(pid) {
+            proc_arc.lock().mark_exited(ExitReason::Normal);
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_rt_run_scheduler() {
-    // Get the main thread's PID before clearing it.
+    // Preserve the main actor context until its owned resources are destroyed.
     let main_pid = stack::get_current_pid();
-
-    // Clear the main thread's PID now that mesh_main has returned.
-    stack::clear_current_pid();
-
     let sched = GLOBAL_SCHEDULER
         .get()
         .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first");
 
     // Mark the main thread process as Exited so the scheduler doesn't
     // count it as a Ready/Running process during shutdown.
-    if let Some(pid) = main_pid {
-        if let Some(proc_arc) = sched.get_process(pid) {
-            proc_arc.lock().state = ProcessState::Exited(ExitReason::Normal);
-        }
-    }
+    exit_main_process(sched, main_pid);
+
+    // Clear the main thread's PID after actor-owned resource cleanup.
+    stack::clear_current_pid();
 
     // Signal shutdown so workers know to terminate Waiting actors when
     // no Ready/Running actors remain.
@@ -1315,20 +1321,7 @@ pub extern "C" fn mesh_actor_trap_exit() {
 ///
 /// For other reasons: if the target has trap_exit enabled, the signal is
 /// delivered as a message. Otherwise, the target is terminated immediately.
-#[no_mangle]
-pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
-    let sched = global_scheduler();
-    let pid = ProcessId(target_pid);
-
-    let reason = match reason_tag {
-        0 => ExitReason::Normal,
-        1 => ExitReason::Error("exit signal".to_string()),
-        2 => ExitReason::Killed,
-        4 => ExitReason::Shutdown,
-        5 => ExitReason::Custom("exit signal".to_string()),
-        _ => ExitReason::Error(format!("unknown exit reason tag: {}", reason_tag)),
-    };
-
+fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
     if let Some(proc_arc) = sched.get_process(pid) {
         let mut proc = proc_arc.lock();
 
@@ -1339,7 +1332,7 @@ pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
 
         // Killed is untrappable.
         if matches!(reason, ExitReason::Killed) {
-            proc.state = ProcessState::Exited(ExitReason::Killed);
+            proc.mark_exited(ExitReason::Killed);
             return;
         }
 
@@ -1351,15 +1344,29 @@ pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
 
             // Wake if Waiting.
             if matches!(proc.state, ProcessState::Waiting) {
-                proc.state = ProcessState::Ready;
-                drop(proc);
-                sched.wake_process(pid);
+                if proc.set_live_state(ProcessState::Ready) {
+                    drop(proc);
+                    sched.wake_process(pid);
+                }
             }
         } else {
             // Terminate immediately.
-            proc.state = ProcessState::Exited(reason);
+            proc.mark_exited(reason);
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
+    let reason = match reason_tag {
+        0 => ExitReason::Normal,
+        1 => ExitReason::Error("exit signal".to_string()),
+        2 => ExitReason::Killed,
+        4 => ExitReason::Shutdown,
+        5 => ExitReason::Custom("exit signal".to_string()),
+        _ => ExitReason::Error(format!("unknown exit reason tag: {}", reason_tag)),
+    };
+    deliver_exit_signal(global_scheduler(), ProcessId(target_pid), reason);
 }
 
 /// Monitor a target process.
@@ -1519,7 +1526,7 @@ fn deliver_down_immediately(
         proc.mailbox.push(Message { buffer });
 
         if matches!(proc.state, ProcessState::Waiting) {
-            proc.state = ProcessState::Ready;
+            proc.set_live_state(ProcessState::Ready);
         }
     }
 }
@@ -1873,6 +1880,43 @@ mod tests {
         // Use a no-op entry function.
         extern "C" fn noop(_args: *const u8) {}
         sched.spawn(noop as *const u8, std::ptr::null(), 0, 1)
+    }
+
+    #[test]
+    fn forced_runtime_exit_destroys_waiting_actor_secrets() {
+        let sched = Scheduler::new(1);
+        let pid = create_test_process(&sched);
+        sched.get_process(pid).unwrap().lock().state = ProcessState::Waiting;
+        crate::secret::insert_test_secret(pid);
+
+        deliver_exit_signal(&sched, pid, ExitReason::Killed);
+
+        let state_is_killed = matches!(
+            sched.get_process(pid).unwrap().lock().state,
+            ProcessState::Exited(ExitReason::Killed)
+        );
+        let remaining = crate::secret::owned_secret_count_for_test(pid);
+        crate::secret::destroy_owned(pid);
+        assert!(state_is_killed);
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn main_scheduler_shutdown_destroys_owned_secrets() {
+        let sched = Scheduler::new(1);
+        let main_pid = sched.create_main_process();
+        crate::secret::insert_test_secret(main_pid);
+
+        exit_main_process(&sched, Some(main_pid));
+
+        let state_is_exited = matches!(
+            sched.get_process(main_pid).unwrap().lock().state,
+            ProcessState::Exited(ExitReason::Normal)
+        );
+        let remaining = crate::secret::owned_secret_count_for_test(main_pid);
+        crate::secret::destroy_owned(main_pid);
+        assert!(state_is_exited);
+        assert_eq!(remaining, 0);
     }
 
     #[inline(never)]

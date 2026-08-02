@@ -1300,6 +1300,7 @@ fn parse_param(p: &mut Parser) {
     if p.at(SyntaxKind::COLON_COLON) {
         let ann = p.open();
         p.advance(); // ::
+        parse_param_ownership_modifier(p);
         super::items::parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
     }
@@ -1396,6 +1397,7 @@ pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
                 if p.at(SyntaxKind::COLON_COLON) {
                     let ann = p.open();
                     p.advance(); // ::
+                    parse_param_ownership_modifier(p);
                     super::items::parse_type(p);
                     p.close(ann, SyntaxKind::TYPE_ANNOTATION);
                 }
@@ -1413,6 +1415,18 @@ pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::PARAM);
+}
+
+/// Parse the contextual parameter ownership modifier following `::`.
+fn parse_param_ownership_modifier(p: &mut Parser) {
+    if p.at(SyntaxKind::IDENT)
+        && matches!(p.current_text(), "borrow" | "consume")
+        && matches!(p.nth(1), SyntaxKind::IDENT | SyntaxKind::L_PAREN)
+    {
+        let modifier = p.open();
+        p.advance();
+        p.close(modifier, SyntaxKind::OWNERSHIP_MODIFIER);
+    }
 }
 
 // ── Trailing Closure ──────────────────────────────────────────────────

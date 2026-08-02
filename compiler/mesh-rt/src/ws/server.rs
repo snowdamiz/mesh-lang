@@ -687,10 +687,11 @@ fn reader_thread_loop(
                             let mut proc = proc_arc.lock();
                             proc.mailbox.push(message);
                             if matches!(proc.state, ProcessState::Waiting) {
-                                proc.state = ProcessState::Ready;
-                                drop(proc);
-                                let sched = global_scheduler();
-                                sched.wake_process(actor_pid);
+                                if proc.set_live_state(ProcessState::Ready) {
+                                    drop(proc);
+                                    let sched = global_scheduler();
+                                    sched.wake_process(actor_pid);
+                                }
                             }
                         }
                     }
@@ -740,10 +741,11 @@ fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId) {
     let mut proc = proc_arc.lock();
     proc.mailbox.push(msg);
     if matches!(proc.state, ProcessState::Waiting) {
-        proc.state = ProcessState::Ready;
-        drop(proc);
-        let sched = global_scheduler();
-        sched.wake_process(actor_pid);
+        if proc.set_live_state(ProcessState::Ready) {
+            drop(proc);
+            let sched = global_scheduler();
+            sched.wake_process(actor_pid);
+        }
     }
 }
 

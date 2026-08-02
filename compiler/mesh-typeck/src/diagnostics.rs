@@ -143,6 +143,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SlotPipeOutOfRange { .. } => "E0044",
         TypeError::UndefinedType { .. } => "E0045",
         TypeError::NativeDeclarationInvalid { .. } => "E0052",
+        TypeError::ResourceViolation { .. } => "E0053",
     }
 }
 
@@ -510,7 +511,8 @@ pub fn render_json_diagnostic(
                 | TypeError::SlotPositionConflict { span, .. }
                 | TypeError::SlotPipeOutOfRange { span, .. }
                 | TypeError::UndefinedType { span, .. }
-                | TypeError::NativeDeclarationInvalid { span, .. } => {
+                | TypeError::NativeDeclarationInvalid { span, .. }
+                | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
                         start: range.start,
@@ -1947,6 +1949,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("use a public, fully annotated, non-generic signature and a C identifier symbol")
+                .finish()
+        }
+        TypeError::ResourceViolation { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("resource ownership violation")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(reason)
+                        .with_color(Color::Red),
+                )
+                .with_help("move each resource once, or pass it to a direct `borrow` parameter")
                 .finish()
         }
     };

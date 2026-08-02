@@ -436,6 +436,7 @@ mod tests {
             actor_defs: FxHashMap::default(),
             private_names: FxHashSet::default(),
             type_aliases: FxHashMap::default(),
+            ..ModuleExports::default()
         }
     }
 

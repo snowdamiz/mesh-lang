@@ -1,6 +1,7 @@
 # Secret Memory Model
 
-Status: required security contract; not implemented by the current runtime.
+Status: required security contract; secure runtime subset implemented, release
+approval pending.
 
 This policy defines how Mesh must represent secret key material. It applies to
 private keys, shared secrets, ratchet keys, message keys, recovery material,
@@ -14,12 +15,14 @@ surrounding values, serialized, sent between actors, and retained until GC
 collection. It does not provide timely erasure, move-only ownership, automatic
 actor cleanup, or use-after-destroy detection.
 
-Mesh does not yet implement `SecretBytes`, generalized resources, or a secret
-resource table. Until those features and their release evidence exist:
+Mesh now implements `SecretBytes`, generalized affine resources, compiler-
+inserted destruction, and a bounded generational resource table. Unsupported
+resource closure capture is rejected until closure environments carry affine
+metadata. Until the remaining release evidence exists:
 
 - Ordinary `Bytes` and `String` are not approved containers for private keys or
   ratchet material.
-- Current string-first cryptographic APIs do not satisfy this policy.
+- Legacy string-first cryptographic APIs do not satisfy this policy.
 - Features that require retained secret state must not claim compliance with
   the secure-memory model.
 
@@ -72,13 +75,12 @@ nets. Neither may be omitted because the other exists.
 
 Persistent secret state must be sealed by a `StorageKey`; it must never be
 stored as plaintext `Bytes`. A sealed blob must contain a version, algorithm
-identifier, random nonce, ciphertext, authentication tag, and context binding.
+identifier, unique nonce, ciphertext, authentication tag, and context binding.
 
 The context must bind the account, device, session, secret purpose, and
 snapshot version. A mismatched context must fail authentication without
 returning plaintext. Mobile hosts store or wrap the `StorageKey` with Keychain
-or Keystore. This capability cannot ship before the approved AEAD primitive is
-available.
+or Keystore and follow the versioned storage-wrapping callback contract.
 
 ## Required evidence
 

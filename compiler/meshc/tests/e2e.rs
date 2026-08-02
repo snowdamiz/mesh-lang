@@ -6098,7 +6098,7 @@ end
 
 // ── Phase 135: Crypto stdlib tests ──────────────────────────────────────
 
-/// Phase 135: Crypto.sha256(s) returns correct NIST lowercase hex digest (CRYPTO-01).
+/// Crypto V2: `sha256_hex` preserves the NIST presentation vector.
 #[test]
 fn e2e_crypto_sha256() {
     let source = read_fixture("crypto_sha256.mpl");
@@ -6109,7 +6109,7 @@ fn e2e_crypto_sha256() {
     );
 }
 
-/// Phase 135: Crypto.sha512(s) returns correct SHA-512 lowercase hex digest (CRYPTO-02).
+/// Crypto V2: `sha512_hex` preserves the NIST presentation vector.
 #[test]
 fn e2e_crypto_sha512() {
     let source = read_fixture("crypto_sha512.mpl");
@@ -6117,17 +6117,14 @@ fn e2e_crypto_sha512() {
     assert_eq!(output, "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043\n");
 }
 
-/// Phase 135: Crypto.hmac_sha256 and Crypto.hmac_sha512 return correct RFC 2202 digests (CRYPTO-03, CRYPTO-04).
-/// HMAC-SHA256("Jefe", "what do ya want for nothing?") verified via openssl dgst -sha256 -hmac.
+/// Crypto V2 HMAC returns an owned secret from Mesh code; the non-colliding
+/// legacy SHA-512 presentation helper remains available during migration.
 #[test]
 fn e2e_crypto_hmac() {
     let source = read_fixture("crypto_hmac.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.lines().collect();
-    assert_eq!(
-        lines[0],
-        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
-    );
+    assert_eq!(lines[0], "ok");
     assert_eq!(lines[1], "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737");
 }
 

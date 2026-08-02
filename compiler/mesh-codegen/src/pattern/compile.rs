@@ -569,7 +569,7 @@ fn specialize_for_constructor(
 
     // Look up actual field types from the sum type definition.
     let parent_ty = &matrix.column_types[col];
-    let field_types: Vec<MirType> = if let MirType::SumType(type_name) = parent_ty {
+    let mut field_types: Vec<MirType> = if let MirType::SumType(type_name) = parent_ty {
         sum_type_defs
             .get(type_name.as_str())
             .or_else(|| {
@@ -585,12 +585,41 @@ fn specialize_for_constructor(
         vec![MirType::Unit; arity]
     };
 
+    // Generic sum definitions use pointer storage for their type parameters.
+    // Recover the concrete semantic type from the already type-checked pattern
+    // so nested matches (for example `Err(InvalidLength(...))`) retain enough
+    // information to dereference the boxed payload and switch on its own tag.
+    for row in &matrix.rows {
+        let MirPattern::Constructor {
+            variant, fields, ..
+        } = &row.patterns[col]
+        else {
+            continue;
+        };
+        if variant != target_variant {
+            continue;
+        }
+        for (index, field_pattern) in fields.iter().enumerate() {
+            if let Some(concrete_ty) = pattern_type_hint(field_pattern) {
+                if let Some(field_ty) = field_types.get_mut(index) {
+                    if (matches!(&*field_ty, MirType::Ptr) && !matches!(&concrete_ty, MirType::Ptr))
+                        || (matches!(&*field_ty, MirType::Unit)
+                            && !matches!(&concrete_ty, MirType::Unit))
+                    {
+                        *field_ty = concrete_ty;
+                    }
+                }
+            }
+        }
+    }
+
     // Sub-pattern paths for the constructor fields.
     for i in 0..arity {
         new_paths.push(AccessPath::VariantField(
             Box::new(parent_path.clone()),
             target_variant.to_string(),
             i,
+            field_types.get(i).cloned().unwrap_or(MirType::Unit),
         ));
         new_types.push(field_types.get(i).cloned().unwrap_or(MirType::Unit));
     }
@@ -1206,6 +1235,12 @@ fn compile_expr_patterns(expr: &mut MirExpr, sum_type_defs: &FxHashMap<String, M
                 compile_expr_patterns(c, sum_type_defs);
             }
         }
+        MirExpr::ResourceMove { value, .. }
+        | MirExpr::ResourceBorrow { value, .. }
+        | MirExpr::ResourceDrop { value, .. }
+        | MirExpr::ResourceDestroy { value, .. } => {
+            compile_expr_patterns(value, sum_type_defs);
+        }
         MirExpr::Return(inner) => {
             compile_expr_patterns(inner, sum_type_defs);
         }
@@ -1612,7 +1647,8 @@ mod tests {
                             AccessPath::VariantField(
                                 Box::new(AccessPath::Root),
                                 "Circle".to_string(),
-                                0
+                                0,
+                                MirType::Float,
                             )
                         );
                     }
@@ -2369,5 +2405,87 @@ mod tests {
             }
             other => panic!("Expected Switch, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn nested_sum_inside_generic_variant_keeps_its_concrete_access_type() {
+        let mut sum_type_defs = FxHashMap::default();
+        sum_type_defs.insert(
+            "Result".to_string(),
+            MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            },
+        );
+        sum_type_defs.insert(
+            "CryptoError".to_string(),
+            MirSumTypeDef {
+                name: "CryptoError".to_string(),
+                variants: vec![MirVariantDef {
+                    name: "InvalidLength".to_string(),
+                    fields: vec![MirType::Int, MirType::Int],
+                    tag: 0,
+                }],
+            },
+        );
+
+        let arms = vec![
+            make_arm(
+                MirPattern::Constructor {
+                    type_name: "Result_SecretBytes_CryptoError".to_string(),
+                    variant: "Err".to_string(),
+                    fields: vec![MirPattern::Constructor {
+                        type_name: "CryptoError".to_string(),
+                        variant: "InvalidLength".to_string(),
+                        fields: vec![
+                            MirPattern::Var("expected".to_string(), MirType::Int),
+                            MirPattern::Var("actual".to_string(), MirType::Int),
+                        ],
+                        bindings: vec![
+                            ("expected".to_string(), MirType::Int),
+                            ("actual".to_string(), MirType::Int),
+                        ],
+                    }],
+                    bindings: vec![],
+                },
+                None,
+                int_body(1),
+            ),
+            make_arm(MirPattern::Wildcard, None, int_body(0)),
+        ];
+
+        let tree = compile_match(
+            &MirType::SumType("Result_SecretBytes_CryptoError".to_string()),
+            &arms,
+            "test.mpl",
+            1,
+            &sum_type_defs,
+        );
+        let DecisionTree::Switch { cases, .. } = tree else {
+            panic!("expected outer Result switch");
+        };
+        let DecisionTree::Switch { scrutinee_path, .. } = &cases[0].1 else {
+            panic!("expected nested CryptoError switch: {:?}", cases[0].1);
+        };
+        assert_eq!(
+            scrutinee_path,
+            &AccessPath::VariantField(
+                Box::new(AccessPath::Root),
+                "Err".to_string(),
+                0,
+                MirType::SumType("CryptoError".to_string()),
+            )
+        );
     }
 }

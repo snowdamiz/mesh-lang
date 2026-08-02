@@ -25,12 +25,15 @@ pub mod env;
 pub mod error;
 pub mod exhaustiveness;
 pub mod infer;
+mod ownership;
 pub mod traits;
 pub mod ty;
 pub mod unify;
 
 use rowan::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
+
+use mesh_parser::ast::item::ParamOwnership;
 
 use crate::diagnostics::DiagnosticOptions;
 use crate::error::TypeError;
@@ -102,6 +105,12 @@ pub struct ModuleExports {
 
     /// Type aliases exported by this module (pub type only).
     pub type_aliases: FxHashMap<String, TypeAliasInfo>,
+
+    /// Affine resource type names exported by this module.
+    pub resource_types: FxHashSet<String>,
+
+    /// Parameter ownership modes for exported functions.
+    pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 }
 
 /// Symbols exported by a module after type checking.
@@ -125,6 +134,10 @@ pub struct ExportedSymbols {
     pub private_names: FxHashSet<String>,
     /// Type alias definitions exported by this module (pub type only).
     pub type_aliases: FxHashMap<String, TypeAliasInfo>,
+    /// Affine resource type names exported by this module.
+    pub resource_types: FxHashSet<String>,
+    /// Parameter ownership modes for exported functions.
+    pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 }
 
 /// Kind of executable helper exported for a service method.
@@ -253,6 +266,8 @@ pub struct TypeckResult {
     /// Consumed by later lowering so clustered routes reuse declared-handler
     /// runtime-name/count truth instead of inventing an HTTP-only path.
     pub clustered_route_wrappers: FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
+    /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
+    pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 }
 
 impl TypeckResult {
@@ -338,7 +353,19 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                             };
                             exports
                                 .functions
-                                .insert(export_name, Scheme::normalize_from_ty(ty.clone()));
+                                .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
+                            exports.function_ownership.insert(
+                                export_name,
+                                fn_def
+                                    .param_list()
+                                    .map(|parameters| {
+                                        parameters
+                                            .params()
+                                            .map(|parameter| parameter.ownership())
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                            );
                         } else {
                             exports.private_names.insert(name);
                         }
@@ -355,7 +382,10 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
             if let Some(name) = struct_def.name().and_then(|n| n.text()) {
                 if struct_def.visibility().is_some() {
                     if let Some(def) = typeck.type_registry.struct_defs.get(&name) {
-                        exports.struct_defs.insert(name, def.clone());
+                        exports.struct_defs.insert(name.clone(), def.clone());
+                        if typeck.type_registry.is_resource_name(&name) {
+                            exports.resource_types.insert(name);
+                        }
                     }
                 } else {
                     exports.private_names.insert(name);

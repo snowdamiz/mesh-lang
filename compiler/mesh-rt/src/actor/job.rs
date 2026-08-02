@@ -192,9 +192,10 @@ extern "C" fn job_entry(args: *const u8) {
 
             // Wake if waiting.
             if matches!(proc.state, ProcessState::Waiting) {
-                proc.state = ProcessState::Ready;
-                drop(proc);
-                sched.wake_process(target);
+                if proc.set_live_state(ProcessState::Ready) {
+                    drop(proc);
+                    sched.wake_process(target);
+                }
             }
         }
     }
@@ -481,9 +482,10 @@ extern "C" fn map_job_entry(args: *const u8) {
             proc.mailbox.push(msg);
 
             if matches!(proc.state, ProcessState::Waiting) {
-                proc.state = ProcessState::Ready;
-                drop(proc);
-                sched.wake_process(target);
+                if proc.set_live_state(ProcessState::Ready) {
+                    drop(proc);
+                    sched.wake_process(target);
+                }
             }
         }
     }

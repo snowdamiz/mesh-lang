@@ -72,21 +72,27 @@ new profile or compatibility version and the full cryptographic release gates.
 Removal of a vulnerable provider or target must fail explicitly. It must not
 activate an unreviewed fallback to preserve availability.
 
-## Current baseline
+## Current Crypto V2 provider set
 
-The runtime currently depends directly on `sha2`, `hmac`, `rand`, `ring`, and
-`subtle` for several cryptographic and transport needs. This graph is not yet a
-formal Crypto V2 provider set:
+The lockfile resolves this selected and license-reviewed Profile A set:
 
-- There is no provider abstraction or deterministic test-only provider.
-- `Bytes.secure_equals` uses the constant-time dependency; Crypto V2 still
-  needs provider-wide review and evidence.
-- The public crypto surface remains string-first.
-- No dependency has yet been selected for the planned persistent X25519 key
-  resource.
-- Cryptographic dependency audit, SBOM, reproducibility, and release-record
-  gates are not yet established.
+| Capability | Direct dependency | Relevant resolved dependencies | License |
+|---|---|---|---|
+| CSPRNG, SHA-256/512, HMAC-SHA256, HKDF-SHA256 | `ring 0.17.14` | `getrandom` through `ring` | Apache-2.0 AND ISC |
+| X25519 | `x25519-dalek 2.0.1` | `curve25519-dalek 4.1.3`, `subtle 2.6.1`, `zeroize 1.8.2` | BSD-3-Clause |
+| Ed25519 | `ed25519-dalek 2.1.1` | `curve25519-dalek 4.1.3`, `ed25519 2.2.3`, `signature 2.2.0`, `sha2 0.10.9`, `zeroize 1.8.2` | BSD-3-Clause |
+| ChaCha20-Poly1305 | `chacha20poly1305 0.10.1`, `poly1305 0.8.0` | `aead 0.5.2`, `chacha20 0.9.1`, `zeroize 1.8.2` | Apache-2.0 OR MIT |
+| Constant-time comparison | `subtle 2.6.1` | none | BSD-3-Clause |
 
-The current graph is an inventory, not approval for the planned messenger
-profile. New primitives remain blocked until they satisfy the
-[cryptographic release gates](cryptographic-release-gates.md).
+The new algorithm crates are exact-pinned with default features disabled; only
+static-secret and zeroization features required by the public profile are
+enabled. The direct `poly1305` entry enables zeroization for transitive MAC
+state. Production selects one static provider. The deterministic provider is
+compiled only under `cfg(test)`, and there is no runtime algorithm fallback.
+The public API is binary-first, private keys remain actor-owned resources, and
+official vectors plus negative and boundary tests cover every primitive.
+
+`scripts/verify-crypto-mobile.sh` checks the complete runtime library for
+`aarch64-apple-ios`. Android and artifact reproducibility remain Milestone 10
+release gates. A current advisory audit, SBOM, and reproducible-build record are
+still required from the final release revision before production activation.

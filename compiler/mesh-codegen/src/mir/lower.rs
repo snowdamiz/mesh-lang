@@ -12,13 +12,14 @@ use mesh_parser::ast::expr::{
     TryExpr, TupleExpr, UnaryExpr, WhileExpr,
 };
 use mesh_parser::ast::item::{
-    ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, RelationshipDecl,
-    ServiceDef, SourceFile, StructDef, SumTypeDef, SupervisorDef,
+    ActorDef, Block, FnDef, ImplDef, InterfaceMethod, Item, LetBinding, ParamOwnership,
+    RelationshipDecl, ServiceDef, SourceFile, StructDef, SumTypeDef, SupervisorDef,
 };
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
 use mesh_parser::syntax_kind::SyntaxKind;
 use mesh_parser::Parse;
+use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::{ClusteredRouteWrapperMetadata, TraitRegistry, TypeckResult};
 use rowan::TextRange;
@@ -29,7 +30,8 @@ use crate::declared::declared_route_wrapper_name;
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
     BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
-    MirNativeFunction, MirPattern, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+    MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
+    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -236,6 +238,8 @@ struct Lowerer<'a> {
     closure_counter: u32,
     /// Names of known functions (for distinguishing direct calls from closure calls).
     known_functions: HashMap<String, MirType>,
+    /// Source-declared ownership mode for each direct function parameter.
+    ownership_signatures: HashMap<String, Vec<ParamOwnership>>,
     /// Entry function name, if found.
     entry_function: Option<String>,
     /// Service module names (for field access resolution).
@@ -290,6 +294,8 @@ struct Lowerer<'a> {
     /// Counter for generating unique try binding names (Phase 45).
     /// Incremented per `?` usage to avoid shadowing in nested `?` expressions.
     try_counter: u32,
+    /// Counter for compiler-generated resource cleanup result temporaries.
+    resource_temp_counter: u32,
     /// Enables special lowering of test DSL constructs (assert, assert_eq, assert_ne,
     /// assert_raises). Detected in lower_source_file's pre-scan pass by looking
     /// for `fn __test_body_*` function definitions (injected by the preprocessor).
@@ -342,6 +348,24 @@ impl<'a> Lowerer<'a> {
         pub_fns: &HashSet<String>,
         inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     ) -> Self {
+        let mut ownership_signatures: HashMap<String, Vec<ParamOwnership>> = typeck
+            .function_ownership
+            .iter()
+            .map(|(name, modes)| (name.clone(), modes.clone()))
+            .collect();
+        for (name, modes) in typeck.function_ownership.iter() {
+            if name.starts_with("crypto_") {
+                ownership_signatures
+                    .entry(format!("mesh_{name}"))
+                    .or_insert_with(|| modes.clone());
+            }
+        }
+        for alias in ["Secret.destroy", "secret_destroy", "mesh_secret_destroy"] {
+            ownership_signatures
+                .entry(alias.to_string())
+                .or_insert_with(|| vec![ParamOwnership::Consume]);
+        }
+
         Lowerer {
             types: &typeck.types,
             registry: &typeck.type_registry,
@@ -355,6 +379,7 @@ impl<'a> Lowerer<'a> {
             scopes: vec![HashMap::new()],
             closure_counter: 0,
             known_functions: HashMap::new(),
+            ownership_signatures,
             entry_function: None,
             service_modules: typeck
                 .imported_service_methods
@@ -378,6 +403,7 @@ impl<'a> Lowerer<'a> {
             current_fn_return_type: None,
             current_fn_return_typeck: None,
             try_counter: 0,
+            resource_temp_counter: 0,
             is_test_mode: false,
             overloaded_call_targets: typeck
                 .overloaded_call_targets
@@ -427,6 +453,622 @@ impl<'a> Lowerer<'a> {
             }
         }
         None
+    }
+
+    fn next_resource_temp(&mut self) -> String {
+        let name = format!("__resource_value_{}", self.resource_temp_counter);
+        self.resource_temp_counter += 1;
+        name
+    }
+
+    fn resource_destructor(&self, ty: &Ty) -> Option<MirResourceDestructor> {
+        self.resource_destructor_inner(ty, &mut HashSet::new())
+    }
+
+    fn resource_destructor_inner(
+        &self,
+        ty: &Ty,
+        visiting: &mut HashSet<String>,
+    ) -> Option<MirResourceDestructor> {
+        if !self.registry.is_resource_type(ty) {
+            return None;
+        }
+
+        match ty {
+            Ty::Con(constructor) => {
+                if self.registry.sum_type_defs.contains_key(&constructor.name) {
+                    return self.resource_sum_destructor_inner(&constructor.name, &[], visiting);
+                }
+                let Some(definition) = self.registry.struct_defs.get(&constructor.name) else {
+                    return Some(MirResourceDestructor::Opaque);
+                };
+                if definition.fields.is_empty() {
+                    return Some(MirResourceDestructor::Opaque);
+                }
+                if !visiting.insert(constructor.name.clone()) {
+                    return None;
+                }
+                let fields = definition
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, (_, field_ty))| {
+                        self.resource_destructor_inner(field_ty, visiting)
+                            .map(|destructor| MirResourceField {
+                                index: index as u32,
+                                ty: resolve_type(field_ty, self.registry, false),
+                                destructor,
+                            })
+                    })
+                    .collect();
+                visiting.remove(&constructor.name);
+                Some(MirResourceDestructor::Aggregate(fields))
+            }
+            Ty::Tuple(elements) => Some(MirResourceDestructor::Aggregate(
+                elements
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, element)| {
+                        self.resource_destructor_inner(element, visiting)
+                            .map(|destructor| MirResourceField {
+                                index: index as u32,
+                                ty: resolve_type(element, self.registry, false),
+                                destructor,
+                            })
+                    })
+                    .collect(),
+            )),
+            Ty::App(constructor, arguments) => {
+                let Ty::Con(constructor) = constructor.as_ref() else {
+                    return Some(MirResourceDestructor::Opaque);
+                };
+                if self.registry.sum_type_defs.contains_key(&constructor.name) {
+                    return self.resource_sum_destructor_inner(
+                        &constructor.name,
+                        arguments,
+                        visiting,
+                    );
+                }
+                let Some(definition) = self.registry.struct_defs.get(&constructor.name) else {
+                    return Some(MirResourceDestructor::Opaque);
+                };
+                if !visiting.insert(constructor.name.clone()) {
+                    return None;
+                }
+                let substitutions: HashMap<String, &Ty> = definition
+                    .generic_params
+                    .iter()
+                    .cloned()
+                    .zip(arguments.iter())
+                    .collect();
+                let fields = definition
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, (_, field_ty))| {
+                        let field_ty = substitute_type_params(field_ty, &substitutions);
+                        self.resource_destructor_inner(&field_ty, visiting)
+                            .map(|destructor| MirResourceField {
+                                index: index as u32,
+                                ty: resolve_type(&field_ty, self.registry, false),
+                                destructor,
+                            })
+                    })
+                    .collect();
+                visiting.remove(&constructor.name);
+                Some(MirResourceDestructor::Aggregate(fields))
+            }
+            Ty::Fun(_, _) | Ty::Var(_) | Ty::Never => None,
+        }
+    }
+
+    fn resource_sum_destructor_inner(
+        &self,
+        name: &str,
+        arguments: &[Ty],
+        visiting: &mut HashSet<String>,
+    ) -> Option<MirResourceDestructor> {
+        let definition = self.registry.sum_type_defs.get(name)?;
+        let visit_key = format!("sum:{name}");
+        if !visiting.insert(visit_key.clone()) {
+            return None;
+        }
+        let substitutions: HashMap<String, &Ty> = definition
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(arguments.iter())
+            .collect();
+        let variants = definition
+            .variants
+            .iter()
+            .enumerate()
+            .filter_map(|(tag, variant)| {
+                let concrete_fields = variant
+                    .fields
+                    .iter()
+                    .map(|field| match field {
+                        mesh_typeck::VariantFieldInfo::Positional(ty)
+                        | mesh_typeck::VariantFieldInfo::Named(_, ty) => {
+                            substitute_type_params(ty, &substitutions)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let resource_fields = concrete_fields
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, field_ty)| {
+                        self.resource_destructor_inner(field_ty, visiting)
+                            .map(|destructor| MirResourceField {
+                                index: index as u32,
+                                ty: resolve_type(field_ty, self.registry, false),
+                                destructor,
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                (!resource_fields.is_empty()).then(|| MirResourceVariant {
+                    tag: tag as u8,
+                    field_types: concrete_fields
+                        .iter()
+                        .map(|field_ty| resolve_type(field_ty, self.registry, false))
+                        .collect(),
+                    resource_fields,
+                })
+            })
+            .collect();
+        visiting.remove(&visit_key);
+        Some(MirResourceDestructor::SumVariants(variants))
+    }
+
+    fn resource_drop(
+        name: &str,
+        resource_ty: &MirType,
+        destructor: MirResourceDestructor,
+    ) -> MirExpr {
+        MirExpr::ResourceDrop {
+            value: Box::new(MirExpr::Var(name.to_string(), resource_ty.clone())),
+            resource_ty: resource_ty.clone(),
+            destructor,
+        }
+    }
+
+    fn cleanup_before_exits(
+        &mut self,
+        expression: MirExpr,
+        cleanup: &MirExpr,
+        loop_depth: usize,
+    ) -> MirExpr {
+        match expression {
+            MirExpr::Return(value) => {
+                let value = self.cleanup_before_exits(*value, cleanup, loop_depth);
+                let ty = effective_return_type(&value);
+                let name = self.next_resource_temp();
+                MirExpr::Let {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                    value: Box::new(value),
+                    body: Box::new(MirExpr::Block(
+                        vec![
+                            cleanup.clone(),
+                            MirExpr::Return(Box::new(MirExpr::Var(name, ty))),
+                        ],
+                        MirType::Never,
+                    )),
+                }
+            }
+            panic @ MirExpr::Panic { .. } => {
+                MirExpr::Block(vec![cleanup.clone(), panic], MirType::Never)
+            }
+            MirExpr::Break if loop_depth == 0 => {
+                MirExpr::Block(vec![cleanup.clone(), MirExpr::Break], MirType::Never)
+            }
+            MirExpr::Continue if loop_depth == 0 => {
+                MirExpr::Block(vec![cleanup.clone(), MirExpr::Continue], MirType::Never)
+            }
+            MirExpr::If {
+                cond,
+                then_body,
+                else_body,
+                ty,
+            } => MirExpr::If {
+                cond: Box::new(self.cleanup_before_exits(*cond, cleanup, loop_depth)),
+                then_body: Box::new(self.cleanup_before_exits(*then_body, cleanup, loop_depth)),
+                else_body: Box::new(self.cleanup_before_exits(*else_body, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::Let {
+                name,
+                ty,
+                value,
+                body,
+            } => MirExpr::Let {
+                name,
+                ty,
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth)),
+            },
+            MirExpr::Block(expressions, ty) => MirExpr::Block(
+                expressions
+                    .into_iter()
+                    .map(|item| self.cleanup_before_exits(item, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            ),
+            MirExpr::Match {
+                scrutinee,
+                arms,
+                ty,
+            } => MirExpr::Match {
+                scrutinee: Box::new(self.cleanup_before_exits(*scrutinee, cleanup, loop_depth)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| MirMatchArm {
+                        pattern: arm.pattern,
+                        guard: arm
+                            .guard
+                            .map(|guard| self.cleanup_before_exits(guard, cleanup, loop_depth)),
+                        body: self.cleanup_before_exits(arm.body, cleanup, loop_depth),
+                    })
+                    .collect(),
+                ty,
+            },
+            MirExpr::ActorReceive {
+                arms,
+                timeout_ms,
+                timeout_body,
+                ty,
+            } => MirExpr::ActorReceive {
+                arms: arms
+                    .into_iter()
+                    .map(|arm| MirMatchArm {
+                        pattern: arm.pattern,
+                        guard: arm
+                            .guard
+                            .map(|guard| self.cleanup_before_exits(guard, cleanup, loop_depth)),
+                        body: self.cleanup_before_exits(arm.body, cleanup, loop_depth),
+                    })
+                    .collect(),
+                timeout_ms: timeout_ms.map(|timeout| {
+                    Box::new(self.cleanup_before_exits(*timeout, cleanup, loop_depth))
+                }),
+                timeout_body: timeout_body
+                    .map(|body| Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth))),
+                ty,
+            },
+            MirExpr::While { cond, body, ty } => MirExpr::While {
+                cond: Box::new(self.cleanup_before_exits(*cond, cleanup, loop_depth + 1)),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                ty,
+            },
+            MirExpr::ForInRange {
+                var,
+                start,
+                end,
+                filter,
+                body,
+                ty,
+            } => MirExpr::ForInRange {
+                var,
+                start: Box::new(self.cleanup_before_exits(*start, cleanup, loop_depth)),
+                end: Box::new(self.cleanup_before_exits(*end, cleanup, loop_depth)),
+                filter: filter.map(|filter| {
+                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
+                }),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                ty,
+            },
+            MirExpr::ForInList {
+                var,
+                collection,
+                filter,
+                body,
+                elem_ty,
+                body_ty,
+                ty,
+            } => MirExpr::ForInList {
+                var,
+                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
+                filter: filter.map(|filter| {
+                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
+                }),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                elem_ty,
+                body_ty,
+                ty,
+            },
+            MirExpr::ForInMap {
+                key_var,
+                val_var,
+                collection,
+                filter,
+                body,
+                key_ty,
+                val_ty,
+                body_ty,
+                ty,
+            } => MirExpr::ForInMap {
+                key_var,
+                val_var,
+                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
+                filter: filter.map(|filter| {
+                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
+                }),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                key_ty,
+                val_ty,
+                body_ty,
+                ty,
+            },
+            MirExpr::ForInSet {
+                var,
+                collection,
+                filter,
+                body,
+                elem_ty,
+                body_ty,
+                ty,
+            } => MirExpr::ForInSet {
+                var,
+                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
+                filter: filter.map(|filter| {
+                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
+                }),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                elem_ty,
+                body_ty,
+                ty,
+            },
+            MirExpr::ForInIterator {
+                var,
+                iterator,
+                filter,
+                body,
+                elem_ty,
+                body_ty,
+                next_fn,
+                iter_fn,
+                ty,
+            } => MirExpr::ForInIterator {
+                var,
+                iterator: Box::new(self.cleanup_before_exits(*iterator, cleanup, loop_depth)),
+                filter: filter.map(|filter| {
+                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
+                }),
+                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
+                elem_ty,
+                body_ty,
+                next_fn,
+                iter_fn,
+                ty,
+            },
+            MirExpr::BinOp { op, lhs, rhs, ty } => MirExpr::BinOp {
+                op,
+                lhs: Box::new(self.cleanup_before_exits(*lhs, cleanup, loop_depth)),
+                rhs: Box::new(self.cleanup_before_exits(*rhs, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::UnaryOp { op, operand, ty } => MirExpr::UnaryOp {
+                op,
+                operand: Box::new(self.cleanup_before_exits(*operand, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::Call { func, args, ty } => MirExpr::Call {
+                func: Box::new(self.cleanup_before_exits(*func, cleanup, loop_depth)),
+                args: args
+                    .into_iter()
+                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            },
+            MirExpr::ClosureCall { closure, args, ty } => MirExpr::ClosureCall {
+                closure: Box::new(self.cleanup_before_exits(*closure, cleanup, loop_depth)),
+                args: args
+                    .into_iter()
+                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            },
+            MirExpr::StructLit { name, fields, ty } => MirExpr::StructLit {
+                name,
+                fields: fields
+                    .into_iter()
+                    .map(|(field, value)| {
+                        (field, self.cleanup_before_exits(value, cleanup, loop_depth))
+                    })
+                    .collect(),
+                ty,
+            },
+            MirExpr::StructUpdate {
+                base,
+                overrides,
+                ty,
+            } => MirExpr::StructUpdate {
+                base: Box::new(self.cleanup_before_exits(*base, cleanup, loop_depth)),
+                overrides: overrides
+                    .into_iter()
+                    .map(|(field, value)| {
+                        (field, self.cleanup_before_exits(value, cleanup, loop_depth))
+                    })
+                    .collect(),
+                ty,
+            },
+            MirExpr::FieldAccess { object, field, ty } => MirExpr::FieldAccess {
+                object: Box::new(self.cleanup_before_exits(*object, cleanup, loop_depth)),
+                field,
+                ty,
+            },
+            MirExpr::ConstructVariant {
+                type_name,
+                variant,
+                fields,
+                ty,
+            } => MirExpr::ConstructVariant {
+                type_name,
+                variant,
+                fields: fields
+                    .into_iter()
+                    .map(|field| self.cleanup_before_exits(field, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            },
+            MirExpr::MakeClosure {
+                fn_name,
+                captures,
+                ty,
+            } => MirExpr::MakeClosure {
+                fn_name,
+                captures: captures
+                    .into_iter()
+                    .map(|capture| self.cleanup_before_exits(capture, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            },
+            MirExpr::ResourceMove { value, ty, source } => MirExpr::ResourceMove {
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                ty,
+                source,
+            },
+            MirExpr::ResourceBorrow { value, ty } => MirExpr::ResourceBorrow {
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::ResourceDrop {
+                value,
+                resource_ty,
+                destructor,
+            } => MirExpr::ResourceDrop {
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                resource_ty,
+                destructor,
+            },
+            MirExpr::ResourceDestroy {
+                value,
+                resource_ty,
+                destructor,
+            } => MirExpr::ResourceDestroy {
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                resource_ty,
+                destructor,
+            },
+            MirExpr::ActorSpawn {
+                func,
+                args,
+                priority,
+                terminate_callback,
+                ty,
+            } => MirExpr::ActorSpawn {
+                func: Box::new(self.cleanup_before_exits(*func, cleanup, loop_depth)),
+                args: args
+                    .into_iter()
+                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
+                    .collect(),
+                priority,
+                terminate_callback: terminate_callback.map(|callback| {
+                    Box::new(self.cleanup_before_exits(*callback, cleanup, loop_depth))
+                }),
+                ty,
+            },
+            MirExpr::ActorSend {
+                target,
+                message,
+                ty,
+            } => MirExpr::ActorSend {
+                target: Box::new(self.cleanup_before_exits(*target, cleanup, loop_depth)),
+                message: Box::new(self.cleanup_before_exits(*message, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::ActorLink { target, ty } => MirExpr::ActorLink {
+                target: Box::new(self.cleanup_before_exits(*target, cleanup, loop_depth)),
+                ty,
+            },
+            MirExpr::ListLit { elements, ty } => MirExpr::ListLit {
+                elements: elements
+                    .into_iter()
+                    .map(|element| self.cleanup_before_exits(element, cleanup, loop_depth))
+                    .collect(),
+                ty,
+            },
+            MirExpr::TailCall { args, ty } => {
+                let mut evaluated = Vec::with_capacity(args.len());
+                let mut tail_args = Vec::with_capacity(args.len());
+                for argument in args {
+                    let argument = self.cleanup_before_exits(argument, cleanup, loop_depth);
+                    let argument_ty = effective_return_type(&argument);
+                    let name = self.next_resource_temp();
+                    tail_args.push(MirExpr::Var(name.clone(), argument_ty.clone()));
+                    evaluated.push((name, argument_ty, argument));
+                }
+                let mut result = MirExpr::Block(
+                    vec![
+                        cleanup.clone(),
+                        MirExpr::TailCall {
+                            args: tail_args,
+                            ty,
+                        },
+                    ],
+                    MirType::Never,
+                );
+                for (name, argument_ty, argument) in evaluated.into_iter().rev() {
+                    result = MirExpr::Let {
+                        name,
+                        ty: argument_ty,
+                        value: Box::new(argument),
+                        body: Box::new(result),
+                    };
+                }
+                result
+            }
+            other => other,
+        }
+    }
+
+    fn can_fall_through(expression: &MirExpr) -> bool {
+        match expression {
+            MirExpr::Return(_)
+            | MirExpr::Panic { .. }
+            | MirExpr::Break
+            | MirExpr::Continue
+            | MirExpr::TailCall { .. } => false,
+            MirExpr::Let { body, .. } => Self::can_fall_through(body),
+            MirExpr::Block(expressions, _) => expressions.iter().all(Self::can_fall_through),
+            MirExpr::If {
+                then_body,
+                else_body,
+                ..
+            } => Self::can_fall_through(then_body) || Self::can_fall_through(else_body),
+            MirExpr::Match { arms, .. } => arms.iter().any(|arm| Self::can_fall_through(&arm.body)),
+            MirExpr::ActorReceive {
+                arms, timeout_body, ..
+            } => {
+                arms.iter().any(|arm| Self::can_fall_through(&arm.body))
+                    || timeout_body.as_deref().is_some_and(Self::can_fall_through)
+            }
+            _ => true,
+        }
+    }
+
+    fn wrap_resource_scope(&mut self, body: MirExpr, name: &str, typeck_ty: &Ty) -> MirExpr {
+        let resource_ty = resolve_type(typeck_ty, self.registry, false);
+        let Some(destructor) = self.resource_destructor(typeck_ty) else {
+            return body;
+        };
+        let cleanup = Self::resource_drop(name, &resource_ty, destructor);
+        let body = self.cleanup_before_exits(body, &cleanup, 0);
+        if !Self::can_fall_through(&body) {
+            return body;
+        }
+
+        let result_ty = effective_return_type(&body);
+        let result_name = self.next_resource_temp();
+        MirExpr::Let {
+            name: result_name.clone(),
+            ty: result_ty.clone(),
+            value: Box::new(body),
+            body: Box::new(MirExpr::Block(
+                vec![cleanup, MirExpr::Var(result_name, result_ty.clone())],
+                result_ty,
+            )),
+        }
     }
 
     // ── Module-qualified naming (Phase 41) ──────────────────────────
@@ -910,6 +1552,31 @@ impl<'a> Lowerer<'a> {
     // ── Top-level lowering ───────────────────────────────────────────
 
     fn lower_source_file(&mut self, sf: SourceFile) {
+        for node in sf.syntax().descendants() {
+            let Some(function) = FnDef::cast(node) else {
+                continue;
+            };
+            let Some(name) = function.name().and_then(|name| name.text()) else {
+                continue;
+            };
+            let modes = function
+                .param_list()
+                .map(|parameters| {
+                    parameters
+                        .params()
+                        .map(|parameter| parameter.ownership())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let qualified_name = self.qualify_name(&name);
+            self.ownership_signatures
+                .entry(name.clone())
+                .or_insert_with(|| modes.clone());
+            self.ownership_signatures
+                .entry(qualified_name)
+                .or_insert(modes);
+        }
+
         // Pre-pass: detect arity-overloaded pub fns (same name, multiple arities).
         // Populate overloaded_pub_fn_names so lower_fn_def can emit mangled MIR names.
         {
@@ -1191,24 +1858,88 @@ impl<'a> Lowerer<'a> {
             "mesh_regex_split".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::String], Box::new(MirType::Ptr)),
         );
-        // Crypto runtime functions (Phase 135)
-        // Crypto: String -> String
+        // Binary-first Crypto V2 runtime functions. Fallible calls return an
+        // ABI pointer to MeshResult; the call-site's typeck MIR type retains the
+        // concrete nominal `Result<T, CryptoError>` identity.
         self.known_functions.insert(
             "mesh_crypto_sha256".to_string(),
-            MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
             "mesh_crypto_sha512".to_string(),
-            MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
-        // Crypto: (String, String) -> String (HMAC)
+        for name in ["mesh_crypto_sha256_hex", "mesh_crypto_sha512_hex"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_crypto_random_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
         self.known_functions.insert(
             "mesh_crypto_hmac_sha256".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hkdf_sha256".to_string(),
             MirType::FnPtr(
-                vec![MirType::String, MirType::String],
-                Box::new(MirType::String),
+                vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Int],
+                Box::new(MirType::Ptr),
             ),
         );
+        for name in [
+            "mesh_crypto_x25519_generate",
+            "mesh_crypto_signing_generate",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_crypto_x25519_public".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_x25519_shared".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Struct("X25519PublicKey".to_string())],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_sign".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_verify".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Struct("SigningPublicKey".to_string()),
+                    MirType::Ptr,
+                    MirType::Struct("Signature".to_string()),
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_aead_key".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_crypto_aead_seal", "mesh_crypto_aead_open"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
+
+        // Legacy non-colliding Phase 135 functions.
         self.known_functions.insert(
             "mesh_crypto_hmac_sha512".to_string(),
             MirType::FnPtr(
@@ -1216,7 +1947,6 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::String),
             ),
         );
-        // Crypto: () -> String (uuid4 — zero args)
         self.known_functions.insert(
             "mesh_crypto_uuid4".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::String)),
@@ -1356,6 +2086,14 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
             );
         }
+        self.known_functions.insert(
+            "mesh_secret_random".to_string(),
+            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_secret_destroy".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
+        );
         for prefix in ["u64", "u128", "i128"] {
             self.known_functions.insert(
                 format!("mesh_{prefix}_parse"),
@@ -3639,6 +4377,7 @@ impl<'a> Lowerer<'a> {
         update_original_name: bool,
     ) {
         let mut params = Vec::new();
+        let mut owned_resource_params = Vec::new();
         self.push_scope();
 
         if let Some(param_list) = fn_def.param_list() {
@@ -3661,6 +4400,11 @@ impl<'a> Lowerer<'a> {
                         }
                     }
                     self.insert_var(param_name.clone(), mir_ty.clone());
+                    if param.ownership() != ParamOwnership::Borrow
+                        && self.registry.is_resource_type(param_ty)
+                    {
+                        owned_resource_params.push((param_name.clone(), param_ty.clone()));
+                    }
                     params.push((param_name, mir_ty));
                 }
             } else {
@@ -3671,6 +4415,15 @@ impl<'a> Lowerer<'a> {
                         .unwrap_or_else(|| "_".to_string());
                     let mir_ty = self.resolve_range(param.syntax().text_range());
                     self.insert_var(param_name.clone(), mir_ty.clone());
+                    if param.ownership() != ParamOwnership::Borrow
+                        && self
+                            .get_ty(param.syntax().text_range())
+                            .is_some_and(|ty| self.registry.is_resource_type(ty))
+                    {
+                        if let Some(typeck_ty) = self.get_ty(param.syntax().text_range()).cloned() {
+                            owned_resource_params.push((param_name.clone(), typeck_ty));
+                        }
+                    }
                     params.push((param_name, mir_ty));
                 }
             }
@@ -3709,6 +4462,10 @@ impl<'a> Lowerer<'a> {
             MirExpr::Unit
         };
         self.mono_depth -= 1;
+
+        for (name, resource_ty) in owned_resource_params.into_iter().rev() {
+            body = self.wrap_resource_scope(body, &name, &resource_ty);
+        }
 
         self.current_fn_return_type = prev_fn_return_type;
         self.current_fn_return_typeck = prev_fn_return_typeck;
@@ -4413,6 +5170,10 @@ impl<'a> Lowerer<'a> {
     // ── Struct lowering ──────────────────────────────────────────────
 
     fn lower_struct_def(&mut self, struct_def: &StructDef) {
+        if struct_def.is_opaque_resource() {
+            return;
+        }
+
         let name = struct_def
             .name()
             .and_then(|n| n.text())
@@ -4435,6 +5196,13 @@ impl<'a> Lowerer<'a> {
             .struct_defs
             .get(&name)
             .map_or(false, |info| !info.generic_params.is_empty());
+
+        if struct_def.is_declared_resource() {
+            if !has_generic_params {
+                self.structs.push(MirStructDef { name, fields });
+            }
+            return;
+        }
 
         if !has_generic_params {
             // Conditional MIR generation based on deriving clause.
@@ -8191,8 +8959,7 @@ impl<'a> Lowerer<'a> {
         // Collect all children in source order as MIR expressions.
         // Let bindings insert the variable into scope (for subsequent children)
         // and are wrapped to nest the remaining block as the body.
-        let mut parts: Vec<MirExpr> = Vec::new();
-        let mut let_names: Vec<String> = Vec::new();
+        let mut parts: Vec<(MirExpr, Option<Ty>)> = Vec::new();
 
         for child in block.syntax().children() {
             if let Some(item) = Item::cast(child.clone()) {
@@ -8202,20 +8969,26 @@ impl<'a> Lowerer<'a> {
                             .name()
                             .and_then(|n| n.text())
                             .unwrap_or_else(|| "_".to_string());
-                        let value = if let Some(init) = let_.initializer() {
-                            self.lower_expr(&init)
+                        let (value, resource_ty) = if let Some(init) = let_.initializer() {
+                            let resource_ty = self
+                                .get_ty(init.syntax().text_range())
+                                .filter(|ty| self.registry.is_resource_type(ty))
+                                .cloned();
+                            (self.lower_expr(&init), resource_ty)
                         } else {
-                            MirExpr::Unit
+                            (MirExpr::Unit, None)
                         };
                         let ty = value.ty().clone();
                         self.insert_var(name.clone(), ty.clone());
-                        let_names.push(name.clone());
-                        parts.push(MirExpr::Let {
-                            name,
-                            ty,
-                            value: Box::new(value),
-                            body: Box::new(MirExpr::Unit), // placeholder; nested below
-                        });
+                        parts.push((
+                            MirExpr::Let {
+                                name,
+                                ty,
+                                value: Box::new(value),
+                                body: Box::new(MirExpr::Unit), // placeholder; nested below
+                            },
+                            resource_ty,
+                        ));
                     }
                     Item::FnDef(ref fn_def) => {
                         self.lower_fn_def(fn_def);
@@ -8226,7 +8999,7 @@ impl<'a> Lowerer<'a> {
             }
             if let Some(expr) = Expr::cast(child) {
                 let mir = self.lower_expr(&expr);
-                parts.push(mir);
+                parts.push((mir, None));
             }
         }
 
@@ -8239,8 +9012,29 @@ impl<'a> Lowerer<'a> {
         }
 
         // Fold from right to left: each Let wraps everything after it as its body.
-        let mut result = parts.pop().unwrap();
-        while let Some(part) = parts.pop() {
+        let (last, last_resource_ty) = parts.pop().unwrap();
+        let mut result = match last {
+            MirExpr::Let {
+                name,
+                ty,
+                value,
+                body,
+            } => {
+                let body = if let Some(resource_ty) = last_resource_ty {
+                    self.wrap_resource_scope(*body, &name, &resource_ty)
+                } else {
+                    *body
+                };
+                MirExpr::Let {
+                    name,
+                    ty,
+                    value,
+                    body: Box::new(body),
+                }
+            }
+            other => other,
+        };
+        while let Some((part, resource_ty)) = parts.pop() {
             match part {
                 MirExpr::Let {
                     name,
@@ -8248,16 +9042,21 @@ impl<'a> Lowerer<'a> {
                     value,
                     body: _,
                 } => {
+                    let body = if let Some(resource_ty) = resource_ty {
+                        self.wrap_resource_scope(result, &name, &resource_ty)
+                    } else {
+                        result
+                    };
                     result = MirExpr::Let {
                         name,
                         ty,
                         value,
-                        body: Box::new(result),
+                        body: Box::new(body),
                     };
                 }
                 other => {
                     // Non-let expression before result: wrap in a Block.
-                    let ty = result.ty().clone();
+                    let ty = effective_return_type(&result);
                     result = MirExpr::Block(vec![other, result], ty);
                 }
             }
@@ -8409,6 +9208,22 @@ impl<'a> Lowerer<'a> {
 
     // ── Name reference lowering ──────────────────────────────────────
 
+    fn lower_local_ref(&self, name: String, ty: MirType, range: TextRange) -> MirExpr {
+        let value = MirExpr::Var(name, ty.clone());
+        if self
+            .get_ty(range)
+            .is_some_and(|typeck_ty| self.registry.is_resource_type(typeck_ty))
+        {
+            MirExpr::ResourceMove {
+                value: Box::new(value),
+                ty,
+                source: MirResourceMoveSource::Slot,
+            }
+        } else {
+            value
+        }
+    }
+
     fn lower_name_ref(&self, name_ref: &NameRef) -> MirExpr {
         let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
         let range = name_ref.syntax().text_range();
@@ -8435,7 +9250,7 @@ impl<'a> Lowerer<'a> {
         // `node_name`) shadow top-level function names without breaking normal
         // function references registered in the root scope.
         if let Some(scope_ty) = self.lookup_non_global_var(&name) {
-            return MirExpr::Var(name, scope_ty);
+            return self.lower_local_ref(name, scope_ty, range);
         }
 
         if let Some(scope_ty) = self.lookup_var(&name) {
@@ -8450,7 +9265,7 @@ impl<'a> Lowerer<'a> {
                 };
                 return MirExpr::Var(lowered_name, var_ty);
             }
-            return MirExpr::Var(name, scope_ty);
+            return self.lower_local_ref(name, scope_ty, range);
         }
 
         // Map builtin function names to their runtime equivalents.
@@ -8842,6 +9657,25 @@ impl<'a> Lowerer<'a> {
 
     // ── Call expression lowering ─────────────────────────────────────
 
+    fn apply_direct_resource_modes(&self, callee: &MirExpr, args: Vec<MirExpr>) -> Vec<MirExpr> {
+        let MirExpr::Var(name, _) = callee else {
+            return args;
+        };
+        let Some(modes) = self.ownership_signatures.get(name) else {
+            return args;
+        };
+
+        args.into_iter()
+            .enumerate()
+            .map(|(index, argument)| match (modes.get(index), argument) {
+                (Some(ParamOwnership::Borrow), MirExpr::ResourceMove { value, ty, .. }) => {
+                    MirExpr::ResourceBorrow { value, ty }
+                }
+                (_, argument) => argument,
+            })
+            .collect()
+    }
+
     fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
         if let Some(metadata) = self
             .clustered_route_wrappers
@@ -8967,6 +9801,7 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
+                    let args = self.apply_direct_resource_modes(&callee, args);
                     return MirExpr::Call {
                         func: Box::new(callee),
                         args,
@@ -9235,10 +10070,19 @@ impl<'a> Lowerer<'a> {
             for (_, sum_info) in &self.registry.sum_type_defs {
                 for variant in &sum_info.variants {
                     if variant.name == *name && !variant.fields.is_empty() {
-                        let ty_name = &sum_info.name;
-                        let mir_ty = MirType::SumType(ty_name.clone());
+                        let base_name = &sum_info.name;
+                        let concrete_name = match &ty {
+                            MirType::SumType(name)
+                                if name == base_name
+                                    || name.starts_with(&format!("{base_name}_")) =>
+                            {
+                                name.clone()
+                            }
+                            _ => base_name.clone(),
+                        };
+                        let mir_ty = MirType::SumType(concrete_name.clone());
                         return MirExpr::ConstructVariant {
-                            type_name: ty_name.clone(),
+                            type_name: concrete_name,
                             variant: name.clone(),
                             fields: args,
                             ty: mir_ty,
@@ -9486,6 +10330,20 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        let args = self.apply_direct_resource_modes(&callee, args);
+
+        if matches!(&callee, MirExpr::Var(name, _) if name == "mesh_secret_destroy")
+            && args.len() == 1
+        {
+            let value = args.into_iter().next().unwrap();
+            let resource_ty = value.ty().clone();
+            return MirExpr::ResourceDestroy {
+                value: Box::new(value),
+                resource_ty,
+                destructor: MirResourceDestructor::Opaque,
+            };
+        }
+
         // Determine if this is a direct function call or a closure call.
         let is_known_fn = match &callee {
             MirExpr::Var(name, _) => self.known_functions.contains_key(name),
@@ -9543,6 +10401,7 @@ impl<'a> Lowerer<'a> {
                     Some(c) => c,
                     None => return MirExpr::Unit,
                 };
+                let args = self.apply_direct_resource_modes(&callee, args);
                 MirExpr::Call {
                     func: Box::new(callee),
                     args,
@@ -9552,9 +10411,10 @@ impl<'a> Lowerer<'a> {
             Some(rhs_expr) => {
                 // `x |> f` -> `f(x)` -- bare function reference.
                 let func = self.lower_expr(&rhs_expr);
+                let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
                     func: Box::new(func),
-                    args: vec![lhs],
+                    args,
                     ty,
                 }
             }
@@ -9611,6 +10471,7 @@ impl<'a> Lowerer<'a> {
                     Some(c) => c,
                     None => return MirExpr::Unit,
                 };
+                let explicit_args = self.apply_direct_resource_modes(&callee, explicit_args);
                 MirExpr::Call {
                     func: Box::new(callee),
                     args: explicit_args,
@@ -9620,9 +10481,10 @@ impl<'a> Lowerer<'a> {
             Some(rhs_expr) => {
                 // Bare function reference with slot — treat as regular pipe (insert at position 0)
                 let func = self.lower_expr(&rhs_expr);
+                let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
                     func: Box::new(func),
-                    args: vec![lhs],
+                    args,
                     ty,
                 }
             }
@@ -9631,6 +10493,24 @@ impl<'a> Lowerer<'a> {
     }
 
     // ── Field access lowering ────────────────────────────────────────
+
+    fn resource_field_index(&self, parent_ty: &Ty, field: &str) -> Option<u32> {
+        let name = match parent_ty {
+            Ty::Con(constructor) => &constructor.name,
+            Ty::App(constructor, _) => match constructor.as_ref() {
+                Ty::Con(constructor) => &constructor.name,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        self.registry
+            .struct_defs
+            .get(name)?
+            .fields
+            .iter()
+            .position(|(candidate, _)| candidate == field)
+            .map(|index| index as u32)
+    }
 
     fn lower_field_access(&mut self, fa: &FieldAccess) -> MirExpr {
         // Check if this is a module-qualified access (e.g., String.length).
@@ -9781,14 +10661,89 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let object = fa
-            .base()
-            .map(|e| self.lower_expr(&e))
+        let base = fa.base();
+        let parent_typeck = base
+            .as_ref()
+            .and_then(|expression| self.get_ty(expression.syntax().text_range()))
+            .cloned();
+        let object = base
+            .map(|expression| self.lower_expr(&expression))
             .unwrap_or(MirExpr::Unit);
 
         let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
 
         let ty = self.resolve_range(fa.syntax().text_range());
+
+        if let MirExpr::ResourceMove {
+            value,
+            ty: immediate_parent_ty,
+            source,
+        } = object
+        {
+            // A field chain is one pending move rooted at the original local. Do not
+            // execute an intermediate projection move while evaluating a deeper field.
+            let projection = MirExpr::FieldAccess {
+                object: value,
+                field: field.clone(),
+                ty: ty.clone(),
+            };
+            let field_is_resource = self
+                .get_ty(fa.syntax().text_range())
+                .is_some_and(|field_ty| self.registry.is_resource_type(field_ty));
+            if !field_is_resource {
+                return projection;
+            }
+            let Some(parent_typeck) = parent_typeck else {
+                return MirExpr::Panic {
+                    message: "resource field move lacked parent type metadata".to_string(),
+                    file: "<compiler>".to_string(),
+                    line: 0,
+                };
+            };
+            let Some(next_field_index) = self.resource_field_index(&parent_typeck, &field) else {
+                return MirExpr::Panic {
+                    message: "resource field move lacked field layout metadata".to_string(),
+                    file: "<compiler>".to_string(),
+                    line: 0,
+                };
+            };
+            let source = match source {
+                MirResourceMoveSource::Slot => {
+                    let Some(parent_destructor) = self.resource_destructor(&parent_typeck) else {
+                        return MirExpr::Panic {
+                            message: "resource field move lacked destruction metadata".to_string(),
+                            file: "<compiler>".to_string(),
+                            line: 0,
+                        };
+                    };
+                    MirResourceMoveSource::Projection {
+                        parent_ty: immediate_parent_ty,
+                        parent_destructor,
+                        field_index: next_field_index,
+                        nested_field_indices: Vec::new(),
+                    }
+                }
+                MirResourceMoveSource::Projection {
+                    parent_ty,
+                    parent_destructor,
+                    field_index,
+                    mut nested_field_indices,
+                } => {
+                    nested_field_indices.push(next_field_index);
+                    MirResourceMoveSource::Projection {
+                        parent_ty,
+                        parent_destructor,
+                        field_index,
+                        nested_field_indices,
+                    }
+                }
+            };
+            return MirExpr::ResourceMove {
+                value: Box::new(projection),
+                ty,
+                source,
+            };
+        }
 
         MirExpr::FieldAccess {
             object: Box::new(object),
@@ -10222,8 +11177,15 @@ impl<'a> Lowerer<'a> {
                         // Nullary constructor: no fields.
                         // Payload-bearing constructor without explicit binder: treat as
                         // Constructor(_) -- wildcards cover all fields, bind nothing.
+                        let concrete_type_name = expected
+                            .map(|ty| resolve_type(ty, self.registry, false))
+                            .and_then(|ty| match ty {
+                                MirType::SumType(name) => Some(name),
+                                _ => None,
+                            })
+                            .unwrap_or(type_name);
                         return MirPattern::Constructor {
-                            type_name,
+                            type_name: concrete_type_name,
                             variant: name,
                             fields: vec![MirPattern::Wildcard; variant_fields],
                             bindings: vec![],
@@ -10324,8 +11286,16 @@ impl<'a> Lowerer<'a> {
                 // Collect bindings introduced by sub-patterns.
                 let bindings = collect_pattern_bindings(&fields);
 
+                let concrete_type_name = expected
+                    .map(|ty| resolve_type(ty, self.registry, false))
+                    .and_then(|ty| match ty {
+                        MirType::SumType(name) => Some(name),
+                        _ => None,
+                    })
+                    .unwrap_or(type_name);
+
                 MirPattern::Constructor {
-                    type_name,
+                    type_name: concrete_type_name,
                     variant: variant_name,
                     fields,
                     bindings,
@@ -13802,6 +14772,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "Secret",
     "U64",
     "U128",
     "I128",
@@ -13870,7 +14841,20 @@ fn map_builtin_name(name: &str) -> String {
         // Crypto functions (Phase 135)
         "crypto_sha256" => "mesh_crypto_sha256".to_string(),
         "crypto_sha512" => "mesh_crypto_sha512".to_string(),
+        "crypto_sha256_hex" => "mesh_crypto_sha256_hex".to_string(),
+        "crypto_sha512_hex" => "mesh_crypto_sha512_hex".to_string(),
+        "crypto_random_bytes" => "mesh_crypto_random_bytes".to_string(),
         "crypto_hmac_sha256" => "mesh_crypto_hmac_sha256".to_string(),
+        "crypto_hkdf_sha256" => "mesh_crypto_hkdf_sha256".to_string(),
+        "crypto_x25519_generate" => "mesh_crypto_x25519_generate".to_string(),
+        "crypto_x25519_public" => "mesh_crypto_x25519_public".to_string(),
+        "crypto_x25519_shared" => "mesh_crypto_x25519_shared".to_string(),
+        "crypto_signing_generate" => "mesh_crypto_signing_generate".to_string(),
+        "crypto_sign" => "mesh_crypto_sign".to_string(),
+        "crypto_verify" => "mesh_crypto_verify".to_string(),
+        "crypto_aead_key" => "mesh_crypto_aead_key".to_string(),
+        "crypto_aead_seal" => "mesh_crypto_aead_seal".to_string(),
+        "crypto_aead_open" => "mesh_crypto_aead_open".to_string(),
         "crypto_hmac_sha512" => "mesh_crypto_hmac_sha512".to_string(),
         "crypto_uuid4" => "mesh_crypto_uuid4".to_string(),
         // Base64 functions (Phase 135)
@@ -13910,6 +14894,8 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_write_u16_be" => "mesh_bytes_write_u16_be".to_string(),
         "bytes_write_u32_be" => "mesh_bytes_write_u32_be".to_string(),
         "bytes_write_u64_be" => "mesh_bytes_write_u64_be".to_string(),
+        "secret_random" => "mesh_secret_random".to_string(),
+        "secret_destroy" => "mesh_secret_destroy".to_string(),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"
@@ -14721,6 +15707,12 @@ fn collect_free_vars(
                 collect_free_vars(c, params, outer_vars, captures);
             }
         }
+        MirExpr::ResourceMove { value, .. }
+        | MirExpr::ResourceBorrow { value, .. }
+        | MirExpr::ResourceDrop { value, .. }
+        | MirExpr::ResourceDestroy { value, .. } => {
+            collect_free_vars(value, params, outer_vars, captures);
+        }
         MirExpr::Return(val) => {
             collect_free_vars(val, params, outer_vars, captures);
         }
@@ -14972,6 +15964,17 @@ pub fn lower_to_mir(
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
 ) -> Result<MirModule, String> {
+    if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
+        TypeError::ResourceViolation { reason, .. }
+            if reason.contains("cannot be captured by a closure") =>
+        {
+            Some(reason)
+        }
+        _ => None,
+    }) {
+        return Err(format!("unsafe resource closure rejected: {reason}"));
+    }
+
     let tree = parse.syntax();
     let source_file = match SourceFile::cast(tree.clone()) {
         Some(sf) => sf,
@@ -15022,6 +16025,32 @@ pub fn lower_to_mir(
             name: name.clone(),
             variants,
         });
+    }
+
+    // Crypto V2 value/keypair structs are registry-backed builtins rather than
+    // source declarations, so they need concrete MIR layouts here.
+    for name in [
+        "X25519PublicKey",
+        "SigningPublicKey",
+        "Signature",
+        "X25519KeyPair",
+        "SigningKeyPair",
+    ] {
+        if let Some(definition) = typeck.type_registry.struct_defs.get(name) {
+            lowerer.structs.push(MirStructDef {
+                name: name.to_string(),
+                fields: definition
+                    .fields
+                    .iter()
+                    .map(|(field, ty)| {
+                        (
+                            field.clone(),
+                            resolve_type(ty, &typeck.type_registry, false),
+                        )
+                    })
+                    .collect(),
+            });
+        }
     }
 
     // Pre-seed stdlib structs for builtin field access (Phase 137+).
@@ -15396,6 +16425,7 @@ mod tests {
             actor_defs: FxHashMap::default(),
             private_names: FxHashSet::default(),
             type_aliases: FxHashMap::default(),
+            ..ModuleExports::default()
         }
     }
 
@@ -15436,6 +16466,839 @@ mod tests {
 
         // Body should be a BinOp
         assert!(matches!(func.body, MirExpr::BinOp { op: BinOp::Add, .. }));
+    }
+
+    #[test]
+    fn opaque_resources_have_no_struct_layout_but_resource_structs_do() {
+        let mir = lower(
+            "resource StorageKey\n\
+             resource struct RatchetSecrets do\n\
+               root_key :: SecretBytes\n\
+             end",
+        );
+
+        assert!(
+            mir.structs
+                .iter()
+                .all(|definition| definition.name != "StorageKey"),
+            "opaque resources must not expose a forgeable struct representation: {:?}",
+            mir.structs
+        );
+        assert!(
+            mir.structs.iter().any(|definition| {
+                definition.name == "RatchetSecrets"
+                    && definition.fields == vec![("root_key".to_string(), MirType::Ptr)]
+            }),
+            "resource structs must retain their field layout: {:?}",
+            mir.structs
+        );
+    }
+
+    #[test]
+    fn resource_structs_do_not_generate_exposing_trait_functions() {
+        let mir = lower(
+            "resource struct RatchetSecrets do\n\
+               root_key :: SecretBytes\n\
+             end",
+        );
+
+        assert!(
+            mir.functions.iter().all(|function| {
+                !function.name.ends_with("__RatchetSecrets")
+                    && !function.name.contains("__RatchetSecrets__")
+            }),
+            "resource structs must not synthesize Debug/Eq/Ord/Hash exposure helpers: {:?}",
+            mir.functions
+                .iter()
+                .map(|function| &function.name)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn direct_resource_calls_lower_borrow_consume_and_default_move_explicitly() {
+        let mir = lower(
+            "resource Token\n\
+             fn inspect(token :: borrow Token) do nil end\n\
+             fn consume_token(token :: consume Token) do nil end\n\
+             fn take(token :: Token) do nil end\n\
+             fn use_resources(a :: Token, b :: Token, c :: Token) do\n\
+               inspect(a)\n\
+               consume_token(b)\n\
+               take(c)\n\
+             end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "use_resources")
+            .expect("expected use_resources MIR function");
+
+        fn count_ops(expression: &MirExpr) -> (usize, usize) {
+            match expression {
+                MirExpr::ResourceBorrow { value, .. } => {
+                    let (borrows, moves) = count_ops(value);
+                    (borrows + 1, moves)
+                }
+                MirExpr::ResourceMove { value, .. } => {
+                    let (borrows, moves) = count_ops(value);
+                    (borrows, moves + 1)
+                }
+                MirExpr::Call { func, args, .. } => {
+                    args.iter().fold(count_ops(func), |sum, arg| {
+                        let next = count_ops(arg);
+                        (sum.0 + next.0, sum.1 + next.1)
+                    })
+                }
+                MirExpr::Let { value, body, .. } => {
+                    let left = count_ops(value);
+                    let right = count_ops(body);
+                    (left.0 + right.0, left.1 + right.1)
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().fold((0, 0), |sum, item| {
+                    let next = count_ops(item);
+                    (sum.0 + next.0, sum.1 + next.1)
+                }),
+                _ => (0, 0),
+            }
+        }
+
+        assert_eq!(
+            count_ops(&function.body),
+            (1, 2),
+            "body: {:?}",
+            function.body
+        );
+    }
+
+    #[test]
+    fn pipe_calls_apply_resource_borrow_modes() {
+        let mir = lower(
+            "resource Token\n\
+             fn inspect(token :: borrow Token) do nil end\n\
+             fn pipe_borrow(token :: Token) do token |> inspect end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "pipe_borrow")
+            .expect("pipe_borrow function");
+
+        fn borrowed_inspect(expression: &MirExpr) -> bool {
+            match expression {
+                MirExpr::Call { func, args, .. } if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "inspect") =>
+                {
+                    matches!(args.as_slice(), [MirExpr::ResourceBorrow { .. }])
+                }
+                MirExpr::Let { value, body, .. } => {
+                    borrowed_inspect(value) || borrowed_inspect(body)
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().any(borrowed_inspect),
+                _ => false,
+            }
+        }
+
+        assert!(
+            borrowed_inspect(&function.body),
+            "body: {:?}",
+            function.body
+        );
+    }
+
+    #[test]
+    fn imported_borrow_call_keeps_the_resource_owned_for_destroy() {
+        let module_parse =
+            mesh_parser::parse("pub fn inspect(secret :: borrow SecretBytes) do nil end");
+        let module_typeck = mesh_typeck::check(&module_parse);
+        assert!(
+            module_typeck.errors.is_empty(),
+            "{:?}",
+            module_typeck.errors
+        );
+        let exports = mesh_typeck::collect_exports(&module_parse, &module_typeck);
+        let mut module = ModuleExports {
+            module_name: "Secrets".to_string(),
+            ..ModuleExports::default()
+        };
+        module.functions = exports.functions;
+        module.struct_defs = exports.struct_defs;
+        module.sum_type_defs = exports.sum_type_defs;
+        module.service_defs = exports.service_defs;
+        module.actor_defs = exports.actor_defs;
+        module.private_names = exports.private_names;
+        module.type_aliases = exports.type_aliases;
+        module.resource_types = exports.resource_types;
+        module.function_ownership = exports.function_ownership;
+
+        let mut imports = ImportContext::empty();
+        imports.module_exports.insert("Secrets".to_string(), module);
+        let mir = lower_with_imports(
+            "import Secrets\n\
+             fn use_import(secret :: SecretBytes) do\n\
+               Secrets.inspect(secret)\n\
+               Secret.destroy(secret)\n\
+             end",
+            imports,
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "use_import")
+            .unwrap();
+
+        fn ownership_ops(expression: &MirExpr) -> (usize, usize) {
+            match expression {
+                MirExpr::ResourceBorrow { value, .. } => {
+                    let (borrows, destroys) = ownership_ops(value);
+                    (borrows + 1, destroys)
+                }
+                MirExpr::ResourceDestroy { value, .. } => {
+                    let (borrows, destroys) = ownership_ops(value);
+                    (borrows, destroys + 1)
+                }
+                MirExpr::ResourceMove { value, .. } | MirExpr::ResourceDrop { value, .. } => {
+                    ownership_ops(value)
+                }
+                MirExpr::Call { func, args, .. } => {
+                    args.iter().fold(ownership_ops(func), |sum, argument| {
+                        let next = ownership_ops(argument);
+                        (sum.0 + next.0, sum.1 + next.1)
+                    })
+                }
+                MirExpr::Let { value, body, .. } => {
+                    let value = ownership_ops(value);
+                    let body = ownership_ops(body);
+                    (value.0 + body.0, value.1 + body.1)
+                }
+                MirExpr::Block(expressions, _) => {
+                    expressions.iter().fold((0, 0), |sum, expression| {
+                        let next = ownership_ops(expression);
+                        (sum.0 + next.0, sum.1 + next.1)
+                    })
+                }
+                _ => (0, 0),
+            }
+        }
+
+        assert_eq!(ownership_ops(&function.body), (1, 1), "{:?}", function.body);
+    }
+
+    #[test]
+    fn crypto_v2_calls_use_runtime_symbols_and_resource_modes() {
+        let mir = lower(
+            "fn hmac(key :: borrow SecretBytes, message :: Bytes) -> Result<SecretBytes, CryptoError> do\n\
+               Crypto.hmac_sha256(key, message)\n\
+             end\n\
+             fn make_aead(material :: SecretBytes) -> Result<AeadKey, CryptoError> do\n\
+               Crypto.aead_key(material)\n\
+             end\n\
+             fn seal(key :: borrow AeadKey, nonce :: Bytes, aad :: Bytes, body :: Bytes) -> Result<Bytes, CryptoError> do\n\
+               Crypto.aead_seal(key, nonce, aad, body)\n\
+             end",
+        );
+
+        fn find_call<'a>(expression: &'a MirExpr, callee: &str) -> Option<&'a MirExpr> {
+            match expression {
+                MirExpr::Call { func, .. } if matches!(func.as_ref(), MirExpr::Var(name, _) if name == callee) => {
+                    Some(expression)
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_call(value, callee).or_else(|| find_call(body, callee))
+                }
+                MirExpr::Block(expressions, _) => {
+                    expressions.iter().find_map(|item| find_call(item, callee))
+                }
+                _ => None,
+            }
+        }
+
+        let hmac = find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "hmac")
+                .unwrap()
+                .body,
+            "mesh_crypto_hmac_sha256",
+        )
+        .expect("hmac runtime call");
+        assert!(matches!(
+            hmac,
+            MirExpr::Call { args, ty: MirType::SumType(name), .. }
+                if name == "Result_SecretBytes_CryptoError"
+                    && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
+        ));
+
+        let aead_key = find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "make_aead")
+                .unwrap()
+                .body,
+            "mesh_crypto_aead_key",
+        )
+        .expect("aead key runtime call");
+        assert!(matches!(
+            aead_key,
+            MirExpr::Call { args, ty: MirType::SumType(name), .. }
+                if name == "Result_AeadKey_CryptoError"
+                    && matches!(args.first(), Some(MirExpr::ResourceMove { .. }))
+        ));
+
+        let seal = find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "seal")
+                .unwrap()
+                .body,
+            "mesh_crypto_aead_seal",
+        )
+        .expect("aead seal runtime call");
+        assert!(
+            matches!(
+                seal,
+                MirExpr::Call { args, ty: MirType::SumType(name), .. }
+                    if name == "Result_Ptr_CryptoError"
+                        && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
+            ),
+            "{seal:?}"
+        );
+    }
+
+    #[test]
+    fn owned_resource_params_drop_on_normal_and_early_return_paths() {
+        let mir = lower(
+            "fn normal(secret :: SecretBytes) do nil end\n\
+             fn early(secret :: SecretBytes, stop :: Bool) do\n\
+               if stop do return nil else nil end\n\
+             end",
+        );
+
+        fn count_drops(expression: &MirExpr) -> usize {
+            match expression {
+                MirExpr::ResourceDrop { value, .. } if matches!(value.as_ref(), MirExpr::Var(name, _) if name == "secret") => {
+                    1
+                }
+                MirExpr::ResourceDrop { value, .. } => count_drops(value),
+                MirExpr::Let { value, body, .. } => count_drops(value) + count_drops(body),
+                MirExpr::Block(expressions, _) => expressions.iter().map(count_drops).sum(),
+                MirExpr::If {
+                    then_body,
+                    else_body,
+                    ..
+                } => count_drops(then_body) + count_drops(else_body),
+                _ => 0,
+            }
+        }
+
+        let normal = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "normal")
+            .unwrap();
+        assert_eq!(
+            count_drops(&normal.body),
+            1,
+            "normal body: {:?}",
+            normal.body
+        );
+
+        let early = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "early")
+            .unwrap();
+        assert_eq!(
+            count_drops(&early.body),
+            2,
+            "one cleanup is required on each reachable exit path: {:?}",
+            early.body
+        );
+    }
+
+    #[test]
+    fn owned_resource_drops_when_try_returns_from_a_let_initializer() {
+        let mir = lower(
+            "fn try_init(secret :: SecretBytes) -> Int ! CryptoError do\n\
+               let generated = Secret.random(32) ?\n\
+               Secret.destroy(generated)\n\
+               Ok(0)\n\
+             end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "try_init")
+            .unwrap();
+        fn count_drops(expression: &MirExpr) -> usize {
+            match expression {
+                MirExpr::ResourceDrop { value, .. } if matches!(value.as_ref(), MirExpr::Var(name, _) if name == "secret") => {
+                    1
+                }
+                MirExpr::ResourceDrop { value, .. } => count_drops(value),
+                MirExpr::Let { value, body, .. } => count_drops(value) + count_drops(body),
+                MirExpr::Block(expressions, _) => expressions.iter().map(count_drops).sum(),
+                MirExpr::If {
+                    cond,
+                    then_body,
+                    else_body,
+                    ..
+                } => count_drops(cond) + count_drops(then_body) + count_drops(else_body),
+                MirExpr::Match {
+                    scrutinee, arms, ..
+                } => {
+                    count_drops(scrutinee)
+                        + arms
+                            .iter()
+                            .map(|arm| {
+                                arm.guard.as_ref().map(count_drops).unwrap_or_default()
+                                    + count_drops(&arm.body)
+                            })
+                            .sum::<usize>()
+                }
+                MirExpr::Return(value)
+                | MirExpr::ResourceMove { value, .. }
+                | MirExpr::ResourceBorrow { value, .. }
+                | MirExpr::ResourceDestroy { value, .. } => count_drops(value),
+                MirExpr::Call { func, args, .. } => {
+                    count_drops(func) + args.iter().map(count_drops).sum::<usize>()
+                }
+                _ => 0,
+            }
+        }
+
+        assert_eq!(
+            count_drops(&function.body),
+            2,
+            "the still-owned parameter needs one drop on the ? error path and one on success: {:?}",
+            function.body
+        );
+    }
+
+    #[test]
+    fn nested_resource_scopes_preserve_generic_result_return_type() {
+        let mir = lower(
+            "fn nested() -> Int ! CryptoError do\n\
+               let first = Secret.random(1) ?\n\
+               Secret.destroy(first)\n\
+               let second = Secret.random(1) ?\n\
+               Secret.destroy(second)\n\
+               Ok(0)\n\
+             end",
+        );
+        let nested = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "nested")
+            .expect("nested function");
+
+        assert_eq!(
+            effective_return_type(&nested.body),
+            nested.return_type,
+            "resource scope wrappers and constructors must preserve the concrete Result type: {:?}",
+            nested.body
+        );
+    }
+
+    #[test]
+    fn resource_struct_drop_plan_only_recurses_into_resource_fields() {
+        let mir = lower(
+            "resource struct KeyPair do\n\
+               private_key :: SecretBytes\n\
+               public_bytes :: Bytes\n\
+             end\n\
+             fn discard(pair :: KeyPair) do nil end",
+        );
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        let destructor = find_destructor(&discard.body).expect("expected automatic drop");
+        match destructor {
+            MirResourceDestructor::Aggregate(fields) => {
+                assert_eq!(fields.len(), 1, "drop plan: {destructor:?}");
+                assert_eq!(fields[0].index, 0);
+                assert!(matches!(
+                    fields[0].destructor,
+                    MirResourceDestructor::Opaque
+                ));
+            }
+            other => panic!("expected aggregate resource destructor, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resource_result_drop_plan_destroys_resource_ok_payload() {
+        let mir = lower("fn discard(result :: Result<SecretBytes, CryptoError>) do nil end");
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        assert!(matches!(
+            find_destructor(&discard.body),
+            Some(MirResourceDestructor::SumVariants(variants))
+                if matches!(variants.as_slice(), [variant]
+                    if variant.tag == 0
+                        && variant.field_types == [MirType::Ptr]
+                        && matches!(variant.resource_fields.as_slice(), [field]
+                            if field.index == 0
+                                && matches!(field.destructor, MirResourceDestructor::Opaque)))
+        ));
+    }
+
+    #[test]
+    fn resource_result_drop_plan_destroys_resource_err_payload() {
+        let mir = lower("fn discard(result :: Result<Bytes, SecretBytes>) do nil end");
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        assert!(matches!(
+            find_destructor(&discard.body),
+            Some(MirResourceDestructor::SumVariants(variants))
+                if matches!(variants.as_slice(), [variant]
+                    if variant.tag == 1
+                        && variant.field_types == [MirType::Ptr]
+                        && matches!(variant.resource_fields.as_slice(), [field]
+                            if field.index == 0
+                                && matches!(field.destructor, MirResourceDestructor::Opaque)))
+        ));
+    }
+
+    #[test]
+    fn resource_result_drop_plan_destroys_both_resource_variants() {
+        let mir = lower("fn discard(result :: Result<SecretBytes, SecretBytes>) do nil end");
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        let MirResourceDestructor::SumVariants(variants) =
+            find_destructor(&discard.body).expect("resource result drop")
+        else {
+            panic!(
+                "expected variant-aware result destruction: {:?}",
+                discard.body
+            );
+        };
+        assert_eq!(
+            variants
+                .iter()
+                .map(|variant| variant.tag)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+        assert!(variants.iter().all(|variant| {
+            variant.field_types == [MirType::Ptr]
+                && matches!(variant.resource_fields.as_slice(), [field]
+                    if field.index == 0
+                        && matches!(field.destructor, MirResourceDestructor::Opaque))
+        }));
+    }
+
+    #[test]
+    fn option_resource_drop_plan_destroys_some_but_not_none() {
+        let mir = lower("fn discard(value :: Option<SecretBytes>) do nil end");
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        assert!(matches!(
+            find_destructor(&discard.body),
+            Some(MirResourceDestructor::SumVariants(variants))
+                if matches!(variants.as_slice(), [variant]
+                    if variant.tag == 0
+                        && variant.field_types == [MirType::Ptr]
+                        && matches!(variant.resource_fields.as_slice(), [field]
+                            if field.index == 0
+                                && matches!(field.destructor, MirResourceDestructor::Opaque)))
+        ));
+    }
+
+    #[test]
+    fn custom_sum_resource_drop_plan_uses_each_variant_field_layout() {
+        let mir = lower(
+            "type SecretChoice do\n\
+               Empty\n\
+               Public(Bytes)\n\
+               Private(SecretBytes)\n\
+               Pair(Int, SecretBytes)\n\
+             end\n\
+             fn discard(value :: SecretChoice) do nil end",
+        );
+        let discard = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "discard")
+            .unwrap();
+
+        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+            match expression {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                MirExpr::Let { value, body, .. } => {
+                    find_destructor(value).or_else(|| find_destructor(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
+                _ => None,
+            }
+        }
+
+        let MirResourceDestructor::SumVariants(variants) =
+            find_destructor(&discard.body).expect("custom sum resource drop")
+        else {
+            panic!(
+                "expected a variant-aware sum destructor: {:?}",
+                discard.body
+            );
+        };
+        assert_eq!(
+            variants
+                .iter()
+                .map(|variant| variant.tag)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert_eq!(variants[0].field_types, vec![MirType::Ptr]);
+        assert_eq!(variants[0].resource_fields[0].index, 0);
+        assert_eq!(variants[1].field_types, vec![MirType::Int, MirType::Ptr]);
+        assert_eq!(variants[1].resource_fields[0].index, 1);
+    }
+
+    #[test]
+    fn builtin_crypto_struct_layouts_are_registered_without_source_declarations() {
+        let mir = lower("");
+
+        let fields = |name: &str| {
+            mir.structs
+                .iter()
+                .find(|definition| definition.name == name)
+                .map(|definition| definition.fields.clone())
+        };
+        assert_eq!(
+            fields("X25519PublicKey"),
+            Some(vec![("bytes".to_string(), MirType::Ptr)])
+        );
+        assert_eq!(
+            fields("X25519KeyPair"),
+            Some(vec![
+                ("private_key".to_string(), MirType::Ptr),
+                (
+                    "public_key".to_string(),
+                    MirType::Struct("X25519PublicKey".to_string()),
+                ),
+            ])
+        );
+        assert_eq!(
+            fields("SigningKeyPair"),
+            Some(vec![
+                ("private_key".to_string(), MirType::Ptr),
+                (
+                    "public_key".to_string(),
+                    MirType::Struct("SigningPublicKey".to_string()),
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn moving_resource_field_records_sibling_cleanup_and_invalidates_parent() {
+        let mir = lower(
+            "resource struct DoubleSecret do\n\
+               first :: SecretBytes\n\
+               second :: SecretBytes\n\
+             end\n\
+             fn take(secret :: consume SecretBytes) do nil end\n\
+             fn move_first(pair :: DoubleSecret) do take(pair.first) end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "move_first")
+            .unwrap();
+
+        fn find_projection(expression: &MirExpr) -> Option<&MirResourceMoveSource> {
+            match expression {
+                MirExpr::ResourceMove { source, .. }
+                    if matches!(source, MirResourceMoveSource::Projection { .. }) =>
+                {
+                    Some(source)
+                }
+                MirExpr::ResourceMove { value, .. }
+                | MirExpr::ResourceBorrow { value, .. }
+                | MirExpr::ResourceDrop { value, .. }
+                | MirExpr::ResourceDestroy { value, .. } => find_projection(value),
+                MirExpr::Call { func, args, .. } => {
+                    find_projection(func).or_else(|| args.iter().find_map(find_projection))
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_projection(value).or_else(|| find_projection(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_projection),
+                _ => None,
+            }
+        }
+
+        match find_projection(&function.body) {
+            Some(MirResourceMoveSource::Projection {
+                field_index,
+                parent_destructor: MirResourceDestructor::Aggregate(fields),
+                ..
+            }) => {
+                assert_eq!(*field_index, 0);
+                assert_eq!(
+                    fields.iter().map(|field| field.index).collect::<Vec<_>>(),
+                    vec![0, 1]
+                );
+            }
+            other => panic!("expected field projection resource move, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn moving_nested_resource_field_keeps_one_rooted_projection() {
+        let mir = lower(
+            "resource struct InnerSecrets do\n\
+               selected :: SecretBytes\n\
+               inner_sibling :: SecretBytes\n\
+             end\n\
+             resource struct OuterSecrets do\n\
+               inner :: InnerSecrets\n\
+               outer_sibling :: SecretBytes\n\
+             end\n\
+             fn take(secret :: consume SecretBytes) do nil end\n\
+             fn move_nested(outer :: OuterSecrets) do take(outer.inner.selected) end",
+        );
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "move_nested")
+            .unwrap();
+
+        fn find_take_argument(expression: &MirExpr) -> Option<&MirExpr> {
+            match expression {
+                MirExpr::Call { func, args, .. } if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "take") => {
+                    args.first()
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_take_argument(value).or_else(|| find_take_argument(body))
+                }
+                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_take_argument),
+                _ => None,
+            }
+        }
+
+        let argument = find_take_argument(&function.body).expect("expected take call");
+        match argument {
+            MirExpr::ResourceMove {
+                value,
+                source:
+                    MirResourceMoveSource::Projection {
+                        parent_destructor: MirResourceDestructor::Aggregate(root_fields),
+                        nested_field_indices,
+                        ..
+                    },
+                ..
+            } => {
+                assert!(matches!(
+                    value.as_ref(),
+                    MirExpr::FieldAccess { object, field, .. }
+                        if field == "selected"
+                            && matches!(object.as_ref(), MirExpr::FieldAccess { object, field, .. }
+                                if field == "inner"
+                                    && matches!(object.as_ref(), MirExpr::Var(name, _) if name == "outer"))
+                ));
+                assert_eq!(root_fields.len(), 2, "root destructor: {root_fields:?}");
+                assert_eq!(nested_field_indices, &[0]);
+                assert!(matches!(
+                    &root_fields[0].destructor,
+                    MirResourceDestructor::Aggregate(inner_fields) if inner_fields.len() == 2
+                ));
+            }
+            other => panic!("expected one rooted nested projection move, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn explicit_secret_destroy_lowers_to_resource_destroy_not_a_raw_call() {
+        let mir = lower("fn destroy_now(secret :: SecretBytes) do Secret.destroy(secret) end");
+        let function = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "destroy_now")
+            .unwrap();
+
+        fn has_destroy(expression: &MirExpr) -> bool {
+            match expression {
+                MirExpr::ResourceDestroy { .. } => true,
+                MirExpr::Let { value, body, .. } => has_destroy(value) || has_destroy(body),
+                MirExpr::Block(expressions, _) => expressions.iter().any(has_destroy),
+                _ => false,
+            }
+        }
+        assert!(has_destroy(&function.body), "body: {:?}", function.body);
     }
 
     #[test]
@@ -15657,6 +17520,20 @@ end
         assert!(closure_fn.is_closure_fn);
         // First param should be __env
         assert_eq!(closure_fn.params[0].0, "__env");
+    }
+
+    #[test]
+    fn lowering_fails_closed_for_resource_closure_capture() {
+        let parse = mesh_parser::parse(
+            "fn make_closure(secret :: SecretBytes) do\n\
+               fn () -> Secret.destroy(secret) end\n\
+             end",
+        );
+        let typeck = mesh_typeck::check(&parse);
+        let error = lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
+            .expect_err("resource capture must never reach closure conversion");
+
+        assert!(error.contains("cannot be captured by a closure"), "{error}");
     }
 
     #[test]

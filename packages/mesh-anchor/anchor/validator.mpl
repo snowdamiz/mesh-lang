@@ -6,9 +6,9 @@ pub struct AccountLayout do
 end
 
 pub fn discriminator(account_name :: String) -> Bytes ! String do
-  (("account:" <> account_name)
+  ("account:" <> account_name)
+    |> Bytes.from_utf8()
     |> Crypto.sha256()
-    |> Bytes.from_hex()) ?
     |> Bytes.slice(0, 8)
 end
 

@@ -1971,9 +1971,10 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                 let buffer = MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
                                 mon_proc.mailbox.push(Message { buffer });
                                 if matches!(mon_proc.state, ProcessState::Waiting) {
-                                    mon_proc.state = ProcessState::Ready;
-                                    drop(mon_proc);
-                                    sched.wake_process(monitoring_pid);
+                                    if mon_proc.set_live_state(ProcessState::Ready) {
+                                        drop(mon_proc);
+                                        sched.wake_process(monitoring_pid);
+                                    }
                                 }
                             }
                         }
@@ -2038,12 +2039,13 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                             MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
                                         proc.mailbox.push(Message { buffer });
                                         if matches!(proc.state, ProcessState::Waiting) {
-                                            proc.state = ProcessState::Ready;
-                                            drop(proc);
-                                            sched.wake_process(to_pid);
+                                            if proc.set_live_state(ProcessState::Ready) {
+                                                drop(proc);
+                                                sched.wake_process(to_pid);
+                                            }
                                         }
                                     } else {
-                                        proc.state = ProcessState::Exited(ExitReason::Linked(
+                                        proc.mark_exited(ExitReason::Linked(
                                             from_pid,
                                             Box::new(reason),
                                         ));
@@ -2167,9 +2169,10 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                     let mut proc = proc_arc.lock();
                                     proc.mailbox.push(reply_msg);
                                     if matches!(proc.state, ProcessState::Waiting) {
-                                        proc.state = ProcessState::Ready;
-                                        drop(proc);
-                                        sched.wake_process(requester_pid);
+                                        if proc.set_live_state(ProcessState::Ready) {
+                                            drop(proc);
+                                            sched.wake_process(requester_pid);
+                                        }
                                     }
                                 }
                             }
@@ -2929,11 +2932,10 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
                     let buffer = MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
                     proc.mailbox.push(Message { buffer });
                     if matches!(proc.state, ProcessState::Waiting) {
-                        proc.state = ProcessState::Ready;
-                        need_wake = true;
+                        need_wake = proc.set_live_state(ProcessState::Ready);
                     }
                 } else {
-                    proc.state = ProcessState::Exited(ExitReason::Linked(
+                    proc.mark_exited(ExitReason::Linked(
                         *remote_pid,
                         Box::new(noconnection.clone()),
                     ));
@@ -2967,9 +2969,10 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
             }
 
             if matches!(proc.state, ProcessState::Waiting) {
-                proc.state = ProcessState::Ready;
-                drop(proc);
-                sched.wake_process(*local_pid);
+                if proc.set_live_state(ProcessState::Ready) {
+                    drop(proc);
+                    sched.wake_process(*local_pid);
+                }
             }
         }
     }
@@ -3057,9 +3060,10 @@ fn deliver_node_event(
         let mut proc = proc_arc.lock();
         proc.mailbox.push(msg);
         if matches!(proc.state, ProcessState::Waiting) {
-            proc.state = ProcessState::Ready;
-            drop(proc);
-            sched.wake_process(target_pid);
+            if proc.set_live_state(ProcessState::Ready) {
+                drop(proc);
+                sched.wake_process(target_pid);
+            }
         }
     }
 }
@@ -8573,9 +8577,7 @@ pub extern "C" fn mesh_node_spawn(
         // No matching reply yet. Enter Waiting state and yield.
         if let Some(proc_arc) = sched.get_process(my_pid) {
             let mut proc = proc_arc.lock();
-            if !matches!(proc.state, ProcessState::Exited(_)) {
-                proc.state = ProcessState::Waiting;
-            }
+            proc.set_live_state(ProcessState::Waiting);
             drop(proc);
         }
         stack::yield_current();

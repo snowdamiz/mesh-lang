@@ -671,15 +671,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
         let path_ty = self.resolve_path_type(scrutinee_ty, path)?;
-        let llvm_ty = if matches!(path, AccessPath::VariantField(_, _, _))
-            && matches!(path_ty, MirType::Struct(_))
-        {
-            self.context
-                .ptr_type(inkwell::AddressSpace::default())
-                .into()
-        } else {
-            self.llvm_type(&path_ty)
-        };
+        let llvm_ty = self.llvm_type(&path_ty);
         let val = self
             .builder
             .build_load(llvm_ty, ptr, "path_val")
@@ -735,7 +727,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.materialize_tuple_element_ptr(element, element_ty)
             }
 
-            AccessPath::VariantField(parent, variant_name, index) => {
+            AccessPath::VariantField(parent, variant_name, index, semantic_ty) => {
                 let parent_ptr =
                     self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
@@ -756,6 +748,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .iter()
                     .find(|v| v.name == *variant_name)
                     .ok_or_else(|| format!("Unknown variant '{}'", variant_name))?;
+                let storage_ty = variant_def
+                    .fields
+                    .get(*index)
+                    .ok_or_else(|| format!("Variant field {} out of bounds", index))?;
 
                 // Create variant overlay type { i8 tag, field0, field1, ... }
                 let variant_ty = variant_struct_type(
@@ -770,28 +766,29 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(variant_ty, parent_ptr, (*index + 1) as u32, "variant_field")
                     .map_err(|e| e.to_string())?;
-                Ok(field_ptr)
+                if matches!(storage_ty, MirType::Ptr)
+                    && !matches!(
+                        semantic_ty,
+                        MirType::Ptr | MirType::String | MirType::Pid(_)
+                    )
+                {
+                    self.builder
+                        .build_load(
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                            field_ptr,
+                            "boxed_variant_payload",
+                        )
+                        .map(|value| value.into_pointer_value())
+                        .map_err(|error| error.to_string())
+                } else {
+                    Ok(field_ptr)
+                }
             }
 
             AccessPath::StructField(parent, field_name) => {
                 let parent_ptr =
                     self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                let parent_ptr = if matches!(parent.as_ref(), AccessPath::VariantField(_, _, _))
-                    && matches!(parent_ty, MirType::Struct(_))
-                {
-                    self.builder
-                        .build_load(
-                            self.context.ptr_type(inkwell::AddressSpace::default()),
-                            parent_ptr,
-                            "boxed_variant_struct",
-                        )
-                        .map_err(|e| e.to_string())?
-                        .into_pointer_value()
-                } else {
-                    parent_ptr
-                };
-
                 let struct_name = match &parent_ty {
                     MirType::Struct(name) => name.clone(),
                     _ => return Err(format!("StructField on non-struct type: {:?}", parent_ty)),
@@ -976,27 +973,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             AccessPath::TupleField(_, _, element_ty) => Ok(element_ty.clone()),
 
-            AccessPath::VariantField(parent, variant_name, index) => {
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                match &parent_ty {
-                    MirType::SumType(type_name) => {
-                        let sum_def = self
-                            .lookup_sum_type_def(type_name)
-                            .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?;
-                        let variant = sum_def
-                            .variants
-                            .iter()
-                            .find(|v| v.name == *variant_name)
-                            .ok_or_else(|| format!("Unknown variant '{}'", variant_name))?;
-                        variant
-                            .fields
-                            .get(*index)
-                            .cloned()
-                            .ok_or_else(|| format!("Variant field {} out of bounds", index))
-                    }
-                    _ => Err(format!("VariantField on non-sum type: {:?}", parent_ty)),
-                }
-            }
+            AccessPath::VariantField(_, _, _, field_ty) => Ok(field_ty.clone()),
 
             AccessPath::StructField(parent, field_name) => {
                 let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;

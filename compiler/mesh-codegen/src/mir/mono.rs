@@ -138,6 +138,12 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
                 collect_function_refs(cap, refs);
             }
         }
+        MirExpr::ResourceMove { value, .. }
+        | MirExpr::ResourceBorrow { value, .. }
+        | MirExpr::ResourceDrop { value, .. }
+        | MirExpr::ResourceDestroy { value, .. } => {
+            collect_function_refs(value, refs);
+        }
         MirExpr::BinOp { lhs, rhs, .. } => {
             collect_function_refs(lhs, refs);
             collect_function_refs(rhs, refs);

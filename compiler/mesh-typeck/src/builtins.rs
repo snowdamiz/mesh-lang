@@ -43,6 +43,110 @@ fn register_wide_integer(env: &mut TypeEnv, prefix: &str, ty: Ty) {
     );
 }
 
+pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
+    let crypto_result = |value| Ty::result(value, Ty::crypto_error());
+
+    vec![
+        (
+            "sha256",
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::bytes())),
+        ),
+        (
+            "sha512",
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::bytes())),
+        ),
+        (
+            "sha256_hex",
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::string())),
+        ),
+        (
+            "sha512_hex",
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::string())),
+        ),
+        (
+            "random_bytes",
+            Scheme::mono(Ty::fun(vec![Ty::int()], crypto_result(Ty::bytes()))),
+        ),
+        (
+            "hmac_sha256",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes()],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
+            "hkdf_sha256",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::int()],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
+            "x25519_generate",
+            Scheme::mono(Ty::fun(vec![], crypto_result(Ty::x25519_key_pair()))),
+        ),
+        (
+            "x25519_public",
+            Scheme::mono(Ty::fun(
+                vec![Ty::x25519_private_key()],
+                crypto_result(Ty::x25519_public_key()),
+            )),
+        ),
+        (
+            "x25519_shared",
+            Scheme::mono(Ty::fun(
+                vec![Ty::x25519_private_key(), Ty::x25519_public_key()],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
+            "signing_generate",
+            Scheme::mono(Ty::fun(vec![], crypto_result(Ty::signing_key_pair()))),
+        ),
+        (
+            "sign",
+            Scheme::mono(Ty::fun(
+                vec![Ty::signing_private_key(), Ty::bytes()],
+                crypto_result(Ty::signature()),
+            )),
+        ),
+        (
+            "verify",
+            Scheme::mono(Ty::fun(
+                vec![Ty::signing_public_key(), Ty::bytes(), Ty::signature()],
+                crypto_result(Ty::bool()),
+            )),
+        ),
+        (
+            "aead_key",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
+                crypto_result(Ty::aead_key()),
+            )),
+        ),
+        (
+            "aead_seal",
+            Scheme::mono(Ty::fun(
+                vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "aead_open",
+            Scheme::mono(Ty::fun(
+                vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        // Non-colliding Phase 135 APIs remain temporarily available.
+        (
+            "hmac_sha512",
+            Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
+        ),
+        ("uuid4", Scheme::mono(Ty::fun(vec![], Ty::string()))),
+    ]
+}
+
 /// Register all built-in types and functions into the environment.
 ///
 /// After this call, the environment contains:
@@ -475,32 +579,27 @@ pub fn register_builtins(
         );
     }
 
+    env.insert(
+        "secret_random".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_destroy".into(),
+        Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
+    );
+
     register_wide_integer(env, "u64", Ty::u64());
     register_wide_integer(env, "u128", Ty::u128());
     register_wide_integer(env, "i128", Ty::i128());
 
-    // ── Standard library: Crypto functions (Phase 135) ─────────────────────
+    // ── Standard library: Crypto V2 functions ──────────────────────────────
 
-    env.insert(
-        "crypto_sha256".into(),
-        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
-    );
-    env.insert(
-        "crypto_sha512".into(),
-        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
-    );
-    env.insert(
-        "crypto_hmac_sha256".into(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
-    );
-    env.insert(
-        "crypto_hmac_sha512".into(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
-    );
-    env.insert(
-        "crypto_uuid4".into(),
-        Scheme::mono(Ty::fun(vec![], Ty::string())),
-    );
+    for (name, scheme) in crypto_functions() {
+        env.insert(format!("crypto_{name}"), scheme);
+    }
 
     // ── Standard library: Base64 functions (Phase 135) ─────────────────────
 

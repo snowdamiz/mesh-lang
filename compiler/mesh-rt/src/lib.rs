@@ -43,6 +43,8 @@ pub mod panic;
 pub mod process_signal;
 pub mod random;
 pub mod regex;
+pub mod secret;
+pub mod storage_wrapping;
 pub mod string;
 pub mod test; // Phase 138
 pub mod wide_num;
@@ -272,6 +274,15 @@ pub use random::{mesh_random_next_int, mesh_random_next_unit_ppm, mesh_random_se
 pub use regex::{
     mesh_regex_captures, mesh_regex_compile, mesh_regex_from_literal, mesh_regex_match,
     mesh_regex_replace, mesh_regex_split,
+};
+pub use secret::{
+    mesh_resource_destroy, mesh_secret_destroy, mesh_secret_random, MeshSecretHandle,
+};
+pub use storage_wrapping::{
+    mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,
+    mesh_signing_private_key_seal_for_storage, mesh_signing_private_key_unseal_from_storage,
+    mesh_storage_key_provision, mesh_x25519_private_key_seal_for_storage,
+    mesh_x25519_private_key_unseal_from_storage,
 };
 pub use string::{
     mesh_bool_to_string, mesh_float_to_string, mesh_int_to_string, mesh_print, mesh_println,

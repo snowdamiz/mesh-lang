@@ -263,40 +263,58 @@ end
 
 ## Crypto
 
-The `Crypto` module provides cryptographic hashing, HMAC signatures, UUIDs, and constant-time comparison.
+The `Crypto` module is binary-first. Public data uses `Bytes`; private keys and
+derived key material are move-only resources that cannot be printed, serialized,
+or sent through actor mailboxes. Fallible operations return `CryptoError`.
 
 ### Hashing
 
 ```mesh
 fn main() do
-  let hash = Crypto.sha256("hello")
-  println(hash)   # 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-
-  let hash512 = Crypto.sha512("hello")
-  println(hash512)
+  let input = Bytes.from_utf8("hello")
+  let hash = Crypto.sha256(input)
+  println(Bytes.to_hex(hash))
 end
 ```
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `Crypto.sha256(s)` | `String` | SHA-256 hash as lowercase hex |
-| `Crypto.sha512(s)` | `String` | SHA-512 hash as lowercase hex |
+| `Crypto.sha256(input)` | `Bytes` | Binary SHA-256 digest |
+| `Crypto.sha512(input)` | `Bytes` | Binary SHA-512 digest |
+| `Crypto.sha256_hex(input)` | `String` | Lowercase presentation form |
+| `Crypto.sha512_hex(input)` | `String` | Lowercase presentation form |
 
-### HMAC
+### Secrets and authenticated cryptography
 
 ```mesh
-fn main() do
-  let mac = Crypto.hmac_sha256("secret-key", "message")
-  let mac512 = Crypto.hmac_sha512("secret-key", "message")
+fn authenticate() -> Int ! CryptoError do
+  let key = Secret.random(32) ?
+  let tag = Crypto.hmac_sha256(key, Bytes.from_utf8("message")) ?
+  Secret.destroy(tag)
+  Secret.destroy(key)
+  Ok(0)
 end
 ```
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `Crypto.hmac_sha256(key, msg)` | `String` | HMAC-SHA256 as lowercase hex |
-| `Crypto.hmac_sha512(key, msg)` | `String` | HMAC-SHA512 as lowercase hex |
+| `Crypto.random_bytes(length)` | `Result<Bytes, CryptoError>` | OS-backed random public bytes |
+| `Secret.random(length)` | `Result<SecretBytes, CryptoError>` | OS-backed move-only secret bytes |
+| `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key |
+| `Crypto.hkdf_sha256(key, salt, info, length)` | `Result<SecretBytes, CryptoError>` | Bounded HKDF output |
+| `Crypto.x25519_generate()` | `Result<X25519KeyPair, CryptoError>` | Generate an X25519 key pair |
+| `Crypto.x25519_public(key)` | `Result<X25519PublicKey, CryptoError>` | Derive the public key again |
+| `Crypto.x25519_shared(key, peer)` | `Result<SecretBytes, CryptoError>` | Derive a shared secret |
+| `Crypto.signing_generate()` | `Result<SigningKeyPair, CryptoError>` | Generate an Ed25519 key pair |
+| `Crypto.sign(key, message)` | `Result<Signature, CryptoError>` | Sign with a borrowed private key |
+| `Crypto.verify(key, message, signature)` | `Result<Bool, CryptoError>` | Strict signature verification |
+| `Crypto.aead_key(material)` | `Result<AeadKey, CryptoError>` | Consume 32 secret bytes as an AEAD key |
+| `Crypto.aead_seal(key, nonce, aad, plaintext)` | `Result<Bytes, CryptoError>` | ChaCha20-Poly1305 encryption |
+| `Crypto.aead_open(key, nonce, aad, ciphertext)` | `Result<Bytes, CryptoError>` | Authenticate before returning plaintext |
 
-Cryptographic values should use `Bytes`; compare them with `Bytes.secure_equals`.
+Borrowed keys remain owned by the caller. `Crypto.aead_key` consumes its input,
+including on error. Use `Secret.destroy` for early destruction; otherwise the
+compiler inserts destruction on every scope exit.
 
 ### UUID
 

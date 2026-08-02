@@ -96,14 +96,13 @@ contains:
 
 ## Current baseline
 
-The current runtime does not pass these gates for the planned Crypto V2 suite:
+The development runtime implements the classical Crypto V2 API, affine secret
+resources, a static production provider, a test-only deterministic provider,
+known-answer and negative tests, and an iOS compilation proof. It is not yet a
+release-approved profile:
 
-- Existing public cryptographic APIs are primarily string-first.
-- `SecretBytes`, resource semantics, and the provider boundary are absent.
-- The known string comparison surface has been removed and its replacement has
-  boundary regression coverage, but the rest of Crypto V2 remains incomplete.
-- There is no Crypto V2 known-answer corpus, deterministic test provider,
-  cryptographic fuzz suite, secret-leak suite, or mobile proof.
+- The cryptographic fuzz and complete secret-leak sentinel suites remain open.
+- The full advertised mobile/host target matrix remains a Milestone 10 gate.
 - Dependency audit, SBOM, and reproducible-build evidence are not yet wired
   into a cryptographic release record.
 

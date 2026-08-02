@@ -241,13 +241,13 @@ where
 
                 // Wake if Waiting.
                 if matches!(proc.state, ProcessState::Waiting) {
-                    proc.state = ProcessState::Ready;
-                    woken.push(*linked_pid);
+                    if proc.set_live_state(ProcessState::Ready) {
+                        woken.push(*linked_pid);
+                    }
                 }
             } else {
                 // Crash the linked process with a Linked exit reason.
-                proc.state =
-                    ProcessState::Exited(ExitReason::Linked(exiting_pid, Box::new(reason.clone())));
+                proc.mark_exited(ExitReason::Linked(exiting_pid, Box::new(reason.clone())));
             }
         }
     }
@@ -376,6 +376,25 @@ mod tests {
             }
             other => panic!("Expected Exited(Linked(...)), got {:?}", other),
         }
+    }
+
+    #[test]
+    fn linked_crash_destroys_owned_secrets() {
+        let (exiting_pid, _exiting_process) = make_process();
+        let (linked_pid, linked_process) = make_process();
+        crate::secret::insert_test_secret(linked_pid);
+        let linked_pids = HashSet::from([linked_pid]);
+
+        propagate_exit(
+            exiting_pid,
+            &ExitReason::Error("crash".to_string()),
+            linked_pids,
+            |_| Some(Arc::clone(&linked_process)),
+        );
+
+        let remaining = crate::secret::owned_secret_count_for_test(linked_pid);
+        crate::secret::destroy_owned(linked_pid);
+        assert_eq!(remaining, 0);
     }
 
     #[test]

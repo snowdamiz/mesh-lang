@@ -514,6 +514,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    for name in ["mesh_crypto_sha256_hex", "mesh_crypto_sha512_hex"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    module.add_function(
+        "mesh_crypto_random_bytes",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_crypto_hmac_sha256(key: ptr, msg: ptr) -> ptr
     let hmac256_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function(
@@ -521,6 +535,69 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         hmac256_ty,
         Some(inkwell::module::Linkage::External),
     );
+
+    module.add_function(
+        "mesh_crypto_hkdf_sha256",
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    for name in [
+        "mesh_crypto_x25519_generate",
+        "mesh_crypto_signing_generate",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    for name in ["mesh_crypto_x25519_public", "mesh_crypto_aead_key"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    for name in ["mesh_crypto_x25519_shared", "mesh_crypto_sign"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    module.add_function(
+        "mesh_crypto_verify",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    for name in ["mesh_crypto_aead_seal", "mesh_crypto_aead_open"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(
+                &[
+                    ptr_type.into(),
+                    ptr_type.into(),
+                    ptr_type.into(),
+                    ptr_type.into(),
+                ],
+                false,
+            ),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // mesh_crypto_hmac_sha512(key: ptr, msg: ptr) -> ptr
     let hmac512_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
@@ -702,6 +779,21 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_secret_random",
+        ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_destroy",
+        void_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_resource_destroy",
+        void_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ── Checked wide integers ────────────────────────────────────────────────
 
@@ -4482,6 +4574,48 @@ mod tests {
 
         let init_fn = get_intrinsic(&module, "mesh_rt_init");
         assert_eq!(init_fn.get_name().to_str().unwrap(), "mesh_rt_init");
+    }
+
+    #[test]
+    fn crypto_v2_intrinsics_match_runtime_arity() {
+        let context = Context::create();
+        let module = context.create_module("test");
+        declare_intrinsics(&module);
+
+        for (name, arity) in [
+            ("mesh_crypto_sha256", 1),
+            ("mesh_crypto_sha512", 1),
+            ("mesh_crypto_sha256_hex", 1),
+            ("mesh_crypto_sha512_hex", 1),
+            ("mesh_crypto_random_bytes", 1),
+            ("mesh_crypto_hmac_sha256", 2),
+            ("mesh_crypto_hkdf_sha256", 4),
+            ("mesh_crypto_x25519_generate", 0),
+            ("mesh_crypto_x25519_public", 1),
+            ("mesh_crypto_x25519_shared", 2),
+            ("mesh_crypto_signing_generate", 0),
+            ("mesh_crypto_sign", 2),
+            ("mesh_crypto_verify", 3),
+            ("mesh_crypto_aead_key", 1),
+            ("mesh_crypto_aead_seal", 4),
+            ("mesh_crypto_aead_open", 4),
+        ] {
+            let function = module
+                .get_function(name)
+                .unwrap_or_else(|| panic!("missing intrinsic {name}"));
+            assert_eq!(
+                function.get_type().count_param_types(),
+                arity,
+                "wrong ABI arity for {name}"
+            );
+            assert!(
+                function
+                    .get_type()
+                    .get_return_type()
+                    .is_some_and(|return_type| return_type.is_pointer_type()),
+                "{name} must return a runtime pointer"
+            );
+        }
     }
 
     #[test]

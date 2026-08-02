@@ -161,10 +161,20 @@ impl ActorHeap {
     /// The pointer is past the GcHeader -- callers see only user data.
     /// The pointer is valid until the object is collected or `reset()` is called.
     pub fn alloc(&mut self, size: usize, align: usize) -> *mut u8 {
+        self.alloc_with_size_policy(size, align, false)
+    }
+
+    /// Allocate an object whose header must describe exactly `size` bytes.
+    /// Larger free-list blocks are left available for ordinary first-fit use.
+    pub(crate) fn alloc_exact(&mut self, size: usize, align: usize) -> *mut u8 {
+        self.alloc_with_size_policy(size, align, true)
+    }
+
+    fn alloc_with_size_policy(&mut self, size: usize, align: usize, exact: bool) -> *mut u8 {
         let align = if align == 0 { 1 } else { align };
 
         // 1. Try the free list first: find a block with sufficient size.
-        if let Some(data_ptr) = self.alloc_from_free_list(size) {
+        if let Some(data_ptr) = self.alloc_from_free_list(size, align, exact) {
             return data_ptr;
         }
 
@@ -174,16 +184,23 @@ impl ActorHeap {
 
     /// Try to allocate from the free list (first-fit).
     ///
-    /// Walks the free list looking for a block where `header.size >= size`.
-    /// If found, unlinks from free list, clears FREE_BIT, links into
-    /// all_objects, and returns the user data pointer.
-    fn alloc_from_free_list(&mut self, size: usize) -> Option<*mut u8> {
+    /// Walks the free list looking for a sufficiently sized block whose data
+    /// pointer satisfies `align`. Exact mode additionally requires equal size.
+    /// If found, unlinks from the free list, wipes its full physical capacity,
+    /// clears FREE_BIT, links into all_objects, and returns the user data
+    /// pointer. Exact allocations reuse only an equal-sized block.
+    fn alloc_from_free_list(&mut self, size: usize, align: usize, exact: bool) -> Option<*mut u8> {
         let mut current = self.free_list;
         let mut prev: *mut GcHeader = ptr::null_mut();
 
         while !current.is_null() {
             let header = unsafe { &mut *current };
-            if header.size as usize >= size {
+            let data_is_aligned = header.data_ptr() as usize % align == 0;
+            if header.size as usize >= size
+                && (!exact || header.size as usize == size)
+                && data_is_aligned
+            {
+                let reusable_capacity = header.size as usize;
                 // Found a suitable block. Unlink from free list.
                 let next = header.next;
                 if !prev.is_null() {
@@ -199,10 +216,11 @@ impl ActorHeap {
                 header.next = self.all_objects;
                 self.all_objects = current;
 
-                // Zero the user data region for safety.
+                // Wipe the whole reusable block so bytes outside a smaller
+                // ordinary allocation cannot survive reuse.
                 let data = header.data_ptr();
                 unsafe {
-                    ptr::write_bytes(data, 0, header.size as usize);
+                    ptr::write_bytes(data, 0, reusable_capacity);
                 }
 
                 return Some(data);
@@ -820,6 +838,7 @@ mod tests {
 
         // Allocate a large block and free it.
         let ptr_big = heap.alloc(256, 8);
+        unsafe { ptr::write_bytes(ptr_big, 0xA5, 256) };
         let header_big = unsafe { GcHeader::from_data_ptr(ptr_big) };
 
         // Unlink from all_objects, add to free list.
@@ -838,8 +857,51 @@ mod tests {
         );
 
         let header = unsafe { &*GcHeader::from_data_ptr(ptr_small) };
-        // Size in the header remains the original (256), not the requested (64).
+        // Normal first-fit reuse preserves the physical block capacity.
         assert_eq!(header.size, 256);
+        // Reuse wipes the entire physical capacity, including bytes beyond
+        // the requested object body.
+        let reused_capacity = unsafe { std::slice::from_raw_parts(ptr_small, 256) };
+        assert!(reused_capacity.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn test_exact_allocation_skips_larger_free_block() {
+        let mut heap = ActorHeap::new();
+        let ptr_big = heap.alloc(256, 8);
+        let header_big = unsafe { GcHeader::from_data_ptr(ptr_big) };
+        let next = unsafe { (*header_big).next };
+        heap.set_all_objects_head(next);
+        unsafe { (*header_big).set_free() };
+        heap.add_to_free_list(header_big);
+
+        let ptr_exact = heap.alloc_exact(64, 8);
+
+        assert_ne!(ptr_exact, ptr_big);
+        let header = unsafe { &*GcHeader::from_data_ptr(ptr_exact) };
+        assert_eq!(header.size, 64);
+        assert_eq!(heap.free_list_head(), header_big);
+    }
+
+    #[test]
+    fn test_free_list_reuse_respects_requested_alignment() {
+        let mut heap = ActorHeap::new();
+        let mut candidate = heap.alloc(64, 8);
+        if candidate as usize % 64 == 0 {
+            candidate = heap.alloc(64, 8);
+        }
+        assert_ne!(candidate as usize % 64, 0);
+        let candidate_header = unsafe { GcHeader::from_data_ptr(candidate) };
+        let next = unsafe { (*candidate_header).next };
+        heap.set_all_objects_head(next);
+        unsafe { (*candidate_header).set_free() };
+        heap.add_to_free_list(candidate_header);
+
+        let aligned = heap.alloc(32, 64);
+
+        assert_ne!(aligned, candidate);
+        assert_eq!(aligned as usize % 64, 0);
+        assert_eq!(heap.free_list_head(), candidate_header);
     }
 
     #[test]

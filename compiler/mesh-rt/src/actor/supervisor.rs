@@ -378,7 +378,7 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
             if let Some(proc_arc) = scheduler.get_process(child_pid) {
                 let mut proc = proc_arc.lock();
                 if !matches!(proc.state, ProcessState::Exited(_)) {
-                    proc.state = ProcessState::Exited(ExitReason::Killed);
+                    proc.mark_exited(ExitReason::Killed);
                 }
             }
         }
@@ -401,7 +401,7 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
                     if let Some(proc_arc) = scheduler.get_process(child_pid) {
                         let mut proc = proc_arc.lock();
                         if !matches!(proc.state, ProcessState::Exited(_)) {
-                            proc.state = ProcessState::Exited(ExitReason::Killed);
+                            proc.mark_exited(ExitReason::Killed);
                         }
                     }
                     break;
@@ -439,7 +439,7 @@ fn send_exit_signal(scheduler: &Scheduler, target_pid: ProcessId, reason: &ExitR
 
         // Killed is untrappable -- immediately terminate.
         if matches!(reason, ExitReason::Killed) {
-            proc.state = ProcessState::Exited(ExitReason::Killed);
+            proc.mark_exited(ExitReason::Killed);
             return;
         }
 
@@ -451,11 +451,11 @@ fn send_exit_signal(scheduler: &Scheduler, target_pid: ProcessId, reason: &ExitR
 
             // Wake if Waiting.
             if matches!(proc.state, ProcessState::Waiting) {
-                proc.state = ProcessState::Ready;
+                proc.set_live_state(ProcessState::Ready);
             }
         } else {
             // Non-trapping process: terminate immediately.
-            proc.state = ProcessState::Exited(reason.clone());
+            proc.mark_exited(reason.clone());
         }
     }
 }
@@ -1215,6 +1215,8 @@ mod tests {
         ));
         start_single_child(&mut child, &sched, sup_pid).unwrap();
         let child_pid = child.pid.unwrap();
+        sched.get_process(child_pid).unwrap().lock().state = ProcessState::Waiting;
+        crate::secret::insert_test_secret(child_pid);
 
         terminate_single_child(&mut child, &sched, sup_pid);
 
@@ -1226,6 +1228,9 @@ mod tests {
         if let Some(proc) = sched.get_process(child_pid) {
             assert!(matches!(proc.lock().state, ProcessState::Exited(_)));
         }
+        let remaining = crate::secret::owned_secret_count_for_test(child_pid);
+        crate::secret::destroy_owned(child_pid);
+        assert_eq!(remaining, 0);
     }
 
     #[test]

@@ -7,7 +7,7 @@
 use crate::syntax_kind::SyntaxKind;
 
 use super::expressions::{parse_fn_clause_param_list, parse_param_list};
-use super::Parser;
+use super::{MarkOpened, Parser};
 
 // ── Visibility ───────────────────────────────────────────────────────────
 
@@ -507,6 +507,47 @@ fn parse_module_path(p: &mut Parser) {
 
 // ── Struct Definition ────────────────────────────────────────────────────
 
+/// Whether the current contextual `resource` identifier starts one of the
+/// supported declaration forms. Calls and ordinary references named
+/// `resource` remain expressions.
+pub(crate) fn starts_resource_def(p: &Parser) -> bool {
+    p.at(SyntaxKind::IDENT)
+        && p.current_text() == "resource"
+        && matches!(p.nth(1), SyntaxKind::IDENT | SyntaxKind::STRUCT_KW)
+}
+
+/// Parse a resource declaration: `resource Name` or
+/// `resource struct Name do ... end`.
+///
+/// `resource` is intentionally contextual rather than a lexer keyword. The
+/// declaration reuses STRUCT_DEF so existing item traversal can treat opaque
+/// and aggregate resources as nominal type definitions.
+pub(crate) fn parse_resource_def(p: &mut Parser) {
+    let m = p.open();
+
+    parse_optional_visibility(p);
+
+    let modifier = p.open();
+    p.advance(); // contextual `resource` IDENT
+    p.close(modifier, SyntaxKind::RESOURCE_MODIFIER);
+
+    if p.at(SyntaxKind::STRUCT_KW) {
+        p.advance();
+        parse_struct_def_tail(p, m);
+        return;
+    }
+
+    if p.at(SyntaxKind::IDENT) {
+        let name = p.open();
+        p.advance();
+        p.close(name, SyntaxKind::NAME);
+    } else {
+        p.error("expected resource name");
+    }
+
+    p.close(m, SyntaxKind::STRUCT_DEF);
+}
+
 /// Parse a struct definition: `[pub] struct Name [TypeParams] do fields end`
 pub(crate) fn parse_struct_def(p: &mut Parser) {
     let m = p.open();
@@ -516,6 +557,12 @@ pub(crate) fn parse_struct_def(p: &mut Parser) {
 
     p.advance(); // STRUCT_KW
 
+    parse_struct_def_tail(p, m);
+}
+
+/// Parse the shared portion of an ordinary or resource struct after the
+/// `struct` token has been consumed.
+fn parse_struct_def_tail(p: &mut Parser, m: MarkOpened) {
     // Struct name.
     if p.at(SyntaxKind::IDENT) {
         let name = p.open();

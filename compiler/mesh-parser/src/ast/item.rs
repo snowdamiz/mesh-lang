@@ -266,6 +266,17 @@ impl ParamList {
 
 ast_node!(Param, PARAM);
 
+/// How passing a parameter affects ownership of an affine resource value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamOwnership {
+    /// Default Mesh argument passing: a resource argument moves into the call.
+    Move,
+    /// A call-scoped borrow that does not transfer ownership.
+    Borrow,
+    /// An explicit ownership transfer into the callee.
+    Consume,
+}
+
 impl Param {
     /// The parameter name token (IDENT).
     ///
@@ -280,6 +291,24 @@ impl Param {
         child_node(&self.syntax)
     }
 
+    /// The explicit contextual ownership modifier, when present.
+    pub fn ownership_modifier(&self) -> Option<OwnershipModifier> {
+        self.type_annotation().and_then(|annotation| {
+            annotation
+                .syntax()
+                .children()
+                .find_map(OwnershipModifier::cast)
+        })
+    }
+
+    /// The parameter's ownership behavior. Parameters without an explicit
+    /// modifier retain the default move behavior for resource values.
+    pub fn ownership(&self) -> ParamOwnership {
+        self.ownership_modifier()
+            .map(|modifier| modifier.ownership())
+            .unwrap_or(ParamOwnership::Move)
+    }
+
     /// The pattern child, if this parameter contains a pattern instead of a plain IDENT.
     ///
     /// Returns `Some(pattern)` for literal, wildcard, constructor, or tuple patterns
@@ -287,6 +316,24 @@ impl Param {
     /// Returns `None` for regular named parameters (e.g., `fn foo(x)`).
     pub fn pattern(&self) -> Option<super::pat::Pattern> {
         self.syntax.children().find_map(super::pat::Pattern::cast)
+    }
+}
+
+ast_node!(OwnershipModifier, OWNERSHIP_MODIFIER);
+
+impl OwnershipModifier {
+    /// The contextual `borrow` or `consume` identifier token.
+    pub fn token(&self) -> Option<SyntaxToken> {
+        child_token(&self.syntax, SyntaxKind::IDENT)
+    }
+
+    /// The ownership behavior represented by this modifier.
+    pub fn ownership(&self) -> ParamOwnership {
+        match self.token().as_ref().map(|token| token.text()) {
+            Some("borrow") => ParamOwnership::Borrow,
+            Some("consume") => ParamOwnership::Consume,
+            _ => ParamOwnership::Move,
+        }
     }
 }
 
@@ -370,6 +417,22 @@ impl StructDef {
         child_node(&self.syntax)
     }
 
+    /// The contextual `resource` modifier, when present.
+    pub fn resource_modifier(&self) -> Option<ResourceModifier> {
+        child_node(&self.syntax)
+    }
+
+    /// Whether this definition declares a resource type.
+    pub fn is_declared_resource(&self) -> bool {
+        self.resource_modifier().is_some()
+    }
+
+    /// Whether this is an opaque `resource Name` declaration rather than a
+    /// field-bearing `resource struct Name ... end` declaration.
+    pub fn is_opaque_resource(&self) -> bool {
+        self.is_declared_resource() && child_token(&self.syntax, SyntaxKind::STRUCT_KW).is_none()
+    }
+
     /// The struct name.
     pub fn name(&self) -> Option<Name> {
         child_node(&self.syntax)
@@ -424,6 +487,17 @@ impl StructDef {
             .children()
             .filter_map(SchemaOption::cast)
             .collect()
+    }
+}
+
+// ── Resource Modifier ───────────────────────────────────────────────────
+
+ast_node!(ResourceModifier, RESOURCE_MODIFIER);
+
+impl ResourceModifier {
+    /// The contextual `resource` identifier token.
+    pub fn resource_token(&self) -> Option<SyntaxToken> {
+        child_token(&self.syntax, SyntaxKind::IDENT)
     }
 }
 

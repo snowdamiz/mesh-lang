@@ -101,6 +101,50 @@ pub enum MirType {
     Pid(Option<Box<MirType>>),
 }
 
+/// Runtime destruction plan retained after nominal resource types lower to LLVM-level pointers.
+#[derive(Debug, Clone)]
+pub enum MirResourceDestructor {
+    /// A trusted opaque runtime handle destroyed by `mesh_resource_destroy`.
+    Opaque,
+    /// A by-value tuple or struct containing resource-bearing fields.
+    Aggregate(Vec<MirResourceField>),
+    /// A general tagged union whose resource-bearing variants require distinct
+    /// field layouts and destruction plans.
+    SumVariants(Vec<MirResourceVariant>),
+}
+
+#[derive(Debug, Clone)]
+pub struct MirResourceField {
+    pub index: u32,
+    pub ty: MirType,
+    pub destructor: MirResourceDestructor,
+}
+
+#[derive(Debug, Clone)]
+pub struct MirResourceVariant {
+    pub tag: u8,
+    /// Every field is retained so codegen can reconstruct the variant overlay.
+    pub field_types: Vec<MirType>,
+    /// Only affine fields need destruction.
+    pub resource_fields: Vec<MirResourceField>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MirResourceMoveSource {
+    /// Move from a named local/parameter slot.
+    Slot,
+    /// Move one field and destroy every other resource-bearing field in the parent.
+    Projection {
+        parent_ty: MirType,
+        parent_destructor: MirResourceDestructor,
+        field_index: u32,
+        /// Additional field indices for a projection rooted below the first field.
+        /// Keeping the full path lets codegen destroy siblings at every aggregate level
+        /// before invalidating the one root slot.
+        nested_field_indices: Vec<u32>,
+    },
+}
+
 impl fmt::Display for MirType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -241,6 +285,26 @@ pub enum MirExpr {
         fn_name: std::string::String,
         captures: Vec<MirExpr>,
         ty: MirType,
+    },
+    /// Transfer ownership of an affine resource value out of its source slot.
+    ResourceMove {
+        value: Box<MirExpr>,
+        ty: MirType,
+        source: MirResourceMoveSource,
+    },
+    /// Read an affine resource for the duration of a call without transferring it.
+    ResourceBorrow { value: Box<MirExpr>, ty: MirType },
+    /// Compiler-inserted destruction of a still-owned resource at scope exit.
+    ResourceDrop {
+        value: Box<MirExpr>,
+        resource_ty: MirType,
+        destructor: MirResourceDestructor,
+    },
+    /// Source-level, explicit destruction of a resource.
+    ResourceDestroy {
+        value: Box<MirExpr>,
+        resource_ty: MirType,
+        destructor: MirResourceDestructor,
     },
     /// Return from function.
     Return(Box<MirExpr>),
@@ -441,6 +505,10 @@ impl MirExpr {
             MirExpr::FieldAccess { ty, .. } => ty,
             MirExpr::ConstructVariant { ty, .. } => ty,
             MirExpr::MakeClosure { ty, .. } => ty,
+            MirExpr::ResourceMove { ty, .. } => ty,
+            MirExpr::ResourceBorrow { ty, .. } => ty,
+            MirExpr::ResourceDrop { .. } => &MirType::Unit,
+            MirExpr::ResourceDestroy { .. } => &MirType::Unit,
             MirExpr::Return(_) => &MirType::Never,
             MirExpr::Panic { .. } => &MirType::Never,
             MirExpr::Unit => &MirType::Unit,

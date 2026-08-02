@@ -43,7 +43,7 @@ use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Helper enum for tracking children in source order during multi-clause grouping.
 enum ChildKind {
@@ -123,6 +123,8 @@ pub struct TypeRegistry {
     pub type_aliases: FxHashMap<String, TypeAliasInfo>,
     /// Registered sum type definitions, keyed by sum type name.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+    /// Nominal types whose values have affine resource ownership.
+    pub resource_types: FxHashSet<String>,
 }
 
 impl TypeRegistry {
@@ -140,6 +142,68 @@ impl TypeRegistry {
 
     pub fn register_sum_type(&mut self, info: SumTypeDefInfo) {
         self.sum_type_defs.insert(info.name.clone(), info);
+    }
+
+    pub fn register_resource_type(&mut self, name: impl Into<String>) {
+        self.resource_types.insert(name.into());
+    }
+
+    pub fn is_resource_name(&self, name: &str) -> bool {
+        name == "SecretBytes" || self.resource_types.contains(name)
+    }
+
+    pub fn is_resource_type(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::Con(con) => self.is_resource_name(&con.name),
+            Ty::App(constructor, arguments) => {
+                self.is_resource_type(constructor)
+                    || arguments
+                        .iter()
+                        .any(|argument| self.is_resource_type(argument))
+            }
+            Ty::Tuple(elements) => elements
+                .iter()
+                .any(|element| self.is_resource_type(element)),
+            Ty::Fun(_, _) | Ty::Var(_) | Ty::Never => false,
+        }
+    }
+
+    fn propagate_resource_containment(&mut self) {
+        loop {
+            let mut newly_affine: Vec<String> = self
+                .struct_defs
+                .iter()
+                .filter(|(name, definition)| {
+                    !self.resource_types.contains(*name)
+                        && definition
+                            .fields
+                            .iter()
+                            .any(|(_, field_ty)| self.is_resource_type(field_ty))
+                })
+                .map(|(name, _)| name.clone())
+                .collect();
+            newly_affine.extend(
+                self.sum_type_defs
+                    .iter()
+                    .filter(|(name, definition)| {
+                        !self.resource_types.contains(*name)
+                            && definition.variants.iter().any(|variant| {
+                                variant.fields.iter().any(|field| {
+                                    let ty = match field {
+                                        VariantFieldInfo::Positional(ty)
+                                        | VariantFieldInfo::Named(_, ty) => ty,
+                                    };
+                                    self.is_resource_type(ty)
+                                })
+                            })
+                    })
+                    .map(|(name, _)| name.clone()),
+            );
+            if newly_affine.is_empty() {
+                break;
+            }
+            self.resource_types.extend(newly_affine);
+        }
     }
 
     fn lookup_struct(&self, name: &str) -> Option<&StructDefInfo> {
@@ -518,37 +582,29 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Bytes".to_string(), bytes_mod);
 
+    let mut secret_mod = HashMap::new();
+    secret_mod.insert(
+        "random".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    secret_mod.insert(
+        "destroy".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
+    );
+    modules.insert("Secret".to_string(), secret_mod);
+
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
     modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
     modules.insert("I128".to_string(), wide_integer_module(Ty::i128()));
 
-    // ── Crypto module (Phase 135) ────────────────────────────────────
-    let mut crypto_mod = HashMap::new();
-    // Crypto.sha256(s) -> String
-    crypto_mod.insert(
-        "sha256".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
-    );
-    // Crypto.sha512(s) -> String
-    crypto_mod.insert(
-        "sha512".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
-    );
-    // Crypto.hmac_sha256(key, msg) -> String
-    crypto_mod.insert(
-        "hmac_sha256".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
-    );
-    // Crypto.hmac_sha512(key, msg) -> String
-    crypto_mod.insert(
-        "hmac_sha512".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::string()], Ty::string())),
-    );
-    // Crypto.uuid4() -> String
-    crypto_mod.insert(
-        "uuid4".to_string(),
-        Scheme::mono(Ty::fun(vec![], Ty::string())),
-    );
+    // ── Crypto V2 module ──────────────────────────────────────────────
+    let crypto_mod = builtins::crypto_functions()
+        .into_iter()
+        .map(|(name, scheme)| (name.to_string(), scheme))
+        .collect();
     modules.insert("Crypto".to_string(), crypto_mod);
 
     // ── Base64 module (Phase 135) ─────────────────────────────────────
@@ -3472,6 +3528,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "Secret",
     "U64",
     "U128",
     "I128",
@@ -3517,6 +3574,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     let mut type_registry = TypeRegistry::new();
     builtins::register_builtins(&mut ctx, &mut env, &mut trait_registry);
     register_builtin_sum_types(&mut ctx, &mut env, &mut type_registry);
+    register_crypto_v2_types(&mut type_registry);
 
     // Register stdlib struct types for field access (Phase 137+)
     // Layouts MUST match the Mesh-facing runtime structs allocated in mesh-rt.
@@ -3623,6 +3681,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     // Pre-seed TypeRegistry and TypeEnv with imported struct definitions
     for (mod_namespace, mod_exports) in &import_ctx.module_exports {
+        for resource_type in &mod_exports.resource_types {
+            type_registry.register_resource_type(resource_type.clone());
+        }
         for (name, struct_def) in &mod_exports.struct_defs {
             type_registry.register_struct(struct_def.clone());
             // Register struct constructor in env with display_prefix set to source module
@@ -3706,7 +3767,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // subsequent validation.
     let mut alias_defs_for_validation: Vec<(TypeAliasDef, TextRange)> = Vec::new();
 
-    for child in tree.syntax().children() {
+    for child in tree.syntax().descendants() {
         let range = child.text_range();
         match Item::cast(child.clone()) {
             Some(Item::TypeAliasDef(alias_def)) => {
@@ -3721,6 +3782,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .unwrap_or_else(|| "<unnamed>".to_string());
                 // Only register the name stub — full registration happens in main loop.
                 // We use a minimal StructDefInfo with no fields.
+                if struct_def.is_declared_resource() {
+                    type_registry.register_resource_type(name.clone());
+                }
                 type_registry.register_struct(StructDefInfo {
                     name,
                     generic_params: vec![],
@@ -3742,6 +3806,59 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             _ => {}
         }
     }
+
+    // Resolve struct field metadata before value-trait registration so affine
+    // containment is known even through forward and transitive references.
+    for child in tree.syntax().descendants() {
+        let Some(Item::StructDef(struct_def)) = Item::cast(child) else {
+            continue;
+        };
+        let name = struct_def
+            .name()
+            .and_then(|name| name.text())
+            .unwrap_or_else(|| "<unnamed>".to_string());
+        let generic_params: Vec<String> = struct_def
+            .syntax()
+            .children()
+            .filter(|node| node.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+            .flat_map(|parameters| {
+                parameters
+                    .children_with_tokens()
+                    .filter_map(|element| element.into_token())
+                    .filter(|token| token.kind() == SyntaxKind::IDENT)
+                    .map(|token| token.text().to_string())
+            })
+            .collect();
+        let fields = struct_def
+            .fields()
+            .map(|field| {
+                let field_name = field
+                    .name()
+                    .and_then(|field_name| field_name.text())
+                    .unwrap_or_else(|| "<unnamed>".to_string());
+                let field_ty = field
+                    .type_annotation()
+                    .and_then(|annotation| {
+                        resolve_type_annotation(&mut ctx, &annotation, &type_registry)
+                    })
+                    .unwrap_or_else(|| ctx.fresh_var());
+                (field_name, field_ty)
+            })
+            .collect();
+        type_registry.register_struct(StructDefInfo {
+            name,
+            generic_params,
+            fields,
+        });
+    }
+    for child in tree.syntax().descendants() {
+        let Some(Item::SumTypeDef(sum_def)) = Item::cast(child) else {
+            continue;
+        };
+        let info = sum_type_def_info(&mut ctx, &sum_def, &type_registry);
+        type_registry.register_sum_type(info);
+    }
+    type_registry.propagate_resource_containment();
 
     // Validate that all type aliases reference known types (ALIAS-04).
     validate_type_aliases(&type_registry, &alias_defs_for_validation, &mut ctx.errors);
@@ -3942,6 +4059,10 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         .map(|(range, ty)| (range, ctx.resolve(ty)))
         .collect();
 
+    type_registry.propagate_resource_containment();
+    let ownership = crate::ownership::check(parse, &resolved_types, &type_registry, import_ctx);
+    ctx.errors.extend(ownership.errors);
+
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
 
@@ -3966,6 +4087,42 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         local_service_exports: ctx.local_service_exports,
         overloaded_call_targets: ctx.overloaded_call_targets,
         clustered_route_wrappers: ctx.clustered_route_wrappers,
+        function_ownership: ownership.function_ownership,
+    }
+}
+
+fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
+    for resource in ["X25519PrivateKey", "SigningPrivateKey", "AeadKey"] {
+        type_registry.register_resource_type(resource);
+    }
+
+    for (name, fields) in [
+        ("X25519PublicKey", vec![("bytes", Ty::bytes())]),
+        ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
+        ("Signature", vec![("bytes", Ty::bytes())]),
+        (
+            "X25519KeyPair",
+            vec![
+                ("private_key", Ty::x25519_private_key()),
+                ("public_key", Ty::x25519_public_key()),
+            ],
+        ),
+        (
+            "SigningKeyPair",
+            vec![
+                ("private_key", Ty::signing_private_key()),
+                ("public_key", Ty::signing_public_key()),
+            ],
+        ),
+    ] {
+        type_registry.register_struct(StructDefInfo {
+            name: name.to_string(),
+            generic_params: vec![],
+            fields: fields
+                .into_iter()
+                .map(|(field, ty)| (field.to_string(), ty))
+                .collect(),
+        });
     }
 }
 
@@ -4037,6 +4194,61 @@ fn register_builtin_sum_types(
     });
 
     register_variant_constructors(ctx, env, "Result", &result_generic_params, &result_variants);
+
+    // ── CryptoError ───────────────────────────────────────────────────
+
+    let crypto_error_variants = vec![
+        VariantInfo {
+            name: "InvalidLength".to_string(),
+            fields: vec![
+                VariantFieldInfo::Named("expected".to_string(), Ty::int()),
+                VariantFieldInfo::Named("actual".to_string(), Ty::int()),
+            ],
+        },
+        VariantInfo {
+            name: "InvalidKey".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "InvalidPublicKey".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "InvalidSignature".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "AuthenticationFailed".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "EntropyUnavailable".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "SecretDestroyed".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "ResourceLimitExceeded".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "UnsupportedOperation".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "InternalFailure".to_string(),
+            fields: vec![],
+        },
+    ];
+
+    type_registry.register_sum_type(SumTypeDefInfo {
+        name: "CryptoError".to_string(),
+        generic_params: vec![],
+        variants: crypto_error_variants.clone(),
+    });
+    register_variant_constructors(ctx, env, "CryptoError", &[], &crypto_error_variants);
 
     // ── Ordering (Less | Equal | Greater) ────────────────────────────────
     //
@@ -5113,14 +5325,26 @@ fn register_struct_def(
         Ty::App(Box::new(Ty::Con(tycon)), type_args)
     };
 
-    env.insert(name.clone(), Scheme::mono(struct_ty));
+    // Opaque resources are nominal declarations backed by trusted runtime
+    // producers. Their type name must never double as a zero-field value
+    // constructor that source code can use to fabricate a handle.
+    if !struct_def.is_opaque_resource() {
+        env.insert(name.clone(), Scheme::mono(struct_ty));
+    }
 
     // Conditional auto-registration of trait impls based on deriving clause.
     // No deriving clause = backward compat (derive all default traits).
     // Explicit deriving(...) = only derive listed traits.
+    let is_affine_resource = struct_def.is_declared_resource()
+        || fields
+            .iter()
+            .any(|(_, field_ty)| type_registry.is_resource_type(field_ty));
+    if is_affine_resource {
+        type_registry.register_resource_type(name.clone());
+    }
     let has_deriving = struct_def.has_deriving_clause();
     let derive_list = struct_def.deriving_traits();
-    let derive_all = !has_deriving; // no clause = derive all defaults
+    let derive_all = !has_deriving && !is_affine_resource;
 
     // Validate derive trait names.
     let valid_derives = [
@@ -5133,6 +5357,21 @@ fn register_struct_def(
                 type_name: name.clone(),
             });
         }
+    }
+
+    if is_affine_resource && !derive_list.is_empty() {
+        for trait_name in &derive_list {
+            ctx.errors.push(TypeError::ResourceViolation {
+                reason: format!("resource type `{name}` cannot derive `{trait_name}`"),
+                span: struct_def.syntax().text_range(),
+            });
+        }
+        type_registry.register_struct(StructDefInfo {
+            name,
+            generic_params,
+            fields,
+        });
+        return;
     }
 
     // Check trait dependencies: Ord requires Eq.
@@ -5611,6 +5850,12 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
             | "Pid"
             | "Atom"
             | "Regex"
+            | "Bytes"
+            | "SecretBytes"
+            | "CryptoError"
+            | "X25519PrivateKey"
+            | "SigningPrivateKey"
+            | "AeadKey"
             | "Never"
     ) || type_registry.struct_defs.contains_key(name)
         || type_registry.sum_type_defs.contains_key(name)
@@ -5665,15 +5910,11 @@ fn validate_type_aliases(
 
 // ── Sum Type Registration (04-02) ──────────────────────────────────────
 
-/// Register a sum type definition: extract variants, fields, and generic params.
-/// Each variant constructor is registered as a polymorphic function in the env.
-fn register_sum_type_def(
+fn sum_type_def_info(
     ctx: &mut InferCtx,
-    env: &mut TypeEnv,
     sum_def: &SumTypeDef,
-    type_registry: &mut TypeRegistry,
-    trait_registry: &mut TraitRegistry,
-) {
+    type_registry: &TypeRegistry,
+) -> SumTypeDefInfo {
     let name = sum_def
         .name()
         .and_then(|n| n.text())
@@ -5731,13 +5972,28 @@ fn register_sum_type_def(
         });
     }
 
-    // Register the sum type info.
-    let sum_info = SumTypeDefInfo {
-        name: name.clone(),
-        generic_params: generic_params.clone(),
-        variants: variants.clone(),
-    };
+    SumTypeDefInfo {
+        name,
+        generic_params,
+        variants,
+    }
+}
+
+/// Register a sum type definition and its polymorphic variant constructors.
+fn register_sum_type_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    sum_def: &SumTypeDef,
+    type_registry: &mut TypeRegistry,
+    trait_registry: &mut TraitRegistry,
+) {
+    let sum_info = sum_type_def_info(ctx, sum_def, type_registry);
+    let name = sum_info.name.clone();
+    let generic_params = sum_info.generic_params.clone();
+    let variants = sum_info.variants.clone();
     type_registry.register_sum_type(sum_info);
+    type_registry.propagate_resource_containment();
+    let is_affine_resource = type_registry.is_resource_name(&name);
 
     // Register each variant constructor using the shared mechanism.
     register_variant_constructors(ctx, env, &name, &generic_params, &variants);
@@ -5747,7 +6003,7 @@ fn register_sum_type_def(
     // Explicit deriving(...) = only derive listed traits.
     let has_deriving = sum_def.has_deriving_clause();
     let derive_list = sum_def.deriving_traits();
-    let derive_all = !has_deriving; // no clause = derive all defaults
+    let derive_all = !has_deriving && !is_affine_resource;
 
     // Validate derive trait names.
     let valid_derives = [
@@ -5760,6 +6016,16 @@ fn register_sum_type_def(
                 type_name: name.clone(),
             });
         }
+    }
+
+    if is_affine_resource && !derive_list.is_empty() {
+        for trait_name in &derive_list {
+            ctx.errors.push(TypeError::ResourceViolation {
+                reason: format!("resource type `{name}` cannot derive `{trait_name}`"),
+                span: sum_def.syntax().text_range(),
+            });
+        }
+        return;
     }
 
     // Schema is only supported on structs, not sum types.
@@ -12202,6 +12468,9 @@ fn collect_annotation_tokens(
     node: &mesh_parser::SyntaxNode,
     tokens: &mut Vec<(SyntaxKind, String)>,
 ) {
+    if node.kind() == SyntaxKind::OWNERSHIP_MODIFIER {
+        return;
+    }
     for child in node.children_with_tokens() {
         match child {
             rowan::NodeOrToken::Token(t) => {

@@ -6,13 +6,16 @@
 
 use inkwell::intrinsics::Intrinsic;
 use inkwell::types::BasicType;
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, StructValue};
 use inkwell::IntPredicate;
 
 use super::intrinsics::get_intrinsic;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
-use crate::mir::{BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirType, UnaryOp};
+use crate::mir::{
+    BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirResourceDestructor,
+    MirResourceMoveSource, MirType, UnaryOp,
+};
 use crate::pattern::compile::compile_match;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -97,6 +100,23 @@ impl<'ctx> CodeGen<'ctx> {
                 captures,
                 ty: _,
             } => self.codegen_make_closure(fn_name, captures),
+
+            MirExpr::ResourceMove { value, ty, source } => {
+                self.codegen_resource_move(value, ty, source)
+            }
+
+            MirExpr::ResourceBorrow { value, .. } => self.codegen_expr(value),
+
+            MirExpr::ResourceDrop {
+                value,
+                resource_ty,
+                destructor,
+            }
+            | MirExpr::ResourceDestroy {
+                value,
+                resource_ty,
+                destructor,
+            } => self.codegen_resource_drop(value, resource_ty, destructor),
 
             MirExpr::Return(inner) => self.codegen_return(inner),
 
@@ -287,6 +307,301 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     // ── String literals ──────────────────────────────────────────────
+
+    fn codegen_resource_move(
+        &mut self,
+        value: &MirExpr,
+        ty: &MirType,
+        source: &MirResourceMoveSource,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let moved = self.codegen_expr(value)?;
+        match source {
+            MirResourceMoveSource::Slot => {
+                if let MirExpr::Var(name, _) = value {
+                    if let Some(slot) = self.locals.get(name).copied() {
+                        self.builder
+                            .build_store(slot, self.llvm_type(ty).const_zero())
+                            .map_err(|error| error.to_string())?;
+                    }
+                }
+            }
+            MirResourceMoveSource::Projection {
+                parent_ty,
+                parent_destructor,
+                field_index,
+                nested_field_indices,
+            } => {
+                fn projection_root_name(value: &MirExpr) -> Option<&str> {
+                    match value {
+                        MirExpr::Var(name, _) => Some(name),
+                        MirExpr::FieldAccess { object, .. } => projection_root_name(object),
+                        _ => None,
+                    }
+                }
+
+                let parent_name = projection_root_name(value)
+                    .ok_or("resource projection move requires a named root slot")?;
+                let slot =
+                    self.locals.get(parent_name).copied().ok_or_else(|| {
+                        format!("unknown resource projection root: {parent_name}")
+                    })?;
+                let aggregate = self
+                    .builder
+                    .build_load(
+                        self.llvm_type(parent_ty),
+                        slot,
+                        "resource_projection_parent",
+                    )
+                    .map_err(|error| error.to_string())?
+                    .into_struct_value();
+                let mut field_path = Vec::with_capacity(nested_field_indices.len() + 1);
+                field_path.push(*field_index);
+                field_path.extend(nested_field_indices.iter().copied());
+                self.codegen_resource_projection_siblings(
+                    aggregate,
+                    parent_destructor,
+                    &field_path,
+                )?;
+                self.builder
+                    .build_store(slot, self.llvm_type(parent_ty).const_zero())
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        Ok(moved)
+    }
+
+    fn codegen_resource_projection_siblings(
+        &mut self,
+        aggregate: StructValue<'ctx>,
+        destructor: &MirResourceDestructor,
+        field_path: &[u32],
+    ) -> Result<(), String> {
+        let (&selected_index, remaining_path) = field_path
+            .split_first()
+            .ok_or("resource projection had an empty field path")?;
+        let MirResourceDestructor::Aggregate(fields) = destructor else {
+            return Err("resource projection parent did not have an aggregate destructor".into());
+        };
+
+        for field in fields.iter().filter(|field| field.index != selected_index) {
+            let field_value = self
+                .builder
+                .build_extract_value(aggregate, field.index, "resource_projection_sibling")
+                .map_err(|error| error.to_string())?;
+            self.codegen_resource_destructor(field_value, &field.ty, &field.destructor)?;
+        }
+
+        if remaining_path.is_empty() {
+            return Ok(());
+        }
+        let selected_field = fields
+            .iter()
+            .find(|field| field.index == selected_index)
+            .ok_or("nested resource projection selected a non-resource field")?;
+        let selected_value = self
+            .builder
+            .build_extract_value(
+                aggregate,
+                selected_index,
+                "resource_projection_parent_field",
+            )
+            .map_err(|error| error.to_string())?;
+        let selected_aggregate = if selected_value.is_pointer_value() {
+            self.builder
+                .build_load(
+                    self.llvm_type(&selected_field.ty),
+                    selected_value.into_pointer_value(),
+                    "resource_projection_nested_parent",
+                )
+                .map_err(|error| error.to_string())?
+                .into_struct_value()
+        } else {
+            selected_value.into_struct_value()
+        };
+        self.codegen_resource_projection_siblings(
+            selected_aggregate,
+            &selected_field.destructor,
+            remaining_path,
+        )
+    }
+
+    fn codegen_resource_destructor(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        resource_ty: &MirType,
+        destructor: &MirResourceDestructor,
+    ) -> Result<(), String> {
+        match destructor {
+            MirResourceDestructor::Opaque => {
+                if !value.is_pointer_value() {
+                    return Err(format!(
+                        "opaque resource lowered to non-pointer value: {resource_ty:?}"
+                    ));
+                }
+                let pointer = value.into_pointer_value();
+                let is_null = self
+                    .builder
+                    .build_is_null(pointer, "resource_is_null")
+                    .map_err(|error| error.to_string())?;
+                let function = self.current_function();
+                let destroy_block = self
+                    .context
+                    .append_basic_block(function, "resource_destroy");
+                let continue_block = self.context.append_basic_block(function, "resource_live");
+                self.builder
+                    .build_conditional_branch(is_null, continue_block, destroy_block)
+                    .map_err(|error| error.to_string())?;
+
+                self.builder.position_at_end(destroy_block);
+                let destroy = get_intrinsic(&self.module, "mesh_resource_destroy");
+                self.builder
+                    .build_call(destroy, &[pointer.into()], "")
+                    .map_err(|error| error.to_string())?;
+                self.builder
+                    .build_unconditional_branch(continue_block)
+                    .map_err(|error| error.to_string())?;
+                self.builder.position_at_end(continue_block);
+                Ok(())
+            }
+            MirResourceDestructor::Aggregate(fields) => {
+                let aggregate = if value.is_pointer_value() {
+                    self.builder
+                        .build_load(
+                            self.llvm_type(resource_ty),
+                            value.into_pointer_value(),
+                            "resource_aggregate",
+                        )
+                        .map_err(|error| error.to_string())?
+                        .into_struct_value()
+                } else {
+                    value.into_struct_value()
+                };
+                for field in fields {
+                    let field_value = self
+                        .builder
+                        .build_extract_value(aggregate, field.index, "resource_field")
+                        .map_err(|error| error.to_string())?;
+                    self.codegen_resource_destructor(field_value, &field.ty, &field.destructor)?;
+                }
+                Ok(())
+            }
+            MirResourceDestructor::SumVariants(variants) => {
+                let aggregate = if value.is_pointer_value() {
+                    self.builder
+                        .build_load(
+                            self.llvm_type(resource_ty),
+                            value.into_pointer_value(),
+                            "resource_sum",
+                        )
+                        .map_err(|error| error.to_string())?
+                        .into_struct_value()
+                } else {
+                    value.into_struct_value()
+                };
+                if variants.is_empty() {
+                    return Ok(());
+                }
+
+                let sum_slot = self
+                    .builder
+                    .build_alloca(aggregate.get_type(), "resource_sum_slot")
+                    .map_err(|error| error.to_string())?;
+                self.builder
+                    .build_store(sum_slot, aggregate)
+                    .map_err(|error| error.to_string())?;
+                let tag = self
+                    .builder
+                    .build_extract_value(aggregate, 0, "resource_sum_tag")
+                    .map_err(|error| error.to_string())?
+                    .into_int_value();
+                let function = self.current_function();
+                let continue_block = self
+                    .context
+                    .append_basic_block(function, "resource_sum_live");
+
+                for (index, variant) in variants.iter().enumerate() {
+                    let destroy_block = self
+                        .context
+                        .append_basic_block(function, "resource_sum_destroy");
+                    let next_block = if index + 1 == variants.len() {
+                        continue_block
+                    } else {
+                        self.context
+                            .append_basic_block(function, "resource_sum_next")
+                    };
+                    let is_variant = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            tag,
+                            self.context.i8_type().const_int(variant.tag as u64, false),
+                            "resource_sum_is_variant",
+                        )
+                        .map_err(|error| error.to_string())?;
+                    self.builder
+                        .build_conditional_branch(is_variant, destroy_block, next_block)
+                        .map_err(|error| error.to_string())?;
+
+                    self.builder.position_at_end(destroy_block);
+                    let overlay = variant_struct_type(
+                        self.context,
+                        &variant.field_types,
+                        &self.struct_types,
+                        &self.sum_type_layouts,
+                    );
+                    for field in &variant.resource_fields {
+                        let field_ptr = self
+                            .builder
+                            .build_struct_gep(
+                                overlay,
+                                sum_slot,
+                                field.index + 1,
+                                "resource_sum_field_ptr",
+                            )
+                            .map_err(|error| error.to_string())?;
+                        let storage_ty = overlay
+                            .get_field_type_at_index(field.index + 1)
+                            .ok_or("resource sum field index exceeded its variant layout")?;
+                        let field_value = self
+                            .builder
+                            .build_load(storage_ty, field_ptr, "resource_sum_field")
+                            .map_err(|error| error.to_string())?;
+                        self.codegen_resource_destructor(
+                            field_value,
+                            &field.ty,
+                            &field.destructor,
+                        )?;
+                    }
+                    self.builder
+                        .build_unconditional_branch(continue_block)
+                        .map_err(|error| error.to_string())?;
+                    if next_block != continue_block {
+                        self.builder.position_at_end(next_block);
+                    }
+                }
+                self.builder.position_at_end(continue_block);
+                Ok(())
+            }
+        }
+    }
+
+    fn codegen_resource_drop(
+        &mut self,
+        value: &MirExpr,
+        resource_ty: &MirType,
+        destructor: &MirResourceDestructor,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let owned = self.codegen_expr(value)?;
+        self.codegen_resource_destructor(owned, resource_ty, destructor)?;
+        if let MirExpr::Var(name, _) = value {
+            if let Some(slot) = self.locals.get(name).copied() {
+                self.builder
+                    .build_store(slot, self.llvm_type(resource_ty).const_zero())
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
 
     pub(crate) fn codegen_string_lit(&mut self, s: &str) -> Result<BasicValueEnum<'ctx>, String> {
         // Create a global constant for the string data
