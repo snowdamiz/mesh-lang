@@ -9,6 +9,7 @@ use crate::actor::Process;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::crypto::provider::{CryptoProvider, ProviderError, SystemProvider};
 use crate::io::{alloc_result, MeshResult};
+use crate::library::{secure_store_get_raw, secure_store_put_raw};
 use crate::secret::{
     commit_storage_counter, crypto_error, insert_ephemeral_storage_key_resource,
     insert_owned_resource, insert_storage_key_resource, prepare_owned_resource,
@@ -32,6 +33,11 @@ const MAX_PLAINTEXT_BYTES: usize = 65_536;
 const MAX_BLOB_BYTES: usize = FIXED_OVERHEAD_BYTES + MAX_PLAINTEXT_BYTES;
 const FORMAT_VERSION: u8 = 1;
 const ALGORITHM_CHACHA20_POLY1305: u16 = 1;
+const PLATFORM_KEY_ID: &[u8] = b"mesh/storage-key/v1";
+const PLATFORM_COUNTER_ID: &[u8] = b"mesh/storage-counter/v1";
+const HOST_NOT_FOUND: i32 = 2;
+
+static PLATFORM_STORAGE_LOCK: Mutex<()> = Mutex::new(());
 
 const CONTEXT_VERSION_OFFSET: usize = 0;
 const CONTEXT_SESSION_OFFSET: usize = 49;
@@ -83,6 +89,28 @@ enum SecretPurpose {
     SkippedMessageKey,
     SkippedKeyMap,
     RatchetDhKey,
+    LocalData,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StorageValueKind {
+    Resource(ResourceKind),
+    Bytes,
+}
+
+impl StorageValueKind {
+    fn code(self) -> i64 {
+        match self {
+            Self::Resource(kind) => kind as i64,
+            Self::Bytes => 7,
+        }
+    }
+}
+
+impl From<ResourceKind> for StorageValueKind {
+    fn from(value: ResourceKind) -> Self {
+        Self::Resource(value)
+    }
 }
 
 impl SecretPurpose {
@@ -101,25 +129,27 @@ impl SecretPurpose {
             11 => Ok(Self::SkippedMessageKey),
             12 => Ok(Self::SkippedKeyMap),
             13 => Ok(Self::RatchetDhKey),
+            14 => Ok(Self::LocalData),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
 
-    fn resource_kind(self) -> ResourceKind {
+    fn value_kind(self) -> StorageValueKind {
         match self {
             Self::RootKey
             | Self::SendingChainKey
             | Self::ReceivingChainKey
             | Self::HeaderKey
             | Self::AttachmentKey
-            | Self::SkippedMessageKey => ResourceKind::SecretBytes,
-            Self::SkippedKeyMap => ResourceKind::SecretMap,
+            | Self::SkippedMessageKey => ResourceKind::SecretBytes.into(),
+            Self::SkippedKeyMap => ResourceKind::SecretMap.into(),
             Self::AccountAuthorizationKey | Self::DeviceSigningKey => {
-                ResourceKind::SigningPrivateKey
+                ResourceKind::SigningPrivateKey.into()
             }
             Self::DeviceDhKey | Self::SignedPrekey | Self::OneTimePrekey | Self::RatchetDhKey => {
-                ResourceKind::X25519PrivateKey
+                ResourceKind::X25519PrivateKey.into()
             }
+            Self::LocalData => StorageValueKind::Bytes,
         }
     }
 
@@ -137,23 +167,33 @@ impl SecretPurpose {
 }
 
 fn validate_plaintext_length(
-    expected_kind: ResourceKind,
+    expected_kind: StorageValueKind,
     length: usize,
 ) -> Result<(), StorageFailure> {
-    if expected_kind == ResourceKind::SecretMap {
-        if length == 0 || length > MAX_PLAINTEXT_BYTES {
-            return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+    match expected_kind {
+        StorageValueKind::Resource(ResourceKind::SecretMap) => {
+            if length == 0 || length > MAX_PLAINTEXT_BYTES {
+                return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+            }
         }
-    } else if length != PLAINTEXT_BYTES {
-        return Err(invalid_length(PLAINTEXT_BYTES, length));
+        StorageValueKind::Bytes => {
+            if length > MAX_PLAINTEXT_BYTES {
+                return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+            }
+        }
+        StorageValueKind::Resource(_) if length != PLAINTEXT_BYTES => {
+            return Err(invalid_length(PLAINTEXT_BYTES, length));
+        }
+        StorageValueKind::Resource(_) => {}
     }
     Ok(())
 }
 
-fn validate_context(
+fn validate_context<K: Into<StorageValueKind>>(
     context: &[u8],
-    expected_kind: ResourceKind,
+    expected_kind: K,
 ) -> Result<SecretPurpose, StorageFailure> {
+    let expected_kind = expected_kind.into();
     if context.len() != CONTEXT_BYTES {
         return Err(invalid_length(CONTEXT_BYTES, context.len()));
     }
@@ -169,11 +209,11 @@ fn validate_context(
         context[CONTEXT_PURPOSE_OFFSET + 1],
     ]);
     let purpose = SecretPurpose::from_id(purpose_id)?;
-    if purpose.resource_kind() != expected_kind {
+    if purpose.value_kind() != expected_kind {
         return Err(failure(
             CryptoErrorTag::UnsupportedOperation,
-            expected_kind as i64,
-            purpose.resource_kind() as i64,
+            expected_kind.code(),
+            purpose.value_kind().code(),
         ));
     }
     let snapshot = u64::from_be_bytes(
@@ -220,14 +260,15 @@ fn provider_failure(error: ProviderError) -> StorageFailure {
     }
 }
 
-fn seal_value(
+fn seal_value<K: Into<StorageValueKind> + Copy>(
     provider: &impl CryptoProvider,
     plaintext: &[u8],
     storage_key_material: &[u8],
     counter: u64,
     context: &[u8],
-    expected_kind: ResourceKind,
+    expected_kind: K,
 ) -> Result<Vec<u8>, StorageFailure> {
+    let expected_kind = expected_kind.into();
     validate_context(context, expected_kind)?;
     validate_plaintext_length(expected_kind, plaintext.len())?;
     if storage_key_material.len() != STORAGE_KEY_MATERIAL_BYTES {
@@ -265,13 +306,14 @@ fn seal_value(
     Ok(blob)
 }
 
-fn open_value(
+fn open_value<K: Into<StorageValueKind> + Copy>(
     provider: &impl CryptoProvider,
     blob: &[u8],
     storage_key_material: &[u8],
     context: &[u8],
-    expected_kind: ResourceKind,
+    expected_kind: K,
 ) -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+    let expected_kind = expected_kind.into();
     // The validation order here is part of the on-disk format contract.
     if blob.len() < FIXED_OVERHEAD_BYTES {
         return Err(invalid_length(FIXED_OVERHEAD_BYTES, blob.len()));
@@ -384,7 +426,7 @@ fn prepare_seal(
     validate_context(context, expected_kind)?;
     let secret =
         prepare_owned_resource(process, secret, expected_kind).map_err(resource_failure)?;
-    validate_plaintext_length(expected_kind, secret.bytes.len())?;
+    validate_plaintext_length(expected_kind.into(), secret.bytes.len())?;
     let storage_key =
         prepare_storage_key_resource(process, wrapping_key).map_err(storage_key_failure)?;
     Ok(SealPreparation {
@@ -612,6 +654,190 @@ pub extern "C" fn mesh_storage_key_ephemeral() -> *mut MeshResult {
     })();
     match result {
         Ok(handle) => ok_result(handle),
+        Err(error) => error_result(error),
+    }
+}
+
+fn platform_failure(status: i32) -> StorageFailure {
+    failure(CryptoErrorTag::InternalFailure, 0, status as i64)
+}
+
+fn read_platform_record(
+    key: &[u8],
+    maximum: usize,
+) -> Result<Option<Zeroizing<Vec<u8>>>, StorageFailure> {
+    let mut output = Zeroizing::new(vec![0u8; maximum]);
+    match secure_store_get_raw(key, &mut output) {
+        Ok(length) => {
+            output.truncate(length);
+            Ok(Some(output))
+        }
+        Err(HOST_NOT_FOUND) => Ok(None),
+        Err(status) => Err(platform_failure(status)),
+    }
+}
+
+fn write_platform_record(key: &[u8], value: &[u8]) -> Result<(), StorageFailure> {
+    let key_length =
+        u32::try_from(key.len()).map_err(|_| invalid_length(u32::MAX as usize, key.len()))?;
+    let mut request = Zeroizing::new(Vec::with_capacity(4 + key.len() + value.len()));
+    request.extend_from_slice(&key_length.to_be_bytes());
+    request.extend_from_slice(key);
+    request.extend_from_slice(value);
+    secure_store_put_raw(&request).map_err(platform_failure)
+}
+
+fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+    let material = match read_platform_record(PLATFORM_KEY_ID, STORAGE_KEY_MATERIAL_BYTES)? {
+        Some(material) if material.len() == STORAGE_KEY_MATERIAL_BYTES => material,
+        Some(material) => return Err(invalid_length(STORAGE_KEY_MATERIAL_BYTES, material.len())),
+        None => {
+            let mut material = Zeroizing::new(vec![0u8; STORAGE_KEY_MATERIAL_BYTES]);
+            SystemProvider
+                .fill_random(&mut material)
+                .map_err(provider_failure)?;
+            write_platform_record(PLATFORM_KEY_ID, &material)?;
+            material
+        }
+    };
+    match read_platform_record(PLATFORM_COUNTER_ID, 8)? {
+        Some(counter) if counter.len() == 8 => {}
+        Some(counter) => return Err(invalid_length(8, counter.len())),
+        None => write_platform_record(PLATFORM_COUNTER_ID, &0u64.to_be_bytes())?,
+    }
+    Ok(Zeroizing::new(material.to_vec().into_boxed_slice()))
+}
+
+// ponytail: one process-wide lock; use a host atomic-increment callback if app
+// extensions ever share this storage key concurrently.
+unsafe extern "C" fn reserve_platform_counter(_context: *mut c_void, counter_out: *mut u64) -> i32 {
+    if counter_out.is_null() {
+        return 1;
+    }
+    let _guard = PLATFORM_STORAGE_LOCK.lock();
+    let result = (|| {
+        let counter = read_platform_record(PLATFORM_COUNTER_ID, 8)?
+            .ok_or_else(|| platform_failure(HOST_NOT_FOUND))?;
+        if counter.len() != 8 {
+            return Err(invalid_length(8, counter.len()));
+        }
+        let current = u64::from_be_bytes(counter.as_slice().try_into().expect("checked counter"));
+        let next = current
+            .checked_add(1)
+            .ok_or_else(|| failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0))?;
+        write_platform_record(PLATFORM_COUNTER_ID, &next.to_be_bytes())?;
+        unsafe { counter_out.write(current) };
+        Ok(())
+    })();
+    result.map_or(1, |_| 0)
+}
+
+/// Load or create the app-wide storage key through the registered secure-store
+/// callbacks without exposing its material as Mesh `Bytes`.
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_platform() -> *mut MeshResult {
+    let result = (|| {
+        let _guard = PLATFORM_STORAGE_LOCK.lock();
+        let material = load_platform_material()?;
+        let process = current_process()?;
+        let context = std::ptr::NonNull::<u8>::dangling()
+            .as_ptr()
+            .cast::<c_void>();
+        let handle = {
+            let mut process = process.lock();
+            insert_storage_key_resource(&mut process, material, reserve_platform_counter, context)
+                .map_err(resource_failure)?
+        };
+        Ok(handle)
+    })();
+    match result {
+        Ok(handle) => ok_result(handle),
+        Err(error) => error_result(error),
+    }
+}
+
+fn seal_bytes_for_current_actor(
+    value: *const MeshBytes,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> Result<Vec<u8>, StorageFailure> {
+    let value = Zeroizing::new(unsafe { copy_mesh_bytes(value, MAX_PLAINTEXT_BYTES) }?);
+    let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
+    validate_context(&context, StorageValueKind::Bytes)?;
+    let process = current_process()?;
+    let mut storage_key = {
+        let process = process.lock();
+        prepare_storage_key_resource(&process, wrapping_key).map_err(storage_key_failure)?
+    };
+    let counter = storage_key.reserve_counter().map_err(storage_key_failure)?;
+    {
+        let process = process.lock();
+        commit_storage_counter(&process, &storage_key, counter).map_err(storage_key_failure)?;
+    }
+    let blob = seal_value(
+        &SystemProvider,
+        &value,
+        &storage_key.material,
+        counter,
+        &context,
+        StorageValueKind::Bytes,
+    )?;
+    {
+        let process = process.lock();
+        validate_prepared_storage_key_resource(&process, &storage_key)
+            .map_err(storage_key_failure)?;
+    }
+    Ok(blob)
+}
+
+fn unseal_bytes_for_current_actor(
+    blob: *const MeshBytes,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+    let blob = unsafe { copy_mesh_bytes(blob, MAX_BLOB_BYTES) }?;
+    let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
+    let process = current_process()?;
+    let storage_key = {
+        let process = process.lock();
+        prepare_owned_resource(&process, wrapping_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?
+    };
+    let plaintext = open_value(
+        &SystemProvider,
+        &blob,
+        &storage_key.bytes,
+        &context,
+        StorageValueKind::Bytes,
+    )?;
+    {
+        let process = process.lock();
+        validate_prepared_owned_resource(&process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+    }
+    Ok(plaintext)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_seal_bytes(
+    value: *const MeshBytes,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> *mut MeshResult {
+    match seal_bytes_for_current_actor(value, wrapping_key, context) {
+        Ok(blob) => ok_result(mesh_bytes_new(blob.as_ptr(), blob.len() as u64)),
+        Err(error) => error_result(error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_unseal_bytes(
+    blob: *const MeshBytes,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> *mut MeshResult {
+    match unseal_bytes_for_current_actor(blob, wrapping_key, context) {
+        Ok(value) => ok_result(mesh_bytes_new(value.as_ptr(), value.len() as u64)),
         Err(error) => error_result(error),
     }
 }

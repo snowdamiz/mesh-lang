@@ -639,9 +639,30 @@ pub fn register_builtins(
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
+    env.insert(
+        "storage_key_platform".into(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    for name in ["storage_key_seal_bytes", "storage_key_unseal_bytes"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+                Ty::result(Ty::bytes(), Ty::crypto_error()),
+            )),
+        );
+    }
     for (name, input, output) in [
         ("secret_seal_for_storage", Ty::secret_bytes(), Ty::bytes()),
         ("secret_map_seal_for_storage", Ty::secret_map(), Ty::bytes()),
+        (
+            "signing_private_key_seal_for_storage",
+            Ty::signing_private_key(),
+            Ty::bytes(),
+        ),
         (
             "x25519_private_key_seal_for_storage",
             Ty::x25519_private_key(),
@@ -659,6 +680,10 @@ pub fn register_builtins(
     for (name, output) in [
         ("secret_unseal_from_storage", Ty::secret_bytes()),
         ("secret_map_unseal_from_storage", Ty::secret_map()),
+        (
+            "signing_private_key_unseal_from_storage",
+            Ty::signing_private_key(),
+        ),
         (
             "x25519_private_key_unseal_from_storage",
             Ty::x25519_private_key(),

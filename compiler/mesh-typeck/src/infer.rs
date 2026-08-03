@@ -734,24 +734,45 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
+    storage_key_mod.insert(
+        "platform".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    for name in ["seal_bytes", "unseal_bytes"] {
+        storage_key_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+                Ty::result(Ty::bytes(), Ty::crypto_error()),
+            )),
+        );
+    }
     modules.insert("StorageKey".to_string(), storage_key_mod);
 
-    let mut x25519_private_mod = HashMap::new();
-    x25519_private_mod.insert(
-        "seal_for_storage".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::x25519_private_key(), Ty::storage_key(), Ty::bytes()],
-            Ty::result(Ty::bytes(), Ty::crypto_error()),
-        )),
-    );
-    x25519_private_mod.insert(
-        "unseal_from_storage".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
-            Ty::result(Ty::x25519_private_key(), Ty::crypto_error()),
-        )),
-    );
-    modules.insert("X25519PrivateKey".to_string(), x25519_private_mod);
+    for (module, private_key) in [
+        ("X25519PrivateKey", Ty::x25519_private_key()),
+        ("SigningPrivateKey", Ty::signing_private_key()),
+    ] {
+        let mut private_mod = HashMap::new();
+        private_mod.insert(
+            "seal_for_storage".to_string(),
+            Scheme::mono(Ty::fun(
+                vec![private_key.clone(), Ty::storage_key(), Ty::bytes()],
+                Ty::result(Ty::bytes(), Ty::crypto_error()),
+            )),
+        );
+        private_mod.insert(
+            "unseal_from_storage".to_string(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+                Ty::result(private_key, Ty::crypto_error()),
+            )),
+        );
+        modules.insert(module.to_string(), private_mod);
+    }
 
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
     modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
@@ -3745,6 +3766,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "SecretMap",
     "StorageKey",
     "X25519PrivateKey",
+    "SigningPrivateKey",
     "U64",
     "U128",
     "I128",

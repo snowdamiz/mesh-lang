@@ -199,6 +199,44 @@ pub extern "C" fn mesh_library_register_host_callbacks(
     MESH_LIBRARY_OK
 }
 
+pub(crate) fn secure_store_get_raw(input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
+    call_raw_host_callback(2, input, output)
+}
+
+pub(crate) fn secure_store_put_raw(input: &[u8]) -> Result<(), i32> {
+    let mut ignored = [0u8; 1];
+    call_raw_host_callback(1, input, &mut ignored).map(|_| ())
+}
+
+fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
+    if input.len() > MAX_BOUNDARY_BYTES || output.len() > MAX_BOUNDARY_BYTES {
+        return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
+    }
+    let callbacks = (*HOST_CALLBACKS.read()).ok_or(MESH_LIBRARY_ERR_NOT_INITIALIZED)?;
+    let callback = callbacks
+        .callback(capability)
+        .ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;
+    let mut output_len = 0u64;
+    let status = unsafe {
+        callback(
+            callbacks.context as *mut c_void,
+            input.as_ptr(),
+            input.len() as u64,
+            output.as_mut_ptr(),
+            output.len() as u64,
+            &mut output_len,
+        )
+    };
+    if status != MESH_LIBRARY_OK {
+        return Err(status);
+    }
+    let output_len = usize::try_from(output_len).map_err(|_| MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE)?;
+    if output_len > output.len() {
+        return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
+    }
+    Ok(output_len)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn mesh_library_invoke(
     entrypoint: MeshLibraryEntrypoint,

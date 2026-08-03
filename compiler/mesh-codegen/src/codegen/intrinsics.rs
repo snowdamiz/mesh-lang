@@ -849,6 +849,21 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
+        "mesh_storage_key_platform",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_storage_key_seal_bytes",
+        "mesh_storage_key_unseal_bytes",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    module.add_function(
         "mesh_secret_concat",
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
@@ -889,7 +904,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
-    for prefix in ["secret", "secret_map", "x25519_private_key"] {
+    for prefix in [
+        "secret",
+        "secret_map",
+        "x25519_private_key",
+        "signing_private_key",
+    ] {
         for operation in ["seal_for_storage", "unseal_from_storage"] {
             module.add_function(
                 &format!("mesh_{prefix}_{operation}"),

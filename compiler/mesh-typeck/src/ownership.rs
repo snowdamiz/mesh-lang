@@ -213,6 +213,11 @@ pub(crate) fn check(
             "x25519_private_key",
             Ty::x25519_private_key(),
         ),
+        (
+            "SigningPrivateKey",
+            "signing_private_key",
+            Ty::signing_private_key(),
+        ),
     ] {
         let seal = FunctionSignature {
             modes: vec![
@@ -238,6 +243,22 @@ pub(crate) fn check(
         };
         signatures.insert(format!("{module}.unseal_from_storage"), unseal.clone());
         signatures.insert(format!("{prefix}_unseal_from_storage"), unseal);
+    }
+    for name in ["seal_bytes", "unseal_bytes"] {
+        let signature = FunctionSignature {
+            modes: vec![
+                ParamOwnership::Move,
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+            ],
+            formal_types: vec![
+                Some(Ty::bytes()),
+                Some(Ty::storage_key()),
+                Some(Ty::bytes()),
+            ],
+        };
+        signatures.insert(format!("StorageKey.{name}"), signature.clone());
+        signatures.insert(format!("storage_key_{name}"), signature);
     }
     let bytes_builder = Ty::bytes_builder();
     for name in [

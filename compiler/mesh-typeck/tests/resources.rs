@@ -839,25 +839,42 @@ fn storage_wrapping_borrows_capabilities_and_restores_typed_resources() {
         "fn round_trip(\
            secret :: SecretBytes, \
            private_key :: X25519PrivateKey, \
+           signing_key :: SigningPrivateKey, \
            skipped :: SecretMap, \
            wrapping_key :: StorageKey, \
            context :: Bytes\
          ) do\n\
            let secret_blob = Secret.seal_for_storage(secret, wrapping_key, context)?\n\
            let private_blob = X25519PrivateKey.seal_for_storage(private_key, wrapping_key, context)?\n\
+           let signing_blob = SigningPrivateKey.seal_for_storage(signing_key, wrapping_key, context)?\n\
            let skipped_blob = SecretMap.seal_for_storage(skipped, wrapping_key, context)?\n\
+           let local_blob = StorageKey.seal_bytes(Bytes.from_utf8(\"local\"), wrapping_key, context)?\n\
            let restored_secret = Secret.unseal_from_storage(secret_blob, wrapping_key, context)?\n\
            let restored_private = X25519PrivateKey.unseal_from_storage(private_blob, wrapping_key, context)?\n\
+           let restored_signing = SigningPrivateKey.unseal_from_storage(signing_blob, wrapping_key, context)?\n\
            let restored_skipped = SecretMap.unseal_from_storage(skipped_blob, wrapping_key, context)?\n\
+           let restored_local = StorageKey.unseal_bytes(local_blob, wrapping_key, context)?\n\
            Secret.destroy(restored_secret)\n\
            Secret.destroy(secret)\n\
-           (restored_private, private_key, restored_skipped, skipped, wrapping_key)\n\
+           (restored_private, private_key, restored_signing, signing_key, restored_skipped, skipped, restored_local, wrapping_key)\n\
          end",
     );
 
     assert!(
         result.errors.is_empty(),
         "storage APIs: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn platform_storage_key_is_a_typed_resource_constructor() {
+    let result =
+        check_source("fn load() -> StorageKey ! CryptoError do\n  StorageKey.platform()\nend");
+
+    assert!(
+        result.errors.is_empty(),
+        "platform storage key: {:?}",
         result.errors
     );
 }

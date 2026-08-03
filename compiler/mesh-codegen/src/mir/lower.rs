@@ -406,6 +406,7 @@ impl<'a> Lowerer<'a> {
             ("Secret", "secret"),
             ("SecretMap", "secret_map"),
             ("X25519PrivateKey", "x25519_private_key"),
+            ("SigningPrivateKey", "signing_private_key"),
         ] {
             for alias in [
                 format!("{module}.seal_for_storage"),
@@ -424,6 +425,21 @@ impl<'a> Lowerer<'a> {
                 format!("{module}.unseal_from_storage"),
                 format!("{prefix}_unseal_from_storage"),
                 format!("mesh_{prefix}_unseal_from_storage"),
+            ] {
+                ownership_signatures.entry(alias).or_insert_with(|| {
+                    vec![
+                        ParamOwnership::Move,
+                        ParamOwnership::Borrow,
+                        ParamOwnership::Move,
+                    ]
+                });
+            }
+        }
+        for name in ["seal_bytes", "unseal_bytes"] {
+            for alias in [
+                format!("StorageKey.{name}"),
+                format!("storage_key_{name}"),
+                format!("mesh_storage_key_{name}"),
             ] {
                 ownership_signatures.entry(alias).or_insert_with(|| {
                     vec![
@@ -2225,6 +2241,22 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_storage_key_platform".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        for name in [
+            "mesh_storage_key_seal_bytes",
+            "mesh_storage_key_unseal_bytes",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
+        self.known_functions.insert(
             "mesh_secret_concat".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
@@ -2253,7 +2285,12 @@ impl<'a> Lowerer<'a> {
                 MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
             );
         }
-        for prefix in ["secret", "secret_map", "x25519_private_key"] {
+        for prefix in [
+            "secret",
+            "secret_map",
+            "x25519_private_key",
+            "signing_private_key",
+        ] {
             for operation in ["seal_for_storage", "unseal_from_storage"] {
                 self.known_functions.insert(
                     format!("mesh_{prefix}_{operation}"),
@@ -10773,6 +10810,7 @@ impl<'a> Lowerer<'a> {
                             "SecretMap" => "secret_map".to_string(),
                             "StorageKey" => "storage_key".to_string(),
                             "X25519PrivateKey" => "x25519_private_key".to_string(),
+                            "SigningPrivateKey" => "signing_private_key".to_string(),
                             _ => base_name.to_lowercase(),
                         };
                         let prefixed = format!("{prefix}_{field}");
@@ -15079,6 +15117,7 @@ const STDLIB_MODULES: &[&str] = &[
     "SecretMap",
     "StorageKey",
     "X25519PrivateKey",
+    "SigningPrivateKey",
     "U64",
     "U128",
     "I128",
@@ -15224,11 +15263,16 @@ fn map_builtin_name(name: &str) -> String {
         | "secret_map_copy"
         | "secret_map_delete"
         | "secret_map_merge" => format!("mesh_{name}"),
-        "storage_key_ephemeral" => format!("mesh_{name}"),
+        "storage_key_ephemeral"
+        | "storage_key_platform"
+        | "storage_key_seal_bytes"
+        | "storage_key_unseal_bytes" => format!("mesh_{name}"),
         "secret_seal_for_storage"
         | "secret_unseal_from_storage"
         | "secret_map_seal_for_storage"
         | "secret_map_unseal_from_storage"
+        | "signing_private_key_seal_for_storage"
+        | "signing_private_key_unseal_from_storage"
         | "x25519_private_key_seal_for_storage"
         | "x25519_private_key_unseal_from_storage" => format!("mesh_{name}"),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
@@ -16856,6 +16900,27 @@ mod tests {
             "resource structs must retain their field layout: {:?}",
             mir.structs
         );
+    }
+
+    #[test]
+    fn mobile_storage_calls_lower_to_runtime_intrinsics() {
+        let mir = lower(
+            "fn persist(signing :: SigningPrivateKey, context :: Bytes, value :: Bytes) -> Bytes ! CryptoError do\n\
+               let key = StorageKey.platform()?\n\
+               let _signing_blob = SigningPrivateKey.seal_for_storage(signing, key, context)?\n\
+               let sealed = StorageKey.seal_bytes(value, key, context)?\n\
+               StorageKey.unseal_bytes(sealed, key, context)\n\
+             end",
+        );
+        let lowered = format!("{mir:?}");
+        for runtime in [
+            "mesh_storage_key_platform",
+            "mesh_signing_private_key_seal_for_storage",
+            "mesh_storage_key_seal_bytes",
+            "mesh_storage_key_unseal_bytes",
+        ] {
+            assert!(lowered.contains(runtime), "missing {runtime} in {lowered}");
+        }
     }
 
     #[test]
