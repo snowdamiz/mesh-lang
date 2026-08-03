@@ -122,7 +122,7 @@ fn render_kotlin(load_name: &str, exports: &[LibraryExport]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        val status = initializeNative()\n        check(status == 0) {{ \"Mesh library initialization failed (status=$status)\" }}\n    }}\n\n    @JvmStatic fun initialize() = Unit\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
+        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        val status = initializeNative()\n        check(status == 0) {{ \"Mesh library initialization failed (status=$status)\" }}\n    }}\n\n    @JvmStatic fun ensureInitialized() = Unit\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
     )
 }
 
@@ -136,9 +136,10 @@ fn render_jni(artifact: &Path, exports: &[LibraryExport]) -> String {
     let functions = exports
         .iter()
         .map(|export| {
+            let jni_function = export.function.replace('_', "_1");
             format!(
                 "JNIEXPORT jbyteArray JNICALL Java_mesh_MeshLibrary_{}(JNIEnv *env, jclass cls, jbyteArray request) {{\n  (void)cls;\n  jsize request_len = (*env)->GetArrayLength(env, request);\n  jbyte *request_data = (*env)->GetByteArrayElements(env, request, NULL);\n  MeshLibraryBytes response = {{0}};\n  int32_t status = {}((const uint8_t *)request_data, (uint64_t)request_len, &response);\n  (*env)->ReleaseByteArrayElements(env, request, request_data, JNI_ABORT);\n  if (status != MESH_LIBRARY_OK) {{\n    mesh_throw_library_failure(env, status, &response);\n    mesh_library_free_returned_bytes(&response);\n    return NULL;\n  }}\n  jbyteArray result = (*env)->NewByteArray(env, (jsize)response.len);\n  if (response.len != 0) (*env)->SetByteArrayRegion(env, result, 0, (jsize)response.len, (const jbyte *)response.data);\n  mesh_library_free_returned_bytes(&response);\n  return result;\n}}",
-                export.function, export.symbol
+                jni_function, export.symbol
             )
         })
         .collect::<Vec<_>>()
@@ -172,10 +173,16 @@ mod tests {
     fn generated_bindings_share_one_ownership_contract() {
         let bindings = render(
             Path::new("/tmp/libmessenger.a"),
-            &[LibraryExport {
-                function: "echo".to_string(),
-                symbol: "mesh_mobile_echo".to_string(),
-            }],
+            &[
+                LibraryExport {
+                    function: "echo".to_string(),
+                    symbol: "mesh_mobile_echo".to_string(),
+                },
+                LibraryExport {
+                    function: "validate_outer".to_string(),
+                    symbol: "mesh_mobile_validate_outer".to_string(),
+                },
+            ],
             Some("aarch64-apple-ios"),
         );
         assert!(bindings.header.contains("mesh_mobile_echo"));
@@ -183,8 +190,11 @@ mod tests {
             .swift
             .contains("defer { mesh_library_free_returned_bytes"));
         assert!(bindings.kotlin.contains("external fun echo"));
-        assert!(bindings.kotlin.contains("fun initialize()"));
+        assert!(bindings.kotlin.contains("fun ensureInitialized()"));
         assert!(bindings.jni.contains("mesh_library_free_returned_bytes"));
+        assert!(bindings
+            .jni
+            .contains("Java_mesh_MeshLibrary_validate_1outer"));
         assert!(bindings.jni.contains("status=%d"));
         assert!(bindings.jni.contains("response->data"));
         assert!(bindings.typescript.contains("mesh_mobile_echo"));
