@@ -275,7 +275,8 @@ impl<'ctx> CodeGen<'ctx> {
         //   Pass B: create sum type layouts (can reference opaque struct types)
         //   Pass C: set struct type bodies (can reference sum type layouts)
         for s in &mir.structs {
-            self.context.opaque_struct_type(&s.name);
+            let struct_type = self.context.opaque_struct_type(&s.name);
+            self.struct_types.insert(s.name.clone(), struct_type);
         }
         self.create_sum_type_layouts(&mir.sum_types)?;
         self.create_struct_types(&mir.structs);
@@ -414,9 +415,8 @@ impl<'ctx> CodeGen<'ctx> {
                     llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
                 })
                 .collect();
-            let struct_ty = self.context.opaque_struct_type(&s.name);
+            let struct_ty = self.struct_types[&s.name];
             struct_ty.set_body(&field_types, false);
-            self.struct_types.insert(s.name.clone(), struct_ty);
         }
     }
 
@@ -1185,6 +1185,47 @@ mod tests {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
         let mir = empty_mir_module();
+        codegen.compile(&mir).unwrap();
+    }
+
+    #[test]
+    fn struct_layouts_allow_forward_references() {
+        let inner = MirType::Struct("Inner".to_string());
+        let outer = MirType::Struct("Outer".to_string());
+        let mut mir = empty_mir_module();
+        mir.structs = vec![
+            MirStructDef {
+                name: "Outer".to_string(),
+                fields: vec![("inner".to_string(), inner.clone())],
+            },
+            MirStructDef {
+                name: "Inner".to_string(),
+                fields: vec![("value".to_string(), MirType::Int)],
+            },
+        ];
+        mir.functions.push(MirFunction {
+            name: "make_outer".to_string(),
+            params: vec![],
+            return_type: outer.clone(),
+            body: MirExpr::StructLit {
+                name: "Outer".to_string(),
+                fields: vec![(
+                    "inner".to_string(),
+                    MirExpr::StructLit {
+                        name: "Inner".to_string(),
+                        fields: vec![("value".to_string(), MirExpr::IntLit(1, MirType::Int))],
+                        ty: inner,
+                    },
+                )],
+                ty: outer,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "forward_struct", 0, None).unwrap();
         codegen.compile(&mir).unwrap();
     }
 
@@ -3082,7 +3123,7 @@ mod tests {
         // The typed variant access path loads the pointer from the generic
         // payload slot, then loads the actual struct from that allocation.
         assert!(
-            ir.contains("boxed_variant_payload") && ir.contains("load %TestPair.0"),
+            ir.contains("boxed_variant_payload") && ir.contains("load %TestPair"),
             "Destructuring should dereference the boxed variant payload: {}",
             ir
         );
