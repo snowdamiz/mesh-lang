@@ -98,6 +98,7 @@ official vectors plus negative and boundary tests cover every primitive. The
 ML-KEM key-generation check is pinned to NIST ACVP FIPS 203 `tcId 26`.
 
 `scripts/verify-crypto-mobile.sh` checks the complete runtime library for
-`aarch64-apple-ios`. Android and artifact reproducibility remain Milestone 10
-release gates. A current advisory audit, SBOM, and reproducible-build record are
-still required from the final release revision before production activation.
+`aarch64-apple-ios`. Tagged releases now require a clean RustSec audit, a
+CycloneDX SBOM, and reproducible isolated `meshc` builds from the release
+revision on the workflow host. Android and reproducibility of every advertised
+target archive remain Milestone 10 release gates before production activation.

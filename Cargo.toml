@@ -33,13 +33,13 @@ clap = { version = "4.5", features = ["derive"] }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 toml = "0.8"
-git2 = "0.19"
+git2 = "0.21"
 semver = "1"
 rustyline = "15"
 mimalloc = { version = "0.1", default-features = false }
 tar = "0.4"
 flate2 = "1"
-indicatif = "0.17"
+indicatif = "0.18"
 colored = "2"
 dirs = "5"
 ureq = { version = "3", features = ["gzip"] }

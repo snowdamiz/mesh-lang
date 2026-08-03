@@ -105,10 +105,17 @@ pass. This is not yet a release-approved profile:
 
 - The cryptographic fuzz and complete secret-leak sentinel suites remain open.
 - The full advertised mobile/host target matrix remains a Milestone 10 gate.
-- Dependency audit, SBOM, and reproducible-build evidence are not yet wired
-  into a cryptographic release record.
+- The release workflow now blocks tagged releases on a clean RustSec audit, a
+  CycloneDX SBOM, and two reproducible isolated `meshc` builds for the workflow
+  host. Reproducibility of every advertised target archive remains open.
 
 Current primitives are implementation baseline, not approval evidence. A
 release record must name the profile, Mesh revision, provider and dependency
 versions, tested targets and optimization levels, vector set, test reports,
 audit/SBOM/reproducibility results, known limitations, and required review.
+
+Run `bash scripts/generate-crypto-release-evidence.sh OUTPUT_DIRECTORY` from a
+clean release revision to produce the audit JSON, CycloneDX 1.5 SBOM,
+reproducibility comparison, release record, logs, and checksums. The output
+record explicitly lists the fuzzing, target-matrix, secret-leak, and independent
+review evidence that this command does not provide.

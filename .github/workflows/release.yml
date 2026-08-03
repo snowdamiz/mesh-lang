@@ -247,7 +247,7 @@ jobs:
               export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
               cargo build --release --target x86_64-unknown-linux-musl
             '
-          sudo chown -R $(id -u):$(id -g) target/
+          sudo chown -R "$(id -u):$(id -g)" target/
 
       - name: Build meshc (Unix)
         if: runner.os != 'Windows' && matrix.llvm_method != 'docker'
@@ -394,6 +394,62 @@ jobs:
         with:
           name: meshpkg-${{ matrix.target }}
           path: meshpkg-v${{ steps.version.outputs.version }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+
+  # ── Cryptographic release evidence ─────────────────────────────────
+
+  cryptographic-release-evidence:
+    name: Cryptographic release evidence
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        id: cache-llvm-evidence
+        with:
+          path: ~/llvm
+          key: llvm-21.1.8-v4-x86_64-unknown-linux-gnu
+
+      - name: Install LLVM 21
+        if: steps.cache-llvm-evidence.outputs.cache-hit != 'true'
+        run: |
+          LLVM_VERSION="21.1.8"
+          LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+          LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
+          curl -sSfL "$LLVM_URL" -o llvm.tar.xz
+          mkdir -p "$HOME/llvm"
+          tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
+          rm llvm.tar.xz
+
+      - name: Set LLVM prefix
+        shell: bash
+        run: echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install evidence tools
+        shell: bash
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+
+      - name: Generate evidence from the release revision
+        shell: bash
+        run: |
+          bash scripts/tests/generate-crypto-release-evidence-contract.test.sh
+          bash scripts/generate-crypto-release-evidence.sh "$RUNNER_TEMP/crypto-release-evidence"
+
+      - name: Upload cryptographic release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptographic-release-evidence
+          path: ${{ runner.temp }}/crypto-release-evidence/**
+          if-no-files-found: warn
 
   # ── Authoritative live proof ───────────────────────────────────────
 
@@ -585,7 +641,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build, build-meshpkg, authoritative-live-proof, autonomous-cluster-proof, verify-release-assets]
+    needs: [build, build-meshpkg, cryptographic-release-evidence, authoritative-live-proof, autonomous-cluster-proof, verify-release-assets]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -600,7 +656,7 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd artifacts/
-          sha256sum *.tar.gz *.zip > SHA256SUMS
+          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
           cat SHA256SUMS
 
       - name: Create GitHub Release
