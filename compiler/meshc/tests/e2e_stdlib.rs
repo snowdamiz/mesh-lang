@@ -266,6 +266,16 @@ fn e2e_file_error_handling() {
     assert_eq!(output, "error\n");
 }
 
+#[test]
+fn e2e_file_binary_ranges_are_bounded() {
+    let source = read_fixture("stdlib_file_binary_ranges.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "5\n010203\nbounded\nrange bounded\ntruncate bounded\n"
+    );
+}
+
 // ── IO E2E Tests ────────────────────────────────────────────────────────
 
 #[test]

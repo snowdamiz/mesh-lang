@@ -4,11 +4,17 @@
 //! All fallible operations return MeshResult (tag 0 = Ok, tag 1 = Err).
 
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 
+use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::MeshResult;
 use crate::string::{mesh_string_new, MeshString};
+
+const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
+// ponytail: 16 MiB is the messenger's reviewed file ceiling; add a versioned
+// quota API before generalizing binary range I/O to larger files.
+const MAX_BINARY_FILE_BYTES: i64 = 16 * 1024 * 1024;
 
 /// Allocate a MeshResult on the GC heap.
 fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
@@ -29,6 +35,26 @@ fn err_result(msg: &str) -> *mut MeshResult {
     alloc_result(1, s as *mut u8)
 }
 
+fn ok_int(value: i64) -> *mut MeshResult {
+    unsafe {
+        let output = mesh_gc_alloc_actor(
+            std::mem::size_of::<i64>() as u64,
+            std::mem::align_of::<i64>() as u64,
+        ) as *mut i64;
+        output.write(value);
+        alloc_result(0, output.cast())
+    }
+}
+
+fn valid_range(offset: i64, length: i64) -> Option<(u64, usize)> {
+    let end = offset.checked_add(length)?;
+    if offset < 0 || length <= 0 || length > MAX_BINARY_CHUNK_BYTES || end > MAX_BINARY_FILE_BYTES {
+        None
+    } else {
+        Some((offset as u64, length as usize))
+    }
+}
+
 /// Read the entire contents of a file as a UTF-8 string.
 ///
 /// Returns MeshResult:
@@ -44,6 +70,105 @@ pub extern "C" fn mesh_file_read(path: *const MeshString) -> *mut MeshResult {
                 alloc_result(0, s as *mut u8)
             }
             Err(e) => err_result(&e.to_string()),
+        }
+    }
+}
+
+/// Reads at most 64 KiB from a bounded byte range without decoding UTF-8.
+///
+/// Returns an error for negative offsets, zero or oversized lengths, ranges
+/// past the 16 MiB ceiling, missing files, and operating-system I/O failures.
+#[no_mangle]
+pub extern "C" fn mesh_file_read_bytes(
+    path: *const MeshString,
+    offset: i64,
+    length: i64,
+) -> *mut MeshResult {
+    if path.is_null() {
+        return err_result("invalid file path");
+    }
+    let Some((offset, length)) = valid_range(offset, length) else {
+        return err_result("invalid binary file range");
+    };
+    unsafe {
+        let path = (*path).as_str();
+        let result = (|| -> std::io::Result<Vec<u8>> {
+            let mut file = fs::File::open(path)?;
+            file.seek(SeekFrom::Start(offset))?;
+            let mut output = Vec::with_capacity(length);
+            file.take(length as u64).read_to_end(&mut output)?;
+            Ok(output)
+        })();
+        match result {
+            Ok(output) => alloc_result(
+                0,
+                mesh_bytes_new(output.as_ptr(), output.len() as u64).cast(),
+            ),
+            Err(error) => err_result(&error.to_string()),
+        }
+    }
+}
+
+/// Writes one bounded binary chunk at an explicit offset.
+///
+/// `truncate` is accepted only at offset zero. Inputs are limited to 64 KiB
+/// per call and to a 16 MiB resulting range.
+#[no_mangle]
+pub extern "C" fn mesh_file_write_bytes(
+    path: *const MeshString,
+    offset: i64,
+    bytes: *const MeshBytes,
+    truncate: i8,
+) -> *mut MeshResult {
+    if path.is_null()
+        || bytes.is_null()
+        || (truncate != 0 && truncate != 1)
+        || (truncate != 0 && offset != 0)
+    {
+        return err_result("invalid binary file write");
+    }
+    unsafe {
+        let input = (*bytes).as_slice();
+        let Ok(length) = i64::try_from(input.len()) else {
+            return err_result("invalid binary file range");
+        };
+        let Some((offset, _)) = valid_range(offset, length) else {
+            return err_result("invalid binary file range");
+        };
+        let path = (*path).as_str();
+        let result = (|| -> std::io::Result<()> {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(truncate != 0)
+                .open(path)?;
+            file.seek(SeekFrom::Start(offset))?;
+            file.write_all(input)
+        })();
+        match result {
+            Ok(()) => alloc_result(0, std::ptr::null_mut()),
+            Err(error) => err_result(&error.to_string()),
+        }
+    }
+}
+
+/// Returns a regular file's byte length when it fits in a Mesh `Int`.
+#[no_mangle]
+pub extern "C" fn mesh_file_size(path: *const MeshString) -> *mut MeshResult {
+    if path.is_null() {
+        return err_result("invalid file path");
+    }
+    unsafe {
+        let length = fs::metadata((*path).as_str()).and_then(|metadata| {
+            if !metadata.is_file() {
+                Err(std::io::Error::other("path is not a regular file"))
+            } else {
+                i64::try_from(metadata.len()).map_err(std::io::Error::other)
+            }
+        });
+        match length {
+            Ok(length) => ok_int(length),
+            Err(error) => err_result(&error.to_string()),
         }
     }
 }

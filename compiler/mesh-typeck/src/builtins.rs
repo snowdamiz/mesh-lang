@@ -476,6 +476,27 @@ pub fn register_builtins(
         )),
     );
     env.insert(
+        "file_read_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::int()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_write_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::bytes(), Ty::bool()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_size".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
         "file_write".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::string(), Ty::string()],
@@ -3413,7 +3434,10 @@ mod tests {
 
         // File I/O functions
         assert!(env.lookup("file_read").is_some());
+        assert!(env.lookup("file_read_bytes").is_some());
         assert!(env.lookup("file_write").is_some());
+        assert!(env.lookup("file_write_bytes").is_some());
+        assert!(env.lookup("file_size").is_some());
         assert!(env.lookup("file_append").is_some());
         assert!(env.lookup("file_exists").is_some());
         assert!(env.lookup("file_delete").is_some());

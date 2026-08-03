@@ -1889,6 +1889,24 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_file_read_bytes".to_string(),
+            MirType::FnPtr(
+                vec![MirType::String, MirType::Int, MirType::Int],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_file_write_bytes".to_string(),
+            MirType::FnPtr(
+                vec![MirType::String, MirType::Int, MirType::Ptr, MirType::Bool],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_file_size".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_file_write".to_string(),
             MirType::FnPtr(
                 vec![MirType::String, MirType::String],
@@ -9610,7 +9628,11 @@ impl<'a> Lowerer<'a> {
         }
 
         // Map builtin function names to their runtime equivalents.
-        let mapped_name = map_builtin_name(&name);
+        let mapped_name = if self.imported_functions.contains(&name) {
+            name.clone()
+        } else {
+            map_builtin_name(&name)
+        };
         let ty = resolved_ty;
 
         // Apply module-qualified naming to user-defined functions (Phase 41).
@@ -15249,6 +15271,9 @@ fn map_builtin_name(name: &str) -> String {
         "string_to_float" => "mesh_string_to_float".to_string(),
         // File I/O functions
         "file_read" => "mesh_file_read".to_string(),
+        "file_read_bytes" => "mesh_file_read_bytes".to_string(),
+        "file_write_bytes" => "mesh_file_write_bytes".to_string(),
+        "file_size" => "mesh_file_size".to_string(),
         "file_write" => "mesh_file_write".to_string(),
         "file_append" => "mesh_file_append".to_string(),
         "file_exists" => "mesh_file_exists".to_string(),
@@ -15481,6 +15506,9 @@ fn map_builtin_name(name: &str) -> String {
         "eprintln" => "mesh_io_eprintln".to_string(),
         // File bare names (from File import read, etc.)
         "read" => "mesh_file_read".to_string(),
+        "read_bytes" => "mesh_file_read_bytes".to_string(),
+        "write_bytes" => "mesh_file_write_bytes".to_string(),
+        "size" => "mesh_file_size".to_string(),
         "write" => "mesh_file_write".to_string(),
         "append" => "mesh_file_append".to_string(),
         "exists" => "mesh_file_exists".to_string(),

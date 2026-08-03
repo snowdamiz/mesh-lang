@@ -394,6 +394,39 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_file_read_bytes(path: ptr, offset: i64, length: i64) -> ptr (MeshResult)
+    let file_read_bytes_ty =
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+    module.add_function(
+        "mesh_file_read_bytes",
+        file_read_bytes_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_file_write_bytes(path: ptr, offset: i64, bytes: ptr, truncate: i8) -> ptr
+    let file_write_bytes_ty = ptr_type.fn_type(
+        &[
+            ptr_type.into(),
+            i64_type.into(),
+            ptr_type.into(),
+            i8_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_file_write_bytes",
+        file_write_bytes_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_file_size(path: ptr) -> ptr (MeshResult)
+    let file_size_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function(
+        "mesh_file_size",
+        file_size_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_file_write(path: ptr, content: ptr) -> ptr (MeshResult)
     let file_write_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function(

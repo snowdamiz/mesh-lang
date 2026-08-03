@@ -7215,6 +7215,31 @@ fn e2e_request_query() {
     assert_eq!(output, "request_query_ok\n");
 }
 
+#[test]
+fn e2e_imported_size_shadows_builtin_name() {
+    let output = compile_multifile_and_run(&[
+        (
+            "helpers.mpl",
+            r#"
+pub fn size(value :: Int) -> Int do
+  value + 1
+end
+"#,
+        ),
+        (
+            "main.mpl",
+            r##"
+from Helpers import size
+
+fn main() do
+  println("#{size(41)}")
+end
+"##,
+        ),
+    ]);
+    assert_eq!(output, "42\n");
+}
+
 /// Proves cross-module `from_json` lowering remains supported.
 #[test]
 fn e2e_cross_module_from_json() {

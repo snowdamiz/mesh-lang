@@ -216,6 +216,9 @@ function-level reference.
 Important operational distinctions:
 
 - `Bytes` is the binary-safe value type. `String` is UTF-8 text.
+- `File.read_bytes` and `File.write_bytes` provide
+  [bounded binary range I/O](docs/bounded-binary-file-io.md) without a text or
+  host-language conversion.
 - Wide integers use parse/compare/checked arithmetic functions; they are not
   ordinary `Int` literals with unchecked operators.
 - `Checked` returns `Result` for overflow, division, rescaling, and explicit

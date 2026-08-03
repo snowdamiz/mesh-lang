@@ -1221,6 +1221,27 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         )),
     );
     file_mod.insert(
+        "read_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::int()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "write_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::bytes(), Ty::bool()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "size".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    file_mod.insert(
         "write".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::string(), Ty::string()],
