@@ -2094,6 +2094,31 @@ pub fn register_builtins(
             Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )),
     );
+    env.insert(
+        "sqlite_execute_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "sqlite_query_values".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
 
     // ── Phase 54: PostgreSQL functions ─────────────────────────────────────
     // PgConn opaque type -- lowered to Int (i64) at MIR level for GC safety.

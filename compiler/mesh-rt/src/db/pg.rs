@@ -47,9 +47,9 @@ const MAX_PG_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_VALUES: usize = i16::MAX as usize;
 const MAX_PG_ROWS: usize = 100_000;
-const DB_VALUE_TEXT: u8 = 0;
-const DB_VALUE_BINARY: u8 = 1;
-const DB_VALUE_NULL: u8 = 2;
+pub(crate) const DB_VALUE_TEXT: u8 = 0;
+pub(crate) const DB_VALUE_BINARY: u8 = 1;
+pub(crate) const DB_VALUE_NULL: u8 = 2;
 
 /// ABI mirror of the compiler's `{ Text(String), Binary(Bytes), Null }` sum.
 #[repr(C)]
@@ -939,11 +939,14 @@ fn typed_row_result_cost(body: &[u8], columns: &[PgColumn]) -> Result<usize, Str
         .ok_or_else(|| "PostgreSQL decoded result size overflow".to_string())
 }
 
-unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbValue {
+pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbValue {
     let value = mesh_gc_alloc_actor(
         std::mem::size_of::<MeshDbValue>() as u64,
         std::mem::align_of::<MeshDbValue>() as u64,
     ) as *mut MeshDbValue;
+    if value.is_null() {
+        return std::ptr::null_mut();
+    }
     value.write(MeshDbValue { tag, payload });
     value
 }

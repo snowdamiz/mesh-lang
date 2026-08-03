@@ -3536,6 +3536,15 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        for name in ["mesh_sqlite_execute_values", "mesh_sqlite_query_values"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
         // ── PostgreSQL functions (Phase 54) ──────────────────────────────
         // Connection handle is MirType::Int (i64) for GC safety (same as SQLite).
         self.known_functions.insert(
@@ -15667,6 +15676,8 @@ fn map_builtin_name(name: &str) -> String {
         "sqlite_close" => "mesh_sqlite_close".to_string(),
         "sqlite_execute" => "mesh_sqlite_execute".to_string(),
         "sqlite_query" => "mesh_sqlite_query".to_string(),
+        "sqlite_execute_values" => "mesh_sqlite_execute_values".to_string(),
+        "sqlite_query_values" => "mesh_sqlite_query_values".to_string(),
         // ── PostgreSQL functions (Phase 54) ──────────────────────────────
         "pg_connect" => "mesh_pg_connect".to_string(),
         "pg_close" => "mesh_pg_close".to_string(),

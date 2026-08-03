@@ -146,7 +146,10 @@ pub use db::repo::{
     mesh_repo_query_raw, mesh_repo_transaction, mesh_repo_update, mesh_repo_update_changeset,
     mesh_repo_update_where, mesh_repo_update_where_expr,
 };
-pub use db::sqlite::{mesh_sqlite_close, mesh_sqlite_execute, mesh_sqlite_open, mesh_sqlite_query};
+pub use db::sqlite::{
+    mesh_sqlite_close, mesh_sqlite_execute, mesh_sqlite_execute_values, mesh_sqlite_open,
+    mesh_sqlite_query, mesh_sqlite_query_values,
+};
 pub use dist::autonomous::{
     autonomous_controller_status, embedded_autonomous_config, mesh_register_autonomous_config_json,
     register_autonomous_config_json, AutonomousControllerStatus, RuntimeAutonomousConfig,

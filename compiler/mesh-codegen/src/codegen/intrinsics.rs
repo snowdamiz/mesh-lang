@@ -2469,6 +2469,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    for name in ["mesh_sqlite_execute_values", "mesh_sqlite_query_values"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
 
     // ── Phase 54: PostgreSQL ──────────────────────────────────────────────
 
@@ -4497,6 +4504,8 @@ mod tests {
         assert!(module.get_function("mesh_sqlite_close").is_some());
         assert!(module.get_function("mesh_sqlite_execute").is_some());
         assert!(module.get_function("mesh_sqlite_query").is_some());
+        assert!(module.get_function("mesh_sqlite_execute_values").is_some());
+        assert!(module.get_function("mesh_sqlite_query_values").is_some());
 
         // Phase 54: PostgreSQL
         assert!(module.get_function("mesh_pg_connect").is_some());

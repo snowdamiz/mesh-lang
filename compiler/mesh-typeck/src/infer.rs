@@ -2233,6 +2233,31 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
             Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
         )),
     );
+    sqlite_mod.insert(
+        "execute_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    sqlite_mod.insert(
+        "query_values".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
     // Sqlite.begin: fn(SqliteConn) -> Result<Unit, String>
     sqlite_mod.insert(
         "begin".to_string(),
