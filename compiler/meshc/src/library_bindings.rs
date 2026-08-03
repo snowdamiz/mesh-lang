@@ -122,7 +122,7 @@ fn render_kotlin(load_name: &str, exports: &[LibraryExport]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        val status = initializeNative()\n        check(status == 0) {{ \"Mesh library initialization failed (status=$status)\" }}\n    }}\n\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
+        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        val status = initializeNative()\n        check(status == 0) {{ \"Mesh library initialization failed (status=$status)\" }}\n    }}\n\n    @JvmStatic fun initialize() = Unit\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
     )
 }
 
@@ -183,6 +183,7 @@ mod tests {
             .swift
             .contains("defer { mesh_library_free_returned_bytes"));
         assert!(bindings.kotlin.contains("external fun echo"));
+        assert!(bindings.kotlin.contains("fun initialize()"));
         assert!(bindings.jni.contains("mesh_library_free_returned_bytes"));
         assert!(bindings.jni.contains("status=%d"));
         assert!(bindings.jni.contains("response->data"));
