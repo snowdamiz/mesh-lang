@@ -600,6 +600,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_crypto_x25519_from_seed",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     for name in ["mesh_crypto_x25519_public", "mesh_crypto_aead_key"] {
         module.add_function(
             name,
@@ -4738,6 +4744,7 @@ mod tests {
             ("mesh_crypto_hmac_sha256", 2),
             ("mesh_crypto_hkdf_sha256", 4),
             ("mesh_crypto_x25519_generate", 0),
+            ("mesh_crypto_x25519_from_seed", 1),
             ("mesh_crypto_x25519_public", 1),
             ("mesh_crypto_x25519_shared", 2),
             ("mesh_crypto_signing_generate", 0),

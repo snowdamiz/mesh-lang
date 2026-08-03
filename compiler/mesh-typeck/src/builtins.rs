@@ -86,6 +86,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::x25519_key_pair()))),
         ),
         (
+            "x25519_from_seed",
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes()],
+                crypto_result(Ty::x25519_key_pair()),
+            )),
+        ),
+        (
             "x25519_public",
             Scheme::mono(Ty::fun(
                 vec![Ty::x25519_private_key()],

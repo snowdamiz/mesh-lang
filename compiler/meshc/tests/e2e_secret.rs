@@ -335,6 +335,47 @@ end
 }
 
 #[test]
+fn x25519_seed_constructor_matches_rfc7748() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "crypto-x25519-seed",
+        r#"
+fn proof() -> Bool ! String do
+  let seed = Bytes.from_hex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a") ?
+  let pair = case Crypto.x25519_from_seed(seed) do
+    Err(_) -> Err("x25519 failed")
+    Ok(value) -> Ok(value)
+  end ?
+  Ok(Bytes.to_hex(pair.public_key.bytes) == "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")
+end
+
+fn main() do
+  case proof() do
+    Ok(true) -> println("seed-ok")
+    _ -> println("seed-error")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("crypto-x25519-seed"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "seeded X25519 proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "seed-ok\n");
+}
+
+#[test]
 fn result_tuple_destructuring_binds_and_consumes_resource_elements() {
     let temp = tempfile::tempdir().unwrap();
     let project = write_project(

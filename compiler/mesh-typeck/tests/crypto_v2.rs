@@ -37,6 +37,21 @@ end
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn x25519_seed_constructor_is_typed_as_an_affine_key_pair_result() {
+    let result = check_source(
+        r#"
+fn seeded(value :: Bytes) -> Result<X25519KeyPair, CryptoError> do
+  Crypto.x25519_from_seed(value)
+end
+fn seeded_raw(value :: Bytes) -> Result<X25519KeyPair, CryptoError> do
+  crypto_x25519_from_seed(value)
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 fn con(name: &str) -> Ty {
     Ty::Con(TyCon::new(name))
 }
