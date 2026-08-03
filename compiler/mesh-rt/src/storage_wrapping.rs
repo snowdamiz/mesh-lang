@@ -24,6 +24,7 @@ use zeroize::Zeroizing;
 const DOMAIN_LABEL: &[u8] = b"mesh-msg/v1/storage-wrap";
 const CONTEXT_BYTES: usize = 123;
 const PLAINTEXT_BYTES: usize = 32;
+const MLKEM_PRIVATE_SEED_BYTES: usize = 64;
 const STORAGE_KEY_MATERIAL_BYTES: usize = 36;
 const NONCE_BYTES: usize = 12;
 const BINDING_BYTES: usize = 32;
@@ -183,6 +184,11 @@ fn validate_plaintext_length(
         StorageValueKind::Bytes => {
             if length > MAX_PLAINTEXT_BYTES {
                 return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+            }
+        }
+        StorageValueKind::Resource(ResourceKind::MlKemPrivateKey) => {
+            if length != MLKEM_PRIVATE_SEED_BYTES {
+                return Err(invalid_length(MLKEM_PRIVATE_SEED_BYTES, length));
             }
         }
         StorageValueKind::Resource(_) if length != PLAINTEXT_BYTES => {
@@ -1045,7 +1051,12 @@ mod tests {
                 15 => ResourceKind::MlKemPrivateKey,
                 _ => unreachable!(),
             };
-            let plaintext = vec![purpose as u8; PLAINTEXT_BYTES];
+            let plaintext_length = if kind == ResourceKind::MlKemPrivateKey {
+                MLKEM_PRIVATE_SEED_BYTES
+            } else {
+                PLAINTEXT_BYTES
+            };
+            let plaintext = vec![purpose as u8; plaintext_length];
             let context = context(purpose);
             let blob = seal_value(
                 &SystemProvider,
