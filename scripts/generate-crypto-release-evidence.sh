@@ -38,8 +38,8 @@ cd "${ROOT_DIR}"
 
 REVISION="$(git rev-parse --verify HEAD)"
 readonly REVISION
-SOURCE_DATE_EPOCH="$(git show -s --format=%ct "${REVISION}")"
-readonly SOURCE_DATE_EPOCH
+COMMIT_EPOCH="$(git show -s --format=%ct "${REVISION}")"
+readonly COMMIT_EPOCH
 RUSTC_VERSION="$(rustc --version)"
 readonly RUSTC_VERSION
 CARGO_VERSION="$(cargo --version)"
@@ -147,7 +147,7 @@ build_once() {
   (
     cd "${source_root}"
     CARGO_INCREMENTAL=0 \
-      SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}" \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
       RUSTFLAGS="${remap_flags}" \
       cargo build --locked --release -p meshc --target-dir "${target_root}"
   ) >"${log_path}" 2>&1
@@ -176,7 +176,7 @@ readonly SIZE_B
 reproducible=false
 [[ "${SHA_A}" == "${SHA_B}" && "${SIZE_A}" == "${SIZE_B}" ]] && reproducible=true
 
-python3 - "${OUTPUT_DIR}/reproducibility.json" "${REVISION}" "${HOST_TARGET}" "${SOURCE_DATE_EPOCH}" "${SHA_A}" "${SHA_B}" "${SIZE_A}" "${SIZE_B}" "${reproducible}" <<'PY'
+python3 - "${OUTPUT_DIR}/reproducibility.json" "${REVISION}" "${HOST_TARGET}" "${COMMIT_EPOCH}" "${SHA_A}" "${SHA_B}" "${SIZE_A}" "${SIZE_B}" "${reproducible}" <<'PY'
 import json
 import sys
 
@@ -208,7 +208,7 @@ readonly AUDIT_SHA
 SBOM_SHA="$(sha256_file "${OUTPUT_DIR}/meshc.cdx.json")"
 readonly SBOM_SHA
 
-python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${SOURCE_DATE_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${SHA_A}" <<'PY'
+python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${SHA_A}" <<'PY'
 from datetime import datetime, timezone
 import json
 import sys
