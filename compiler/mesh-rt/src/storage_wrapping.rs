@@ -93,6 +93,7 @@ enum SecretPurpose {
     LocalData,
     PostQuantumPrekey,
     GroupEpochSecret,
+    GroupTreeKemKey,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,6 +136,7 @@ impl SecretPurpose {
             14 => Ok(Self::LocalData),
             15 => Ok(Self::PostQuantumPrekey),
             16 => Ok(Self::GroupEpochSecret),
+            17 => Ok(Self::GroupTreeKemKey),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -152,9 +154,11 @@ impl SecretPurpose {
             Self::AccountAuthorizationKey | Self::DeviceSigningKey => {
                 ResourceKind::SigningPrivateKey.into()
             }
-            Self::DeviceDhKey | Self::SignedPrekey | Self::OneTimePrekey | Self::RatchetDhKey => {
-                ResourceKind::X25519PrivateKey.into()
-            }
+            Self::DeviceDhKey
+            | Self::SignedPrekey
+            | Self::OneTimePrekey
+            | Self::RatchetDhKey
+            | Self::GroupTreeKemKey => ResourceKind::X25519PrivateKey.into(),
             Self::LocalData => StorageValueKind::Bytes,
             Self::PostQuantumPrekey => ResourceKind::MlKemPrivateKey.into(),
         }
@@ -1007,7 +1011,7 @@ mod tests {
         context.push(1);
         context.extend(0u8..32);
         context.extend(0x20u8..0x30);
-        if matches!(purpose, 1..=4 | 11..=13 | 16) {
+        if matches!(purpose, 1..=4 | 11..=13 | 16..=17) {
             context.extend(0x30u8..0x50);
         } else {
             context.extend_from_slice(&[0; 32]);
@@ -1045,12 +1049,12 @@ mod tests {
     fn every_registered_purpose_round_trips_to_its_exact_resource_kind() {
         let material = material();
 
-        for purpose in (1..=13).chain([15, 16]) {
+        for purpose in (1..=13).chain([15, 16, 17]) {
             let kind = match purpose {
                 1..=5 | 11 | 16 => ResourceKind::SecretBytes,
                 12 => ResourceKind::SecretMap,
                 6..=7 => ResourceKind::SigningPrivateKey,
-                8..=10 | 13 => ResourceKind::X25519PrivateKey,
+                8..=10 | 13 | 17 => ResourceKind::X25519PrivateKey,
                 15 => ResourceKind::MlKemPrivateKey,
                 _ => unreachable!(),
             };
