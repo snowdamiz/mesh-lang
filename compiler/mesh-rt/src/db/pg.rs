@@ -36,7 +36,7 @@ use crate::collections::list::{
 };
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::alloc_result;
+use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -1853,6 +1853,21 @@ pub extern "C" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
     }
 }
 
+pub(crate) unsafe fn invoke_transaction_callback(
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    conn_handle: u64,
+) -> *mut u8 {
+    let result = if env_ptr.is_null() {
+        let callback: extern "C" fn(u64) -> MeshResult = std::mem::transmute(fn_ptr);
+        callback(conn_handle)
+    } else {
+        let callback: extern "C" fn(*const u8, u64) -> MeshResult = std::mem::transmute(fn_ptr);
+        callback(env_ptr, conn_handle)
+    };
+    alloc_result(result.tag, result.value) as *mut u8
+}
+
 /// Execute a Mesh closure inside a PostgreSQL transaction with automatic
 /// commit on success and rollback on error or panic.
 ///
@@ -1883,13 +1898,7 @@ pub extern "C" fn mesh_pg_transaction(
 
         // 2. Call the closure with catch_unwind for panic safety
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if env_ptr.is_null() {
-                let f: extern "C" fn(u64) -> *mut u8 = std::mem::transmute(fn_ptr);
-                f(conn_handle)
-            } else {
-                let f: extern "C" fn(*const u8, u64) -> *mut u8 = std::mem::transmute(fn_ptr);
-                f(env_ptr, conn_handle)
-            }
+            invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
         }));
 
         match result {

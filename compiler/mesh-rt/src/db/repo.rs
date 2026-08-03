@@ -28,8 +28,10 @@ use crate::db::changeset::{
     add_constraint_error_to_changeset, map_constraint_error, SLOT_CHANGES, SLOT_VALID,
 };
 use crate::db::expr::{clone_expr, serialize_expr, SqlExpr};
-use crate::db::pg::{mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
-use crate::db::pool::{mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query};
+use crate::db::pg::{invoke_transaction_callback, mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
+use crate::db::pool::{
+    mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
+};
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -1202,7 +1204,7 @@ pub extern "C" fn mesh_repo_transaction(
         if r.tag != 0 {
             return checkout_result; // propagate checkout error
         }
-        let conn_handle = r.value as u64;
+        let conn_handle = unbox_u64_payload(r.value);
 
         // 2. BEGIN transaction
         let begin_result = mesh_pg_begin(conn_handle);
@@ -1215,13 +1217,7 @@ pub extern "C" fn mesh_repo_transaction(
 
         // 3. Call the user callback with catch_unwind for panic safety
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if env_ptr.is_null() {
-                let f: extern "C" fn(u64) -> *mut u8 = std::mem::transmute(fn_ptr);
-                f(conn_handle)
-            } else {
-                let f: extern "C" fn(*const u8, u64) -> *mut u8 = std::mem::transmute(fn_ptr);
-                f(env_ptr, conn_handle)
-            }
+            invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
         }));
 
         match result {

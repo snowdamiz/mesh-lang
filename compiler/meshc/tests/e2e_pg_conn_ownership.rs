@@ -71,5 +71,8 @@ fn direct_postgres_connection_round_trip() {
         String::from_utf8_lossy(&run.stdout),
         String::from_utf8_lossy(&run.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&run.stdout), "direct:ok\ndone\n");
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "direct:ok\ndirect-transaction:ok\ntransaction-commit:1\ntransaction-rollback:forced rollback\ntransaction-count:1\ndone\n"
+    );
 }

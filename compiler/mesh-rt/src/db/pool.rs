@@ -92,7 +92,7 @@ fn box_u64_payload(value: u64) -> *mut u8 {
     Box::into_raw(Box::new(value)) as *mut u8
 }
 
-unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
+pub(crate) unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
     *(ptr as *const u64)
 }
 
