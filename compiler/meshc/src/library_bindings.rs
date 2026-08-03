@@ -35,6 +35,8 @@ struct Bindings {
 }
 
 fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> Bindings {
+    let target = mesh_codegen::link::effective_target_triple(target)
+        .unwrap_or_else(|_| target.unwrap_or(std::env::consts::ARCH).to_string());
     let stem = artifact
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -49,7 +51,7 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
         manifest: serde_json::to_string_pretty(&serde_json::json!({
             "abiVersion": ABI_VERSION,
             "artifact": artifact.file_name().and_then(|name| name.to_str()),
-            "target": target.unwrap_or(std::env::consts::ARCH),
+            "target": target,
             "ownership": {
                 "request": "borrowed-for-call",
                 "response": "caller-owned; release with mesh_library_free_returned_bytes"
@@ -120,7 +122,7 @@ fn render_kotlin(load_name: &str, exports: &[LibraryExport]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        check(initializeNative() == 0)\n    }}\n\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
+        "package mesh\n\nobject MeshLibrary {{\n    init {{\n        System.loadLibrary(\"{load_name}\")\n        val status = initializeNative()\n        check(status == 0) {{ \"Mesh library initialization failed (status=$status)\" }}\n    }}\n\n    @JvmStatic private external fun initializeNative(): Int\n    @JvmStatic external fun shutdownNative(): Int\n{declarations}\n}}\n"
     )
 }
 
@@ -135,14 +137,14 @@ fn render_jni(artifact: &Path, exports: &[LibraryExport]) -> String {
         .iter()
         .map(|export| {
             format!(
-                "JNIEXPORT jbyteArray JNICALL Java_mesh_MeshLibrary_{}(JNIEnv *env, jclass cls, jbyteArray request) {{\n  (void)cls;\n  jsize request_len = (*env)->GetArrayLength(env, request);\n  jbyte *request_data = (*env)->GetByteArrayElements(env, request, NULL);\n  MeshLibraryBytes response = {{0}};\n  int32_t status = {}((const uint8_t *)request_data, (uint64_t)request_len, &response);\n  (*env)->ReleaseByteArrayElements(env, request, request_data, JNI_ABORT);\n  if (status != MESH_LIBRARY_OK) {{\n    jclass error = (*env)->FindClass(env, \"java/lang/IllegalStateException\");\n    (*env)->ThrowNew(env, error, \"Mesh library call failed\");\n    mesh_library_free_returned_bytes(&response);\n    return NULL;\n  }}\n  jbyteArray result = (*env)->NewByteArray(env, (jsize)response.len);\n  if (response.len != 0) (*env)->SetByteArrayRegion(env, result, 0, (jsize)response.len, (const jbyte *)response.data);\n  mesh_library_free_returned_bytes(&response);\n  return result;\n}}",
+                "JNIEXPORT jbyteArray JNICALL Java_mesh_MeshLibrary_{}(JNIEnv *env, jclass cls, jbyteArray request) {{\n  (void)cls;\n  jsize request_len = (*env)->GetArrayLength(env, request);\n  jbyte *request_data = (*env)->GetByteArrayElements(env, request, NULL);\n  MeshLibraryBytes response = {{0}};\n  int32_t status = {}((const uint8_t *)request_data, (uint64_t)request_len, &response);\n  (*env)->ReleaseByteArrayElements(env, request, request_data, JNI_ABORT);\n  if (status != MESH_LIBRARY_OK) {{\n    mesh_throw_library_failure(env, status, &response);\n    mesh_library_free_returned_bytes(&response);\n    return NULL;\n  }}\n  jbyteArray result = (*env)->NewByteArray(env, (jsize)response.len);\n  if (response.len != 0) (*env)->SetByteArrayRegion(env, result, 0, (jsize)response.len, (const jbyte *)response.data);\n  mesh_library_free_returned_bytes(&response);\n  return result;\n}}",
                 export.function, export.symbol
             )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
-        "#include <jni.h>\n#include \"{header}\"\n\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_initializeNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_init(); }}\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_shutdownNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_shutdown(); }}\n\n{functions}\n"
+        "#include <jni.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include \"{header}\"\n\nstatic void mesh_throw_library_failure(JNIEnv *env, int32_t status, const MeshLibraryBytes *response) {{\n  jclass error = (*env)->FindClass(env, \"java/lang/IllegalStateException\");\n  size_t payload_len = response->len > 1048576 ? 1048576 : (size_t)response->len;\n  size_t message_len = payload_len + 64;\n  char *message = (char *)malloc(message_len);\n  if (message == NULL) {{\n    (*env)->ThrowNew(env, error, \"Mesh library call failed\");\n    return;\n  }}\n  snprintf(message, message_len, \"Mesh library call failed (status=%d): %.*s\", (int)status, (int)payload_len, response->data == NULL ? \"\" : (const char *)response->data);\n  (*env)->ThrowNew(env, error, message);\n  free(message);\n}}\n\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_initializeNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_init(); }}\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_shutdownNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_shutdown(); }}\n\n{functions}\n"
     )
 }
 
@@ -182,6 +184,8 @@ mod tests {
             .contains("defer { mesh_library_free_returned_bytes"));
         assert!(bindings.kotlin.contains("external fun echo"));
         assert!(bindings.jni.contains("mesh_library_free_returned_bytes"));
+        assert!(bindings.jni.contains("status=%d"));
+        assert!(bindings.jni.contains("response->data"));
         assert!(bindings.typescript.contains("mesh_mobile_echo"));
         assert!(bindings.manifest.contains("caller-owned"));
         for status in [
@@ -197,5 +201,9 @@ mod tests {
         ] {
             assert!(bindings.header.contains(status), "missing {status}");
         }
+
+        let host = mesh_codegen::link::effective_target_triple(None).unwrap();
+        let host_bindings = render(Path::new("/tmp/libmessenger.a"), &[], None);
+        assert!(host_bindings.manifest.contains(&host));
     }
 }
