@@ -576,6 +576,13 @@ pub extern "C" fn mesh_crypto_signing_generate() -> *mut MeshResult {
         Ok(material) => material,
         Err(error) => return error_result(error),
     };
+    allocate_signing_key_pair(private_material, public_key)
+}
+
+fn allocate_signing_key_pair(
+    private_material: Zeroizing<Box<[u8]>>,
+    public_key: [u8; 32],
+) -> *mut MeshResult {
     let public_bytes = mesh_bytes_new(public_key.as_ptr(), 32);
     if public_bytes.is_null() {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
@@ -599,6 +606,22 @@ pub extern "C" fn mesh_crypto_signing_generate() -> *mut MeshResult {
     };
     unsafe { (*key_pair).private_key = private_key };
     result
+}
+
+/// Construct an actor-owned signing key pair from an exact 32-byte Ed25519 seed.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_signing_from_seed(seed: *const MeshBytes) -> *mut MeshResult {
+    let seed = match unsafe { required_bytes(seed, 32) } {
+        Ok(seed) if seed.len() == 32 => seed,
+        Ok(seed) => {
+            return crypto_error(CryptoErrorTag::InvalidLength, 32, seed.len() as i64);
+        }
+        Err(error) => return error_result(error),
+    };
+    let private_material = Zeroizing::new(seed.to_vec().into_boxed_slice());
+    let private_array = <&[u8; 32]>::try_from(&private_material[..]).expect("length checked above");
+    let public_key = SystemProvider.ed25519_public(private_array);
+    allocate_signing_key_pair(private_material, public_key)
 }
 
 fn sign_for_process(
@@ -1122,6 +1145,7 @@ mod tests {
             *const MeshX25519PublicKey,
         ) -> *mut MeshResult = mesh_crypto_x25519_shared;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_signing_generate;
+        let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_signing_from_seed;
         let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
             mesh_crypto_sign;
         let _: extern "C" fn(
@@ -1508,6 +1532,32 @@ mod tests {
 
         assert!(verified);
         destroy_owned(owner);
+    }
+
+    #[test]
+    fn signing_seed_requires_exactly_32_bytes() {
+        mesh_rt_init();
+
+        for seed in [&b"short"[..], &[0u8; 33][..]] {
+            let input = mesh_bytes_new(seed.as_ptr(), seed.len() as u64);
+            let result = mesh_crypto_signing_from_seed(input);
+            let (result_tag, error) = unsafe {
+                (
+                    (*result).tag,
+                    &*((*result).value as *const CryptoErrorLayout),
+                )
+            };
+
+            assert_eq!(
+                (result_tag, error.tag, error.expected, error.actual),
+                (
+                    1,
+                    CryptoErrorTag::InvalidLength as u8,
+                    32,
+                    seed.len() as i64
+                )
+            );
+        }
     }
 
     #[test]

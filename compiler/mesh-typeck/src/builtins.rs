@@ -104,6 +104,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::signing_key_pair()))),
         ),
         (
+            "signing_from_seed",
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes()],
+                crypto_result(Ty::signing_key_pair()),
+            )),
+        ),
+        (
             "sign",
             Scheme::mono(Ty::fun(
                 vec![Ty::signing_private_key(), Ty::bytes()],

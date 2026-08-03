@@ -22,6 +22,21 @@ fn resource_violations(result: &TypeckResult) -> Vec<&str> {
         .collect()
 }
 
+#[test]
+fn signing_seed_constructor_is_typed_as_an_affine_key_pair_result() {
+    let result = check_source(
+        r#"
+fn seeded(value :: Bytes) -> Result<SigningKeyPair, CryptoError> do
+  Crypto.signing_from_seed(value)
+end
+fn seeded_raw(value :: Bytes) -> Result<SigningKeyPair, CryptoError> do
+  crypto_signing_from_seed(value)
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 fn con(name: &str) -> Ty {
     Ty::Con(TyCon::new(name))
 }

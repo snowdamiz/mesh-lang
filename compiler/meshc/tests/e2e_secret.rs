@@ -294,6 +294,47 @@ end
 }
 
 #[test]
+fn signing_seed_constructor_is_deterministic() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "crypto-signing-seed",
+        r#"
+fn proof() -> Bool ! CryptoError do
+  let seed = Bytes.from_utf8("0123456789abcdef0123456789abcdef")
+  let first = Crypto.signing_from_seed(seed) ?
+  let second = Crypto.signing_from_seed(seed) ?
+  let message = Bytes.from_utf8("stable checkpoint")
+  let signature = Crypto.sign(first.private_key, message) ?
+  Crypto.verify(second.public_key, message, signature)
+end
+
+fn main() do
+  case proof() do
+    Ok(true) -> println("seed-ok")
+    _ -> println("seed-error")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("crypto-signing-seed"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "seeded signing proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "seed-ok\n");
+}
+
+#[test]
 fn result_tuple_destructuring_binds_and_consumes_resource_elements() {
     let temp = tempfile::tempdir().unwrap();
     let project = write_project(

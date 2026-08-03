@@ -2008,6 +2008,10 @@ impl<'a> Lowerer<'a> {
             );
         }
         self.known_functions.insert(
+            "mesh_crypto_signing_from_seed".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_crypto_x25519_public".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
@@ -15195,6 +15199,7 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_x25519_public" => "mesh_crypto_x25519_public".to_string(),
         "crypto_x25519_shared" => "mesh_crypto_x25519_shared".to_string(),
         "crypto_signing_generate" => "mesh_crypto_signing_generate".to_string(),
+        "crypto_signing_from_seed" => "mesh_crypto_signing_from_seed".to_string(),
         "crypto_sign" => "mesh_crypto_sign".to_string(),
         "crypto_verify" => "mesh_crypto_verify".to_string(),
         "crypto_aead_key" => "mesh_crypto_aead_key".to_string(),
