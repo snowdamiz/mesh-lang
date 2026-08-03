@@ -47,9 +47,39 @@ end
 fn seeded_raw(value :: Bytes) -> Result<X25519KeyPair, CryptoError> do
   crypto_x25519_from_seed(value)
 end
+fn from_secret(value :: SecretBytes) -> Result<X25519KeyPair, CryptoError> do
+  Crypto.x25519_from_secret(value)
+end
+fn from_secret_raw(value :: SecretBytes) -> Result<X25519KeyPair, CryptoError> do
+  crypto_x25519_from_secret(value)
+end
 "#,
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn x25519_secret_constructor_consumes_private_material() {
+    let result = check_source(
+        r#"
+fn qualified(material :: SecretBytes) do
+  Crypto.x25519_from_secret(material)
+  Secret.destroy(material)
+end
+fn prefixed(material :: SecretBytes) do
+  crypto_x25519_from_secret(material)
+  Secret.destroy(material)
+end
+"#,
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource `material` was used after it moved",
+            "resource `material` was used after it moved",
+        ]
+    );
 }
 
 #[test]

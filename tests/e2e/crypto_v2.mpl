@@ -126,6 +126,24 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
       Bytes.secure_equals(alice.public_key.bytes, alice_public.bytes)
   )
 
+  let derived = Crypto.x25519_from_secret(Secret.random(32) ?) ?
+  let derived_shared = Crypto.x25519_shared(derived.private_key, bob.public_key) ?
+  let bob_derived_shared = Crypto.x25519_shared(bob.private_key, derived.public_key) ?
+  let derived_key = Crypto.aead_key(derived_shared) ?
+  let bob_derived_key = Crypto.aead_key(bob_derived_shared) ?
+  let derivation_nonce = Bytes.from_utf8("derive-key12")
+  let derivation_aad = Bytes.from_utf8("mesh-treekem/v1")
+  let derivation_plaintext = Bytes.from_utf8("secret-derived X25519")
+  let derivation_ciphertext = Crypto.aead_seal(derived_key,
+  derivation_nonce,
+  derivation_aad,
+  derivation_plaintext) ?
+  let derivation_opened = Crypto.aead_open(bob_derived_key,
+  derivation_nonce,
+  derivation_aad,
+  derivation_ciphertext) ?
+  report("x25519-secret-derivation", Bytes.secure_equals(derivation_opened, derivation_plaintext))
+
   case Bytes.repeat(0, 31) do
     Ok(short_public) -> case Crypto.x25519_shared(
       alice.private_key,

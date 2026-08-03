@@ -325,6 +325,12 @@ pub(crate) fn check(
     );
     register_crypto_signature(
         &mut signatures,
+        "x25519_from_secret",
+        vec![ParamOwnership::Consume],
+        vec![Ty::secret_bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
         "x25519_public",
         vec![ParamOwnership::Borrow],
         vec![Ty::x25519_private_key()],

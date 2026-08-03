@@ -22,8 +22,9 @@ use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use crate::secret::{
-    consume_and_retype_owned_resource, crypto_error, insert_owned_resource, with_owned_resource,
-    CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind, RetypeError,
+    consume_and_retype_owned_resource, crypto_error, insert_owned_resource, mesh_resource_destroy,
+    with_owned_resource, CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind,
+    RetypeError,
 };
 use crate::string::{mesh_string_new, MeshString};
 
@@ -559,6 +560,69 @@ pub extern "C" fn mesh_crypto_x25519_from_seed(seed: *const MeshBytes) -> *mut M
     let private_array = <&[u8; 32]>::try_from(&private_material[..]).expect("length checked above");
     let public_key = SystemProvider.x25519_public(private_array);
     allocate_x25519_key_pair(private_material, public_key)
+}
+
+fn x25519_from_secret_for_process(
+    process: &mut Process,
+    provider: &impl CryptoProvider,
+    material: *const MeshSecretHandle,
+) -> Result<(*mut MeshSecretHandle, [u8; 32]), CryptoFailure> {
+    let mut public_key = [0; 32];
+    let private_key = consume_and_retype_owned_resource(
+        process,
+        material,
+        ResourceKind::SecretBytes,
+        ResourceKind::X25519PrivateKey,
+        |bytes| {
+            let private_key = <&[u8; 32]>::try_from(bytes).map_err(|_| bytes.len() as i64)?;
+            public_key = provider.x25519_public(private_key);
+            Ok(())
+        },
+    )
+    .map_err(|error| match error {
+        RetypeError::Resource(error) => resource_failure(error),
+        RetypeError::Rejected {
+            error: actual,
+            removed,
+        } => {
+            drop(removed);
+            failure(CryptoErrorTag::InvalidKey, 32, actual)
+        }
+        RetypeError::GenerationExhausted { removed } => {
+            drop(removed);
+            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
+    })?;
+    Ok((private_key, public_key))
+}
+
+/// Consume exactly 32 secret bytes and retype them as an X25519 private key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_x25519_from_secret(
+    material: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    let (private_key, public_key) = match with_current_process(|process| {
+        x25519_from_secret_for_process(process, &SystemProvider, material)
+    }) {
+        Ok(value) => value,
+        Err(error) => return error_result(error),
+    };
+    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
+    if public_bytes.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let key_pair = allocate_value(MeshX25519KeyPair {
+        private_key,
+        public_key: MeshX25519PublicKey {
+            bytes: public_bytes,
+        },
+    });
+    if key_pair.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    ok_result(key_pair)
 }
 
 unsafe fn x25519_public_key_bytes(
@@ -1836,6 +1900,8 @@ mod tests {
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_x25519_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_x25519_from_seed;
         let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
+            mesh_crypto_x25519_from_secret;
+        let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
             mesh_crypto_x25519_public;
         let _: extern "C" fn(
             *const MeshSecretHandle,
@@ -2357,6 +2423,49 @@ mod tests {
             (error.tag as u8, error.expected, error.actual),
             (CryptoErrorTag::InvalidPublicKey as u8, 32, 31)
         );
+    }
+
+    #[test]
+    fn x25519_secret_constructor_matches_rfc7748_and_consumes_source() {
+        mesh_rt_init();
+        let owner = ProcessId(70_019);
+        let mut process = Process::new(owner, Priority::Normal);
+        let private_key = [
+            0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d, 0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2,
+            0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a, 0xb1, 0x77, 0xfb, 0xa5,
+            0x1d, 0xb9, 0x2c, 0x2a,
+        ];
+        let expected_public_key = [
+            0x85, 0x20, 0xf0, 0x09, 0x89, 0x30, 0xa7, 0x54, 0x74, 0x8b, 0x7d, 0xdc, 0xb4, 0x3e,
+            0xf7, 0x5a, 0x0d, 0xbf, 0x3a, 0x0d, 0x26, 0x38, 0x1a, 0xf4, 0xeb, 0xa4, 0xa9, 0x8e,
+            0xaa, 0x9b, 0x4e, 0x6a,
+        ];
+        let source = insert_owned_resource(
+            &mut process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(private_key.to_vec().into_boxed_slice()),
+        )
+        .expect("insert X25519 material");
+
+        let Ok((derived_private_key, public_key)) =
+            x25519_from_secret_for_process(&mut process, &SystemProvider, source)
+        else {
+            panic!("derive X25519 keypair failed");
+        };
+
+        assert_eq!(public_key, expected_public_key);
+        assert_eq!(
+            with_owned_resource(&process, source, ResourceKind::SecretBytes, |_| ()),
+            Err(ResourceError::StaleHandle)
+        );
+        assert!(with_owned_resource(
+            &process,
+            derived_private_key,
+            ResourceKind::X25519PrivateKey,
+            |_| ()
+        )
+        .is_ok());
+        destroy_owned(owner);
     }
 
     #[test]

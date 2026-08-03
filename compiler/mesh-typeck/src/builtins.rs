@@ -93,6 +93,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "x25519_from_secret",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
+                crypto_result(Ty::x25519_key_pair()),
+            )),
+        ),
+        (
             "x25519_public",
             Scheme::mono(Ty::fun(
                 vec![Ty::x25519_private_key()],

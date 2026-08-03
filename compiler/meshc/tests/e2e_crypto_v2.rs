@@ -78,6 +78,7 @@ fn crypto_v2_public_api_compiles_and_executes_natively() {
             "hkdf-zero-length:ok\n",
             "hkdf-excessive-length:ok\n",
             "x25519-public-abi:ok\n",
+            "x25519-secret-derivation:ok\n",
             "x25519-invalid-public:ok\n",
             "x25519-noncontributory:ok\n",
             "x25519-agreement:ok\n",
