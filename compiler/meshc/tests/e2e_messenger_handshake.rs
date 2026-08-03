@@ -65,7 +65,7 @@ fn classical_offline_handshake_is_entirely_mesh_and_fail_closed() {
         project.join("main.mpl"),
         r#"
 from Identity.Device import AccountKeys, DeviceKeys, IdentityError, VerificationPolicy, credential_signing_bytes, generate_account, generate_device, issue_device_credential
-from Prekeys.Bundle import OneTimePrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_signed_prekey
+from Prekeys.Bundle import OneTimePrekeySecrets, PostQuantumPrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_post_quantum_prekey, generate_signed_prekey
 from Protocol.V1 import AccountIdentity, DeviceCredential, InitialMessage, PrekeyBundle, ProtocolError, decode_initial_message, encode_initial_message
 from Session.Handshake import RatchetState, SessionError, initiate, receive_initial
 
@@ -168,6 +168,13 @@ fn one_time_prekey(id :: U64) -> OneTimePrekeySecrets ! ProofError do
   end
 end
 
+fn post_quantum_prekey() -> PostQuantumPrekeySecrets ! ProofError do
+  case generate_post_quantum_prekey() do
+    Err(error) -> Err(PrekeyProblem(error))
+    Ok(value) -> Ok(value)
+  end
+end
+
 fn bundle(
   value :: DeviceCredential,
   signed :: borrow SignedPrekeySecrets,
@@ -207,6 +214,7 @@ fn accept_handshake(
   responder_bundle :: PrekeyBundle,
   signed :: borrow SignedPrekeySecrets,
   one_time :: consume OneTimePrekeySecrets,
+  post_quantum :: borrow PostQuantumPrekeySecrets,
   initiator_account :: AccountIdentity,
   responder_policy :: VerificationPolicy,
   initiator_policy :: VerificationPolicy,
@@ -218,9 +226,11 @@ fn accept_handshake(
     responder_bundle,
     signed,
     one_time,
+    post_quantum,
     initiator_account,
     responder_policy,
     initiator_policy,
+    1,
     message
   ) do
     Err(error) -> Err(SessionProblem(error))
@@ -252,6 +262,7 @@ fn invalid_signature_bundle(value :: PrekeyBundle) -> PrekeyBundle ! ProofError 
     signed_prekey_signature: zero_signature,
     one_time_prekey_id: value.one_time_prekey_id,
     one_time_prekey: value.one_time_prekey,
+    post_quantum_prekey: value.post_quantum_prekey,
     supported_suites: value.supported_suites,
     expires_at: value.expires_at,
     extensions: value.extensions
@@ -271,6 +282,7 @@ fn rejected_ciphertext(value :: InitialMessage) -> InitialMessage ! ProofError d
     initiator_credential: value.initiator_credential,
     initiator_identity_public_key: value.initiator_identity_public_key,
     initiator_ephemeral_public_key: value.initiator_ephemeral_public_key,
+    post_quantum_ciphertext: value.post_quantum_ciphertext,
     transcript_hash: value.transcript_hash,
     nonce: value.nonce,
     ciphertext: ciphertext
@@ -290,6 +302,7 @@ fn ciphertext_size(value :: InitialMessage, size :: Int) -> InitialMessage ! Pro
     initiator_credential: value.initiator_credential,
     initiator_identity_public_key: value.initiator_identity_public_key,
     initiator_ephemeral_public_key: value.initiator_ephemeral_public_key,
+    post_quantum_ciphertext: value.post_quantum_ciphertext,
     transcript_hash: value.transcript_hash,
     nonce: value.nonce,
     ciphertext: ciphertext
@@ -366,6 +379,7 @@ fn proof() -> Int ! ProofError do
   let (bob_account_keys, bob_account) = account(created_at) ?
   let alice = device() ?
   let bob = device() ?
+  let post_quantum = post_quantum_prekey() ?
   let alice_credential = credential(
     alice_account_keys,
     alice,
@@ -505,6 +519,7 @@ fn proof() -> Int ! ProofError do
     published,
     signed,
     one_time,
+    post_quantum,
     alice_account,
     verification,
     verification,
@@ -539,9 +554,11 @@ fn proof() -> Int ! ProofError do
     expired_credential_bundle,
     signed,
     expired_credential_one_time,
+    post_quantum,
     alice_account,
     verification,
     verification,
+    1,
     encode_initial(expired_message) ?
   ) do
     Err(_) -> println("expired-credential:rejected")
@@ -567,9 +584,11 @@ fn proof() -> Int ! ProofError do
     credential_rollback_bundle,
     signed,
     credential_rollback_one_time,
+    post_quantum,
     account_sequence(alice_account, second_sequence),
     verification,
     strict_verification,
+    1,
     encode_initial(rollback_message) ?
   ) do
     Err(_) -> println("credential-rollback:rejected")
@@ -592,9 +611,11 @@ fn proof() -> Int ! ProofError do
     rejected_bundle,
     signed,
     rejected_one_time,
+    post_quantum,
     alice_account,
     verification,
     verification,
+    1,
     encode_initial(rejected_ciphertext(candidate_message) ?) ?
   ) do
     Err(AuthenticationRejected) -> println("failed-auth:no-session")

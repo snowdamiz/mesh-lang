@@ -213,6 +213,7 @@ fn prekey_proof() -> Int ! String do
     signed_prekey_signature: Bytes.from_utf8("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
     one_time_prekey_id: U64.parse("9") ?,
     one_time_prekey: Bytes.from_utf8("oooooooooooooooooooooooooooooooo"),
+    post_quantum_prekey: Bytes.empty(),
     supported_suites: [1],
     expires_at: U64.parse("1700604800000") ?,
     extensions: [ProtocolExtension {
@@ -250,6 +251,7 @@ fn prekey_proof() -> Int ! String do
     signed_prekey_signature: bundle.signed_prekey_signature,
     one_time_prekey_id: bundle.one_time_prekey_id,
     one_time_prekey: Bytes.from_utf8("short"),
+    post_quantum_prekey: bundle.post_quantum_prekey,
     supported_suites: bundle.supported_suites,
     expires_at: bundle.expires_at,
     extensions: bundle.extensions
@@ -345,6 +347,7 @@ fn transcript_proof() -> Int ! String do
     responder_signed_prekey: Bytes.from_utf8("pppppppppppppppppppppppppppppppp"),
     one_time_prekey_id: U64.parse("0") ?,
     responder_one_time_prekey: Bytes.empty(),
+    responder_post_quantum_prekey: Bytes.empty(),
     extensions: [ProtocolExtension {
       id: 13,
       mandatory: false,

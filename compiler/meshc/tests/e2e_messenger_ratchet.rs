@@ -65,7 +65,7 @@ fn profile_a_ratchet_delivers_out_of_order_messages_within_the_bound() {
         project.join("main.mpl"),
         r#"
 from Identity.Device import AccountKeys, DeviceKeys, IdentityError, VerificationPolicy, generate_account, generate_device, issue_device_credential
-from Prekeys.Bundle import OneTimePrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_signed_prekey
+from Prekeys.Bundle import OneTimePrekeySecrets, PostQuantumPrekeySecrets, PrekeyError, SignedPrekeySecrets, build_prekey_bundle, generate_one_time_prekey, generate_post_quantum_prekey, generate_signed_prekey
 from Protocol.V1 import AccountIdentity, DeviceCredential, InitialMessage, PrekeyBundle, encode_initial_message
 from Session.Handshake import RatchetState, SessionError, initiate, receive_initial
 from Session.Ratchet import DecryptOutcome, RatchetError, RatchetMessage, decode_ratchet_message, decrypt, encode_ratchet_message, encrypt
@@ -134,6 +134,13 @@ end
 
 fn one_time_prekey() -> OneTimePrekeySecrets ! ProofError do
   case generate_one_time_prekey(wide("2") ?) do
+    Err(error) -> Err(PrekeyProblem(error))
+    Ok(value) -> Ok(value)
+  end
+end
+
+fn post_quantum_prekey() -> PostQuantumPrekeySecrets ! ProofError do
+  case generate_post_quantum_prekey() do
     Err(error) -> Err(PrekeyProblem(error))
     Ok(value) -> Ok(value)
   end
@@ -351,6 +358,7 @@ fn proof() -> Int ! ProofError do
   let (bob_account_keys, bob_account) = account(created_at) ?
   let alice = device() ?
   let bob = device() ?
+  let post_quantum = post_quantum_prekey() ?
   let alice_credential = credential(
     alice_account_keys,
     alice,
@@ -384,9 +392,11 @@ fn proof() -> Int ! ProofError do
     published,
     signed,
     one_time,
+    post_quantum,
     alice_account,
     policy,
     policy,
+    1,
     encoded_initial(initial) ?
   ) do
     Err(error) -> Err(SessionProblem(error))
