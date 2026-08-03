@@ -325,6 +325,38 @@ end
 }
 
 #[test]
+fn hpke_base_mode_public_signatures_typecheck() {
+    let result = check_source(
+        r#"
+fn seal(recipient :: X25519PublicKey, info :: Bytes, aad :: Bytes, plaintext :: Bytes) -> Result<Bytes, CryptoError> do
+  Crypto.hpke_seal(recipient, info, aad, plaintext)
+end
+fn open(private_key :: borrow X25519PrivateKey, info :: Bytes, aad :: Bytes, sealed :: Bytes) -> Result<Bytes, CryptoError> do
+  Crypto.hpke_open(private_key, info, aad, sealed)
+end
+"#,
+    );
+
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn hpke_secret_signatures_keep_plaintext_actor_owned() {
+    let result = check_source(
+        r#"
+fn seal(recipient :: X25519PublicKey, info :: Bytes, aad :: Bytes, plaintext :: borrow SecretBytes) -> Result<Bytes, CryptoError> do
+  Crypto.hpke_seal_secret(recipient, info, aad, plaintext)
+end
+fn open(private_key :: borrow X25519PrivateKey, info :: Bytes, aad :: Bytes, sealed :: Bytes) -> Result<SecretBytes, CryptoError> do
+  Crypto.hpke_open_secret(private_key, info, aad, sealed)
+end
+"#,
+    );
+
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
 fn colliding_legacy_string_calls_are_rejected() {
     let result = check_source(
         r#"

@@ -659,6 +659,27 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         );
     }
 
+    for name in [
+        "mesh_crypto_hpke_seal",
+        "mesh_crypto_hpke_open",
+        "mesh_crypto_hpke_seal_secret",
+        "mesh_crypto_hpke_open_secret",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(
+                &[
+                    ptr_type.into(),
+                    ptr_type.into(),
+                    ptr_type.into(),
+                    ptr_type.into(),
+                ],
+                false,
+            ),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
     // mesh_crypto_hmac_sha512(key: ptr, msg: ptr) -> ptr
     let hmac512_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function(
@@ -4774,6 +4795,10 @@ mod tests {
             ("mesh_crypto_aead_key", 1),
             ("mesh_crypto_aead_seal", 4),
             ("mesh_crypto_aead_open", 4),
+            ("mesh_crypto_hpke_seal", 4),
+            ("mesh_crypto_hpke_open", 4),
+            ("mesh_crypto_hpke_seal_secret", 4),
+            ("mesh_crypto_hpke_open_secret", 4),
         ] {
             let function = module
                 .get_function(name)

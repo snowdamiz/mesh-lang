@@ -92,6 +92,7 @@ enum SecretPurpose {
     RatchetDhKey,
     LocalData,
     PostQuantumPrekey,
+    GroupEpochSecret,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,6 +134,7 @@ impl SecretPurpose {
             13 => Ok(Self::RatchetDhKey),
             14 => Ok(Self::LocalData),
             15 => Ok(Self::PostQuantumPrekey),
+            16 => Ok(Self::GroupEpochSecret),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -144,7 +146,8 @@ impl SecretPurpose {
             | Self::ReceivingChainKey
             | Self::HeaderKey
             | Self::AttachmentKey
-            | Self::SkippedMessageKey => ResourceKind::SecretBytes.into(),
+            | Self::SkippedMessageKey
+            | Self::GroupEpochSecret => ResourceKind::SecretBytes.into(),
             Self::SkippedKeyMap => ResourceKind::SecretMap.into(),
             Self::AccountAuthorizationKey | Self::DeviceSigningKey => {
                 ResourceKind::SigningPrivateKey.into()
@@ -1004,7 +1007,7 @@ mod tests {
         context.push(1);
         context.extend(0u8..32);
         context.extend(0x20u8..0x30);
-        if matches!(purpose, 1..=4 | 11..=13) {
+        if matches!(purpose, 1..=4 | 11..=13 | 16) {
             context.extend(0x30u8..0x50);
         } else {
             context.extend_from_slice(&[0; 32]);
@@ -1042,9 +1045,9 @@ mod tests {
     fn every_registered_purpose_round_trips_to_its_exact_resource_kind() {
         let material = material();
 
-        for purpose in (1..=13).chain([15]) {
+        for purpose in (1..=13).chain([15, 16]) {
             let kind = match purpose {
-                1..=5 | 11 => ResourceKind::SecretBytes,
+                1..=5 | 11 | 16 => ResourceKind::SecretBytes,
                 12 => ResourceKind::SecretMap,
                 6..=7 => ResourceKind::SigningPrivateKey,
                 8..=10 | 13 => ResourceKind::X25519PrivateKey,

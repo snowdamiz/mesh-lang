@@ -107,6 +107,54 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "hpke_seal",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hpke_open",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_private_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hpke_seal_secret",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::secret_bytes(),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hpke_open_secret",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_private_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
             "mlkem_generate",
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::mlkem_key_pair()))),
         ),

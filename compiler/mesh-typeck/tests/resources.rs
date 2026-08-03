@@ -96,6 +96,32 @@ fn repeated_direct_borrows_do_not_move_the_argument() {
 }
 
 #[test]
+fn borrowing_a_resource_field_does_not_move_its_parent() {
+    let result = check_source(
+        "resource struct Vault do\n  secret :: SecretBytes\n  generation :: Int\nend\nfn inspect(secret :: borrow SecretBytes) do\n  nil\nend\nfn valid(vault :: Vault) do\n  inspect(vault.secret)\n  %{vault | generation: 2}\nend",
+    );
+
+    assert!(
+        resource_violations(&result).is_empty(),
+        "borrowed resource field should leave its parent movable: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn borrowed_resource_field_survives_fallible_case_branches() {
+    let result = check_source(
+        "resource struct Vault do\n  secret :: SecretBytes\n  generation :: Int\nend\nfn inspect(label :: Bytes, secret :: borrow SecretBytes) -> Bytes ! CryptoError do\n  Ok(label)\nend\nfn reject(vault :: consume Vault, error :: CryptoError) -> Result<Vault, CryptoError> do\n  Err(error)\nend\nfn valid(vault :: Vault) -> Result<Vault, CryptoError> do\n  case inspect(Bytes.empty(), vault.secret) do\n    Err(error) -> reject(vault, error)\n    Ok(_) -> Ok(%{vault | generation: 2})\n  end\nend",
+    );
+
+    assert!(
+        resource_violations(&result).is_empty(),
+        "fallible borrow should leave its parent movable in either arm: {:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn bytes_builder_writes_borrow_and_finish_consumes() {
     let valid = check_source(
         "fn build() do\n  case BytesBuilder.new(8) do\n    Err(_) -> nil\n    Ok(builder) -> do\n      let _ = BytesBuilder.write_u8(builder, 1)\n      let _ = BytesBuilder.write_bytes(builder, Bytes.empty())\n      let _ = BytesBuilder.finish(builder)\n      nil\n    end\n  end\nend",

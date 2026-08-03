@@ -252,6 +252,45 @@ fn check_signing() -> Int ! CryptoError do
   Ok(0)
 end
 
+fn check_hpke() -> Int ! CryptoError do
+  let recipient = Crypto.x25519_generate() ?
+  let info = Bytes.from_utf8("mesh-mls/v1/welcome")
+  let associated_data = Bytes.from_utf8("group-and-epoch")
+  let plaintext = Bytes.from_utf8("epoch secret")
+  let sealed = Crypto.hpke_seal(recipient.public_key, info, associated_data, plaintext) ?
+  let opened = Crypto.hpke_open(recipient.private_key, info, associated_data, sealed) ?
+  report("hpke-wire-size", Bytes.length(sealed) == Bytes.length(plaintext) + 48)
+  report("hpke-roundtrip", Bytes.secure_equals(opened, plaintext))
+
+  case Crypto.hpke_open(
+    recipient.private_key,
+    Bytes.from_utf8("wrong info"),
+    associated_data,
+    sealed
+  ) do
+    Err(AuthenticationFailed) -> report("hpke-info-binding", true)
+    _ -> report("hpke-info-binding", false)
+  end
+  case Bytes.repeat(0, 47) do
+    Ok(short) -> case Crypto.hpke_open(recipient.private_key, info, associated_data, short) do
+      Err(error) -> report("hpke-wire-bound", invalid_length_is(error, 48, 47))
+      _ -> report("hpke-wire-bound", false)
+    end
+    Err(_) -> report("hpke-wire-bound", false)
+  end
+
+  let secret = Secret.random(32) ?
+  let sealed_secret = Crypto.hpke_seal_secret(recipient.public_key, info, associated_data, secret) ?
+  let opened_secret = Crypto.hpke_open_secret(recipient.private_key, info, associated_data, sealed_secret) ?
+  let sender_key = Crypto.aead_key(secret) ?
+  let recipient_key = Crypto.aead_key(opened_secret) ?
+  let nonce = Bytes.from_utf8("123456789012")
+  let secret_ciphertext = Crypto.aead_seal(sender_key, nonce, associated_data, plaintext) ?
+  let secret_opened = Crypto.aead_open(recipient_key, nonce, associated_data, secret_ciphertext) ?
+  report("hpke-secret-roundtrip", Bytes.secure_equals(secret_opened, plaintext))
+  Ok(0)
+end
+
 fn mlkem_storage_context() -> Bytes ! CryptoError do
   case Bytes.from_hex("0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f0000000000000001") do
     Err(_) -> Err(InvalidLength(123, 0))
@@ -315,6 +354,10 @@ fn main() do
   case check_signing() do
     Ok(_) -> nil
     Err(_) -> report("signing-public-abi", false)
+  end
+  case check_hpke() do
+    Ok(_) -> nil
+    Err(_) -> report("hpke-roundtrip", false)
   end
   case check_mlkem() do
     Ok(_) -> nil

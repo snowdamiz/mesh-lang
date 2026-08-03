@@ -39,6 +39,13 @@ const MLKEM_PRIVATE_SEED_BYTES: usize = 64;
 const MLKEM_PUBLIC_KEY_BYTES: usize = 1184;
 const MLKEM_CIPHERTEXT_BYTES: usize = 1088;
 const MLKEM_SHARED_SECRET_BYTES: usize = 32;
+const HPKE_ENCAPSULATED_KEY_BYTES: usize = 32;
+const HPKE_MIN_SEALED_BYTES: usize = HPKE_ENCAPSULATED_KEY_BYTES + AEAD_TAG_BYTES;
+const MAX_HPKE_INFO_BYTES: usize = MAX_INPUT_BYTES - 64;
+const MAX_HPKE_SEALED_BYTES: usize = HPKE_ENCAPSULATED_KEY_BYTES + MAX_AEAD_CIPHERTEXT_BYTES;
+const HPKE_KEM_SUITE_ID: &[u8] = b"KEM\x00\x20";
+const HPKE_SUITE_ID: &[u8] = b"HPKE\x00\x20\x00\x01\x00\x03";
+const HPKE_VERSION_LABEL: &[u8] = b"HPKE-v1";
 
 #[repr(C)]
 /// Runtime representation of an X25519 public-key wrapper.
@@ -670,6 +677,395 @@ pub extern "C" fn mesh_crypto_x25519_shared(
         x25519_shared_for_process(process, &SystemProvider, private_key, peer_public_key)
     }) {
         Ok(shared_secret) => complete_result(result, shared_secret),
+        Err(error) => error_result(error),
+    }
+}
+
+fn hpke_labeled_extract(
+    provider: &impl CryptoProvider,
+    suite_id: &[u8],
+    salt: &[u8],
+    label: &[u8],
+    input_key_material: &[u8],
+) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
+    let mut labeled_input = Zeroizing::new(Vec::with_capacity(
+        HPKE_VERSION_LABEL.len() + suite_id.len() + label.len() + input_key_material.len(),
+    ));
+    labeled_input.extend_from_slice(HPKE_VERSION_LABEL);
+    labeled_input.extend_from_slice(suite_id);
+    labeled_input.extend_from_slice(label);
+    labeled_input.extend_from_slice(input_key_material);
+    let mut output = Zeroizing::new([0; 32]);
+    provider
+        .hmac_sha256(salt, &labeled_input, &mut output)
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    Ok(output)
+}
+
+fn hpke_labeled_expand<const N: usize>(
+    provider: &impl CryptoProvider,
+    suite_id: &[u8],
+    pseudo_random_key: &[u8; 32],
+    label: &[u8],
+    info: &[u8],
+) -> Result<Zeroizing<[u8; N]>, CryptoFailure> {
+    if N == 0 || N > 32 {
+        return Err(failure(CryptoErrorTag::InternalFailure, 32, N as i64));
+    }
+    let length =
+        u16::try_from(N).map_err(|_| failure(CryptoErrorTag::InternalFailure, 32, N as i64))?;
+    let mut labeled_info = Vec::with_capacity(
+        2 + HPKE_VERSION_LABEL.len() + suite_id.len() + label.len() + info.len() + 1,
+    );
+    labeled_info.extend_from_slice(&length.to_be_bytes());
+    labeled_info.extend_from_slice(HPKE_VERSION_LABEL);
+    labeled_info.extend_from_slice(suite_id);
+    labeled_info.extend_from_slice(label);
+    labeled_info.extend_from_slice(info);
+    labeled_info.push(1);
+    let mut block = Zeroizing::new([0; 32]);
+    provider
+        .hmac_sha256(pseudo_random_key, &labeled_info, &mut block)
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    let mut output = Zeroizing::new([0; N]);
+    output.copy_from_slice(&block[..N]);
+    Ok(output)
+}
+
+fn hpke_derive_private_key(
+    provider: &impl CryptoProvider,
+    input_key_material: &[u8; 32],
+) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
+    let pseudo_random_key = hpke_labeled_extract(
+        provider,
+        HPKE_KEM_SUITE_ID,
+        &[],
+        b"dkp_prk",
+        input_key_material,
+    )?;
+    hpke_labeled_expand(provider, HPKE_KEM_SUITE_ID, &pseudo_random_key, b"sk", &[])
+}
+
+fn hpke_shared_secret(
+    provider: &impl CryptoProvider,
+    dh: &[u8; 32],
+    encapsulated_key: &[u8; 32],
+    recipient_public_key: &[u8; 32],
+) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
+    let pseudo_random_key = hpke_labeled_extract(provider, HPKE_KEM_SUITE_ID, &[], b"eae_prk", dh)?;
+    let mut kem_context = [0; 64];
+    kem_context[..32].copy_from_slice(encapsulated_key);
+    kem_context[32..].copy_from_slice(recipient_public_key);
+    hpke_labeled_expand(
+        provider,
+        HPKE_KEM_SUITE_ID,
+        &pseudo_random_key,
+        b"shared_secret",
+        &kem_context,
+    )
+}
+
+fn hpke_key_and_nonce(
+    provider: &impl CryptoProvider,
+    shared_secret: &[u8; 32],
+    info: &[u8],
+) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<[u8; 12]>), CryptoFailure> {
+    let psk_id_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"psk_id_hash", &[])?;
+    let info_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"info_hash", info)?;
+    let mut key_schedule_context = Zeroizing::new([0; 65]);
+    key_schedule_context[1..33].copy_from_slice(&psk_id_hash[..]);
+    key_schedule_context[33..].copy_from_slice(&info_hash[..]);
+    let secret = hpke_labeled_extract(provider, HPKE_SUITE_ID, shared_secret, b"secret", &[])?;
+    let key = hpke_labeled_expand(
+        provider,
+        HPKE_SUITE_ID,
+        &secret,
+        b"key",
+        &key_schedule_context[..],
+    )?;
+    let nonce = hpke_labeled_expand(
+        provider,
+        HPKE_SUITE_ID,
+        &secret,
+        b"base_nonce",
+        &key_schedule_context[..],
+    )?;
+    Ok((key, nonce))
+}
+
+fn hpke_seal_material(
+    provider: &impl CryptoProvider,
+    recipient_public_key: &[u8; 32],
+    info: &[u8],
+    associated_data: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, CryptoFailure> {
+    let mut input_key_material = Zeroizing::new([0; 32]);
+    provider
+        .fill_random(&mut input_key_material[..])
+        .map_err(|error| match error {
+            ProviderError::EntropyUnavailable => failure(CryptoErrorTag::EntropyUnavailable, 0, 0),
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    let ephemeral_private_key = hpke_derive_private_key(provider, &input_key_material)?;
+    let encapsulated_key = provider.x25519_public(&ephemeral_private_key);
+    let mut dh = Zeroizing::new([0; 32]);
+    provider
+        .x25519_shared(&ephemeral_private_key, recipient_public_key, &mut dh)
+        .map_err(|error| match error {
+            ProviderError::InvalidPublicKey => failure(CryptoErrorTag::InvalidPublicKey, 32, 32),
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    let shared_secret = hpke_shared_secret(provider, &dh, &encapsulated_key, recipient_public_key)?;
+    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info)?;
+    let ciphertext = provider
+        .chacha20poly1305_seal(&key, &nonce, associated_data, plaintext)
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    let mut sealed = Vec::with_capacity(HPKE_ENCAPSULATED_KEY_BYTES + ciphertext.len());
+    sealed.extend_from_slice(&encapsulated_key);
+    sealed.extend_from_slice(&ciphertext);
+    Ok(sealed)
+}
+
+fn hpke_open_material(
+    provider: &impl CryptoProvider,
+    recipient_private_key: &[u8; 32],
+    info: &[u8],
+    associated_data: &[u8],
+    sealed: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoFailure> {
+    if sealed.len() < HPKE_MIN_SEALED_BYTES || sealed.len() > MAX_HPKE_SEALED_BYTES {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            HPKE_MIN_SEALED_BYTES as i64,
+            sealed.len() as i64,
+        ));
+    }
+    let encapsulated_key = <[u8; 32]>::try_from(&sealed[..32])
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    let recipient_public_key = provider.x25519_public(recipient_private_key);
+    let mut dh = Zeroizing::new([0; 32]);
+    provider
+        .x25519_shared(recipient_private_key, &encapsulated_key, &mut dh)
+        .map_err(|error| match error {
+            ProviderError::InvalidPublicKey => failure(CryptoErrorTag::InvalidPublicKey, 32, 32),
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    let shared_secret =
+        hpke_shared_secret(provider, &dh, &encapsulated_key, &recipient_public_key)?;
+    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info)?;
+    let mut plaintext = Zeroizing::new(sealed[32..].to_vec());
+    provider
+        .chacha20poly1305_open(&key, &nonce, associated_data, &mut plaintext)
+        .map_err(|error| match error {
+            ProviderError::AuthenticationFailed => {
+                failure(CryptoErrorTag::AuthenticationFailed, 0, 0)
+            }
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    Ok(plaintext)
+}
+
+/// Seal one RFC 9180 base-mode X25519/HKDF-SHA-256/ChaCha20-Poly1305 message.
+/// The returned canonical wire value is `enc || ciphertext`.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_seal(
+    recipient_public_key: *const MeshX25519PublicKey,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    plaintext: *const MeshBytes,
+) -> *mut MeshResult {
+    let recipient_public_key = match unsafe { x25519_public_key_bytes(recipient_public_key) } {
+        Ok(key) => key,
+        Err(error) => return error_result(error),
+    };
+    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
+        Ok(info) => info,
+        Err(error) => return error_result(error),
+    };
+    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
+        Ok(data) => data,
+        Err(error) => return error_result(error),
+    };
+    let plaintext = match unsafe { required_bytes(plaintext, MAX_INPUT_BYTES) } {
+        Ok(plaintext) => plaintext,
+        Err(error) => return error_result(error),
+    };
+    match hpke_seal_material(
+        &SystemProvider,
+        &recipient_public_key,
+        info,
+        associated_data,
+        plaintext,
+    ) {
+        Ok(sealed) => ok_result(mesh_bytes_new(sealed.as_ptr(), sealed.len() as u64)),
+        Err(error) => error_result(error),
+    }
+}
+
+fn hpke_open_for_process(
+    process: &Process,
+    provider: &impl CryptoProvider,
+    recipient_private_key: *const MeshSecretHandle,
+    info: &[u8],
+    associated_data: &[u8],
+    sealed: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoFailure> {
+    with_owned_resource(
+        process,
+        recipient_private_key,
+        ResourceKind::X25519PrivateKey,
+        |private_key| {
+            let private_key = <&[u8; 32]>::try_from(private_key)
+                .map_err(|_| failure(CryptoErrorTag::InvalidKey, 32, private_key.len() as i64))?;
+            hpke_open_material(provider, private_key, info, associated_data, sealed)
+        },
+    )
+    .map_err(resource_failure)?
+}
+
+/// Open one canonical `enc || ciphertext` RFC 9180 base-mode message.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_open(
+    recipient_private_key: *const MeshSecretHandle,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    sealed: *const MeshBytes,
+) -> *mut MeshResult {
+    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
+        Ok(info) => info,
+        Err(error) => return error_result(error),
+    };
+    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
+        Ok(data) => data,
+        Err(error) => return error_result(error),
+    };
+    let sealed = match unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) } {
+        Ok(sealed) => sealed,
+        Err(error) => return error_result(error),
+    };
+    match with_current_process(|process| {
+        hpke_open_for_process(
+            process,
+            &SystemProvider,
+            recipient_private_key,
+            info,
+            associated_data,
+            sealed,
+        )
+    }) {
+        Ok(plaintext) => ok_result(mesh_bytes_new(plaintext.as_ptr(), plaintext.len() as u64)),
+        Err(error) => error_result(error),
+    }
+}
+
+fn hpke_seal_secret_for_process(
+    process: &Process,
+    provider: &impl CryptoProvider,
+    recipient_public_key: &[u8; 32],
+    info: &[u8],
+    associated_data: &[u8],
+    plaintext: *const MeshSecretHandle,
+) -> Result<Vec<u8>, CryptoFailure> {
+    with_owned_resource(process, plaintext, ResourceKind::SecretBytes, |plaintext| {
+        hpke_seal_material(
+            provider,
+            recipient_public_key,
+            info,
+            associated_data,
+            plaintext,
+        )
+    })
+    .map_err(resource_failure)?
+}
+
+/// Seal actor-owned secret material without exposing it as ordinary bytes.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_seal_secret(
+    recipient_public_key: *const MeshX25519PublicKey,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    plaintext: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    let recipient_public_key = match unsafe { x25519_public_key_bytes(recipient_public_key) } {
+        Ok(key) => key,
+        Err(error) => return error_result(error),
+    };
+    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
+        Ok(info) => info,
+        Err(error) => return error_result(error),
+    };
+    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
+        Ok(data) => data,
+        Err(error) => return error_result(error),
+    };
+    match with_current_process(|process| {
+        hpke_seal_secret_for_process(
+            process,
+            &SystemProvider,
+            &recipient_public_key,
+            info,
+            associated_data,
+            plaintext,
+        )
+    }) {
+        Ok(sealed) => ok_result(mesh_bytes_new(sealed.as_ptr(), sealed.len() as u64)),
+        Err(error) => error_result(error),
+    }
+}
+
+fn hpke_open_secret_for_process(
+    process: &mut Process,
+    provider: &impl CryptoProvider,
+    recipient_private_key: *const MeshSecretHandle,
+    info: &[u8],
+    associated_data: &[u8],
+    sealed: &[u8],
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
+    let plaintext = hpke_open_for_process(
+        process,
+        provider,
+        recipient_private_key,
+        info,
+        associated_data,
+        sealed,
+    )?;
+    let plaintext = Zeroizing::new(plaintext.as_slice().to_vec().into_boxed_slice());
+    insert_owned_resource(process, ResourceKind::SecretBytes, plaintext).map_err(resource_failure)
+}
+
+/// Open sealed material directly into an actor-owned secret resource.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_open_secret(
+    recipient_private_key: *const MeshSecretHandle,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    sealed: *const MeshBytes,
+) -> *mut MeshResult {
+    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
+        Ok(info) => info,
+        Err(error) => return error_result(error),
+    };
+    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
+        Ok(data) => data,
+        Err(error) => return error_result(error),
+    };
+    let sealed = match unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) } {
+        Ok(sealed) => sealed,
+        Err(error) => return error_result(error),
+    };
+    let result = alloc_result(0, ptr::null_mut());
+    match with_current_process(|process| {
+        hpke_open_secret_for_process(
+            process,
+            &SystemProvider,
+            recipient_private_key,
+            info,
+            associated_data,
+            sealed,
+        )
+    }) {
+        Ok(plaintext) => complete_result(result, plaintext),
         Err(error) => error_result(error),
     }
 }
@@ -1445,6 +1841,30 @@ mod tests {
             *const MeshSecretHandle,
             *const MeshX25519PublicKey,
         ) -> *mut MeshResult = mesh_crypto_x25519_shared;
+        let _: extern "C" fn(
+            *const MeshX25519PublicKey,
+            *const MeshBytes,
+            *const MeshBytes,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_crypto_hpke_seal;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshBytes,
+            *const MeshBytes,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_crypto_hpke_open;
+        let _: extern "C" fn(
+            *const MeshX25519PublicKey,
+            *const MeshBytes,
+            *const MeshBytes,
+            *const MeshSecretHandle,
+        ) -> *mut MeshResult = mesh_crypto_hpke_seal_secret;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshBytes,
+            *const MeshBytes,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_crypto_hpke_open_secret;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_mlkem_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_mlkem_from_seed;
         let _: extern "C" fn(*const MeshMlKemPublicKey) -> *mut MeshResult =
@@ -1796,6 +2216,74 @@ mod tests {
 
         assert!(secrets_match);
         destroy_owned(owner);
+    }
+
+    #[test]
+    fn hpke_base_mode_matches_rfc9180_a2_1_sequence_zero() {
+        fn hex(value: &str) -> Vec<u8> {
+            value
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|chunk| u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap())
+                .collect()
+        }
+
+        let input_key_material =
+            hex("909a9b35d3dc4713a5e72a4da274b55d3d3821a37e5d099e74a647db583a904b");
+        let recipient_public_key: [u8; 32] =
+            hex("4310ee97d88cc1f088a5576c77ab0cf5c3ac797f3d95139c6c84b5429c59662a")
+                .try_into()
+                .unwrap();
+        let recipient_private_key: [u8; 32] =
+            hex("8057991eef8f1f1af18f4a9491d16a1ce333f695d4db8e38da75975c4478e0fb")
+                .try_into()
+                .unwrap();
+        let info = hex("4f6465206f6e2061204772656369616e2055726e");
+        let plaintext = hex("4265617574792069732074727574682c20747275746820626561757479");
+        let associated_data = hex("436f756e742d30");
+        let expected = hex(
+            "1afa08d3dec047a643885163f1180476fa7ddb54c6a8029ea33f95796bf2ac4a\
+             1c5250d8034ec2b784ba2cfd69dbdb8af406cfe3ff938e131f0def8c8b60b4db\
+             21993c62ce81883d2dd1b51a28",
+        );
+        let provider = FixedProvider::with_random(&input_key_material);
+
+        let Ok(sealed) = hpke_seal_material(
+            &provider,
+            &recipient_public_key,
+            &info,
+            &associated_data,
+            &plaintext,
+        ) else {
+            panic!("RFC 9180 seal failed");
+        };
+        assert_eq!(sealed, expected);
+        let Ok(opened) = hpke_open_material(
+            &provider,
+            &recipient_private_key,
+            &info,
+            &associated_data,
+            &sealed,
+        ) else {
+            panic!("RFC 9180 open failed");
+        };
+        assert_eq!(&opened[..], plaintext);
+
+        let mut tampered = sealed;
+        *tampered.last_mut().unwrap() ^= 1;
+        assert!(matches!(
+            hpke_open_material(
+                &provider,
+                &recipient_private_key,
+                &info,
+                &associated_data,
+                &tampered,
+            ),
+            Err(CryptoFailure {
+                tag: CryptoErrorTag::AuthenticationFailed,
+                ..
+            })
+        ));
     }
 
     #[test]

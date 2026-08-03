@@ -337,6 +337,70 @@ pub(crate) fn check(
     );
     register_crypto_signature(
         &mut signatures,
+        "hpke_seal",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::x25519_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hpke_open",
+        vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::x25519_private_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hpke_seal_secret",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Borrow,
+        ],
+        vec![
+            Ty::x25519_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::secret_bytes(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hpke_open_secret",
+        vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::x25519_private_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
         "mlkem_decapsulate",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::mlkem_private_key(), Ty::mlkem_ciphertext()],

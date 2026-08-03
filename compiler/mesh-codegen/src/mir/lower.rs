@@ -2033,6 +2033,44 @@ impl<'a> Lowerer<'a> {
             ),
         );
         self.known_functions.insert(
+            "mesh_crypto_hpke_seal".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Struct("X25519PublicKey".to_string()),
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hpke_open".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hpke_seal_secret".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Struct("X25519PublicKey".to_string()),
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hpke_open_secret".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
             "mesh_crypto_mlkem_encapsulate".to_string(),
             MirType::FnPtr(
                 vec![MirType::Struct("MlKemPublicKey".to_string())],
@@ -15226,6 +15264,10 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_x25519_from_seed" => "mesh_crypto_x25519_from_seed".to_string(),
         "crypto_x25519_public" => "mesh_crypto_x25519_public".to_string(),
         "crypto_x25519_shared" => "mesh_crypto_x25519_shared".to_string(),
+        "crypto_hpke_seal" => "mesh_crypto_hpke_seal".to_string(),
+        "crypto_hpke_open" => "mesh_crypto_hpke_open".to_string(),
+        "crypto_hpke_seal_secret" => "mesh_crypto_hpke_seal_secret".to_string(),
+        "crypto_hpke_open_secret" => "mesh_crypto_hpke_open_secret".to_string(),
         "crypto_mlkem_generate" => "mesh_crypto_mlkem_generate".to_string(),
         "crypto_mlkem_from_seed" => "mesh_crypto_mlkem_from_seed".to_string(),
         "crypto_mlkem_encapsulate" => "mesh_crypto_mlkem_encapsulate".to_string(),
