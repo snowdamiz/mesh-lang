@@ -30,6 +30,8 @@ impl WsCloseCode {
     pub const MESSAGE_TOO_BIG: u16 = 1009;
     /// Internal server error (1011) -- used when an actor crashes (Phase 60).
     pub const INTERNAL_ERROR: u16 = 1011;
+    /// Server is overloaded and the client should reconnect later (1013).
+    pub const TRY_AGAIN_LATER: u16 = 1013;
 }
 
 /// Parse a close frame payload into (status_code, reason).

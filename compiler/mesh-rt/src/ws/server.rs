@@ -39,7 +39,9 @@ use super::frame::{read_frame, write_frame, MessageAssembler, ReassembleResult, 
 use super::handshake::perform_upgrade;
 use crate::actor::process::Process;
 use crate::actor::stack;
-use crate::actor::{global_scheduler, Message, MessageBuffer, ProcessId, ProcessState};
+use crate::actor::{
+    global_scheduler, MailboxPushError, Message, MessageBuffer, ProcessId, ProcessState,
+};
 use crate::string::MeshString;
 
 // ---------------------------------------------------------------------------
@@ -682,17 +684,20 @@ fn reader_thread_loop(
                         let buffer = MessageBuffer::new(msg.payload, tag);
                         let message = Message { buffer };
 
-                        // Push to mailbox and wake actor if Waiting (Pitfall 7)
-                        {
-                            let mut proc = proc_arc.lock();
-                            proc.mailbox.push(message);
-                            if matches!(proc.state, ProcessState::Waiting) {
-                                if proc.set_live_state(ProcessState::Ready) {
-                                    drop(proc);
-                                    let sched = global_scheduler();
-                                    sched.wake_process(actor_pid);
+                        if let Err(error) = push_actor_message(&proc_arc, actor_pid, message) {
+                            let (code, reason) = match error {
+                                MailboxPushError::Full => {
+                                    (WsCloseCode::TRY_AGAIN_LATER, "mailbox full")
                                 }
-                            }
+                                MailboxPushError::MessageTooLarge => {
+                                    (WsCloseCode::MESSAGE_TOO_BIG, "message too big")
+                                }
+                            };
+                            let mut s = stream.lock();
+                            let _ = send_close(&mut *s, code, reason);
+                            drop(s);
+                            push_disconnect(&proc_arc, actor_pid);
+                            break;
                         }
                     }
                     ReassembleResult::Accumulating => { /* waiting for more fragments */ }
@@ -734,12 +739,32 @@ fn reader_thread_loop(
     }
 }
 
+fn push_actor_message(
+    proc_arc: &Arc<Mutex<Process>>,
+    actor_pid: ProcessId,
+    message: Message,
+) -> Result<(), MailboxPushError> {
+    let mut proc = proc_arc.lock();
+    proc.mailbox.try_push(message)?;
+    if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
+        drop(proc);
+        global_scheduler().wake_process(actor_pid);
+    }
+    Ok(())
+}
+
 /// Push a WS_DISCONNECT_TAG message to the actor's mailbox and wake it.
 fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId) {
-    let buffer = MessageBuffer::new(Vec::new(), WS_DISCONNECT_TAG);
-    let msg = Message { buffer };
     let mut proc = proc_arc.lock();
-    proc.mailbox.push(msg);
+    loop {
+        let buffer = MessageBuffer::new(Vec::new(), WS_DISCONNECT_TAG);
+        if proc.mailbox.try_push(Message { buffer }).is_ok() {
+            break;
+        }
+        if proc.mailbox.pop().is_none() {
+            return;
+        }
+    }
     if matches!(proc.state, ProcessState::Waiting) {
         if proc.set_live_state(ProcessState::Ready) {
             drop(proc);
@@ -975,6 +1000,14 @@ mod tests {
         std::ptr::null_mut()
     }
 
+    extern "C" fn blocking_on_message(env: *mut u8, _conn: *mut u8, _msg: *mut u8) -> *mut u8 {
+        let blocked = unsafe { &*(env as *const AtomicBool) };
+        while blocked.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        std::ptr::null_mut()
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
 
     /// Get a free port by binding to port 0 and releasing.
@@ -1030,6 +1063,22 @@ mod tests {
                 std::ptr::null_mut(),
                 crash_on_message as *mut u8,
                 std::ptr::null_mut(),
+                noop_on_close as *mut u8,
+                std::ptr::null_mut(),
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    fn start_blocked_server(port: u16, blocked: &'static AtomicBool) {
+        let blocked_env = blocked as *const AtomicBool as usize;
+        std::thread::spawn(move || {
+            mesh_ws_serve(
+                accept_on_connect as *mut u8,
+                std::ptr::null_mut(),
+                blocking_on_message as *mut u8,
+                blocked_env as *mut u8,
                 noop_on_close as *mut u8,
                 std::ptr::null_mut(),
                 port as i64,
@@ -1212,6 +1261,34 @@ mod tests {
                 "messages should be delivered in FIFO order"
             );
         }
+    }
+
+    #[test]
+    fn inbound_mailbox_overflow_closes_instead_of_dropping_frames() {
+        let port = free_port();
+        let blocked: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(true)));
+        start_blocked_server(port, blocked);
+        let mut stream = ws_connect(port);
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+
+        let mut frames = Vec::new();
+        for _ in 0..1_030 {
+            let mask_key = [0x12, 0x34, 0x56, 0x78];
+            let mut payload = vec![b'x'];
+            apply_mask(&mut payload, &mask_key);
+            frames.extend_from_slice(&[0x81, 0x81]);
+            frames.extend_from_slice(&mask_key);
+            frames.extend_from_slice(&payload);
+        }
+        stream.write_all(&frames).unwrap();
+        stream.flush().unwrap();
+
+        let close = read_frame(&mut stream).unwrap();
+        blocked.store(false, Ordering::SeqCst);
+        assert_eq!(close.opcode, WsOpcode::Close);
+        assert_eq!(parse_close_payload(&close.payload).0, 1013);
     }
 
     /// Client disconnect (TCP drop) triggers on_close and server keeps running.
