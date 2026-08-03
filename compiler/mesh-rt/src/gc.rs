@@ -204,10 +204,15 @@ pub extern "C" fn mesh_gc_collect() {
         None => return,
     };
 
+    let register_roots = crate::actor::capture_register_roots();
+
     // Capture current stack position as stack_top.
     let stack_anchor: u64 = 0;
     let _ = std::hint::black_box(&stack_anchor);
-    let stack_top = &stack_anchor as *const u64 as *const u8;
+    let stack_top = std::cmp::min(
+        &stack_anchor as *const u64 as usize,
+        register_roots.as_ptr() as usize,
+    ) as *const u8;
 
     let mut proc = proc_arc.lock();
 
@@ -221,6 +226,7 @@ pub extern "C" fn mesh_gc_collect() {
     }
 
     proc.heap.collect(stack_bottom, stack_top);
+    std::hint::black_box(&register_roots);
 }
 
 #[cfg(test)]

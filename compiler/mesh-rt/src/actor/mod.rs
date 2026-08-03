@@ -380,14 +380,65 @@ fn try_trigger_gc() {
         return;
     }
 
+    let register_roots = capture_register_roots();
+
     // Capture current stack position as stack_top.
     // On x86-64 and ARM64, the stack grows downward, so stack_top (current
     // position) has a lower address than stack_bottom (base).
     let stack_anchor: u64 = 0;
     let _ = std::hint::black_box(&stack_anchor);
-    let stack_top = &stack_anchor as *const u64 as *const u8;
+    let stack_top = std::cmp::min(
+        &stack_anchor as *const u64 as usize,
+        register_roots.as_ptr() as usize,
+    ) as *const u8;
 
     proc.heap.collect(stack_bottom, stack_top);
+    std::hint::black_box(&register_roots);
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+pub(crate) fn capture_register_roots() -> [usize; 10] {
+    let mut roots = [0usize; 10];
+    unsafe {
+        std::arch::asm!(
+            "stp x19, x20, [x9, #0]",
+            "stp x21, x22, [x9, #16]",
+            "stp x23, x24, [x9, #32]",
+            "stp x25, x26, [x9, #48]",
+            "stp x27, x28, [x9, #64]",
+            in("x9") roots.as_mut_ptr(),
+            options(nostack, preserves_flags),
+        );
+    }
+    roots
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+pub(crate) fn capture_register_roots() -> [usize; 8] {
+    let mut roots = [0usize; 8];
+    unsafe {
+        std::arch::asm!(
+            "mov [rax + 0], rbx",
+            "mov [rax + 8], r12",
+            "mov [rax + 16], r13",
+            "mov [rax + 24], r14",
+            "mov [rax + 32], r15",
+            "mov [rax + 40], rdi",
+            "mov [rax + 48], rsi",
+            "mov [rax + 56], rbp",
+            in("rax") roots.as_mut_ptr(),
+            options(nostack, preserves_flags),
+        );
+    }
+    roots
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+pub(crate) fn capture_register_roots() -> [usize; 0] {
+    []
 }
 
 /// Send a message to the target actor.

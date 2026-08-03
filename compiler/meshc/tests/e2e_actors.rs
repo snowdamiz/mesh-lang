@@ -265,6 +265,16 @@ fn gc_bounded_memory() {
     );
 }
 
+#[test]
+fn gc_preserves_live_values_held_across_collection_points() {
+    let source = read_fixture("gc_live_register_roots.mpl");
+    let output = compile_and_run_with_timeout(&source, 30);
+    assert!(
+        output.contains("gc live register roots preserved"),
+        "live value was corrupted across collection: {output}"
+    );
+}
+
 /// Test 9: Actors with arguments -- spawn passes initial state correctly.
 /// Actors receive typed arguments, not raw buffer pointers. Tests the
 /// wrapper function that deserializes args from the spawn buffer.
