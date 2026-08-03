@@ -9,6 +9,7 @@ use parking_lot::Mutex;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::fmt;
 use std::mem;
 use std::sync::OnceLock;
 use zeroize::{Zeroize, Zeroizing};
@@ -638,7 +639,6 @@ impl PreparedStorageCounter {
     }
 }
 
-#[derive(Debug)]
 pub(crate) enum RetypeError<E> {
     Resource(ResourceError),
     Rejected {
@@ -648,6 +648,23 @@ pub(crate) enum RetypeError<E> {
     GenerationExhausted {
         removed: Zeroizing<Box<[u8]>>,
     },
+}
+
+impl<E: fmt::Debug> fmt::Debug for RetypeError<E> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Resource(error) => formatter.debug_tuple("Resource").field(error).finish(),
+            Self::Rejected { error, .. } => formatter
+                .debug_struct("Rejected")
+                .field("error", error)
+                .field("removed", &"[REDACTED]")
+                .finish(),
+            Self::GenerationExhausted { .. } => formatter
+                .debug_struct("GenerationExhausted")
+                .field("removed", &"[REDACTED]")
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -2240,6 +2257,36 @@ mod tests {
             .expect("rejected source released slot and quota");
         assert_eq!(replacement.slot, original.slot);
         assert_eq!(replacement.generation, original.generation + 1);
+    }
+
+    #[test]
+    fn retype_errors_and_panics_redact_removed_secret_material() {
+        let sentinel = b"mesh-secret-leak-sentinel";
+        let leaked_debug = format!("{:?}", sentinel.as_slice());
+        let error = RetypeError::Rejected {
+            error: "invalid length",
+            removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
+        };
+        let diagnostic = format!("{error:?}");
+
+        assert!(!diagnostic.contains(&leaked_debug));
+        assert!(diagnostic.contains("[REDACTED]"));
+
+        let panic = std::panic::catch_unwind(|| {
+            Result::<(), _>::Err(RetypeError::<&'static str>::GenerationExhausted {
+                removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
+            })
+            .expect("forced secret-resource panic");
+        })
+        .expect_err("the sentinel panic path must panic");
+        let panic_message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .expect("panic payload must be text");
+
+        assert!(!panic_message.contains(&leaked_debug));
+        assert!(panic_message.contains("[REDACTED]"));
     }
 
     #[test]
