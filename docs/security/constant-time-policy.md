@@ -78,8 +78,9 @@ restrictions, code inspection, or review.
   uses the runtime's constant-time dependency and has a 256-byte length-boundary
   regression test. `scripts/verify-crypto-timing.sh` records a release-mode
   timing-distribution check for equal-length first- and last-byte mismatches.
-- Binary-first hash, HMAC, HKDF, AEAD, signature, key-agreement, and KEM APIs
-  use the selected runtime provider and secret/resource inputs where required.
+- Binary-first hash, HMAC, HKDF, Argon2id, AEAD, signature, key-agreement, and
+  KEM APIs use the selected runtime provider and secret/resource inputs where
+  required.
 
 ## Migration order
 

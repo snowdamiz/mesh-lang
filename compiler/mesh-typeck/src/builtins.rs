@@ -82,6 +82,20 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "argon2id",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::secret_bytes(),
+                    Ty::bytes(),
+                    Ty::int(),
+                    Ty::int(),
+                    Ty::int(),
+                    Ty::int(),
+                ],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
             "x25519_generate",
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::x25519_key_pair()))),
         ),

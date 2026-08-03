@@ -83,6 +83,20 @@ end
 }
 
 #[test]
+fn argon2id_returns_an_affine_secret_and_borrows_the_password() {
+    let result = check_source(
+        r#"
+fn derive(password :: SecretBytes, salt :: Bytes) -> Result<SecretBytes, CryptoError> do
+  Crypto.argon2id(password, salt, 32, 3, 1, 32)
+  crypto_argon2id(password, salt, 32, 3, 1, 32)
+end
+"#,
+    );
+
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
 fn mlkem_private_keys_can_be_sealed_and_restored_through_the_public_module() {
     let result = check_source(
         r#"

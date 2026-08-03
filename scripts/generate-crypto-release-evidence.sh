@@ -249,6 +249,21 @@ record = {
     "toolchain": {"rustc": rustc, "cargo": cargo},
     "tools": {"cargo_audit": audit_tool, "cargo_cyclonedx": cyclonedx_tool},
     "accepted_named_licenses": ["Apache-2.0/MIT", "MIT/Apache-2.0"],
+    "primitive_profiles": {
+        "argon2id": {
+            "algorithm": "Argon2id",
+            "version": "1.3",
+            "dependency": "argon2 0.5.3",
+            "bounds": {
+                "salt_bytes": [8, 64],
+                "memory_kib": {"minimum": "8 * parallelism", "maximum": 65536},
+                "iterations": [1, 10],
+                "parallelism": [1, 8],
+                "output_bytes": [16, 64],
+                "password_bytes_maximum": 65536,
+            },
+        }
+    },
     "results": {
         "dependency_audit": {"status": "passed", "sha256": audit_sha},
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},

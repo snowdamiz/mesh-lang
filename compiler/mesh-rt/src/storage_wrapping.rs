@@ -272,6 +272,9 @@ fn provider_failure(error: ProviderError) -> StorageFailure {
     match error {
         ProviderError::AuthenticationFailed => failure(CryptoErrorTag::AuthenticationFailed, 0, 0),
         ProviderError::InvalidLength => failure(CryptoErrorTag::InvalidLength, 0, 0),
+        ProviderError::ResourceLimitExceeded => {
+            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
         ProviderError::EntropyUnavailable => failure(CryptoErrorTag::EntropyUnavailable, 0, 0),
         ProviderError::InvalidPublicKey => failure(CryptoErrorTag::InternalFailure, 0, 0),
     }

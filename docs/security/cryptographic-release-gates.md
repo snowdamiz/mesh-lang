@@ -96,14 +96,16 @@ contains:
 
 ## Current baseline
 
-The development runtime implements the classical Crypto V2 API plus an
-ML-KEM-768 KEM primitive, affine secret resources, a static production provider,
-a test-only deterministic provider, known-answer and negative tests, and an iOS
-compilation proof. The hybrid messenger suite remains disabled until its
+The development runtime implements the classical Crypto V2 API, an ML-KEM-768
+KEM primitive, and an Argon2id v1.3 password KDF, plus affine secret resources,
+a static production provider, a test-only deterministic provider, known-answer
+and negative tests, and an iOS compilation proof. The hybrid messenger suite
+remains disabled until its
 protocol negotiation, downgrade, target-performance, and external-review gates
 pass. This is not yet a release-approved profile:
 
-- Native fuzz targets now exercise byte operations, the production provider,
+- Native fuzz targets now exercise byte operations, including bounded
+  Argon2id calls through the production provider,
   runtime protocol/routing/WebSocket decoders, and the lexer/parser. Coverage-
   guided targets for generated Mesh messenger boundaries and the complete
   secret-leak sentinel suite remain open.

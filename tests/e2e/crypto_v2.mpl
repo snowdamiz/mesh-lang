@@ -107,6 +107,47 @@ fn check_hmac_hkdf() -> Int ! CryptoError do
   Ok(0)
 end
 
+fn check_argon2id() -> Int ! CryptoError do
+  let password = Secret.random(16) ?
+  let salt = Bytes.from_utf8("12345678")
+  let first = Crypto.argon2id(password, salt, 32, 1, 1, 32) ?
+  let second = Crypto.argon2id(password, salt, 32, 1, 1, 32) ?
+  let first_key = Crypto.aead_key(first) ?
+  let second_key = Crypto.aead_key(second) ?
+  let nonce = Bytes.from_utf8("argon2-nonce")
+  let aad = Bytes.from_utf8("mesh-msg/v1/argon2id")
+  let plaintext = Bytes.from_utf8("derived secret")
+  let first_ciphertext = Crypto.aead_seal(first_key, nonce, aad, plaintext) ?
+  let second_ciphertext = Crypto.aead_seal(second_key, nonce, aad, plaintext) ?
+
+  report("argon2id-happy", Bytes.length(first_ciphertext) == Bytes.length(plaintext) + 16)
+  report("argon2id-deterministic", Bytes.secure_equals(first_ciphertext, second_ciphertext))
+
+  case Crypto.argon2id(password, Bytes.from_utf8("short"), 32, 1, 1, 32) do
+    Err(error) -> report("argon2id-salt-bound", invalid_length_is(error, 8, 5))
+    Ok(unexpected) -> do
+      Secret.destroy(unexpected)
+      report("argon2id-salt-bound", false)
+    end
+  end
+  case Crypto.argon2id(password, salt, 7, 1, 1, 32) do
+    Err(error) -> report("argon2id-memory-bound", invalid_length_is(error, 8, 7))
+    Ok(unexpected) -> do
+      Secret.destroy(unexpected)
+      report("argon2id-memory-bound", false)
+    end
+  end
+  case Crypto.argon2id(password, salt, 32, 1, 1, 65) do
+    Err(error) -> report("argon2id-output-bound", invalid_length_is(error, 64, 65))
+    Ok(unexpected) -> do
+      Secret.destroy(unexpected)
+      report("argon2id-output-bound", false)
+    end
+  end
+  Secret.destroy(password)
+  Ok(0)
+end
+
 fn tamper_last_byte(ciphertext :: Bytes) -> Bytes ! String do
   let length = Bytes.length(ciphertext)
   let last = Bytes.get(ciphertext, length - 1) ?
@@ -364,6 +405,10 @@ fn main() do
   case check_hmac_hkdf() do
     Ok(_) -> nil
     Err(_) -> report("hmac-hkdf-lifecycle", false)
+  end
+  case check_argon2id() do
+    Ok(_) -> nil
+    Err(_) -> report("argon2id-happy", false)
   end
   case check_x25519_and_aead() do
     Ok(_) -> nil

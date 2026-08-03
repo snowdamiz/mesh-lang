@@ -84,6 +84,7 @@ The lockfile resolves this selected and license-reviewed Profile A set:
 | ChaCha20-Poly1305 | `chacha20poly1305 0.10.1`, `poly1305 0.8.0` | `aead 0.5.2`, `chacha20 0.9.1`, `zeroize 1.8.2` | Apache-2.0 OR MIT |
 | Constant-time comparison | `subtle 2.6.1` | none | BSD-3-Clause |
 | ML-KEM-768 | `ml-kem 0.3.2` | `module-lattice 0.2.3`, `hybrid-array 0.4.14`, `kem 0.3.0`, `sha3 0.11.0`, `zeroize 1.8.2` | Apache-2.0 OR MIT |
+| Argon2id v1.3 | `argon2 0.5.3` | `blake2 0.10.6`, `base64ct 1.8.3`, `cpufeatures 0.2.17` on x86, `zeroize 1.8.2` | MIT OR Apache-2.0 |
 
 The new algorithm crates are exact-pinned with default features disabled; only
 static-secret and zeroization features required by the public profile are
@@ -93,9 +94,16 @@ zeroizing resource. The direct `poly1305` entry enables zeroization for
 transitive MAC state. Production selects one static provider. The deterministic
 provider is compiled only under `cfg(test)`, and there is no runtime algorithm
 fallback.
+Argon2 is exact-pinned with default features disabled and only its zeroization
+feature enabled. Mesh supplies the bounded allocation, wraps the full working
+memory plus temporary password and output copies in zeroizing storage, and
+fixes the algorithm to Argon2id v1.3. The pure-Rust implementation is shared by
+all supported targets; there is no target-specific or runtime-selected KDF.
 The public API is binary-first, private keys remain actor-owned resources, and
 official vectors plus negative and boundary tests cover every primitive. The
-ML-KEM key-generation check is pinned to NIST ACVP FIPS 203 `tcId 26`.
+ML-KEM key-generation check is pinned to NIST ACVP FIPS 203 `tcId 26`; the
+Argon2id check is pinned to the reference implementation's v1.3 raw vector for
+`password` and `somesalt`.
 
 `scripts/verify-crypto-mobile.sh` checks the complete runtime library for
 `aarch64-apple-ios`. Tagged releases now require a clean RustSec audit, a

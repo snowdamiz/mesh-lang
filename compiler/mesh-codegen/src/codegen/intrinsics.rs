@@ -583,6 +583,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_crypto_argon2id",
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
     for name in [
         "mesh_crypto_x25519_generate",
         "mesh_crypto_mlkem_generate",
@@ -4786,6 +4802,7 @@ mod tests {
             ("mesh_crypto_random_bytes", 1),
             ("mesh_crypto_hmac_sha256", 2),
             ("mesh_crypto_hkdf_sha256", 4),
+            ("mesh_crypto_argon2id", 6),
             ("mesh_crypto_x25519_generate", 0),
             ("mesh_crypto_x25519_from_seed", 1),
             ("mesh_crypto_x25519_from_secret", 1),

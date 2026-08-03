@@ -325,6 +325,26 @@ pub(crate) fn check(
     );
     register_crypto_signature(
         &mut signatures,
+        "argon2id",
+        vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::secret_bytes(),
+            Ty::bytes(),
+            Ty::int(),
+            Ty::int(),
+            Ty::int(),
+            Ty::int(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
         "x25519_from_secret",
         vec![ParamOwnership::Consume],
         vec![Ty::secret_bytes()],

@@ -302,6 +302,7 @@ end
 | `Secret.random(length)` | `Result<SecretBytes, CryptoError>` | OS-backed move-only secret bytes |
 | `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key |
 | `Crypto.hkdf_sha256(key, salt, info, length)` | `Result<SecretBytes, CryptoError>` | Bounded HKDF output |
+| `Crypto.argon2id(password, salt, memory_kib, iterations, parallelism, length)` | `Result<SecretBytes, CryptoError>` | Argon2id v1.3 password KDF with a borrowed secret |
 | `Crypto.x25519_generate()` | `Result<X25519KeyPair, CryptoError>` | Generate an X25519 key pair |
 | `Crypto.x25519_public(key)` | `Result<X25519PublicKey, CryptoError>` | Derive the public key again |
 | `Crypto.x25519_shared(key, peer)` | `Result<SecretBytes, CryptoError>` | Derive a shared secret |
@@ -315,6 +316,15 @@ end
 Borrowed keys remain owned by the caller. `Crypto.aead_key` consumes its input,
 including on error. Use `Secret.destroy` for early destruction; otherwise the
 compiler inserts destruction on every scope exit.
+
+`Crypto.argon2id` accepts salts from 8 through 64 bytes, memory from
+`8 * parallelism` through 65,536 KiB, 1 through 10 iterations, 1 through 8
+lanes, outputs from 16 through 64 bytes, and passwords up to 65,536 bytes. The
+low end exists for published vectors, compatibility tests, and explicitly
+versioned application profiles; these bounds are resource-safety limits, not a
+password policy. Applications must pin a reviewed profile instead of exposing
+the parameters to users. Messenger recovery pins its values in the versioned
+backup profile and stores the salt and profile version with the ciphertext.
 
 ### UUID
 

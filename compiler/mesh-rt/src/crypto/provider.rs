@@ -1,3 +1,4 @@
+use argon2::{Algorithm, Argon2, Block, Params, Version};
 use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Tag};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, VerifyingKey};
@@ -11,6 +12,13 @@ use zeroize::{Zeroize, Zeroizing};
 const MAX_RANDOM_BYTES: usize = 64 * 1024;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MAX_HKDF_OUTPUT_BYTES: usize = 255 * 32;
+pub(crate) const MIN_ARGON2_SALT_BYTES: usize = 8;
+pub(crate) const MAX_ARGON2_SALT_BYTES: usize = 64;
+pub(crate) const MAX_ARGON2_MEMORY_KIB: u32 = 64 * 1024;
+pub(crate) const MAX_ARGON2_ITERATIONS: u32 = 10;
+pub(crate) const MAX_ARGON2_PARALLELISM: u32 = 8;
+pub(crate) const MIN_ARGON2_OUTPUT_BYTES: usize = 16;
+pub(crate) const MAX_ARGON2_OUTPUT_BYTES: usize = 64;
 const AEAD_TAG_BYTES: usize = 16;
 const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_INPUT_BYTES + AEAD_TAG_BYTES;
 
@@ -26,6 +34,7 @@ impl KeyType for HkdfOutputLength {
 pub(crate) enum ProviderError {
     EntropyUnavailable,
     InvalidLength,
+    ResourceLimitExceeded,
     InvalidPublicKey,
     AuthenticationFailed,
 }
@@ -86,6 +95,50 @@ pub(crate) trait CryptoProvider {
             return Err(ProviderError::InvalidLength);
         };
         if output_key.fill(output).is_err() {
+            output.zeroize();
+            return Err(ProviderError::InvalidLength);
+        }
+        Ok(())
+    }
+
+    fn argon2id(
+        &self,
+        password: &[u8],
+        salt: &[u8],
+        memory_kib: u32,
+        iterations: u32,
+        parallelism: u32,
+        output: &mut [u8],
+    ) -> Result<(), ProviderError> {
+        if password.len() > MAX_INPUT_BYTES
+            || !(MIN_ARGON2_SALT_BYTES..=MAX_ARGON2_SALT_BYTES).contains(&salt.len())
+            || !(1..=MAX_ARGON2_ITERATIONS).contains(&iterations)
+            || !(1..=MAX_ARGON2_PARALLELISM).contains(&parallelism)
+            || memory_kib < parallelism * 8
+            || memory_kib > MAX_ARGON2_MEMORY_KIB
+            || !(MIN_ARGON2_OUTPUT_BYTES..=MAX_ARGON2_OUTPUT_BYTES).contains(&output.len())
+        {
+            output.zeroize();
+            return Err(ProviderError::InvalidLength);
+        }
+
+        let Ok(params) = Params::new(memory_kib, iterations, parallelism, Some(output.len()))
+        else {
+            output.zeroize();
+            return Err(ProviderError::InvalidLength);
+        };
+        let block_count = params.block_count();
+        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let mut blocks = Zeroizing::new(Vec::new());
+        if blocks.try_reserve_exact(block_count).is_err() {
+            output.zeroize();
+            return Err(ProviderError::ResourceLimitExceeded);
+        }
+        blocks.resize(block_count, Block::default());
+        if argon2
+            .hash_password_into_with_memory(password, salt, output, blocks.as_mut_slice())
+            .is_err()
+        {
             output.zeroize();
             return Err(ProviderError::InvalidLength);
         }
@@ -450,6 +503,31 @@ mod tests {
                 [0; 32],
                 [0; 32]
             )
+        );
+    }
+
+    #[test]
+    fn argon2id_matches_the_reference_v0x13_vector() {
+        let expected =
+            decode_hex("09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7");
+        let mut output = [0; 32];
+
+        SystemProvider
+            .argon2id(b"password", b"somesalt", 65_536, 2, 1, &mut output)
+            .unwrap();
+
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn argon2id_clears_output_when_parameters_are_invalid() {
+        let mut output = [0xaa; 32];
+
+        let result = SystemProvider.argon2id(b"password", b"short", 32, 3, 1, &mut output);
+
+        assert_eq!(
+            (result, output),
+            (Err(ProviderError::InvalidLength), [0; 32])
         );
     }
 

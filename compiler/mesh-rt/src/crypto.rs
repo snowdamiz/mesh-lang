@@ -18,7 +18,11 @@ use zeroize::Zeroizing;
 
 #[cfg(feature = "fuzzing")]
 use self::provider::FixedProvider;
-use self::provider::{CryptoProvider, ProviderError, SystemProvider};
+use self::provider::{
+    CryptoProvider, ProviderError, SystemProvider, MAX_ARGON2_ITERATIONS, MAX_ARGON2_MEMORY_KIB,
+    MAX_ARGON2_OUTPUT_BYTES, MAX_ARGON2_PARALLELISM, MAX_ARGON2_SALT_BYTES,
+    MIN_ARGON2_OUTPUT_BYTES, MIN_ARGON2_SALT_BYTES,
+};
 use crate::actor::Process;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
@@ -391,6 +395,112 @@ pub extern "C" fn mesh_crypto_hkdf_sha256(
             input_key,
             salt,
             info,
+            output_length,
+        )
+    }) {
+        Ok(output) => complete_result(result, output),
+        Err(error) => error_result(error),
+    }
+}
+
+fn bounded_argon2_parameter(value: i64, minimum: u32, maximum: u32) -> Result<u32, CryptoFailure> {
+    if value < i64::from(minimum) {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            i64::from(minimum),
+            value,
+        ));
+    }
+    if value > i64::from(maximum) {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            i64::from(maximum),
+            value,
+        ));
+    }
+    Ok(value as u32)
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the six-parameter public Argon2id API with its process and provider context"
+)]
+fn argon2id_for_process(
+    process: &mut Process,
+    provider: &impl CryptoProvider,
+    password: *const MeshSecretHandle,
+    salt: *const MeshBytes,
+    memory_kib: i64,
+    iterations: i64,
+    parallelism: i64,
+    output_length: i64,
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
+    let parallelism = bounded_argon2_parameter(parallelism, 1, MAX_ARGON2_PARALLELISM)?;
+    let memory_kib = bounded_argon2_parameter(memory_kib, parallelism * 8, MAX_ARGON2_MEMORY_KIB)?;
+    let iterations = bounded_argon2_parameter(iterations, 1, MAX_ARGON2_ITERATIONS)?;
+    let output_length = bounded_argon2_parameter(
+        output_length,
+        MIN_ARGON2_OUTPUT_BYTES as u32,
+        MAX_ARGON2_OUTPUT_BYTES as u32,
+    )? as usize;
+    let salt = unsafe { required_bytes(salt, MAX_ARGON2_SALT_BYTES) }?;
+    if salt.len() < MIN_ARGON2_SALT_BYTES {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            MIN_ARGON2_SALT_BYTES as i64,
+            salt.len() as i64,
+        ));
+    }
+    let password = with_owned_resource(process, password, ResourceKind::SecretBytes, |password| {
+        if password.len() > MAX_INPUT_BYTES {
+            return Err(failure(
+                CryptoErrorTag::InvalidLength,
+                MAX_INPUT_BYTES as i64,
+                password.len() as i64,
+            ));
+        }
+        Ok(Zeroizing::new(password.to_vec()))
+    })
+    .map_err(resource_failure)??;
+    let mut output = Zeroizing::new(vec![0; output_length].into_boxed_slice());
+    provider
+        .argon2id(
+            &password,
+            salt,
+            memory_kib,
+            iterations,
+            parallelism,
+            &mut output,
+        )
+        .map_err(|error| match error {
+            ProviderError::ResourceLimitExceeded => {
+                failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+            }
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    insert_owned_resource(process, ResourceKind::SecretBytes, output).map_err(resource_failure)
+}
+
+/// Derive an actor-owned secret with Argon2id v1.3 and bounded costs.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_argon2id(
+    password: *const MeshSecretHandle,
+    salt: *const MeshBytes,
+    memory_kib: i64,
+    iterations: i64,
+    parallelism: i64,
+    output_length: i64,
+) -> *mut MeshResult {
+    let result = alloc_result(0, ptr::null_mut());
+    match with_current_process(|process| {
+        argon2id_for_process(
+            process,
+            &SystemProvider,
+            password,
+            salt,
+            memory_kib,
+            iterations,
+            parallelism,
             output_length,
         )
     }) {
@@ -1878,6 +1988,23 @@ pub fn fuzz_crypto_boundaries(data: &[u8]) {
     let mut derived = vec![0; input.first().copied().unwrap_or(31) as usize % 64 + 1];
     let _ = provider.hkdf_sha256(&key, &salt, input, &mut derived);
 
+    if input.first().copied().unwrap_or_default() & 0x1f == 1 {
+        let memory_kib = input.get(1).copied().unwrap_or(32) as u32 % 80;
+        let iterations = input.get(2).copied().unwrap_or(1) as u32 % 12;
+        let parallelism = input.get(3).copied().unwrap_or(1) as u32 % 10;
+        let output_length = input.get(4).copied().unwrap_or(32) as usize % 80;
+        let argon_salt = &input[..input.len().min(65)];
+        let mut output = Zeroizing::new(vec![0xaa; output_length]);
+        let _ = provider.argon2id(
+            &key,
+            argon_salt,
+            memory_kib,
+            iterations,
+            parallelism,
+            &mut output,
+        );
+    }
+
     let x25519_public = provider.x25519_public(&key);
     let mut shared = [0; 32];
     let _ = provider.x25519_shared(&key, &x25519_public, &mut shared);
@@ -1957,6 +2084,14 @@ mod tests {
             *const MeshBytes,
             i64,
         ) -> *mut MeshResult = mesh_crypto_hkdf_sha256;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshBytes,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) -> *mut MeshResult = mesh_crypto_argon2id;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_x25519_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_x25519_from_seed;
         let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
@@ -2211,6 +2346,71 @@ mod tests {
 
         assert_eq!(length, 42);
         destroy_owned(owner);
+    }
+
+    #[test]
+    fn argon2id_returns_an_actor_owned_secret() {
+        mesh_rt_init();
+        let owner = ProcessId(70_020);
+        let mut process = Process::new(owner, Priority::Normal);
+        let password = insert_owned_resource(
+            &mut process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(b"password".to_vec().into_boxed_slice()),
+        )
+        .expect("insert Argon2id password");
+        let salt = mesh_bytes_new(b"somesalt".as_ptr(), 8);
+
+        let Ok(output) =
+            argon2id_for_process(&mut process, &SystemProvider, password, salt, 32, 3, 1, 32)
+        else {
+            panic!("Argon2id derivation failed");
+        };
+        let length = with_owned_resource(&process, output, ResourceKind::SecretBytes, |bytes| {
+            bytes.len()
+        })
+        .expect("read Argon2id output");
+
+        assert_eq!(length, 32);
+        destroy_owned(owner);
+    }
+
+    #[test]
+    fn argon2id_rejects_parameters_outside_public_bounds() {
+        let mut process = Process::new(ProcessId(70_021), Priority::Normal);
+        let short_salt = mesh_bytes_new([0u8; 7].as_ptr(), 7);
+        let long_salt = mesh_bytes_new([0u8; 65].as_ptr(), 65);
+        let cases = [
+            (ptr::null(), 32, 3, 0, 32, 1, 0),
+            (ptr::null(), 32, 3, 9, 32, 8, 9),
+            (ptr::null(), 31, 3, 4, 32, 32, 31),
+            (ptr::null(), 65_537, 3, 1, 32, 65_536, 65_537),
+            (ptr::null(), 32, 0, 1, 32, 1, 0),
+            (ptr::null(), 32, 11, 1, 32, 10, 11),
+            (ptr::null(), 32, 3, 1, 15, 16, 15),
+            (ptr::null(), 32, 3, 1, 65, 64, 65),
+            (short_salt, 32, 3, 1, 32, 8, 7),
+            (long_salt, 32, 3, 1, 32, 64, 65),
+        ];
+
+        for (salt, memory, iterations, parallelism, output, expected, actual) in cases {
+            let Err(error) = argon2id_for_process(
+                &mut process,
+                &SystemProvider,
+                ptr::null(),
+                salt,
+                memory,
+                iterations,
+                parallelism,
+                output,
+            ) else {
+                panic!("invalid Argon2id parameters were accepted");
+            };
+            assert_eq!(
+                (error.tag, error.expected, error.actual),
+                (CryptoErrorTag::InvalidLength, expected, actual),
+            );
+        }
     }
 
     #[test]

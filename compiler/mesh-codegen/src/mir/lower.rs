@@ -1999,6 +1999,20 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        self.known_functions.insert(
+            "mesh_crypto_argon2id".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Int,
+                    MirType::Int,
+                    MirType::Int,
+                    MirType::Int,
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
         for name in [
             "mesh_crypto_x25519_generate",
             "mesh_crypto_mlkem_generate",
@@ -15264,6 +15278,7 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_random_bytes" => "mesh_crypto_random_bytes".to_string(),
         "crypto_hmac_sha256" => "mesh_crypto_hmac_sha256".to_string(),
         "crypto_hkdf_sha256" => "mesh_crypto_hkdf_sha256".to_string(),
+        "crypto_argon2id" => "mesh_crypto_argon2id".to_string(),
         "crypto_x25519_generate" => "mesh_crypto_x25519_generate".to_string(),
         "crypto_x25519_from_seed" => "mesh_crypto_x25519_from_seed".to_string(),
         "crypto_x25519_from_secret" => "mesh_crypto_x25519_from_secret".to_string(),
@@ -17209,6 +17224,9 @@ mod tests {
             "fn hmac(key :: borrow SecretBytes, message :: Bytes) -> Result<SecretBytes, CryptoError> do\n\
                Crypto.hmac_sha256(key, message)\n\
              end\n\
+             fn derive(password :: borrow SecretBytes, salt :: Bytes) -> Result<SecretBytes, CryptoError> do\n\
+               Crypto.argon2id(password, salt, 32, 3, 1, 32)\n\
+             end\n\
              fn make_aead(material :: SecretBytes) -> Result<AeadKey, CryptoError> do\n\
                Crypto.aead_key(material)\n\
              end\n\
@@ -17251,6 +17269,23 @@ mod tests {
             hmac,
             MirExpr::Call { args, ty: MirType::SumType(name), .. }
                 if name == "Result_SecretBytes_CryptoError"
+                    && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
+        ));
+
+        let argon2id = find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "derive")
+                .unwrap()
+                .body,
+            "mesh_crypto_argon2id",
+        )
+        .expect("Argon2id runtime call");
+        assert!(matches!(
+            argon2id,
+            MirExpr::Call { args, ty: MirType::SumType(name), .. }
+                if name == "Result_SecretBytes_CryptoError"
+                    && args.len() == 6
                     && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
         ));
 
