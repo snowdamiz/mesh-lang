@@ -101,6 +101,9 @@ pub struct CodeGen<'ctx> {
     /// Versioned, compiler-normalized autonomous runtime configuration.
     pub(crate) autonomous_config_json: Option<String>,
 
+    /// Bodyful Mesh functions exposed through the stable binary library ABI.
+    pub(crate) library_exports: Vec<crate::LibraryExport>,
+
     /// TCE loop header block for the current tail-recursive function.
     /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
     /// (separate from user while/for loops so break/continue don't interfere).
@@ -211,6 +214,7 @@ impl<'ctx> CodeGen<'ctx> {
             declared_handlers: Vec::new(),
             startup_work_registrations: Vec::new(),
             autonomous_config_json: None,
+            library_exports: Vec::new(),
             tce_loop_header: None,
             tce_param_names: Vec::new(),
         })
@@ -231,6 +235,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub fn set_autonomous_config_json(&mut self, config: Option<&str>) {
         self.autonomous_config_json = config.map(str::to_string);
+    }
+
+    pub fn set_library_exports(&mut self, exports: &[crate::LibraryExport]) {
+        self.library_exports = exports.to_vec();
     }
 
     /// Compile a MIR module to LLVM IR.
@@ -285,16 +293,74 @@ impl<'ctx> CodeGen<'ctx> {
             self.compile_function(func)?;
         }
 
-        // Step 5: Generate main wrapper if entry function exists.
+        // Step 5: Generate stable binary ABI wrappers for library exports.
+        self.generate_library_export_wrappers()?;
+
+        // Step 6: Generate main wrapper if entry function exists.
         if let Some(entry_name) = &mir.entry_function {
             self.generate_main_wrapper(entry_name)?;
         }
 
-        // Step 6: Verify the module.
+        // Step 7: Verify the module.
         self.module
             .verify()
             .map_err(|e| format!("LLVM module verification failed: {}", e))?;
 
+        Ok(())
+    }
+
+    fn generate_library_export_wrappers(&mut self) -> Result<(), String> {
+        let exports = self.library_exports.clone();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let i32_type = self.context.i32_type();
+        let wrapper_type =
+            i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false);
+        let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke");
+
+        for export in exports {
+            let function = self
+                .functions
+                .get(&export.function)
+                .copied()
+                .ok_or_else(|| {
+                    format!(
+                        "Exported Mesh function '{}' was not lowered into the LLVM module",
+                        export.function
+                    )
+                })?;
+            if self.module.get_function(&export.symbol).is_some() {
+                return Err(format!(
+                    "Exported symbol '{}' conflicts with another generated or runtime symbol",
+                    export.symbol
+                ));
+            }
+            let wrapper = self.module.add_function(&export.symbol, wrapper_type, None);
+            let entry = self.context.append_basic_block(wrapper, "entry");
+            self.builder.position_at_end(entry);
+            let input = wrapper.get_nth_param(0).expect("library input pointer");
+            let input_len = wrapper.get_nth_param(1).expect("library input length");
+            let output = wrapper.get_nth_param(2).expect("library output pointer");
+            let status = self
+                .builder
+                .build_call(
+                    invoke,
+                    &[
+                        function.as_global_value().as_pointer_value().into(),
+                        input.into(),
+                        input_len.into(),
+                        output.into(),
+                    ],
+                    "library_status",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("mesh_library_invoke must return a status")?;
+            self.builder
+                .build_return(Some(&status))
+                .map_err(|error| error.to_string())?;
+        }
         Ok(())
     }
 
@@ -1068,6 +1134,31 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             native_functions: vec![],
         }
+    }
+
+    #[test]
+    fn library_export_wraps_mesh_binary_result_in_the_stable_runtime_boundary() {
+        let mut mir = empty_mir_module();
+        mir.functions.push(MirFunction {
+            name: "echo".to_string(),
+            params: vec![("request".to_string(), MirType::Ptr)],
+            return_type: MirType::Ptr,
+            body: MirExpr::Var("request".to_string(), MirType::Ptr),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "library_export", 0, None).unwrap();
+        codegen.set_library_exports(&[crate::LibraryExport {
+            function: "echo".to_string(),
+            symbol: "mesh_mobile_echo".to_string(),
+        }]);
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("define i32 @mesh_mobile_echo(ptr"), "{ir}");
+        assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
     }
 
     fn hello_world_mir() -> MirModule {

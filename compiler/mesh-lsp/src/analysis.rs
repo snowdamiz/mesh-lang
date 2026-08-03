@@ -231,6 +231,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
         TypeError::UndefinedType { span, .. }
         | TypeError::NativeDeclarationInvalid { span, .. }
+        | TypeError::ExportDeclarationInvalid { span, .. }
         | TypeError::InvalidLetPattern { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }

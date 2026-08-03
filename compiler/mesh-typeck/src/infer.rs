@@ -582,6 +582,25 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     }
     modules.insert("Bytes".to_string(), bytes_mod);
 
+    let mut host_mod = HashMap::new();
+    for name in [
+        "secure_store_put",
+        "secure_store_get",
+        "secure_store_delete",
+        "push_get_token",
+        "background_schedule",
+        "network_state",
+        "monotonic_clock",
+        "wall_clock",
+        "log_redacted",
+    ] {
+        host_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], bytes_result())),
+        );
+    }
+    modules.insert("Host".to_string(), host_mod);
+
     let bytes_builder = Ty::bytes_builder();
     let builder_result = |value| Ty::result(value, Ty::binary_error());
     let mut builder_mod = HashMap::new();
@@ -3720,6 +3739,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "Host",
     "BytesBuilder",
     "Secret",
     "SecretMap",
@@ -6984,8 +7004,12 @@ fn infer_fn_def(
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<anonymous>".to_string());
     let is_native = fn_.native_decl().is_some();
+    let is_export = fn_.export_decl().is_some();
     if is_native {
         validate_native_declaration(ctx, fn_);
+    }
+    if is_export {
+        validate_export_declaration(ctx, fn_);
     }
 
     // Save any pre-registered mutual-recursion placeholder before we overwrite the env entry.
@@ -7114,6 +7138,9 @@ fn infer_fn_def(
     });
     if is_native {
         validate_native_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
+    }
+    if is_export {
+        validate_export_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
 
     ctx.push_fn_return_type(return_type_annotation.clone());
@@ -7277,6 +7304,75 @@ fn is_native_abi_return(ty: &Ty) -> bool {
                 Ty::Con(con) if matches!(con.name.as_str(), "Result" | "Option")
             ) && values.iter().all(is_native_abi_value)
     )
+}
+
+fn validate_export_declaration(ctx: &mut InferCtx, function: &FnDef) {
+    let span = function.syntax().text_range();
+    let mut reject = |reason: &str| {
+        ctx.errors.push(TypeError::ExportDeclarationInvalid {
+            reason: reason.to_string(),
+            span,
+        });
+    };
+
+    if function.visibility().is_none() {
+        reject("exported functions must be public");
+    }
+    let symbol = function
+        .export_decl()
+        .and_then(|declaration| declaration.symbol())
+        .unwrap_or_default();
+    if !is_c_identifier(&symbol) {
+        reject("exported symbol must be a non-empty C identifier");
+    }
+    if function.return_type().is_none() {
+        reject("exported functions require an explicit return type");
+    }
+    if function.param_list().is_none_or(|params| {
+        params
+            .params()
+            .any(|parameter| parameter.type_annotation().is_none())
+    }) {
+        reject("every exported function parameter requires an explicit type");
+    }
+    if function
+        .syntax()
+        .children()
+        .any(|child| child.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+    {
+        reject("generic exported functions are unsupported");
+    }
+    if function
+        .syntax()
+        .children()
+        .any(|child| child.kind() == SyntaxKind::WHERE_CLAUSE)
+    {
+        reject("exported functions cannot have a where clause");
+    }
+    if function.guard().is_some() {
+        reject("exported functions cannot have a guard");
+    }
+}
+
+fn validate_export_abi_types(
+    ctx: &mut InferCtx,
+    function: &FnDef,
+    params: &[Ty],
+    return_type: Option<&Ty>,
+) {
+    let valid_params = matches!(params, [Ty::Con(con)] if con.name == "Bytes");
+    let valid_return = matches!(
+        return_type,
+        Some(Ty::App(constructor, values))
+            if matches!(constructor.as_ref(), Ty::Con(con) if con.name == "Result")
+                && matches!(values.as_slice(), [Ty::Con(ok), Ty::Con(error)] if ok.name == "Bytes" && error.name == "String")
+    );
+    if !valid_params || !valid_return {
+        ctx.errors.push(TypeError::ExportDeclarationInvalid {
+            reason: "stable exports require exactly `(Bytes) -> Result<Bytes, String>`".to_string(),
+            span: function.syntax().text_range(),
+        });
+    }
 }
 
 // ── Expression Inference ───────────────────────────────────────────────

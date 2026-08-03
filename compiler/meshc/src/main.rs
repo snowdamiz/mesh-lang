@@ -18,6 +18,7 @@
 //! - `--emit-llvm` - Emit LLVM IR (.ll) alongside the binary
 //! - `--output` - Output path for the compiled binary
 //! - `--target` - Target triple for cross-compilation
+//! - `--artifact` - Build an executable, static library, or dynamic library
 //! - `--json` - Output diagnostics as JSON (one object per line)
 //! - `--no-color` - Disable colorized output
 
@@ -27,6 +28,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
 mod discovery;
+mod library_bindings;
 mod migrate;
 mod proof;
 mod proof_gates;
@@ -78,6 +80,10 @@ enum Commands {
         /// Target triple for cross-compilation (e.g., x86_64-unknown-linux-gnu)
         #[arg(long)]
         target: Option<String>,
+
+        /// Artifact kind
+        #[arg(long, value_enum, default_value_t = BuildArtifact::Executable)]
+        artifact: BuildArtifact,
 
         /// Output diagnostics as JSON (one object per line) instead of human-readable format
         #[arg(long)]
@@ -188,6 +194,24 @@ enum InitTodoDb {
     Postgres,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum BuildArtifact {
+    #[default]
+    Executable,
+    Staticlib,
+    Cdylib,
+}
+
+impl std::fmt::Display for BuildArtifact {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Executable => "executable",
+            Self::Staticlib => "staticlib",
+            Self::Cdylib => "cdylib",
+        })
+    }
+}
+
 impl From<InitTodoDb> for mesh_pkg::TodoApiDatabase {
     fn from(value: InitTodoDb) -> Self {
         match value {
@@ -272,6 +296,7 @@ fn main() {
             emit_llvm,
             output,
             target,
+            artifact,
             json,
             no_color,
         } => {
@@ -285,6 +310,7 @@ fn main() {
                 emit_llvm,
                 output.as_deref(),
                 target.as_deref(),
+                artifact,
                 &diag_opts,
             ) {
                 if json {
@@ -425,6 +451,7 @@ fn run_update_command() -> Result<(), String> {
 
 pub(crate) struct PreparedBuild {
     pub(crate) merged_mir: mesh_codegen::mir::MirModule,
+    pub(crate) library_exports: Vec<mesh_codegen::LibraryExport>,
     pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
     pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
     pub(crate) autonomous_config_json: Option<String>,
@@ -609,6 +636,7 @@ pub(crate) fn build(
     emit_llvm: bool,
     output: Option<&Path>,
     target: Option<&str>,
+    artifact: BuildArtifact,
     diag_opts: &DiagnosticOptions,
 ) -> Result<(), String> {
     let mut prepared = prepare_project_build(dir, diag_opts)?;
@@ -627,17 +655,41 @@ pub(crate) fn build(
     let project_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("output");
     let output_path = match output {
         Some(p) => p.to_path_buf(),
-        None => dir.join(project_name),
+        None => match artifact {
+            BuildArtifact::Executable => dir.join(project_name),
+            BuildArtifact::Staticlib => dir.join(format!("lib{project_name}.a")),
+            BuildArtifact::Cdylib => {
+                let extension = if target
+                    .map(|triple| triple.contains("apple"))
+                    .unwrap_or(cfg!(target_os = "macos"))
+                {
+                    "dylib"
+                } else if target
+                    .map(|triple| triple.contains("windows"))
+                    .unwrap_or(cfg!(target_os = "windows"))
+                {
+                    "dll"
+                } else {
+                    "so"
+                };
+                dir.join(format!("lib{project_name}.{extension}"))
+            }
+        },
     };
 
     // Emit LLVM IR if requested
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
+        let mut llvm_mir = prepared.merged_mir.clone();
+        if artifact != BuildArtifact::Executable {
+            llvm_mir.entry_function = None;
+        }
         mesh_codegen::compile_mir_to_llvm_ir(
-            &prepared.merged_mir,
+            &llvm_mir,
             &declared_handlers,
             &startup_work_registrations,
             prepared.autonomous_config_json.as_deref(),
+            &prepared.library_exports,
             &ll_path,
             target,
         )?;
@@ -655,17 +707,40 @@ pub(crate) fn build(
     } else {
         Vec::new()
     };
-    mesh_codegen::compile_mir_to_binary(
-        &prepared.merged_mir,
-        &declared_handlers,
-        &startup_work_registrations,
-        prepared.autonomous_config_json.as_deref(),
-        &output_path,
-        opt_level,
-        target,
-        runtime_override.as_deref(),
-        &native_archives,
-    )?;
+    match artifact {
+        BuildArtifact::Executable => mesh_codegen::compile_mir_to_binary(
+            &prepared.merged_mir,
+            &declared_handlers,
+            &startup_work_registrations,
+            prepared.autonomous_config_json.as_deref(),
+            &prepared.library_exports,
+            &output_path,
+            opt_level,
+            target,
+            runtime_override.as_deref(),
+            &native_archives,
+        )?,
+        BuildArtifact::Staticlib | BuildArtifact::Cdylib => {
+            mesh_codegen::compile_mir_to_library(
+                &prepared.merged_mir,
+                &declared_handlers,
+                &startup_work_registrations,
+                prepared.autonomous_config_json.as_deref(),
+                &prepared.library_exports,
+                if artifact == BuildArtifact::Staticlib {
+                    mesh_codegen::LibraryArtifact::Static
+                } else {
+                    mesh_codegen::LibraryArtifact::Dynamic
+                },
+                &output_path,
+                opt_level,
+                target,
+                runtime_override.as_deref(),
+                &native_archives,
+            )?;
+            library_bindings::write(&output_path, &prepared.library_exports, target)?;
+        }
+    }
 
     eprintln!("  Compiled: {}", output_path.display());
 
@@ -930,6 +1005,8 @@ pub(crate) fn prepare_project_build(
         &inferred_export_names,
     );
 
+    let library_exports = collect_library_exports(&project.module_parses)?;
+
     // Lower ALL modules to MIR and merge into a single module for codegen.
     let mut mir_modules = Vec::new();
     let mut entry_mir_idx = 0;
@@ -967,12 +1044,14 @@ pub(crate) fn prepare_project_build(
                 .iter()
                 .map(|entry| entry.executable_symbol.clone()),
         )
+        .chain(library_exports.iter().map(|export| export.function.clone()))
         .collect::<Vec<_>>();
     let merged_mir =
         mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx, &declared_executable_symbols);
 
     Ok(PreparedBuild {
         merged_mir,
+        library_exports,
         clustered_execution_plan,
         clustered_route_handler_plan,
         autonomous_config_json: runtime_autonomous_config_json(
@@ -981,6 +1060,35 @@ pub(crate) fn prepare_project_build(
                 .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
         )?,
     })
+}
+
+fn collect_library_exports(
+    parses: &[mesh_parser::Parse],
+) -> Result<Vec<mesh_codegen::LibraryExport>, String> {
+    let mut symbols = HashSet::new();
+    let mut exports = Vec::new();
+    for parse in parses {
+        for function in parse.tree().fn_defs() {
+            let Some(declaration) = function.export_decl() else {
+                continue;
+            };
+            let function_name = function
+                .name()
+                .and_then(|name| name.text())
+                .ok_or("exported function is missing a name")?;
+            let symbol = declaration
+                .symbol()
+                .ok_or("exported function is missing a symbol")?;
+            if !symbols.insert(symbol.clone()) {
+                return Err(format!("duplicate exported symbol '{symbol}'"));
+            }
+            exports.push(mesh_codegen::LibraryExport {
+                function: function_name,
+                symbol,
+            });
+        }
+    }
+    Ok(exports)
 }
 
 fn runtime_lib_override_from_env() -> Result<Option<PathBuf>, String> {
@@ -1446,6 +1554,46 @@ fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io
 #[cfg(test)]
 mod autonomous_config_tests {
     use super::*;
+
+    #[test]
+    fn library_exports_are_collected_as_reachability_roots_and_symbols_are_unique() {
+        let first = mesh_parser::parse(
+            "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        let second = mesh_parser::parse(
+            "@export(\"mesh_mobile_status\")\npub fn status(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        let exports = collect_library_exports(&[first, second]).expect("valid exports");
+        assert_eq!(exports[0].function, "echo");
+        assert_eq!(exports[0].symbol, "mesh_mobile_echo");
+
+        let duplicate = mesh_parser::parse(
+            "@export(\"mesh_mobile_echo\")\npub fn again(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        assert!(collect_library_exports(&[
+            mesh_parser::parse(
+                "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+            ),
+            duplicate,
+        ])
+        .unwrap_err()
+        .contains("duplicate exported symbol"));
+    }
+
+    #[test]
+    fn build_cli_accepts_all_library_artifact_modes() {
+        for artifact in ["executable", "staticlib", "cdylib"] {
+            let cli = Cli::try_parse_from(["meshc", "build", ".", "--artifact", artifact])
+                .expect("artifact mode");
+            let Commands::Build {
+                artifact: parsed, ..
+            } = cli.command
+            else {
+                panic!("build command")
+            };
+            assert_eq!(parsed.to_string(), artifact);
+        }
+    }
 
     #[test]
     fn autonomous_data_plane_embeds_feature_gates_without_driver_authority() {

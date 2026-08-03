@@ -5,8 +5,9 @@
 //! while Windows MSVC targets use `clang`/`clang.exe` so the installed
 //! compiler does not assume Unix tool names or library naming.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::build_trace;
 
@@ -177,6 +178,110 @@ pub(crate) fn link_with_plan(
     }
 
     build_trace::mark_link_completed();
+    std::fs::remove_file(object_path).ok();
+    Ok(())
+}
+
+pub(crate) fn archive_with_plan(
+    object_path: &Path,
+    output_path: &Path,
+    plan: &LinkPlan,
+) -> Result<(), String> {
+    let output = if plan.target.is_apple() {
+        let mut command = Command::new("xcrun");
+        command.args(["libtool", "-static", "-o"]);
+        command.arg(output_path).arg(object_path);
+        for archive in &plan.native_archives {
+            command.arg(archive);
+        }
+        command.arg(&plan.rt_path).output()
+    } else if plan.target.kind == LinkTargetKind::Unix {
+        let archiver = plan.target.archiver_program()?;
+        let child = Command::new(&archiver)
+            .arg("-M")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+        match child {
+            Ok(mut child) => {
+                let mut script = format!(
+                    "CREATE {}\nADDMOD {}\n",
+                    output_path.display(),
+                    object_path.display()
+                );
+                for archive in &plan.native_archives {
+                    script.push_str(&format!("ADDLIB {}\n", archive.display()));
+                }
+                script.push_str(&format!("ADDLIB {}\nSAVE\nEND\n", plan.rt_path.display()));
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(script.as_bytes()).map_err(|error| {
+                        format!("Failed to drive '{}': {error}", archiver.display())
+                    })?;
+                }
+                child.wait_with_output()
+            }
+            Err(error) => Err(error),
+        }
+    } else {
+        return Err("static library artifacts are not yet supported for Windows MSVC".to_string());
+    }
+    .map_err(|error| format!("Failed to create static library: {error}"))?;
+
+    finish_library_link(output, object_path, output_path, "Static library creation")
+}
+
+pub(crate) fn link_dynamic_with_plan(
+    object_path: &Path,
+    output_path: &Path,
+    plan: &LinkPlan,
+) -> Result<(), String> {
+    if plan.target.kind != LinkTargetKind::Unix {
+        return Err("dynamic library artifacts are not yet supported for Windows MSVC".to_string());
+    }
+    let mut command = plan.target.dynamic_linker_command()?;
+    command.arg(object_path);
+    for archive in &plan.native_archives {
+        command.arg(archive);
+    }
+    if plan.target.is_apple() {
+        command
+            .arg(format!("-Wl,-force_load,{}", plan.rt_path.display()))
+            .arg("-dynamiclib");
+    } else {
+        command
+            .arg("-Wl,--whole-archive")
+            .arg(&plan.rt_path)
+            .arg("-Wl,--no-whole-archive")
+            .arg("-shared");
+    }
+    command.arg("-lm").arg("-o").arg(output_path);
+    if plan.target.needs_security_framework() {
+        for framework in ["Security", "CoreFoundation"] {
+            command.arg("-framework").arg(framework);
+        }
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
+    finish_library_link(output, object_path, output_path, "Dynamic library linking")
+}
+
+fn finish_library_link(
+    output: std::process::Output,
+    object_path: &Path,
+    output_path: &Path,
+    operation: &str,
+) -> Result<(), String> {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if stderr.is_empty() { stdout } else { stderr };
+        return Err(format!(
+            "{operation} failed for '{}': {detail}",
+            output_path.display()
+        ));
+    }
     std::fs::remove_file(object_path).ok();
     Ok(())
 }
@@ -399,9 +504,78 @@ impl LinkTarget {
     fn needs_security_framework(&self) -> bool {
         self.requested_triple
             .as_deref()
-            .map(|triple| triple.contains("apple-darwin"))
+            .map(|triple| triple.contains("apple-darwin") || triple.contains("apple-ios"))
             .unwrap_or(cfg!(target_os = "macos"))
     }
+
+    fn is_apple(&self) -> bool {
+        self.requested_triple
+            .as_deref()
+            .map(|triple| triple.contains("apple"))
+            .unwrap_or(cfg!(target_os = "macos"))
+    }
+
+    fn archiver_program(&self) -> Result<PathBuf, String> {
+        let Some(triple) = self.requested_triple.as_deref() else {
+            return Ok(PathBuf::from("ar"));
+        };
+        if triple.contains("linux-android") {
+            return android_tool("llvm-ar");
+        }
+        Ok(PathBuf::from("ar"))
+    }
+
+    fn dynamic_linker_command(&self) -> Result<Command, String> {
+        let Some(triple) = self.requested_triple.as_deref() else {
+            return Ok(Command::new("cc"));
+        };
+        if triple.contains("apple-ios") {
+            let sdk = if triple.ends_with("-sim") {
+                "iphonesimulator"
+            } else {
+                "iphoneos"
+            };
+            let mut command = Command::new("xcrun");
+            command.args(["--sdk", sdk, "clang", "-target", triple]);
+            return Ok(command);
+        }
+        if triple.contains("apple-darwin") {
+            let mut command = Command::new("xcrun");
+            command.args(["--sdk", "macosx", "clang", "-target", triple]);
+            return Ok(command);
+        }
+        if triple.contains("linux-android") {
+            let clang_name = format!("{triple}26-clang");
+            return android_tool(&clang_name).map(Command::new);
+        }
+        let mut command = Command::new("cc");
+        command.args(["-target", triple]);
+        Ok(command)
+    }
+}
+
+fn android_tool(name: &str) -> Result<PathBuf, String> {
+    let ndk = std::env::var_os("ANDROID_NDK_HOME")
+        .or_else(|| std::env::var_os("ANDROID_NDK_ROOT"))
+        .map(PathBuf::from)
+        .ok_or("Android target requires ANDROID_NDK_HOME or ANDROID_NDK_ROOT")?;
+    let prebuilt = ndk.join("toolchains/llvm/prebuilt");
+    let entries = std::fs::read_dir(&prebuilt).map_err(|error| {
+        format!(
+            "Android NDK toolchain directory '{}' is unavailable: {error}",
+            prebuilt.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("bin").join(name);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "Android NDK tool '{name}' was not found under '{}'",
+        prebuilt.display()
+    ))
 }
 
 fn classify_requested_target(target_triple: &str) -> Result<LinkTargetKind, String> {
@@ -442,8 +616,10 @@ fn classify_host_target() -> Result<LinkTargetKind, String> {
 fn is_unix_like_target(target_triple: &str) -> bool {
     [
         "apple-darwin",
+        "apple-ios",
         "unknown-linux",
         "linux-musl",
+        "linux-android",
         "freebsd",
         "netbsd",
         "openbsd",
@@ -538,6 +714,22 @@ mod tests {
             error.contains("Only Windows MSVC targets are supported on Windows."),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn mobile_targets_use_unix_library_abi() {
+        for triple in [
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+            "aarch64-linux-android",
+            "x86_64-linux-android",
+        ] {
+            assert_eq!(
+                classify_requested_target(triple),
+                Ok(LinkTargetKind::Unix),
+                "{triple}"
+            );
+        }
     }
 
     #[test]

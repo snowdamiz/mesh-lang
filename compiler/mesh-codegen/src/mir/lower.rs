@@ -2200,6 +2200,22 @@ impl<'a> Lowerer<'a> {
             "mesh_bytes_builder_finish".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
+        for name in [
+            "mesh_host_secure_store_put",
+            "mesh_host_secure_store_get",
+            "mesh_host_secure_store_delete",
+            "mesh_host_push_get_token",
+            "mesh_host_background_schedule",
+            "mesh_host_network_state",
+            "mesh_host_monotonic_clock",
+            "mesh_host_wall_clock",
+            "mesh_host_log_redacted",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
         self.known_functions.insert(
             "mesh_secret_random".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
@@ -15057,6 +15073,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Migration", // Phase 101
     "Regex",     // Phase 119
     "Bytes",
+    "Host",
     "BytesBuilder",
     "Secret",
     "SecretMap",
@@ -15189,6 +15206,15 @@ fn map_builtin_name(name: &str) -> String {
         "bytes_builder_write_u32_be" => "mesh_bytes_builder_write_u32_be".to_string(),
         "bytes_builder_write_bytes" => "mesh_bytes_builder_write_bytes".to_string(),
         "bytes_builder_finish" => "mesh_bytes_builder_finish".to_string(),
+        "host_secure_store_put" => "mesh_host_secure_store_put".to_string(),
+        "host_secure_store_get" => "mesh_host_secure_store_get".to_string(),
+        "host_secure_store_delete" => "mesh_host_secure_store_delete".to_string(),
+        "host_push_get_token" => "mesh_host_push_get_token".to_string(),
+        "host_background_schedule" => "mesh_host_background_schedule".to_string(),
+        "host_network_state" => "mesh_host_network_state".to_string(),
+        "host_monotonic_clock" => "mesh_host_monotonic_clock".to_string(),
+        "host_wall_clock" => "mesh_host_wall_clock".to_string(),
+        "host_log_redacted" => "mesh_host_log_redacted".to_string(),
         "secret_random" => "mesh_secret_random".to_string(),
         "secret_concat" => "mesh_secret_concat".to_string(),
         "secret_destroy" => "mesh_secret_destroy".to_string(),

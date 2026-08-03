@@ -46,7 +46,7 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
     // Start from the entry function, or all functions if no entry.
     if let Some(ref entry) = module.entry_function {
         worklist.push(entry.clone());
-    } else {
+    } else if extra_roots.is_empty() {
         // No entry point: keep all functions reachable.
         for f in &module.functions {
             worklist.push(f.name.clone());
@@ -110,6 +110,45 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
     }
 
     reachable
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::*;
+    use crate::mir::{MirFunction, MirType};
+
+    fn function(name: &str) -> MirFunction {
+        MirFunction {
+            name: name.to_string(),
+            params: vec![],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        }
+    }
+
+    #[test]
+    fn explicit_library_roots_prune_unrelated_functions_without_main() {
+        let mut module = MirModule {
+            functions: vec![function("exported"), function("unrelated")],
+            native_functions: vec![],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+        };
+        monomorphize_with_roots(&mut module, &["exported".to_string()]);
+        assert_eq!(
+            module
+                .functions
+                .iter()
+                .map(|function| function.name.as_str())
+                .collect::<Vec<_>>(),
+            ["exported"]
+        );
+    }
 }
 
 /// Recursively collect function names referenced in an expression.

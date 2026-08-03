@@ -403,6 +403,10 @@ impl Scheduler {
         pid
     }
 
+    pub(crate) fn finalize_host_process(&self, pid: ProcessId) {
+        handle_process_exit(&self.process_table, pid, ExitReason::Normal);
+    }
+
     /// Look up a process by PID.
     pub fn get_process(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
         self.process_table.read().get(&pid).cloned()

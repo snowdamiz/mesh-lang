@@ -29,6 +29,8 @@ enum FnDeclPrefixState {
     ClusterDecoratorInvalid,
     NativeDecoratorValid,
     NativeDecoratorInvalid,
+    ExportDecoratorValid,
+    ExportDecoratorInvalid,
     RemovedSyntaxInvalid,
 }
 
@@ -40,6 +42,9 @@ impl FnDeclPrefixState {
             }
             Self::NativeDecoratorValid | Self::NativeDecoratorInvalid => {
                 Some("expected `fn` or `def` after `@native`")
+            }
+            Self::ExportDecoratorValid | Self::ExportDecoratorInvalid => {
+                Some("expected `fn` or `def` after `@export`")
             }
             Self::RemovedSyntaxInvalid | Self::Absent => None,
         }
@@ -53,6 +58,13 @@ impl FnDeclPrefixState {
         matches!(
             self,
             Self::NativeDecoratorValid | Self::NativeDecoratorInvalid
+        )
+    }
+
+    fn is_export(self) -> bool {
+        matches!(
+            self,
+            Self::ExportDecoratorValid | Self::ExportDecoratorInvalid
         )
     }
 }
@@ -148,14 +160,42 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
 }
 
 fn parse_native_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
+    parse_abi_symbol_decorator_decl(
+        p,
+        "native",
+        SyntaxKind::NATIVE_DECORATOR_DECL,
+        FnDeclPrefixState::NativeDecoratorValid,
+        FnDeclPrefixState::NativeDecoratorInvalid,
+    )
+}
+
+fn parse_export_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
+    parse_abi_symbol_decorator_decl(
+        p,
+        "export",
+        SyntaxKind::EXPORT_DECORATOR_DECL,
+        FnDeclPrefixState::ExportDecoratorValid,
+        FnDeclPrefixState::ExportDecoratorInvalid,
+    )
+}
+
+fn parse_abi_symbol_decorator_decl(
+    p: &mut Parser,
+    decorator: &str,
+    syntax_kind: SyntaxKind,
+    valid_state: FnDeclPrefixState,
+    invalid_state: FnDeclPrefixState,
+) -> FnDeclPrefixState {
     let marker = p.open();
     let start_span = p.current_span();
     let mut valid = true;
     p.advance(); // @
-    p.advance(); // native
+    p.advance(); // decorator name
 
     if !p.eat(SyntaxKind::L_PAREN) {
-        p.error("expected `(` and one literal native symbol after `@native`");
+        p.error(&format!(
+            "expected `(` and one literal {decorator} symbol after `@{decorator}`"
+        ));
         valid = false;
     } else if p.at(SyntaxKind::STRING_START) {
         p.advance();
@@ -165,29 +205,33 @@ fn parse_native_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
             p.advance();
         }
         if !has_content {
-            p.error("expected one non-empty literal native symbol");
+            p.error(&format!(
+                "expected one non-empty literal {decorator} symbol"
+            ));
             valid = false;
         }
         if !p.eat(SyntaxKind::STRING_END) {
-            p.error("expected one literal native symbol without interpolation");
+            p.error(&format!(
+                "expected one literal {decorator} symbol without interpolation"
+            ));
             valid = false;
         }
         if !p.at(SyntaxKind::R_PAREN) {
-            p.error("expected exactly one literal native symbol");
+            p.error(&format!("expected exactly one literal {decorator} symbol"));
             recover_cluster_decorator_args(p);
             valid = false;
         }
     } else {
-        p.error("expected one literal native symbol");
+        p.error(&format!("expected one literal {decorator} symbol"));
         recover_cluster_decorator_args(p);
         valid = false;
     }
 
     if !p.eat(SyntaxKind::R_PAREN) {
         p.error_with_related(
-            "expected `)` to close `@native(...)`",
+            &format!("expected `)` to close `@{decorator}(...)`"),
             start_span,
-            "`@native(` started here",
+            &format!("`@{decorator}(` started here"),
         );
         valid = false;
     }
@@ -195,15 +239,15 @@ fn parse_native_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
     p.close(
         marker,
         if valid {
-            SyntaxKind::NATIVE_DECORATOR_DECL
+            syntax_kind
         } else {
             SyntaxKind::ERROR_NODE
         },
     );
     if valid {
-        FnDeclPrefixState::NativeDecoratorValid
+        valid_state
     } else {
-        FnDeclPrefixState::NativeDecoratorInvalid
+        invalid_state
     }
 }
 
@@ -247,6 +291,8 @@ fn parse_optional_fn_decl(p: &mut Parser) -> FnDeclPrefixState {
     if p.at(SyntaxKind::AT) {
         if p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "native" {
             parse_native_decorator_decl(p)
+        } else if p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "export" {
+            parse_export_decorator_decl(p)
         } else {
             parse_cluster_decorator_decl(p)
         }
@@ -335,6 +381,8 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::DO_KW) {
             p.error("native function declarations must not have a Mesh body");
         }
+    } else if declaration_prefix.is_export() && !p.at(SyntaxKind::EQ) && !p.at(SyntaxKind::DO_KW) {
+        p.error("exported functions require a Mesh body");
     } else if p.at(SyntaxKind::EQ) {
         // Expression body form: fn name(pattern) = expr
         p.advance(); // EQ

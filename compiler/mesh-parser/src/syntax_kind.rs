@@ -294,6 +294,8 @@ pub enum SyntaxKind {
     CLUSTER_DECORATOR_DECL,
     /// External ABI declaration: `@native("symbol")` before a bodyless `pub fn`.
     NATIVE_DECORATOR_DECL,
+    /// Stable library ABI export: `@export("symbol")` before a bodyful `pub fn`.
+    EXPORT_DECORATOR_DECL,
     /// Deriving clause: `deriving(Eq, Display, ...)`
     DERIVING_CLAUSE,
     /// Expression body for `fn name(pattern) = expr` form.
@@ -725,6 +727,7 @@ mod tests {
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::CLUSTER_DECORATOR_DECL,
             SyntaxKind::NATIVE_DECORATOR_DECL,
+            SyntaxKind::EXPORT_DECORATOR_DECL,
             SyntaxKind::DERIVING_CLAUSE,
             SyntaxKind::FN_EXPR_BODY,
             SyntaxKind::CLOSURE_CLAUSE,

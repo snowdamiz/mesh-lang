@@ -352,6 +352,8 @@ pub enum TypeError {
     },
     /// A native ABI declaration is unsafe, ambiguous, or not fully typed.
     NativeDeclarationInvalid { reason: String, span: TextRange },
+    /// A library export does not match the stable binary request/response ABI.
+    ExportDeclarationInvalid { reason: String, span: TextRange },
     /// A destructuring `let` used a refutable or otherwise unsupported pattern.
     InvalidLetPattern { reason: String, span: TextRange },
     /// A value with affine resource ownership crossed an invalid boundary or
@@ -812,6 +814,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::NativeDeclarationInvalid { reason, .. } => {
                 write!(f, "invalid native function declaration: {reason}")
+            }
+            TypeError::ExportDeclarationInvalid { reason, .. } => {
+                write!(f, "invalid exported function declaration: {reason}")
             }
             TypeError::InvalidLetPattern { reason, .. } => {
                 write!(f, "invalid let destructuring pattern: {reason}")

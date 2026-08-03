@@ -182,6 +182,34 @@ impl NativeDecl {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ExportDecl {
+    syntax: SyntaxNode,
+}
+
+impl AstNode for ExportDecl {
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::EXPORT_DECORATOR_DECL).then_some(Self { syntax: node })
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl ExportDecl {
+    pub fn symbol(&self) -> Option<String> {
+        let symbol = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| token.kind() == SyntaxKind::STRING_CONTENT)
+            .map(|token| token.text().to_string())
+            .collect::<String>();
+        (!symbol.is_empty()).then_some(symbol)
+    }
+}
+
 ast_node!(FnDef, FN_DEF);
 
 impl FnDef {
@@ -197,6 +225,11 @@ impl FnDef {
 
     /// A bodyless ABI declaration (`@native("symbol")`), if present.
     pub fn native_decl(&self) -> Option<NativeDecl> {
+        child_node(&self.syntax)
+    }
+
+    /// A stable mobile/library ABI export (`@export("symbol")`), if present.
+    pub fn export_decl(&self) -> Option<ExportDecl> {
         child_node(&self.syntax)
     }
 

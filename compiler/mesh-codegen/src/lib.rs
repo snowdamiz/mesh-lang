@@ -37,6 +37,18 @@ use codegen::CodeGen;
 use mir::lower::lower_to_mir;
 use mir::mono::monomorphize;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryExport {
+    pub function: String,
+    pub symbol: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibraryArtifact {
+    Static,
+    Dynamic,
+}
+
 pub(crate) mod build_trace {
     use std::path::{Path, PathBuf};
 
@@ -413,6 +425,7 @@ pub fn compile_mir_to_binary(
     declared_handlers: &[DeclaredRuntimeRegistration],
     startup_work_registrations: &[StartupWorkRegistration],
     autonomous_config_json: Option<&str>,
+    library_exports: &[LibraryExport],
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
@@ -430,6 +443,7 @@ pub fn compile_mir_to_binary(
         codegen.set_declared_handlers(declared_handlers);
         codegen.set_startup_work_registrations(startup_work_registrations);
         codegen.set_autonomous_config_json(autonomous_config_json);
+        codegen.set_library_exports(library_exports);
 
         build_trace::set_stage("compile-llvm-module");
         codegen.compile(mir)?;
@@ -459,12 +473,66 @@ pub fn compile_mir_to_binary(
     }
 }
 
+pub fn compile_mir_to_library(
+    mir: &mir::MirModule,
+    declared_handlers: &[DeclaredRuntimeRegistration],
+    startup_work_registrations: &[StartupWorkRegistration],
+    autonomous_config_json: Option<&str>,
+    library_exports: &[LibraryExport],
+    artifact: LibraryArtifact,
+    output: &Path,
+    opt_level: u8,
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+    native_archives: &[PathBuf],
+) -> Result<(), String> {
+    if library_exports.is_empty() {
+        return Err("library artifacts require at least one `@export` function".to_string());
+    }
+    let obj_path = output.with_extension("o");
+    build_trace::set_compile_context(output, &obj_path, target_triple);
+    let link_plan = link::prepare_link_with_native(target_triple, rt_lib_path, native_archives)?;
+
+    let result = (|| {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "mesh_library", opt_level, target_triple)?;
+        codegen.set_declared_handlers(declared_handlers);
+        codegen.set_startup_work_registrations(startup_work_registrations);
+        codegen.set_autonomous_config_json(autonomous_config_json);
+        codegen.set_library_exports(library_exports);
+
+        let mut library_mir = mir.clone();
+        library_mir.entry_function = None;
+        codegen.compile(&library_mir)?;
+        if opt_level > 0 {
+            codegen.run_optimization_passes(opt_level)?;
+        }
+        codegen.emit_object(&obj_path)?;
+        match artifact {
+            LibraryArtifact::Static => link::archive_with_plan(&obj_path, output, &link_plan),
+            LibraryArtifact::Dynamic => link::link_dynamic_with_plan(&obj_path, output, &link_plan),
+        }
+    })();
+
+    match result {
+        Ok(()) => {
+            build_trace::mark_success();
+            Ok(())
+        }
+        Err(error) => {
+            build_trace::record_error(&error);
+            Err(error)
+        }
+    }
+}
+
 /// Compile a pre-built MIR module to LLVM IR text.
 pub fn compile_mir_to_llvm_ir(
     mir: &mir::MirModule,
     declared_handlers: &[DeclaredRuntimeRegistration],
     startup_work_registrations: &[StartupWorkRegistration],
     autonomous_config_json: Option<&str>,
+    library_exports: &[LibraryExport],
     output: &Path,
     target_triple: Option<&str>,
 ) -> Result<(), String> {
@@ -473,6 +541,7 @@ pub fn compile_mir_to_llvm_ir(
     codegen.set_declared_handlers(declared_handlers);
     codegen.set_startup_work_registrations(startup_work_registrations);
     codegen.set_autonomous_config_json(autonomous_config_json);
+    codegen.set_library_exports(library_exports);
     codegen.compile(mir)?;
 
     codegen.emit_llvm_ir(output)?;

@@ -1,0 +1,6 @@
+[package]
+name = "mesh-library-fixture"
+version = "0.1.0"
+
+[build]
+entrypoint = "main.mpl"

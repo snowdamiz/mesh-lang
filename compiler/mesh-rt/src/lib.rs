@@ -37,6 +37,7 @@ pub mod http;
 pub mod io;
 pub mod iter;
 pub mod json;
+pub mod library;
 pub mod monotonic;
 pub mod option;
 pub mod panic;
@@ -263,6 +264,11 @@ pub use json::{
     mesh_json_encode_list, mesh_json_encode_map, mesh_json_encode_string, mesh_json_from_bool,
     mesh_json_from_float, mesh_json_from_int, mesh_json_from_string, mesh_json_is_null,
     mesh_json_parse, mesh_json_value_as_bool, mesh_json_value_as_float, mesh_json_value_as_int,
+};
+pub use library::{
+    mesh_library_free_returned_bytes, mesh_library_host_call, mesh_library_init,
+    mesh_library_invoke, mesh_library_register_host_callbacks, mesh_library_shutdown,
+    MeshLibraryBytes, MeshLibraryCallResult, MeshLibraryHostCallbacksV1,
 };
 pub use monotonic::{
     mesh_duration_millis, mesh_duration_seconds, mesh_monotonic_elapsed, mesh_monotonic_now_nanos,

@@ -2611,6 +2611,38 @@ fn parser_native_declaration_requires_one_literal_symbol() {
 }
 
 #[test]
+fn parser_export_declaration_exposes_external_symbol_with_body() {
+    let parsed = parse(
+        "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+    );
+    assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+
+    let function = parsed.tree().fn_defs().next().expect("exported function");
+    let export = function.export_decl().expect("@export declaration");
+    assert_eq!(export.symbol().as_deref(), Some("mesh_mobile_echo"));
+    assert!(function.body().is_some());
+}
+
+#[test]
+fn parser_export_declaration_requires_one_literal_symbol() {
+    for source in [
+        "@export()\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        "@export(symbol)\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        "@export(\"a\", \"b\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+    ] {
+        let parsed = parse(source);
+        assert!(
+            parsed
+                .errors()
+                .iter()
+                .any(|error| error.message.contains("export symbol")),
+            "expected export symbol diagnostic for {source:?}, got {:?}",
+            parsed.errors()
+        );
+    }
+}
+
+#[test]
 fn fn_existing_do_end_still_works() {
     // Existing syntax must continue to work
     let source = "fn foo(x) do\n  x + 1\nend";

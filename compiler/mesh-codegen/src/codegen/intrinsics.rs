@@ -30,6 +30,39 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_library_invoke(entrypoint: ptr, input: ptr, len: u64, output: ptr) -> i32
+    module.add_function(
+        "mesh_library_invoke",
+        i32_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    for name in [
+        "mesh_host_secure_store_put",
+        "mesh_host_secure_store_get",
+        "mesh_host_secure_store_delete",
+        "mesh_host_push_get_token",
+        "mesh_host_background_schedule",
+        "mesh_host_network_state",
+        "mesh_host_monotonic_clock",
+        "mesh_host_wall_clock",
+        "mesh_host_log_redacted",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
     // mesh_register_autonomous_config_json(data: ptr, len: u64) -> i32
     module.add_function(
         "mesh_register_autonomous_config_json",

@@ -143,6 +143,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SlotPipeOutOfRange { .. } => "E0044",
         TypeError::UndefinedType { .. } => "E0045",
         TypeError::NativeDeclarationInvalid { .. } => "E0052",
+        TypeError::ExportDeclarationInvalid { .. } => "E0055",
         TypeError::ResourceViolation { .. } => "E0053",
         TypeError::InvalidLetPattern { .. } => "E0054",
     }
@@ -513,6 +514,7 @@ pub fn render_json_diagnostic(
                 | TypeError::SlotPipeOutOfRange { span, .. }
                 | TypeError::UndefinedType { span, .. }
                 | TypeError::NativeDeclarationInvalid { span, .. }
+                | TypeError::ExportDeclarationInvalid { span, .. }
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
@@ -1951,6 +1953,22 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("use a public, fully annotated, non-generic signature and a C identifier symbol")
+                .finish()
+        }
+        TypeError::ExportDeclarationInvalid { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("invalid exported function declaration")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(reason)
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`",
+                )
                 .finish()
         }
         TypeError::InvalidLetPattern { reason, span } => {

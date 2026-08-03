@@ -188,6 +188,7 @@ fn compile_and_run_migration(
         false,
         Some(&output_path),
         None,
+        crate::BuildArtifact::Executable,
         &DiagnosticOptions::default(),
     )
     .map_err(|e| {

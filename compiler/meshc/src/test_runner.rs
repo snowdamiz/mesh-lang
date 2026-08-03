@@ -299,6 +299,7 @@ pub fn run_tests(
             false, // emit_llvm
             Some(&bin_path),
             None, // target: native
+            crate::BuildArtifact::Executable,
             &diag_opts,
         );
 
