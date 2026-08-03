@@ -585,6 +585,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     for name in [
         "mesh_crypto_x25519_generate",
+        "mesh_crypto_mlkem_generate",
         "mesh_crypto_signing_generate",
     ] {
         module.add_function(
@@ -606,7 +607,17 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    for name in ["mesh_crypto_x25519_public", "mesh_crypto_aead_key"] {
+    module.add_function(
+        "mesh_crypto_mlkem_from_seed",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    for name in [
+        "mesh_crypto_x25519_public",
+        "mesh_crypto_mlkem_encapsulate",
+        "mesh_crypto_aead_key",
+    ] {
         module.add_function(
             name,
             ptr_type.fn_type(&[ptr_type.into()], false),
@@ -614,7 +625,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         );
     }
 
-    for name in ["mesh_crypto_x25519_shared", "mesh_crypto_sign"] {
+    for name in [
+        "mesh_crypto_x25519_shared",
+        "mesh_crypto_mlkem_decapsulate",
+        "mesh_crypto_sign",
+    ] {
         module.add_function(
             name,
             ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
@@ -921,6 +936,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         "secret_map",
         "x25519_private_key",
         "signing_private_key",
+        "mlkem_private_key",
     ] {
         for operation in ["seal_for_storage", "unseal_from_storage"] {
             module.add_function(
@@ -4747,6 +4763,10 @@ mod tests {
             ("mesh_crypto_x25519_from_seed", 1),
             ("mesh_crypto_x25519_public", 1),
             ("mesh_crypto_x25519_shared", 2),
+            ("mesh_crypto_mlkem_generate", 0),
+            ("mesh_crypto_mlkem_from_seed", 1),
+            ("mesh_crypto_mlkem_encapsulate", 1),
+            ("mesh_crypto_mlkem_decapsulate", 2),
             ("mesh_crypto_signing_generate", 0),
             ("mesh_crypto_signing_from_seed", 1),
             ("mesh_crypto_sign", 2),

@@ -755,6 +755,7 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
     for (module, private_key) in [
         ("X25519PrivateKey", Ty::x25519_private_key()),
         ("SigningPrivateKey", Ty::signing_private_key()),
+        ("MlKemPrivateKey", Ty::mlkem_private_key()),
     ] {
         let mut private_mod = HashMap::new();
         private_mod.insert(
@@ -3767,6 +3768,7 @@ const STDLIB_MODULE_NAMES: &[&str] = &[
     "StorageKey",
     "X25519PrivateKey",
     "SigningPrivateKey",
+    "MlKemPrivateKey",
     "U64",
     "U128",
     "I128",
@@ -4339,6 +4341,7 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
         "SecretMap",
         "StorageKey",
         "X25519PrivateKey",
+        "MlKemPrivateKey",
         "SigningPrivateKey",
         "AeadKey",
     ] {
@@ -4347,6 +4350,8 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
 
     for (name, fields) in [
         ("X25519PublicKey", vec![("bytes", Ty::bytes())]),
+        ("MlKemPublicKey", vec![("bytes", Ty::bytes())]),
+        ("MlKemCiphertext", vec![("bytes", Ty::bytes())]),
         ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
         ("Signature", vec![("bytes", Ty::bytes())]),
         (
@@ -4354,6 +4359,13 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
             vec![
                 ("private_key", Ty::x25519_private_key()),
                 ("public_key", Ty::x25519_public_key()),
+            ],
+        ),
+        (
+            "MlKemKeyPair",
+            vec![
+                ("private_key", Ty::mlkem_private_key()),
+                ("public_key", Ty::mlkem_public_key()),
             ],
         ),
         (

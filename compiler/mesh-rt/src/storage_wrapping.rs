@@ -90,6 +90,7 @@ enum SecretPurpose {
     SkippedKeyMap,
     RatchetDhKey,
     LocalData,
+    PostQuantumPrekey,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +131,7 @@ impl SecretPurpose {
             12 => Ok(Self::SkippedKeyMap),
             13 => Ok(Self::RatchetDhKey),
             14 => Ok(Self::LocalData),
+            15 => Ok(Self::PostQuantumPrekey),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -150,6 +152,7 @@ impl SecretPurpose {
                 ResourceKind::X25519PrivateKey.into()
             }
             Self::LocalData => StorageValueKind::Bytes,
+            Self::PostQuantumPrekey => ResourceKind::MlKemPrivateKey.into(),
         }
     }
 
@@ -162,6 +165,7 @@ impl SecretPurpose {
                 | Self::DeviceDhKey
                 | Self::SignedPrekey
                 | Self::OneTimePrekey
+                | Self::PostQuantumPrekey
         )
     }
 }
@@ -937,6 +941,10 @@ storage_seal_abi!(
     mesh_x25519_private_key_seal_for_storage,
     ResourceKind::X25519PrivateKey
 );
+storage_seal_abi!(
+    mesh_mlkem_private_key_seal_for_storage,
+    ResourceKind::MlKemPrivateKey
+);
 
 storage_unseal_abi!(mesh_secret_unseal_from_storage, ResourceKind::SecretBytes);
 storage_unseal_abi!(mesh_secret_map_unseal_from_storage, ResourceKind::SecretMap);
@@ -947,6 +955,10 @@ storage_unseal_abi!(
 storage_unseal_abi!(
     mesh_x25519_private_key_unseal_from_storage,
     ResourceKind::X25519PrivateKey
+);
+storage_unseal_abi!(
+    mesh_mlkem_private_key_unseal_from_storage,
+    ResourceKind::MlKemPrivateKey
 );
 
 #[cfg(test)]
@@ -1024,12 +1036,13 @@ mod tests {
     fn every_registered_purpose_round_trips_to_its_exact_resource_kind() {
         let material = material();
 
-        for purpose in 1..=13 {
+        for purpose in (1..=13).chain([15]) {
             let kind = match purpose {
                 1..=5 | 11 => ResourceKind::SecretBytes,
                 12 => ResourceKind::SecretMap,
                 6..=7 => ResourceKind::SigningPrivateKey,
                 8..=10 | 13 => ResourceKind::X25519PrivateKey,
+                15 => ResourceKind::MlKemPrivateKey,
                 _ => unreachable!(),
             };
             let plaintext = vec![purpose as u8; PLAINTEXT_BYTES];
@@ -1475,6 +1488,16 @@ mod tests {
             *const MeshSecretHandle,
             *const MeshBytes,
         ) -> *mut MeshResult = mesh_secret_map_unseal_from_storage;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshSecretHandle,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_mlkem_private_key_seal_for_storage;
+        let _: extern "C" fn(
+            *const MeshBytes,
+            *const MeshSecretHandle,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_mlkem_private_key_unseal_from_storage;
 
         let key = [0x11; 32];
         let prefix = [0x22; 4];

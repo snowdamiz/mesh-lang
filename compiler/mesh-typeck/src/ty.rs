@@ -160,6 +160,22 @@ impl Ty {
         Ty::Con(TyCon::new("X25519KeyPair"))
     }
 
+    pub fn mlkem_private_key() -> Ty {
+        Ty::Con(TyCon::new("MlKemPrivateKey"))
+    }
+
+    pub fn mlkem_public_key() -> Ty {
+        Ty::Con(TyCon::new("MlKemPublicKey"))
+    }
+
+    pub fn mlkem_ciphertext() -> Ty {
+        Ty::Con(TyCon::new("MlKemCiphertext"))
+    }
+
+    pub fn mlkem_key_pair() -> Ty {
+        Ty::Con(TyCon::new("MlKemKeyPair"))
+    }
+
     pub fn signing_private_key() -> Ty {
         Ty::Con(TyCon::new("SigningPrivateKey"))
     }

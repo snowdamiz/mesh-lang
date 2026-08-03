@@ -83,6 +83,9 @@ returning plaintext. Mobile hosts store or wrap the `StorageKey` with Keychain
 or Keystore and follow the versioned storage-wrapping callback contract.
 `StorageKey.ephemeral()` is process-local and exists for short-lived tools and
 tests; blobs sealed with it cannot be restored after that process exits.
+Storage context purpose `15` is reserved for ML-KEM prekey seeds and accepts
+only `MlKemPrivateKey`; resource kind `8` is used because value-kind `7` already
+identifies ordinary sealed bytes.
 
 ## Required evidence
 

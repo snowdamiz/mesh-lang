@@ -218,6 +218,11 @@ pub(crate) fn check(
             "signing_private_key",
             Ty::signing_private_key(),
         ),
+        (
+            "MlKemPrivateKey",
+            "mlkem_private_key",
+            Ty::mlkem_private_key(),
+        ),
     ] {
         let seal = FunctionSignature {
             modes: vec![
@@ -329,6 +334,12 @@ pub(crate) fn check(
         "x25519_shared",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::x25519_private_key(), Ty::x25519_public_key()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "mlkem_decapsulate",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![Ty::mlkem_private_key(), Ty::mlkem_ciphertext()],
     );
     register_crypto_signature(
         &mut signatures,

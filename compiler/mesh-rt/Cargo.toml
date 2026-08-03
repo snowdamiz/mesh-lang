@@ -52,6 +52,7 @@ ed25519-dalek = { version = "=2.1.1", default-features = false, features = ["zer
 chacha20poly1305 = { version = "=0.10.1", default-features = false }
 # Feature-unify the transitive authenticator so key state zeroizes on drop.
 poly1305 = { version = "=0.8.0", default-features = false, features = ["zeroize"] }
+ml-kem = { version = "=0.3.2", default-features = false, features = ["alloc", "zeroize"] }
 # Hostname-based auto-identity for generic Docker/container deployments.
 hostname = "0.4"
 libc = "0.2"

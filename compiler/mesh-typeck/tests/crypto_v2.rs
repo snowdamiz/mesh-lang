@@ -52,6 +52,21 @@ end
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn mlkem_private_keys_can_be_sealed_and_restored_through_the_public_module() {
+    let result = check_source(
+        r#"
+fn persist(key :: borrow MlKemPrivateKey, wrapping_key :: borrow StorageKey, context :: Bytes) -> Result<Bytes, CryptoError> do
+  MlKemPrivateKey.seal_for_storage(key, wrapping_key, context)
+end
+fn restore(blob :: Bytes, wrapping_key :: borrow StorageKey, context :: Bytes) -> Result<MlKemPrivateKey, CryptoError> do
+  MlKemPrivateKey.unseal_from_storage(blob, wrapping_key, context)
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 fn con(name: &str) -> Ty {
     Ty::Con(TyCon::new(name))
 }
@@ -109,6 +124,8 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
 
     for (name, fields) in [
         ("X25519PublicKey", vec![("bytes", Ty::bytes())]),
+        ("MlKemPublicKey", vec![("bytes", Ty::bytes())]),
+        ("MlKemCiphertext", vec![("bytes", Ty::bytes())]),
         ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
         ("Signature", vec![("bytes", Ty::bytes())]),
         (
@@ -116,6 +133,13 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
             vec![
                 ("private_key", con("X25519PrivateKey")),
                 ("public_key", con("X25519PublicKey")),
+            ],
+        ),
+        (
+            "MlKemKeyPair",
+            vec![
+                ("private_key", con("MlKemPrivateKey")),
+                ("public_key", con("MlKemPublicKey")),
             ],
         ),
         (
@@ -144,9 +168,11 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
     for resource in [
         "SecretBytes",
         "X25519PrivateKey",
+        "MlKemPrivateKey",
         "SigningPrivateKey",
         "AeadKey",
         "X25519KeyPair",
+        "MlKemKeyPair",
         "SigningKeyPair",
     ] {
         assert!(
@@ -154,7 +180,13 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
             "{resource} must be affine"
         );
     }
-    for value in ["X25519PublicKey", "SigningPublicKey", "Signature"] {
+    for value in [
+        "X25519PublicKey",
+        "MlKemPublicKey",
+        "MlKemCiphertext",
+        "SigningPublicKey",
+        "Signature",
+    ] {
         assert!(
             !registry.is_resource_name(value),
             "{value} must remain an ordinary value"
@@ -264,6 +296,30 @@ end
     assert!(
         result.errors.is_empty(),
         "unexpected Crypto V2 signature errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn mlkem768_public_round_trip_signature_typechecks() {
+    let result = check_source(
+        r#"
+fn round_trip() -> Result<SecretBytes, CryptoError> do
+  let pair = Crypto.mlkem_generate()?
+  let (ciphertext, sender_secret) = Crypto.mlkem_encapsulate(pair.public_key)?
+  Secret.destroy(sender_secret)
+  Crypto.mlkem_decapsulate(pair.private_key, ciphertext)
+end
+
+fn deterministic(seed :: Bytes) -> Result<MlKemKeyPair, CryptoError> do
+  Crypto.mlkem_from_seed(seed)
+end
+"#,
+    );
+
+    assert!(
+        result.errors.is_empty(),
+        "unexpected ML-KEM signature errors: {:?}",
         result.errors
     );
 }

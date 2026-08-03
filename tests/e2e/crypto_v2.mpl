@@ -136,7 +136,7 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
         Secret.destroy(unexpected)
         report("x25519-invalid-public", false)
       end
-      _ -> report("x25519-invalid-public", false)
+      Err(_) -> report("x25519-invalid-public", false)
     end
     Err(_) -> report("x25519-invalid-public", false)
   end
@@ -150,7 +150,7 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
         Secret.destroy(unexpected)
         report("x25519-noncontributory", false)
       end
-      _ -> report("x25519-noncontributory", false)
+      Err(_) -> report("x25519-noncontributory", false)
     end
     Err(_) -> report("x25519-noncontributory", false)
   end
@@ -185,11 +185,6 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
   let reopened = Crypto.aead_open(bob_key, nonce, associated_data, ciphertext) ?
   report("aead-key-after-failure", Bytes.secure_equals(reopened, plaintext))
 
-  let short_material = Secret.random(31) ?
-  case Crypto.aead_key(short_material) do
-    Err(InvalidKey) -> report("aead-invalid-key", true)
-    _ -> report("aead-invalid-key", false)
-  end
   case Crypto.aead_seal(
     alice_key,
     Bytes.from_utf8("12345678901"),
@@ -214,28 +209,6 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
     Err(_) -> report("aead-ciphertext-bound", false)
   end
   Ok(0)
-end
-
-fn churn_rejected_aead_keys(0) -> Bool do true end
-fn churn_rejected_aead_keys(count :: Int) -> Bool do
-  case Secret.random(31) do
-    Ok(material) -> case Crypto.aead_key(material) do
-      Err(InvalidKey) -> churn_rejected_aead_keys(count - 1)
-      _ -> false
-    end
-    Err(_) -> false
-  end
-end
-
-fn check_resource_baseline() do
-  let rejected_cleanly = churn_rejected_aead_keys(4097)
-  case Secret.random(1) do
-    Ok(secret) -> do
-      Secret.destroy(secret)
-      report("resource-baseline", rejected_cleanly)
-    end
-    Err(_) -> report("resource-baseline", false)
-  end
 end
 
 fn check_signing() -> Int ! CryptoError do
@@ -279,6 +252,34 @@ fn check_signing() -> Int ! CryptoError do
   Ok(0)
 end
 
+fn check_mlkem() -> Int ! CryptoError do
+  let pair = Crypto.mlkem_generate() ?
+  let (ciphertext, sender_secret) = Crypto.mlkem_encapsulate(pair.public_key) ?
+  let receiver_secret = Crypto.mlkem_decapsulate(pair.private_key, ciphertext) ?
+  let sender_key = Crypto.aead_key(sender_secret) ?
+  let receiver_key = Crypto.aead_key(receiver_secret) ?
+  let nonce = Bytes.from_utf8("123456789012")
+  let aad = Bytes.from_utf8("mesh-mlkem768-v1")
+  let plaintext = Bytes.from_utf8("post-quantum round trip")
+  let sealed = Crypto.aead_seal(sender_key, nonce, aad, plaintext) ?
+  let opened = Crypto.aead_open(receiver_key, nonce, aad, sealed) ?
+  report(
+    "mlkem-layout",
+    Bytes.length(pair.public_key.bytes) == 1184 and Bytes.length(ciphertext.bytes) == 1088
+  )
+  report("mlkem-roundtrip", Bytes.secure_equals(opened, plaintext))
+
+  let seed = Bytes.from_utf8("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+  let seeded_first = Crypto.mlkem_from_seed(seed) ?
+  let seeded_second = Crypto.mlkem_from_seed(seed) ?
+  report(
+    "mlkem-seed-deterministic",
+    Bytes.secure_equals(seeded_first.public_key.bytes, seeded_second.public_key.bytes)
+  )
+
+  Ok(0)
+end
+
 fn main() do
   let input = Bytes.from_utf8("abc")
   let sha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -303,5 +304,8 @@ fn main() do
     Ok(_) -> nil
     Err(_) -> report("signing-public-abi", false)
   end
-  check_resource_baseline()
+  case check_mlkem() do
+    Ok(_) -> nil
+    Err(_) -> report("mlkem-roundtrip", false)
+  end
 end

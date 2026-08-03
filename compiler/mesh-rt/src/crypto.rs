@@ -10,6 +10,8 @@ use std::ptr;
 
 use base64::{engine::general_purpose, Engine as _};
 use hmac::{Hmac, Mac};
+use ml_kem::ml_kem_768::Ciphertext as MlKem768Ciphertext;
+use ml_kem::{Decapsulate, DecapsulationKey768, EncapsulationKey768, Key, KeyExport, Seed, B32};
 use rand::RngCore;
 use sha2::Sha512;
 use zeroize::Zeroizing;
@@ -33,6 +35,10 @@ const MAX_HKDF_OUTPUT_BYTES: usize = 255 * 32;
 const AEAD_NONCE_BYTES: usize = 12;
 const AEAD_TAG_BYTES: usize = 16;
 const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_INPUT_BYTES + AEAD_TAG_BYTES;
+const MLKEM_PRIVATE_SEED_BYTES: usize = 64;
+const MLKEM_PUBLIC_KEY_BYTES: usize = 1184;
+const MLKEM_CIPHERTEXT_BYTES: usize = 1088;
+const MLKEM_SHARED_SECRET_BYTES: usize = 32;
 
 #[repr(C)]
 /// Runtime representation of an X25519 public-key wrapper.
@@ -45,6 +51,32 @@ pub struct MeshX25519PublicKey {
 pub struct MeshX25519KeyPair {
     pub private_key: *mut MeshSecretHandle,
     pub public_key: MeshX25519PublicKey,
+}
+
+#[repr(C)]
+/// Runtime representation of an ML-KEM-768 encapsulation key.
+pub struct MeshMlKemPublicKey {
+    pub bytes: *mut MeshBytes,
+}
+
+#[repr(C)]
+/// Runtime representation of an ML-KEM-768 ciphertext.
+pub struct MeshMlKemCiphertext {
+    pub bytes: *mut MeshBytes,
+}
+
+#[repr(C)]
+/// Runtime representation of an ML-KEM-768 key pair.
+pub struct MeshMlKemKeyPair {
+    pub private_key: *mut MeshSecretHandle,
+    pub public_key: MeshMlKemPublicKey,
+}
+
+#[repr(C)]
+struct MeshTuple2Pointers {
+    len: u64,
+    first: *mut MeshBytes,
+    second: *mut MeshSecretHandle,
 }
 
 #[cfg(test)]
@@ -387,6 +419,86 @@ fn x25519_key_material(
     Ok((private_key, public_key))
 }
 
+fn mlkem_key_material(
+    provider: &impl CryptoProvider,
+) -> Result<(Zeroizing<Box<[u8]>>, Vec<u8>), CryptoFailure> {
+    let mut private_seed = Zeroizing::new(vec![0; MLKEM_PRIVATE_SEED_BYTES].into_boxed_slice());
+    provider
+        .fill_random(&mut private_seed)
+        .map_err(|error| match error {
+            ProviderError::EntropyUnavailable => failure(CryptoErrorTag::EntropyUnavailable, 0, 0),
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    mlkem_from_seed_material(private_seed)
+}
+
+fn mlkem_from_seed_material(
+    private_seed: Zeroizing<Box<[u8]>>,
+) -> Result<(Zeroizing<Box<[u8]>>, Vec<u8>), CryptoFailure> {
+    let seed = Seed::try_from(private_seed.as_ref()).map_err(|_| {
+        failure(
+            CryptoErrorTag::InvalidKey,
+            MLKEM_PRIVATE_SEED_BYTES as i64,
+            private_seed.len() as i64,
+        )
+    })?;
+    let private_key = DecapsulationKey768::from_seed(seed);
+    let public_key = private_key.encapsulation_key().to_bytes().to_vec();
+    Ok((private_seed, public_key))
+}
+
+fn mlkem_encapsulate_material(
+    provider: &impl CryptoProvider,
+    public_key: &[u8],
+) -> Result<(Vec<u8>, Zeroizing<Box<[u8]>>), CryptoFailure> {
+    let encoded_key = Key::<EncapsulationKey768>::try_from(public_key).map_err(|_| {
+        failure(
+            CryptoErrorTag::InvalidLength,
+            MLKEM_PUBLIC_KEY_BYTES as i64,
+            public_key.len() as i64,
+        )
+    })?;
+    let public_key = EncapsulationKey768::new(&encoded_key)
+        .map_err(|_| failure(CryptoErrorTag::InvalidPublicKey, 0, 0))?;
+    let mut randomness = Zeroizing::new(vec![0; MLKEM_SHARED_SECRET_BYTES].into_boxed_slice());
+    provider
+        .fill_random(&mut randomness)
+        .map_err(|error| match error {
+            ProviderError::EntropyUnavailable => failure(CryptoErrorTag::EntropyUnavailable, 0, 0),
+            _ => failure(CryptoErrorTag::InternalFailure, 0, 0),
+        })?;
+    let randomness = B32::try_from(randomness.as_ref())
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    let (ciphertext, shared_secret) = public_key.encapsulate_deterministic(&randomness);
+    Ok((
+        ciphertext.to_vec(),
+        Zeroizing::new(shared_secret.to_vec().into_boxed_slice()),
+    ))
+}
+
+fn mlkem_decapsulate_material(
+    private_seed: &[u8],
+    ciphertext: &[u8],
+) -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
+    let private_seed = Seed::try_from(private_seed).map_err(|_| {
+        failure(
+            CryptoErrorTag::InvalidKey,
+            MLKEM_PRIVATE_SEED_BYTES as i64,
+            private_seed.len() as i64,
+        )
+    })?;
+    let ciphertext = MlKem768Ciphertext::try_from(ciphertext).map_err(|_| {
+        failure(
+            CryptoErrorTag::InvalidLength,
+            MLKEM_CIPHERTEXT_BYTES as i64,
+            ciphertext.len() as i64,
+        )
+    })?;
+    let private_key = DecapsulationKey768::from_seed(private_seed);
+    let shared_secret = private_key.decapsulate(&ciphertext);
+    Ok(Zeroizing::new(shared_secret.to_vec().into_boxed_slice()))
+}
+
 /// Generate an actor-owned X25519 private key and its public key.
 #[no_mangle]
 pub extern "C" fn mesh_crypto_x25519_generate() -> *mut MeshResult {
@@ -556,6 +668,171 @@ pub extern "C" fn mesh_crypto_x25519_shared(
     let result = alloc_result(0, ptr::null_mut());
     match with_current_process(|process| {
         x25519_shared_for_process(process, &SystemProvider, private_key, peer_public_key)
+    }) {
+        Ok(shared_secret) => complete_result(result, shared_secret),
+        Err(error) => error_result(error),
+    }
+}
+
+fn allocate_mlkem_key_pair(
+    private_material: Zeroizing<Box<[u8]>>,
+    public_key: &[u8],
+) -> *mut MeshResult {
+    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
+    if public_bytes.is_null() {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let key_pair = allocate_value(MeshMlKemKeyPair {
+        private_key: ptr::null_mut(),
+        public_key: MeshMlKemPublicKey {
+            bytes: public_bytes,
+        },
+    });
+    if key_pair.is_null() {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let result = alloc_result(0, key_pair.cast());
+    let private_key = match with_current_process(move |process| {
+        insert_owned_resource(process, ResourceKind::MlKemPrivateKey, private_material)
+            .map_err(resource_failure)
+    }) {
+        Ok(private_key) => private_key,
+        Err(error) => return error_result(error),
+    };
+    unsafe { (*key_pair).private_key = private_key };
+    result
+}
+
+/// Generate an actor-owned ML-KEM-768 decapsulation key and its public key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_mlkem_generate() -> *mut MeshResult {
+    match mlkem_key_material(&SystemProvider) {
+        Ok((private_key, public_key)) => allocate_mlkem_key_pair(private_key, &public_key),
+        Err(error) => error_result(error),
+    }
+}
+
+/// Construct an actor-owned ML-KEM-768 key pair from an exact 64-byte seed.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_mlkem_from_seed(seed: *const MeshBytes) -> *mut MeshResult {
+    let seed = match unsafe { required_bytes(seed, MLKEM_PRIVATE_SEED_BYTES) } {
+        Ok(seed) if seed.len() == MLKEM_PRIVATE_SEED_BYTES => seed,
+        Ok(seed) => {
+            return crypto_error(
+                CryptoErrorTag::InvalidLength,
+                MLKEM_PRIVATE_SEED_BYTES as i64,
+                seed.len() as i64,
+            );
+        }
+        Err(error) => return error_result(error),
+    };
+    match mlkem_from_seed_material(Zeroizing::new(seed.to_vec().into_boxed_slice())) {
+        Ok((private_key, public_key)) => allocate_mlkem_key_pair(private_key, &public_key),
+        Err(error) => error_result(error),
+    }
+}
+
+unsafe fn mlkem_public_key_bytes<'a>(
+    public_key: *const MeshMlKemPublicKey,
+) -> Result<&'a [u8], CryptoFailure> {
+    if public_key.is_null() || (*public_key).bytes.is_null() {
+        return Err(failure(
+            CryptoErrorTag::InvalidPublicKey,
+            MLKEM_PUBLIC_KEY_BYTES as i64,
+            -1,
+        ));
+    }
+    let bytes = (*public_key).bytes;
+    if (*bytes).len != MLKEM_PUBLIC_KEY_BYTES as u64 {
+        return Err(failure(
+            CryptoErrorTag::InvalidPublicKey,
+            MLKEM_PUBLIC_KEY_BYTES as i64,
+            actual_length((*bytes).len),
+        ));
+    }
+    Ok((*bytes).as_slice())
+}
+
+unsafe fn mlkem_ciphertext_bytes<'a>(
+    ciphertext: *const MeshMlKemCiphertext,
+) -> Result<&'a [u8], CryptoFailure> {
+    if ciphertext.is_null() || (*ciphertext).bytes.is_null() {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            MLKEM_CIPHERTEXT_BYTES as i64,
+            -1,
+        ));
+    }
+    let bytes = (*ciphertext).bytes;
+    if (*bytes).len != MLKEM_CIPHERTEXT_BYTES as u64 {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            MLKEM_CIPHERTEXT_BYTES as i64,
+            actual_length((*bytes).len),
+        ));
+    }
+    Ok((*bytes).as_slice())
+}
+
+/// Encapsulate to an exact ML-KEM-768 public key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_mlkem_encapsulate(
+    public_key: *const MeshMlKemPublicKey,
+) -> *mut MeshResult {
+    let public_key = match unsafe { mlkem_public_key_bytes(public_key) } {
+        Ok(public_key) => public_key,
+        Err(error) => return error_result(error),
+    };
+    let (ciphertext, shared_secret) = match mlkem_encapsulate_material(&SystemProvider, public_key)
+    {
+        Ok(output) => output,
+        Err(error) => return error_result(error),
+    };
+    let ciphertext = mesh_bytes_new(ciphertext.as_ptr(), ciphertext.len() as u64);
+    if ciphertext.is_null() {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let output = allocate_value(MeshTuple2Pointers {
+        len: 2,
+        first: ciphertext,
+        second: ptr::null_mut(),
+    });
+    if output.is_null() {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let result = alloc_result(0, output.cast());
+    let shared_secret = match with_current_process(move |process| {
+        insert_owned_resource(process, ResourceKind::SecretBytes, shared_secret)
+            .map_err(resource_failure)
+    }) {
+        Ok(shared_secret) => shared_secret,
+        Err(error) => return error_result(error),
+    };
+    unsafe { (*output).second = shared_secret };
+    result
+}
+
+/// Decapsulate an ML-KEM-768 ciphertext with an actor-owned private key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_mlkem_decapsulate(
+    private_key: *const MeshSecretHandle,
+    ciphertext: *const MeshMlKemCiphertext,
+) -> *mut MeshResult {
+    let ciphertext = match unsafe { mlkem_ciphertext_bytes(ciphertext) } {
+        Ok(ciphertext) => ciphertext,
+        Err(error) => return error_result(error),
+    };
+    let result = alloc_result(0, ptr::null_mut());
+    match with_current_process(|process| {
+        let shared_secret = with_owned_resource(
+            process,
+            private_key,
+            ResourceKind::MlKemPrivateKey,
+            |private_seed| mlkem_decapsulate_material(private_seed, ciphertext),
+        )
+        .map_err(resource_failure)??;
+        insert_owned_resource(process, ResourceKind::SecretBytes, shared_secret)
+            .map_err(resource_failure)
     }) {
         Ok(shared_secret) => complete_result(result, shared_secret),
         Err(error) => error_result(error),
@@ -1168,6 +1445,14 @@ mod tests {
             *const MeshSecretHandle,
             *const MeshX25519PublicKey,
         ) -> *mut MeshResult = mesh_crypto_x25519_shared;
+        let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_mlkem_generate;
+        let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_mlkem_from_seed;
+        let _: extern "C" fn(*const MeshMlKemPublicKey) -> *mut MeshResult =
+            mesh_crypto_mlkem_encapsulate;
+        let _: extern "C" fn(
+            *const MeshSecretHandle,
+            *const MeshMlKemCiphertext,
+        ) -> *mut MeshResult = mesh_crypto_mlkem_decapsulate;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_signing_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_signing_from_seed;
         let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
@@ -1200,6 +1485,13 @@ mod tests {
                 std::mem::size_of::<MeshX25519PublicKey>(),
                 std::mem::size_of::<MeshX25519KeyPair>(),
                 std::mem::offset_of!(MeshX25519KeyPair, public_key),
+                std::mem::size_of::<MeshMlKemPublicKey>(),
+                std::mem::size_of::<MeshMlKemCiphertext>(),
+                std::mem::size_of::<MeshMlKemKeyPair>(),
+                std::mem::offset_of!(MeshMlKemKeyPair, public_key),
+                std::mem::size_of::<MeshTuple2Pointers>(),
+                std::mem::offset_of!(MeshTuple2Pointers, first),
+                std::mem::offset_of!(MeshTuple2Pointers, second),
                 std::mem::size_of::<MeshSigningPublicKey>(),
                 std::mem::size_of::<MeshSignature>(),
                 std::mem::size_of::<MeshSigningKeyPair>(),
@@ -1208,7 +1500,7 @@ mod tests {
                 std::mem::align_of::<CryptoErrorLayout>(),
                 std::mem::size_of::<bool>(),
             ],
-            [8, 16, 8, 12, 8, 16, 8, 8, 8, 16, 8, 24, 8, 1]
+            [8, 16, 8, 12, 8, 16, 8, 8, 8, 16, 8, 24, 8, 16, 8, 8, 16, 8, 24, 8, 1,]
         );
     }
 
@@ -1507,6 +1799,61 @@ mod tests {
     }
 
     #[test]
+    fn mlkem768_round_trip_keeps_seed_and_shared_secret_zeroizing() {
+        let seed_entropy = [0x41; 64];
+        let encapsulation_entropy = [0x73; 32];
+        let Ok((private_seed, public_key)) =
+            mlkem_key_material(&FixedProvider::with_random(&seed_entropy))
+        else {
+            panic!("ML-KEM key generation failed");
+        };
+        let Ok((ciphertext, sender_secret)) = mlkem_encapsulate_material(
+            &FixedProvider::with_random(&encapsulation_entropy),
+            &public_key,
+        ) else {
+            panic!("ML-KEM encapsulation failed");
+        };
+        let Ok(receiver_secret) = mlkem_decapsulate_material(&private_seed, &ciphertext) else {
+            panic!("ML-KEM decapsulation failed");
+        };
+
+        assert_eq!(
+            (
+                private_seed.len(),
+                public_key.len(),
+                ciphertext.len(),
+                sender_secret.as_ref(),
+            ),
+            (64, 1184, 1088, receiver_secret.as_ref())
+        );
+    }
+
+    #[test]
+    fn nist_acvp_mlkem768_keygen_tc26_matches_public_key() {
+        // NIST ACVP ML-KEM keyGen FIPS 203 internalProjection.json, tcId 26.
+        let seed = [
+            0xe5, 0x82, 0xb7, 0xd7, 0x5e, 0x6c, 0x80, 0xb0, 0x5a, 0xe3, 0x92, 0xa1, 0xfc, 0x9f,
+            0x71, 0x53, 0xb1, 0x23, 0x90, 0xfd, 0x99, 0x93, 0x03, 0x68, 0xcc, 0x67, 0xa7, 0x68,
+            0xba, 0xeb, 0xc8, 0xa0, 0x1c, 0xda, 0xcb, 0x87, 0x40, 0xc0, 0xb8, 0x7c, 0x4a, 0x37,
+            0x95, 0x75, 0xf1, 0x87, 0xb3, 0x67, 0xcb, 0xfa, 0x3b, 0x30, 0x0b, 0xf5, 0x91, 0xb1,
+            0x09, 0xf7, 0x98, 0x16, 0xe9, 0xcb, 0xe8, 0xf0,
+        ];
+        let expected_public_sha256 = [
+            0x41, 0x58, 0xf6, 0xaf, 0xb5, 0xe5, 0x16, 0xc9, 0x9f, 0x1d, 0xa0, 0x7d, 0xa8, 0xc6,
+            0x51, 0x34, 0x84, 0x22, 0xb1, 0x7c, 0x1f, 0x4e, 0x9a, 0x08, 0xad, 0x73, 0xfb, 0x1f,
+            0x91, 0x24, 0x9b, 0x3e,
+        ];
+
+        let Ok((_, public_key)) =
+            mlkem_from_seed_material(Zeroizing::new(seed.to_vec().into_boxed_slice()))
+        else {
+            panic!("NIST ML-KEM key generation failed");
+        };
+
+        assert_eq!(SystemProvider.sha256(&public_key), expected_public_sha256);
+    }
+
+    #[test]
     fn x25519_rejects_malformed_public_key_wrapper() {
         mesh_rt_init();
         let short_key = [0u8; 31];
@@ -1608,6 +1955,61 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn mlkem768_rejects_noncanonical_seed_public_key_and_ciphertext_lengths() {
+        mesh_rt_init();
+
+        for seed in [&[0u8; 63][..], &[0u8; 65][..]] {
+            let input = mesh_bytes_new(seed.as_ptr(), seed.len() as u64);
+            let result = mesh_crypto_mlkem_from_seed(input);
+            let (result_tag, error) = unsafe {
+                (
+                    (*result).tag,
+                    &*((*result).value as *const CryptoErrorLayout),
+                )
+            };
+            assert_eq!(
+                (result_tag, error.tag, error.expected, error.actual),
+                (
+                    1,
+                    CryptoErrorTag::InvalidLength as u8,
+                    MLKEM_PRIVATE_SEED_BYTES as i64,
+                    seed.len() as i64,
+                )
+            );
+        }
+
+        let short_public = [0u8; MLKEM_PUBLIC_KEY_BYTES - 1];
+        let public_key = MeshMlKemPublicKey {
+            bytes: mesh_bytes_new(short_public.as_ptr(), short_public.len() as u64),
+        };
+        let result = mesh_crypto_mlkem_encapsulate(&public_key);
+        let error = unsafe { &*((*result).value as *const CryptoErrorLayout) };
+        assert_eq!(
+            (error.tag, error.expected, error.actual),
+            (
+                CryptoErrorTag::InvalidPublicKey as u8,
+                MLKEM_PUBLIC_KEY_BYTES as i64,
+                short_public.len() as i64,
+            )
+        );
+
+        let short_ciphertext = [0u8; MLKEM_CIPHERTEXT_BYTES - 1];
+        let ciphertext = MeshMlKemCiphertext {
+            bytes: mesh_bytes_new(short_ciphertext.as_ptr(), short_ciphertext.len() as u64),
+        };
+        let result = mesh_crypto_mlkem_decapsulate(ptr::null(), &ciphertext);
+        let error = unsafe { &*((*result).value as *const CryptoErrorLayout) };
+        assert_eq!(
+            (error.tag, error.expected, error.actual),
+            (
+                CryptoErrorTag::InvalidLength as u8,
+                MLKEM_CIPHERTEXT_BYTES as i64,
+                short_ciphertext.len() as i64,
+            )
+        );
     }
 
     #[test]

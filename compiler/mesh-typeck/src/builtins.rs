@@ -107,6 +107,31 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "mlkem_generate",
+            Scheme::mono(Ty::fun(vec![], crypto_result(Ty::mlkem_key_pair()))),
+        ),
+        (
+            "mlkem_from_seed",
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes()],
+                crypto_result(Ty::mlkem_key_pair()),
+            )),
+        ),
+        (
+            "mlkem_encapsulate",
+            Scheme::mono(Ty::fun(
+                vec![Ty::mlkem_public_key()],
+                crypto_result(Ty::Tuple(vec![Ty::mlkem_ciphertext(), Ty::secret_bytes()])),
+            )),
+        ),
+        (
+            "mlkem_decapsulate",
+            Scheme::mono(Ty::fun(
+                vec![Ty::mlkem_private_key(), Ty::mlkem_ciphertext()],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
             "signing_generate",
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::signing_key_pair()))),
         ),
@@ -682,6 +707,11 @@ pub fn register_builtins(
             Ty::x25519_private_key(),
             Ty::bytes(),
         ),
+        (
+            "mlkem_private_key_seal_for_storage",
+            Ty::mlkem_private_key(),
+            Ty::bytes(),
+        ),
     ] {
         env.insert(
             name.into(),
@@ -701,6 +731,10 @@ pub fn register_builtins(
         (
             "x25519_private_key_unseal_from_storage",
             Ty::x25519_private_key(),
+        ),
+        (
+            "mlkem_private_key_unseal_from_storage",
+            Ty::mlkem_private_key(),
         ),
     ] {
         env.insert(

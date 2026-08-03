@@ -407,6 +407,7 @@ impl<'a> Lowerer<'a> {
             ("SecretMap", "secret_map"),
             ("X25519PrivateKey", "x25519_private_key"),
             ("SigningPrivateKey", "signing_private_key"),
+            ("MlKemPrivateKey", "mlkem_private_key"),
         ] {
             for alias in [
                 format!("{module}.seal_for_storage"),
@@ -2000,6 +2001,7 @@ impl<'a> Lowerer<'a> {
         );
         for name in [
             "mesh_crypto_x25519_generate",
+            "mesh_crypto_mlkem_generate",
             "mesh_crypto_signing_generate",
         ] {
             self.known_functions.insert(
@@ -2016,6 +2018,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_crypto_mlkem_from_seed".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_crypto_x25519_public".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
@@ -2023,6 +2029,20 @@ impl<'a> Lowerer<'a> {
             "mesh_crypto_x25519_shared".to_string(),
             MirType::FnPtr(
                 vec![MirType::Ptr, MirType::Struct("X25519PublicKey".to_string())],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_mlkem_encapsulate".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Struct("MlKemPublicKey".to_string())],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_mlkem_decapsulate".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Struct("MlKemCiphertext".to_string())],
                 Box::new(MirType::Ptr),
             ),
         );
@@ -2298,6 +2318,7 @@ impl<'a> Lowerer<'a> {
             "secret_map",
             "x25519_private_key",
             "signing_private_key",
+            "mlkem_private_key",
         ] {
             for operation in ["seal_for_storage", "unseal_from_storage"] {
                 self.known_functions.insert(
@@ -10819,6 +10840,7 @@ impl<'a> Lowerer<'a> {
                             "StorageKey" => "storage_key".to_string(),
                             "X25519PrivateKey" => "x25519_private_key".to_string(),
                             "SigningPrivateKey" => "signing_private_key".to_string(),
+                            "MlKemPrivateKey" => "mlkem_private_key".to_string(),
                             _ => base_name.to_lowercase(),
                         };
                         let prefixed = format!("{prefix}_{field}");
@@ -15126,6 +15148,7 @@ const STDLIB_MODULES: &[&str] = &[
     "StorageKey",
     "X25519PrivateKey",
     "SigningPrivateKey",
+    "MlKemPrivateKey",
     "U64",
     "U128",
     "I128",
@@ -15203,6 +15226,10 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_x25519_from_seed" => "mesh_crypto_x25519_from_seed".to_string(),
         "crypto_x25519_public" => "mesh_crypto_x25519_public".to_string(),
         "crypto_x25519_shared" => "mesh_crypto_x25519_shared".to_string(),
+        "crypto_mlkem_generate" => "mesh_crypto_mlkem_generate".to_string(),
+        "crypto_mlkem_from_seed" => "mesh_crypto_mlkem_from_seed".to_string(),
+        "crypto_mlkem_encapsulate" => "mesh_crypto_mlkem_encapsulate".to_string(),
+        "crypto_mlkem_decapsulate" => "mesh_crypto_mlkem_decapsulate".to_string(),
         "crypto_signing_generate" => "mesh_crypto_signing_generate".to_string(),
         "crypto_signing_from_seed" => "mesh_crypto_signing_from_seed".to_string(),
         "crypto_sign" => "mesh_crypto_sign".to_string(),
@@ -15284,7 +15311,9 @@ fn map_builtin_name(name: &str) -> String {
         | "signing_private_key_seal_for_storage"
         | "signing_private_key_unseal_from_storage"
         | "x25519_private_key_seal_for_storage"
-        | "x25519_private_key_unseal_from_storage" => format!("mesh_{name}"),
+        | "x25519_private_key_unseal_from_storage"
+        | "mlkem_private_key_seal_for_storage"
+        | "mlkem_private_key_unseal_from_storage" => format!("mesh_{name}"),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"
@@ -16448,9 +16477,12 @@ pub fn lower_to_mir(
     // source declarations, so they need concrete MIR layouts here.
     for name in [
         "X25519PublicKey",
+        "MlKemPublicKey",
+        "MlKemCiphertext",
         "SigningPublicKey",
         "Signature",
         "X25519KeyPair",
+        "MlKemKeyPair",
         "SigningKeyPair",
     ] {
         if let Some(definition) = typeck.type_registry.struct_defs.get(name) {
@@ -16915,9 +16947,10 @@ mod tests {
     #[test]
     fn mobile_storage_calls_lower_to_runtime_intrinsics() {
         let mir = lower(
-            "fn persist(signing :: SigningPrivateKey, context :: Bytes, value :: Bytes) -> Bytes ! CryptoError do\n\
+            "fn persist(signing :: SigningPrivateKey, mlkem :: MlKemPrivateKey, context :: Bytes, value :: Bytes) -> Bytes ! CryptoError do\n\
                let key = StorageKey.platform()?\n\
                let _signing_blob = SigningPrivateKey.seal_for_storage(signing, key, context)?\n\
+               let _mlkem_blob = MlKemPrivateKey.seal_for_storage(mlkem, key, context)?\n\
                let sealed = StorageKey.seal_bytes(value, key, context)?\n\
                StorageKey.unseal_bytes(sealed, key, context)\n\
              end",
@@ -16926,6 +16959,7 @@ mod tests {
         for runtime in [
             "mesh_storage_key_platform",
             "mesh_signing_private_key_seal_for_storage",
+            "mesh_mlkem_private_key_seal_for_storage",
             "mesh_storage_key_seal_bytes",
             "mesh_storage_key_unseal_bytes",
         ] {
@@ -17133,6 +17167,12 @@ mod tests {
              end\n\
              fn seal(key :: borrow AeadKey, nonce :: Bytes, aad :: Bytes, body :: Bytes) -> Result<Bytes, CryptoError> do\n\
                Crypto.aead_seal(key, nonce, aad, body)\n\
+             end\n\
+             fn encapsulate(key :: MlKemPublicKey) -> Result<(MlKemCiphertext, SecretBytes), CryptoError> do\n\
+               Crypto.mlkem_encapsulate(key)\n\
+             end\n\
+             fn decapsulate(key :: borrow MlKemPrivateKey, ciphertext :: MlKemCiphertext) -> Result<SecretBytes, CryptoError> do\n\
+               Crypto.mlkem_decapsulate(key, ciphertext)\n\
              end",
         );
 
@@ -17201,6 +17241,32 @@ mod tests {
             ),
             "{seal:?}"
         );
+
+        find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "encapsulate")
+                .unwrap()
+                .body,
+            "mesh_crypto_mlkem_encapsulate",
+        )
+        .expect("ML-KEM encapsulation runtime call");
+
+        let decapsulate = find_call(
+            &mir.functions
+                .iter()
+                .find(|function| function.name == "decapsulate")
+                .unwrap()
+                .body,
+            "mesh_crypto_mlkem_decapsulate",
+        )
+        .expect("ML-KEM decapsulation runtime call");
+        assert!(matches!(
+            decapsulate,
+            MirExpr::Call { args, ty: MirType::SumType(name), .. }
+                if name == "Result_SecretBytes_CryptoError"
+                    && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
+        ));
     }
 
     #[test]
@@ -17652,6 +17718,16 @@ mod tests {
                 (
                     "public_key".to_string(),
                     MirType::Struct("X25519PublicKey".to_string()),
+                ),
+            ])
+        );
+        assert_eq!(
+            fields("MlKemKeyPair"),
+            Some(vec![
+                ("private_key".to_string(), MirType::Ptr),
+                (
+                    "public_key".to_string(),
+                    MirType::Struct("MlKemPublicKey".to_string()),
                 ),
             ])
         );

@@ -96,10 +96,12 @@ contains:
 
 ## Current baseline
 
-The development runtime implements the classical Crypto V2 API, affine secret
-resources, a static production provider, a test-only deterministic provider,
-known-answer and negative tests, and an iOS compilation proof. It is not yet a
-release-approved profile:
+The development runtime implements the classical Crypto V2 API plus an
+ML-KEM-768 KEM primitive, affine secret resources, a static production provider,
+a test-only deterministic provider, known-answer and negative tests, and an iOS
+compilation proof. The hybrid messenger suite remains disabled until its
+protocol negotiation, downgrade, target-performance, and external-review gates
+pass. This is not yet a release-approved profile:
 
 - The cryptographic fuzz and complete secret-leak sentinel suites remain open.
 - The full advertised mobile/host target matrix remains a Milestone 10 gate.

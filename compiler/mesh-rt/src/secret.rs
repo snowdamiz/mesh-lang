@@ -409,6 +409,7 @@ pub(crate) enum ResourceKind {
     AeadKey = 4,
     StorageKey = 5,
     SecretMap = 6,
+    MlKemPrivateKey = 8,
 }
 
 impl ResourceKind {
@@ -420,6 +421,7 @@ impl ResourceKind {
             value if value == Self::AeadKey as u32 => Some(Self::AeadKey),
             value if value == Self::StorageKey as u32 => Some(Self::StorageKey),
             value if value == Self::SecretMap as u32 => Some(Self::SecretMap),
+            value if value == Self::MlKemPrivateKey as u32 => Some(Self::MlKemPrivateKey),
             _ => None,
         }
     }
@@ -1747,6 +1749,7 @@ mod tests {
             (ResourceKind::X25519PrivateKey, 0x22),
             (ResourceKind::SigningPrivateKey, 0x33),
             (ResourceKind::AeadKey, 0x44),
+            (ResourceKind::MlKemPrivateKey, 0x55),
         ];
 
         for (kind, marker) in cases {
@@ -2343,6 +2346,7 @@ mod tests {
             ResourceKind::X25519PrivateKey,
             ResourceKind::SigningPrivateKey,
             ResourceKind::AeadKey,
+            ResourceKind::MlKemPrivateKey,
         ];
         let owned: Vec<_> = kinds
             .into_iter()
@@ -2372,7 +2376,7 @@ mod tests {
             )
             .expect("other actor private resource");
 
-        assert_eq!(table.destroy_owned(owner), 5);
+        assert_eq!(table.destroy_owned(owner), 6);
         for (handle, kind) in owned.into_iter().zip(kinds) {
             assert!(matches!(
                 table.with_resource(owner, handle, kind, |_| ()),

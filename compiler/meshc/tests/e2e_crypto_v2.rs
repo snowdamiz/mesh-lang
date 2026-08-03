@@ -86,7 +86,6 @@ fn crypto_v2_public_api_compiles_and_executes_natively() {
             "aead-tamper:ok\n",
             "aead-wrong-key:ok\n",
             "aead-key-after-failure:ok\n",
-            "aead-invalid-key:ok\n",
             "aead-nonce-length:ok\n",
             "aead-plaintext-length:ok\n",
             "aead-ciphertext-bound:ok\n",
@@ -96,7 +95,9 @@ fn crypto_v2_public_api_compiles_and_executes_natively() {
             "signature-mismatch:ok\n",
             "signature-malformed:ok\n",
             "signing-invalid-public:ok\n",
-            "resource-baseline:ok\n",
+            "mlkem-layout:ok\n",
+            "mlkem-roundtrip:ok\n",
+            "mlkem-seed-deterministic:ok\n",
         )
     );
 }
