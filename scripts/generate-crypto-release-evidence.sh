@@ -72,6 +72,7 @@ readonly SOURCE_A="${SCRATCH_ROOT}/source-a"
 readonly SOURCE_B="${SCRATCH_ROOT}/source-b"
 readonly BUILD_A="${SCRATCH_ROOT}/build-a"
 readonly BUILD_B="${SCRATCH_ROOT}/build-b"
+readonly TIMING_BUILD="${SCRATCH_ROOT}/timing-build"
 
 mkdir "${SOURCE_A}" "${SOURCE_B}"
 git archive "${REVISION}" | tar -x -C "${SOURCE_A}"
@@ -124,6 +125,13 @@ if sbom.get("bomFormat") != "CycloneDX" or sbom.get("specVersion") != "1.5":
 if component.get("name") != "meshc" or not sbom.get("components"):
     raise SystemExit("SBOM does not describe meshc and its resolved components")
 PY
+
+(
+  cd "${SOURCE_A}"
+  CARGO_TARGET_DIR="${TIMING_BUILD}" \
+    bash scripts/verify-crypto-timing.sh "${OUTPUT_DIR}/constant-time.json"
+) >"${OUTPUT_DIR}/constant-time.log" 2>&1
+cargo clean --manifest-path "${SOURCE_A}/Cargo.toml" --target-dir "${TIMING_BUILD}" >/dev/null
 
 sha256_file() {
   python3 - "$1" <<'PY'
@@ -207,8 +215,10 @@ AUDIT_SHA="$(sha256_file "${OUTPUT_DIR}/cargo-audit.json")"
 readonly AUDIT_SHA
 SBOM_SHA="$(sha256_file "${OUTPUT_DIR}/meshc.cdx.json")"
 readonly SBOM_SHA
+TIMING_SHA="$(sha256_file "${OUTPUT_DIR}/constant-time.json")"
+readonly TIMING_SHA
 
-python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${SHA_A}" <<'PY'
+python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" <<'PY'
 from datetime import datetime, timezone
 import json
 import sys
@@ -225,6 +235,7 @@ import sys
     cyclonedx_tool,
     audit_sha,
     sbom_sha,
+    timing_sha,
     artifact_sha,
 ) = sys.argv[1:]
 
@@ -241,6 +252,7 @@ record = {
     "results": {
         "dependency_audit": {"status": "passed", "sha256": audit_sha},
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},
+        "secure_equals_timing": {"status": "passed", "sha256": timing_sha},
         "reproducible_meshc_build": {"status": "passed", "sha256": artifact_sha},
     },
     "known_limitations": [
@@ -257,7 +269,7 @@ PY
 
 (
   cd "${OUTPUT_DIR}"
-  for evidence_file in cargo-audit.json meshc.cdx.json reproducibility.json release-record.json; do
+  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json release-record.json; do
     printf '%s  %s\n' "$(sha256_file "${evidence_file}")" "${evidence_file}"
   done
 ) >"${OUTPUT_DIR}/SHA256SUMS"

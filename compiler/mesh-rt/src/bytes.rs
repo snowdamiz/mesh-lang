@@ -799,6 +799,123 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use rand::{rngs::StdRng, Rng, SeedableRng};
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    #[derive(Default)]
+    struct TimingStats {
+        count: f64,
+        sum: f64,
+        sum_squares: f64,
+    }
+
+    impl TimingStats {
+        fn record(&mut self, value: f64) {
+            self.count += 1.0;
+            self.sum += value;
+            self.sum_squares += value * value;
+        }
+
+        fn mean(&self) -> f64 {
+            self.sum / self.count
+        }
+
+        fn variance(&self) -> f64 {
+            ((self.sum_squares - self.sum * self.sum / self.count) / (self.count - 1.0)).max(0.0)
+        }
+    }
+
+    fn welch_t(left: &TimingStats, right: &TimingStats) -> f64 {
+        let standard_error = (left.variance() / left.count + right.variance() / right.count).sqrt();
+        if standard_error == 0.0 {
+            return if left.mean() == right.mean() {
+                0.0
+            } else {
+                f64::INFINITY
+            };
+        }
+        ((left.mean() - right.mean()) / standard_error).abs()
+    }
+
+    fn comparison_nanos(left: *const MeshBytes, right: *const MeshBytes, repeats: usize) -> f64 {
+        let start = Instant::now();
+        for _ in 0..repeats {
+            black_box(mesh_bytes_secure_equals(black_box(left), black_box(right)));
+        }
+        start.elapsed().as_nanos() as f64
+    }
+
+    #[test]
+    fn welch_t_detects_separated_distributions() {
+        let mut baseline = TimingStats::default();
+        let mut identical = TimingStats::default();
+        let mut shifted = TimingStats::default();
+        for value in [1.0, 2.0, 3.0, 4.0] {
+            baseline.record(value);
+            identical.record(value);
+            shifted.record(value + 20.0);
+        }
+        assert_eq!(welch_t(&baseline, &identical), 0.0);
+        assert!(welch_t(&baseline, &shifted) > 10.0);
+    }
+
+    #[test]
+    #[ignore = "host-sensitive release evidence; run scripts/verify-crypto-timing.sh"]
+    fn secure_equals_timing_distribution() {
+        mesh_rt_init();
+        const LENGTH: usize = 256;
+        const THRESHOLD: f64 = 10.0;
+
+        let samples = std::env::var("MESH_TIMING_SAMPLES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(3_000)
+            .max(200);
+        let repeats = std::env::var("MESH_TIMING_REPETITIONS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(128)
+            .max(1);
+
+        let reference = [0xa5; LENGTH];
+        let mut first_mismatch = reference;
+        first_mismatch[0] ^= 1;
+        let mut last_mismatch = reference;
+        last_mismatch[LENGTH - 1] ^= 1;
+
+        let reference = mesh_bytes_copy_from(reference.as_ptr(), LENGTH as u64);
+        let first_mismatch = mesh_bytes_copy_from(first_mismatch.as_ptr(), LENGTH as u64);
+        let last_mismatch = mesh_bytes_copy_from(last_mismatch.as_ptr(), LENGTH as u64);
+
+        for _ in 0..1_024 {
+            black_box(mesh_bytes_secure_equals(reference, first_mismatch));
+            black_box(mesh_bytes_secure_equals(reference, last_mismatch));
+        }
+
+        let mut first_stats = TimingStats::default();
+        let mut last_stats = TimingStats::default();
+        for sample in 0..samples {
+            if sample % 2 == 0 {
+                first_stats.record(comparison_nanos(reference, first_mismatch, repeats));
+                last_stats.record(comparison_nanos(reference, last_mismatch, repeats));
+            } else {
+                last_stats.record(comparison_nanos(reference, last_mismatch, repeats));
+                first_stats.record(comparison_nanos(reference, first_mismatch, repeats));
+            }
+        }
+
+        let t_score = welch_t(&first_stats, &last_stats);
+        let passed = t_score < THRESHOLD;
+        println!(
+            "MESH_TIMING_JSON={{\"schema_version\":1,\"boundary\":\"Bytes.secure_equals\",\"bytes_per_comparison\":{LENGTH},\"samples_per_group\":{samples},\"repetitions_per_sample\":{repeats},\"first_mismatch_mean_ns\":{:.3},\"last_mismatch_mean_ns\":{:.3},\"welch_t\":{t_score:.6},\"threshold\":{THRESHOLD:.1},\"passed\":{passed}}}",
+            first_stats.mean(),
+            last_stats.mean(),
+        );
+        assert!(
+            passed,
+            "secure equality timing distributions diverged: |t|={t_score:.3}"
+        );
+    }
 
     #[test]
     fn binary_codecs_and_native_copy_round_trip() {

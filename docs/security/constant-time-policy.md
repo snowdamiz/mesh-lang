@@ -71,12 +71,15 @@ restrictions, code inspection, or review.
 
 - Mesh has no `@constant_time` annotation, secret-taint analysis, restricted
   MIR verifier, or constant-time-approved call graph.
-- `SecretBytes` and resource ownership do not exist yet.
+- `SecretBytes`, affine resource ownership, compiler-inserted destruction, and
+  bounded generational runtime storage are implemented; release approval is
+  still pending the remaining cryptographic evidence.
 - The unsafe string comparison API has been removed. `Bytes.secure_equals`
   uses the runtime's constant-time dependency and has a 256-byte length-boundary
-  regression test.
-- Current hash and HMAC APIs are string-first and do not satisfy the binary and
-  secret-input contract.
+  regression test. `scripts/verify-crypto-timing.sh` records a release-mode
+  timing-distribution check for equal-length first- and last-byte mismatches.
+- Binary-first hash, HMAC, HKDF, AEAD, signature, key-agreement, and KEM APIs
+  use the selected runtime provider and secret/resource inputs where required.
 
 ## Migration order
 
