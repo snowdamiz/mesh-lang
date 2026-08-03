@@ -252,10 +252,21 @@ fn check_signing() -> Int ! CryptoError do
   Ok(0)
 end
 
+fn mlkem_storage_context() -> Bytes ! CryptoError do
+  case Bytes.from_hex("0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f0000000000000001") do
+    Err(_) -> Err(InvalidLength(123, 0))
+    Ok(value) -> Ok(value)
+  end
+end
+
 fn check_mlkem() -> Int ! CryptoError do
   let pair = Crypto.mlkem_generate() ?
   let (ciphertext, sender_secret) = Crypto.mlkem_encapsulate(pair.public_key) ?
-  let receiver_secret = Crypto.mlkem_decapsulate(pair.private_key, ciphertext) ?
+  let wrapping_key = StorageKey.ephemeral() ?
+  let storage_context = mlkem_storage_context() ?
+  let private_blob = MlKemPrivateKey.seal_for_storage(pair.private_key, wrapping_key, storage_context) ?
+  let restored_private = MlKemPrivateKey.unseal_from_storage(private_blob, wrapping_key, storage_context) ?
+  let receiver_secret = Crypto.mlkem_decapsulate(restored_private, ciphertext) ?
   let sender_key = Crypto.aead_key(sender_secret) ?
   let receiver_key = Crypto.aead_key(receiver_secret) ?
   let nonce = Bytes.from_utf8("123456789012")
@@ -267,6 +278,7 @@ fn check_mlkem() -> Int ! CryptoError do
     "mlkem-layout",
     Bytes.length(pair.public_key.bytes) == 1184 and Bytes.length(ciphertext.bytes) == 1088
   )
+  report("mlkem-storage", Bytes.length(private_blob) == 131)
   report("mlkem-roundtrip", Bytes.secure_equals(opened, plaintext))
 
   let seed = Bytes.from_utf8("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")

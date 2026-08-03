@@ -96,6 +96,7 @@ fn crypto_v2_public_api_compiles_and_executes_natively() {
             "signature-malformed:ok\n",
             "signing-invalid-public:ok\n",
             "mlkem-layout:ok\n",
+            "mlkem-storage:ok\n",
             "mlkem-roundtrip:ok\n",
             "mlkem-seed-deterministic:ok\n",
         )
