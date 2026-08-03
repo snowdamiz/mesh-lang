@@ -460,6 +460,17 @@ mod tests {
     }
 
     #[test]
+    fn x25519_public_key_matches_mlswg_treekem_vector() {
+        // MLSWG treekem.json, vector 0, cipher suite 1, leaf 0.
+        let private_key =
+            decode_hex::<32>("7957e5368bbfe5dcfcce0cac8868d3d1943d7733f5c77ef582ee84ab6a281176");
+        let expected =
+            decode_hex("c929637bda524adad04ac85cf8ab7164d9cd88139aef5c9f7157902707c3fb58");
+
+        assert_eq!(SystemProvider.x25519_public(&private_key), expected);
+    }
+
+    #[test]
     fn x25519_shared_secret_matches_rfc7748_vector() {
         let alice_private =
             decode_hex::<32>("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
