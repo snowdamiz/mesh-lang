@@ -1,0 +1,4 @@
+fn main() do
+  let value = Bytes.from_utf8("fuzz")
+  IO.println(Int.to_string(Bytes.length(value)))
+end

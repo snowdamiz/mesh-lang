@@ -220,18 +220,19 @@ impl CryptoProvider for SystemProvider {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 enum FixedEntropy<'a> {
     Bytes(&'a [u8]),
+    #[cfg(test)]
     Failure,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 pub(crate) struct FixedProvider<'a> {
     entropy: FixedEntropy<'a>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 impl<'a> FixedProvider<'a> {
     pub(crate) fn with_random(bytes: &'a [u8]) -> Self {
         Self {
@@ -239,6 +240,7 @@ impl<'a> FixedProvider<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn entropy_failure() -> Self {
         Self {
             entropy: FixedEntropy::Failure,
@@ -246,12 +248,16 @@ impl<'a> FixedProvider<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 impl CryptoProvider for FixedProvider<'_> {
     fn fill_random(&self, output: &mut [u8]) -> Result<(), ProviderError> {
-        let FixedEntropy::Bytes(bytes) = self.entropy else {
-            output.zeroize();
-            return Err(ProviderError::EntropyUnavailable);
+        let bytes = match self.entropy {
+            FixedEntropy::Bytes(bytes) => bytes,
+            #[cfg(test)]
+            FixedEntropy::Failure => {
+                output.zeroize();
+                return Err(ProviderError::EntropyUnavailable);
+            }
         };
         if output.len() > MAX_RANDOM_BYTES || output.len() > bytes.len() {
             output.zeroize();

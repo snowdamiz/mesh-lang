@@ -1,0 +1,45 @@
+[package]
+name = "mesh-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+mesh-lexer = { path = "../compiler/mesh-lexer" }
+mesh-parser = { path = "../compiler/mesh-parser" }
+mesh-rt = { path = "../compiler/mesh-rt", features = ["fuzzing"] }
+
+[[bin]]
+name = "byte_operations"
+path = "fuzz_targets/byte_operations.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_provider"
+path = "fuzz_targets/crypto_provider.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "runtime_decoders"
+path = "fuzz_targets/runtime_decoders.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "source_parser"
+path = "fuzz_targets/source_parser.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

@@ -7,6 +7,9 @@ description = "Mesh language runtime library (GC, strings, panic handler, actor 
 [lib]
 crate-type = ["staticlib", "lib"]
 
+[features]
+fuzzing = []
+
 [dependencies]
 crossbeam-deque = "0.8"
 crossbeam-utils = "0.8"

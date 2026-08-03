@@ -451,6 +451,34 @@ jobs:
           path: ${{ runner.temp }}/crypto-release-evidence/**
           if-no-files-found: warn
 
+  cryptographic-fuzz:
+    name: Cryptographic fuzz smoke
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+
+      - name: Run fuzz smoke from the release revision
+        run: |
+          bash scripts/tests/fuzz-smoke-contract.test.sh
+          bash scripts/fuzz-smoke.sh "$RUNNER_TEMP/fuzz-smoke" 60
+
+      - name: Upload fuzz evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptographic-fuzz-smoke
+          path: ${{ runner.temp }}/fuzz-smoke/**
+          if-no-files-found: warn
+
   # ── Authoritative live proof ───────────────────────────────────────
 
   authoritative-live-proof:
@@ -641,7 +669,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build, build-meshpkg, cryptographic-release-evidence, authoritative-live-proof, autonomous-cluster-proof, verify-release-assets]
+    needs: [build, build-meshpkg, cryptographic-release-evidence, cryptographic-fuzz, authoritative-live-proof, autonomous-cluster-proof, verify-release-assets]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

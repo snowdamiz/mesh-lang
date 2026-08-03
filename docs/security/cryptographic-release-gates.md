@@ -103,7 +103,10 @@ compilation proof. The hybrid messenger suite remains disabled until its
 protocol negotiation, downgrade, target-performance, and external-review gates
 pass. This is not yet a release-approved profile:
 
-- The cryptographic fuzz and complete secret-leak sentinel suites remain open.
+- Native fuzz targets now exercise byte operations, the production provider,
+  runtime protocol/routing/WebSocket decoders, and the lexer/parser. Coverage-
+  guided targets for generated Mesh messenger boundaries and the complete
+  secret-leak sentinel suite remain open.
 - The full advertised mobile/host target matrix remains a Milestone 10 gate.
 - The release workflow now blocks tagged releases on a clean RustSec audit, a
   CycloneDX SBOM, and two reproducible isolated `meshc` builds for the workflow

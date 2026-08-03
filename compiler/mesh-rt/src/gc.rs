@@ -110,6 +110,15 @@ pub extern "C" fn mesh_rt_init() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
+/// Drop process-lifetime allocations between single-threaded fuzz iterations.
+///
+/// This is deliberately unavailable in production builds because every
+/// pointer returned by the global arena becomes invalid immediately.
+#[cfg(feature = "fuzzing")]
+pub fn mesh_rt_reset_for_fuzzing() {
+    *ARENA.lock().unwrap() = None;
+}
+
 /// Allocate `size` bytes with the given `align`ment from the GC arena.
 ///
 /// Returns a pointer to zeroed memory. The pointer is valid for the lifetime
@@ -273,6 +282,17 @@ mod tests {
         mesh_rt_init();
         let ptr = mesh_gc_alloc(64, 8);
         assert!(!ptr.is_null());
+    }
+
+    #[cfg(feature = "fuzzing")]
+    #[test]
+    fn fuzzing_reset_drops_the_global_arena() {
+        mesh_rt_init();
+        assert!(ARENA.lock().unwrap().is_some());
+
+        mesh_rt_reset_for_fuzzing();
+
+        assert!(ARENA.lock().unwrap().is_none());
     }
 
     #[test]

@@ -16,6 +16,8 @@ use rand::RngCore;
 use sha2::Sha512;
 use zeroize::Zeroizing;
 
+#[cfg(feature = "fuzzing")]
+use self::provider::FixedProvider;
 use self::provider::{CryptoProvider, ProviderError, SystemProvider};
 use crate::actor::Process;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
@@ -1859,6 +1861,64 @@ pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
                 mesh_string_new(valid.as_ptr(), valid.len() as u64) as *mut u8,
             ),
         }
+    }
+}
+
+/// Exercise provider-backed cryptographic boundaries without runtime handles.
+#[cfg(feature = "fuzzing")]
+pub fn fuzz_crypto_boundaries(data: &[u8]) {
+    let input = &data[..data.len().min(MAX_INPUT_BYTES)];
+    let provider = SystemProvider;
+    let key = provider.sha256(input);
+    let salt = provider.sha256(&key);
+
+    let _ = provider.sha512(input);
+    let mut hmac = [0; 32];
+    let _ = provider.hmac_sha256(&key, input, &mut hmac);
+    let mut derived = vec![0; input.first().copied().unwrap_or(31) as usize % 64 + 1];
+    let _ = provider.hkdf_sha256(&key, &salt, input, &mut derived);
+
+    let x25519_public = provider.x25519_public(&key);
+    let mut shared = [0; 32];
+    let _ = provider.x25519_shared(&key, &x25519_public, &mut shared);
+    let _ = provider.x25519_shared(&key, &salt, &mut shared);
+
+    let signing_public = provider.ed25519_public(&key);
+    if let Ok(signature) = provider.ed25519_sign(&key, input) {
+        let _ = provider.ed25519_verify(&signing_public, input, &signature);
+        let arbitrary_signature = provider.sha512(input);
+        let _ = provider.ed25519_verify(&salt, input, &arbitrary_signature);
+    }
+
+    let nonce: [u8; 12] = salt[..12].try_into().unwrap();
+    let associated_data = &input[..input.len() / 2];
+    if let Ok(ciphertext) = provider.chacha20poly1305_seal(&key, &nonce, associated_data, input) {
+        let mut valid = Zeroizing::new(ciphertext);
+        let _ = provider.chacha20poly1305_open(&key, &nonce, associated_data, &mut valid);
+    }
+    let mut arbitrary = Zeroizing::new(input.to_vec());
+    let _ = provider.chacha20poly1305_open(&key, &nonce, associated_data, &mut arbitrary);
+
+    // Keep expensive KEM/HPKE paths sparse while still giving libFuzzer a
+    // stable selector it can learn to preserve.
+    if input.first().copied().unwrap_or_default() & 0x1f == 0 {
+        let mut entropy = [0; MLKEM_PRIVATE_SEED_BYTES];
+        entropy[..32].copy_from_slice(&key);
+        entropy[32..].copy_from_slice(&salt);
+        let fixed = FixedProvider::with_random(&entropy);
+        let seed = Zeroizing::new(entropy.to_vec().into_boxed_slice());
+        if let Ok((private_seed, public_key)) = mlkem_from_seed_material(seed) {
+            if let Ok((ciphertext, _)) = mlkem_encapsulate_material(&fixed, &public_key) {
+                let _ = mlkem_decapsulate_material(&private_seed, &ciphertext);
+            }
+        }
+
+        let info = &input[..input.len().min(MAX_HPKE_INFO_BYTES)];
+        if let Ok(sealed) = hpke_seal_material(&fixed, &x25519_public, info, associated_data, input)
+        {
+            let _ = hpke_open_material(&fixed, &key, info, associated_data, &sealed);
+        }
+        let _ = hpke_open_material(&fixed, &key, info, associated_data, input);
     }
 }
 

@@ -256,7 +256,7 @@ record = {
         "reproducible_meshc_build": {"status": "passed", "sha256": artifact_sha},
     },
     "known_limitations": [
-        "This record does not provide fuzz coverage or the complete secret-leak sentinel suite.",
+        "This record does not embed the separate native fuzz-smoke evidence or the complete generated-Mesh fuzz and secret-leak sentinel suites.",
         "This record covers the current host target only, not the advertised mobile and host matrix.",
         "This record is not an independent cryptographic, protocol, server, or mobile security review.",
     ],
