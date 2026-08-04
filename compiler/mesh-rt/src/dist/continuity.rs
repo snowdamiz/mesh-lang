@@ -1506,7 +1506,10 @@ fn preferred_record(existing: ContinuityRecord, incoming: ContinuityRecord) -> C
     // attempt. Once the replacement commits it is Mirrored (or explicitly
     // degraded), and normal attempt ordering fences the predecessor.
     if existing_attempt != incoming_attempt {
-        if existing.phase.is_terminal() && incoming.replica_status == ReplicaStatus::Preparing {
+        if existing.phase.is_terminal()
+            && existing.replica_status != ReplicaStatus::PreAdmissionRejected
+            && incoming.replica_status == ReplicaStatus::Preparing
+        {
             return existing;
         }
         if incoming.phase.is_terminal() && existing.replica_status == ReplicaStatus::Preparing {
@@ -3894,6 +3897,36 @@ mod tests {
             .unwrap();
         assert_eq!(conflict.outcome, SubmitOutcome::Conflict);
         assert_eq!(conflict.record.attempt_id, retried.record.attempt_id);
+    }
+
+    #[test]
+    fn replica_accepts_fenced_retry_after_pre_admission_rejection() {
+        let coordinator = continuity_fresh_registry();
+        let replica = continuity_fresh_registry();
+
+        let rejected = coordinator
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "replica@host", 1),
+                |record| {
+                    replica.mirror_prepare(record.clone())?;
+                    Err(REPLICA_PREPARE_TIMEOUT.to_string())
+                },
+            )
+            .unwrap();
+        replica
+            .merge_remote_record(coordinator.next_attempt_token(), rejected.record.clone())
+            .unwrap();
+
+        let retried = coordinator
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "replica@host", 1),
+                |record| replica.mirror_prepare(record.clone()).map(|_| ()),
+            )
+            .unwrap();
+
+        assert_eq!(retried.outcome, SubmitOutcome::Created);
+        assert_ne!(retried.record.attempt_id, rejected.record.attempt_id);
+        assert_eq!(retried.record.replica_status, ReplicaStatus::Mirrored);
     }
 
     #[test]
