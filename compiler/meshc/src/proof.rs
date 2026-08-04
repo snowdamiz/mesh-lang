@@ -31,8 +31,9 @@ const BURST_GATEWAY_HEALTH_BUDGET_MILLIS: u64 = 3_000;
 // The proof can remove three workers serially (max five down to min two).
 // Each step has a 4s scale-down window, a 30s drain deadline, and a 30s
 // termination deadline. Keep the waiter bounded while covering that declared
-// policy envelope plus controller polling and consensus propagation.
-const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(210);
+// policy envelope, one final 30s provider observation, controller polling, and
+// consensus propagation.
+const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(240);
 
 #[derive(Subcommand, Debug)]
 pub enum ProofCommand {

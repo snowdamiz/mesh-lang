@@ -722,11 +722,9 @@ fn desired_gateway_nodes(config: &RuntimeAutonomousConfig, worker_nodes: u16) ->
 }
 
 fn runtime_safety(
-    driver: &dyn CapacityDriver,
-    cluster_id: &str,
+    observation: &super::scaling::CapacityObservation,
     snapshot: &super::operator::OperatorRuntimeSnapshot,
 ) -> Result<(Vec<ReconcileNodeSafety>, u16), String> {
-    let observation = driver.observe_capacity(cluster_id)?;
     let current_generation = snapshot
         .nodes
         .iter()
@@ -736,15 +734,15 @@ fn runtime_safety(
     let mut managed_runtime_names = BTreeSet::new();
     let safety = observation
         .nodes
-        .into_iter()
+        .iter()
         .map(|node| {
             let runtime = snapshot
                 .nodes
                 .iter()
-                .find(|runtime| managed_runtime_matches(&node, &runtime.node_id));
+                .find(|runtime| managed_runtime_matches(node, &runtime.node_id));
             let Some(runtime) = runtime else {
                 return ReconcileNodeSafety {
-                    node_id: node.node_id,
+                    node_id: node.node_id.clone(),
                     runtime_node_id: String::new(),
                     transferable_load: u64::MAX,
                     active_ownership_transfers: u32::MAX,
@@ -769,7 +767,7 @@ fn runtime_safety(
                 .inflight
                 .saturating_add(runtime.continuity_active_work);
             ReconcileNodeSafety {
-                node_id: node.node_id,
+                node_id: node.node_id.clone(),
                 runtime_node_id: runtime.node_id.clone(),
                 transferable_load: u64::from(active_work)
                     .saturating_add(u64::from(runtime.continuity_replica_responsibilities)),
@@ -1086,16 +1084,14 @@ fn controller_loop(
                     constraints: vec!["horizontal_observe_only".to_string()],
                 }
             } else {
-                let (safety, unmanaged_ready) = runtime_safety(&*driver, &cluster_id, &snapshot)?;
-                reconciler.reconcile_with_unmanaged_capacity(
+                reconciler.reconcile_with_observed_capacity(
                     &committer,
                     &cluster_id,
                     &consensus.node_name,
                     &BTreeSet::new(),
                     &committed,
                     "mesh-reconciler",
-                    &safety,
-                    unmanaged_ready,
+                    |observation| runtime_safety(observation, &snapshot),
                 )?
             };
             Ok((

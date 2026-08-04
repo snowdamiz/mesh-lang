@@ -5,6 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -803,6 +804,7 @@ pub(crate) fn instrument_capacity_driver(
 pub struct FakeCapacityDriver {
     operations: Mutex<BTreeMap<String, DriverOperation>>,
     nodes: Mutex<BTreeMap<String, ObservedCapacityNode>>,
+    observations: AtomicU64,
 }
 
 impl FakeCapacityDriver {
@@ -810,6 +812,7 @@ impl FakeCapacityDriver {
         Self {
             operations: Mutex::new(BTreeMap::new()),
             nodes: Mutex::new(BTreeMap::new()),
+            observations: AtomicU64::new(0),
         }
     }
 }
@@ -826,6 +829,7 @@ impl CapacityDriver for FakeCapacityDriver {
     }
 
     fn observe_capacity(&self, _cluster_id: &str) -> Result<CapacityObservation, String> {
+        self.observations.fetch_add(1, Ordering::Relaxed);
         Ok(CapacityObservation {
             nodes: self.nodes.lock().unwrap().values().cloned().collect(),
         })
@@ -3035,6 +3039,61 @@ impl CapacityReconciler {
         safety: &[ReconcileNodeSafety],
         unmanaged_ready_workers: u16,
     ) -> Result<CapacityReconcileOutcome, String> {
+        let safety = safety.to_vec();
+        self.reconcile_with_capacity_safety(
+            quorum,
+            cluster_id,
+            leader,
+            acknowledgements,
+            committed,
+            actor,
+            move |_| Ok((safety, unmanaged_ready_workers)),
+        )
+    }
+
+    /// Derive runtime safety from the same fenced provider snapshot used for
+    /// reconciliation. This prevents a slow provider from consuming two API
+    /// deadlines per controller tick while retaining the leader fence before
+    /// observation and every destructive continuity gate afterward.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reconcile_with_observed_capacity<F>(
+        &mut self,
+        quorum: &dyn ControlPlaneCommitter,
+        cluster_id: &str,
+        leader: &str,
+        acknowledgements: &BTreeSet<String>,
+        committed: &CommittedDesiredCapacity,
+        actor: &str,
+        safety_for_observation: F,
+    ) -> Result<CapacityReconcileOutcome, String>
+    where
+        F: FnOnce(&CapacityObservation) -> Result<(Vec<ReconcileNodeSafety>, u16), String>,
+    {
+        self.reconcile_with_capacity_safety(
+            quorum,
+            cluster_id,
+            leader,
+            acknowledgements,
+            committed,
+            actor,
+            safety_for_observation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reconcile_with_capacity_safety<F>(
+        &mut self,
+        quorum: &dyn ControlPlaneCommitter,
+        cluster_id: &str,
+        leader: &str,
+        acknowledgements: &BTreeSet<String>,
+        committed: &CommittedDesiredCapacity,
+        actor: &str,
+        safety_for_observation: F,
+    ) -> Result<CapacityReconcileOutcome, String>
+    where
+        F: FnOnce(&CapacityObservation) -> Result<(Vec<ReconcileNodeSafety>, u16), String>,
+    {
         if committed.log_index < self.last_log_index || committed.term < self.highest_term {
             return Err("capacity_reconciler_stale_committed_state".to_string());
         }
@@ -3058,6 +3117,7 @@ impl CapacityReconciler {
             return Err("capacity_reconciler_cluster_id_missing".to_string());
         }
         let observation = self.driver.observe_capacity(cluster_id)?;
+        let (safety, unmanaged_ready_workers) = safety_for_observation(&observation)?;
         let mut active: Vec<_> = observation
             .nodes
             .iter()
@@ -4688,6 +4748,56 @@ mod tests {
             ),
             Err("controller_quorum_unavailable".to_string())
         );
+    }
+
+    #[test]
+    fn runtime_reconcile_uses_one_capacity_snapshot_after_the_leader_fence() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log =
+            Arc::new(DurableControlLog::open(&directory.path().join("control.log")).expect("log"));
+        let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log.clone()).expect("quorum");
+        let term = quorum.elect("a", &voters).expect("leader");
+        let committed = quorum
+            .commit_desired_capacity(
+                "a",
+                term,
+                &voters,
+                "autoscaler",
+                "desired minimum",
+                DesiredCapacity {
+                    revision: DesiredRevision(1),
+                    worker_nodes: 1,
+                    gateway_nodes: 0,
+                    template_revision: "v1".to_string(),
+                },
+            )
+            .expect("desired capacity");
+        let driver = Arc::new(FakeCapacityDriver::new());
+        let mut reconciler = CapacityReconciler::new(driver.clone(), 1).expect("reconciler");
+        let log_at_observation = log.clone();
+
+        let outcome = reconciler
+            .reconcile_with_observed_capacity(
+                &quorum,
+                "cluster",
+                "a",
+                &voters,
+                &committed,
+                "autoscaler",
+                move |observation| {
+                    assert!(log_at_observation
+                        .entries()
+                        .iter()
+                        .any(|entry| entry.reason == "capacity reconciliation fence"));
+                    assert!(observation.nodes.is_empty());
+                    Ok((Vec::new(), 0))
+                },
+            )
+            .expect("runtime reconciliation");
+
+        assert_eq!(outcome.ensured.len(), 1);
+        assert_eq!(driver.observations.load(Ordering::Relaxed), 1);
     }
 
     #[test]
