@@ -926,6 +926,11 @@ struct ParsedRequest {
 const MAX_HTTP_HEADER_BYTES: usize = 8 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
 
+fn configure_accepted_stream(stream: &TcpStream) -> std::io::Result<()> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))
+}
+
 fn read_bounded_line<R: BufRead>(
     reader: &mut R,
     maximum: usize,
@@ -1246,12 +1251,11 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
                 continue;
             }
         };
+        if let Err(error) = configure_accepted_stream(&tcp_stream) {
+            eprintln!("[mesh-rt] failed to configure HTTP connection: {error}");
+            continue;
+        }
         let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
-
-        // Set read timeout BEFORE wrapping in HttpStream.
-        tcp_stream
-            .set_read_timeout(Some(Duration::from_secs(30)))
-            .ok();
 
         let http_stream = HttpStream::Plain(tcp_stream);
         let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
@@ -1357,12 +1361,11 @@ pub extern "C" fn mesh_http_serve_tls(
                 continue;
             }
         };
+        if let Err(error) = configure_accepted_stream(&tcp_stream) {
+            eprintln!("[mesh-rt] failed to configure HTTPS connection: {error}");
+            continue;
+        }
         let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
-
-        // Set read timeout BEFORE wrapping in TLS (Pitfall 7 from research).
-        tcp_stream
-            .set_read_timeout(Some(Duration::from_secs(30)))
-            .ok();
 
         // Reconstruct the Arc without dropping it (we leaked it intentionally).
         let tls_config = unsafe { Arc::from_raw(config_ptr as *const ServerConfig) };
@@ -1865,6 +1868,41 @@ mod tests {
             parse("POST / HTTP/1.1\r\nContent-Length: invalid\r\n\r\n".to_string()).unwrap_err(),
             "invalid content-length header"
         );
+    }
+
+    #[test]
+    fn accepted_connections_wait_for_request_bytes() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        listener
+            .set_nonblocking(true)
+            .expect("make listener nonblocking");
+        let mut client = TcpStream::connect(listener.local_addr().expect("listener address"))
+            .expect("connect client");
+        let accepted = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::yield_now();
+                }
+                Err(error) => panic!("accept connection: {error}"),
+            }
+        };
+        accepted
+            .set_nonblocking(true)
+            .expect("reproduce inherited listener mode");
+        configure_accepted_stream(&accepted).expect("configure accepted stream");
+
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            client
+                .write_all(b"GET /health HTTP/1.1\r\n\r\n")
+                .expect("write delayed request");
+        });
+        let parsed = parse_request(&mut HttpStream::Plain(accepted)).expect("parse request");
+        sender.join().expect("join request writer");
+
+        assert_eq!(parsed.method, "GET");
+        assert_eq!(parsed.path, "/health");
     }
 
     #[test]
