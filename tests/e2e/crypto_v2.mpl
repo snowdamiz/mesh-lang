@@ -350,11 +350,22 @@ fn check_hpke() -> Int ! CryptoError do
   Ok(0)
 end
 
+fn crypto_vector_bytes(value :: String) -> Bytes ! CryptoError do
+  case Bytes.from_hex(value) do
+    Err(_) -> Err(InternalFailure)
+    Ok(value) -> Ok(value)
+  end
+end
+
 fn mlkem_storage_context() -> Bytes ! CryptoError do
   case Bytes.from_hex("0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f0000000000000001") do
     Err(_) -> Err(InvalidLength(123, 0))
     Ok(value) -> Ok(value)
   end
+end
+
+fn consume_unexpected_mlkem_pair(pair :: consume MlKemKeyPair) do
+  nil
 end
 
 fn check_mlkem() -> Int ! CryptoError do
@@ -386,6 +397,41 @@ fn check_mlkem() -> Int ! CryptoError do
     "mlkem-seed-deterministic",
     Bytes.secure_equals(seeded_first.public_key.bytes, seeded_second.public_key.bytes)
   )
+
+  let vector_seed = crypto_vector_bytes("__MLKEM_SEED_HEX__") ?
+  let expected_public_key = crypto_vector_bytes("__MLKEM_PUBLIC_KEY_HEX__") ?
+  let vector_pair = Crypto.mlkem_from_seed(vector_seed) ?
+  report(
+    "mlkem-nist-acvp-keygen",
+    Bytes.secure_equals(vector_pair.public_key.bytes, expected_public_key)
+  )
+
+  case Bytes.repeat(0, __MLKEM_SHORT_SEED_LENGTH__) do
+    Ok(short_seed) -> case Crypto.mlkem_from_seed(short_seed) do
+      Err(error) -> report(
+        "mlkem-invalid-seed-short",
+        invalid_length_is(error, 64, __MLKEM_SHORT_SEED_LENGTH__)
+      )
+      Ok(unexpected) -> do
+        consume_unexpected_mlkem_pair(unexpected)
+        report("mlkem-invalid-seed-short", false)
+      end
+    end
+    Err(_) -> report("mlkem-invalid-seed-short", false)
+  end
+  case Bytes.repeat(0, __MLKEM_LONG_SEED_LENGTH__) do
+    Ok(long_seed) -> case Crypto.mlkem_from_seed(long_seed) do
+      Err(error) -> report(
+        "mlkem-invalid-seed-long",
+        invalid_length_is(error, 64, __MLKEM_LONG_SEED_LENGTH__)
+      )
+      Ok(unexpected) -> do
+        consume_unexpected_mlkem_pair(unexpected)
+        report("mlkem-invalid-seed-long", false)
+      end
+    end
+    Err(_) -> report("mlkem-invalid-seed-long", false)
+  end
 
   Ok(0)
 end

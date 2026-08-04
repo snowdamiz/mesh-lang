@@ -99,8 +99,9 @@ contains:
 The development runtime implements the classical Crypto V2 API, an ML-KEM-768
 KEM primitive, and an Argon2id v1.3 password KDF, plus affine secret resources,
 a static production provider, a test-only deterministic provider, known-answer
-and negative tests, and an iOS compilation proof. The hybrid messenger suite
-remains disabled until its
+and negative tests, a published NIST ACVP ML-KEM-768 key-generation vector
+executed through the public Mesh API, and an iOS compilation proof. The hybrid
+messenger suite remains disabled until its
 protocol negotiation, downgrade, target-performance, and external-review gates
 pass. This is not yet a release-approved profile:
 
@@ -113,8 +114,10 @@ pass. This is not yet a release-approved profile:
 - The release workflow now blocks tagged releases on a clean RustSec audit, a
   CycloneDX SBOM, and two reproducible isolated `meshc` builds for the workflow
   host. It also records a release-mode timing-distribution check for
-  `Bytes.secure_equals`. Reproducibility of every advertised target archive
-  remains open.
+  `Bytes.secure_equals`, runs the published ML-KEM vector through compiled Mesh,
+  and packages both the vector and its test log. Published external vectors for
+  the remaining Crypto V2 primitives and reproducibility of every advertised
+  target archive remain open.
 
 Current primitives are implementation baseline, not approval evidence. A
 release record must name the profile, Mesh revision, provider and dependency
@@ -124,6 +127,7 @@ audit/SBOM/reproducibility results, known limitations, and required review.
 Run `bash scripts/generate-crypto-release-evidence.sh OUTPUT_DIRECTORY` from a
 clean release revision to produce the audit JSON, CycloneDX 1.5 SBOM,
 secure-equality timing record, reproducibility comparison, release record,
-logs, and checksums. The output record explicitly lists the fuzzing,
-target-matrix, secret-leak, and independent review evidence that this command
-does not provide.
+published ML-KEM vector, public-Mesh vector test log, logs, and checksums. The
+output record explicitly lists the remaining vector, fuzzing, target-matrix,
+secret-leak, and independent review evidence that this command does not
+provide.

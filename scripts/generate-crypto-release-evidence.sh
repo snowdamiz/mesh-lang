@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT_DIR
 readonly PROFILE="crypto-v2-development-baseline"
+readonly MLKEM_VECTOR_PATH="tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json"
+readonly MLKEM_VECTOR_FILE="mlkem768-keygen-acvp-tc26.json"
+readonly MLKEM_VECTOR_TEST="crypto_v2_public_api_compiles_and_executes_natively"
 
 usage() {
   printf 'usage: bash scripts/generate-crypto-release-evidence.sh OUTPUT_DIRECTORY\n' >&2
@@ -29,7 +32,7 @@ output_parent="$(cd "${output_parent}" && pwd -P)"
 readonly OUTPUT_DIR="${output_parent}/${output_name}"
 [[ ! -e "${OUTPUT_DIR}" && ! -L "${OUTPUT_DIR}" ]] || fail "output path already exists: ${OUTPUT_DIR}" 73
 
-for command_name in cargo cargo-audit cargo-cyclonedx git python3 rustc tar; do
+for command_name in cargo cargo-audit cargo-cyclonedx cp git python3 rustc tar; do
   command -v "${command_name}" >/dev/null || fail "required command is unavailable: ${command_name}" 69
 done
 
@@ -77,6 +80,11 @@ readonly TIMING_BUILD="${SCRATCH_ROOT}/timing-build"
 mkdir "${SOURCE_A}" "${SOURCE_B}"
 git archive "${REVISION}" | tar -x -C "${SOURCE_A}"
 git archive "${REVISION}" | tar -x -C "${SOURCE_B}"
+
+readonly MLKEM_VECTOR_SOURCE="${SOURCE_A}/${MLKEM_VECTOR_PATH}"
+readonly MLKEM_VECTOR_ARTIFACT="${OUTPUT_DIR}/${MLKEM_VECTOR_FILE}"
+[[ -s "${MLKEM_VECTOR_SOURCE}" ]] || fail "release revision is missing ${MLKEM_VECTOR_PATH}"
+cp "${MLKEM_VECTOR_SOURCE}" "${MLKEM_VECTOR_ARTIFACT}"
 
 audit_status=0
 (cd "${SOURCE_A}" && cargo audit --json >"${OUTPUT_DIR}/cargo-audit.json") || audit_status=$?
@@ -161,12 +169,32 @@ build_once() {
   ) >"${log_path}" 2>&1
 }
 
+run_known_answer_vectors() {
+  local source_root="$1"
+  local target_root="$2"
+  local remap_flags="--remap-path-prefix=${source_root}=/mesh-src"
+  if [[ -n "${RUSTFLAGS:-}" ]]; then
+    remap_flags="${RUSTFLAGS} ${remap_flags}"
+  fi
+
+  (
+    cd "${source_root}"
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      cargo test --locked --release -p meshc \
+        --test e2e_crypto_v2 "${MLKEM_VECTOR_TEST}" \
+        --target-dir "${target_root}" -- --exact
+  )
+}
+
 binary_name="meshc"
 [[ "${HOST_TARGET}" != *-windows-* ]] || binary_name="meshc.exe"
 
 build_once "${SOURCE_A}" "${BUILD_A}" "${OUTPUT_DIR}/build-a.log"
 readonly BINARY_A="${BUILD_A}/release/${binary_name}"
 [[ -s "${BINARY_A}" ]] || fail "first release build did not produce ${binary_name}"
+run_known_answer_vectors "${SOURCE_A}" "${BUILD_A}" >"${OUTPUT_DIR}/known-answer-vectors.log" 2>&1
 SHA_A="$(sha256_file "${BINARY_A}")"
 readonly SHA_A
 SIZE_A="$(wc -c <"${BINARY_A}" | tr -d ' ')"
@@ -217,8 +245,12 @@ SBOM_SHA="$(sha256_file "${OUTPUT_DIR}/meshc.cdx.json")"
 readonly SBOM_SHA
 TIMING_SHA="$(sha256_file "${OUTPUT_DIR}/constant-time.json")"
 readonly TIMING_SHA
+VECTOR_SHA="$(sha256_file "${MLKEM_VECTOR_ARTIFACT}")"
+readonly VECTOR_SHA
+VECTOR_TEST_SHA="$(sha256_file "${OUTPUT_DIR}/known-answer-vectors.log")"
+readonly VECTOR_TEST_SHA
 
-python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" <<'PY'
+python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" <<'PY'
 from datetime import datetime, timezone
 import json
 import sys
@@ -237,6 +269,8 @@ import sys
     sbom_sha,
     timing_sha,
     artifact_sha,
+    vector_sha,
+    vector_test_sha,
 ) = sys.argv[1:]
 
 record = {
@@ -249,6 +283,15 @@ record = {
     "toolchain": {"rustc": rustc, "cargo": cargo},
     "tools": {"cargo_audit": audit_tool, "cargo_cyclonedx": cyclonedx_tool},
     "accepted_named_licenses": ["Apache-2.0/MIT", "MIT/Apache-2.0"],
+    "vector_sets": [
+        {
+            "suite": "ML-KEM-768",
+            "version": "FIPS 203",
+            "artifact": "mlkem768-keygen-acvp-tc26.json",
+            "sha256": vector_sha,
+            "runner": "public Mesh Crypto V2 end-to-end proof",
+        }
+    ],
     "primitive_profiles": {
         "argon2id": {
             "algorithm": "Argon2id",
@@ -269,8 +312,14 @@ record = {
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},
         "secure_equals_timing": {"status": "passed", "sha256": timing_sha},
         "reproducible_meshc_build": {"status": "passed", "sha256": artifact_sha},
+        "known_answer_vectors": {
+            "status": "passed",
+            "report": "known-answer-vectors.log",
+            "sha256": vector_test_sha,
+        },
     },
     "known_limitations": [
+        "The published external vector set currently covers ML-KEM-768 key generation; other Crypto V2 embedded KATs are not yet exported as versioned vector artifacts.",
         "This record does not embed the separate native fuzz-smoke evidence or the complete generated-Mesh fuzz and secret-leak sentinel suites.",
         "This record covers the current host target only, not the advertised mobile and host matrix.",
         "This record is not an independent cryptographic, protocol, server, or mobile security review.",
@@ -284,7 +333,7 @@ PY
 
 (
   cd "${OUTPUT_DIR}"
-  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json release-record.json; do
+  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
     printf '%s  %s\n' "$(sha256_file "${evidence_file}")" "${evidence_file}"
   done
 ) >"${OUTPUT_DIR}/SHA256SUMS"
