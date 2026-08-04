@@ -196,13 +196,12 @@ fn e2e_service_string_return() {
 
 // ── Job E2E Tests ──────────────────────────────────────────────────────
 
-/// Test: Job.async spawns work, Job.await collects Result.
-/// Exercises: Job.async with closure, Job.await returning Ok(value).
+/// Test: Job.await returns the requested job when completions arrive out of order.
 #[test]
 fn e2e_job_async_await() {
     let source = read_fixture("job_async_await.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
-    assert_eq!(output, "42\n");
+    assert_eq!(output, "1\n2\n");
 }
 
 // ── Receive-with-timeout E2E Tests ──────────────────────────────────

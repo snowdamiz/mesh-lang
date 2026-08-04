@@ -13,7 +13,7 @@
 //! exit signals (`EXIT_SIGNAL_TAG` = u64::MAX). The job actor:
 //! 1. Links to the caller
 //! 2. Calls fn_ptr(env_ptr) to get the result
-//! 3. Sends [JOB_RESULT_TAG][result] to the caller
+//! 3. Sends [JOB_RESULT_TAG][job_pid][result] to the caller
 //! 4. Exits normally
 //!
 //! ## Result Layout
@@ -172,9 +172,13 @@ extern "C" fn job_entry(args: *const u8) {
 
     // Send the result to the caller tagged with JOB_RESULT_TAG.
     if caller_pid != u64::MAX {
-        // Message layout: [u64 JOB_RESULT_TAG][i64 result]
-        let mut msg_data = Vec::with_capacity(16);
+        // Message layout: [u64 JOB_RESULT_TAG][u64 job_pid][i64 result]
+        let mut msg_data = Vec::with_capacity(24);
         msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
+        let job_pid = stack::get_current_pid()
+            .map(ProcessId::as_u64)
+            .unwrap_or(u64::MAX);
+        msg_data.extend_from_slice(&job_pid.to_le_bytes());
         msg_data.extend_from_slice(&result.to_le_bytes());
 
         let sched = match GLOBAL_SCHEDULER.get() {
@@ -209,13 +213,12 @@ extern "C" fn job_entry(args: *const u8) {
 /// - `JOB_RESULT_TAG` message: extract the value, return Ok(value)
 /// - `EXIT_SIGNAL_TAG` message: the job crashed, return Err(reason)
 ///
-/// - `job_pid`: PID of the job actor (unused for filtering; we block on any message)
+/// - `job_pid`: PID of the job actor to receive from
 ///
 /// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_job_await(_job_pid: u64) -> *const u8 {
-    // Use mesh_actor_receive(-1) to block indefinitely.
-    let msg_ptr = super::mesh_actor_receive(-1);
+pub extern "C" fn mesh_job_await(job_pid: u64) -> *const u8 {
+    let msg_ptr = receive_job_message(job_pid, -1);
     if msg_ptr.is_null() {
         return err_result("job await: no message received") as *const u8;
     }
@@ -233,13 +236,30 @@ pub extern "C" fn mesh_job_await(_job_pid: u64) -> *const u8 {
 ///
 /// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_job_await_timeout(_job_pid: u64, timeout_ms: i64) -> *const u8 {
-    let msg_ptr = super::mesh_actor_receive(timeout_ms);
+pub extern "C" fn mesh_job_await_timeout(job_pid: u64, timeout_ms: i64) -> *const u8 {
+    let msg_ptr = receive_job_message(job_pid, timeout_ms);
     if msg_ptr.is_null() {
         return err_result("timeout") as *const u8;
     }
 
     decode_job_message(msg_ptr)
+}
+
+fn receive_job_message(job_pid: u64, timeout_ms: i64) -> *const u8 {
+    super::actor_receive_matching(timeout_ms, |message| {
+        let pid_offset = match message.buffer.type_tag {
+            JOB_RESULT_TAG => 8,
+            EXIT_SIGNAL_TAG => 0,
+            _ => return false,
+        };
+        message
+            .buffer
+            .data
+            .get(pid_offset..pid_offset + 8)
+            .and_then(|bytes| bytes.try_into().ok())
+            .map(u64::from_le_bytes)
+            == Some(job_pid)
+    })
 }
 
 /// Decode a received message into a MeshResult.
@@ -253,11 +273,11 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
 
         if type_tag == JOB_RESULT_TAG {
             // Job completed successfully.
-            // Data layout after header: [u64 JOB_RESULT_TAG][i64 result]
+            // Data layout after header: [u64 JOB_RESULT_TAG][u64 job_pid][i64 result]
             // The data is at offset 16 (after the 16-byte header: type_tag + data_len).
             let data_ptr = msg_ptr.add(16);
             let result_value = i64::from_le_bytes(
-                std::slice::from_raw_parts(data_ptr.add(8), 8)
+                std::slice::from_raw_parts(data_ptr.add(16), 8)
                     .try_into()
                     .unwrap(),
             );
@@ -408,9 +428,9 @@ pub extern "C" fn mesh_job_map(
 
     // Await each job in order and build result list.
     let mut result_list = mesh_list_new();
-    for _job_pid in &job_pids {
+    for job_pid in &job_pids {
         // Block until we get a result from this job.
-        let msg_ptr = super::mesh_actor_receive(-1);
+        let msg_ptr = receive_job_message(*job_pid, -1);
         let result = if msg_ptr.is_null() {
             err_result("job map: no message received") as u64
         } else {
@@ -464,8 +484,12 @@ extern "C" fn map_job_entry(args: *const u8) {
 
     // Send result to caller.
     if caller_pid != u64::MAX {
-        let mut msg_data = Vec::with_capacity(16);
+        let mut msg_data = Vec::with_capacity(24);
         msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
+        let job_pid = stack::get_current_pid()
+            .map(ProcessId::as_u64)
+            .unwrap_or(u64::MAX);
+        msg_data.extend_from_slice(&job_pid.to_le_bytes());
         msg_data.extend_from_slice(&result.to_le_bytes());
 
         let sched = match GLOBAL_SCHEDULER.get() {
@@ -531,12 +555,13 @@ mod tests {
         crate::gc::mesh_rt_init();
 
         // Build a fake message as it would appear after mesh_actor_receive:
-        // [u64 type_tag][u64 data_len][u64 JOB_RESULT_TAG][i64 result_value]
+        // [u64 type_tag][u64 data_len][u64 JOB_RESULT_TAG][u64 job_pid][i64 result_value]
         let result_value: i64 = 99;
         let mut msg = Vec::new();
         msg.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes()); // type_tag
-        msg.extend_from_slice(&16u64.to_le_bytes()); // data_len (8 + 8)
+        msg.extend_from_slice(&24u64.to_le_bytes()); // data_len (8 + 8 + 8)
         msg.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes()); // data: tag
+        msg.extend_from_slice(&42u64.to_le_bytes()); // data: job pid
         msg.extend_from_slice(&result_value.to_le_bytes()); // data: value
 
         let result_ptr = decode_job_message(msg.as_ptr());

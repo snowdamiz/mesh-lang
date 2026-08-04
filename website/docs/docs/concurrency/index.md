@@ -346,9 +346,9 @@ end
 | `Job.async(fn)` | `Pid<T>` | Run a zero-argument function in an actor linked to the caller |
 | `Job.await(job)` | `Result<T, String>` | Wait without a timeout |
 | `Job.await_timeout(job, timeout_ms)` | `Result<T, String>` | Wait up to the given number of milliseconds |
-| `Job.map(values, fn)` | `List<Result<U, String>>` | Run one job per list element and collect replies as they complete |
+| `Job.map(values, fn)` | `List<Result<U, String>>` | Run one job per list element and return results in input order |
 
-Job replies go to the actor that started them. The current await collector does not correlate a mailbox reply with the PID argument, so await a job from its original caller and do not mix overlapping `Job.async` calls with unrelated mailbox traffic. A timed-out job is not cancelled; its eventual reply remains in the caller's mailbox. `Job.map` exposes each completion's success or failure instead of failing the whole batch at the first error, but its result order is completion order rather than input order.
+Job replies go to the actor that started them, and each await selects the requested job without consuming unrelated mailbox messages. Await a job from its original caller. A timed-out job is not cancelled; its eventual reply remains available to a later await. `Job.map` exposes each completion's success or failure instead of failing the whole batch at the first error.
 
 ## Timers
 

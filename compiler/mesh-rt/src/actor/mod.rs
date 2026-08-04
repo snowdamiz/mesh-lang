@@ -661,6 +661,15 @@ pub extern "C" fn mesh_actor_send_named(
 /// allocated in the current actor's heap.
 #[no_mangle]
 pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
+    actor_receive_matching(timeout_ms, |_| true)
+}
+
+/// Receive the first mailbox message matching `predicate`, leaving all other
+/// messages queued in their original order.
+pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const u8
+where
+    F: Fn(&Message) -> bool,
+{
     let my_pid = match stack::get_current_pid() {
         Some(pid) => pid,
         None => return std::ptr::null(),
@@ -671,7 +680,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     // Try to pop a message.
     if let Some(proc_arc) = sched.get_process(my_pid) {
         let proc = proc_arc.lock();
-        if let Some(msg) = proc.mailbox.pop() {
+        if let Some(msg) = proc.mailbox.remove_first(&predicate) {
             // Deep-copy message data into the current actor's heap.
             drop(proc);
             return copy_msg_to_actor_heap(sched, my_pid, msg);
@@ -696,7 +705,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
         loop {
             if let Some(proc_arc) = sched.get_process(my_pid) {
                 let proc = proc_arc.lock();
-                if let Some(msg) = proc.mailbox.pop() {
+                if let Some(msg) = proc.mailbox.remove_first(&predicate) {
                     drop(proc);
                     return copy_msg_to_actor_heap(sched, my_pid, msg);
                 }
@@ -730,7 +739,7 @@ pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
         // After resume, try to pop a message.
         if let Some(proc_arc) = sched.get_process(my_pid) {
             let proc = proc_arc.lock();
-            if let Some(msg) = proc.mailbox.pop() {
+            if let Some(msg) = proc.mailbox.remove_first(&predicate) {
                 drop(proc);
                 return copy_msg_to_actor_heap(sched, my_pid, msg);
             }

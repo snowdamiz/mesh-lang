@@ -1,12 +1,19 @@
 # Job async/await E2E test.
-# Verifies: Job.async spawns work, Job.await collects Result.
-# Expected output: 42\n
+# Verifies: Job.await selects the requested job when completions arrive out of order.
+# Expected output: 1\n2\n
 
 fn main() do
-  let job = Job.async(fn() -> 42 end)
-  let result = Job.await(job)
-  case result do
-    Ok(val) -> println("${val}")
-    Err(msg) -> println(msg)
+  let slow_job = Job.async(fn () do
+    Timer.sleep(100)
+    1
+  end)
+  let fast_job = Job.async(fn () -> 2 end)
+  case Job.await(slow_job) do
+    Ok( val) -> println("${val}")
+    Err( msg) -> println(msg)
+  end
+  case Job.await(fast_job) do
+    Ok( val) -> println("${val}")
+    Err( msg) -> println(msg)
   end
 end
