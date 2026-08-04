@@ -761,7 +761,7 @@ fn discover_recursive(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> std:
         if path.is_dir() {
             discover_recursive(root, &path, files)?;
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("mpl") {
-            if name.ends_with(".test.mpl") {
+            if name.ends_with(".test.mpl") || name.ends_with(".test-support.mpl") {
                 continue;
             }
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
@@ -1415,6 +1415,20 @@ mod tests {
     }
 
     // ── Scoped installed package regressions ────────────────────────────
+
+    #[test]
+    fn project_discovery_skips_test_only_sources() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("main.mpl"), "").unwrap();
+        std::fs::write(tmp.path().join("account.mpl"), "").unwrap();
+        std::fs::write(tmp.path().join("account.test.mpl"), "").unwrap();
+        std::fs::write(tmp.path().join("account.test-support.mpl"), "").unwrap();
+
+        assert_eq!(
+            discover_mesh_files(tmp.path()).unwrap(),
+            vec![PathBuf::from("account.mpl"), PathBuf::from("main.mpl")]
+        );
+    }
 
     #[test]
     fn scoped_installed_package_discovery_skips_owner_dirs_hidden_paths_and_manifestless_trees() {

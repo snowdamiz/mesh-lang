@@ -644,6 +644,45 @@ fn test_secure_store_fixture_is_available_only_to_meshc_test() {
 }
 
 #[test]
+fn test_test_support_fragment_can_bridge_module_privates_only_for_meshc_test() {
+    let project = tempfile::tempdir().unwrap();
+    let tests_dir = project.path().join("tests");
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"test-private-bridge\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &project.path().join("main.mpl"),
+        "from Account import private_value_for_test\n\nfn main() do\n  println(\"#{private_value_for_test()}\")\nend\n",
+    );
+    write_file(
+        &project.path().join("account.mpl"),
+        "fn private_value() -> Int do\n  42\nend",
+    );
+    write_file(
+        &project.path().join("account.test-support.mpl"),
+        "pub fn private_value_for_test() -> Int do\n  private_value()\nend\n",
+    );
+    write_file(
+        &tests_dir.join("account.test.mpl"),
+        "from Account import private_value_for_test\n\ntest(\"test-only bridge calls a module private\") do\n  assert(private_value_for_test() == 42)\nend\n",
+    );
+
+    let build = Command::new(meshc_bin())
+        .args(["build", project.path().to_str().unwrap(), "--no-color"])
+        .output()
+        .expect("failed to run ordinary meshc build");
+    assert!(!build.status.success());
+    assert!(
+        String::from_utf8_lossy(&build.stderr).contains("private_value_for_test"),
+        "ordinary build should not see test-support declarations:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    assert_meshc_test_target_succeeds(&tests_dir);
+}
+
+#[test]
 fn test_init_creates_project() {
     let dir = tempfile::tempdir().unwrap();
 

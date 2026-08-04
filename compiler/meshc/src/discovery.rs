@@ -114,9 +114,8 @@ fn discover_recursive(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> std:
         if entry_path.is_dir() {
             discover_recursive(root, &entry_path, files)?;
         } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mpl") {
-            // Skip *.test.mpl files — they use the test DSL and are only valid
-            // when preprocessed by the test runner (`meshc test`), not regular builds.
-            if name_str.ends_with(".test.mpl") {
+            // Test DSL files and support fragments belong only to `meshc test`.
+            if name_str.ends_with(".test.mpl") || name_str.ends_with(".test-support.mpl") {
                 continue;
             }
             // Store path relative to root
@@ -500,6 +499,7 @@ mod tests {
         fs::create_dir_all(root.join("math")).unwrap();
         fs::write(root.join("math/vector.mpl"), "").unwrap();
         fs::write(root.join("utils.mpl"), "").unwrap();
+        fs::write(root.join("utils.test-support.mpl"), "").unwrap();
         fs::create_dir_all(root.join(".hidden")).unwrap();
         fs::write(root.join(".hidden/secret.mpl"), "").unwrap();
 

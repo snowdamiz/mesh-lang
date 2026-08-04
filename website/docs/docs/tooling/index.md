@@ -509,6 +509,12 @@ test string operations/length ... FAIL
 2 tests, 1 failure
 ```
 
+For private implementation setup, a colocated `foo.test-support.mpl` fragment
+is merged into `foo.mpl` only in the temporary test project. Tests can import
+`pub` bridge helpers from `Foo`; normal builds and bindings never see the
+fragment. See the [Testing guide](/docs/testing/#private-module-test-support)
+for the exact naming and isolation rules.
+
 Exit code is non-zero if any test fails, making `meshc test` suitable for CI pipelines.
 
 Use compact dot output for a large suite:
@@ -684,10 +690,10 @@ The authenticated GitHub login must match the package-name scope, such as
 50 MiB.
 
 The publish archive preserves package-relative `.mpl` paths, including nested
-modules and an override entrypoint. Hidden paths and `*.test.mpl` files are
-excluded. Manifest-declared native bindings and static libraries are included
-and their hashes are verified before upload. `README.md` is not currently
-included by `meshpkg publish`.
+modules and an override entrypoint. Hidden paths, `*.test.mpl` files, and
+`*.test-support.mpl` fragments are excluded. Manifest-declared native bindings
+and static libraries are included and their hashes are verified before upload.
+`README.md` is not currently included by `meshpkg publish`.
 
 Target another compatible registry with `--registry`:
 

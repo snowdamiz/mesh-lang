@@ -1191,6 +1191,7 @@ fn split_assert_receive_args(rest: &str) -> (String, String) {
 ///
 /// Files excluded from copying:
 /// - `*.test.mpl` files (they are test DSL, not regular Mesh modules)
+/// - `*.test-support.mpl` files as standalone modules (they are merged into their sibling module)
 /// - The resolved executable entry file for the original project (replaced by synthetic `main.mpl`)
 /// - Hidden directories (names starting with `.`)
 /// - The `target` directory (build artifacts)
@@ -1232,6 +1233,32 @@ fn copy_sources_recursive(
             if name_str.ends_with(".test.mpl") {
                 continue;
             }
+            if let Some(module_name) = name_str.strip_suffix(".test-support.mpl") {
+                let module_path = path.with_file_name(format!("{module_name}.mpl"));
+                if !module_path.is_file() {
+                    return Err(format!(
+                        "Test-support fragment '{}' requires sibling module '{}'.",
+                        path.display(),
+                        module_path.display()
+                    ));
+                }
+                let module_relative = module_path.strip_prefix(project_root).map_err(|e| {
+                    format!(
+                        "Failed to map '{}' under project root '{}': {}",
+                        module_path.display(),
+                        project_root.display(),
+                        e
+                    )
+                })?;
+                if module_relative == excluded_entry_relative_path {
+                    return Err(format!(
+                        "Test-support fragment '{}' cannot target executable entry '{}'.",
+                        path.display(),
+                        module_relative.display()
+                    ));
+                }
+                continue;
+            }
             let relative = path.strip_prefix(project_root).map_err(|e| {
                 format!(
                     "Failed to map '{}' under project root '{}': {}",
@@ -1248,14 +1275,30 @@ fn copy_sources_recursive(
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
             }
-            std::fs::copy(&path, &dest).map_err(|e| {
-                format!(
-                    "Failed to copy '{}' to '{}': {}",
-                    path.display(),
-                    dest.display(),
-                    e
-                )
-            })?;
+            let module_name = name_str.strip_suffix(".mpl").unwrap_or(&name_str);
+            let test_support_path = path.with_file_name(format!("{module_name}.test-support.mpl"));
+            if test_support_path.is_file() {
+                let mut source = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
+                if !source.ends_with('\n') {
+                    source.push('\n');
+                }
+                let test_support = std::fs::read_to_string(&test_support_path).map_err(|e| {
+                    format!("Failed to read '{}': {}", test_support_path.display(), e)
+                })?;
+                source.push_str(&test_support);
+                std::fs::write(&dest, source)
+                    .map_err(|e| format!("Failed to write '{}': {}", dest.display(), e))?;
+            } else {
+                std::fs::copy(&path, &dest).map_err(|e| {
+                    format!(
+                        "Failed to copy '{}' to '{}': {}",
+                        path.display(),
+                        dest.display(),
+                        e
+                    )
+                })?;
+            }
         }
     }
     Ok(())
@@ -1400,6 +1443,61 @@ mod tests {
         assert!(tmp.path().join("app.mpl").exists());
         assert!(tmp.path().join("tests/support.mpl").exists());
         assert!(!tmp.path().join("tests/feature.test.mpl").exists());
+    }
+
+    #[test]
+    fn copy_project_sources_to_tmp_merges_test_support_into_its_module() {
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(
+            &project.path().join("account.mpl"),
+            "fn private_value() -> Int do\n  42\nend\n",
+        );
+        write_file(
+            &project.path().join("account.test-support.mpl"),
+            "pub fn test_value() -> Int do\n  private_value()\nend\n",
+        );
+
+        copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl")).unwrap();
+
+        let module = std::fs::read_to_string(tmp.path().join("account.mpl")).unwrap();
+        assert!(module.contains("fn private_value()"));
+        assert!(module.contains("pub fn test_value()"));
+        assert!(!tmp.path().join("account.test-support.mpl").exists());
+    }
+
+    #[test]
+    fn copy_project_sources_to_tmp_rejects_orphan_test_support() {
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(
+            &project.path().join("missing.test-support.mpl"),
+            "pub fn helper() -> Int do\n  42\nend\n",
+        );
+
+        let err = copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl"))
+            .unwrap_err();
+
+        assert!(err.contains("missing.test-support.mpl"), "{err}");
+        assert!(err.contains("missing.mpl"), "{err}");
+    }
+
+    #[test]
+    fn copy_project_sources_to_tmp_rejects_test_support_for_excluded_entry() {
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(&project.path().join("lib/start.mpl"), "fn main() do\nend\n");
+        write_file(
+            &project.path().join("lib/start.test-support.mpl"),
+            "pub fn helper() -> Int do\n  42\nend\n",
+        );
+
+        let err =
+            copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("lib/start.mpl"))
+                .unwrap_err();
+
+        assert!(err.contains("lib/start.test-support.mpl"), "{err}");
+        assert!(err.contains("executable entry"), "{err}");
     }
 
     #[test]

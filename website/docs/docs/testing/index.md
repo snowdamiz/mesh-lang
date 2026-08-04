@@ -48,6 +48,43 @@ test("string operations") do
 end
 ```
 
+## Private module test support
+
+Place `foo.test-support.mpl` beside `foo.mpl` when a test needs a narrow bridge
+to that module's private implementation. During `meshc test`, Mesh appends the
+support fragment to its sibling module in the temporary test project. The
+fragment can therefore call private functions and use private types without
+making them public in production:
+
+```mesh
+# account.mpl
+fn normalized_id(raw :: String) -> String do
+  String.trim(raw)
+end
+```
+
+```mesh
+# account.test-support.mpl
+pub fn normalized_id_for_test(raw :: String) -> String do
+  normalized_id(raw)
+end
+```
+
+```mesh
+# tests/account.test.mpl
+from Account import normalized_id_for_test
+
+test("normalizes account IDs") do
+  assert(normalized_id_for_test("  alice  ") == "alice")
+end
+```
+
+The basename and directory must match exactly. A test-support file contains
+ordinary Mesh declarations, not `test` blocks; helpers imported by a separate
+test module must be `pub`. Normal builds, package archives, generated bindings,
+and the normal LSP module graph exclude `*.test-support.mpl`, while `meshc fmt`
+still formats it.
+
 ## Assertions
 
 | Assertion | Description |

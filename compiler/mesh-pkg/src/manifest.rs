@@ -63,7 +63,20 @@ impl NativePackage {
         }
 
         for binding in &mut self.bindings {
-            *binding = normalize_native_path(binding, "mpl", "native binding")?;
+            let normalized = normalize_native_path(binding, "mpl", "native binding")?;
+            if normalized
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.ends_with(".test.mpl") || name.ends_with(".test-support.mpl")
+                })
+            {
+                return Err(format!(
+                    "native binding path must not name a test-only Mesh source file, got `{}`",
+                    normalized.display()
+                ));
+            }
+            *binding = normalized;
         }
 
         let mut targets = BTreeSet::new();
@@ -1397,6 +1410,24 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             native.libraries[0].path,
             PathBuf::from("native/aarch64-apple-darwin/libnative_math.a")
         );
+    }
+
+    #[test]
+    fn reject_test_only_native_bindings() {
+        for binding in ["bindings/math.test.mpl", "bindings/math.test-support.mpl"] {
+            let source = format!(
+                "[package]\nname = \"native-math\"\nversion = \"0.1.0\"\n\n[native]\nabi = 1\nbindings = [\"{binding}\"]\n"
+            );
+
+            let error = Manifest::from_str(&source).unwrap_err();
+
+            assert_eq!(
+                error,
+                format!(
+                    "Failed to parse manifest: native binding path must not name a test-only Mesh source file, got `{binding}`"
+                )
+            );
+        }
     }
 
     #[test]

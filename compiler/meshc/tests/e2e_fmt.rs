@@ -187,6 +187,11 @@ fn fmt_directory_formats_all_mesh_files() {
 
     std::fs::write(dir.path().join("a.mpl"), "let x=1").unwrap();
     std::fs::write(sub.join("b.mpl"), "let y=2").unwrap();
+    std::fs::write(
+        sub.join("b.test-support.mpl"),
+        "pub fn test_value() do\n1\nend",
+    )
+    .unwrap();
     // Non-.mpl file should be ignored.
     std::fs::write(dir.path().join("readme.txt"), "hello").unwrap();
 
@@ -206,6 +211,9 @@ fn fmt_directory_formats_all_mesh_files() {
 
     let b = std::fs::read_to_string(sub.join("b.mpl")).unwrap();
     assert_eq!(b, "let y = 2\n");
+
+    let test_support = std::fs::read_to_string(sub.join("b.test-support.mpl")).unwrap();
+    assert_eq!(test_support, "pub fn test_value() do\n  1\nend\n");
 
     // Non-.mpl file should be untouched.
     let readme = std::fs::read_to_string(dir.path().join("readme.txt")).unwrap();

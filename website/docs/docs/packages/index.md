@@ -145,7 +145,8 @@ Publishing rules:
 
 - Package versions are immutable. Change the version before republishing.
 - The upload limit is 50 MiB.
-- Hidden paths and `*.test.mpl` files are excluded.
+- Hidden paths, `*.test.mpl` files, and `*.test-support.mpl` fragments are
+  excluded.
 - Visible `.mpl` modules keep their package-relative paths.
 - `mesh.toml` is included.
 - Manifest-declared native binding files and static libraries are included and

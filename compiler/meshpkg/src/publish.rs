@@ -172,7 +172,7 @@ fn discover_publish_source_members(
             continue;
         }
 
-        if name.ends_with(".test.mpl") {
+        if name.ends_with(".test.mpl") || name.ends_with(".test-support.mpl") {
             continue;
         }
 
@@ -404,6 +404,11 @@ mod tests {
             "lib/visible.test.mpl",
             "test(\"hidden\") do\n  assert(true)\nend\n",
         );
+        write_project_file(
+            project_dir,
+            "lib/visible.test-support.mpl",
+            "pub fn hidden_support() -> Int do\n  2\nend\n",
+        );
         write_project_file(project_dir, ".secret.mpl", "fn nope() do\n  0\nend\n");
         write_project_file(
             project_dir,
@@ -430,7 +435,8 @@ mod tests {
             !members.iter().any(|member| member.contains(".secret.mpl")
                 || member.contains(".hidden/")
                 || member.contains("/.private/")
-                || member.ends_with(".test.mpl")),
+                || member.ends_with(".test.mpl")
+                || member.ends_with(".test-support.mpl")),
             "hidden or test-only files leaked into the archive: {members:?}"
         );
     }
