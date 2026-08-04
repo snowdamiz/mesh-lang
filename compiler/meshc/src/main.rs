@@ -819,11 +819,19 @@ pub(crate) fn prepare_project_build(
             relative_path: binding.relative_path.clone(),
         })
         .collect::<Vec<_>>();
-    let project = discovery::build_project_with_entrypoint_and_sources(
-        dir,
-        &entry_relative_path,
-        &native_sources,
-    )?;
+    let project = if test_builtins {
+        discovery::build_test_project_with_entrypoint_and_sources(
+            dir,
+            &entry_relative_path,
+            &native_sources,
+        )?
+    } else {
+        discovery::build_project_with_entrypoint_and_sources(
+            dir,
+            &entry_relative_path,
+            &native_sources,
+        )?
+    };
 
     // Find the entry module
     let entry_id = project

@@ -31,6 +31,15 @@ On failure, the output includes the failing assertion, the expected and actual v
 
 `--quiet` prints compact progress dots instead of every test name.
 
+The top-level `tests/` directory may also contain ordinary `.mpl` helper
+modules imported by test files. `meshc test` includes those helpers, while
+normal builds and published packages exclude the entire top-level `tests/`
+tree so test-only APIs cannot leak into production artifacts.
+
+Mesh source discovery does not follow symbolic links. A visible symbolic link
+under the requested project root is rejected instead of being used as an alias
+to test-only or out-of-project source.
+
 ## Writing Tests
 
 Test files are standalone `.test.mpl` programs. Each `test` block defines a named test:

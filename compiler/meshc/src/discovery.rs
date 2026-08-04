@@ -84,22 +84,37 @@ pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
 /// Recursively discover all `.mpl` files in a project directory.
 ///
 /// Returns paths relative to `project_root`, sorted alphabetically for
-/// determinism. Hidden directories (names starting with `.`) are skipped.
+/// determinism. Hidden directories (names starting with `.`) and the top-level
+/// `tests/` tree are skipped.
 pub fn discover_mesh_files(project_root: &Path) -> Result<Vec<PathBuf>, String> {
+    discover_mesh_files_with_test_helpers(project_root, false)
+}
+
+fn discover_mesh_files_with_test_helpers(
+    project_root: &Path,
+    include_test_helpers: bool,
+) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
-    discover_recursive(project_root, project_root, &mut files).map_err(|e| {
-        format!(
-            "Failed to walk directory '{}': {}",
-            project_root.display(),
-            e
-        )
-    })?;
+    discover_recursive(project_root, project_root, &mut files, include_test_helpers).map_err(
+        |e| {
+            format!(
+                "Failed to walk directory '{}': {}",
+                project_root.display(),
+                e
+            )
+        },
+    )?;
     files.sort();
     Ok(files)
 }
 
 /// Internal recursive walker that collects `.mpl` files as relative paths.
-fn discover_recursive(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+fn discover_recursive(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+    include_test_helpers: bool,
+) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let entry_path = entry.path();
@@ -111,9 +126,25 @@ fn discover_recursive(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> std:
             continue;
         }
 
-        if entry_path.is_dir() {
-            discover_recursive(root, &entry_path, files)?;
-        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mpl") {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Mesh project path '{}' must not be a symbolic link",
+                    entry_path.display()
+                ),
+            ));
+        }
+
+        if file_type.is_dir() {
+            if !include_test_helpers && dir == root && name_str == "tests" {
+                continue;
+            }
+            discover_recursive(root, &entry_path, files, include_test_helpers)?;
+        } else if file_type.is_file()
+            && entry_path.extension().and_then(|e| e.to_str()) == Some("mpl")
+        {
             // Test DSL files and support fragments belong only to `meshc test`.
             if name_str.ends_with(".test.mpl") || name_str.ends_with(".test-support.mpl") {
                 continue;
@@ -297,8 +328,35 @@ pub fn build_project_with_entrypoint_and_sources(
     entry_relative_path: &Path,
     extra_sources: &[ExtraMeshSource],
 ) -> Result<ProjectData, String> {
+    build_project_with_entrypoint_and_sources_in_scope(
+        project_root,
+        entry_relative_path,
+        extra_sources,
+        false,
+    )
+}
+
+pub fn build_test_project_with_entrypoint_and_sources(
+    project_root: &Path,
+    entry_relative_path: &Path,
+    extra_sources: &[ExtraMeshSource],
+) -> Result<ProjectData, String> {
+    build_project_with_entrypoint_and_sources_in_scope(
+        project_root,
+        entry_relative_path,
+        extra_sources,
+        true,
+    )
+}
+
+fn build_project_with_entrypoint_and_sources_in_scope(
+    project_root: &Path,
+    entry_relative_path: &Path,
+    extra_sources: &[ExtraMeshSource],
+    include_test_helpers: bool,
+) -> Result<ProjectData, String> {
     // Phase 1: Discover files, register modules, read and parse source.
-    let files = discover_mesh_files(project_root)?;
+    let files = discover_mesh_files_with_test_helpers(project_root, include_test_helpers)?;
     if !files
         .iter()
         .any(|relative_path| relative_path == entry_relative_path)
@@ -500,6 +558,9 @@ mod tests {
         fs::write(root.join("math/vector.mpl"), "").unwrap();
         fs::write(root.join("utils.mpl"), "").unwrap();
         fs::write(root.join("utils.test-support.mpl"), "").unwrap();
+        fs::create_dir_all(root.join("tests/fixtures")).unwrap();
+        fs::write(root.join("tests/support.mpl"), "").unwrap();
+        fs::write(root.join("tests/fixtures/account.mpl"), "").unwrap();
         fs::create_dir_all(root.join(".hidden")).unwrap();
         fs::write(root.join(".hidden/secret.mpl"), "").unwrap();
 
@@ -507,6 +568,53 @@ mod tests {
         let file_strs: Vec<&str> = files.iter().map(|p| p.to_str().unwrap()).collect();
 
         assert_eq!(file_strs, vec!["main.mpl", "math/vector.mpl", "utils.mpl"]);
+
+        let test_files = discover_mesh_files_with_test_helpers(root, true).unwrap();
+        let test_file_strs: Vec<&str> = test_files
+            .iter()
+            .map(|path| path.to_str().unwrap())
+            .collect();
+        assert_eq!(
+            test_file_strs,
+            vec![
+                "main.mpl",
+                "math/vector.mpl",
+                "tests/fixtures/account.mpl",
+                "tests/support.mpl",
+                "utils.mpl",
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_discover_mesh_files_rejects_visible_symlink_aliases() {
+        use std::os::unix::fs::symlink;
+
+        for target_name in ["tests", "outside"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("project");
+            fs::create_dir(&root).unwrap();
+            fs::write(root.join("main.mpl"), "").unwrap();
+            fs::create_dir(root.join("tests")).unwrap();
+            fs::write(root.join("tests/support.mpl"), "").unwrap();
+            fs::create_dir(tmp.path().join("outside")).unwrap();
+            fs::write(tmp.path().join("outside/support.mpl"), "").unwrap();
+            let target = if target_name == "tests" {
+                root.join("tests")
+            } else {
+                tmp.path().join("outside")
+            };
+            let alias = root.join(format!("{target_name}_alias"));
+            symlink(target, &alias).unwrap();
+
+            let error = discover_mesh_files(&root).unwrap_err();
+            assert!(
+                error.contains("symbolic link")
+                    && error.contains(alias.file_name().unwrap().to_str().unwrap()),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

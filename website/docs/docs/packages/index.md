@@ -145,12 +145,15 @@ Publishing rules:
 
 - Package versions are immutable. Change the version before republishing.
 - The upload limit is 50 MiB.
-- Hidden paths, `*.test.mpl` files, and `*.test-support.mpl` fragments are
-  excluded.
+- Hidden paths, the top-level `tests/` tree, `*.test.mpl` files, and
+  `*.test-support.mpl` fragments are excluded.
+- Visible symbolic links are rejected instead of followed into excluded or
+  out-of-package paths.
 - Visible `.mpl` modules keep their package-relative paths.
 - `mesh.toml` is included.
 - Manifest-declared native binding files and static libraries are included and
-  rechecked before upload.
+  rechecked before upload. These paths cannot live under the top-level
+  `tests/` tree or traverse symbolic-link components.
 - A project `README.md` is not currently included by `meshpkg publish`; do not
   rely on registry README rendering as the package's only documentation.
 

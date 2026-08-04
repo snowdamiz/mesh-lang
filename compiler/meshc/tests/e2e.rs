@@ -1691,6 +1691,38 @@ fn e2e_multi_file_basic() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn e2e_build_rejects_visible_symlink_module_aliases() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let project_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(project_dir.join("tests")).expect("failed to create tests dir");
+    std::fs::write(project_dir.join("main.mpl"), "fn main() do\n  0\nend\n").unwrap();
+    std::fs::write(
+        project_dir.join("tests/support.mpl"),
+        "pub fn helper() -> Int do\n  1\nend\n",
+    )
+    .unwrap();
+    symlink(project_dir.join("tests"), project_dir.join("test_alias")).unwrap();
+
+    let output = Command::new(find_meshc())
+        .args(["build", project_dir.to_str().unwrap(), "--no-color"])
+        .output()
+        .expect("failed to invoke meshc");
+
+    assert!(
+        !output.status.success(),
+        "symlinked source alias was accepted"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("symbolic link") && stderr.contains("test_alias"),
+        "unexpected diagnostic: {stderr}"
+    );
+}
+
 /// Phase 38: Parse error in a non-entry module causes the build to fail with diagnostics.
 #[test]
 fn e2e_multi_file_parse_error_in_non_entry() {

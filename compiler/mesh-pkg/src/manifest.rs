@@ -464,6 +464,12 @@ fn normalize_native_path(path: &Path, extension: &str, label: &str) -> Result<Pa
         ));
     }
 
+    if normalized.starts_with(Path::new("tests")) {
+        return Err(format!(
+            "{label} path must not be under the top-level `tests/` tree, got `{trimmed}`"
+        ));
+    }
+
     Ok(normalized)
 }
 
@@ -1413,21 +1419,53 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 
     #[test]
-    fn reject_test_only_native_bindings() {
-        for binding in ["bindings/math.test.mpl", "bindings/math.test-support.mpl"] {
+    fn reject_test_only_native_members() {
+        for (binding, expected) in [
+            (
+                "bindings/math.test.mpl",
+                "must not name a test-only Mesh source file",
+            ),
+            (
+                "bindings/math.test-support.mpl",
+                "must not name a test-only Mesh source file",
+            ),
+            (
+                "tests/math.mpl",
+                "must not be under the top-level `tests/` tree",
+            ),
+        ] {
             let source = format!(
                 "[package]\nname = \"native-math\"\nversion = \"0.1.0\"\n\n[native]\nabi = 1\nbindings = [\"{binding}\"]\n"
             );
 
             let error = Manifest::from_str(&source).unwrap_err();
 
-            assert_eq!(
-                error,
-                format!(
-                    "Failed to parse manifest: native binding path must not name a test-only Mesh source file, got `{binding}`"
-                )
+            assert!(
+                error.contains(expected) && error.contains(binding),
+                "unexpected error: {error}"
             );
         }
+
+        let error = Manifest::from_str(
+            r#"
+[package]
+name = "test-native"
+version = "0.1.0"
+
+[native]
+abi = 1
+
+[[native.libraries]]
+target = "aarch64-apple-darwin"
+path = "tests/libtest.a"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("native static archive") && error.contains("tests/libtest.a"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

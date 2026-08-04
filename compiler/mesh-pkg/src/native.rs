@@ -213,6 +213,7 @@ impl ResolveContext<'_> {
 }
 
 fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<PathBuf, String> {
+    reject_symlink_components(root, relative, kind)?;
     let joined = root.join(relative);
     let canonical = joined.canonicalize().map_err(|error| {
         format!(
@@ -231,6 +232,29 @@ fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<Path
         return Err(format!("{kind} '{}' is not a file", joined.display()));
     }
     Ok(joined)
+}
+
+fn reject_symlink_components(root: &Path, relative: &Path, kind: &str) -> Result<(), String> {
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let std::path::Component::Normal(segment) = component else {
+            continue;
+        };
+        current.push(segment);
+        let metadata = std::fs::symlink_metadata(&current).map_err(|error| {
+            format!(
+                "{kind} '{}' does not exist or cannot be read: {error}",
+                current.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "{kind} '{}' must not contain a symbolic link",
+                relative.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -318,5 +342,82 @@ sha256 = "{sha256}"
             hash_error.contains("SHA-256 mismatch"),
             "unexpected error: {hash_error}"
         );
+    }
+
+    #[test]
+    fn resolve_native_bindings_rejects_top_level_test_helpers() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir(project.path().join("tests")).unwrap();
+        fs::write(
+            project.path().join("tests/helper.mpl"),
+            "@native(\"test_helper\")\npub fn helper() -> Int\n",
+        )
+        .unwrap();
+        fs::write(
+            project.path().join("mesh.toml"),
+            r#"[package]
+name = "test-native-binding"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["tests/helper.mpl"]
+"#,
+        )
+        .unwrap();
+
+        let error = resolve_native_bindings(project.path()).unwrap_err();
+        assert!(
+            error.contains("native binding") && error.contains("tests/helper.mpl"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_native_bindings_rejects_symlink_aliases() {
+        use std::os::unix::fs::symlink;
+
+        for target_name in ["tests", "outside"] {
+            let temp = tempfile::tempdir().unwrap();
+            let project = temp.path().join("project");
+            fs::create_dir(&project).unwrap();
+            fs::create_dir(project.join("bindings")).unwrap();
+            fs::create_dir(project.join("tests")).unwrap();
+            fs::write(
+                project.join("tests/helper.mpl"),
+                "@native(\"test_helper\")\npub fn helper() -> Int\n",
+            )
+            .unwrap();
+            fs::write(
+                temp.path().join("outside.mpl"),
+                "@native(\"outside_helper\")\npub fn helper() -> Int\n",
+            )
+            .unwrap();
+            let target = if target_name == "tests" {
+                project.join("tests/helper.mpl")
+            } else {
+                temp.path().join("outside.mpl")
+            };
+            symlink(target, project.join("bindings/helper.mpl")).unwrap();
+            fs::write(
+                project.join("mesh.toml"),
+                r#"[package]
+name = "symlinked-native-binding"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["bindings/helper.mpl"]
+"#,
+            )
+            .unwrap();
+
+            let error = resolve_native_bindings(&project).unwrap_err();
+            assert!(
+                error.contains("symbolic link") && error.contains("bindings/helper.mpl"),
+                "unexpected error: {error}"
+            );
+        }
     }
 }

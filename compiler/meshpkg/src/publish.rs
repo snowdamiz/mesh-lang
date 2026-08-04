@@ -120,6 +120,7 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, String> {
+    reject_declared_member_symlinks(project_root, relative)?;
     let canonical_root = project_root.canonicalize().map_err(|error| {
         format!(
             "Failed to resolve package root '{}': {error}",
@@ -143,6 +144,29 @@ fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathB
     relative_archive_member_path(project_root, &source)
 }
 
+fn reject_declared_member_symlinks(project_root: &Path, relative: &Path) -> Result<(), String> {
+    let mut current = project_root.to_path_buf();
+    for component in relative.components() {
+        let Component::Normal(segment) = component else {
+            continue;
+        };
+        current.push(segment);
+        let metadata = std::fs::symlink_metadata(&current).map_err(|error| {
+            format!(
+                "Declared package file '{}' does not exist or cannot be read: {error}",
+                relative.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "Declared package file '{}' must not contain a symbolic link",
+                relative.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn discover_publish_source_members(
     project_root: &Path,
     dir: &Path,
@@ -163,12 +187,28 @@ fn discover_publish_source_members(
             continue;
         }
 
-        if path.is_dir() {
+        let file_type = entry.file_type().map_err(|error| {
+            format!(
+                "Failed to inspect package path '{}': {error}",
+                path.display()
+            )
+        })?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Package source path '{}' must not be a symbolic link",
+                path.display()
+            ));
+        }
+
+        if file_type.is_dir() {
+            if dir == project_root && name == "tests" {
+                continue;
+            }
             child_dirs.push(path);
             continue;
         }
 
-        if path.extension().and_then(|ext| ext.to_str()) != Some("mpl") {
+        if !file_type.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("mpl") {
             continue;
         }
 
@@ -409,6 +449,11 @@ mod tests {
             "lib/visible.test-support.mpl",
             "pub fn hidden_support() -> Int do\n  2\nend\n",
         );
+        write_project_file(
+            project_dir,
+            "tests/support.mpl",
+            "pub fn test_helper() -> Int do\n  3\nend\n",
+        );
         write_project_file(project_dir, ".secret.mpl", "fn nope() do\n  0\nend\n");
         write_project_file(
             project_dir,
@@ -435,9 +480,125 @@ mod tests {
             !members.iter().any(|member| member.contains(".secret.mpl")
                 || member.contains(".hidden/")
                 || member.contains("/.private/")
+                || member.starts_with("tests/")
                 || member.ends_with(".test.mpl")
                 || member.ends_with(".test-support.mpl")),
             "hidden or test-only files leaked into the archive: {members:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn publish_archive_members_reject_visible_symlink_aliases() {
+        use std::os::unix::fs::symlink;
+
+        for target_name in ["tests", "outside"] {
+            let tempdir = tempfile::tempdir().unwrap();
+            let project_dir = tempdir.path().join("project");
+            fs::create_dir(&project_dir).unwrap();
+            write_project_file(
+                &project_dir,
+                "mesh.toml",
+                &manifest("symlinked", "main.mpl"),
+            );
+            write_project_file(&project_dir, "main.mpl", "fn main() do\n  0\nend\n");
+            write_project_file(
+                &project_dir,
+                "tests/support.mpl",
+                "pub fn helper() -> Int do\n  1\nend\n",
+            );
+            write_project_file(
+                tempdir.path(),
+                "outside/support.mpl",
+                "pub fn helper() -> Int do\n  1\nend\n",
+            );
+            let target = if target_name == "tests" {
+                project_dir.join("tests")
+            } else {
+                tempdir.path().join("outside")
+            };
+            let alias = project_dir.join(format!("{target_name}_alias"));
+            symlink(target, &alias).unwrap();
+
+            let error = publish_archive_members(&project_dir).unwrap_err();
+            assert!(
+                error.contains("symbolic link")
+                    && error.contains(alias.file_name().unwrap().to_str().unwrap()),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn publish_archive_rejects_manifest_native_library_under_tests() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let project_dir = tempdir.path();
+        let archive = "test-only-native";
+        let sha256 = format!("{:x}", Sha256::digest(archive.as_bytes()));
+        write_project_file(
+            project_dir,
+            "mesh.toml",
+            &format!(
+                r#"[package]
+name = "test-native"
+version = "0.1.0"
+
+[native]
+abi = 1
+
+[[native.libraries]]
+target = "aarch64-apple-darwin"
+path = "tests/libtest.a"
+sha256 = "{sha256}"
+"#,
+            ),
+        );
+        write_project_file(project_dir, "main.mpl", "fn main() do\n  0\nend\n");
+        write_project_file(project_dir, "tests/libtest.a", archive);
+
+        let error = publish_archive_members(project_dir).unwrap_err();
+        assert!(
+            error.contains("native static archive") && error.contains("tests/libtest.a"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn publish_archive_rejects_manifest_declared_native_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let project_dir = tempdir.path();
+        write_project_file(
+            project_dir,
+            "mesh.toml",
+            r#"[package]
+name = "symlinked-native"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = [".native/helper.mpl"]
+"#,
+        );
+        write_project_file(project_dir, "main.mpl", "fn main() do\n  0\nend\n");
+        write_project_file(
+            project_dir,
+            "tests/helper.mpl",
+            "@native(\"test_helper\")\npub fn helper() -> Int\n",
+        );
+        fs::create_dir(project_dir.join(".native")).unwrap();
+        symlink(
+            project_dir.join("tests/helper.mpl"),
+            project_dir.join(".native/helper.mpl"),
+        )
+        .unwrap();
+
+        let error = publish_archive_members(project_dir).unwrap_err();
+        assert!(
+            error.contains("symbolic link") && error.contains(".native/helper.mpl"),
+            "unexpected error: {error}"
         );
     }
 
