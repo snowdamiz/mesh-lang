@@ -33,20 +33,21 @@ struct TestSecureStore {
     installed: bool,
 }
 
-struct TestPushToken {
-    selector: Vec<u8>,
-    token: Zeroizing<Vec<u8>>,
+#[derive(Default)]
+struct TestPushTokens {
+    values: HashMap<Vec<u8>, Zeroizing<Vec<u8>>>,
+    total_bytes: usize,
 }
 
 static TEST_SECURE_STORE: OnceLock<Mutex<TestSecureStore>> = OnceLock::new();
-static TEST_PUSH_TOKEN: OnceLock<Mutex<Option<TestPushToken>>> = OnceLock::new();
+static TEST_PUSH_TOKENS: OnceLock<Mutex<TestPushTokens>> = OnceLock::new();
 
 fn test_secure_store() -> &'static Mutex<TestSecureStore> {
     TEST_SECURE_STORE.get_or_init(|| Mutex::new(TestSecureStore::default()))
 }
 
-fn test_push_token() -> &'static Mutex<Option<TestPushToken>> {
-    TEST_PUSH_TOKEN.get_or_init(|| Mutex::new(None))
+fn test_push_tokens() -> &'static Mutex<TestPushTokens> {
+    TEST_PUSH_TOKENS.get_or_init(|| Mutex::new(TestPushTokens::default()))
 }
 
 unsafe extern "C" fn secure_store_put(
@@ -190,14 +191,16 @@ unsafe extern "C" fn push_get_token(
         return INVALID_INPUT;
     }
 
-    let fixture = test_push_token().lock();
-    let Some(fixture) = fixture.as_ref() else {
+    let fixtures = test_push_tokens().lock();
+    if fixtures.values.is_empty() {
         return PLATFORM_FAILURE;
-    };
-    if std::slice::from_raw_parts(input, input_len) != fixture.selector {
-        return INVALID_INPUT;
     }
-    let token = &fixture.token;
+    let Some(token) = fixtures
+        .values
+        .get(std::slice::from_raw_parts(input, input_len))
+    else {
+        return INVALID_INPUT;
+    };
     if token.len() > output_capacity {
         return OUTPUT_TOO_LARGE;
     }
@@ -215,7 +218,7 @@ fn clear_secure_store() {
 
 fn register_host_fixtures() -> i32 {
     let secure_store_installed = test_secure_store().lock().installed;
-    let push_token_set = test_push_token().lock().is_some();
+    let push_token_set = !test_push_tokens().lock().values.is_empty();
     let callbacks = MeshLibraryHostCallbacksV1 {
         secure_store_put: secure_store_installed.then_some(secure_store_put),
         secure_store_get: secure_store_installed.then_some(secure_store_get),
@@ -228,7 +231,10 @@ fn register_host_fixtures() -> i32 {
 
 fn reset_host_fixtures() {
     clear_secure_store();
-    test_push_token().lock().take();
+    let mut push_tokens = test_push_tokens().lock();
+    push_tokens.values.clear();
+    push_tokens.total_bytes = 0;
+    drop(push_tokens);
 
     // Keep the runtime initialized but remove all fixture callbacks between
     // test bodies. Registration remains lifecycle-checked by mesh-rt.
@@ -254,7 +260,7 @@ pub extern "C" fn mesh_test_install_in_memory_secure_store() -> u8 {
     1
 }
 
-/// Set the binary push token returned for one exact provider selector in a test body.
+/// Set or replace a bounded binary value returned for one exact push selector in a test body.
 #[no_mangle]
 pub extern "C" fn mesh_test_set_push_token(
     selector: *const MeshBytes,
@@ -290,12 +296,32 @@ pub extern "C" fn mesh_test_set_push_token(
         return 0;
     }
 
-    *test_push_token().lock() = Some(TestPushToken {
-        selector: selector_value,
-        token: value,
-    });
+    let mut push_tokens = test_push_tokens().lock();
+    let replacing = push_tokens.values.contains_key(&selector_value);
+    let replaced_bytes = push_tokens
+        .values
+        .get(&selector_value)
+        .map_or(0, |old| old.len());
+    if !replacing && push_tokens.values.len() == MAX_ENTRIES {
+        return 0;
+    }
+    let Some(total_bytes) = push_tokens
+        .total_bytes
+        .checked_sub(replaced_bytes)
+        .and_then(|total| total.checked_add(value.len()))
+    else {
+        return 0;
+    };
+    if total_bytes > MAX_STORED_BYTES {
+        return 0;
+    }
+    push_tokens.values.insert(selector_value, value);
+    push_tokens.total_bytes = total_bytes;
+    drop(push_tokens);
     if register_host_fixtures() != MESH_LIBRARY_OK {
-        test_push_token().lock().take();
+        let mut push_tokens = test_push_tokens().lock();
+        push_tokens.values.clear();
+        push_tokens.total_bytes = 0;
         return 0;
     }
 
@@ -429,7 +455,7 @@ mod tests {
             (3, 0)
         );
         assert_eq!(invoke(4, b"expo/v1", &mut [0; 32]), (3, 0));
-        assert!(test_push_token().lock().is_none());
+        assert!(test_push_tokens().lock().values.is_empty());
         assert!(!test_secure_store().lock().installed);
         assert_eq!(host_call_tag(3, b"key"), 1);
         assert_eq!(host_call_tag(4, b"expo/v1"), 1);
@@ -458,6 +484,36 @@ mod tests {
         let empty_selector = mesh_rt::bytes::mesh_bytes_new(b"".as_ptr(), 0);
         assert_eq!(mesh_test_set_push_token(empty_selector, token), 0);
 
+        reset_host_fixtures();
+    }
+
+    #[test]
+    fn push_tokens_support_independent_exact_selectors() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        assert_eq!(set_push_token(b"expo/config/v1", b"signed config"), 1);
+        assert_eq!(set_push_token(b"expo/raw/v1", b"raw token"), 1);
+
+        let mut config = [0; 13];
+        let mut raw = [0; 9];
+        assert_eq!(invoke(4, b"expo/config/v1", &mut config), (0, 13));
+        assert_eq!(&config, b"signed config");
+        assert_eq!(invoke(4, b"expo/raw/v1", &mut raw), (0, 9));
+        assert_eq!(&raw, b"raw token");
+        reset_host_fixtures();
+    }
+
+    #[test]
+    fn empty_push_token_can_be_replaced_at_selector_capacity() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        for index in 0..MAX_ENTRIES {
+            assert_eq!(set_push_token(&(index as u32).to_be_bytes(), &[]), 1);
+        }
+
+        let selector = 0u32.to_be_bytes();
+        assert_eq!(set_push_token(&selector, b"replacement"), 1);
+        let mut output = [0; 11];
+        assert_eq!(invoke(4, &selector, &mut output), (0, 11));
+        assert_eq!(&output, b"replacement");
         reset_host_fixtures();
     }
 
