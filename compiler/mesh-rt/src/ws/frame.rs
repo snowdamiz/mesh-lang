@@ -204,8 +204,12 @@ impl FrameDecoder {
 
     fn compact(&mut self) {
         let remaining = self.buffered_len();
-        self.buffer.copy_within(self.cursor.., 0);
-        self.buffer.truncate(remaining);
+        if self.buffer.capacity().saturating_sub(remaining) > 64 * 1024 + 14 {
+            self.buffer = self.buffer[self.cursor..].to_vec();
+        } else {
+            self.buffer.copy_within(self.cursor.., 0);
+            self.buffer.truncate(remaining);
+        }
         self.cursor = 0;
     }
 }
@@ -290,7 +294,7 @@ impl MessageAssembler {
 
     fn reset(&mut self) {
         self.initial_opcode = None;
-        self.buffer.clear();
+        self.buffer = Vec::new();
     }
 }
 
@@ -524,6 +528,45 @@ mod tests {
         assert_eq!(frame.opcode, WsOpcode::Text);
         assert_eq!(frame.payload, b"split across reads");
         assert!(decoder.next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn reassembly_reset_releases_a_large_fragment_allocation() {
+        let mut assembler = MessageAssembler::new(1024 * 1024);
+        assert!(matches!(
+            assembler.push(WsFrame {
+                fin: false,
+                opcode: WsOpcode::Binary,
+                payload: vec![0; 256 * 1024],
+            }),
+            ReassembleResult::Accumulating
+        ));
+        assert!(assembler.buffer.capacity() >= 256 * 1024);
+
+        assert!(matches!(
+            assembler.push(WsFrame {
+                fin: true,
+                opcode: WsOpcode::Text,
+                payload: Vec::new(),
+            }),
+            ReassembleResult::ProtocolError(_)
+        ));
+        assert_eq!(assembler.buffered_len(), 0);
+        assert_eq!(assembler.buffer.capacity(), 0);
+    }
+
+    #[test]
+    fn decoder_compaction_releases_consumed_frame_capacity() {
+        let payload = vec![0; 256 * 1024];
+        let mut encoded = Vec::new();
+        write_frame(&mut encoded, WsOpcode::Binary, &payload, true).unwrap();
+        encoded.push(0x82);
+
+        let mut decoder = FrameDecoder::new(512 * 1024);
+        decoder.extend(&encoded).unwrap();
+        assert_eq!(decoder.next_frame().unwrap().unwrap().0.payload, payload);
+        assert_eq!(decoder.buffered_len(), 1);
+        assert!(decoder.buffer.capacity() <= 64 * 1024 + 14);
     }
 
     #[test]

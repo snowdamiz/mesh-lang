@@ -110,8 +110,8 @@ struct WsConnectionArgs {
 unsafe impl Send for WsConnectionArgs {}
 
 const SERVER_PENDING_ITEMS: usize = 256;
-const SERVER_PENDING_BYTES: usize = 16 * 1024 * 1024;
-const SERVER_MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+const SERVER_MAX_MESSAGE_BYTES: usize = crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES;
+const SERVER_PENDING_BYTES: usize = SERVER_MAX_MESSAGE_BYTES;
 
 struct ServerSinkState {
     target: Option<(Arc<Mutex<Process>>, ProcessId)>,
@@ -1181,6 +1181,18 @@ mod tests {
         assert_eq!(
             binary_payload_len(SERVER_MAX_MESSAGE_BYTES as i64),
             Some(SERVER_MAX_MESSAGE_BYTES)
+        );
+    }
+
+    #[test]
+    fn admitted_server_messages_fit_the_default_actor_mailbox() {
+        assert!(
+            SERVER_MAX_MESSAGE_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES,
+            "the reactor must not admit a message that its actor mailbox cannot hold"
+        );
+        assert!(
+            SERVER_PENDING_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES,
+            "the pre-attach sink must not admit more bytes than attachment can deliver"
         );
     }
 

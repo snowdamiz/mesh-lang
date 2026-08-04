@@ -487,13 +487,15 @@ impl ReactorConnection {
             PeerRole::Client => Some(rand::random()),
         };
         let encoded = encode_frame(WsOpcode::Close, &payload, true, mask)?;
+        let retained_reason = String::from_utf8(payload[2..].to_vec())
+            .expect("build_close_payload preserves UTF-8 boundaries");
         if !self.shared.accepting_writes.swap(false, Ordering::AcqRel) {
             return Ok(());
         }
         let result = self.submit(Command::Close {
             id: self.id,
             outbound: Outbound::new(encoded, None),
-            reason: reason.to_string(),
+            reason: retained_reason,
         });
         if let Err(reason) = &result {
             self.cancel(reason.clone());
@@ -1562,6 +1564,41 @@ pub(crate) fn reactor_threads_started() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graceful_close_retains_only_the_protocol_encoded_reason() {
+        let poll = Poll::new().unwrap();
+        let waker = Arc::new(Waker::new(poll.registry(), WAKE_TOKEN).unwrap());
+        let (commands, receiver) = crossbeam_channel::bounded(1);
+        let control = Arc::new(ReactorControl {
+            commands,
+            waker,
+            aggregate_write_budget: Arc::new(QueueBudget::new(1, 1024)),
+            connection_count: Arc::new(AtomicUsize::new(0)),
+        });
+        let connection = ReactorConnection {
+            id: 1,
+            role: PeerRole::Server,
+            max_message_bytes: 1024,
+            shared: Arc::new(ConnectionShared {
+                accepting_writes: AtomicBool::new(true),
+                cancelled: AtomicBool::new(false),
+                cancel_reason: Mutex::new(None),
+                local_budget: Arc::new(QueueBudget::new(1, 1024)),
+            }),
+            control,
+        };
+        let supplied = "reason".repeat(1024);
+
+        connection.graceful_close(1000, &supplied).unwrap();
+
+        let Command::Close { reason, .. } = receiver.recv().unwrap() else {
+            panic!("graceful close queued the wrong command");
+        };
+        let payload = build_close_payload(1000, &supplied);
+        assert_eq!(reason.as_bytes(), &payload[2..]);
+        assert!(reason.len() <= 123);
+    }
 
     #[test]
     fn write_budget_rejects_items_and_releases_on_drop() {
