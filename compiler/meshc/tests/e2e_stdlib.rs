@@ -951,7 +951,9 @@ fn e2e_http_server_preserves_binary_request_and_response_bodies() {
     artifacts::ensure_mesh_rt_staticlib();
     let source = r#"
 fn echo(request :: Request) -> Response do
-  HTTP.response_bytes(200, Request.body_bytes(request))
+  HTTP.response_bytes_with_headers(200,
+  Request.body_bytes(request),
+  Map.put(Map.new(), "Cache-Control", "no-store"))
 end
 
 fn main() do
@@ -983,6 +985,9 @@ end
     assert!(headers
         .lines()
         .any(|line| line.eq_ignore_ascii_case("content-type: application/octet-stream")));
+    assert!(headers
+        .lines()
+        .any(|line| line.eq_ignore_ascii_case("cache-control: no-store")));
     assert_eq!(&response[separator + 4..], &[0x00, 0xff, 0x80]);
 }
 

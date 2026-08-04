@@ -189,6 +189,16 @@ pub extern "C" fn mesh_http_response_with_headers(
 /// Create a byte-exact HTTP response.
 #[no_mangle]
 pub extern "C" fn mesh_http_response_bytes_new(status: i64, body: *const MeshBytes) -> *mut u8 {
+    mesh_http_response_bytes_with_headers(status, body, std::ptr::null_mut())
+}
+
+/// Create a byte-exact HTTP response with custom headers.
+#[no_mangle]
+pub extern "C" fn mesh_http_response_bytes_with_headers(
+    status: i64,
+    body: *const MeshBytes,
+    headers: *mut u8,
+) -> *mut u8 {
     unsafe {
         let ptr = mesh_gc_alloc_actor(
             std::mem::size_of::<MeshHttpResponse>() as u64,
@@ -196,7 +206,7 @@ pub extern "C" fn mesh_http_response_bytes_new(status: i64, body: *const MeshByt
         ) as *mut MeshHttpResponse;
         (*ptr).status = status;
         (*ptr).body = std::ptr::null_mut();
-        (*ptr).headers = std::ptr::null_mut();
+        (*ptr).headers = headers;
         (*ptr).body_bytes = body as *mut u8;
         ptr as *mut u8
     }

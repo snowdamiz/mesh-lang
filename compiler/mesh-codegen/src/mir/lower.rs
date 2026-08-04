@@ -3378,6 +3378,13 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_http_response_bytes_with_headers".to_string(),
+            MirType::FnPtr(
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
             "mesh_http_response_with_headers".to_string(),
             MirType::FnPtr(
                 vec![MirType::Int, MirType::String, MirType::Ptr],
@@ -15793,6 +15800,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_serve_tls" => "mesh_http_serve_tls".to_string(),
         "http_response" => "mesh_http_response_new".to_string(),
         "http_response_bytes" => "mesh_http_response_bytes_new".to_string(),
+        "http_response_bytes_with_headers" => "mesh_http_response_bytes_with_headers".to_string(),
         "http_response_with_headers" => "mesh_http_response_with_headers".to_string(),
         // Request accessor functions (prefixed form from module-qualified access)
         "request_method" => "mesh_http_request_method".to_string(),

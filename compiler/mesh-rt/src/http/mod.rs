@@ -37,5 +37,6 @@ pub use server::{
     mesh_http_idempotency_key, mesh_http_request_body, mesh_http_request_body_bytes,
     mesh_http_request_header, mesh_http_request_id, mesh_http_request_method,
     mesh_http_request_param, mesh_http_request_path, mesh_http_request_query,
-    mesh_http_response_bytes_new, mesh_http_response_new, mesh_http_serve, mesh_http_serve_tls,
+    mesh_http_response_bytes_new, mesh_http_response_bytes_with_headers, mesh_http_response_new,
+    mesh_http_serve, mesh_http_serve_tls,
 };

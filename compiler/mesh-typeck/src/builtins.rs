@@ -2005,6 +2005,13 @@ pub fn register_builtins(
         "http_response_bytes".into(),
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::bytes()], response_t.clone())),
     );
+    env.insert(
+        "http_response_bytes_with_headers".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::bytes(), Ty::map(Ty::string(), Ty::string())],
+            response_t.clone(),
+        )),
+    );
     // HTTP.response_with_headers(Int, String, Map<K, V>) -> Response
     {
         let k_var = TyVar(92000);

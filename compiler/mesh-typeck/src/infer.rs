@@ -1899,6 +1899,13 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "response_bytes".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::bytes()], response_t.clone())),
     );
+    http_mod.insert(
+        "response_bytes_with_headers".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::bytes(), Ty::map(Ty::string(), Ty::string())],
+            response_t.clone(),
+        )),
+    );
     // Phase 88: response_with_headers(Int, String, Map<K, V>) -> Response
     {
         let k_var = TyVar(92000);

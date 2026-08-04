@@ -40,7 +40,7 @@ fn handler(request) do
 end
 ```
 
-For encrypted envelopes and other binary payloads, use `Request.body_bytes(request)` and `HTTP.response_bytes(status, bytes)`. Binary responses default to `application/octet-stream`.
+For encrypted envelopes and other binary payloads, use `Request.body_bytes(request)` and `HTTP.response_bytes(status, bytes)`. Binary responses default to `application/octet-stream`; use `HTTP.response_bytes_with_headers(status, bytes, headers)` when the response also needs headers such as `Cache-Control: no-store`.
 
 Common status codes: `200` (OK), `201` (Created), `400` (Bad Request), `401` (Unauthorized), `404` (Not Found), `500` (Internal Server Error).
 

@@ -2345,6 +2345,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_http_response_bytes_with_headers",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mesh_http_response_with_headers(status: i64, body: ptr, headers: ptr) -> ptr
     module.add_function(

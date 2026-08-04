@@ -76,8 +76,9 @@ end
 
 Rules:
 1. `HTTP.response(status, body)` — creates response with given status code and string body.
-2. Return this from any handler or middleware.
-3. Common status codes: 200 (ok), 201 (created), 400 (bad request), 401 (unauthorized), 404 (not found), 500 (error).
+2. `HTTP.response_bytes(status, body)` preserves a binary body; use `HTTP.response_bytes_with_headers(status, body, headers)` when binary responses need custom headers.
+3. Return a response from any handler or middleware.
+4. Common status codes: 200 (ok), 201 (created), 400 (bad request), 401 (unauthorized), 404 (not found), 500 (error).
 
 Code example (from tests/e2e/stdlib_http_response.mpl):
 ```mesh
