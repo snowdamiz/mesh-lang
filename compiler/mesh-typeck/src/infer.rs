@@ -306,7 +306,7 @@ fn wide_integer_module(ty: Ty) -> HashMap<String, Scheme> {
 /// Maps module names (e.g., "String", "IO", "Env") to their exported
 /// function names and type schemes. This is used by both `from X import y`
 /// and `X.y` resolution paths.
-fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
+fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme>> {
     let mut modules: HashMap<String, HashMap<String, Scheme>> = HashMap::new();
 
     // ── String module ──────────────────────────────────────────────
@@ -1207,6 +1207,12 @@ fn stdlib_modules() -> HashMap<String, HashMap<String, Scheme>> {
         test_mod.insert(
             "mock_actor".to_string(),
             Scheme::mono(Ty::fun(vec![msg_cb_t], pid_t)),
+        );
+    }
+    if test_builtins {
+        test_mod.insert(
+            "install_in_memory_secure_store".to_string(),
+            Scheme::mono(Ty::fun(vec![], Ty::bool())),
         );
     }
     modules.insert("Test".to_string(), test_mod);
@@ -3855,6 +3861,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
 pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckResult {
     let mut ctx = InferCtx::new();
     ctx.current_module = import_ctx.current_module.clone();
+    ctx.test_builtins = import_ctx.test_builtins;
     let mut env = TypeEnv::new();
     let mut trait_registry = TraitRegistry::new();
     let mut type_registry = TypeRegistry::new();
@@ -5527,7 +5534,7 @@ fn infer_item(
                     }
                 } else {
                     // Fall back to stdlib modules (backward compat)
-                    let modules = stdlib_modules();
+                    let modules = stdlib_modules(import_ctx.test_builtins);
                     if let Some(first_segment) = segments.first() {
                         if let Some(mod_fns) = modules.get(first_segment.as_str()) {
                             if let Some(import_list) = from_import.import_list() {
@@ -10608,7 +10615,7 @@ fn infer_field_access(
 
             // Then check stdlib modules (existing behavior)
             if is_stdlib_module(&base_name) {
-                let modules = stdlib_modules();
+                let modules = stdlib_modules(ctx.test_builtins);
                 if let Some(mod_exports) = modules.get(&base_name) {
                     if let Some(scheme) = mod_exports.get(&field_name) {
                         let ty = ctx.instantiate(scheme);
@@ -10839,7 +10846,7 @@ fn infer_field_access(
             _ => None,
         };
         if let Some(mod_name) = module_name {
-            let modules = stdlib_modules();
+            let modules = stdlib_modules(ctx.test_builtins);
             if let Some(mod_fns) = modules.get(mod_name) {
                 if let Some(scheme) = mod_fns.get(&field_name) {
                     let fn_ty = ctx.instantiate(scheme);

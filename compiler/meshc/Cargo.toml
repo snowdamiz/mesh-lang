@@ -15,6 +15,7 @@ mesh-fmt = { path = "../mesh-fmt" }
 mesh-pkg = { path = "../mesh-pkg" }
 mesh-repl = { path = "../mesh-repl" }
 mesh-rt = { path = "../mesh-rt" }
+mesh-test-rt = { path = "../mesh-test-rt" }
 clap = { workspace = true }
 tempfile = "3"
 ariadne = { workspace = true }

@@ -69,6 +69,9 @@ pub struct ImportContext {
     /// None for single-file mode (backward compat). Used to set display_prefix
     /// on locally-defined types in error messages.
     pub current_module: Option<String>,
+
+    /// Whether compiler-provided test-only builtins are available.
+    pub test_builtins: bool,
 }
 
 impl ImportContext {

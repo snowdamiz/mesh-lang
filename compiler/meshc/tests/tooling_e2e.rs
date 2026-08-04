@@ -605,6 +605,45 @@ fn test_test_coverage_reports_unsupported_contract() {
 // ── Package manager ──────────────────────────────────────────────────
 
 #[test]
+fn test_secure_store_fixture_is_available_only_to_meshc_test() {
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"test-secure-store\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &project.path().join("main.mpl"),
+        "fn main() do\n  println(\"installed=#{Test.install_in_memory_secure_store()}\")\nend\n",
+    );
+    write_file(
+        &project.path().join("tests/secure_store.test.mpl"),
+        "test(\"installs an isolated secure store\") do\n  assert(Test.install_in_memory_secure_store())\nend\n",
+    );
+
+    let build = Command::new(meshc_bin())
+        .args(["build", project.path().to_str().unwrap(), "--no-color"])
+        .output()
+        .expect("failed to run ordinary meshc build");
+    assert!(!build.status.success());
+    assert!(
+        String::from_utf8_lossy(&build.stderr).contains("install_in_memory_secure_store"),
+        "ordinary build should reject the test builtin:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let test = Command::new(meshc_bin())
+        .args(["test", project.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    assert!(
+        test.status.success(),
+        "meshc test should accept the test builtin:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+}
+
+#[test]
 fn test_init_creates_project() {
     let dir = tempfile::tempdir().unwrap();
 

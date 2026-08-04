@@ -1494,6 +1494,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_test_install_in_memory_secure_store() -> bool
+    module.add_function(
+        "mesh_test_install_in_memory_secure_store",
+        i8_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_test_pass_count() -> i64
     let test_pass_count_ty = i64_type.fn_type(&[], false);
     module.add_function(

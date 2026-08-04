@@ -66,6 +66,8 @@ pub struct InferCtx {
     /// The name of the current module being type-checked (e.g., "Geometry").
     /// None for single-file mode. Used to set display_prefix on locally-defined types.
     pub current_module: Option<String>,
+    /// Whether compiler-provided test-only builtins are available.
+    pub test_builtins: bool,
     /// Stack of enclosing function/closure return types.
     /// Pushed when entering a function/closure body, popped when leaving.
     /// `None` means the return type is not yet known (will be inferred).
@@ -101,6 +103,7 @@ impl InferCtx {
             imported_service_methods: FxHashMap::default(),
             local_service_exports: FxHashMap::default(),
             current_module: None,
+            test_builtins: false,
             fn_return_type_stack: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),

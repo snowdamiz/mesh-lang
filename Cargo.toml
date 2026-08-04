@@ -5,6 +5,7 @@ members = [
     "compiler/mesh-parser",
     "compiler/mesh-typeck",
     "compiler/mesh-rt",
+    "compiler/mesh-test-rt",
     "compiler/mesh-codegen",
     "compiler/meshc",
     "compiler/mesh-pkg",

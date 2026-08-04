@@ -1,0 +1,13 @@
+[package]
+name = "mesh-test-rt"
+version = "0.1.0"
+edition = "2021"
+description = "Test-only runtime extensions for compiled Mesh test programs"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+mesh-rt = { path = "../mesh-rt" }
+parking_lot = "0.12"
+zeroize = "1.8"

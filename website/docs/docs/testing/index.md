@@ -108,6 +108,24 @@ end
 
 `setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it.
 
+## In-memory secure store
+
+Libraries that use `Host.secure_store_put`, `Host.secure_store_get`, or
+`Host.secure_store_delete` can install the test runner's bounded in-memory host
+adapter:
+
+```mesh
+test("persists wrapped state") do
+  assert(Test.install_in_memory_secure_store())
+  # Call the same public library API used in production.
+end
+```
+
+The adapter uses the production host-callback framing, holds at most 256 entries
+and 1 MiB, zeroizes stored values, and is cleared after each test. The builtin is
+available only through `meshc test`; ordinary builds reject it and still require
+platform secure-store callbacks.
+
 ## Mock Actors
 
 Use `Test.mock_actor` to spawn a lightweight actor owned by the current test:

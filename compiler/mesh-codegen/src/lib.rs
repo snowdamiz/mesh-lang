@@ -429,12 +429,20 @@ pub fn compile_mir_to_binary(
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
+    runtime_flavor: link::RuntimeFlavor,
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
 ) -> Result<(), String> {
     let obj_path = output.with_extension("o");
     build_trace::set_compile_context(output, &obj_path, target_triple);
-    let link_plan = link::prepare_link_with_native(target_triple, rt_lib_path, native_archives)?;
+    let link_plan = match runtime_flavor {
+        link::RuntimeFlavor::Standard => {
+            link::prepare_link_with_native(target_triple, rt_lib_path, native_archives)
+        }
+        link::RuntimeFlavor::Test => {
+            link::prepare_test_link_with_native(target_triple, rt_lib_path, native_archives)
+        }
+    }?;
 
     let result: Result<(), String> = (|| -> Result<(), String> {
         build_trace::set_stage("pre-llvm-init");

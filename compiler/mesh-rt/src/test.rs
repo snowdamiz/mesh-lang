@@ -30,6 +30,8 @@
 use std::cell::{Cell, RefCell};
 use std::io::Write as _;
 
+use parking_lot::RwLock;
+
 use crate::string::MeshString;
 
 // ── ANSI color codes ─────────────────────────────────────────────────────────
@@ -67,6 +69,23 @@ thread_local! {
     static ASSERT_RAISES_TRIGGERED: Cell<bool> = Cell::new(false);
 }
 
+static TEST_CASE_CLEANUP_HOOK: RwLock<Option<fn()>> = RwLock::new(None);
+
+/// Register cleanup owned by a separately linked test-runtime extension.
+///
+/// This is a Rust-only hook: production host callbacks still require the
+/// lifecycle-checked `mesh_library_register_host_callbacks` C API.
+pub fn register_test_case_cleanup_hook(hook: fn()) {
+    *TEST_CASE_CLEANUP_HOOK.write() = Some(hook);
+}
+
+fn run_test_case_cleanup_hook() {
+    let hook = *TEST_CASE_CLEANUP_HOOK.read();
+    if let Some(hook) = hook {
+        hook();
+    }
+}
+
 // ── Helper: read a MeshString as a &str ──────────────────────────────────────
 
 /// Extract a `&str` from a pointer to a `MeshString`.
@@ -100,6 +119,7 @@ fn fail_with(msg: &str) {
 /// so that the pass/fail line can overwrite it with `\r`.
 #[no_mangle]
 pub extern "C" fn mesh_test_begin(name: *const MeshString) {
+    run_test_case_cleanup_hook();
     let name_str = unsafe { mesh_str(name) }.to_owned();
     CURRENT_TEST.with(|ct| *ct.borrow_mut() = name_str.clone());
 
@@ -362,6 +382,7 @@ pub unsafe extern "C" fn mesh_test_run_body(fn_ptr: *const u8, env_ptr: *const u
 
     let f: extern "C" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
     f(env_ptr);
+    run_test_case_cleanup_hook();
 
     let fail_after = FAIL_COUNT.with(|c| c.get());
     if fail_after == fail_before {

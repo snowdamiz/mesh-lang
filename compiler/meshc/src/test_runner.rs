@@ -300,6 +300,7 @@ pub fn run_tests(
             Some(&bin_path),
             None, // target: native
             crate::BuildArtifact::Executable,
+            true, // test-only compiler builtins
             &diag_opts,
         );
 

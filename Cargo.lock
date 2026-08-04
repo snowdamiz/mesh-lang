@@ -1605,6 +1605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesh-test-rt"
+version = "0.1.0"
+dependencies = [
+ "mesh-rt",
+ "parking_lot",
+ "zeroize",
+]
+
+[[package]]
 name = "mesh-typeck"
 version = "0.1.0"
 dependencies = [
@@ -1635,6 +1644,7 @@ dependencies = [
  "mesh-pkg",
  "mesh-repl",
  "mesh-rt",
+ "mesh-test-rt",
  "mesh-typeck",
  "mimalloc",
  "openssl-sys",

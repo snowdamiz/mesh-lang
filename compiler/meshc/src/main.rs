@@ -311,6 +311,7 @@ fn main() {
                 output.as_deref(),
                 target.as_deref(),
                 artifact,
+                false,
                 &diag_opts,
             ) {
                 if json {
@@ -637,9 +638,10 @@ pub(crate) fn build(
     output: Option<&Path>,
     target: Option<&str>,
     artifact: BuildArtifact,
+    test_builtins: bool,
     diag_opts: &DiagnosticOptions,
 ) -> Result<(), String> {
-    let mut prepared = prepare_project_build(dir, diag_opts)?;
+    let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
     let declared_handler_plan = prepare_declared_handler_plan(
         &prepared.clustered_execution_plan,
         &prepared.clustered_route_handler_plan,
@@ -697,7 +699,12 @@ pub(crate) fn build(
     }
 
     // Compile to native binary
-    let runtime_override = runtime_lib_override_from_env()?;
+    let runtime_flavor = if test_builtins {
+        mesh_codegen::link::RuntimeFlavor::Test
+    } else {
+        mesh_codegen::link::RuntimeFlavor::Standard
+    };
+    let runtime_override = runtime_lib_override_from_env(runtime_flavor)?;
     let native_archives = if dir.join("mesh.toml").is_file() {
         let effective_target = mesh_codegen::link::effective_target_triple(target)?;
         mesh_pkg::resolve_native_archives(dir, &effective_target)?
@@ -717,6 +724,7 @@ pub(crate) fn build(
             &output_path,
             opt_level,
             target,
+            runtime_flavor,
             runtime_override.as_deref(),
             &native_archives,
         )?,
@@ -776,6 +784,7 @@ fn prepare_declared_handler_plan(
 
 pub(crate) fn prepare_project_build(
     dir: &Path,
+    test_builtins: bool,
     diag_opts: &DiagnosticOptions,
 ) -> Result<PreparedBuild, String> {
     // Validate the project directory
@@ -935,6 +944,7 @@ pub(crate) fn prepare_project_build(
         // (e.g., "expected Geometry.Point, got Main.Point").
         let module_name = &project.graph.get(id).name;
         import_ctx.current_module = Some(module_name.clone());
+        import_ctx.test_builtins = test_builtins;
 
         // Type-check this module with imports
         let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
@@ -1091,13 +1101,21 @@ fn collect_library_exports(
     Ok(exports)
 }
 
-fn runtime_lib_override_from_env() -> Result<Option<PathBuf>, String> {
-    let Some(raw) = std::env::var_os("MESH_RT_LIB_PATH") else {
+fn runtime_lib_override_from_env(
+    runtime_flavor: mesh_codegen::link::RuntimeFlavor,
+) -> Result<Option<PathBuf>, String> {
+    let variable = match runtime_flavor {
+        mesh_codegen::link::RuntimeFlavor::Standard => "MESH_RT_LIB_PATH",
+        mesh_codegen::link::RuntimeFlavor::Test => "MESH_TEST_RT_LIB_PATH",
+    };
+    let Some(raw) = std::env::var_os(variable) else {
         return Ok(None);
     };
 
     if raw.is_empty() {
-        return Err("MESH_RT_LIB_PATH was set but empty. Provide an absolute path to the Mesh runtime static library or unset it.".to_string());
+        return Err(format!(
+            "{variable} was set but empty. Provide an absolute path to the selected Mesh runtime static library or unset it."
+        ));
     }
 
     Ok(Some(PathBuf::from(raw)))

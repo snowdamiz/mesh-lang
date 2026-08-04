@@ -38,6 +38,28 @@ pub fn effective_target_triple(target_triple: Option<&str>) -> Result<String, St
     LinkTarget::detect(target_triple).map(|target| target.display_triple())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeFlavor {
+    Standard,
+    Test,
+}
+
+impl RuntimeFlavor {
+    fn package_name(self) -> &'static str {
+        match self {
+            Self::Standard => "mesh-rt",
+            Self::Test => "mesh-test-rt",
+        }
+    }
+
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Standard => "Mesh runtime",
+            Self::Test => "Mesh test runtime",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LinkPlan {
     target: LinkTarget,
@@ -50,7 +72,7 @@ pub(crate) fn prepare_link(
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
 ) -> Result<LinkPlan, String> {
-    prepare_link_with_native(target_triple, rt_lib_path, &[])
+    prepare_link_for_runtime(target_triple, rt_lib_path, &[], RuntimeFlavor::Standard)
 }
 
 pub(crate) fn prepare_link_with_native(
@@ -58,11 +80,38 @@ pub(crate) fn prepare_link_with_native(
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
 ) -> Result<LinkPlan, String> {
+    prepare_link_for_runtime(
+        target_triple,
+        rt_lib_path,
+        native_archives,
+        RuntimeFlavor::Standard,
+    )
+}
+
+pub(crate) fn prepare_test_link_with_native(
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+    native_archives: &[PathBuf],
+) -> Result<LinkPlan, String> {
+    prepare_link_for_runtime(
+        target_triple,
+        rt_lib_path,
+        native_archives,
+        RuntimeFlavor::Test,
+    )
+}
+
+fn prepare_link_for_runtime(
+    target_triple: Option<&str>,
+    rt_lib_path: Option<&Path>,
+    native_archives: &[PathBuf],
+    runtime_flavor: RuntimeFlavor,
+) -> Result<LinkPlan, String> {
     let target = LinkTarget::detect(target_triple)?;
     build_trace::set_stage("resolve-runtime-library");
 
     let rt_path = match rt_lib_path {
-        Some(path) => match validate_runtime_override(path, &target) {
+        Some(path) => match validate_runtime_override(path, &target, runtime_flavor) {
             Ok(()) => path.to_path_buf(),
             Err(error) => {
                 build_trace::set_link_context(
@@ -75,7 +124,7 @@ pub(crate) fn prepare_link_with_native(
                 return Err(error);
             }
         },
-        None => match find_mesh_rt(&target) {
+        None => match find_mesh_rt(&target, runtime_flavor) {
             Ok(path) => path,
             Err(error) => {
                 build_trace::set_link_context(&target.display_triple(), None, Some(false), None);
@@ -108,10 +157,12 @@ pub(crate) fn prepare_link_with_native(
 
     if !runtime_exists {
         let error = format!(
-            "Mesh runtime static library not found at '{}'. Expected {} for target '{}'. Run `cargo build -p mesh-rt{}` first.",
+            "{} static library not found at '{}'. Expected {} for target '{}'. Run `cargo build -p {}{}` first.",
+            runtime_flavor.display_name(),
             rt_path.display(),
-            target.runtime_filename(),
+            target.runtime_filename(runtime_flavor),
             target.display_triple(),
+            runtime_flavor.package_name(),
             target.cargo_build_hint(),
         );
         build_trace::record_error(&error);
@@ -337,7 +388,7 @@ fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -
 /// Searches in the workspace target directory under both `debug` and `release`
 /// profiles. Prefers the profile matching the compiler's own build: a release
 /// `meshc` links the release runtime, a debug `meshc` links the debug runtime.
-fn find_mesh_rt(target: &LinkTarget) -> Result<PathBuf, String> {
+fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<PathBuf, String> {
     let profiles: &[&str] = if cfg!(debug_assertions) {
         &["debug", "release"]
     } else {
@@ -347,7 +398,7 @@ fn find_mesh_rt(target: &LinkTarget) -> Result<PathBuf, String> {
     let mut searched_paths = Vec::new();
 
     for target_dir in [find_workspace_target_dir()].iter().flatten() {
-        for candidate in mesh_rt_candidates(target_dir, target, profiles) {
+        for candidate in mesh_rt_candidates(target_dir, target, profiles, runtime_flavor) {
             if candidate.exists() {
                 return Ok(candidate);
             }
@@ -356,9 +407,11 @@ fn find_mesh_rt(target: &LinkTarget) -> Result<PathBuf, String> {
     }
 
     let mut message = format!(
-        "Could not locate Mesh runtime static library for target '{}'. Expected {}. Run `cargo build -p mesh-rt{}` first.",
+        "Could not locate {} static library for target '{}'. Expected {}. Run `cargo build -p {}{}` first.",
+        runtime_flavor.display_name(),
         target.display_triple(),
-        target.runtime_filename(),
+        target.runtime_filename(runtime_flavor),
+        runtime_flavor.package_name(),
         target.cargo_build_hint(),
     );
 
@@ -375,7 +428,12 @@ fn find_mesh_rt(target: &LinkTarget) -> Result<PathBuf, String> {
     Err(message)
 }
 
-fn mesh_rt_candidates(target_dir: &Path, target: &LinkTarget, profiles: &[&str]) -> Vec<PathBuf> {
+fn mesh_rt_candidates(
+    target_dir: &Path,
+    target: &LinkTarget,
+    profiles: &[&str],
+    runtime_flavor: RuntimeFlavor,
+) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
     if let Some(triple) = target.requested_triple.as_deref() {
@@ -384,33 +442,41 @@ fn mesh_rt_candidates(target_dir: &Path, target: &LinkTarget, profiles: &[&str])
                 target_dir
                     .join(triple)
                     .join(profile)
-                    .join(target.runtime_filename()),
+                    .join(target.runtime_filename(runtime_flavor)),
             );
         }
     }
 
     for profile in profiles {
-        candidates.push(target_dir.join(profile).join(target.runtime_filename()));
+        candidates.push(
+            target_dir
+                .join(profile)
+                .join(target.runtime_filename(runtime_flavor)),
+        );
     }
 
     candidates
 }
 
-fn validate_runtime_override(path: &Path, target: &LinkTarget) -> Result<(), String> {
+fn validate_runtime_override(
+    path: &Path,
+    target: &LinkTarget,
+    runtime_flavor: RuntimeFlavor,
+) -> Result<(), String> {
     let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
         return Err(format!(
             "Mesh runtime override '{}' does not name a file. Expected {} for target '{}'.",
             path.display(),
-            target.runtime_filename(),
+            target.runtime_filename(runtime_flavor),
             target.display_triple(),
         ));
     };
 
-    if file_name != target.runtime_filename() {
+    if file_name != target.runtime_filename(runtime_flavor) {
         return Err(format!(
             "Mesh runtime override '{}' does not match expected filename '{}' for target '{}'.",
             path.display(),
-            target.runtime_filename(),
+            target.runtime_filename(runtime_flavor),
             target.display_triple(),
         ));
     }
@@ -471,10 +537,12 @@ impl LinkTarget {
             .unwrap_or_else(host_target_triple)
     }
 
-    fn runtime_filename(&self) -> &'static str {
-        match self.kind {
-            LinkTargetKind::Unix => "libmesh_rt.a",
-            LinkTargetKind::WindowsMsvc => "mesh_rt.lib",
+    fn runtime_filename(&self, runtime_flavor: RuntimeFlavor) -> &'static str {
+        match (self.kind, runtime_flavor) {
+            (LinkTargetKind::Unix, RuntimeFlavor::Standard) => "libmesh_rt.a",
+            (LinkTargetKind::Unix, RuntimeFlavor::Test) => "libmesh_test_rt.a",
+            (LinkTargetKind::WindowsMsvc, RuntimeFlavor::Standard) => "mesh_rt.lib",
+            (LinkTargetKind::WindowsMsvc, RuntimeFlavor::Test) => "mesh_test_rt.lib",
         }
     }
 
@@ -743,8 +811,13 @@ mod tests {
         fs::write(&runtime, b"fake").unwrap();
 
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
-        let found =
-            find_mesh_rt_in(&[temp_target.clone()], &target, &["debug", "release"]).unwrap();
+        let found = find_mesh_rt_in(
+            &[temp_target.clone()],
+            &target,
+            &["debug", "release"],
+            RuntimeFlavor::Standard,
+        )
+        .unwrap();
         assert_eq!(found, runtime);
 
         fs::remove_dir_all(temp_target).unwrap();
@@ -758,9 +831,45 @@ mod tests {
         fs::write(&runtime, b"fake").unwrap();
 
         let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
-        let found =
-            find_mesh_rt_in(&[temp_target.clone()], &target, &["debug", "release"]).unwrap();
+        let found = find_mesh_rt_in(
+            &[temp_target.clone()],
+            &target,
+            &["debug", "release"],
+            RuntimeFlavor::Standard,
+        )
+        .unwrap();
         assert_eq!(found, runtime);
+
+        fs::remove_dir_all(temp_target).unwrap();
+    }
+
+    #[test]
+    fn test_runtime_uses_a_distinct_archive_name_and_package_hint() {
+        let temp_target = unique_temp_target_dir("test-runtime-name");
+        let runtime = temp_target.join("debug").join("libmesh_test_rt.a");
+        fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        fs::write(&runtime, b"fake").unwrap();
+
+        let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        let found = find_mesh_rt_in(
+            &[temp_target.clone()],
+            &target,
+            &["debug", "release"],
+            RuntimeFlavor::Test,
+        )
+        .unwrap();
+        assert_eq!(found, runtime);
+
+        fs::remove_file(&runtime).unwrap();
+        let error = find_mesh_rt_in(
+            &[temp_target.clone()],
+            &target,
+            &["debug", "release"],
+            RuntimeFlavor::Test,
+        )
+        .unwrap_err();
+        assert!(error.contains("libmesh_test_rt.a"), "{error}");
+        assert!(error.contains("cargo build -p mesh-test-rt"), "{error}");
 
         fs::remove_dir_all(temp_target).unwrap();
     }
@@ -770,8 +879,13 @@ mod tests {
         let temp_target = unique_temp_target_dir("windows-missing-runtime");
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
 
-        let error =
-            find_mesh_rt_in(&[temp_target.clone()], &target, &["debug", "release"]).unwrap_err();
+        let error = find_mesh_rt_in(
+            &[temp_target.clone()],
+            &target,
+            &["debug", "release"],
+            RuntimeFlavor::Standard,
+        )
+        .unwrap_err();
         assert!(
             error.contains("mesh_rt.lib"),
             "missing runtime error should name mesh_rt.lib: {error}"
@@ -787,7 +901,12 @@ mod tests {
     #[test]
     fn explicit_runtime_override_should_reject_wrong_filename_for_windows_target() {
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
-        let error = validate_runtime_override(Path::new("/tmp/libmesh_rt.a"), &target).unwrap_err();
+        let error = validate_runtime_override(
+            Path::new("/tmp/libmesh_rt.a"),
+            &target,
+            RuntimeFlavor::Standard,
+        )
+        .unwrap_err();
         assert!(
             error.contains("expected filename 'mesh_rt.lib'"),
             "unexpected error: {error}"
@@ -835,11 +954,12 @@ mod tests {
         target_dirs: &[PathBuf],
         target: &LinkTarget,
         profiles: &[&str],
+        runtime_flavor: RuntimeFlavor,
     ) -> Result<PathBuf, String> {
         let mut searched_paths = Vec::new();
 
         for target_dir in target_dirs {
-            for candidate in mesh_rt_candidates(target_dir, target, profiles) {
+            for candidate in mesh_rt_candidates(target_dir, target, profiles, runtime_flavor) {
                 if candidate.exists() {
                     return Ok(candidate);
                 }
@@ -848,9 +968,11 @@ mod tests {
         }
 
         let mut message = format!(
-            "Could not locate Mesh runtime static library for target '{}'. Expected {}. Run `cargo build -p mesh-rt{}` first.",
+            "Could not locate {} static library for target '{}'. Expected {}. Run `cargo build -p {}{}` first.",
+            runtime_flavor.display_name(),
             target.display_triple(),
-            target.runtime_filename(),
+            target.runtime_filename(runtime_flavor),
+            runtime_flavor.package_name(),
             target.cargo_build_hint(),
         );
         if !searched_paths.is_empty() {
