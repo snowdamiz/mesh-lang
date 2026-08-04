@@ -1002,6 +1002,13 @@ impl ContinuityRegistry {
             .get(request_key)
             .cloned()
             .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?;
+        // Owner loss is already a stronger fence than a late transport or
+        // handler failure from that attempt. Keep it recoverable so the
+        // replacement owner (or the next same-key submission) can roll the
+        // attempt forward instead of turning every retry into a permanent 503.
+        if record.attempt_id == attempt_id && record.replica_status == ReplicaStatus::OwnerLost {
+            return Ok(record);
+        }
         let next = transition_rejected_record(record, attempt_id, reason)?;
         inner.requests.insert(request_key.to_string(), next.clone());
         let watermark = inner.next_attempt_token;
@@ -4099,6 +4106,17 @@ mod tests {
             .unwrap();
         assert_eq!(acked_again.replica_status, ReplicaStatus::OwnerLost);
         assert_eq!(acked_again.error, "owner_lost:owner@host");
+
+        let late_timeout = registry
+            .reject_durable_request(
+                "req-1",
+                &accepted.attempt_id,
+                "clustered_http_reservation_timeout",
+            )
+            .unwrap();
+        assert_eq!(late_timeout.phase, ContinuityPhase::Submitted);
+        assert_eq!(late_timeout.replica_status, ReplicaStatus::OwnerLost);
+        assert_eq!(late_timeout.error, "owner_lost:owner@host");
     }
 
     #[test]
