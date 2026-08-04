@@ -156,9 +156,13 @@ impl<'ctx> CodeGen<'ctx> {
         opt_level: u8,
         target_triple: Option<&str>,
     ) -> Result<Self, String> {
-        // Initialize target
-        Target::initialize_native(&InitializationConfig::default())
-            .map_err(|e| format!("Failed to initialize native target: {}", e))?;
+        let initialization = InitializationConfig::default();
+        if target_triple.is_some() {
+            Target::initialize_all(&initialization);
+        } else {
+            Target::initialize_native(&initialization)
+                .map_err(|e| format!("Failed to initialize native target: {}", e))?;
+        }
 
         let triple = match target_triple {
             Some(triple_str) => TargetTriple::create(triple_str),
@@ -1234,6 +1238,17 @@ mod tests {
         let context = Context::create();
         let codegen = CodeGen::new(&context, "test", 0, None);
         assert!(codegen.is_ok(), "Native target should initialize");
+    }
+
+    #[test]
+    fn android_targets_initialize_for_cross_codegen() {
+        for triple in ["aarch64-linux-android", "x86_64-linux-android"] {
+            let context = Context::create();
+            assert!(
+                CodeGen::new(&context, "android", 0, Some(triple)).is_ok(),
+                "{triple} should initialize"
+            );
+        }
     }
 
     #[test]

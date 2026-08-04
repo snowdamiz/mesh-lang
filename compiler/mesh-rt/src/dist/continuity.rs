@@ -138,6 +138,7 @@ pub enum ReplicaStatus {
     Preparing,
     Mirrored,
     OwnerLost,
+    PreAdmissionRejected,
     Rejected,
     DegradedContinuing,
 }
@@ -149,6 +150,7 @@ impl ReplicaStatus {
             ReplicaStatus::Preparing => "preparing",
             ReplicaStatus::Mirrored => "mirrored",
             ReplicaStatus::OwnerLost => "owner_lost",
+            ReplicaStatus::PreAdmissionRejected => "pre_admission_rejected",
             ReplicaStatus::Rejected => "rejected",
             ReplicaStatus::DegradedContinuing => "degraded_continuing",
         }
@@ -162,6 +164,7 @@ impl ReplicaStatus {
             ReplicaStatus::OwnerLost => 3,
             ReplicaStatus::Rejected => 4,
             ReplicaStatus::DegradedContinuing => 5,
+            ReplicaStatus::PreAdmissionRejected => 6,
         }
     }
 
@@ -173,6 +176,7 @@ impl ReplicaStatus {
             3 => Ok(Self::OwnerLost),
             4 => Ok(Self::Rejected),
             5 => Ok(Self::DegradedContinuing),
+            6 => Ok(Self::PreAdmissionRejected),
             _ => Err(format!("invalid continuity replica status {}", value)),
         }
     }
@@ -713,7 +717,9 @@ impl ContinuityRegistry {
         let mut inner = self.inner.write();
         if let Some(existing) = inner.requests.get(&request.request_key).cloned() {
             if existing.payload_hash == request.payload_hash {
-                if recovery_eligible(&existing, &request) {
+                if recovery_eligible(&existing, &request)
+                    || existing.replica_status == ReplicaStatus::PreAdmissionRejected
+                {
                     let attempt_token = inner.next_attempt_token;
                     inner.next_attempt_token += 1;
                     let next =
@@ -791,7 +797,7 @@ impl ContinuityRegistry {
         }
 
         if record.replica_node.is_empty() {
-            let rejected = self.reject_durable_request(
+            let rejected = self.reject_pre_admission_request(
                 &record.request_key,
                 &record.attempt_id,
                 REPLICA_REQUIRED_UNAVAILABLE,
@@ -822,7 +828,7 @@ impl ContinuityRegistry {
                 } else {
                     reason
                 };
-                let rejected = self.reject_durable_request(
+                let rejected = self.reject_pre_admission_request(
                     &record.request_key,
                     &record.attempt_id,
                     &durable_reason,
@@ -996,6 +1002,30 @@ impl ContinuityRegistry {
         attempt_id: &str,
         reason: &str,
     ) -> Result<ContinuityRecord, String> {
+        self.reject_request(request_key, attempt_id, reason, ReplicaStatus::Rejected)
+    }
+
+    fn reject_pre_admission_request(
+        &self,
+        request_key: &str,
+        attempt_id: &str,
+        reason: &str,
+    ) -> Result<ContinuityRecord, String> {
+        self.reject_request(
+            request_key,
+            attempt_id,
+            reason,
+            ReplicaStatus::PreAdmissionRejected,
+        )
+    }
+
+    fn reject_request(
+        &self,
+        request_key: &str,
+        attempt_id: &str,
+        reason: &str,
+        replica_status: ReplicaStatus,
+    ) -> Result<ContinuityRecord, String> {
         let mut inner = self.inner.write();
         let record = inner
             .requests
@@ -1009,7 +1039,7 @@ impl ContinuityRegistry {
         if record.attempt_id == attempt_id && record.replica_status == ReplicaStatus::OwnerLost {
             return Ok(record);
         }
-        let next = transition_rejected_record(record, attempt_id, reason)?;
+        let next = transition_rejected_record(record, attempt_id, reason, replica_status)?;
         inner.requests.insert(request_key.to_string(), next.clone());
         let watermark = inner.next_attempt_token;
         drop(inner);
@@ -1347,7 +1377,8 @@ fn replica_status_rank(status: ReplicaStatus) -> u8 {
         ReplicaStatus::Mirrored => 2,
         ReplicaStatus::OwnerLost => 3,
         ReplicaStatus::DegradedContinuing => 4,
-        ReplicaStatus::Rejected => 5,
+        ReplicaStatus::PreAdmissionRejected => 5,
+        ReplicaStatus::Rejected => 6,
     }
 }
 
@@ -1569,8 +1600,12 @@ fn transition_retry_rollover_record(
     {
         return Err(CONTINUITY_CONFLICT_REASON.to_string());
     }
-    if existing.phase != ContinuityPhase::Submitted || existing.result != ContinuityResult::Pending
-    {
+    let owner_loss_retry = existing.phase == ContinuityPhase::Submitted
+        && existing.result == ContinuityResult::Pending;
+    let pre_admission_retry = existing.phase == ContinuityPhase::Rejected
+        && existing.result == ContinuityResult::Rejected
+        && existing.replica_status == ReplicaStatus::PreAdmissionRejected;
+    if !owner_loss_retry && !pre_admission_retry {
         return Err(TRANSITION_REJECTED_PHASE.to_string());
     }
 
@@ -1673,6 +1708,7 @@ fn transition_rejected_record(
     record: ContinuityRecord,
     attempt_id: &str,
     reason: &str,
+    replica_status: ReplicaStatus,
 ) -> Result<ContinuityRecord, String> {
     if record.attempt_id != attempt_id {
         return Err(ATTEMPT_ID_MISMATCH.to_string());
@@ -1689,7 +1725,7 @@ fn transition_rejected_record(
         record_version,
         phase: ContinuityPhase::Rejected,
         result: ContinuityResult::Rejected,
-        replica_status: ReplicaStatus::Rejected,
+        replica_status,
         replication_health: ReplicationHealth::Unavailable,
         error: reason.to_string(),
         ..record
@@ -3812,12 +3848,15 @@ mod tests {
         assert_eq!(decision.outcome, SubmitOutcome::Rejected);
         assert_eq!(decision.record.phase, ContinuityPhase::Rejected);
         assert_eq!(decision.record.result, ContinuityResult::Rejected);
-        assert_eq!(decision.record.replica_status, ReplicaStatus::Rejected);
+        assert_eq!(
+            decision.record.replica_status,
+            ReplicaStatus::PreAdmissionRejected
+        );
         assert_eq!(decision.record.error, REPLICA_REQUIRED_UNAVAILABLE);
     }
 
     #[test]
-    fn continuity_submit_replays_rejected_duplicate_and_preserves_conflict() {
+    fn continuity_submit_retries_pre_admission_rejection_and_preserves_conflict() {
         let registry = continuity_fresh_registry();
 
         let initial = registry
@@ -3827,16 +3866,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(initial.outcome, SubmitOutcome::Rejected);
+        assert_eq!(
+            decode_record(&encode_record(&initial.record).unwrap())
+                .unwrap()
+                .replica_status,
+            ReplicaStatus::PreAdmissionRejected
+        );
 
-        let duplicate = registry
+        let retried = registry
             .submit_with_replica_prepare(
                 continuity_submit_request("req-1", "hash-a", "replica@host", 1),
                 |_| Ok(()),
             )
             .unwrap();
-        assert_eq!(duplicate.outcome, SubmitOutcome::Duplicate);
-        assert_eq!(duplicate.record.phase, ContinuityPhase::Rejected);
-        assert_eq!(duplicate.record.error, REPLICA_PREPARE_TIMEOUT);
+        assert_eq!(retried.outcome, SubmitOutcome::Created);
+        assert_ne!(retried.record.attempt_id, initial.record.attempt_id);
+        assert_eq!(retried.record.phase, ContinuityPhase::Submitted);
+        assert_eq!(retried.record.result, ContinuityResult::Pending);
+        assert_eq!(retried.record.replica_status, ReplicaStatus::Mirrored);
+        assert_eq!(retried.record.error, "");
 
         let conflict = registry
             .submit_with_replica_prepare(
@@ -3845,8 +3893,31 @@ mod tests {
             )
             .unwrap();
         assert_eq!(conflict.outcome, SubmitOutcome::Conflict);
-        assert_eq!(conflict.record.phase, ContinuityPhase::Rejected);
-        assert_eq!(conflict.record.error, REPLICA_PREPARE_TIMEOUT);
+        assert_eq!(conflict.record.attempt_id, retried.record.attempt_id);
+    }
+
+    #[test]
+    fn continuity_submit_keeps_handler_rejections_terminal() {
+        let registry = continuity_fresh_registry();
+        let created = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "", 0),
+                |_| Ok(()),
+            )
+            .unwrap();
+        let rejected = registry
+            .reject_durable_request("req-1", &created.record.attempt_id, "handler_failed")
+            .unwrap();
+
+        let duplicate = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "", 0),
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        assert_eq!(duplicate.outcome, SubmitOutcome::Duplicate);
+        assert_eq!(duplicate.record, rejected);
     }
 
     #[test]
@@ -3880,7 +3951,10 @@ mod tests {
         assert_eq!(decision.outcome, SubmitOutcome::Rejected);
         assert_eq!(decision.record.phase, ContinuityPhase::Rejected);
         assert_eq!(decision.record.result, ContinuityResult::Rejected);
-        assert_eq!(decision.record.replica_status, ReplicaStatus::Rejected);
+        assert_eq!(
+            decision.record.replica_status,
+            ReplicaStatus::PreAdmissionRejected
+        );
         assert_eq!(decision.record.error, "replica_prepare_unavailable");
     }
 
