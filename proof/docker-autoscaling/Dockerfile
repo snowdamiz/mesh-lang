@@ -26,11 +26,11 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build --locked -q -p mesh-rt -p meshc \
-    && test -x ./target/debug/mesh-capacity-driver \
-    && install -m 0755 ./target/debug/mesh-capacity-driver /tmp/mesh-capacity-driver \
-    && ./target/debug/meshc build examples/todo-postgres \
-       --output /tmp/mesh-autoscaling-proof --no-color \
+    cargo build --locked --release -q -p mesh-rt -p meshc \
+    && test -x ./target/release/mesh-capacity-driver \
+    && install -m 0755 ./target/release/mesh-capacity-driver /tmp/mesh-capacity-driver \
+    && ./target/release/meshc build examples/todo-postgres \
+       --opt-level 2 --output /tmp/mesh-autoscaling-proof --no-color \
     && test -x /tmp/mesh-autoscaling-proof
 
 FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS runtime
