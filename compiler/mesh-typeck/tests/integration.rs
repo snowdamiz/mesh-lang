@@ -9,6 +9,8 @@
 //! 4. Traits: interface + impl + where clause enforcement
 //! 5. Error locations: type errors carry source span information
 
+use mesh_parser::ast::expr::ClosureExpr;
+use mesh_parser::ast::AstNode;
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::TypeckResult;
@@ -335,6 +337,96 @@ fn test_pipe_call_with_closure() {
         result.errors
     );
     assert_result_type(&result, Ty::int());
+}
+
+#[test]
+fn test_direct_call_constrains_closure_before_field_access() {
+    let source = "struct Point do\n  x :: Int\nend\n\
+                  List.map([Point { x : 7 }], fn (point) do point.x end)";
+    let parse = mesh_parser::parse(source);
+    let result = mesh_typeck::check(&parse);
+    assert_result_type(&result, Ty::list(Ty::int()));
+    let closure = parse
+        .syntax()
+        .descendants()
+        .find_map(ClosureExpr::cast)
+        .expect("expected closure");
+    assert_eq!(
+        result
+            .types
+            .get(&closure.syntax().text_range())
+            .map(ToString::to_string),
+        Some("(Point) -> Int".to_string())
+    );
+}
+
+#[test]
+fn test_pipe_call_constrains_closure_before_field_access() {
+    let source = "struct Point do\n  x :: Int\nend\n\
+                  [Point { x : 7 }] |> List.map(fn (point) do point.x end)";
+    let parse = mesh_parser::parse(source);
+    let result = mesh_typeck::check(&parse);
+    assert_result_type(&result, Ty::list(Ty::int()));
+    let closure = parse
+        .syntax()
+        .descendants()
+        .find_map(ClosureExpr::cast)
+        .expect("expected closure");
+    assert_eq!(
+        result
+            .types
+            .get(&closure.syntax().text_range())
+            .map(ToString::to_string),
+        Some("(Point) -> Int".to_string())
+    );
+}
+
+#[test]
+fn test_method_call_constrains_closure_before_field_access() {
+    let source = "struct Point do\n  x :: Int\nend\n\
+                  let points = [Point { x : 7 }]\n\
+                  points.map(fn (point) do point.x end)";
+    let parse = mesh_parser::parse(source);
+    let result = mesh_typeck::check(&parse);
+    assert_result_type(&result, Ty::list(Ty::int()));
+    let closure = parse
+        .syntax()
+        .descendants()
+        .find_map(ClosureExpr::cast)
+        .expect("expected closure");
+    assert_eq!(
+        result
+            .types
+            .get(&closure.syntax().text_range())
+            .map(ToString::to_string),
+        Some("(Point) -> Int".to_string())
+    );
+}
+
+#[test]
+fn test_slot_pipe_constrains_closure_before_field_access() {
+    let source = "struct Point do\n  x :: Int\nend\n\
+                  let map_with = fn (mapper, points) do\n\
+                    List.map(points, mapper)\n\
+                  end\n\
+                  let points = [Point { x : 7 }]\n\
+                  points |2> map_with(fn (point) do point.x end)";
+    let parse = mesh_parser::parse(source);
+    let result = mesh_typeck::check(&parse);
+    assert_result_type(&result, Ty::list(Ty::int()));
+    let closure = parse
+        .syntax()
+        .descendants()
+        .filter_map(ClosureExpr::cast)
+        .last()
+        .expect("expected slot-pipe closure");
+    assert_eq!(
+        result
+            .types
+            .get(&closure.syntax().text_range())
+            .map(ToString::to_string),
+        Some("(Point) -> Int".to_string())
+    );
 }
 
 /// Bare pipe (no call, just function ref) still works: `5 |> double`.

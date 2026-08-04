@@ -335,6 +335,17 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+fn uniform_callback_index(name: &str) -> Option<usize> {
+    match name {
+        "mesh_list_map" | "mesh_list_filter" | "mesh_list_sort" | "mesh_list_find"
+        | "mesh_list_any" | "mesh_list_all" | "mesh_list_flat_map" | "mesh_range_map"
+        | "mesh_range_filter" | "mesh_job_map" | "mesh_iter_map" | "mesh_iter_filter"
+        | "mesh_iter_any" | "mesh_iter_all" | "mesh_iter_find" => Some(1),
+        "mesh_list_reduce" | "mesh_iter_reduce" => Some(2),
+        _ => None,
+    }
+}
+
 /// Map a MIR type to its PostgreSQL SQL type string.
 ///
 /// Used by `generate_schema_metadata` to produce `__field_types__()` entries.
@@ -1249,7 +1260,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    #[allow(dead_code)]
     fn resolve_range_closure(&self, range: TextRange) -> MirType {
         if let Some(ty) = self.types.get(&range) {
             resolve_type(ty, self.registry, true)
@@ -9460,8 +9470,99 @@ impl<'a> Lowerer<'a> {
 
     // ── Expression lowering ──────────────────────────────────────────
 
+    fn adapt_uniform_callback_call(&mut self, expr: MirExpr) -> MirExpr {
+        let MirExpr::Call { func, mut args, ty } = expr else {
+            return expr;
+        };
+        let MirExpr::Var(name, _) = func.as_ref() else {
+            return MirExpr::Call { func, args, ty };
+        };
+        let Some(callback_index) = uniform_callback_index(name) else {
+            return MirExpr::Call { func, args, ty };
+        };
+        let Some(callback) = args.get(callback_index).cloned() else {
+            return MirExpr::Call { func, args, ty };
+        };
+        let callback_ty = callback.ty().clone();
+        let (param_types, return_type, is_closure) = match &callback_ty {
+            MirType::Closure(params, ret) => (params.clone(), (**ret).clone(), true),
+            MirType::FnPtr(params, ret) => (params.clone(), (**ret).clone(), false),
+            _ => return MirExpr::Call { func, args, ty },
+        };
+
+        self.closure_counter += 1;
+        let adapter_name = if self.module_name.is_empty() {
+            format!("__uniform_callback_{}", self.closure_counter)
+        } else {
+            format!(
+                "{}__uniform_callback_{}",
+                self.module_name.replace('.', "_"),
+                self.closure_counter
+            )
+        };
+        let raw_params = param_types
+            .iter()
+            .enumerate()
+            .map(|(index, _)| (format!("__slot_{index}"), MirType::Int))
+            .collect::<Vec<_>>();
+        let decoded_args = param_types
+            .iter()
+            .enumerate()
+            .map(|(index, param_ty)| MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "__mesh_uniform_decode".to_string(),
+                    MirType::FnPtr(vec![MirType::Int], Box::new(param_ty.clone())),
+                )),
+                args: vec![MirExpr::Var(format!("__slot_{index}"), MirType::Int)],
+                ty: param_ty.clone(),
+            })
+            .collect::<Vec<_>>();
+        let callback_var = MirExpr::Var("__callback".to_string(), callback_ty.clone());
+        let callback_call = if is_closure {
+            MirExpr::ClosureCall {
+                closure: Box::new(callback_var),
+                args: decoded_args,
+                ty: return_type.clone(),
+            }
+        } else {
+            MirExpr::Call {
+                func: Box::new(callback_var),
+                args: decoded_args,
+                ty: return_type.clone(),
+            }
+        };
+        let body = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "__mesh_uniform_encode".to_string(),
+                MirType::FnPtr(vec![return_type.clone()], Box::new(MirType::Int)),
+            )),
+            args: vec![callback_call],
+            ty: MirType::Int,
+        };
+        let mut function_params = vec![("__env".to_string(), MirType::Ptr)];
+        function_params.extend(raw_params.clone());
+        self.functions.push(MirFunction {
+            name: adapter_name.clone(),
+            params: function_params,
+            return_type: MirType::Int,
+            body,
+            is_closure_fn: true,
+            captures: vec![("__callback".to_string(), callback_ty)],
+            has_tail_calls: false,
+        });
+        args[callback_index] = MirExpr::MakeClosure {
+            fn_name: adapter_name,
+            captures: vec![callback],
+            ty: MirType::Closure(
+                raw_params.into_iter().map(|(_, ty)| ty).collect(),
+                Box::new(MirType::Int),
+            ),
+        };
+        MirExpr::Call { func, args, ty }
+    }
+
     fn lower_expr(&mut self, expr: &Expr) -> MirExpr {
-        match expr {
+        let lowered = match expr {
             Expr::Literal(lit) => self.lower_literal(lit),
             Expr::NameRef(name_ref) => self.lower_name_ref(name_ref),
             Expr::BinaryExpr(bin) => self.lower_binary_expr(bin),
@@ -9538,7 +9639,8 @@ impl<'a> Lowerer<'a> {
             Expr::SlotPipeExpr(pipe) => self.lower_slot_pipe_expr(pipe),
             // Json object literal -- Phase 132-02 codegen
             Expr::JsonExpr(json_expr) => self.lower_json_expr(json_expr),
-        }
+        };
+        self.adapt_uniform_callback_call(lowered)
     }
 
     // ── Literal lowering ─────────────────────────────────────────────
@@ -10113,7 +10215,7 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
-                    let ty = self.resolve_range(call.syntax().text_range());
+                    let ty = self.resolve_range_closure(call.syntax().text_range());
 
                     // Route through the shared trait dispatch helper
                     let first_arg_ty = args[0].ty().clone();
@@ -10393,7 +10495,7 @@ impl<'a> Lowerer<'a> {
             .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
             .unwrap_or_default();
 
-        let mut ty = self.resolve_range(call.syntax().text_range());
+        let mut ty = self.resolve_range_closure(call.syntax().text_range());
 
         let callee = match callee {
             Some(c) => c,
@@ -10755,7 +10857,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(MirExpr::Unit);
 
         let rhs = pipe.rhs();
-        let ty = self.resolve_range(pipe.syntax().text_range());
+        let ty = self.resolve_range_closure(pipe.syntax().text_range());
 
         let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
@@ -10824,7 +10926,7 @@ impl<'a> Lowerer<'a> {
 
         let slot = pipe.slot().unwrap_or(2) as usize; // 1-indexed
         let insert_idx = slot - 1; // 0-indexed position to insert lhs
-        let ty = self.resolve_range(pipe.syntax().text_range());
+        let ty = self.resolve_range_closure(pipe.syntax().text_range());
 
         match pipe.rhs() {
             Some(Expr::CallExpr(call)) => {
@@ -11812,9 +11914,15 @@ impl<'a> Lowerer<'a> {
         if let Some(Ty::Fun(params, ret)) = &closure_ty {
             param_types = params
                 .iter()
-                .map(|p| resolve_type(p, self.registry, false))
+                .map(|p| {
+                    runtime_value_type(resolve_type(p, self.registry, matches!(p, Ty::Fun(..))))
+                })
                 .collect();
-            return_type = resolve_type(ret, self.registry, false);
+            return_type = runtime_value_type(resolve_type(
+                ret,
+                self.registry,
+                matches!(ret.as_ref(), Ty::Fun(..)),
+            ));
         } else {
             return_type = MirType::Unit;
         }
@@ -11936,9 +12044,15 @@ impl<'a> Lowerer<'a> {
             (
                 params
                     .iter()
-                    .map(|p| resolve_type(p, self.registry, false))
+                    .map(|p| {
+                        runtime_value_type(resolve_type(p, self.registry, matches!(p, Ty::Fun(..))))
+                    })
                     .collect::<Vec<_>>(),
-                resolve_type(ret, self.registry, false),
+                runtime_value_type(resolve_type(
+                    ret,
+                    self.registry,
+                    matches!(ret.as_ref(), Ty::Fun(..)),
+                )),
             )
         } else {
             (Vec::new(), MirType::Unit)

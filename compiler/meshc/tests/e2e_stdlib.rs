@@ -302,6 +302,13 @@ fn e2e_list_basic() {
     assert_eq!(output, "3\n1\n");
 }
 
+#[test]
+fn e2e_list_map_preserves_typed_callback_abi() {
+    let source = read_fixture("stdlib_list_map_struct.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "true\n");
+}
+
 // ── List Literal E2E Tests (Phase 26 Plan 02) ────────────────────────────
 
 #[test]

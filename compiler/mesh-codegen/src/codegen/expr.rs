@@ -1247,6 +1247,20 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[MirExpr],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        if let MirExpr::Var(name, _) = func {
+            if name == "__mesh_uniform_decode" {
+                let raw = self
+                    .codegen_expr(args.first().ok_or("uniform decode requires one argument")?)?
+                    .into_int_value();
+                return self.convert_from_list_element(raw, ty);
+            }
+            if name == "__mesh_uniform_encode" {
+                let value =
+                    self.codegen_expr(args.first().ok_or("uniform encode requires one argument")?)?;
+                return Ok(self.convert_to_list_element(value, args[0].ty())?.into());
+            }
+        }
+
         // Check if this is a user-defined function (declared via MirFunction).
         // User functions accept closure params as {ptr, ptr} structs directly.
         // Runtime intrinsics expect closures split into separate (fn_ptr, env_ptr) args.
@@ -2074,18 +2088,13 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Generic collections store structs and sums as boxed pointers.
                 // Recover the source-level value when get/head returns that pointer as u64.
-                if matches!(ty, MirType::Struct(_) | MirType::SumType(_)) {
+                if matches!(
+                    ty,
+                    MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _)
+                ) {
                     if let BasicValueEnum::IntValue(iv) = result {
                         if iv.get_type().get_bit_width() == 64 {
-                            let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                            let ptr_val = self
-                                .builder
-                                .build_int_to_ptr(iv, ptr_ty, "i64_to_boxed_ptr")
-                                .map_err(|e| e.to_string())?;
-                            return self
-                                .builder
-                                .build_load(self.llvm_type(ty), ptr_val, "boxed_value")
-                                .map_err(|e| e.to_string());
+                            return self.convert_from_list_element(iv, ty);
                         }
                     }
                 }
@@ -5536,18 +5545,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(cast_result.into_int_value())
             }
-            MirType::String
-            | MirType::Ptr
-            | MirType::Pid(_)
-            | MirType::Closure(_, _)
-            | MirType::FnPtr(_, _) => {
+            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) => {
                 let ptr_val = val.into_pointer_value();
                 self.builder
                     .build_ptr_to_int(ptr_val, i64_type, "ptr_to_i64")
                     .map_err(|e| e.to_string())
             }
-            MirType::Struct(_) | MirType::SumType(_) => {
-                // Struct and SumType values are inline LLVM StructValues.
+            MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _) => {
+                // Aggregate values are boxed so the uniform slot can hold a pointer.
                 // Heap-allocate them via GC so we can store a pointer in the list.
                 let struct_val = val.into_struct_value();
                 let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
@@ -5569,7 +5574,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_ptr_to_int(heap_ptr, i64_type, "struct_ptr_to_i64")
                     .map_err(|e| e.to_string())
             }
-            MirType::Int => Ok(val.into_int_value()),
+            MirType::Int | MirType::Pid(_) => Ok(val.into_int_value()),
             MirType::Unit => {
                 // Unit values are stored as 0 in lists.
                 Ok(self.context.i64_type().const_int(0, false))
@@ -5606,19 +5611,23 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(cast_result)
             }
-            MirType::String
-            | MirType::Ptr
-            | MirType::Struct(_)
-            | MirType::SumType(_)
-            | MirType::Pid(_)
-            | MirType::Closure(_, _)
-            | MirType::FnPtr(_, _) => {
+            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) => {
                 let ptr_val = self
                     .builder
                     .build_int_to_ptr(val, ptr_type, "i64_to_ptr")
                     .map_err(|e| e.to_string())?;
                 Ok(ptr_val.into())
             }
+            MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _) => {
+                let ptr_val = self
+                    .builder
+                    .build_int_to_ptr(val, ptr_type, "i64_to_boxed_ptr")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_load(self.llvm_type(target_ty), ptr_val, "boxed_value")
+                    .map_err(|e| e.to_string())
+            }
+            MirType::Pid(_) => Ok(val.into()),
             MirType::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
             _ => {
                 // Best effort: return as i64.

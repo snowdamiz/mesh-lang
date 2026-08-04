@@ -7530,6 +7530,7 @@ fn infer_expr(
             type_registry,
             trait_registry,
             fn_constraints,
+            None,
         )?,
         Expr::Block(block) => infer_block(
             ctx,
@@ -8466,6 +8467,48 @@ fn infer_http_clustered_wrapper_call(
     Ok(handler_ty)
 }
 
+/// Infer a call argument after the callee has established its expected parameter type.
+///
+/// Closures need the expected function type before their bodies are inferred so field
+/// access and other parameter-dependent expressions see the concrete parameter type.
+fn infer_call_argument(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    arg: &Expr,
+    expected_ty: Ty,
+    origin: ConstraintOrigin,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let arg_ty = match arg {
+        Expr::ClosureExpr(closure) => infer_closure(
+            ctx,
+            env,
+            closure,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+            Some(expected_ty.clone()),
+        )?,
+        _ => infer_expr(
+            ctx,
+            env,
+            arg,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?,
+    };
+
+    ctx.unify(expected_ty, arg_ty.clone(), origin)?;
+    types.insert(arg.syntax().text_range(), ctx.resolve(arg_ty.clone()));
+    Ok(arg_ty)
+}
+
 /// Infer the type of a function call expression with where-clause enforcement.
 fn infer_call(
     ctx: &mut InferCtx,
@@ -8585,45 +8628,60 @@ fn infer_call(
                         true,
                     ) {
                         Ok(callee_ty) => {
-                            // Method resolved! Build expected function type with receiver.
-                            let mut arg_types = Vec::new();
-                            // Infer the receiver type (base expression of the FieldAccess).
-                            if let Some(base) = fa.base() {
-                                let receiver_ty = infer_expr(
+                            let base = fa.base().ok_or_else(|| first_err.clone())?;
+                            let explicit_args: Vec<Expr> = call
+                                .arg_list()
+                                .map(|arg_list| arg_list.args().collect())
+                                .unwrap_or_default();
+                            let ret_var = ctx.fresh_var();
+                            let origin = ConstraintOrigin::FnArg {
+                                call_site: call.syntax().text_range(),
+                                param_idx: 0,
+                            };
+                            let param_types: Vec<Ty> =
+                                (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
+                            let expected_fn_ty =
+                                Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+
+                            // Establish the method signature first. The receiver then
+                            // specializes generic method parameters before explicit closure
+                            // arguments are inferred.
+                            ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+                            let receiver_ty = infer_expr(
+                                ctx,
+                                env,
+                                &base,
+                                types,
+                                type_registry,
+                                trait_registry,
+                                fn_constraints,
+                            )?;
+                            ctx.unify(
+                                param_types[0].clone(),
+                                receiver_ty,
+                                ConstraintOrigin::FnArg {
+                                    call_site: call.syntax().text_range(),
+                                    param_idx: 0,
+                                },
+                            )?;
+
+                            for (arg_idx, arg) in explicit_args.iter().enumerate() {
+                                let param_idx = arg_idx + 1;
+                                infer_call_argument(
                                     ctx,
                                     env,
-                                    &base,
+                                    arg,
+                                    param_types[param_idx].clone(),
+                                    ConstraintOrigin::FnArg {
+                                        call_site: call.syntax().text_range(),
+                                        param_idx,
+                                    },
                                     types,
                                     type_registry,
                                     trait_registry,
                                     fn_constraints,
                                 )?;
-                                arg_types.push(receiver_ty);
                             }
-                            // Infer explicit argument types.
-                            if let Some(arg_list) = call.arg_list() {
-                                for arg in arg_list.args() {
-                                    let arg_ty = infer_expr(
-                                        ctx,
-                                        env,
-                                        &arg,
-                                        types,
-                                        type_registry,
-                                        trait_registry,
-                                        fn_constraints,
-                                    )?;
-                                    arg_types.push(arg_ty);
-                                }
-                            }
-
-                            let ret_var = ctx.fresh_var();
-                            let expected_fn_ty = Ty::Fun(arg_types, Box::new(ret_var.clone()));
-
-                            let origin = ConstraintOrigin::FnArg {
-                                call_site: call.syntax().text_range(),
-                                param_idx: 0,
-                            };
-                            ctx.unify(callee_ty, expected_fn_ty, origin)?;
 
                             let result = ctx.resolve(ret_var);
                             types.insert(call.syntax().text_range(), result.clone());
@@ -8638,13 +8696,36 @@ fn infer_call(
         }
     }; // close else { match ... } and the let binding
 
-    let mut arg_types = Vec::new();
-    if let Some(arg_list) = call.arg_list() {
-        for arg in arg_list.args() {
-            let arg_ty = infer_expr(
+    let args: Vec<Expr> = call
+        .arg_list()
+        .map(|arg_list| arg_list.args().collect())
+        .unwrap_or_default();
+
+    let ret_var = ctx.fresh_var();
+    let origin = ConstraintOrigin::FnArg {
+        call_site: call.syntax().text_range(),
+        param_idx: 0,
+    };
+    let mut arg_types = Vec::with_capacity(args.len());
+
+    if matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_)) {
+        let param_types: Vec<Ty> = (0..args.len()).map(|_| ctx.fresh_var()).collect();
+        let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+
+        // Establish the callee's parameter types first, then constrain arguments in source
+        // order. This lets an earlier argument specialize the expected type of a later closure.
+        ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+
+        for (param_idx, arg) in args.iter().enumerate() {
+            let arg_ty = infer_call_argument(
                 ctx,
                 env,
-                &arg,
+                arg,
+                param_types[param_idx].clone(),
+                ConstraintOrigin::FnArg {
+                    call_site: call.syntax().text_range(),
+                    param_idx,
+                },
                 types,
                 type_registry,
                 trait_registry,
@@ -8652,6 +8733,22 @@ fn infer_call(
             )?;
             arg_types.push(arg_ty);
         }
+    } else {
+        // Preserve the useful non-function diagnostic by inferring the arguments before
+        // reporting that the callee cannot be called.
+        for arg in &args {
+            arg_types.push(infer_expr(
+                ctx,
+                env,
+                arg,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?);
+        }
+        let expected_fn_ty = Ty::Fun(arg_types.clone(), Box::new(ret_var.clone()));
+        ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
     }
 
     if is_http_route_registration_callee(&callee_expr) {
@@ -8659,15 +8756,6 @@ fn infer_call(
             mark_http_clustered_wrapper_consumed(ctx, &handler_arg);
         }
     }
-
-    let ret_var = ctx.fresh_var();
-    let expected_fn_ty = Ty::Fun(arg_types.clone(), Box::new(ret_var.clone()));
-
-    let origin = ConstraintOrigin::FnArg {
-        call_site: call.syntax().text_range(),
-        param_idx: 0,
-    };
-    ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
 
     // Check where-clause constraints at the call site.
     // After unification, arg_types hold the resolved concrete types for each
@@ -8827,8 +8915,8 @@ fn infer_pipe(
     match &rhs {
         Expr::CallExpr(call) => {
             // Pipe-aware call inference: `x |> f(a, b)` desugars to `f(x, a, b)`.
-            // We infer the callee and explicit args separately, then prepend lhs_ty
-            // to construct the full expected function type -- matching MIR lowering.
+            // The piped argument constrains parameter zero before explicit arguments are
+            // inferred, so later closures see types established by the lhs.
             let callee_expr = call.callee().ok_or_else(|| {
                 let err = TypeError::Mismatch {
                     expected: Ty::Never,
@@ -8857,20 +8945,54 @@ fn infer_pipe(
                 fn_constraints,
             )?;
 
-            // Infer explicit argument types from the call's arg list.
-            let mut arg_types = Vec::new();
-            if let Some(arg_list) = call.arg_list() {
-                for arg in arg_list.args() {
-                    let arg_ty = infer_expr(
+            let args: Vec<Expr> = call
+                .arg_list()
+                .map(|arg_list| arg_list.args().collect())
+                .unwrap_or_default();
+
+            let origin = ConstraintOrigin::FnArg {
+                call_site: call.syntax().text_range(),
+                param_idx: 0,
+            };
+            let mut arg_types = Vec::with_capacity(args.len());
+            let callee_is_callable =
+                matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_));
+
+            if callee_is_callable {
+                let param_types: Vec<Ty> = (0..=args.len()).map(|_| ctx.fresh_var()).collect();
+                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+                ctx.unify(callee_ty.clone(), expected_fn_ty, origin.clone())?;
+                ctx.unify(lhs_ty.clone(), param_types[0].clone(), origin.clone())?;
+
+                for (arg_idx, arg) in args.iter().enumerate() {
+                    let param_idx = arg_idx + 1;
+                    let arg_ty = infer_call_argument(
                         ctx,
                         env,
-                        &arg,
+                        arg,
+                        param_types[param_idx].clone(),
+                        ConstraintOrigin::FnArg {
+                            call_site: call.syntax().text_range(),
+                            param_idx,
+                        },
                         types,
                         type_registry,
                         trait_registry,
                         fn_constraints,
                     )?;
                     arg_types.push(arg_ty);
+                }
+            } else {
+                for arg in &args {
+                    arg_types.push(infer_expr(
+                        ctx,
+                        env,
+                        arg,
+                        types,
+                        type_registry,
+                        trait_registry,
+                        fn_constraints,
+                    )?);
                 }
             }
 
@@ -8881,16 +9003,13 @@ fn infer_pipe(
             }
 
             // Build full arg list: [lhs_ty, ...explicit_arg_types]
-            let mut full_args = vec![lhs_ty];
+            let mut full_args = vec![lhs_ty.clone()];
             full_args.extend(arg_types.clone());
 
-            let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
-
-            let origin = ConstraintOrigin::FnArg {
-                call_site: call.syntax().text_range(),
-                param_idx: 0,
-            };
-            ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+            if !callee_is_callable {
+                let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
+                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+            }
 
             // Record type for the CallExpr node so MIR lowering can resolve it.
             let resolved_call = ctx.resolve(ret_var.clone());
@@ -9103,30 +9222,14 @@ fn infer_slot_pipe(
                 fn_constraints,
             )?;
 
-            // Infer explicit argument types
-            let mut explicit_arg_types: Vec<Ty> = Vec::new();
-            if let Some(arg_list) = call.arg_list() {
-                for arg in arg_list.args() {
-                    let arg_ty = infer_expr(
-                        ctx,
-                        env,
-                        &arg,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    )?;
-                    explicit_arg_types.push(arg_ty);
-                }
-            }
-
-            // Build the full arg type list by inserting lhs_ty at insert_idx (0-indexed).
+            let explicit_args: Vec<Expr> = call
+                .arg_list()
+                .map(|arg_list| arg_list.args().collect())
+                .unwrap_or_default();
             // `x |2> f(a, b, c)` means f(a, x, b, c): insert at index 1 (slot-1).
-            // The explicit args shift: args before insert_idx come first, then lhs, then rest.
-            // If insert_idx > explicit_arg_types.len(), clamp to end (lhs appended at the end).
-            let actual_idx = insert_idx.min(explicit_arg_types.len());
-            let mut full_args: Vec<Ty> = explicit_arg_types.clone();
-            full_args.insert(actual_idx, lhs_ty.clone());
+            // If the requested position exceeds the explicit argument list, MIR lowering
+            // clamps it to the end, so inference must do the same.
+            let actual_idx = insert_idx.min(explicit_args.len());
 
             // Arity-range check: if callee has a known Fun type, validate slot <= arity
             let resolved_callee = ctx.resolve(callee_ty.clone());
@@ -9148,12 +9251,68 @@ fn infer_slot_pipe(
                 }
             }
 
-            let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
             let origin = ConstraintOrigin::FnArg {
                 call_site: call.syntax().text_range(),
-                param_idx: insert_idx,
+                param_idx: actual_idx,
             };
-            ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+            let callee_is_callable = matches!(resolved_callee, Ty::Fun(_, _) | Ty::Var(_));
+            let mut explicit_arg_types = Vec::with_capacity(explicit_args.len());
+
+            if callee_is_callable {
+                let param_types: Vec<Ty> =
+                    (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
+                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+
+                // The piped value is already known, so let it specialize the callee before
+                // any explicit closure argument is inferred, regardless of its slot.
+                ctx.unify(
+                    lhs_ty.clone(),
+                    param_types[actual_idx].clone(),
+                    origin.clone(),
+                )?;
+
+                for (arg_idx, arg) in explicit_args.iter().enumerate() {
+                    let param_idx = if arg_idx < actual_idx {
+                        arg_idx
+                    } else {
+                        arg_idx + 1
+                    };
+                    explicit_arg_types.push(infer_call_argument(
+                        ctx,
+                        env,
+                        arg,
+                        param_types[param_idx].clone(),
+                        ConstraintOrigin::FnArg {
+                            call_site: call.syntax().text_range(),
+                            param_idx,
+                        },
+                        types,
+                        type_registry,
+                        trait_registry,
+                        fn_constraints,
+                    )?);
+                }
+            } else {
+                for arg in &explicit_args {
+                    explicit_arg_types.push(infer_expr(
+                        ctx,
+                        env,
+                        arg,
+                        types,
+                        type_registry,
+                        trait_registry,
+                        fn_constraints,
+                    )?);
+                }
+                let mut full_args = explicit_arg_types.clone();
+                full_args.insert(actual_idx, lhs_ty.clone());
+                let expected_fn_ty = Ty::Fun(full_args, Box::new(ret_var.clone()));
+                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+            }
+
+            let mut full_args = explicit_arg_types.clone();
+            full_args.insert(actual_idx, lhs_ty.clone());
 
             // Record type for the CallExpr node (mirrors infer_pipe)
             let resolved_call = ctx.resolve(ret_var.clone());
@@ -9607,6 +9766,7 @@ fn infer_closure(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    expected_ty: Option<Ty>,
 ) -> Result<Ty, TypeError> {
     // Check if this is a multi-clause closure.
     if closure.is_multi_clause() {
@@ -9618,8 +9778,14 @@ fn infer_closure(
             type_registry,
             trait_registry,
             fn_constraints,
+            expected_ty,
         );
     }
+
+    let (expected_param_types, expected_return_ty) = match expected_ty.map(|ty| ctx.resolve(ty)) {
+        Some(Ty::Fun(param_types, return_ty)) => (Some(param_types), Some(*return_ty)),
+        _ => (None, None),
+    };
 
     // Single-clause closure: existing path.
     env.push_scope();
@@ -9627,15 +9793,27 @@ fn infer_closure(
     let mut param_types = Vec::new();
 
     if let Some(param_list) = closure.param_list() {
-        for param in param_list.params() {
+        for (param_idx, param) in param_list.params().enumerate() {
+            let expected_param_ty = expected_param_types
+                .as_ref()
+                .and_then(|types| types.get(param_idx))
+                .cloned();
             let param_ty = if let Some(ann) = param.type_annotation() {
-                if let Some(type_name) = resolve_type_name_str(&ann) {
+                let annotated_ty = if let Some(type_name) = resolve_type_name_str(&ann) {
                     name_to_type(&type_name)
                 } else {
                     ctx.fresh_var()
+                };
+                if let Some(expected_param_ty) = expected_param_ty {
+                    ctx.unify(
+                        annotated_ty.clone(),
+                        expected_param_ty,
+                        ConstraintOrigin::Builtin,
+                    )?;
                 }
+                annotated_ty
             } else {
-                ctx.fresh_var()
+                expected_param_ty.unwrap_or_else(|| ctx.fresh_var())
             };
             if let Some(name_tok) = param.name() {
                 let name_text = name_tok.text().to_string();
@@ -9647,7 +9825,7 @@ fn infer_closure(
 
     // Reset loop_depth inside closure body (BRKC-05: break/continue cannot cross closure boundary).
     let saved_loop_depth = ctx.enter_closure();
-    ctx.push_fn_return_type(None); // Closure return type is inferred
+    ctx.push_fn_return_type(expected_return_ty.clone());
     let body_ty = if let Some(body) = closure.body() {
         infer_block(
             ctx,
@@ -9663,6 +9841,14 @@ fn infer_closure(
     };
     ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
+
+    if let Some(expected_return_ty) = expected_return_ty {
+        ctx.unify(
+            body_ty.clone(),
+            expected_return_ty,
+            ConstraintOrigin::Builtin,
+        )?;
+    }
 
     env.pop_scope();
 
@@ -9683,6 +9869,7 @@ fn infer_multi_clause_closure(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    expected_ty: Option<Ty>,
 ) -> Result<Ty, TypeError> {
     // Get arity from the first clause's param list.
     let arity = closure
@@ -9690,8 +9877,21 @@ fn infer_multi_clause_closure(
         .map(|pl| pl.params().count())
         .unwrap_or(0);
 
-    // Create fresh type variables for each parameter position.
-    let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
+    let (expected_param_types, expected_return_ty) = match expected_ty.map(|ty| ctx.resolve(ty)) {
+        Some(Ty::Fun(param_types, return_ty)) => (Some(param_types), Some(*return_ty)),
+        _ => (None, None),
+    };
+
+    // Use expected parameter types when available so clause bodies see concrete bindings.
+    let param_types: Vec<Ty> = (0..arity)
+        .map(|param_idx| {
+            expected_param_types
+                .as_ref()
+                .and_then(|types| types.get(param_idx))
+                .cloned()
+                .unwrap_or_else(|| ctx.fresh_var())
+        })
+        .collect();
 
     // ── Process the first clause (inline in CLOSURE_EXPR) ───────────────
 
@@ -9736,7 +9936,7 @@ fn infer_multi_clause_closure(
 
     // Infer the body (reset loop_depth inside closure -- BRKC-05).
     let saved_loop_depth = ctx.enter_closure();
-    ctx.push_fn_return_type(None); // Multi-clause closure return type is inferred
+    ctx.push_fn_return_type(expected_return_ty.clone());
     let first_body_ty = if let Some(body) = closure.body() {
         infer_block(
             ctx,
@@ -9752,6 +9952,13 @@ fn infer_multi_clause_closure(
     };
     ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
+    if let Some(ref expected_return_ty) = expected_return_ty {
+        ctx.unify(
+            first_body_ty.clone(),
+            expected_return_ty.clone(),
+            ConstraintOrigin::Builtin,
+        )?;
+    }
     let mut result_ty: Option<Ty> = Some(first_body_ty);
 
     env.pop_scope();
@@ -9798,7 +10005,7 @@ fn infer_multi_clause_closure(
 
         // Infer body (reset loop_depth inside closure -- BRKC-05).
         let saved_loop_depth = ctx.enter_closure();
-        ctx.push_fn_return_type(None); // Multi-clause closure return type is inferred
+        ctx.push_fn_return_type(expected_return_ty.clone());
         let body_ty = if let Some(body) = clause.body() {
             infer_block(
                 ctx,
@@ -9814,6 +10021,14 @@ fn infer_multi_clause_closure(
         };
         ctx.pop_fn_return_type();
         ctx.exit_closure(saved_loop_depth);
+
+        if let Some(ref expected_return_ty) = expected_return_ty {
+            ctx.unify(
+                body_ty.clone(),
+                expected_return_ty.clone(),
+                ConstraintOrigin::Builtin,
+            )?;
+        }
 
         // Unify body type with previous clauses.
         if let Some(ref prev_ty) = result_ty {
