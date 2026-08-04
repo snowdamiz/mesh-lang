@@ -335,6 +335,82 @@ end
 }
 
 #[test]
+fn secret_hex_environment_values_feed_private_key_constructors_without_mesh_values() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "crypto-secret-env",
+        r#"
+fn proof() -> Bool ! CryptoError do
+  let signer = Crypto.signing_from_secret(Env.get_secret_hex("MESH_TEST_SIGNING_SEED_HEX") ?) ?
+  let message = Bytes.from_utf8("secret environment boundary")
+  let signature = Crypto.sign(signer.private_key, message) ?
+  let signature_valid = Crypto.verify(signer.public_key, message, signature) ?
+
+  let first_mlkem = Crypto.mlkem_from_secret(Env.get_secret_hex("MESH_TEST_MLKEM_SEED_HEX") ?) ?
+  let second_mlkem = Crypto.mlkem_from_secret(Env.get_secret_hex("MESH_TEST_MLKEM_SEED_HEX") ?) ?
+  let malformed_rejected = case Env.get_secret_hex("MESH_TEST_INVALID_SEED_HEX") do
+    Err(InvalidKey) -> true
+    Ok(secret) -> do
+      Secret.destroy(secret)
+      false
+    end
+    Err(_) -> false
+  end
+  let missing_rejected = case Env.get_secret_hex("MESH_TEST_MISSING_SEED_HEX") do
+    Err(InvalidKey) -> true
+    Ok(secret) -> do
+      Secret.destroy(secret)
+      false
+    end
+    Err(_) -> false
+  end
+
+  Ok(
+    signature_valid and
+      Bytes.to_hex(signer.public_key.bytes) == "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a" and
+      Bytes.secure_equals(first_mlkem.public_key.bytes, second_mlkem.public_key.bytes) and
+      malformed_rejected and
+      missing_rejected
+  )
+end
+
+fn main() do
+  case proof() do
+    Ok(true) -> println("secret-env-ok")
+    _ -> println("secret-env-error")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("crypto-secret-env"))
+        .env(
+            "MESH_TEST_SIGNING_SEED_HEX",
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+        )
+        .env(
+            "MESH_TEST_MLKEM_SEED_HEX",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+        )
+        .env("MESH_TEST_INVALID_SEED_HEX", "not-hex")
+        .env_remove("MESH_TEST_MISSING_SEED_HEX")
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "secret environment proof failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "secret-env-ok\n");
+}
+
+#[test]
 fn x25519_seed_constructor_matches_rfc7748() {
     let temp = tempfile::tempdir().unwrap();
     let project = write_project(

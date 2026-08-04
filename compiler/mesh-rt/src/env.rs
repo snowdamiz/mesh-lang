@@ -1,10 +1,48 @@
 //! Environment variable and CLI argument access for the Mesh standard library.
 //!
-//! Provides `Env.get(key)` and `Env.args()` for Mesh programs.
+//! Provides public environment access, including direct secret-hex ingestion.
+
+use zeroize::Zeroizing;
 
 use crate::collections::list::mesh_list_from_array;
+use crate::io::{alloc_result, MeshResult};
 use crate::option::{alloc_option, MeshOption};
+use crate::secret::{
+    crypto_error, insert_owned_resource, CryptoErrorTag, ResourceError, ResourceKind,
+    MAX_SECRET_BYTES,
+};
 use crate::string::{mesh_string_new, MeshString};
+
+enum SecretHexError {
+    Invalid,
+    TooLong(usize),
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn decode_secret_hex(encoded: &str) -> Result<Zeroizing<Box<[u8]>>, SecretHexError> {
+    let decoded_length = encoded.len().saturating_add(1) / 2;
+    if decoded_length > MAX_SECRET_BYTES {
+        return Err(SecretHexError::TooLong(decoded_length));
+    }
+    if encoded.is_empty() || encoded.len() % 2 != 0 {
+        return Err(SecretHexError::Invalid);
+    }
+    let mut decoded = Zeroizing::new(vec![0; decoded_length].into_boxed_slice());
+    for (index, pair) in encoded.as_bytes().chunks_exact(2).enumerate() {
+        let high = hex_nibble(pair[0]).ok_or(SecretHexError::Invalid)?;
+        let low = hex_nibble(pair[1]).ok_or(SecretHexError::Invalid)?;
+        decoded[index] = (high << 4) | low;
+    }
+    Ok(decoded)
+}
 
 /// Get an environment variable by key. Returns MeshOption:
 /// - tag 0, value = MeshString if the variable exists (Some)
@@ -54,6 +92,53 @@ pub extern "C" fn mesh_env_get_int(key: *const MeshString, default: i64) -> i64 
     }
 }
 
+/// Read a required hexadecimal environment value directly into actor-owned secret storage.
+#[no_mangle]
+pub extern "C" fn mesh_env_get_secret_hex(key: *const MeshString) -> *mut MeshResult {
+    if key.is_null() {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let key = unsafe { (*key).as_str() };
+    if key.is_empty() || key.as_bytes().iter().any(|byte| matches!(byte, 0 | b'=')) {
+        return crypto_error(CryptoErrorTag::InvalidKey, 0, 0);
+    }
+    let encoded = match std::env::var(key) {
+        Ok(value) => Zeroizing::new(value),
+        Err(_) => return crypto_error(CryptoErrorTag::InvalidKey, 0, 0),
+    };
+    let secret = match decode_secret_hex(&encoded) {
+        Ok(secret) => secret,
+        Err(SecretHexError::Invalid) => {
+            return crypto_error(CryptoErrorTag::InvalidKey, 0, 0);
+        }
+        Err(SecretHexError::TooLong(actual)) => {
+            return crypto_error(
+                CryptoErrorTag::InvalidLength,
+                MAX_SECRET_BYTES as i64,
+                i64::try_from(actual).unwrap_or(i64::MAX),
+            );
+        }
+    };
+    let Some(pid) = crate::actor::stack::get_current_pid() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let Some(process) = scheduler.get_process(pid) else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let result = insert_owned_resource(&mut process.lock(), ResourceKind::SecretBytes, secret);
+    match result {
+        Ok(secret) => alloc_result(0, secret.cast()),
+        Err(ResourceError::ResourceLimitExceeded) => {
+            crypto_error(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
+        Err(ResourceError::OwnerExited) => crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0),
+        Err(_) => crypto_error(CryptoErrorTag::InternalFailure, 0, 0),
+    }
+}
+
 /// Return CLI arguments as a `List<String>`.
 #[no_mangle]
 pub extern "C" fn mesh_env_args() -> *mut u8 {
@@ -68,6 +153,14 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use crate::string::MeshString;
+
+    #[repr(C)]
+    struct CryptoErrorLayout {
+        tag: u8,
+        _padding: [u8; 7],
+        expected: i64,
+        actual: i64,
+    }
 
     #[test]
     fn test_env_get_existing() {
@@ -120,6 +213,33 @@ mod tests {
         let result = mesh_env_get_int(key, 42);
         assert_eq!(result, 42);
         std::env::remove_var("MESH_INT_NONNUMERIC_TEST");
+    }
+
+    #[test]
+    fn secret_hex_rejects_oversized_values_with_a_typed_length_error() {
+        mesh_rt_init();
+        let name = "MESH_SECRET_HEX_OVERSIZED_TEST";
+        std::env::set_var(name, "00".repeat(MAX_SECRET_BYTES + 1));
+        let key = mesh_string_new(name.as_ptr(), name.len() as u64);
+
+        let result = mesh_env_get_secret_hex(key);
+
+        std::env::remove_var(name);
+        let (result_tag, error) = unsafe {
+            (
+                (*result).tag,
+                &*((*result).value as *const CryptoErrorLayout),
+            )
+        };
+        assert_eq!(
+            (result_tag, error.tag, error.expected, error.actual),
+            (
+                1,
+                CryptoErrorTag::InvalidLength as u8,
+                MAX_SECRET_BYTES as i64,
+                MAX_SECRET_BYTES as i64 + 1,
+            )
+        );
     }
 
     #[test]

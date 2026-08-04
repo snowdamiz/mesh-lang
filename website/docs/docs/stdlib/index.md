@@ -39,6 +39,7 @@ The `<>` operator concatenates two strings. `println(value)` writes to standard 
 | `IO.eprintln(text)` | `Unit` | Write a line to standard error |
 | `Env.get(name, default)` | `String` | Read an environment variable or use a default |
 | `Env.get_int(name, default)` | `Int` | Read a decimal environment variable or use a default |
+| `Env.get_secret_hex(name)` | `Result<SecretBytes, CryptoError>` | Decode a required hex value directly into actor-owned secret storage |
 | `Env.args()` | `List<String>` | Return native command-line arguments |
 | `File.read(path)` | `Result<String, String>` | Read a UTF-8 text file |
 | `File.write(path, text)` | `Result<Unit, String>` | Create or replace a text file |
@@ -307,15 +308,20 @@ end
 | `Crypto.x25519_public(key)` | `Result<X25519PublicKey, CryptoError>` | Derive the public key again |
 | `Crypto.x25519_shared(key, peer)` | `Result<SecretBytes, CryptoError>` | Derive a shared secret |
 | `Crypto.signing_generate()` | `Result<SigningKeyPair, CryptoError>` | Generate an Ed25519 key pair |
+| `Crypto.signing_from_seed(seed)` | `Result<SigningKeyPair, CryptoError>` | Legacy 32-byte `Bytes` seed constructor |
+| `Crypto.signing_from_secret(material)` | `Result<SigningKeyPair, CryptoError>` | Consume 32 secret bytes as an Ed25519 private key |
+| `Crypto.mlkem_from_seed(seed)` | `Result<MlKemKeyPair, CryptoError>` | Legacy 64-byte `Bytes` seed constructor |
+| `Crypto.mlkem_from_secret(material)` | `Result<MlKemKeyPair, CryptoError>` | Consume 64 secret bytes as an ML-KEM-768 private key |
 | `Crypto.sign(key, message)` | `Result<Signature, CryptoError>` | Sign with a borrowed private key |
 | `Crypto.verify(key, message, signature)` | `Result<Bool, CryptoError>` | Strict signature verification |
 | `Crypto.aead_key(material)` | `Result<AeadKey, CryptoError>` | Consume 32 secret bytes as an AEAD key |
 | `Crypto.aead_seal(key, nonce, aad, plaintext)` | `Result<Bytes, CryptoError>` | ChaCha20-Poly1305 encryption |
 | `Crypto.aead_open(key, nonce, aad, ciphertext)` | `Result<Bytes, CryptoError>` | Authenticate before returning plaintext |
 
-Borrowed keys remain owned by the caller. `Crypto.aead_key` consumes its input,
-including on error. Use `Secret.destroy` for early destruction; otherwise the
-compiler inserts destruction on every scope exit.
+Borrowed keys remain owned by the caller. `Crypto.aead_key` and the
+`*_from_secret` constructors consume their input, including on error. Use
+`Secret.destroy` for early destruction; otherwise the compiler inserts
+destruction on every scope exit.
 
 `Crypto.argon2id` accepts salts from 8 through 64 bytes, memory from
 `8 * parallelism` through 65,536 KiB, 1 through 10 iterations, 1 through 8

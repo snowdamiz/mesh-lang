@@ -187,6 +187,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "mlkem_from_secret",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
+                crypto_result(Ty::mlkem_key_pair()),
+            )),
+        ),
+        (
             "mlkem_encapsulate",
             Scheme::mono(Ty::fun(
                 vec![Ty::mlkem_public_key()],
@@ -208,6 +215,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             "signing_from_seed",
             Scheme::mono(Ty::fun(
                 vec![Ty::bytes()],
+                crypto_result(Ty::signing_key_pair()),
+            )),
+        ),
+        (
+            "signing_from_secret",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
                 crypto_result(Ty::signing_key_pair()),
             )),
         ),
@@ -545,6 +559,13 @@ pub fn register_builtins(
     env.insert(
         "env_get_int".into(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], Ty::int())),
+    );
+    env.insert(
+        "env_get_secret_hex".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
     );
     // Env.args() -> List<String>  (bare env_args still resolves via map_builtin_name)
     env.insert(

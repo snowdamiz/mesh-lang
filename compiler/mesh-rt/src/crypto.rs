@@ -1304,6 +1304,73 @@ pub extern "C" fn mesh_crypto_mlkem_from_seed(seed: *const MeshBytes) -> *mut Me
     }
 }
 
+fn mlkem_from_secret_for_process(
+    process: &mut Process,
+    material: *const MeshSecretHandle,
+) -> Result<(*mut MeshSecretHandle, Vec<u8>), CryptoFailure> {
+    let mut public_key = Vec::new();
+    let private_key = consume_and_retype_owned_resource(
+        process,
+        material,
+        ResourceKind::SecretBytes,
+        ResourceKind::MlKemPrivateKey,
+        |bytes| {
+            let seed = Seed::try_from(bytes).map_err(|_| {
+                failure(
+                    CryptoErrorTag::InvalidKey,
+                    MLKEM_PRIVATE_SEED_BYTES as i64,
+                    bytes.len() as i64,
+                )
+            })?;
+            public_key = DecapsulationKey768::from_seed(seed)
+                .encapsulation_key()
+                .to_bytes()
+                .to_vec();
+            Ok(())
+        },
+    )
+    .map_err(|error| match error {
+        RetypeError::Resource(error) => resource_failure(error),
+        RetypeError::Rejected { error, removed } => {
+            drop(removed);
+            error
+        }
+        RetypeError::GenerationExhausted { removed } => {
+            drop(removed);
+            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
+    })?;
+    Ok((private_key, public_key))
+}
+
+/// Consume exactly 64 secret bytes and retype them as an ML-KEM-768 private key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_mlkem_from_secret(
+    material: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    let (private_key, public_key) =
+        match with_current_process(|process| mlkem_from_secret_for_process(process, material)) {
+            Ok(value) => value,
+            Err(error) => return error_result(error),
+        };
+    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
+    if public_bytes.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let key_pair = allocate_value(MeshMlKemKeyPair {
+        private_key,
+        public_key: MeshMlKemPublicKey {
+            bytes: public_bytes,
+        },
+    });
+    if key_pair.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    ok_result(key_pair)
+}
+
 unsafe fn mlkem_public_key_bytes<'a>(
     public_key: *const MeshMlKemPublicKey,
 ) -> Result<&'a [u8], CryptoFailure> {
@@ -1494,6 +1561,67 @@ pub extern "C" fn mesh_crypto_signing_from_seed(seed: *const MeshBytes) -> *mut 
     let private_array = <&[u8; 32]>::try_from(&private_material[..]).expect("length checked above");
     let public_key = SystemProvider.ed25519_public(private_array);
     allocate_signing_key_pair(private_material, public_key)
+}
+
+fn signing_from_secret_for_process(
+    process: &mut Process,
+    provider: &impl CryptoProvider,
+    material: *const MeshSecretHandle,
+) -> Result<(*mut MeshSecretHandle, [u8; 32]), CryptoFailure> {
+    let mut public_key = [0; 32];
+    let private_key = consume_and_retype_owned_resource(
+        process,
+        material,
+        ResourceKind::SecretBytes,
+        ResourceKind::SigningPrivateKey,
+        |bytes| {
+            let private_key = <&[u8; 32]>::try_from(bytes)
+                .map_err(|_| failure(CryptoErrorTag::InvalidKey, 32, bytes.len() as i64))?;
+            public_key = provider.ed25519_public(private_key);
+            Ok(())
+        },
+    )
+    .map_err(|error| match error {
+        RetypeError::Resource(error) => resource_failure(error),
+        RetypeError::Rejected { error, removed } => {
+            drop(removed);
+            error
+        }
+        RetypeError::GenerationExhausted { removed } => {
+            drop(removed);
+            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
+        }
+    })?;
+    Ok((private_key, public_key))
+}
+
+/// Consume exactly 32 secret bytes and retype them as an Ed25519 signing private key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_signing_from_secret(
+    material: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    let (private_key, public_key) = match with_current_process(|process| {
+        signing_from_secret_for_process(process, &SystemProvider, material)
+    }) {
+        Ok(value) => value,
+        Err(error) => return error_result(error),
+    };
+    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
+    if public_bytes.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    let key_pair = allocate_value(MeshSigningKeyPair {
+        private_key,
+        public_key: MeshSigningPublicKey {
+            bytes: public_bytes,
+        },
+    });
+    if key_pair.is_null() {
+        mesh_resource_destroy(private_key);
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    }
+    ok_result(key_pair)
 }
 
 fn sign_for_process(
@@ -2128,6 +2256,8 @@ mod tests {
         ) -> *mut MeshResult = mesh_crypto_hpke_open_secret;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_mlkem_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_mlkem_from_seed;
+        let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
+            mesh_crypto_mlkem_from_secret;
         let _: extern "C" fn(*const MeshMlKemPublicKey) -> *mut MeshResult =
             mesh_crypto_mlkem_encapsulate;
         let _: extern "C" fn(
@@ -2136,6 +2266,8 @@ mod tests {
         ) -> *mut MeshResult = mesh_crypto_mlkem_decapsulate;
         let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_signing_generate;
         let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult = mesh_crypto_signing_from_seed;
+        let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
+            mesh_crypto_signing_from_secret;
         let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
             mesh_crypto_sign;
         let _: extern "C" fn(
@@ -2725,6 +2857,60 @@ mod tests {
             |_| ()
         )
         .is_ok());
+        destroy_owned(owner);
+    }
+
+    #[test]
+    fn secret_key_constructors_consume_sources_rejected_for_invalid_length() {
+        mesh_rt_init();
+        let owner = ProcessId(70_020);
+        let mut process = Process::new(owner, Priority::Normal);
+        let signing_source = insert_owned_resource(
+            &mut process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(vec![0x51; 31].into_boxed_slice()),
+        )
+        .expect("insert invalid signing material");
+        let signing_error =
+            signing_from_secret_for_process(&mut process, &SystemProvider, signing_source)
+                .expect_err("invalid signing material was accepted");
+        assert_eq!(
+            (
+                signing_error.tag as u8,
+                signing_error.expected,
+                signing_error.actual,
+                with_owned_resource(&process, signing_source, ResourceKind::SecretBytes, |_| (),),
+            ),
+            (
+                CryptoErrorTag::InvalidKey as u8,
+                32,
+                31,
+                Err(ResourceError::StaleHandle),
+            )
+        );
+
+        let mlkem_source = insert_owned_resource(
+            &mut process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(vec![0x52; MLKEM_PRIVATE_SEED_BYTES - 1].into_boxed_slice()),
+        )
+        .expect("insert invalid ML-KEM material");
+        let mlkem_error = mlkem_from_secret_for_process(&mut process, mlkem_source)
+            .expect_err("invalid ML-KEM material was accepted");
+        assert_eq!(
+            (
+                mlkem_error.tag as u8,
+                mlkem_error.expected,
+                mlkem_error.actual,
+                with_owned_resource(&process, mlkem_source, ResourceKind::SecretBytes, |_| (),),
+            ),
+            (
+                CryptoErrorTag::InvalidKey as u8,
+                MLKEM_PRIVATE_SEED_BYTES as i64,
+                MLKEM_PRIVATE_SEED_BYTES as i64 - 1,
+                Err(ResourceError::StaleHandle),
+            )
+        );
         destroy_owned(owner);
     }
 

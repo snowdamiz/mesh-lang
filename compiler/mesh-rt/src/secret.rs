@@ -14,7 +14,7 @@ use std::mem;
 use std::sync::OnceLock;
 use zeroize::{Zeroize, Zeroizing};
 
-const MAX_SECRET_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_SECRET_BYTES: usize = 64 * 1024;
 const MAX_SECRET_SLOTS: usize = 65_536;
 const MAX_SECRETS_PER_ACTOR: usize = 4_096;
 const MAX_SECRET_BYTES_PER_ACTOR: usize = 4 * 1024 * 1024;

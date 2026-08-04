@@ -511,6 +511,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_env_get_secret_hex",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Standard library: Regex functions (Phase 119) ──────────────────
 
     // mesh_regex_from_literal(pattern: ptr, flags_bits: i64) -> ptr
@@ -651,6 +657,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     );
 
     module.add_function(
+        "mesh_crypto_signing_from_secret",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
         "mesh_crypto_x25519_from_seed",
         ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
@@ -664,6 +676,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     module.add_function(
         "mesh_crypto_mlkem_from_seed",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_crypto_mlkem_from_secret",
         ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
@@ -4426,6 +4444,7 @@ mod tests {
         assert!(module.get_function("mesh_env_args").is_some());
         assert!(module.get_function("mesh_env_get_with_default").is_some());
         assert!(module.get_function("mesh_env_get_int").is_some());
+        assert!(module.get_function("mesh_env_get_secret_hex").is_some());
 
         // Collection functions (Phase 8 Plan 02)
         assert!(module.get_function("mesh_list_new").is_some());
@@ -4873,10 +4892,12 @@ mod tests {
             ("mesh_crypto_x25519_shared", 2),
             ("mesh_crypto_mlkem_generate", 0),
             ("mesh_crypto_mlkem_from_seed", 1),
+            ("mesh_crypto_mlkem_from_secret", 1),
             ("mesh_crypto_mlkem_encapsulate", 1),
             ("mesh_crypto_mlkem_decapsulate", 2),
             ("mesh_crypto_signing_generate", 0),
             ("mesh_crypto_signing_from_seed", 1),
+            ("mesh_crypto_signing_from_secret", 1),
             ("mesh_crypto_sign", 2),
             ("mesh_crypto_verify", 3),
             ("mesh_crypto_aead_key", 1),

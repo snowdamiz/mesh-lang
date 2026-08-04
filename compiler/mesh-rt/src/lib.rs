@@ -236,7 +236,10 @@ pub use dist::telemetry::{
     AdmissionPermit, AdmissionRejection, LocalTelemetrySnapshot, NodeLifecycleState, NodeRoles,
     PressureSnapshot, QueuePermit, RuntimeTelemetry,
 };
-pub use env::{mesh_env_args, mesh_env_get, mesh_env_get_int, mesh_env_get_with_default};
+pub use env::{
+    mesh_env_args, mesh_env_get, mesh_env_get_int, mesh_env_get_secret_hex,
+    mesh_env_get_with_default,
+};
 pub use file::{
     mesh_file_append, mesh_file_delete, mesh_file_exists, mesh_file_read, mesh_file_read_bytes,
     mesh_file_size, mesh_file_write, mesh_file_write_bytes,

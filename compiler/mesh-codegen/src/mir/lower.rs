@@ -1967,6 +1967,10 @@ impl<'a> Lowerer<'a> {
             "mesh_env_get_int".to_string(),
             MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Int)),
         );
+        self.known_functions.insert(
+            "mesh_env_get_secret_hex".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
         // Regex runtime functions (Phase 119)
         self.known_functions.insert(
             "mesh_regex_from_literal".to_string(),
@@ -2056,6 +2060,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_crypto_signing_from_secret".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_crypto_x25519_from_seed".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
@@ -2065,6 +2073,10 @@ impl<'a> Lowerer<'a> {
         );
         self.known_functions.insert(
             "mesh_crypto_mlkem_from_seed".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_mlkem_from_secret".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
@@ -15421,6 +15433,7 @@ fn map_builtin_name(name: &str) -> String {
         "env_get" => "mesh_env_get_with_default".to_string(),
         "env_get_with_default" => "mesh_env_get_with_default".to_string(),
         "env_get_int" => "mesh_env_get_int".to_string(),
+        "env_get_secret_hex" => "mesh_env_get_secret_hex".to_string(),
         "env_args" => "mesh_env_args".to_string(),
         // Regex functions (Phase 119)
         "regex_from_literal" => "mesh_regex_from_literal".to_string(),
@@ -15450,10 +15463,12 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_hpke_open_secret" => "mesh_crypto_hpke_open_secret".to_string(),
         "crypto_mlkem_generate" => "mesh_crypto_mlkem_generate".to_string(),
         "crypto_mlkem_from_seed" => "mesh_crypto_mlkem_from_seed".to_string(),
+        "crypto_mlkem_from_secret" => "mesh_crypto_mlkem_from_secret".to_string(),
         "crypto_mlkem_encapsulate" => "mesh_crypto_mlkem_encapsulate".to_string(),
         "crypto_mlkem_decapsulate" => "mesh_crypto_mlkem_decapsulate".to_string(),
         "crypto_signing_generate" => "mesh_crypto_signing_generate".to_string(),
         "crypto_signing_from_seed" => "mesh_crypto_signing_from_seed".to_string(),
+        "crypto_signing_from_secret" => "mesh_crypto_signing_from_secret".to_string(),
         "crypto_sign" => "mesh_crypto_sign".to_string(),
         "crypto_verify" => "mesh_crypto_verify".to_string(),
         "crypto_aead_key" => "mesh_crypto_aead_key".to_string(),

@@ -26,6 +26,12 @@ metadata. Until the remaining release evidence exists:
 - Features that require retained secret state must not claim compliance with
   the secure-memory model.
 
+Server processes ingest hexadecimal private material with
+`Env.get_secret_hex(name)`, which returns actor-owned `SecretBytes` without
+creating a Mesh `String` or `Bytes` for the value. `Crypto.x25519_from_secret`,
+`Crypto.signing_from_secret`, and `Crypto.mlkem_from_secret` consume that
+resource directly into the corresponding private-key resource.
+
 ## Language contract
 
 `SecretBytes` is the initial compiler-known secret type. It must be:

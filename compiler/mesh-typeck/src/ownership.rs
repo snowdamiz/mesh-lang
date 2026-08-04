@@ -349,6 +349,14 @@ pub(crate) fn check(
         vec![ParamOwnership::Consume],
         vec![Ty::secret_bytes()],
     );
+    for operation in ["mlkem_from_secret", "signing_from_secret"] {
+        register_crypto_signature(
+            &mut signatures,
+            operation,
+            vec![ParamOwnership::Consume],
+            vec![Ty::secret_bytes()],
+        );
+    }
     register_crypto_signature(
         &mut signatures,
         "x25519_public",

@@ -417,6 +417,13 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "get_int".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], Ty::int())),
     );
+    env_mod.insert(
+        "get_secret_hex".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
     // Env.args() -> List<String>
     env_mod.insert(
         "args".to_string(),

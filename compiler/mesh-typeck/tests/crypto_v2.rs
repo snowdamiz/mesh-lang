@@ -59,7 +59,7 @@ end
 }
 
 #[test]
-fn x25519_secret_constructor_consumes_private_material() {
+fn secret_key_constructors_consume_private_material() {
     let result = check_source(
         r#"
 fn qualified(material :: SecretBytes) do
@@ -70,12 +70,32 @@ fn prefixed(material :: SecretBytes) do
   crypto_x25519_from_secret(material)
   Secret.destroy(material)
 end
+fn signing_qualified(material :: SecretBytes) do
+  Crypto.signing_from_secret(material)
+  Secret.destroy(material)
+end
+fn signing_prefixed(material :: SecretBytes) do
+  crypto_signing_from_secret(material)
+  Secret.destroy(material)
+end
+fn mlkem_qualified(material :: SecretBytes) do
+  Crypto.mlkem_from_secret(material)
+  Secret.destroy(material)
+end
+fn mlkem_prefixed(material :: SecretBytes) do
+  crypto_mlkem_from_secret(material)
+  Secret.destroy(material)
+end
 "#,
     );
 
     assert_eq!(
         resource_violations(&result),
         [
+            "resource `material` was used after it moved",
+            "resource `material` was used after it moved",
+            "resource `material` was used after it moved",
+            "resource `material` was used after it moved",
             "resource `material` was used after it moved",
             "resource `material` was used after it moved",
         ]
