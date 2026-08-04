@@ -1214,6 +1214,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
             "install_in_memory_secure_store".to_string(),
             Scheme::mono(Ty::fun(vec![], Ty::bool())),
         );
+        test_mod.insert(
+            "set_push_token".to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::bool())),
+        );
     }
     modules.insert("Test".to_string(), test_mod);
 

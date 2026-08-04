@@ -17,3 +17,18 @@ fn in_memory_secure_store_builtin_is_test_mode_only() {
     );
     assert!(test_mode.errors.is_empty(), "{:?}", test_mode.errors);
 }
+
+#[test]
+fn push_token_fixture_builtin_has_bytes_signature_in_test_mode() {
+    let test_imports = ImportContext {
+        test_builtins: true,
+        ..ImportContext::default()
+    };
+    let bytes = parse("fn install(token :: Bytes) -> Bool do\n  Test.set_push_token(token)\nend\n");
+    let bytes_result = check_with_imports(&bytes, &test_imports);
+    assert!(bytes_result.errors.is_empty(), "{:?}", bytes_result.errors);
+
+    let string = parse("fn install() -> Bool do\n  Test.set_push_token(\"token\")\nend\n");
+    let string_result = check_with_imports(&string, &test_imports);
+    assert!(!string_result.errors.is_empty());
+}

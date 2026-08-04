@@ -13,7 +13,7 @@ fn builds_hosted_dynamic_and_static_libraries() {
     });
 
     assert_success(build(&fixture, &dynamic, "cdylib"), "dynamic build");
-    assert_no_test_installer(&dynamic, true, "ordinary cdylib");
+    assert_no_test_fixtures(&dynamic, true, "ordinary cdylib");
     for extension in ["h", "swift", "kt", "jni.c", "ts", "abi.json"] {
         assert!(
             dynamic.with_extension(extension).is_file(),
@@ -48,7 +48,7 @@ fn builds_hosted_dynamic_and_static_libraries() {
         static_library.metadata().expect("static artifact").len() > 0,
         "static library is empty"
     );
-    assert_no_test_installer(&static_library, false, "ordinary staticlib");
+    assert_no_test_fixtures(&static_library, false, "ordinary staticlib");
 
     let executable_project = temp.path().join("ordinary-project");
     std::fs::create_dir(&executable_project).expect("ordinary executable project");
@@ -62,10 +62,10 @@ fn builds_hosted_dynamic_and_static_libraries() {
         build(&executable_project, &executable, "executable"),
         "executable build",
     );
-    assert_no_test_installer(&executable, false, "ordinary executable");
+    assert_no_test_fixtures(&executable, false, "ordinary executable");
 }
 
-fn assert_no_test_installer(artifact: &Path, dynamic: bool, description: &str) {
+fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
     let mut nm = Command::new("nm");
     if cfg!(target_os = "macos") {
         nm.arg("-gU");
@@ -76,11 +76,16 @@ fn assert_no_test_installer(artifact: &Path, dynamic: bool, description: &str) {
     }
     let symbols = nm.arg(artifact).output().expect("artifact symbols");
     assert_success(symbols.clone(), &format!("{description} symbols"));
-    assert!(
-        !String::from_utf8_lossy(&symbols.stdout)
-            .contains("mesh_test_install_in_memory_secure_store"),
-        "{description} exported the test-only secure-store installer"
-    );
+    let symbols = String::from_utf8_lossy(&symbols.stdout);
+    for fixture in [
+        "mesh_test_install_in_memory_secure_store",
+        "mesh_test_set_push_token",
+    ] {
+        assert!(
+            !symbols.contains(fixture),
+            "{description} exported test-only fixture {fixture}"
+        );
+    }
 }
 
 fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {

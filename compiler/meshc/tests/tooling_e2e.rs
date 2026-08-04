@@ -644,6 +644,85 @@ fn test_secure_store_fixture_is_available_only_to_meshc_test() {
 }
 
 #[test]
+fn test_push_token_fixture_is_isolated_and_composes_with_secure_store() {
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"test-push-token\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &project.path().join("main.mpl"),
+        "fn main() do\n  Test.set_push_token(Bytes.from_utf8(\"token\"))\nend\n",
+    );
+    write_file(
+        &project.path().join("tests/push_token.test.mpl"),
+        r#"fn assert_push_token(expected :: Bytes) do
+  case Host.push_get_token(Bytes.from_utf8("expo/v1")) do
+    Ok(actual) -> assert(Bytes.secure_equals(actual, expected))
+    Err(_) -> assert(false)
+  end
+end
+
+fn assert_secure_store_callback() do
+  case Host.secure_store_delete(Bytes.from_utf8("key")) do
+    Ok(_) -> assert(true)
+    Err(_) -> assert(false)
+  end
+end
+
+test("secure store then push token") do
+  let token = Bytes.from_utf8("first")
+  assert(Test.install_in_memory_secure_store())
+  assert(Test.set_push_token(token))
+  assert_secure_store_callback()
+  assert_push_token(token)
+end
+
+test("push token then secure store") do
+  let token = Bytes.from_utf8("second")
+  assert(Test.set_push_token(token))
+  assert(Test.install_in_memory_secure_store())
+  assert_secure_store_callback()
+  assert_push_token(token)
+end
+
+test("host fixtures are cleared between tests") do
+  case Host.push_get_token(Bytes.from_utf8("expo/v1")) do
+    Ok(_) -> assert(false)
+    Err(_) -> assert(true)
+  end
+  case Host.secure_store_delete(Bytes.from_utf8("key")) do
+    Ok(_) -> assert(false)
+    Err(_) -> assert(true)
+  end
+end
+"#,
+    );
+
+    let build = Command::new(meshc_bin())
+        .args(["build", project.path().to_str().unwrap(), "--no-color"])
+        .output()
+        .expect("failed to run ordinary meshc build");
+    assert!(!build.status.success());
+    assert!(
+        String::from_utf8_lossy(&build.stderr).contains("set_push_token"),
+        "ordinary build should reject the push-token test builtin:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let test = Command::new(meshc_bin())
+        .args(["test", project.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    assert!(
+        test.status.success(),
+        "meshc test should isolate and compose host fixtures:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+}
+
+#[test]
 fn test_test_support_fragment_can_bridge_module_privates_only_for_meshc_test() {
     let project = tempfile::tempdir().unwrap();
     let tests_dir = project.path().join("tests");

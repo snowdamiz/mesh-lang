@@ -169,6 +169,28 @@ and 1 MiB, zeroizes stored values, and is cleared after each test. The builtin i
 available only through `meshc test`; ordinary builds reject it and still require
 platform secure-store callbacks.
 
+## Push token fixture
+
+Tests can provide the binary token returned by the production push callback:
+
+```mesh
+test("reads the platform push token") do
+  let token = Bytes.from_utf8("ExponentPushToken[test]")
+  assert(Test.set_push_token(token))
+  case Host.push_get_token(Bytes.from_utf8("expo/v1")) do
+    Ok(actual) -> assert(Bytes.secure_equals(actual, token))
+    Err(_) -> assert(false)
+  end
+end
+```
+
+`Test.set_push_token` accepts any token up to 1 MiB, including empty and
+non-UTF-8 values. Its callback accepts only the `expo/v1` provider key, uses the
+production host framing and status codes, and is cleared and zeroized after the
+test. It composes with `Test.install_in_memory_secure_store()` in either call
+order. Like the secure-store adapter, it exists only in `meshc test`; ordinary
+builds must register a platform callback.
+
 ## Mock Actors
 
 Use `Test.mock_actor` to spawn a lightweight actor owned by the current test:

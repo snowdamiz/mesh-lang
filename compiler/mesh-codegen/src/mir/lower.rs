@@ -2827,6 +2827,10 @@ impl<'a> Lowerer<'a> {
             "mesh_test_install_in_memory_secure_store".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Bool)),
         );
+        self.known_functions.insert(
+            "mesh_test_set_push_token".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)),
+        );
         // mesh_test_pass_count() -> i64
         self.known_functions.insert(
             "mesh_test_pass_count".to_string(),
@@ -15614,6 +15618,7 @@ fn map_builtin_name(name: &str) -> String {
         "test_install_in_memory_secure_store" => {
             "mesh_test_install_in_memory_secure_store".to_string()
         }
+        "test_set_push_token" => "mesh_test_set_push_token".to_string(),
         "test_pass_count" => "mesh_test_pass_count".to_string(),
         "test_fail_count" => "mesh_test_fail_count".to_string(),
         // Bare name for compile (from Regex import compile)
@@ -18976,6 +18981,27 @@ fn main() do bar(42) end
             &main.body,
             "mesh_test_install_in_memory_secure_store"
         ));
+    }
+
+    #[test]
+    fn test_push_token_builtin_lowers_to_runtime_symbol() {
+        let mir = lower_with_imports(
+            "fn main() -> Bool do\n  Test.set_push_token(Bytes.from_utf8(\"token\"))\nend\n",
+            ImportContext {
+                test_builtins: true,
+                ..ImportContext::default()
+            },
+        );
+        let main = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "mesh_main")
+            .expect("expected main function");
+        assert!(
+            find_call_to(&main.body, "mesh_test_set_push_token"),
+            "{:?}",
+            main.body
+        );
     }
 
     /// Success Criterion 1: A Mesh program with interface, impl, struct, and trait

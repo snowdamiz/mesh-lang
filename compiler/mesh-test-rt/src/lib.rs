@@ -9,6 +9,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::sync::OnceLock;
 
+use mesh_rt::bytes::{mesh_bytes_copy_to, mesh_bytes_length, MeshBytes};
 use mesh_rt::library::{
     mesh_library_init, mesh_library_register_host_callbacks, MeshLibraryHostCallbacksV1,
     MESH_LIBRARY_OK,
@@ -33,9 +34,14 @@ struct TestSecureStore {
 }
 
 static TEST_SECURE_STORE: OnceLock<Mutex<TestSecureStore>> = OnceLock::new();
+static TEST_PUSH_TOKEN: OnceLock<Mutex<Option<Zeroizing<Vec<u8>>>>> = OnceLock::new();
 
 fn test_secure_store() -> &'static Mutex<TestSecureStore> {
     TEST_SECURE_STORE.get_or_init(|| Mutex::new(TestSecureStore::default()))
+}
+
+fn test_push_token() -> &'static Mutex<Option<Zeroizing<Vec<u8>>>> {
+    TEST_PUSH_TOKEN.get_or_init(|| Mutex::new(None))
 }
 
 unsafe extern "C" fn secure_store_put(
@@ -158,13 +164,65 @@ unsafe extern "C" fn secure_store_delete(
     MESH_LIBRARY_OK
 }
 
-fn reset_secure_store() {
-    {
-        let mut store = test_secure_store().lock();
-        store.values.clear();
-        store.total_bytes = 0;
-        store.installed = false;
+unsafe extern "C" fn push_get_token(
+    _context: *mut c_void,
+    input: *const u8,
+    input_len: u64,
+    output: *mut u8,
+    output_capacity: u64,
+    output_len: *mut u64,
+) -> i32 {
+    if output.is_null() || output_len.is_null() {
+        return INVALID_INPUT;
     }
+    output_len.write(0);
+    let (Ok(input_len), Ok(output_capacity)) =
+        (usize::try_from(input_len), usize::try_from(output_capacity))
+    else {
+        return OUTPUT_TOO_LARGE;
+    };
+    if input.is_null()
+        || input_len != b"expo/v1".len()
+        || std::slice::from_raw_parts(input, input_len) != b"expo/v1"
+    {
+        return INVALID_INPUT;
+    }
+
+    let token = test_push_token().lock();
+    let Some(token) = token.as_ref() else {
+        return PLATFORM_FAILURE;
+    };
+    if token.len() > output_capacity {
+        return OUTPUT_TOO_LARGE;
+    }
+    ptr::copy_nonoverlapping(token.as_ptr(), output, token.len());
+    output_len.write(token.len() as u64);
+    MESH_LIBRARY_OK
+}
+
+fn clear_secure_store() {
+    let mut store = test_secure_store().lock();
+    store.values.clear();
+    store.total_bytes = 0;
+    store.installed = false;
+}
+
+fn register_host_fixtures() -> i32 {
+    let secure_store_installed = test_secure_store().lock().installed;
+    let push_token_set = test_push_token().lock().is_some();
+    let callbacks = MeshLibraryHostCallbacksV1 {
+        secure_store_put: secure_store_installed.then_some(secure_store_put),
+        secure_store_get: secure_store_installed.then_some(secure_store_get),
+        secure_store_delete: secure_store_installed.then_some(secure_store_delete),
+        push_get_token: push_token_set.then_some(push_get_token),
+        ..MeshLibraryHostCallbacksV1::default()
+    };
+    mesh_library_register_host_callbacks(&callbacks)
+}
+
+fn reset_host_fixtures() {
+    clear_secure_store();
+    test_push_token().lock().take();
 
     // Keep the runtime initialized but remove all fixture callbacks between
     // test bodies. Registration remains lifecycle-checked by mesh-rt.
@@ -175,30 +233,55 @@ fn reset_secure_store() {
 /// Install a bounded, zeroizing in-memory secure store for one Mesh test body.
 #[no_mangle]
 pub extern "C" fn mesh_test_install_in_memory_secure_store() -> u8 {
-    reset_secure_store();
+    clear_secure_store();
     if mesh_library_init() != MESH_LIBRARY_OK {
         return 0;
     }
 
-    let callbacks = MeshLibraryHostCallbacksV1 {
-        secure_store_put: Some(secure_store_put),
-        secure_store_get: Some(secure_store_get),
-        secure_store_delete: Some(secure_store_delete),
-        ..MeshLibraryHostCallbacksV1::default()
-    };
-    if mesh_library_register_host_callbacks(&callbacks) != MESH_LIBRARY_OK {
+    test_secure_store().lock().installed = true;
+    if register_host_fixtures() != MESH_LIBRARY_OK {
+        test_secure_store().lock().installed = false;
         return 0;
     }
 
-    test_secure_store().lock().installed = true;
-    mesh_rt::test::register_test_case_cleanup_hook(reset_secure_store);
+    mesh_rt::test::register_test_case_cleanup_hook(reset_host_fixtures);
+    1
+}
+
+/// Set the binary push token returned for the `expo/v1` provider in one test body.
+#[no_mangle]
+pub extern "C" fn mesh_test_set_push_token(token: *const MeshBytes) -> u8 {
+    if token.is_null() {
+        return 0;
+    }
+    let Ok(token_len) = usize::try_from(mesh_bytes_length(token)) else {
+        return 0;
+    };
+    if token_len > MAX_BOUNDARY_BYTES {
+        return 0;
+    }
+    let mut value = Zeroizing::new(vec![0; token_len]);
+    if mesh_bytes_copy_to(token, 0, value.as_mut_ptr(), token_len as u64) != token_len as i64 {
+        return 0;
+    }
+    if mesh_library_init() != MESH_LIBRARY_OK {
+        return 0;
+    }
+
+    *test_push_token().lock() = Some(value);
+    if register_host_fixtures() != MESH_LIBRARY_OK {
+        test_push_token().lock().take();
+        return 0;
+    }
+
+    mesh_rt::test::register_test_case_cleanup_hook(reset_host_fixtures);
     1
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mesh_rt::library::MeshLibraryHostCallback;
+    use mesh_rt::library::{mesh_library_host_call, MeshLibraryHostCallback};
     use std::sync::Mutex as StdMutex;
 
     static TEST_LOCK: StdMutex<()> = StdMutex::new(());
@@ -208,6 +291,7 @@ mod tests {
             1 => secure_store_put,
             2 => secure_store_get,
             3 => secure_store_delete,
+            4 => push_get_token,
             _ => panic!("unknown test capability"),
         };
         let mut output_len = 0;
@@ -232,6 +316,23 @@ mod tests {
         request
     }
 
+    fn set_push_token(token: &[u8]) -> u8 {
+        mesh_test_set_push_token(mesh_rt::bytes::mesh_bytes_new(
+            token.as_ptr(),
+            token.len() as u64,
+        ))
+    }
+
+    fn host_call_tag(capability: u32, input: &[u8]) -> u8 {
+        let input = mesh_rt::bytes::mesh_bytes_new(input.as_ptr(), input.len() as u64);
+        unsafe { (*mesh_library_host_call(capability, input)).tag }
+    }
+
+    fn assert_secure_store_and_push_callbacks() {
+        assert_eq!(host_call_tag(3, b"key"), 0);
+        assert_eq!(host_call_tag(4, b"expo/v1"), 0);
+    }
+
     #[test]
     fn in_memory_secure_store_uses_platform_framing_and_statuses() {
         let _guard = TEST_LOCK.lock().unwrap();
@@ -250,7 +351,7 @@ mod tests {
         assert_eq!(invoke(2, b"key", &mut output), (2, 0));
         assert_eq!(invoke(1, &[0, 0, 0, 0, 1], &mut output), (1, 0));
 
-        reset_secure_store();
+        reset_host_fixtures();
     }
 
     #[test]
@@ -279,13 +380,14 @@ mod tests {
             (0, 0)
         );
         assert_eq!(invoke(1, &put_request(b"b", b"four"), &mut output), (4, 0));
-        reset_secure_store();
+        reset_host_fixtures();
     }
 
     #[test]
-    fn test_boundary_cleanup_disables_and_zeroizes_the_fixture() {
+    fn test_boundary_cleanup_disables_and_zeroizes_host_fixtures() {
         let _guard = TEST_LOCK.lock().unwrap();
         assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
+        assert_eq!(set_push_token(b"secret push token"), 1);
         let mut output = [];
         assert_eq!(
             invoke(1, &put_request(b"key", b"secret"), &mut output),
@@ -301,5 +403,51 @@ mod tests {
             invoke(1, &put_request(b"key", b"value"), &mut output),
             (3, 0)
         );
+        assert_eq!(invoke(4, b"expo/v1", &mut [0; 32]), (3, 0));
+        assert!(test_push_token().lock().is_none());
+        assert!(!test_secure_store().lock().installed);
+        assert_eq!(host_call_tag(3, b"key"), 1);
+        assert_eq!(host_call_tag(4, b"expo/v1"), 1);
+    }
+
+    #[test]
+    fn push_token_uses_host_framing_and_accepts_binary_values() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let token = [0, 0xff, 0x80, b'x'];
+        let token = mesh_rt::bytes::mesh_bytes_new(token.as_ptr(), token.len() as u64);
+        assert_eq!(mesh_test_set_push_token(token), 1);
+
+        let mut output = [0; 4];
+        assert_eq!(invoke(4, b"expo/v1", &mut output), (0, 4));
+        assert_eq!(output, [0, 0xff, 0x80, b'x']);
+        assert_eq!(invoke(4, b"other", &mut output), (1, 0));
+        assert_eq!(invoke(4, b"expo/v1", &mut output[..3]), (4, 0));
+
+        assert_eq!(set_push_token(&[]), 1);
+        assert_eq!(invoke(4, b"expo/v1", &mut []), (0, 0));
+        let oversized = MeshBytes {
+            len: (MAX_BOUNDARY_BYTES + 1) as u64,
+        };
+        assert_eq!(mesh_test_set_push_token(&oversized), 0);
+
+        reset_host_fixtures();
+    }
+
+    #[test]
+    fn secure_store_then_push_token_keeps_both_callbacks() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
+        assert_eq!(set_push_token(b"token"), 1);
+        assert_secure_store_and_push_callbacks();
+        reset_host_fixtures();
+    }
+
+    #[test]
+    fn push_token_then_secure_store_keeps_both_callbacks() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        assert_eq!(set_push_token(b"token"), 1);
+        assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
+        assert_secure_store_and_push_callbacks();
+        reset_host_fixtures();
     }
 }
