@@ -1508,10 +1508,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_test_set_push_token(token: Bytes) -> bool
+    // mesh_test_set_push_token(selector: Bytes, token: Bytes) -> bool
     module.add_function(
         "mesh_test_set_push_token",
-        i8_type.fn_type(&[ptr_type.into()], false),
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 

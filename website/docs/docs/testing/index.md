@@ -175,21 +175,23 @@ Tests can provide the binary token returned by the production push callback:
 
 ```mesh
 test("reads the platform push token") do
+  let selector = Bytes.from_utf8("expo/raw/v1")
   let token = Bytes.from_utf8("ExponentPushToken[test]")
-  assert(Test.set_push_token(token))
-  case Host.push_get_token(Bytes.from_utf8("expo/v1")) do
+  assert(Test.set_push_token(selector, token))
+  case Host.push_get_token(selector) do
     Ok(actual) -> assert(Bytes.secure_equals(actual, token))
     Err(_) -> assert(false)
   end
 end
 ```
 
-`Test.set_push_token` accepts any token up to 1 MiB, including empty and
-non-UTF-8 values. Its callback accepts only the `expo/v1` provider key, uses the
-production host framing and status codes, and is cleared and zeroized after the
-test. It composes with `Test.install_in_memory_secure_store()` in either call
-order. Like the secure-store adapter, it exists only in `meshc test`; ordinary
-builds must register a platform callback.
+`Test.set_push_token` accepts an exact non-empty selector up to 4 KiB and any
+token up to 1 MiB, including empty and non-UTF-8 values. Its callback accepts
+only that selector, uses the production host framing and status codes, and is
+cleared and zeroized after the test. It composes with
+`Test.install_in_memory_secure_store()` in either call order. Like the
+secure-store adapter, it exists only in `meshc test`; ordinary builds must
+register a platform callback.
 
 ## Mock Actors
 

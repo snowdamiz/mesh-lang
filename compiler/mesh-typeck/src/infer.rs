@@ -1223,7 +1223,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         );
         test_mod.insert(
             "set_push_token".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::bytes()], Ty::bool())),
+            Scheme::mono(Ty::fun(vec![Ty::bytes(), Ty::bytes()], Ty::bool())),
         );
     }
     modules.insert("Test".to_string(), test_mod);

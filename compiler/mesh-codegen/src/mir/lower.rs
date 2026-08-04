@@ -2833,7 +2833,7 @@ impl<'a> Lowerer<'a> {
         );
         self.known_functions.insert(
             "mesh_test_set_push_token".to_string(),
-            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Bool)),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)),
         );
         // mesh_test_pass_count() -> i64
         self.known_functions.insert(
@@ -18991,7 +18991,7 @@ fn main() do bar(42) end
     #[test]
     fn test_push_token_builtin_lowers_to_runtime_symbol() {
         let mir = lower_with_imports(
-            "fn main() -> Bool do\n  Test.set_push_token(Bytes.from_utf8(\"token\"))\nend\n",
+            "fn main() -> Bool do\n  Test.set_push_token(Bytes.from_utf8(\"expo/raw/v1\"), Bytes.from_utf8(\"token\"))\nend\n",
             ImportContext {
                 test_builtins: true,
                 ..ImportContext::default()

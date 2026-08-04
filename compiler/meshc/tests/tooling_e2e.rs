@@ -652,7 +652,7 @@ fn test_push_token_fixture_is_isolated_and_composes_with_secure_store() {
     );
     write_file(
         &project.path().join("main.mpl"),
-        "fn main() do\n  Test.set_push_token(Bytes.from_utf8(\"token\"))\nend\n",
+        "fn main() do\n  Test.set_push_token(Bytes.from_utf8(\"expo/raw/v1\"), Bytes.from_utf8(\"token\"))\nend\n",
     );
     write_file(
         &project.path().join("tests/push_token.test.mpl"),
@@ -673,14 +673,14 @@ end
 test("secure store then push token") do
   let token = Bytes.from_utf8("first")
   assert(Test.install_in_memory_secure_store())
-  assert(Test.set_push_token(token))
+  assert(Test.set_push_token(Bytes.from_utf8("expo/v1"), token))
   assert_secure_store_callback()
   assert_push_token(token)
 end
 
 test("push token then secure store") do
   let token = Bytes.from_utf8("second")
-  assert(Test.set_push_token(token))
+  assert(Test.set_push_token(Bytes.from_utf8("expo/v1"), token))
   assert(Test.install_in_memory_secure_store())
   assert_secure_store_callback()
   assert_push_token(token)

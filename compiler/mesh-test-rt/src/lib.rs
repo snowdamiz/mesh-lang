@@ -33,14 +33,19 @@ struct TestSecureStore {
     installed: bool,
 }
 
+struct TestPushToken {
+    selector: Vec<u8>,
+    token: Zeroizing<Vec<u8>>,
+}
+
 static TEST_SECURE_STORE: OnceLock<Mutex<TestSecureStore>> = OnceLock::new();
-static TEST_PUSH_TOKEN: OnceLock<Mutex<Option<Zeroizing<Vec<u8>>>>> = OnceLock::new();
+static TEST_PUSH_TOKEN: OnceLock<Mutex<Option<TestPushToken>>> = OnceLock::new();
 
 fn test_secure_store() -> &'static Mutex<TestSecureStore> {
     TEST_SECURE_STORE.get_or_init(|| Mutex::new(TestSecureStore::default()))
 }
 
-fn test_push_token() -> &'static Mutex<Option<Zeroizing<Vec<u8>>>> {
+fn test_push_token() -> &'static Mutex<Option<TestPushToken>> {
     TEST_PUSH_TOKEN.get_or_init(|| Mutex::new(None))
 }
 
@@ -181,17 +186,18 @@ unsafe extern "C" fn push_get_token(
     else {
         return OUTPUT_TOO_LARGE;
     };
-    if input.is_null()
-        || input_len != b"expo/v1".len()
-        || std::slice::from_raw_parts(input, input_len) != b"expo/v1"
-    {
+    if input.is_null() || input_len == 0 || input_len > MAX_KEY_BYTES {
         return INVALID_INPUT;
     }
 
-    let token = test_push_token().lock();
-    let Some(token) = token.as_ref() else {
+    let fixture = test_push_token().lock();
+    let Some(fixture) = fixture.as_ref() else {
         return PLATFORM_FAILURE;
     };
+    if std::slice::from_raw_parts(input, input_len) != fixture.selector {
+        return INVALID_INPUT;
+    }
+    let token = &fixture.token;
     if token.len() > output_capacity {
         return OUTPUT_TOO_LARGE;
     }
@@ -248,16 +254,32 @@ pub extern "C" fn mesh_test_install_in_memory_secure_store() -> u8 {
     1
 }
 
-/// Set the binary push token returned for the `expo/v1` provider in one test body.
+/// Set the binary push token returned for one exact provider selector in a test body.
 #[no_mangle]
-pub extern "C" fn mesh_test_set_push_token(token: *const MeshBytes) -> u8 {
-    if token.is_null() {
+pub extern "C" fn mesh_test_set_push_token(
+    selector: *const MeshBytes,
+    token: *const MeshBytes,
+) -> u8 {
+    if selector.is_null() || token.is_null() {
         return 0;
     }
-    let Ok(token_len) = usize::try_from(mesh_bytes_length(token)) else {
+    let (Ok(selector_len), Ok(token_len)) = (
+        usize::try_from(mesh_bytes_length(selector)),
+        usize::try_from(mesh_bytes_length(token)),
+    ) else {
         return 0;
     };
-    if token_len > MAX_BOUNDARY_BYTES {
+    if selector_len == 0 || selector_len > MAX_KEY_BYTES || token_len > MAX_BOUNDARY_BYTES {
+        return 0;
+    }
+    let mut selector_value = vec![0; selector_len];
+    if mesh_bytes_copy_to(
+        selector,
+        0,
+        selector_value.as_mut_ptr(),
+        selector_len as u64,
+    ) != selector_len as i64
+    {
         return 0;
     }
     let mut value = Zeroizing::new(vec![0; token_len]);
@@ -268,7 +290,10 @@ pub extern "C" fn mesh_test_set_push_token(token: *const MeshBytes) -> u8 {
         return 0;
     }
 
-    *test_push_token().lock() = Some(value);
+    *test_push_token().lock() = Some(TestPushToken {
+        selector: selector_value,
+        token: value,
+    });
     if register_host_fixtures() != MESH_LIBRARY_OK {
         test_push_token().lock().take();
         return 0;
@@ -316,11 +341,11 @@ mod tests {
         request
     }
 
-    fn set_push_token(token: &[u8]) -> u8 {
-        mesh_test_set_push_token(mesh_rt::bytes::mesh_bytes_new(
-            token.as_ptr(),
-            token.len() as u64,
-        ))
+    fn set_push_token(selector: &[u8], token: &[u8]) -> u8 {
+        mesh_test_set_push_token(
+            mesh_rt::bytes::mesh_bytes_new(selector.as_ptr(), selector.len() as u64),
+            mesh_rt::bytes::mesh_bytes_new(token.as_ptr(), token.len() as u64),
+        )
     }
 
     fn host_call_tag(capability: u32, input: &[u8]) -> u8 {
@@ -387,7 +412,7 @@ mod tests {
     fn test_boundary_cleanup_disables_and_zeroizes_host_fixtures() {
         let _guard = TEST_LOCK.lock().unwrap();
         assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
-        assert_eq!(set_push_token(b"secret push token"), 1);
+        assert_eq!(set_push_token(b"expo/v1", b"secret push token"), 1);
         let mut output = [];
         assert_eq!(
             invoke(1, &put_request(b"key", b"secret"), &mut output),
@@ -414,21 +439,24 @@ mod tests {
     fn push_token_uses_host_framing_and_accepts_binary_values() {
         let _guard = TEST_LOCK.lock().unwrap();
         let token = [0, 0xff, 0x80, b'x'];
+        let selector = mesh_rt::bytes::mesh_bytes_new(b"expo/raw/v1".as_ptr(), 11);
         let token = mesh_rt::bytes::mesh_bytes_new(token.as_ptr(), token.len() as u64);
-        assert_eq!(mesh_test_set_push_token(token), 1);
+        assert_eq!(mesh_test_set_push_token(selector, token), 1);
 
         let mut output = [0; 4];
-        assert_eq!(invoke(4, b"expo/v1", &mut output), (0, 4));
+        assert_eq!(invoke(4, b"expo/raw/v1", &mut output), (0, 4));
         assert_eq!(output, [0, 0xff, 0x80, b'x']);
         assert_eq!(invoke(4, b"other", &mut output), (1, 0));
-        assert_eq!(invoke(4, b"expo/v1", &mut output[..3]), (4, 0));
+        assert_eq!(invoke(4, b"expo/raw/v1", &mut output[..3]), (4, 0));
 
-        assert_eq!(set_push_token(&[]), 1);
-        assert_eq!(invoke(4, b"expo/v1", &mut []), (0, 0));
+        assert_eq!(set_push_token(b"empty/v1", &[]), 1);
+        assert_eq!(invoke(4, b"empty/v1", &mut []), (0, 0));
         let oversized = MeshBytes {
             len: (MAX_BOUNDARY_BYTES + 1) as u64,
         };
-        assert_eq!(mesh_test_set_push_token(&oversized), 0);
+        assert_eq!(mesh_test_set_push_token(selector, &oversized), 0);
+        let empty_selector = mesh_rt::bytes::mesh_bytes_new(b"".as_ptr(), 0);
+        assert_eq!(mesh_test_set_push_token(empty_selector, token), 0);
 
         reset_host_fixtures();
     }
@@ -437,7 +465,7 @@ mod tests {
     fn secure_store_then_push_token_keeps_both_callbacks() {
         let _guard = TEST_LOCK.lock().unwrap();
         assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
-        assert_eq!(set_push_token(b"token"), 1);
+        assert_eq!(set_push_token(b"expo/v1", b"token"), 1);
         assert_secure_store_and_push_callbacks();
         reset_host_fixtures();
     }
@@ -445,7 +473,7 @@ mod tests {
     #[test]
     fn push_token_then_secure_store_keeps_both_callbacks() {
         let _guard = TEST_LOCK.lock().unwrap();
-        assert_eq!(set_push_token(b"token"), 1);
+        assert_eq!(set_push_token(b"expo/v1", b"token"), 1);
         assert_eq!(mesh_test_install_in_memory_secure_store(), 1);
         assert_secure_store_and_push_callbacks();
         reset_host_fixtures();
