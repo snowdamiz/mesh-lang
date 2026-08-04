@@ -1227,9 +1227,19 @@ fn copy_sources_recursive(
             continue;
         }
 
-        if path.is_dir() {
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("Failed to inspect '{}': {}", path.display(), e))?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Test project path '{}' must not be a symbolic link.",
+                path.display()
+            ));
+        }
+
+        if file_type.is_dir() {
             copy_sources_recursive(project_root, &path, tmp_dir, excluded_entry_relative_path)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("mpl") {
+        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("mpl") {
             if name_str.ends_with(".test.mpl") {
                 continue;
             }
@@ -1257,6 +1267,13 @@ fn copy_sources_recursive(
                         module_relative.display()
                     ));
                 }
+                if module_relative == Path::new(DEFAULT_ENTRYPOINT) {
+                    return Err(format!(
+                        "Test-support fragment '{}' cannot target synthetic test entry '{}'.",
+                        path.display(),
+                        module_relative.display()
+                    ));
+                }
                 continue;
             }
             let relative = path.strip_prefix(project_root).map_err(|e| {
@@ -1267,7 +1284,8 @@ fn copy_sources_recursive(
                     e
                 )
             })?;
-            if relative == excluded_entry_relative_path {
+            if relative == excluded_entry_relative_path || relative == Path::new(DEFAULT_ENTRYPOINT)
+            {
                 continue;
             }
             let dest = tmp_dir.join(relative);
@@ -1411,7 +1429,7 @@ mod tests {
     }
 
     #[test]
-    fn copy_project_sources_to_tmp_excludes_resolved_override_entry_and_keeps_support_modules() {
+    fn copy_project_sources_to_tmp_excludes_reserved_entries_and_keeps_support_modules() {
         let temp = tempfile::tempdir().unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let project_dir = temp.path().join("override-project");
@@ -1419,6 +1437,10 @@ mod tests {
         write_file(
             &project_dir.join("lib/start.mpl"),
             "fn main() do\n  println(\"app\")\nend\n",
+        );
+        write_file(
+            &project_dir.join("main.mpl"),
+            "fn main() do\n  println(\"unused\")\nend\n",
         );
         write_file(
             &project_dir.join("app.mpl"),
@@ -1440,6 +1462,7 @@ mod tests {
         copy_project_sources_to_tmp(&project_dir, tmp.path(), Path::new("lib/start.mpl")).unwrap();
 
         assert!(!tmp.path().join("lib/start.mpl").exists());
+        assert!(!tmp.path().join("main.mpl").exists());
         assert!(tmp.path().join("app.mpl").exists());
         assert!(tmp.path().join("tests/support.mpl").exists());
         assert!(!tmp.path().join("tests/feature.test.mpl").exists());
@@ -1498,6 +1521,41 @@ mod tests {
 
         assert!(err.contains("lib/start.test-support.mpl"), "{err}");
         assert!(err.contains("executable entry"), "{err}");
+    }
+
+    #[test]
+    fn copy_project_sources_to_tmp_rejects_test_support_for_synthetic_entry() {
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(&project.path().join("main.mpl"), "fn helper() do\nend\n");
+        write_file(
+            &project.path().join("main.test-support.mpl"),
+            "pub fn helper_for_test() do\n  helper()\nend\n",
+        );
+
+        let err =
+            copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("lib/start.mpl"))
+                .unwrap_err();
+
+        assert!(err.contains("main.test-support.mpl"), "{err}");
+        assert!(err.contains("synthetic test entry"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_project_sources_to_tmp_rejects_symlinked_sources() {
+        use std::os::unix::fs::symlink;
+
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        symlink(outside.path(), project.path().join("account.mpl")).unwrap();
+
+        let err = copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl"))
+            .unwrap_err();
+
+        assert!(err.contains("account.mpl"), "{err}");
+        assert!(err.contains("symbolic link"), "{err}");
     }
 
     #[test]

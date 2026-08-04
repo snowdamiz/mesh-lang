@@ -85,6 +85,12 @@ test module must be `pub`. Normal builds, package archives, generated bindings,
 and the normal LSP module graph exclude `*.test-support.mpl`, while `meshc fmt`
 still formats it.
 
+Support fragments cannot target the executable entry or root `main.mpl`, which
+the runner reserves for its synthetic test harness. Move private logic that
+needs direct testing into an ordinary module. Test project source paths must be
+regular files and directories; `meshc test` rejects visible symbolic links in
+the project tree.
+
 ## Assertions
 
 | Assertion | Description |
