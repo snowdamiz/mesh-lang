@@ -5,6 +5,7 @@
 //! be sent from any actor on any worker thread.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
 
@@ -12,6 +13,45 @@ use super::process::Message;
 
 pub const DEFAULT_MAILBOX_MAX_ITEMS: usize = 1024;
 pub const DEFAULT_MAILBOX_MAX_BYTES: usize = 8 * 1024 * 1024;
+const GLOBAL_MAILBOX_MAX_BYTES: usize = 128 * 1024 * 1024;
+const GLOBAL_MAILBOX_MAX_ITEMS: usize = 65_536;
+const GLOBAL_MAILBOX_CONTROL_BYTES: usize = 8 * 1024 * 1024;
+const GLOBAL_MAILBOX_CONTROL_ITEMS: usize = 16_384;
+
+static GLOBAL_MAILBOX_BYTES: AtomicUsize = AtomicUsize::new(0);
+static GLOBAL_MAILBOX_ITEMS: AtomicUsize = AtomicUsize::new(0);
+
+fn reserve_counter(counter: &AtomicUsize, amount: usize, maximum: usize) -> bool {
+    let mut current = counter.load(Ordering::Acquire);
+    loop {
+        let Some(next) = current.checked_add(amount) else {
+            return false;
+        };
+        if next > maximum {
+            return false;
+        }
+        match counter.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return true,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+fn reserve_global(bytes: usize, max_items: usize, max_bytes: usize) -> bool {
+    if !reserve_counter(&GLOBAL_MAILBOX_ITEMS, 1, max_items) {
+        return false;
+    }
+    if !reserve_counter(&GLOBAL_MAILBOX_BYTES, bytes, max_bytes) {
+        GLOBAL_MAILBOX_ITEMS.fetch_sub(1, Ordering::AcqRel);
+        return false;
+    }
+    true
+}
+
+fn release_global(bytes: usize, items: usize) {
+    GLOBAL_MAILBOX_BYTES.fetch_sub(bytes, Ordering::AcqRel);
+    GLOBAL_MAILBOX_ITEMS.fetch_sub(items, Ordering::AcqRel);
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MailboxPushError {
@@ -62,6 +102,30 @@ impl Mailbox {
     }
 
     pub fn try_push(&self, msg: Message) -> Result<(), MailboxPushError> {
+        self.try_push_with_global_limits(
+            msg,
+            GLOBAL_MAILBOX_MAX_ITEMS,
+            GLOBAL_MAILBOX_MAX_BYTES,
+            false,
+        )
+    }
+
+    pub(crate) fn try_push_control(&self, msg: Message) -> Result<(), MailboxPushError> {
+        self.try_push_with_global_limits(
+            msg,
+            GLOBAL_MAILBOX_MAX_ITEMS + GLOBAL_MAILBOX_CONTROL_ITEMS,
+            GLOBAL_MAILBOX_MAX_BYTES + GLOBAL_MAILBOX_CONTROL_BYTES,
+            true,
+        )
+    }
+
+    fn try_push_with_global_limits(
+        &self,
+        msg: Message,
+        global_max_items: usize,
+        global_max_bytes: usize,
+        control: bool,
+    ) -> Result<(), MailboxPushError> {
         let message_bytes = msg.buffer.data.len();
         let depth = {
             let mut state = self.state.lock();
@@ -69,9 +133,17 @@ impl Mailbox {
                 state.rejected = state.rejected.saturating_add(1);
                 return Err(MailboxPushError::MessageTooLarge);
             }
-            if state.queue.len() >= self.max_items
-                || state.bytes.saturating_add(message_bytes) > self.max_bytes
+            let max_items = self.max_items.saturating_add(if control { 1 } else { 0 });
+            let max_bytes = self
+                .max_bytes
+                .saturating_add(if control { message_bytes } else { 0 });
+            if state.queue.len() >= max_items
+                || state.bytes.saturating_add(message_bytes) > max_bytes
             {
+                state.rejected = state.rejected.saturating_add(1);
+                return Err(MailboxPushError::Full);
+            }
+            if !reserve_global(message_bytes, global_max_items, global_max_bytes) {
                 state.rejected = state.rejected.saturating_add(1);
                 return Err(MailboxPushError::Full);
             }
@@ -92,6 +164,7 @@ impl Mailbox {
             let message = state.queue.pop_front();
             if let Some(message) = &message {
                 state.bytes -= message.buffer.data.len();
+                release_global(message.buffer.data.len(), 1);
             }
             message
         };
@@ -137,6 +210,7 @@ impl Mailbox {
                 let message = state.queue.remove(i);
                 if let Some(message) = &message {
                     state.bytes -= message.buffer.data.len();
+                    release_global(message.buffer.data.len(), 1);
                 }
                 drop(state);
                 if message.is_some() {
@@ -151,7 +225,9 @@ impl Mailbox {
 
 impl Drop for Mailbox {
     fn drop(&mut self) {
-        let remaining = self.state.get_mut().queue.len();
+        let state = self.state.get_mut();
+        release_global(state.bytes, state.queue.len());
+        let remaining = state.queue.len();
         if remaining > 0 {
             crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(remaining);
         }
@@ -261,6 +337,20 @@ mod tests {
             mb.try_push(make_msg(&[1, 2, 3, 4], 3)),
             Err(MailboxPushError::MessageTooLarge)
         );
+    }
+
+    #[test]
+    fn control_message_uses_one_reserved_slot_without_dropping_fifo_data() {
+        let mb = Mailbox::bounded(2, 2);
+
+        assert_eq!(mb.try_push(make_msg(&[1], 1)), Ok(()));
+        assert_eq!(mb.try_push(make_msg(&[2], 2)), Ok(()));
+        assert_eq!(mb.try_push_control(make_msg(&[3], 3)), Ok(()));
+
+        assert_eq!(mb.pop().unwrap().buffer.type_tag, 1);
+        assert_eq!(mb.pop().unwrap().buffer.type_tag, 2);
+        assert_eq!(mb.pop().unwrap().buffer.type_tag, 3);
+        assert!(mb.pop().is_none());
     }
 
     #[test]

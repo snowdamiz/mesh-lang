@@ -9,6 +9,7 @@ pub mod client;
 pub mod close;
 pub mod frame;
 pub mod handshake;
+pub(crate) mod reactor;
 pub mod rooms;
 pub mod server;
 

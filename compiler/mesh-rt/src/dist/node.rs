@@ -5023,6 +5023,15 @@ fn build_node_client_config() -> Arc<ClientConfig> {
     Arc::new(config)
 }
 
+#[cfg(test)]
+pub(crate) fn ws_test_tls_configs() -> (Arc<ServerConfig>, Arc<ClientConfig>) {
+    let (certificate, key) = generate_ephemeral_cert();
+    (
+        build_node_server_config(certificate, key),
+        build_node_client_config(),
+    )
+}
+
 const TLS_CA_DER_B64_ENV: &str = "MESH_TLS_CA_DER_B64";
 const TLS_CERT_DER_B64_ENV: &str = "MESH_TLS_CERT_DER_B64";
 const TLS_KEY_DER_B64_ENV: &str = "MESH_TLS_KEY_DER_B64";

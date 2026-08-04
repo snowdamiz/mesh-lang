@@ -5,6 +5,7 @@
 //! dispatch (ping/pong, close echo, text validation).
 //!
 //! - [`parse_close_payload`]: Extract status code + reason from close frame payload
+//! - [`parse_close_payload_strict`]: Validate an inbound close frame payload
 //! - [`build_close_payload`]: Build a close frame payload from code + reason
 //! - [`validate_text_payload`]: UTF-8 validation for text frames (PROTO-05)
 //! - [`send_close`]: Send a close frame with a given status code and reason
@@ -47,6 +48,28 @@ pub fn parse_close_payload(payload: &[u8]) -> (u16, String) {
         (code, reason)
     } else {
         (1005, String::new())
+    }
+}
+
+/// Whether a close code may appear on the wire.
+pub(crate) fn is_valid_close_code(code: u16) -> bool {
+    matches!(code, 1000..=1014 | 3000..=4999) && !matches!(code, 1004 | 1005 | 1006)
+}
+
+/// Parse and validate an inbound close frame payload per RFC 6455 Section 7.4.
+pub(crate) fn parse_close_payload_strict(payload: &[u8]) -> Result<(u16, String), String> {
+    match payload {
+        [] => Ok((1005, String::new())),
+        [_] => Err("close payload cannot contain exactly one byte".to_string()),
+        [high, low, reason @ ..] => {
+            let code = u16::from_be_bytes([*high, *low]);
+            if !is_valid_close_code(code) {
+                return Err(format!("invalid WebSocket close code {code}"));
+            }
+            let reason = std::str::from_utf8(reason)
+                .map_err(|_| "invalid UTF-8 in WebSocket close reason".to_string())?;
+            Ok((code, reason.to_string()))
+        }
     }
 }
 
@@ -146,6 +169,40 @@ mod tests {
         let (code, reason) = parse_close_payload(&[]);
         assert_eq!(code, 1005);
         assert_eq!(reason, "");
+    }
+
+    #[test]
+    fn strict_parse_accepts_empty_payload() {
+        assert_eq!(parse_close_payload_strict(&[]), Ok((1005, String::new())));
+    }
+
+    #[test]
+    fn strict_parse_rejects_one_byte_payload() {
+        assert!(parse_close_payload_strict(&[0x03]).is_err());
+    }
+
+    #[test]
+    fn strict_parse_accepts_code_and_reason() {
+        assert_eq!(
+            parse_close_payload_strict(&[0x03, 0xe8, b'o', b'k']),
+            Ok((1000, "ok".to_string()))
+        );
+    }
+
+    #[test]
+    fn strict_parse_rejects_invalid_or_reserved_codes() {
+        for code in [999u16, 1004, 1005, 1006, 1015, 1016, 2999, 5000] {
+            assert!(
+                parse_close_payload_strict(&code.to_be_bytes()).is_err(),
+                "accepted invalid close code {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_parse_rejects_invalid_utf8_reason() {
+        let error = parse_close_payload_strict(&[0x03, 0xe8, 0xff]).unwrap_err();
+        assert!(error.contains("UTF-8"));
     }
 
     #[test]

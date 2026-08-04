@@ -23,11 +23,10 @@
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
-use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
 
 use super::server::WsConnection;
-use super::{write_frame, WsOpcode};
+use super::WsOpcode;
 use crate::string::MeshString;
 
 // ---------------------------------------------------------------------------
@@ -122,6 +121,15 @@ impl RoomRegistry {
             .map(|s| s.iter().copied().collect())
             .unwrap_or_default()
     }
+
+    fn for_each_member(&self, room: &str, mut visit: impl FnMut(usize)) {
+        let rooms = self.rooms.read();
+        if let Some(members) = rooms.get(room) {
+            for &conn in members {
+                visit(conn);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,21 +158,16 @@ pub fn global_room_registry() -> &'static RoomRegistry {
 pub(crate) fn local_room_broadcast(room: &str, msg: &str) -> i64 {
     let payload = msg.as_bytes();
 
-    // Snapshot member list (read lock, released immediately)
-    let members = global_room_registry().members(room);
-
     let mut failures = 0i64;
-    for conn_usize in members {
+    global_room_registry().for_each_member(room, |conn_usize| {
         let conn = unsafe { &*(conn_usize as *const WsConnection) };
-        // Check shutdown flag to avoid writing to closing connections
-        if conn.shutdown.load(Ordering::SeqCst) {
-            continue;
+        if conn.io.is_closed() {
+            return;
         }
-        let mut stream = conn.write_stream.lock();
-        if write_frame(&mut *stream, WsOpcode::Text, payload, true).is_err() {
+        if conn.io.send(WsOpcode::Text, payload).is_err() {
             failures += 1;
         }
-    }
+    });
     failures
 }
 
@@ -291,23 +294,19 @@ pub extern "C" fn mesh_ws_broadcast_except(
     let except = except_conn as usize;
 
     // Step 1: Local delivery with exclusion (except_conn only meaningful locally)
-    let members = global_room_registry().members(room);
-
     let mut failures = 0i64;
-    for conn_usize in members {
+    global_room_registry().for_each_member(room, |conn_usize| {
         if conn_usize == except {
-            continue; // skip excluded connection
+            return; // skip excluded connection
         }
         let conn = unsafe { &*(conn_usize as *const WsConnection) };
-        // Check shutdown flag to avoid writing to closing connections
-        if conn.shutdown.load(Ordering::SeqCst) {
-            continue;
+        if conn.io.is_closed() {
+            return;
         }
-        let mut stream = conn.write_stream.lock();
-        if write_frame(&mut *stream, WsOpcode::Text, payload, true).is_err() {
+        if conn.io.send(WsOpcode::Text, payload).is_err() {
             failures += 1;
         }
-    }
+    });
 
     // Step 2: Forward full message to all connected cluster nodes
     // Remote nodes deliver to ALL their local members (no exclusion needed --
@@ -391,6 +390,41 @@ mod tests {
 
         // conn_rooms reverse index should be cleaned up
         assert!(reg.conn_rooms.read().get(&100).is_none());
+    }
+
+    #[test]
+    fn cleanup_waits_for_active_member_iteration() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{mpsc, Arc};
+        use std::time::Duration;
+
+        let reg = Arc::new(fresh_registry());
+        reg.join(100, "lobby".to_string());
+        let (entered_tx, entered_rx) = mpsc::sync_channel(0);
+        let (release_tx, release_rx) = mpsc::sync_channel(0);
+        let iter_reg = Arc::clone(&reg);
+        let iteration = std::thread::spawn(move || {
+            iter_reg.for_each_member("lobby", |_| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+        });
+        entered_rx.recv().unwrap();
+
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let cleanup_reg = Arc::clone(&reg);
+        let cleanup_done = Arc::clone(&cleaned);
+        let cleanup = std::thread::spawn(move || {
+            cleanup_reg.cleanup_connection(100);
+            cleanup_done.store(true, Ordering::SeqCst);
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!cleaned.load(Ordering::SeqCst));
+
+        release_tx.send(()).unwrap();
+        iteration.join().unwrap();
+        cleanup.join().unwrap();
+        assert!(cleaned.load(Ordering::SeqCst));
     }
 
     #[test]

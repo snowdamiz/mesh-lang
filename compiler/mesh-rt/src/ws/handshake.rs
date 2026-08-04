@@ -18,6 +18,116 @@ use sha1::{Digest, Sha1};
 /// RFC 6455 magic GUID concatenated with the client key for Sec-WebSocket-Accept.
 const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+pub(crate) const MAX_HANDSHAKE_BYTES: usize = 16 * 1024;
+
+pub(crate) struct ParsedUpgradeRequest {
+    pub(crate) path: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) response: Vec<u8>,
+    pub(crate) consumed: usize,
+}
+
+fn complete_headers(bytes: &[u8]) -> Result<Option<usize>, String> {
+    if let Some(position) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+        let consumed = position + 4;
+        if consumed > MAX_HANDSHAKE_BYTES {
+            return Err(format!(
+                "WebSocket handshake headers exceed {MAX_HANDSHAKE_BYTES} bytes"
+            ));
+        }
+        Ok(Some(consumed))
+    } else if bytes.len() > MAX_HANDSHAKE_BYTES {
+        Err(format!(
+            "WebSocket handshake headers exceed {MAX_HANDSHAKE_BYTES} bytes"
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+pub(crate) fn parse_upgrade_request_bytes(
+    bytes: &[u8],
+) -> Result<Option<ParsedUpgradeRequest>, String> {
+    let Some(consumed) = complete_headers(bytes)? else {
+        return Ok(None);
+    };
+    let request = std::str::from_utf8(&bytes[..consumed])
+        .map_err(|_| "WebSocket handshake is not valid UTF-8".to_string())?;
+    let mut lines = request.split("\r\n");
+    let request_line = lines
+        .next()
+        .ok_or_else(|| "missing WebSocket request line".to_string())?;
+    let mut parts = request_line.split_ascii_whitespace();
+    let method = parts.next().unwrap_or_default();
+    let path = parts.next().unwrap_or_default();
+    let version = parts.next().unwrap_or_default();
+    if path.is_empty() || version != "HTTP/1.1" || parts.next().is_some() {
+        return Err(format!("malformed WebSocket request line: {request_line}"));
+    }
+    let headers = lines
+        .take_while(|line| !line.is_empty())
+        .map(|line| {
+            line.split_once(':')
+                .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
+                .ok_or_else(|| format!("malformed WebSocket header: {line}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let client_key = validate_upgrade_request(method, &headers).map_err(str::to_string)?;
+    let response = format!(
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
+        compute_accept_key(&client_key)
+    )
+    .into_bytes();
+    Ok(Some(ParsedUpgradeRequest {
+        path: path.to_string(),
+        headers,
+        response,
+        consumed,
+    }))
+}
+
+pub(crate) fn parse_upgrade_response_bytes(
+    bytes: &[u8],
+    client_key: &str,
+) -> Result<Option<usize>, String> {
+    let Some(consumed) = complete_headers(bytes)? else {
+        return Ok(None);
+    };
+    let response = std::str::from_utf8(&bytes[..consumed])
+        .map_err(|_| "WebSocket handshake is not valid UTF-8".to_string())?;
+    let mut lines = response.split("\r\n");
+    let status = lines.next().unwrap_or_default();
+    let mut status_parts = status.split_ascii_whitespace();
+    if !matches!(status_parts.next(), Some("HTTP/1.1" | "HTTP/1.0"))
+        || status_parts.next() != Some("101")
+    {
+        return Err(format!("WebSocket upgrade rejected: {status}"));
+    }
+    let headers = lines
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim()))
+        .collect::<Vec<_>>();
+    let has_token = |name: &str, expected: &str| {
+        headers.iter().any(|(header_name, value)| {
+            header_name == name
+                && value
+                    .split(',')
+                    .any(|token| token.trim().eq_ignore_ascii_case(expected))
+        })
+    };
+    if !has_token("upgrade", "websocket") || !has_token("connection", "upgrade") {
+        return Err("WebSocket upgrade response is missing required headers".to_string());
+    }
+    let expected = compute_accept_key(client_key);
+    if !headers
+        .iter()
+        .any(|(name, value)| name == "sec-websocket-accept" && *value == expected.as_str())
+    {
+        return Err("WebSocket upgrade response has an invalid accept key".to_string());
+    }
+    Ok(Some(consumed))
+}
+
 /// Compute the `Sec-WebSocket-Accept` value per RFC 6455 Section 4.2.2.
 ///
 /// Concatenates `client_key` + [`WS_GUID`], SHA-1 hashes, then Base64 encodes.
@@ -188,6 +298,37 @@ pub fn perform_upgrade<S: Read + Write>(
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn incremental_server_handshake_waits_for_terminator_and_preserves_remainder() {
+        let request = b"GET /feed?after=4 HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n\x81\x00";
+        assert!(parse_upgrade_request_bytes(&request[..20])
+            .unwrap()
+            .is_none());
+
+        let parsed = parse_upgrade_request_bytes(request).unwrap().unwrap();
+        assert_eq!(parsed.path, "/feed?after=4");
+        assert_eq!(&request[parsed.consumed..], &[0x81, 0x00]);
+        assert!(parsed.response.starts_with(b"HTTP/1.1 101"));
+    }
+
+    #[test]
+    fn incremental_client_handshake_validates_accept_key_and_header_limit() {
+        let response = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+        assert!(
+            parse_upgrade_response_bytes(&response[..12], "dGhlIHNhbXBsZSBub25jZQ==")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            parse_upgrade_response_bytes(response, "dGhlIHNhbXBsZSBub25jZQ==")
+                .unwrap()
+                .unwrap(),
+            response.len()
+        );
+        assert!(parse_upgrade_response_bytes(response, "wrong").is_err());
+        assert!(parse_upgrade_request_bytes(&vec![b'x'; MAX_HANDSHAKE_BYTES + 1]).is_err());
+    }
 
     #[test]
     fn test_accept_key_rfc_example() {

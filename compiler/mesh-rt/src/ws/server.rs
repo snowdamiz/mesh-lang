@@ -1,138 +1,49 @@
-//! WebSocket server runtime: actor-per-connection with reader thread bridge.
+//! WebSocket server runtime: actor-per-connection over a shared I/O reactor.
 //!
 //! Integrates the Phase 59 WebSocket protocol layer (frame codec, handshake,
 //! close) with Mesh's actor system. Each accepted WebSocket connection spawns
 //! a dedicated actor with crash isolation via `catch_unwind`.
 //!
-//! The **reader thread bridge** is the novel component: a dedicated OS thread
-//! per connection reads WebSocket frames from the TCP stream and pushes them
-//! into the actor's mailbox via reserved type tags, without blocking the M:N
-//! scheduler's worker threads.
+//! Accepted sockets, TLS handshakes, HTTP upgrades, frame reads, and partial
+//! writes are driven by one nonblocking readiness reactor. Actor workers only
+//! exchange bounded in-memory messages with that reactor.
 //!
 //! ## Architecture
 //!
 //! ```text
-//! TcpListener (accept loop on calling thread)
+//! TcpListener (accept-loop thread)
 //!     |
-//!     v  spawn actor per connection
+//!     v  register socket with shared reactor
+//! HTTP upgrade and frame I/O (reactor thread)
+//!     |
+//!     v  spawn actor after upgrade
 //! ws_connection_entry (actor coroutine on scheduler worker)
 //!     |
-//!     +-- perform_upgrade (HTTP -> WebSocket)
 //!     +-- call on_connect (accept/reject)
-//!     +-- wrap stream in Arc<Mutex<WsStream>> (unified plain/TLS)
-//!     +-- spawn reader thread (shared mutex for read/write)
+//!     +-- attach bounded reactor event sink
 //!     +-- actor_message_loop (receive -> dispatch)
-//!     +-- cleanup (close frame, shutdown reader thread)
+//!     +-- cleanup (rooms, close frame, connection handle)
 //! ```
 
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::VecDeque;
+use std::net::TcpListener;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use rustls::{ServerConfig, ServerConnection, StreamOwned};
 
-use super::close::{process_frame, send_close, validate_text_payload, WsCloseCode};
-use super::frame::{read_frame, write_frame, MessageAssembler, ReassembleResult, WsOpcode};
-use super::handshake::perform_upgrade;
+use super::close::WsCloseCode;
+use super::frame::WsOpcode;
+use super::reactor::{
+    register_server, ReactorConfig, ReactorConnection, ReactorEvent, ReactorEventSink,
+    ReactorTransport, ServerHandshakeHandler, SinkError,
+};
 use crate::actor::process::Process;
 use crate::actor::stack;
 use crate::actor::{
     global_scheduler, MailboxPushError, Message, MessageBuffer, ProcessId, ProcessState,
 };
 use crate::string::MeshString;
-
-// ---------------------------------------------------------------------------
-// Stream abstraction for plain TCP and TLS WebSocket connections
-// ---------------------------------------------------------------------------
-
-/// Stream abstraction for plain TCP and TLS WebSocket connections.
-/// Mirrors HttpStream in http/server.rs. Both variants implement Read + Write.
-pub(crate) enum WsStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ServerConnection, TcpStream>),
-}
-
-impl WsStream {
-    /// Set the read timeout on the underlying TcpStream.
-    /// Works for both Plain and Tls variants since TLS uses the underlying
-    /// TCP socket's timeout.
-    fn set_read_timeout(&self, dur: Option<Duration>) -> std::io::Result<()> {
-        match self {
-            WsStream::Plain(s) => s.set_read_timeout(dur),
-            WsStream::Tls(s) => s.get_ref().set_read_timeout(dur),
-        }
-    }
-}
-
-impl Read for WsStream {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            WsStream::Plain(s) => s.read(buf),
-            WsStream::Tls(s) => s.read(buf),
-        }
-    }
-}
-
-impl Write for WsStream {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self {
-            WsStream::Plain(s) => s.write(buf),
-            WsStream::Tls(s) => s.write(buf),
-        }
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            WsStream::Plain(s) => s.flush(),
-            WsStream::Tls(s) => s.flush(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Heartbeat state (BEAT-01 through BEAT-05)
-// ---------------------------------------------------------------------------
-
-/// Tracks ping/pong heartbeat state for dead connection detection.
-///
-/// The reader thread sends periodic Ping frames with random 4-byte payloads
-/// and validates that the Pong response echoes the payload. If no valid Pong
-/// is received within `pong_timeout` after the last Ping, the connection is
-/// considered dead and closed with code 1001 (Going Away).
-struct HeartbeatState {
-    last_ping_sent: Instant,
-    last_pong_received: Instant,
-    ping_interval: Duration, // default 30s
-    pong_timeout: Duration,  // default 10s
-    pending_ping_payload: Option<[u8; 4]>,
-}
-
-impl HeartbeatState {
-    fn new() -> Self {
-        let now = Instant::now();
-        Self {
-            last_ping_sent: now,
-            last_pong_received: now,
-            ping_interval: Duration::from_secs(30),
-            pong_timeout: Duration::from_secs(10),
-            pending_ping_payload: None,
-        }
-    }
-
-    fn should_send_ping(&self) -> bool {
-        self.last_ping_sent.elapsed() >= self.ping_interval
-    }
-
-    fn is_pong_overdue(&self) -> bool {
-        if self.pending_ping_payload.is_some() {
-            self.last_ping_sent.elapsed() >= self.pong_timeout
-        } else {
-            false
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Reserved type tags for WebSocket mailbox messages
@@ -178,10 +89,9 @@ struct WsHandler {
 unsafe impl Send for WsHandler {}
 
 /// Connection handle for `Ws.send` -- stored on the Rust heap (not GC heap)
-/// because it contains an `Arc<Mutex<WsStream>>`.
+/// and backed by a bounded command path to the shared reactor.
 pub(crate) struct WsConnection {
-    pub(crate) write_stream: Arc<Mutex<WsStream>>,
-    pub(crate) shutdown: Arc<AtomicBool>,
+    pub(crate) io: ReactorConnection,
 }
 
 /// Arguments passed to the spawned WebSocket actor, following the HTTP
@@ -189,23 +99,153 @@ pub(crate) struct WsConnection {
 #[repr(C)]
 struct WsConnectionArgs {
     handler: WsHandler,
-    stream_ptr: usize,
+    connection: ReactorConnection,
+    sink: Arc<ServerSink>,
+    path: String,
+    headers: Vec<(String, String)>,
 }
 
 // WsConnectionArgs contains raw pointers but is only used for transfer
 // to the actor entry function.
 unsafe impl Send for WsConnectionArgs {}
 
+const SERVER_PENDING_ITEMS: usize = 256;
+const SERVER_PENDING_BYTES: usize = 16 * 1024 * 1024;
+const SERVER_MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+
+struct ServerSinkState {
+    target: Option<(Arc<Mutex<Process>>, ProcessId)>,
+    pending: VecDeque<ReactorEvent>,
+    pending_bytes: usize,
+    remote_close: bool,
+    terminated: bool,
+}
+
+struct ServerSink {
+    state: Mutex<ServerSinkState>,
+}
+
+impl ServerSink {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(ServerSinkState {
+                target: None,
+                pending: VecDeque::new(),
+                pending_bytes: 0,
+                remote_close: false,
+                terminated: false,
+            }),
+        }
+    }
+
+    fn attach(&self, process: Arc<Mutex<Process>>, pid: ProcessId) -> Result<(), SinkError> {
+        let (terminated, remote_close) = {
+            let mut state = self.state.lock();
+            while let Some(event) = state.pending.pop_front() {
+                state.pending_bytes -= reactor_event_bytes(&event);
+                deliver_server_event(&process, pid, event)?;
+            }
+            state.target = Some((Arc::clone(&process), pid));
+            (state.terminated, state.remote_close)
+        };
+        if terminated && !remote_close {
+            push_disconnect(&process, pid, 1006, "WebSocket transport closed");
+        }
+        Ok(())
+    }
+}
+
+impl ReactorEventSink for ServerSink {
+    fn event(&self, event: ReactorEvent) -> Result<(), SinkError> {
+        let mut state = self.state.lock();
+        if state.terminated {
+            return Err(SinkError::Closed);
+        }
+        if let Some((process, pid)) = &state.target {
+            let process = Arc::clone(process);
+            let pid = *pid;
+            if matches!(&event, ReactorEvent::Close(_, _)) {
+                deliver_server_event(&process, pid, event)?;
+                state.remote_close = true;
+                return Ok(());
+            }
+            drop(state);
+            return deliver_server_event(&process, pid, event);
+        }
+
+        let is_close = matches!(&event, ReactorEvent::Close(_, _));
+        let bytes = reactor_event_bytes(&event);
+        if !is_close
+            && (state.pending.len() >= SERVER_PENDING_ITEMS
+                || state
+                    .pending_bytes
+                    .checked_add(bytes)
+                    .is_none_or(|total| total > SERVER_PENDING_BYTES))
+        {
+            return Err(SinkError::Full);
+        }
+        state.pending_bytes += bytes;
+        state.pending.push_back(event);
+        state.remote_close |= is_close;
+        Ok(())
+    }
+
+    fn terminated(&self, reason: &str) {
+        let target = {
+            let mut state = self.state.lock();
+            if state.terminated {
+                return;
+            }
+            state.terminated = true;
+            (!state.remote_close)
+                .then(|| state.target.as_ref())
+                .flatten()
+                .map(|(process, pid)| (Arc::clone(process), *pid))
+        };
+        if let Some((process, pid)) = target {
+            push_disconnect(&process, pid, 1006, reason);
+        }
+    }
+}
+
+fn reactor_event_bytes(event: &ReactorEvent) -> usize {
+    match event {
+        ReactorEvent::Text(bytes, _) | ReactorEvent::Binary(bytes, _) => bytes.len(),
+        ReactorEvent::Close(_, reason) => reason.len(),
+    }
+}
+
+fn deliver_server_event(
+    process: &Arc<Mutex<Process>>,
+    pid: ProcessId,
+    event: ReactorEvent,
+) -> Result<(), SinkError> {
+    let (tag, payload, _permit) = match event {
+        ReactorEvent::Text(payload, permit) => (WS_TEXT_TAG, payload, permit),
+        ReactorEvent::Binary(payload, permit) => (WS_BINARY_TAG, payload, permit),
+        ReactorEvent::Close(code, reason) => {
+            push_disconnect(process, pid, code, &reason);
+            return Ok(());
+        }
+    };
+    let message = Message {
+        buffer: MessageBuffer::new(payload, tag),
+    };
+    push_actor_message(process, pid, message).map_err(|error| match error {
+        MailboxPushError::Full => SinkError::Full,
+        MailboxPushError::MessageTooLarge => SinkError::TooLarge,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Public API: mesh_ws_serve, mesh_ws_send, mesh_ws_send_binary
 // ---------------------------------------------------------------------------
 
-/// Start a WebSocket server on the given port, blocking the calling thread.
+/// Start a WebSocket server on the given port and return after spawning its accept loop.
 ///
-/// Binds a TCP listener and spawns one actor per accepted WebSocket
-/// connection. Each connection actor runs the upgrade handshake, calls
-/// lifecycle callbacks (on_connect, on_message, on_close), and uses a
-/// reader thread bridge for non-blocking frame delivery.
+/// Binds a TCP listener and registers each accepted connection with the shared
+/// reactor. After the upgrade, each connection actor runs lifecycle callbacks
+/// (on_connect, on_message, on_close).
 ///
 /// # Arguments
 ///
@@ -265,6 +305,7 @@ pub extern "C" fn mesh_ws_serve(
 /// Wrapper for raw callback pointers to satisfy Send requirement.
 /// Safe because these are function pointers (or null) that remain valid
 /// for the entire program lifetime.
+#[derive(Clone, Copy)]
 struct SendableHandler {
     on_connect_fn: *mut u8,
     on_connect_env: *mut u8,
@@ -274,10 +315,59 @@ struct SendableHandler {
     on_close_env: *mut u8,
 }
 unsafe impl Send for SendableHandler {}
+unsafe impl Sync for SendableHandler {}
+
+impl SendableHandler {
+    fn actor_handler(self) -> WsHandler {
+        WsHandler {
+            on_connect_fn: self.on_connect_fn,
+            on_connect_env: self.on_connect_env,
+            on_message_fn: self.on_message_fn,
+            on_message_env: self.on_message_env,
+            on_close_fn: self.on_close_fn,
+            on_close_env: self.on_close_env,
+        }
+    }
+}
+
+struct ServerOpenHandler {
+    callbacks: SendableHandler,
+}
+
+impl ServerHandshakeHandler for ServerOpenHandler {
+    fn opened(
+        &self,
+        connection: ReactorConnection,
+        path: String,
+        headers: Vec<(String, String)>,
+    ) -> Arc<dyn ReactorEventSink> {
+        let sink = Arc::new(ServerSink::new());
+        let args = WsConnectionArgs {
+            handler: self.callbacks.actor_handler(),
+            connection,
+            sink: Arc::clone(&sink),
+            path,
+            headers,
+        };
+        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
+        global_scheduler().spawn(
+            ws_connection_entry as *const u8,
+            args_ptr,
+            std::mem::size_of::<WsConnectionArgs>() as u64,
+            1,
+        );
+        sink
+    }
+
+    fn failed(&self, reason: &str) {
+        eprintln!("[mesh-rt] WebSocket upgrade failed: {reason}");
+    }
+}
 
 /// Accept loop for WebSocket connections. Runs on a dedicated OS thread,
 /// dispatching each accepted connection to an actor on the Mesh scheduler.
-fn ws_accept_loop(listener: TcpListener, h: SendableHandler) {
+fn ws_accept_loop(listener: TcpListener, callbacks: SendableHandler) {
+    let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
@@ -287,37 +377,21 @@ fn ws_accept_loop(listener: TcpListener, h: SendableHandler) {
             }
         };
 
-        // Set read timeout before wrapping in WsStream.
-        tcp_stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok();
-
-        let ws_stream = WsStream::Plain(tcp_stream);
-
-        // Pack handler (copy the 6 pointers) and stream into args.
-        let handler = WsHandler {
-            on_connect_fn: h.on_connect_fn,
-            on_connect_env: h.on_connect_env,
-            on_message_fn: h.on_message_fn,
-            on_message_env: h.on_message_env,
-            on_close_fn: h.on_close_fn,
-            on_close_env: h.on_close_env,
+        let _ = tcp_stream.set_nodelay(true);
+        let transport = match ReactorTransport::plain(tcp_stream) {
+            Ok(transport) => transport,
+            Err(error) => {
+                eprintln!("[mesh-rt] prepare WebSocket socket: {error}");
+                continue;
+            }
         };
-        let stream_ptr = Box::into_raw(Box::new(ws_stream)) as usize;
-        let args = WsConnectionArgs {
-            handler,
-            stream_ptr,
-        };
-        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
-        let args_size = std::mem::size_of::<WsConnectionArgs>() as u64;
-
-        let sched = global_scheduler();
-        sched.spawn(
-            ws_connection_entry as *const u8,
-            args_ptr,
-            args_size,
-            1, // Normal priority
-        );
+        if let Err(error) = register_server(
+            transport,
+            Arc::clone(&handler),
+            ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
+        ) {
+            eprintln!("[mesh-rt] register WebSocket connection: {error}");
+        }
     }
 }
 
@@ -337,6 +411,10 @@ pub extern "C" fn mesh_ws_serve_tls(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
+    if cert_path.is_null() || key_path.is_null() {
+        eprintln!("[mesh-rt] WebSocket TLS certificate and key paths must not be null");
+        return;
+    }
     crate::actor::mesh_rt_init_actor(0);
 
     let cert_str = unsafe { (*cert_path).as_str() };
@@ -363,9 +441,28 @@ pub extern "C" fn mesh_ws_serve_tls(
     };
 
     eprintln!("[mesh-rt] WebSocket TLS server listening on {}", addr);
+    let callbacks = SendableHandler {
+        on_connect_fn,
+        on_connect_env,
+        on_message_fn,
+        on_message_env,
+        on_close_fn,
+        on_close_env,
+    };
+    if let Err(error) = std::thread::Builder::new()
+        .name(format!("wss-accept-{port}"))
+        .spawn(move || ws_tls_accept_loop(listener, callbacks, tls_config))
+    {
+        eprintln!("[mesh-rt] Failed to spawn WebSocket TLS accept thread: {error}");
+    }
+}
 
-    let config_ptr = Arc::into_raw(tls_config) as usize;
-
+fn ws_tls_accept_loop(
+    listener: TcpListener,
+    callbacks: SendableHandler,
+    tls_config: Arc<ServerConfig>,
+) {
+    let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
@@ -375,43 +472,28 @@ pub extern "C" fn mesh_ws_serve_tls(
             }
         };
 
-        // Set read timeout BEFORE TLS wrapping (Pitfall 1 from research)
-        tcp_stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok();
-
-        let tls_config = unsafe { Arc::from_raw(config_ptr as *const ServerConfig) };
+        let _ = tcp_stream.set_nodelay(true);
         let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
-                std::mem::forget(tls_config);
                 continue;
             }
         };
-        std::mem::forget(tls_config);
-
-        let tls_stream = StreamOwned::new(conn, tcp_stream);
-        let ws_stream = WsStream::Tls(tls_stream);
-
-        let handler = WsHandler {
-            on_connect_fn,
-            on_connect_env,
-            on_message_fn,
-            on_message_env,
-            on_close_fn,
-            on_close_env,
+        let transport = match ReactorTransport::server_tls(StreamOwned::new(conn, tcp_stream)) {
+            Ok(transport) => transport,
+            Err(error) => {
+                eprintln!("[mesh-rt] prepare WebSocket TLS socket: {error}");
+                continue;
+            }
         };
-        let stream_ptr = Box::into_raw(Box::new(ws_stream)) as usize;
-        let args = WsConnectionArgs {
-            handler,
-            stream_ptr,
-        };
-        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
-        let args_size = std::mem::size_of::<WsConnectionArgs>() as u64;
-
-        let sched = global_scheduler();
-        sched.spawn(ws_connection_entry as *const u8, args_ptr, args_size, 1);
+        if let Err(error) = register_server(
+            transport,
+            Arc::clone(&handler),
+            ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
+        ) {
+            eprintln!("[mesh-rt] register WebSocket TLS connection: {error}");
+        }
     }
 }
 
@@ -428,8 +510,7 @@ pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
     }
     let conn = unsafe { &*(conn as *const WsConnection) };
     let text = unsafe { (*msg).as_str() };
-    let mut stream = conn.write_stream.lock();
-    match write_frame(&mut *stream, WsOpcode::Text, text.as_bytes(), true) {
+    match conn.io.send(WsOpcode::Text, text.as_bytes()) {
         Ok(()) => 0,
         Err(_) => -1,
     }
@@ -443,299 +524,128 @@ pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn mesh_ws_send_binary(conn: *mut u8, data: *const u8, len: i64) -> i64 {
+    let Some(len) = binary_payload_len(len) else {
+        return -1;
+    };
     if conn.is_null() || data.is_null() {
         return -1;
     }
     let conn = unsafe { &*(conn as *const WsConnection) };
-    let bytes = unsafe { std::slice::from_raw_parts(data, len as usize) };
-    let mut stream = conn.write_stream.lock();
-    match write_frame(&mut *stream, WsOpcode::Binary, bytes, true) {
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    match conn.io.send(WsOpcode::Binary, bytes) {
         Ok(()) => 0,
         Err(_) => -1,
     }
+}
+
+fn binary_payload_len(len: i64) -> Option<usize> {
+    usize::try_from(len)
+        .ok()
+        .filter(|len| *len <= SERVER_MAX_MESSAGE_BYTES)
 }
 
 // ---------------------------------------------------------------------------
 // Actor entry point
 // ---------------------------------------------------------------------------
 
+fn close_or_cancel(connection: &ReactorConnection, code: u16, reason: &str) {
+    if let Err(error) = connection.graceful_close(code, reason) {
+        connection.cancel(error);
+    }
+}
+
 /// Actor entry function for a single WebSocket connection.
 ///
-/// Performs the upgrade handshake, splits the stream, spawns the reader
-/// thread, runs the message loop, and handles cleanup on exit or crash.
+/// Attaches the reactor event sink, runs the callback loop, and handles
+/// cleanup on exit or crash. It performs no socket I/O.
 extern "C" fn ws_connection_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
 
     let args = unsafe { Box::from_raw(args as *mut WsConnectionArgs) };
-    let handler = args.handler;
-    let mut stream = unsafe { *Box::from_raw(args.stream_ptr as *mut WsStream) };
-
-    // 1. Perform WebSocket upgrade handshake
-    let (path, headers) = match perform_upgrade(&mut stream) {
-        Ok(ph) => ph,
-        Err(e) => {
-            eprintln!("[mesh-rt] WS upgrade failed: {}", e);
-            return;
-        }
-    };
-
-    // 2. Wrap stream in Arc<Mutex<WsStream>> for shared reader/writer access.
-    //    Unlike TcpStream::try_clone(), StreamOwned (TLS) cannot be cloned.
-    //    Using a single Arc<Mutex<WsStream>> unifies both plain and TLS paths.
-    let stream = Arc::new(Mutex::new(stream));
-    let shutdown = Arc::new(AtomicBool::new(false));
-
-    // 3. Create WsConnection handle (Rust heap, not GC heap)
+    let WsConnectionArgs {
+        handler,
+        connection,
+        sink,
+        path,
+        headers,
+    } = *args;
     let conn = Box::into_raw(Box::new(WsConnection {
-        write_stream: stream.clone(),
-        shutdown: shutdown.clone(),
+        io: connection.clone(),
     }));
     let conn_ptr = conn as *mut u8;
 
-    // 4. Get current actor's PID and process Arc for reader thread
-    let my_pid = stack::get_current_pid().expect("ws_connection_entry: no PID");
+    let Some(my_pid) = stack::get_current_pid() else {
+        connection.cancel("WebSocket actor has no process ID");
+        unsafe {
+            drop(Box::from_raw(conn));
+        }
+        return;
+    };
     let sched = global_scheduler();
-    let proc_arc = sched
-        .get_process(my_pid)
-        .expect("ws_connection_entry: no process");
+    let Some(proc_arc) = sched.get_process(my_pid) else {
+        connection.cancel("WebSocket actor process is unavailable");
+        unsafe {
+            drop(Box::from_raw(conn));
+        }
+        return;
+    };
 
-    // 5. Call on_connect callback (LIFE-01, LIFE-02)
     let accepted = call_on_connect(&handler, conn_ptr, &path, &headers);
     if !accepted {
-        // on_connect rejected -- send close 1008 (Policy Violation)
-        let _ = send_close(&mut *stream.lock(), WS_POLICY_VIOLATION, "rejected");
-        shutdown.store(true, Ordering::SeqCst);
-        // Clean up connection handle
+        crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
+        close_or_cancel(&connection, WS_POLICY_VIOLATION, "rejected");
         unsafe {
             drop(Box::from_raw(conn));
         }
         return;
     }
 
-    // 6. Spawn reader thread (read timeout already set before WsStream wrapping)
-    let reader_shutdown = shutdown.clone();
-    let reader_stream = stream.clone();
-    let reader_proc = proc_arc.clone();
-    let reader_pid = my_pid;
-    std::thread::spawn(move || {
-        reader_thread_loop(reader_stream, reader_proc, reader_pid, reader_shutdown);
-    });
+    if sink.attach(proc_arc, my_pid).is_err() {
+        crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
+        close_or_cancel(
+            &connection,
+            WsCloseCode::TRY_AGAIN_LATER,
+            "inbound queue full",
+        );
+        unsafe {
+            drop(Box::from_raw(conn));
+        }
+        return;
+    }
 
-    // 8. Actor message loop with catch_unwind (ACTOR-01, ACTOR-05)
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        actor_message_loop(&handler, conn_ptr);
+        actor_message_loop(&handler, conn_ptr)
     }));
 
-    // 9. Cleanup
-    // ROOM-05: remove from all rooms before signaling shutdown
     crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
-    shutdown.store(true, Ordering::SeqCst);
 
-    if result.is_err() {
-        // Actor crashed (ACTOR-05): send close 1011
-        let _ = send_close(
-            &mut *stream.lock(),
-            WsCloseCode::INTERNAL_ERROR,
-            "internal error",
-        );
-        // Call on_close for crash case (best-effort -- GC may not be safe)
-        call_on_close(
-            &handler,
-            conn_ptr,
-            WsCloseCode::INTERNAL_ERROR,
-            "internal error",
-        );
-    } else {
-        // Normal exit (disconnect): call on_close (LIFE-04)
-        call_on_close(&handler, conn_ptr, WsCloseCode::NORMAL, "");
+    match result {
+        Err(_) => {
+            close_or_cancel(&connection, WsCloseCode::INTERNAL_ERROR, "internal error");
+            call_on_close(
+                &handler,
+                conn_ptr,
+                WsCloseCode::INTERNAL_ERROR,
+                "internal error",
+            );
+        }
+        Ok((code, reason)) => {
+            if !connection.is_closed() {
+                if code == 1006 {
+                    connection.cancel(reason.clone());
+                } else {
+                    close_or_cancel(&connection, code, &reason);
+                }
+            }
+            call_on_close(&handler, conn_ptr, code, &reason);
+        }
     }
 
-    // Clean up connection handle
+    crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
     unsafe {
         drop(Box::from_raw(conn));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Reader thread
-// ---------------------------------------------------------------------------
-
-/// Reader thread loop: reads WebSocket frames and pushes them into the
-/// actor's mailbox via reserved type tags.
-///
-/// Runs on a dedicated OS thread to avoid blocking the M:N scheduler's worker
-/// threads. Integrates three concerns:
-///
-/// 1. **Frame dispatch**: control frames (ping/pong/close) handled inline,
-///    data frames (text/binary/continuation) routed through fragment reassembly.
-/// 2. **Heartbeat** (BEAT-01..05): periodic Ping with random payload, validates
-///    Pong response, closes dead connections after pong timeout.
-/// 3. **Fragmentation** (FRAG-01..03): reassembles continuation frames into
-///    complete messages, enforces 16 MiB size limit, handles interleaved
-///    control frames without corrupting fragment state.
-///
-/// Uses `Arc<Mutex<WsStream>>` for unified plain TCP / TLS access. The mutex
-/// is locked briefly for each `read_frame` call (100ms timeout) and released
-/// between frames, allowing `Ws.send()` from the actor to acquire the lock.
-fn reader_thread_loop(
-    stream: Arc<Mutex<WsStream>>,
-    proc_arc: Arc<Mutex<Process>>,
-    actor_pid: ProcessId,
-    shutdown: Arc<AtomicBool>,
-) {
-    // Set read timeout for the reader thread. Controls:
-    // - Maximum contention window for Ws.send() from the actor side
-    // - Granularity for shutdown and heartbeat checks
-    // 100ms keeps contention low while allowing responsive shutdown.
-    {
-        let s = stream.lock();
-        s.set_read_timeout(Some(Duration::from_millis(100))).ok();
-    }
-
-    let mut heartbeat = HeartbeatState::new();
-    let mut frag = MessageAssembler::new(16 * 1024 * 1024);
-
-    loop {
-        if shutdown.load(Ordering::SeqCst) {
-            break;
-        }
-
-        // HEARTBEAT: Check pong timeout (BEAT-04)
-        if heartbeat.is_pong_overdue() {
-            let mut s = stream.lock();
-            let _ = send_close(&mut *s, WsCloseCode::GOING_AWAY, "pong timeout");
-            drop(s);
-            push_disconnect(&proc_arc, actor_pid);
-            break;
-        }
-
-        // HEARTBEAT: Send periodic ping (BEAT-01)
-        if heartbeat.should_send_ping() {
-            let payload: [u8; 4] = rand::random();
-            let mut s = stream.lock();
-            let _ = write_frame(&mut *s, WsOpcode::Ping, &payload, true);
-            drop(s);
-            heartbeat.last_ping_sent = Instant::now();
-            heartbeat.pending_ping_payload = Some(payload);
-        }
-
-        // Lock stream, read one frame, release lock.
-        // The 100ms read timeout keeps the contention window small.
-        let frame_result = {
-            let mut s = stream.lock();
-            read_frame(&mut *s)
-        };
-
-        match frame_result {
-            Ok(frame) => {
-                // HEARTBEAT: Handle Pong BEFORE process_frame (BEAT-02, BEAT-03)
-                // The existing process_frame silently ignores Pong; we need
-                // to inspect the payload to validate it matches our Ping.
-                if frame.opcode == WsOpcode::Pong {
-                    if let Some(expected) = heartbeat.pending_ping_payload {
-                        if frame.payload == expected {
-                            heartbeat.last_pong_received = Instant::now();
-                            heartbeat.pending_ping_payload = None;
-                        }
-                    }
-                    continue; // Pong handled, skip to next frame
-                }
-
-                // Handle control frames inline (FRAG-02): Ping and Close are
-                // processed regardless of fragment state, without corrupting
-                // the fragment buffer.
-                if matches!(frame.opcode, WsOpcode::Ping | WsOpcode::Close) {
-                    let mut s = stream.lock();
-                    match process_frame(&mut *s, frame) {
-                        Ok(None) => { /* Ping -> Pong sent */ }
-                        Err(_) => {
-                            drop(s);
-                            // Close frame -> push disconnect
-                            push_disconnect(&proc_arc, actor_pid);
-                            break;
-                        }
-                        _ => {}
-                    }
-                    continue;
-                }
-
-                // FRAGMENTATION: Feed data frames through reassembly (FRAG-01, FRAG-03)
-                match frag.push(frame) {
-                    ReassembleResult::Complete(msg) => {
-                        // UTF-8 validation for text (Pitfall 6: validate on
-                        // the fully reassembled payload, not individual fragments)
-                        if msg.opcode == WsOpcode::Text {
-                            if validate_text_payload(&msg.payload).is_err() {
-                                let mut s = stream.lock();
-                                let _ =
-                                    send_close(&mut *s, WsCloseCode::INVALID_DATA, "invalid UTF-8");
-                                drop(s);
-                                push_disconnect(&proc_arc, actor_pid);
-                                break;
-                            }
-                        }
-                        let tag = match msg.opcode {
-                            WsOpcode::Text => WS_TEXT_TAG,
-                            WsOpcode::Binary => WS_BINARY_TAG,
-                            _ => WS_TEXT_TAG,
-                        };
-                        let buffer = MessageBuffer::new(msg.payload, tag);
-                        let message = Message { buffer };
-
-                        if let Err(error) = push_actor_message(&proc_arc, actor_pid, message) {
-                            let (code, reason) = match error {
-                                MailboxPushError::Full => {
-                                    (WsCloseCode::TRY_AGAIN_LATER, "mailbox full")
-                                }
-                                MailboxPushError::MessageTooLarge => {
-                                    (WsCloseCode::MESSAGE_TOO_BIG, "message too big")
-                                }
-                            };
-                            let mut s = stream.lock();
-                            let _ = send_close(&mut *s, code, reason);
-                            drop(s);
-                            push_disconnect(&proc_arc, actor_pid);
-                            break;
-                        }
-                    }
-                    ReassembleResult::Accumulating => { /* waiting for more fragments */ }
-                    ReassembleResult::TooLarge => {
-                        let mut s = stream.lock();
-                        let _ =
-                            send_close(&mut *s, WsCloseCode::MESSAGE_TOO_BIG, "message too big");
-                        drop(s);
-                        push_disconnect(&proc_arc, actor_pid);
-                        break;
-                    }
-                    ReassembleResult::ProtocolError(reason) => {
-                        let mut s = stream.lock();
-                        let _ = send_close(&mut *s, WsCloseCode::PROTOCOL_ERROR, reason);
-                        drop(s);
-                        push_disconnect(&proc_arc, actor_pid);
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-                // Check if it's a timeout (not a real error).
-                // macOS returns "Resource temporarily unavailable" (EAGAIN) for
-                // short timeouts and "timed out" (ETIMEDOUT) for longer ones.
-                if e.contains("timed out")
-                    || e.contains("WouldBlock")
-                    || e.contains("temporarily unavailable")
-                {
-                    continue; // Just a read timeout, check shutdown and loop
-                }
-                // Real I/O error -- push disconnect
-                push_disconnect(&proc_arc, actor_pid);
-                break;
-            }
-        }
     }
 }
 
@@ -754,16 +664,14 @@ fn push_actor_message(
 }
 
 /// Push a WS_DISCONNECT_TAG message to the actor's mailbox and wake it.
-fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId) {
+fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId, code: u16, reason: &str) {
     let mut proc = proc_arc.lock();
-    loop {
-        let buffer = MessageBuffer::new(Vec::new(), WS_DISCONNECT_TAG);
-        if proc.mailbox.try_push(Message { buffer }).is_ok() {
-            break;
-        }
-        if proc.mailbox.pop().is_none() {
-            return;
-        }
+    let mut payload = Vec::with_capacity(2 + reason.len());
+    payload.extend_from_slice(&code.to_be_bytes());
+    payload.extend_from_slice(reason.as_bytes());
+    let buffer = MessageBuffer::new(payload, WS_DISCONNECT_TAG);
+    if proc.mailbox.try_push_control(Message { buffer }).is_err() {
+        return;
     }
     if matches!(proc.state, ProcessState::Waiting) {
         if proc.set_live_state(ProcessState::Ready) {
@@ -786,13 +694,13 @@ fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId) {
 /// - `WS_DISCONNECT_TAG`: client disconnected, exit loop
 /// - `EXIT_SIGNAL_TAG`: exit signal from linked actor, exit loop
 /// - Other: regular actor-to-actor message (ignored for now)
-fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) {
+fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) -> (u16, String) {
     use crate::actor::mesh_actor_receive;
 
     loop {
         let msg_ptr = mesh_actor_receive(-1);
         if msg_ptr.is_null() {
-            break;
+            return (1006, "WebSocket actor receive stopped".to_string());
         }
 
         // Read type_tag from heap layout: [u64 type_tag, u64 data_len, u8... data]
@@ -822,17 +730,36 @@ fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) {
             }
             WS_DISCONNECT_TAG => {
                 // Client disconnected (ACTOR-06)
-                break;
+                let payload = unsafe {
+                    let mut len_bytes = [0u8; 8];
+                    std::ptr::copy_nonoverlapping(msg_ptr.add(8), len_bytes.as_mut_ptr(), 8);
+                    let len = u64::from_le_bytes(len_bytes) as usize;
+                    std::slice::from_raw_parts(msg_ptr.add(16), len)
+                };
+                return decode_disconnect(payload);
             }
             tag if tag == crate::actor::EXIT_SIGNAL_TAG => {
                 // Exit signal from linked actor
-                break;
+                return (
+                    WsCloseCode::GOING_AWAY,
+                    "WebSocket actor exited".to_string(),
+                );
             }
             _ => {
                 // Regular actor-to-actor message -- ignore for now
             }
         }
     }
+}
+
+fn decode_disconnect(payload: &[u8]) -> (u16, String) {
+    let Some(code) = payload
+        .get(..2)
+        .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+    else {
+        return (1006, "WebSocket transport closed".to_string());
+    };
+    (code, String::from_utf8_lossy(&payload[2..]).into_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -940,10 +867,17 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actor::Priority;
     use crate::ws::close::parse_close_payload;
-    use crate::ws::frame::{apply_mask, read_frame, WsOpcode};
+    use crate::ws::frame::{apply_mask, read_frame, write_masked_frame, WsOpcode};
+    use crate::ws::reactor::InboundPermit;
+    use rustls::ClientConnection;
+    use rustls_pki_types::ServerName;
     use std::io::{Read, Write};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::net::TcpStream;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Barrier;
+    use std::time::Duration;
 
     // ── Callback functions ───────────────────────────────────────────
 
@@ -965,6 +899,16 @@ mod tests {
     /// on_connect: accept without counting (env=null calling convention).
     extern "C" fn accept_on_connect(_conn: *mut u8, _path: *mut u8, _headers: *mut u8) -> *mut u8 {
         1 as *mut u8
+    }
+
+    extern "C" fn join_then_reject_on_connect(
+        conn: *mut u8,
+        _path: *mut u8,
+        _headers: *mut u8,
+    ) -> *mut u8 {
+        crate::ws::rooms::global_room_registry()
+            .join(conn as usize, "server-reject-cleanup".to_string());
+        std::ptr::null_mut()
     }
 
     /// on_message: echo the message back to the client (env=null).
@@ -992,6 +936,37 @@ mod tests {
                 (*(env as *const AtomicU64)).fetch_add(1, Ordering::SeqCst);
             }
         }
+        std::ptr::null_mut()
+    }
+
+    struct CloseRecord {
+        code: AtomicU64,
+        reason: Mutex<String>,
+    }
+
+    extern "C" fn recording_on_close(
+        env: *mut u8,
+        _conn: *mut u8,
+        code: i64,
+        reason: *mut u8,
+    ) -> *mut u8 {
+        let record = unsafe { &*(env as *const CloseRecord) };
+        record.code.store(code as u64, Ordering::SeqCst);
+        *record.reason.lock() = unsafe { (*(reason as *const MeshString)).as_str().to_string() };
+        std::ptr::null_mut()
+    }
+
+    const REJOIN_ON_CLOSE_ROOM: &str = "server-close-cleanup";
+
+    extern "C" fn rejoining_on_close(
+        env: *mut u8,
+        conn: *mut u8,
+        _code: i64,
+        _reason: *mut u8,
+    ) -> *mut u8 {
+        crate::ws::rooms::global_room_registry()
+            .join(conn as usize, REJOIN_ON_CLOSE_ROOM.to_string());
+        unsafe { &*(env as *const AtomicBool) }.store(true, Ordering::SeqCst);
         std::ptr::null_mut()
     }
 
@@ -1032,6 +1007,21 @@ mod tests {
         std::thread::sleep(Duration::from_millis(200));
     }
 
+    fn start_rejecting_server(port: u16) {
+        std::thread::spawn(move || {
+            mesh_ws_serve(
+                join_then_reject_on_connect as *mut u8,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
     /// Start a WS server with per-test connect/close counters.
     fn start_counting_server(
         port: u16,
@@ -1048,6 +1038,22 @@ mod tests {
                 echo_on_message as *mut u8,
                 std::ptr::null_mut(),
                 counting_on_close as *mut u8,
+                close_env as *mut u8,
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    fn start_close_recording_server(port: u16, record: &'static CloseRecord) {
+        let close_env = record as *const CloseRecord as usize;
+        std::thread::spawn(move || {
+            mesh_ws_serve(
+                accept_on_connect as *mut u8,
+                std::ptr::null_mut(),
+                echo_on_message as *mut u8,
+                std::ptr::null_mut(),
+                recording_on_close as *mut u8,
                 close_env as *mut u8,
                 port as i64,
             );
@@ -1145,11 +1151,16 @@ mod tests {
 
     /// Send a masked close frame with the given status code.
     fn ws_send_close(stream: &mut TcpStream, code: u16) {
+        ws_send_close_reason(stream, code, "");
+    }
+
+    fn ws_send_close_reason(stream: &mut TcpStream, code: u16, reason: &str) {
         let mask_key = [0xAA, 0xBB, 0xCC, 0xDD];
         let mut payload = code.to_be_bytes().to_vec();
+        payload.extend_from_slice(reason.as_bytes());
         apply_mask(&mut payload, &mask_key);
 
-        let mut frame = vec![0x88u8, 0x82u8]; // FIN=1, Close, MASK=1, len=2
+        let mut frame = vec![0x88u8, 0x80 | payload.len() as u8];
         frame.extend_from_slice(&mask_key);
         frame.extend_from_slice(&payload);
 
@@ -1158,6 +1169,159 @@ mod tests {
     }
 
     // ── Tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn binary_payload_length_rejects_negative_and_oversized_values() {
+        assert_eq!(binary_payload_len(-1), None);
+        assert_eq!(
+            binary_payload_len(SERVER_MAX_MESSAGE_BYTES as i64 + 1),
+            None
+        );
+        assert_eq!(binary_payload_len(0), Some(0));
+        assert_eq!(
+            binary_payload_len(SERVER_MAX_MESSAGE_BYTES as i64),
+            Some(SERVER_MAX_MESSAGE_BYTES)
+        );
+    }
+
+    #[test]
+    fn tls_server_rejects_null_certificate_paths() {
+        mesh_ws_serve_tls(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+    }
+
+    #[test]
+    fn attach_keeps_target_unpublished_until_pending_delivery_finishes() {
+        let sink = Arc::new(ServerSink::new());
+        sink.event(ReactorEvent::Text(
+            b"first".to_vec(),
+            InboundPermit::reserve(5).unwrap(),
+        ))
+        .unwrap();
+        let process = Arc::new(Mutex::new(Process::new(
+            ProcessId(99_001),
+            Priority::Normal,
+        )));
+        let process_guard = process.lock();
+        let start = Arc::new(Barrier::new(2));
+        let attach_sink = Arc::clone(&sink);
+        let attach_process = Arc::clone(&process);
+        let attach_start = Arc::clone(&start);
+        let attach = std::thread::spawn(move || {
+            attach_start.wait();
+            attach_sink.attach(attach_process, ProcessId(99_001))
+        });
+
+        start.wait();
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(
+            sink.state.try_lock().is_none(),
+            "attach must serialize target publication with pending delivery"
+        );
+
+        drop(process_guard);
+        assert!(attach.join().unwrap().is_ok());
+    }
+
+    #[test]
+    fn terminal_close_uses_reserved_pending_slot_after_data_limit() {
+        let sink = ServerSink::new();
+        for _ in 0..SERVER_PENDING_ITEMS {
+            sink.event(ReactorEvent::Text(
+                Vec::new(),
+                InboundPermit::reserve(0).unwrap(),
+            ))
+            .unwrap();
+        }
+        sink.event(ReactorEvent::Close(1001, "leaving".to_string()))
+            .unwrap();
+
+        let process = Arc::new(Mutex::new(Process::new(
+            ProcessId(99_002),
+            Priority::Normal,
+        )));
+        sink.attach(Arc::clone(&process), ProcessId(99_002))
+            .unwrap();
+        let process = process.lock();
+        for _ in 0..SERVER_PENDING_ITEMS {
+            assert_eq!(process.mailbox.pop().unwrap().buffer.type_tag, WS_TEXT_TAG);
+        }
+        let close = process.mailbox.pop().unwrap().buffer;
+        assert_eq!(close.type_tag, WS_DISCONNECT_TAG);
+        assert_eq!(
+            decode_disconnect(&close.data),
+            (1001, "leaving".to_string())
+        );
+    }
+
+    #[test]
+    fn rejected_connection_is_removed_from_rooms_before_drop() {
+        let port = free_port();
+        start_rejecting_server(port);
+        let mut stream = ws_connect(port);
+        let close = read_frame(&mut stream).unwrap();
+        assert_eq!(parse_close_payload(&close.payload).0, WS_POLICY_VIOLATION);
+
+        for _ in 0..50 {
+            if crate::ws::rooms::global_room_registry()
+                .members("server-reject-cleanup")
+                .is_empty()
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("rejected connection remained registered in a room");
+    }
+
+    #[test]
+    fn on_close_cannot_leave_a_dangling_room_member() {
+        let port = free_port();
+        let called = Box::leak(Box::new(AtomicBool::new(false)));
+        let close_env = called as *const AtomicBool as usize;
+        std::thread::spawn(move || {
+            mesh_ws_serve(
+                accept_on_connect as *mut u8,
+                std::ptr::null_mut(),
+                echo_on_message as *mut u8,
+                std::ptr::null_mut(),
+                rejoining_on_close as *mut u8,
+                close_env as *mut u8,
+                port as i64,
+            );
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        let mut stream = ws_connect(port);
+        ws_send_close(&mut stream, 1000);
+        let _ = read_frame(&mut stream).unwrap();
+
+        for _ in 0..100 {
+            if called.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(called.load(Ordering::SeqCst));
+        for _ in 0..50 {
+            if crate::ws::rooms::global_room_registry()
+                .members(REJOIN_ON_CLOSE_ROOM)
+                .is_empty()
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("on_close reinserted a freed connection into a room");
+    }
 
     /// End-to-end: connect, send text, get echo, close cleanly.
     #[test]
@@ -1179,6 +1343,76 @@ mod tests {
         assert_eq!(close.opcode, WsOpcode::Close);
         let (code, _) = parse_close_payload(&close.payload);
         assert_eq!(code, 1000);
+    }
+
+    #[test]
+    fn server_tls_reactor_echoes_a_large_message() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        crate::actor::mesh_rt_init_actor(0);
+        let (server_config, client_config) = crate::dist::node::ws_test_tls_configs();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let connection = ServerConnection::new(server_config).unwrap();
+            let transport =
+                ReactorTransport::server_tls(StreamOwned::new(connection, tcp)).unwrap();
+            let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
+                callbacks: SendableHandler {
+                    on_connect_fn: accept_on_connect as *mut u8,
+                    on_connect_env: std::ptr::null_mut(),
+                    on_message_fn: echo_on_message as *mut u8,
+                    on_message_env: std::ptr::null_mut(),
+                    on_close_fn: noop_on_close as *mut u8,
+                    on_close_env: std::ptr::null_mut(),
+                },
+            });
+            register_server(
+                transport,
+                handler,
+                ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
+            )
+            .unwrap();
+        });
+
+        let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        tcp.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        let connection = ClientConnection::new(
+            client_config,
+            ServerName::try_from("localhost".to_string()).unwrap(),
+        )
+        .unwrap();
+        let mut stream = StreamOwned::new(connection, tcp);
+        write!(
+            stream,
+            "GET /ws HTTP/1.1\r\nHost: localhost:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        )
+        .unwrap();
+        stream.flush().unwrap();
+        let mut response = Vec::new();
+        let mut byte = [0u8; 1];
+        while !response.ends_with(b"\r\n\r\n") {
+            stream.read_exact(&mut byte).unwrap();
+            response.push(byte[0]);
+        }
+        assert!(String::from_utf8_lossy(&response).contains("101"));
+
+        let payload = vec![b'x'; 128 * 1024];
+        write_masked_frame(&mut stream, WsOpcode::Text, &payload, true, [1, 2, 3, 4]).unwrap();
+        let echoed = read_frame(&mut stream).unwrap();
+        assert_eq!(echoed.payload, payload);
+        write_masked_frame(
+            &mut stream,
+            WsOpcode::Close,
+            &1000u16.to_be_bytes(),
+            true,
+            [4, 3, 2, 1],
+        )
+        .unwrap();
+        assert_eq!(read_frame(&mut stream).unwrap().opcode, WsOpcode::Close);
+        assert_eq!(stream.read(&mut [0u8; 1]).unwrap(), 0);
+        server.join().unwrap();
     }
 
     /// Lifecycle: on_connect fires on handshake, on_close fires on close.
@@ -1218,6 +1452,28 @@ mod tests {
         assert_eq!(close_ctr.load(Ordering::SeqCst), 1, "on_close should fire");
     }
 
+    #[test]
+    fn on_close_receives_the_remote_code_and_reason() {
+        let port = free_port();
+        let record = Box::leak(Box::new(CloseRecord {
+            code: AtomicU64::new(0),
+            reason: Mutex::new(String::new()),
+        }));
+        start_close_recording_server(port, record);
+        let mut stream = ws_connect(port);
+
+        ws_send_close_reason(&mut stream, 1001, "leaving");
+        let _ = read_frame(&mut stream).unwrap();
+        for _ in 0..100 {
+            if record.code.load(Ordering::SeqCst) != 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(record.code.load(Ordering::SeqCst), 1001);
+        assert_eq!(&*record.reason.lock(), "leaving");
+    }
+
     /// Crash isolation: actor panic sends close 1011, server keeps running.
     #[test]
     fn test_ws_server_crash_sends_1011() {
@@ -1238,9 +1494,9 @@ mod tests {
         let _stream2 = ws_connect(port); // panics if server is dead
     }
 
-    /// Reader thread delivers multiple rapid messages in FIFO order.
+    /// Shared reactor delivers multiple rapid messages in FIFO order.
     #[test]
-    fn test_ws_server_reader_thread_delivers_messages() {
+    fn test_ws_server_shared_reactor_delivers_messages() {
         let port = free_port();
         start_echo_server(port);
 
@@ -1306,7 +1562,7 @@ mod tests {
                                                       // stream dropped -> TCP FIN, simulating client disconnect
         }
 
-        // Wait for reader thread to detect disconnect and on_close to fire
+        // Wait for the reactor to detect disconnect and on_close to fire
         std::thread::sleep(Duration::from_secs(2));
         assert!(
             close_ctr.load(Ordering::SeqCst) >= 1,
