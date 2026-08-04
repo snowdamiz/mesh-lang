@@ -5,6 +5,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
 use parking_lot::{Mutex, RwLock};
+use zeroize::Zeroizing;
 
 use crate::actor::{self, stack, ProcessId};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
@@ -348,7 +349,7 @@ pub extern "C" fn mesh_library_host_call(
         return error_result("host_callback_input_too_large");
     }
 
-    let mut output = vec![0; MAX_BOUNDARY_BYTES];
+    let mut output = host_callback_output();
     let mut output_len = 0u64;
     let status = unsafe {
         callback(
@@ -370,6 +371,10 @@ pub extern "C" fn mesh_library_host_call(
         return error_result("host_callback_output_too_large");
     }
     alloc_result(0, mesh_bytes_new(output.as_ptr(), output_len as u64).cast())
+}
+
+fn host_callback_output() -> Zeroizing<Vec<u8>> {
+    Zeroizing::new(vec![0; MAX_BOUNDARY_BYTES])
 }
 
 fn error_result(message: &str) -> *mut MeshResult {
@@ -397,3 +402,16 @@ host_entrypoint!(mesh_host_network_state, 6);
 host_entrypoint!(mesh_host_monotonic_clock, 7);
 host_entrypoint!(mesh_host_wall_clock, 8);
 host_entrypoint!(mesh_host_log_redacted, 9);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_callback_output_uses_zeroizing_boundary_buffer() {
+        let output = host_callback_output();
+        let _: &Zeroizing<Vec<u8>> = &output;
+
+        assert_eq!(output.len(), MAX_BOUNDARY_BYTES);
+    }
+}
