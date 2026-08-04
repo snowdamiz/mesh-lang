@@ -146,12 +146,13 @@ Rules:
 2. `Http.header(req, key, value)` — adds a header. Returns updated request (rebind).
 3. `Http.body(req, s)` — sets the request body string (for POST/PUT). Returns updated request.
 4. `Http.timeout(req, ms)` — sets a per-request timeout in milliseconds. Returns updated request.
-5. `Http.send(req)` — executes the request. Returns `Result<String, String>` — `Ok(body)` on 2xx, `Err(message)` otherwise.
-6. `Http.stream(req, fn chunk -> ... end)` — streams response body chunk by chunk in an OS thread. Callback returns `"ok"` to continue, `"stop"` to cancel. Does not buffer the full body.
-7. `Http.client()` — creates a keep-alive HTTP client handle for connection reuse.
-8. `Http.send_with(client, req)` — sends request using the client's connection pool. Returns `Result<String, String>`.
-9. `Http.client_close(client)` — releases the client and its connections.
-10. CRITICAL: `Http.*` (lowercase) = HTTP CLIENT. `HTTP.*` (uppercase) = HTTP SERVER. Never mix them.
+5. `Http.max_redirects(req, count)` — sets a request-local redirect limit from 0 through 20; 0 disables redirects. Returns updated request.
+6. `Http.send(req)` — executes the request. Returns `Result<String, String>` — `Ok(body)` on 2xx, `Err(message)` otherwise.
+7. `Http.stream(req, fn chunk -> ... end)` — streams response body chunk by chunk in an OS thread. Callback returns `"ok"` to continue, `"stop"` to cancel. Does not buffer the full body.
+8. `Http.client()` — creates a keep-alive HTTP client handle for connection reuse.
+9. `Http.send_with(client, req)` — sends request using the client's connection pool. Returns `Result<String, String>`.
+10. `Http.client_close(client)` — releases the client and its connections.
+11. CRITICAL: `Http.*` (lowercase) = HTTP CLIENT. `HTTP.*` (uppercase) = HTTP SERVER. Never mix them.
 
 Code example — GET with headers (from tests/e2e/http_client_builder.mpl):
 ```mesh
@@ -159,6 +160,7 @@ fn main() do
   let req = Http.build(:get, "https://api.example.com/data")
   let req = Http.header(req, "Authorization", "Bearer token")
   let req = Http.timeout(req, 5000)
+  let req = Http.max_redirects(req, 0)
   let result = Http.send(req)
   case result do
     Ok(resp) -> println(resp)

@@ -24,9 +24,10 @@ pub mod server;
 
 pub use client::{
     mesh_http_body, mesh_http_body_bytes, mesh_http_build, mesh_http_cancel, mesh_http_client,
-    mesh_http_client_close, mesh_http_header, mesh_http_json, mesh_http_max_response_bytes,
-    mesh_http_metrics, mesh_http_query, mesh_http_retry_class, mesh_http_send, mesh_http_send_with,
-    mesh_http_stage_timeout, mesh_http_stream, mesh_http_stream_bytes, mesh_http_timeout,
+    mesh_http_client_close, mesh_http_header, mesh_http_json, mesh_http_max_redirects,
+    mesh_http_max_response_bytes, mesh_http_metrics, mesh_http_query, mesh_http_retry_class,
+    mesh_http_send, mesh_http_send_with, mesh_http_stage_timeout, mesh_http_stream,
+    mesh_http_stream_bytes, mesh_http_timeout,
 };
 pub use router::{
     mesh_http_route, mesh_http_route_delete, mesh_http_route_get, mesh_http_route_post,

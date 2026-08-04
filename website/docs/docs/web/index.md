@@ -498,6 +498,7 @@ fn main() do
     |> Http.stage_timeout(:send, 5_000)
     |> Http.stage_timeout(:first_byte, 10_000)
     |> Http.stage_timeout(:body, 10_000)
+    |> Http.max_redirects(5)
     |> Http.max_response_bytes(1_048_576)
 
   case Http.send(request) do
@@ -517,12 +518,13 @@ end
 | `Http.json(req, value)` | Set a body and the JSON content type |
 | `Http.timeout(req, ms)` | Set the total timeout |
 | `Http.stage_timeout(req, stage, ms)` | Set `:resolve`, `:connect`, `:send`, `:first_byte`, or `:body` timeout |
+| `Http.max_redirects(req, count)` | Set the request-local redirect limit; `0` disables redirects |
 | `Http.max_response_bytes(req, bytes)` | Set the buffered or streamed response limit |
 | `Http.send(req)` | Yield while executing; return `Result<HttpResponse, String>` |
 
 `HttpResponse` has `status`, `body`, `body_bytes`, and `headers` fields. `body_bytes` always preserves the exact response bytes; `body` is empty when the payload is not valid UTF-8. HTTP status errors such as 404 are successful protocol responses and therefore return `Ok`; inspect `status`. Network, timeout, and body-limit failures return `Err`.
 
-Timeouts must be between 1 and 120,000 milliseconds. Responses default to an 8 MiB limit and cannot be configured above 64 MiB.
+Timeouts must be between 1 and 120,000 milliseconds. Requests follow the HTTP client's default of up to 10 redirects unless `Http.max_redirects` sets a request-local limit from 0 through 20. Responses default to an 8 MiB limit and cannot be configured above 64 MiB.
 
 ### POST Requests
 

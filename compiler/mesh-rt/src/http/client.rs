@@ -25,6 +25,7 @@ use crate::string::{mesh_string_new, MeshString};
 
 const MAX_OPEN_HANDLES: usize = 4_096;
 const MAX_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_REDIRECTS: u32 = 20;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 const STREAM_CHUNK_BYTES: usize = 8 * 1024;
@@ -60,6 +61,7 @@ struct MeshRequestData {
     is_json: bool,
     query_params: Vec<(String, String)>,
     timeouts: RequestTimeouts,
+    max_redirects: Option<u32>,
     max_response_bytes: usize,
     config_error: Option<String>,
 }
@@ -74,6 +76,7 @@ impl MeshRequestData {
             is_json: false,
             query_params: Vec::new(),
             timeouts: RequestTimeouts::default(),
+            max_redirects: None,
             max_response_bytes: DEFAULT_MAX_RESPONSE_BYTES,
             config_error: None,
         }
@@ -485,6 +488,25 @@ pub extern "C" fn mesh_http_max_response_bytes(handle: u64, bytes: i64) -> u64 {
     })
 }
 
+#[no_mangle]
+pub extern "C" fn mesh_http_max_redirects(handle: u64, count: i64) -> u64 {
+    update_request(handle, |request| {
+        let Ok(count) = u32::try_from(count) else {
+            request.config_error = Some(format!(
+                "maximum redirects must be between 0 and {MAX_REDIRECTS}"
+            ));
+            return;
+        };
+        if count > MAX_REDIRECTS {
+            request.config_error = Some(format!(
+                "maximum redirects must be between 0 and {MAX_REDIRECTS}"
+            ));
+        } else {
+            request.max_redirects = Some(count);
+        }
+    })
+}
+
 fn take_request(handle: u64) -> Result<MeshRequestData, String> {
     if handle == 0 {
         return Err("invalid or already-consumed HTTP request handle".to_string());
@@ -548,18 +570,21 @@ fn request_url(request: &MeshRequestData) -> Result<String, String> {
     Ok(url.into())
 }
 
-fn configure<T>(builder: RequestBuilder<T>, timeouts: &RequestTimeouts) -> RequestBuilder<T> {
-    builder
+fn configure<T>(builder: RequestBuilder<T>, request: &MeshRequestData) -> RequestBuilder<T> {
+    let config = builder
         .config()
         .http_status_as_error(false)
-        .timeout_global(Some(timeouts.global))
-        .timeout_resolve(Some(timeouts.resolve))
-        .timeout_connect(Some(timeouts.connect))
-        .timeout_send_request(Some(timeouts.send))
-        .timeout_send_body(Some(timeouts.send))
-        .timeout_recv_response(Some(timeouts.first_byte))
-        .timeout_recv_body(Some(timeouts.body))
-        .build()
+        .timeout_global(Some(request.timeouts.global))
+        .timeout_resolve(Some(request.timeouts.resolve))
+        .timeout_connect(Some(request.timeouts.connect))
+        .timeout_send_request(Some(request.timeouts.send))
+        .timeout_send_body(Some(request.timeouts.send))
+        .timeout_recv_response(Some(request.timeouts.first_byte))
+        .timeout_recv_body(Some(request.timeouts.body));
+    match request.max_redirects {
+        Some(max_redirects) => config.max_redirects(max_redirects).build(),
+        None => config.build(),
+    }
 }
 
 fn apply_headers<T>(
@@ -579,33 +604,30 @@ fn dispatch(
 ) -> Result<ureq::http::Response<ureq::Body>, UreqError> {
     match request.method.as_str() {
         "post" => {
-            let mut builder = apply_headers(configure(agent.post(url), &request.timeouts), request);
+            let mut builder = apply_headers(configure(agent.post(url), request), request);
             if request.is_json {
                 builder = builder.header("Content-Type", "application/json");
             }
             builder.send(request.body.as_deref().unwrap_or_default())
         }
         "put" => {
-            let mut builder = apply_headers(configure(agent.put(url), &request.timeouts), request);
+            let mut builder = apply_headers(configure(agent.put(url), request), request);
             if request.is_json {
                 builder = builder.header("Content-Type", "application/json");
             }
             builder.send(request.body.as_deref().unwrap_or_default())
         }
         "patch" => {
-            let mut builder =
-                apply_headers(configure(agent.patch(url), &request.timeouts), request);
+            let mut builder = apply_headers(configure(agent.patch(url), request), request);
             if request.is_json {
                 builder = builder.header("Content-Type", "application/json");
             }
             builder.send(request.body.as_deref().unwrap_or_default())
         }
-        "get" => apply_headers(configure(agent.get(url), &request.timeouts), request).call(),
-        "head" => apply_headers(configure(agent.head(url), &request.timeouts), request).call(),
-        "delete" => apply_headers(configure(agent.delete(url), &request.timeouts), request).call(),
-        "options" => {
-            apply_headers(configure(agent.options(url), &request.timeouts), request).call()
-        }
+        "get" => apply_headers(configure(agent.get(url), request), request).call(),
+        "head" => apply_headers(configure(agent.head(url), request), request).call(),
+        "delete" => apply_headers(configure(agent.delete(url), request), request).call(),
+        "options" => apply_headers(configure(agent.options(url), request), request).call(),
         _ => unreachable!("request method was validated"),
     }
 }
@@ -1133,6 +1155,56 @@ mod tests {
 
         assert!(error.starts_with("RESPONSE_TOO_LARGE:"), "{error}");
         server.join().unwrap();
+    }
+
+    #[test]
+    fn unset_redirect_limit_preserves_agent_default() {
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        let target_port = target.local_addr().unwrap().port();
+        let target_server = std::thread::spawn(move || {
+            let (mut stream, _) = target.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfinal")
+                .unwrap();
+        });
+        let redirect = TcpListener::bind("127.0.0.1:0").unwrap();
+        let redirect_port = redirect.local_addr().unwrap().port();
+        let redirect_server = std::thread::spawn(move || {
+            let (mut stream, _) = redirect.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{target_port}/target\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let request =
+            MeshRequestData::new("get", &format!("http://127.0.0.1:{redirect_port}/redirect"));
+
+        let response = execute_request(&http_agent(), request, None).unwrap();
+
+        assert_eq!(response.body, b"final");
+        redirect_server.join().unwrap();
+        target_server.join().unwrap();
+    }
+
+    #[test]
+    fn redirect_limit_rejects_counts_above_bound() {
+        let handle = next_handle();
+        requests()
+            .lock()
+            .insert(handle, MeshRequestData::new("get", "http://example.com"));
+
+        mesh_http_max_redirects(handle, i64::from(MAX_REDIRECTS) + 1);
+        let request = take_request(handle).unwrap();
+
+        assert_eq!(
+            validate_request(&request).unwrap_err(),
+            format!("maximum redirects must be between 0 and {MAX_REDIRECTS}")
+        );
     }
 
     #[test]

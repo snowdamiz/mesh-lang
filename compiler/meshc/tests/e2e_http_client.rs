@@ -5,7 +5,7 @@ mod artifacts;
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -29,6 +29,28 @@ fn read_request(stream: &mut impl Read) -> String {
         request.push(byte[0]);
     }
     String::from_utf8(request).unwrap()
+}
+
+fn build_and_run(project: &Path) -> std::process::Output {
+    artifacts::ensure_mesh_rt_staticlib();
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join(project.file_name().unwrap()))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "Mesh HTTP client failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    run
 }
 
 #[test]
@@ -101,21 +123,7 @@ end
     )
     .unwrap();
 
-    let build = Command::new(meshc_bin())
-        .args(["build", project.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(
-        build.status.success(),
-        "meshc build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let run = Command::new(project.join("http-client")).output().unwrap();
-    assert!(
-        run.status.success(),
-        "Mesh HTTP client failed:\n{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    let run = build_and_run(&project);
     let stdout = String::from_utf8(run.stdout).unwrap();
     let lines = stdout.lines().collect::<Vec<_>>();
     assert_eq!(lines.len(), 6, "{stdout}");
@@ -137,8 +145,53 @@ end
 }
 
 #[test]
+fn mesh_http_client_does_not_follow_redirect_when_max_redirects_is_zero() {
+    let target = TcpListener::bind("127.0.0.1:0").unwrap();
+    let target_port = target.local_addr().unwrap().port();
+    let redirect = TcpListener::bind("127.0.0.1:0").unwrap();
+    let redirect_port = redirect.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = redirect.accept().unwrap();
+        let _ = read_request(&mut stream);
+        write!(
+            stream,
+            "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{target_port}/target\r\nContent-Length: 8\r\nConnection: close\r\n\r\nredirect"
+        )
+        .unwrap();
+    });
+
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("http-no-redirect-client");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::write(
+        project.join("main.mpl"),
+        format!(
+            r##"
+fn main() do
+  let request = Http.build(:get, "http://127.0.0.1:{redirect_port}/redirect")
+    |> Http.max_redirects(0)
+  case Http.send(request) do
+    Ok(response) -> println("#{{response.status}}:#{{response.body}}")
+    Err(error) -> println("error:" <> error)
+  end
+end
+"##
+        ),
+    )
+    .unwrap();
+
+    let run = build_and_run(&project);
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "302:redirect\n");
+    server.join().unwrap();
+    target.set_nonblocking(true).unwrap();
+    assert!(matches!(
+        target.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    ));
+}
+
+#[test]
 fn mesh_http_client_preserves_binary_request_and_response_bodies() {
-    artifacts::ensure_mesh_rt_staticlib();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
@@ -187,23 +240,7 @@ end
     )
     .unwrap();
 
-    let build = Command::new(meshc_bin())
-        .args(["build", project.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(
-        build.status.success(),
-        "meshc build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let run = Command::new(project.join("http-binary-client"))
-        .output()
-        .unwrap();
-    assert!(
-        run.status.success(),
-        "Mesh HTTP client failed:\n{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    let run = build_and_run(&project);
     assert_eq!(String::from_utf8(run.stdout).unwrap(), "00ff80\n");
     server.join().unwrap();
 }

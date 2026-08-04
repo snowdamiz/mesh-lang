@@ -1134,6 +1134,13 @@ pub fn register_builtins(
         )),
     );
     env.insert(
+        "http_max_redirects".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
+    env.insert(
         "http_max_response_bytes".into(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::int()],

@@ -1282,6 +1282,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_http_max_redirects(handle: i64, count: i64) -> i64
+    module.add_function(
+        "mesh_http_max_redirects",
+        timeout_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_http_max_response_bytes(handle: i64, bytes: i64) -> i64
     module.add_function(
         "mesh_http_max_response_bytes",

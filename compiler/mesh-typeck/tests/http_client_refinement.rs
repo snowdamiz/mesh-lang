@@ -12,6 +12,7 @@ fn main() do
     |> Http.stage_timeout(:send, 5_000)
     |> Http.stage_timeout(:first_byte, 10_000)
     |> Http.stage_timeout(:body, 10_000)
+    |> Http.max_redirects(0)
     |> Http.max_response_bytes(1_048_576)
   let class = Http.retry_class(:post, "TIMEOUT_CONNECT: timed out")
   let metrics = Http.metrics()

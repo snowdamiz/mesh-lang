@@ -45,7 +45,7 @@ description: Mesh programming language — use for any question about Mesh synta
 4. Database: Sqlite and PostgreSQL raw clients plus an ORM query builder (deriving Row, schema DSL).
 5. Stdlib: List, Map, Set, Range, Queue, Iter (pipeline), String, Json (encode/parse + `json { }` literals), IO, Env, Regex, Crypto (sha256/sha512/hmac/uuid4), Base64, Hex, DateTime modules.
 6. Concurrency Utilities: Job module for async task spawning/awaiting; service blocks for stateful OTP-style gen_server processes.
-7. HTTP Client (v14): fluent builder API — `Http.build`, `Http.header`, `Http.body`, `Http.timeout`, `Http.send`, `Http.stream`, `Http.client`, `Http.send_with` (note: lowercase `Http`, distinct from `HTTP` server).
+7. HTTP Client (v14): fluent builder API — `Http.build`, `Http.header`, `Http.body`, `Http.timeout`, `Http.max_redirects`, `Http.send`, `Http.stream`, `Http.client`, `Http.send_with` (note: lowercase `Http`, distinct from `HTTP` server).
 8. Testing: `meshc test` runner, `test()/describe()/setup/teardown` DSL, `assert/assert_eq/assert_ne/assert_raises`, `Test.mock_actor`, `assert_receive`.
 9. Package Registry: `meshpkg` CLI for publish/install/search/login; `mesh.toml` manifest with `[package]` and `[dependencies]` sections.
 

@@ -1050,6 +1050,13 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         )),
     );
     http_client_mod.insert(
+        "max_redirects".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::int()],
+            http_req_t.clone(),
+        )),
+    );
+    http_client_mod.insert(
         "max_response_bytes".to_string(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::int()],

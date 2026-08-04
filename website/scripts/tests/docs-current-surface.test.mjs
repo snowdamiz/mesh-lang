@@ -89,6 +89,7 @@ test('public docs cover the current Mesh surface', () => {
     'Process.install_shutdown_signals',
     'Job.await_timeout',
     'Json.object_get',
+    'Http.max_redirects',
     'Http.stage_timeout',
     'WsClient.connect',
     'mesh-borsh',

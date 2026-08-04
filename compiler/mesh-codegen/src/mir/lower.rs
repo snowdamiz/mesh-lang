@@ -2616,6 +2616,10 @@ impl<'a> Lowerer<'a> {
             ),
         );
         self.known_functions.insert(
+            "mesh_http_max_redirects".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
             "mesh_http_max_response_bytes".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
         );
@@ -15579,6 +15583,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_body_bytes" => "mesh_http_body_bytes".to_string(),
         "http_timeout" => "mesh_http_timeout".to_string(),
         "http_stage_timeout" => "mesh_http_stage_timeout".to_string(),
+        "http_max_redirects" => "mesh_http_max_redirects".to_string(),
         "http_max_response_bytes" => "mesh_http_max_response_bytes".to_string(),
         "http_query" => "mesh_http_query".to_string(),
         "http_json" => "mesh_http_json".to_string(),
