@@ -17,14 +17,9 @@ extern "C" fn request_shutdown_from_signal(_signal: libc::c_int) {
 pub extern "C" fn mesh_process_install_shutdown_signals() {
     #[cfg(unix)]
     unsafe {
-        libc::signal(
-            libc::SIGINT,
-            request_shutdown_from_signal as libc::sighandler_t,
-        );
-        libc::signal(
-            libc::SIGTERM,
-            request_shutdown_from_signal as libc::sighandler_t,
-        );
+        let handler = request_shutdown_from_signal as *const () as libc::sighandler_t;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
     }
 }
 

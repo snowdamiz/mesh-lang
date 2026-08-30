@@ -1258,7 +1258,7 @@ mod tests {
             http_agent(),
             request,
             cancel,
-            slow_bytes_callback as usize,
+            slow_bytes_callback as *const () as usize,
             &*state as *const StreamState as usize,
             true,
         )
