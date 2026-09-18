@@ -397,6 +397,10 @@ end
 
 Room membership is automatically cleaned up when a connection disconnects -- you do not need to manually call `Ws.leave` in the `on_close` callback.
 
+A failed room write disconnects that recipient, allowing it to reconnect and
+recover missed data. Applications must perform catch-up after subscribing;
+room broadcasts are notifications, not durable delivery acknowledgements.
+
 In a distributed cluster, `Ws.broadcast` automatically forwards messages to room members on other nodes.
 
 ## WebSocket Client

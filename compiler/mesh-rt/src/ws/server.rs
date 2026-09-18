@@ -1358,6 +1358,58 @@ mod tests {
     }
 
     #[test]
+    fn failed_room_broadcast_disconnects_the_recipient() {
+        extern "C" fn join_on_connect(conn: *mut u8, path: *mut u8, _headers: *mut u8) -> *mut u8 {
+            crate::ws::rooms::mesh_ws_join(conn, path as *const MeshString);
+            1 as *mut u8
+        }
+
+        crate::actor::mesh_rt_init_actor(0);
+        for except in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let (tcp, _) = listener.accept().unwrap();
+                let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
+                    callbacks: SendableHandler {
+                        on_connect_fn: join_on_connect as *mut u8,
+                        on_connect_env: std::ptr::null_mut(),
+                        on_message_fn: echo_on_message as *mut u8,
+                        on_message_env: std::ptr::null_mut(),
+                        on_close_fn: noop_on_close as *mut u8,
+                        on_close_env: std::ptr::null_mut(),
+                    },
+                });
+                register_server(
+                    ReactorTransport::plain(tcp).unwrap(),
+                    handler,
+                    ReactorConfig::server(1),
+                )
+                .unwrap();
+            });
+            let mut stream = ws_connect(port);
+            server.join().unwrap();
+            ws_send_text(&mut stream, "r");
+            assert_eq!(read_frame(&mut stream).unwrap().payload, b"r");
+
+            let room = crate::string::mesh_string_new(b"/ws".as_ptr(), 3);
+            let message = crate::string::mesh_string_new(b"too big".as_ptr(), 7);
+            let failures = if except {
+                crate::ws::rooms::mesh_ws_broadcast_except(room, message, std::ptr::null_mut())
+            } else {
+                crate::ws::rooms::mesh_ws_broadcast(room, message)
+            };
+            assert_eq!(failures, 1);
+            let received = stream.read(&mut [0]);
+            assert!(
+                matches!(received, Ok(0))
+                    || matches!(&received, Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset),
+                "failed broadcast left the recipient connected: {received:?}"
+            );
+        }
+    }
+
+    #[test]
     fn server_tls_reactor_echoes_a_large_message() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         crate::actor::mesh_rt_init_actor(0);

@@ -165,6 +165,9 @@ pub(crate) fn local_room_broadcast(room: &str, msg: &str) -> i64 {
             return;
         }
         if conn.io.send(WsOpcode::Text, payload).is_err() {
+            // The caller cannot retry a specific room member. Disconnect it so
+            // the peer can reconnect and recover instead of silently missing data.
+            conn.io.cancel("WebSocket room broadcast failed");
             failures += 1;
         }
     });
@@ -304,6 +307,7 @@ pub extern "C" fn mesh_ws_broadcast_except(
             return;
         }
         if conn.io.send(WsOpcode::Text, payload).is_err() {
+            conn.io.cancel("WebSocket room broadcast failed");
             failures += 1;
         }
     });
