@@ -211,3 +211,10 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }} -p meshpkg
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+
+      - name: Verify hosted Windows library ABI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p mesh-rt --target x86_64-pc-windows-msvc
+          cargo test --release --locked -p meshc --target x86_64-pc-windows-msvc --test e2e_library

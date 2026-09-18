@@ -287,8 +287,22 @@ pub(crate) fn link_dynamic_with_plan(
     output_path: &Path,
     plan: &LinkPlan,
 ) -> Result<(), String> {
-    if plan.target.kind != LinkTargetKind::Unix {
-        return Err("dynamic library artifacts are not yet supported for Windows MSVC".to_string());
+    if plan.target.kind == LinkTargetKind::WindowsMsvc {
+        let mut command = build_link_command(object_path, output_path, plan);
+        command.arg("-shared");
+        // Export the host ABI as well as the generated dllexport wrappers.
+        for symbol in [
+            "mesh_library_init",
+            "mesh_library_shutdown",
+            "mesh_library_register_host_callbacks",
+            "mesh_library_free_returned_bytes",
+        ] {
+            command.arg(format!("-Wl,/EXPORT:{symbol}"));
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
+        return finish_library_link(output, object_path, output_path, "Dynamic library linking");
     }
     let mut command = plan.target.dynamic_linker_command()?;
     command.arg(object_path);

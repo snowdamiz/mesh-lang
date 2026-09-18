@@ -2,6 +2,34 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 #[test]
+#[cfg(windows)]
+fn builds_hosted_windows_dynamic_library() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/library");
+    let temp = tempfile::tempdir().expect("temporary artifact directory");
+    let dynamic = temp.path().join("libmesh_library.dll");
+    assert_success(build(&fixture, &dynamic, "cdylib"), "Windows DLL build");
+    let host = temp.path().join("mesh-library-host.exe");
+    let clang = PathBuf::from(std::env::var_os("LLVM_SYS_211_PREFIX").expect("LLVM prefix"))
+        .join("bin/clang.exe");
+    assert_success(
+        Command::new(clang)
+            .arg(fixture.join("host.c"))
+            .arg("-I")
+            .arg(temp.path())
+            .arg(dynamic.with_extension("lib"))
+            .arg("-o")
+            .arg(&host)
+            .output()
+            .expect("C host compiler"),
+        "Windows C host link",
+    );
+    assert_success(
+        Command::new(host).output().expect("C host run"),
+        "Windows C host run",
+    );
+}
+
+#[test]
 #[cfg(unix)]
 fn builds_hosted_dynamic_and_static_libraries() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/library");

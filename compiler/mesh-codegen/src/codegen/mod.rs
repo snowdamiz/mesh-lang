@@ -341,6 +341,17 @@ impl<'ctx> CodeGen<'ctx> {
                 ));
             }
             let wrapper = self.module.add_function(&export.symbol, wrapper_type, None);
+            if self
+                .module
+                .get_triple()
+                .as_str()
+                .to_string_lossy()
+                .contains("windows-msvc")
+            {
+                wrapper
+                    .as_global_value()
+                    .set_dll_storage_class(inkwell::DLLStorageClass::Export);
+            }
             let entry = self.context.append_basic_block(wrapper, "entry");
             self.builder.position_at_end(entry);
             let input = wrapper.get_nth_param(0).expect("library input pointer");
@@ -1152,17 +1163,26 @@ mod tests {
             captures: vec![],
             has_tail_calls: false,
         });
-        let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "library_export", 0, None).unwrap();
-        codegen.set_library_exports(&[crate::LibraryExport {
-            function: "echo".to_string(),
-            symbol: "mesh_mobile_echo".to_string(),
-        }]);
-        codegen.compile(&mir).unwrap();
-
-        let ir = codegen.get_llvm_ir();
-        assert!(ir.contains("define i32 @mesh_mobile_echo(ptr"), "{ir}");
-        assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
+        for target in [None, Some("x86_64-pc-windows-msvc")] {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "library_export", 0, target).unwrap();
+            codegen.set_library_exports(&[crate::LibraryExport {
+                function: "echo".to_string(),
+                symbol: "mesh_mobile_echo".to_string(),
+            }]);
+            codegen.compile(&mir).unwrap();
+            let ir = codegen.get_llvm_ir();
+            let export = if target.is_some() || cfg!(windows) {
+                "dllexport "
+            } else {
+                ""
+            };
+            assert!(
+                ir.contains(&format!("define {export}i32 @mesh_mobile_echo(ptr")),
+                "{ir}"
+            );
+            assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
+        }
     }
 
     fn hello_world_mir() -> MirModule {
