@@ -117,6 +117,7 @@ fn builds_hosted_dynamic_and_static_libraries() {
     assert_no_test_fixtures(&executable, false, "ordinary executable");
 }
 
+#[cfg(unix)]
 fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
     let mut nm = Command::new("nm");
     if cfg!(target_os = "macos") {
@@ -141,8 +142,12 @@ fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
 }
 
 fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {
-    Command::new(PathBuf::from(env!("CARGO_BIN_EXE_meshc")))
-        .args(["build", fixture.to_str().unwrap(), "--artifact", artifact])
+    let mut command = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_meshc")));
+    command.args(["build", fixture.to_str().unwrap(), "--artifact", artifact]);
+    // The compatibility runner builds its runtime in target/<triple>/release.
+    #[cfg(windows)]
+    command.args(["--target", "x86_64-pc-windows-msvc"]);
+    command
         .arg("--output")
         .arg(output)
         .output()
