@@ -157,7 +157,8 @@ fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {
 fn assert_success(output: Output, operation: &str) {
     assert!(
         output.status.success(),
-        "{operation} failed\nstdout:\n{}\nstderr:\n{}",
+        "{operation} failed ({})\nstdout:\n{}\nstderr:\n{}",
+        output.status,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

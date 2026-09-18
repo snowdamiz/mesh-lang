@@ -178,6 +178,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: compatibility-${{ matrix.target }}
+          cache-on-failure: true
 
       - name: Build meshc and meshpkg (Alpine/musl)
         if: matrix.llvm_method == 'docker'
@@ -198,7 +199,7 @@ jobs:
               export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
               cargo build --release --locked --target x86_64-unknown-linux-musl -p meshc
             '
-          sudo chown -R $(id -u):$(id -g) target/
+          sudo chown -R "$(id -u):$(id -g)" target/
 
       - name: Build meshc
         if: matrix.llvm_method != 'docker'
@@ -218,3 +219,10 @@ jobs:
         run: |
           cargo build --release --locked -p mesh-rt --target x86_64-pc-windows-msvc
           cargo test --release --locked -p meshc --target x86_64-pc-windows-msvc --test e2e_library
+
+      - name: Preserve Windows LLVM after a test failure
+        if: failure() && runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/llvm
+          key: compatibility-llvm-21.1.8-v4-${{ matrix.target }}

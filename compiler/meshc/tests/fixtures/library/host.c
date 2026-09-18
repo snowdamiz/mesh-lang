@@ -98,15 +98,18 @@ int main(void) {
       mesh_library_init() != MESH_LIBRARY_OK) {
     return 1;
   }
+  fputs("library initialized\n", stderr);
   if (register_callbacks() != MESH_LIBRARY_OK) {
     return 6;
   }
+  fputs("host callbacks registered\n", stderr);
   if (mesh_fixture_echo(request, sizeof(request), &response) !=
           MESH_LIBRARY_OK ||
       response.len != sizeof(request) ||
       memcmp(response.data, request, sizeof(request)) != 0) {
     return 2;
   }
+  fputs("binary echo passed\n", stderr);
   mesh_library_free_returned_bytes(&response);
   if (response.data != NULL || response.len != 0) {
     return 3;
@@ -117,11 +120,13 @@ int main(void) {
       memcmp(response.data, request, sizeof(request)) != 0) {
     return 7;
   }
+  fputs("encrypted storage roundtrip passed\n", stderr);
   mesh_library_free_returned_bytes(&response);
   if (mesh_library_shutdown() != MESH_LIBRARY_OK ||
       mesh_library_shutdown() != MESH_LIBRARY_OK) {
     return 4;
   }
+  fputs("library shutdown passed\n", stderr);
   if (mesh_fixture_echo(NULL, 0, &response) != 2) {
     return 5;
   }
