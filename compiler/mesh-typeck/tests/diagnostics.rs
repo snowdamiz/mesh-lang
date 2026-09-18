@@ -41,6 +41,16 @@ fn render_all_errors(src: &str) -> Vec<String> {
 
 // ── Diagnostic Snapshot Tests ──────────────────────────────────────────
 
+#[test]
+fn try_error_mismatch_reports_both_result_types() {
+    let source =
+        "fn wrap() -> Bytes ! String do\n  let value = Bytes.repeat(0, 4) ?\n  Ok(value)\nend";
+    let output = render_first_error(source);
+    assert!(output.contains("Result<Bytes, BytesError>"), "{output}");
+    assert!(output.contains("Result<Bytes, String>"), "{output}");
+    assert!(!output.contains("requires function to return"), "{output}");
+}
+
 /// Type mismatch: annotation says Int but expression is a String.
 #[test]
 fn test_diag_type_mismatch() {

@@ -736,11 +736,15 @@ impl fmt::Display for TypeError {
                     handler_name
                 )
             }
-            TypeError::TryIncompatibleReturn { fn_return_ty, .. } => {
+            TypeError::TryIncompatibleReturn {
+                operand_ty,
+                fn_return_ty,
+                ..
+            } => {
                 write!(
                     f,
-                    "`?` operator requires function to return `Result` or `Option`, found `{}`",
-                    fn_return_ty
+                    "`?` cannot propagate `{}` from a function returning `{}`",
+                    operand_ty, fn_return_ty
                 )
             }
             TypeError::TryOnNonResultOption { operand_ty, .. } => {

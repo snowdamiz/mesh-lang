@@ -1684,9 +1684,11 @@ pub fn render_diagnostic(
         }
 
         TypeError::TryIncompatibleReturn {
-            fn_return_ty, span, ..
+            operand_ty,
+            fn_return_ty,
+            span,
         } => {
-            let msg = "`?` operator requires function to return `Result` or `Option`";
+            let msg = "`?` operand is incompatible with the function return type";
             let range = clamp(text_range_to_range(*span));
 
             Report::build(ReportKind::Error, (fname.clone(), range.clone()))
@@ -1699,8 +1701,8 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_note(format!(
-                    "the enclosing function returns `{}`, but `?` requires `Result<_, _>` or `Option<_>`",
-                    fn_return_ty
+                    "cannot propagate `{}` from a function returning `{}`; Result errors must match or have a From conversion, and Option requires an Option return type",
+                    operand_ty, fn_return_ty
                 ))
                 .finish()
         }
