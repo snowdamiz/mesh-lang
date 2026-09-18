@@ -106,7 +106,7 @@ fn render_swift(exports: &[LibraryExport]) -> String {
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
-        "import Foundation\n\npublic struct MeshLibraryFailure: Error {{\n  public let status: Int32\n  public let payload: Data\n}}\n\npublic enum MeshLibrary {{\n  public static func initialize() throws {{\n    let status = mesh_library_init()\n    guard status == MESH_LIBRARY_OK else {{ throw MeshLibraryFailure(status: status, payload: Data()) }}\n  }}\n\n  public static func shutdown() {{ _ = mesh_library_shutdown() }}\n\n{functions}\n}}\n"
+        "import Foundation\n\npublic struct MeshLibraryFailure: LocalizedError {{\n  public let status: Int32\n  public let payload: Data\n\n  public var errorDescription: String? {{\n    let summary = \"Mesh library call failed (status=\\(status))\"\n    guard let message = String(data: payload, encoding: .utf8), !message.isEmpty else {{ return summary }}\n    return \"\\(summary): \\(message)\"\n  }}\n}}\n\npublic enum MeshLibrary {{\n  public static func initialize() throws {{\n    let status = mesh_library_init()\n    guard status == MESH_LIBRARY_OK else {{ throw MeshLibraryFailure(status: status, payload: Data()) }}\n  }}\n\n  public static func shutdown() {{ _ = mesh_library_shutdown() }}\n\n{functions}\n}}\n"
     )
 }
 

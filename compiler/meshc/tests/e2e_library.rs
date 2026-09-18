@@ -39,6 +39,30 @@ fn builds_hosted_dynamic_and_static_libraries() {
     let run = Command::new(&host).output().expect("C host run");
     assert_success(run, "C host run");
 
+    #[cfg(target_os = "macos")]
+    {
+        let swift_host = temp.path().join("mesh-swift-host");
+        let compile = Command::new("xcrun")
+            .args(["swiftc", "-import-objc-header"])
+            .arg(dynamic.with_extension("h"))
+            .arg(dynamic.with_extension("swift"))
+            .arg(fixture.join("host.swift"))
+            .arg("-L")
+            .arg(temp.path())
+            .arg("-lmesh_library")
+            .args(["-Xlinker", "-rpath", "-Xlinker"])
+            .arg(temp.path())
+            .arg("-o")
+            .arg(&swift_host)
+            .output()
+            .expect("Swift host compiler");
+        assert_success(compile, "Swift host link");
+        assert_success(
+            Command::new(swift_host).output().expect("Swift host run"),
+            "Swift host run",
+        );
+    }
+
     let static_library = temp.path().join("libmesh_library.a");
     assert_success(
         build(&fixture, &static_library, "staticlib"),
