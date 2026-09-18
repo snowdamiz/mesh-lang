@@ -725,34 +725,45 @@ where
     } else {
         None // infinite wait
     };
+    if let Some(deadline) = deadline {
+        if timer_wake_sender()
+            .try_send(TimerWake {
+                deadline,
+                pid: my_pid,
+            })
+            .is_err()
+        {
+            // Match Timer.sleep's bounded fallback when the timer queue is full.
+            std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
+        }
+    }
 
     loop {
-        // Set state to Waiting.
+        // A sender may have queued a message since the previous probe. Check
+        // and publish Waiting under the same lock used by senders.
         if let Some(proc_arc) = sched.get_process(my_pid) {
-            proc_arc.lock().set_live_state(ProcessState::Waiting);
+            let mut proc = proc_arc.lock();
+            if let Some(msg) = proc.mailbox.remove_first(&predicate) {
+                drop(proc);
+                return copy_msg_to_actor_heap(sched, my_pid, msg);
+            }
+            if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+                proc.set_live_state(ProcessState::Ready);
+                return std::ptr::null();
+            }
+            proc.set_live_state(ProcessState::Waiting);
         }
 
         // Yield to scheduler -- we will be resumed when a message arrives
-        // or by the scheduler's periodic sweep.
+        // or the receive deadline fires.
         stack::yield_current();
 
-        // After resume, try to pop a message.
+        // Deliver queued replies before considering scheduler shutdown.
         if let Some(proc_arc) = sched.get_process(my_pid) {
             let proc = proc_arc.lock();
             if let Some(msg) = proc.mailbox.remove_first(&predicate) {
                 drop(proc);
                 return copy_msg_to_actor_heap(sched, my_pid, msg);
-            }
-        }
-
-        // Check timeout.
-        if let Some(deadline) = deadline {
-            if std::time::Instant::now() >= deadline {
-                // Timeout expired, set back to Ready and return null.
-                if let Some(proc_arc) = sched.get_process(my_pid) {
-                    proc_arc.lock().set_live_state(ProcessState::Ready);
-                }
-                return std::ptr::null();
             }
         }
 
@@ -2049,6 +2060,74 @@ mod tests {
             retained < threshold,
             "blocking receive retained {retained} bytes above the {threshold}-byte threshold"
         );
+    }
+
+    struct ReceiveHandshake {
+        ready: std::sync::mpsc::Sender<()>,
+        received: std::sync::mpsc::Sender<bool>,
+    }
+
+    extern "C" fn receive_handshakes(args: *const u8) {
+        let channels = unsafe { Box::from_raw(args as *mut ReceiveHandshake) };
+        for _ in 0..10_000 {
+            if channels.ready.send(()).is_err() {
+                return;
+            }
+            let message = mesh_actor_receive(-1);
+            if channels.received.send(!message.is_null()).is_err() {
+                return;
+            }
+        }
+    }
+
+    #[test]
+    fn blocking_receive_does_not_lose_concurrent_sends() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (received_tx, received_rx) = std::sync::mpsc::channel();
+        let args = Box::into_raw(Box::new(ReceiveHandshake {
+            ready: ready_tx,
+            received: received_tx,
+        }));
+        let pid = sched.spawn(receive_handshakes as *const u8, args.cast(), 0, 1);
+        let timeout = std::time::Duration::from_secs(5);
+        let result = (|| {
+            for _ in 0..10_000 {
+                ready_rx.recv_timeout(timeout)?;
+                assert_eq!(local_send(pid.as_u64(), std::ptr::null(), 0), 0);
+                assert!(received_rx.recv_timeout(timeout)?);
+            }
+            Ok::<(), std::sync::mpsc::RecvTimeoutError>(())
+        })();
+        drop(ready_rx);
+        drop(received_rx);
+        let _ = local_send(pid.as_u64(), std::ptr::null(), 0);
+        assert!(result.is_ok(), "receive lost a concurrent send: {result:?}");
+    }
+
+    extern "C" fn receive_with_deadline(args: *const u8) {
+        let sender = unsafe {
+            Box::from_raw(args as *mut std::sync::mpsc::Sender<(bool, std::time::Duration)>)
+        };
+        let start = std::time::Instant::now();
+        let timed_out = mesh_actor_receive(20).is_null();
+        let _ = sender.send((timed_out, start.elapsed()));
+    }
+
+    #[test]
+    fn blocking_receive_timeout_wakes_without_a_message() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (sender, receiver) = std::sync::mpsc::channel::<(bool, std::time::Duration)>();
+        let args = Box::into_raw(Box::new(sender));
+        let pid = sched.spawn(receive_with_deadline as *const u8, args.cast(), 0, 1);
+        let result = receiver.recv_timeout(std::time::Duration::from_secs(5));
+        drop(receiver);
+        let _ = local_send(pid.as_u64(), std::ptr::null(), 0);
+        let (timed_out, elapsed) = result.expect("receive deadline did not wake the actor");
+        assert!(timed_out);
+        assert!(elapsed >= std::time::Duration::from_millis(20));
     }
 
     #[test]
