@@ -340,6 +340,37 @@ impl<'ctx> CodeGen<'ctx> {
                     export.symbol
                 ));
             }
+            // LLVM's aggregate return convention is not the platform C ABI on
+            // Windows. Cross the runtime boundary with pointers on every target.
+            let entrypoint = self.module.add_function(
+                &format!("__mesh_library_entry_{}", export.symbol),
+                self.context
+                    .void_type()
+                    .fn_type(&[ptr_type.into(), ptr_type.into()], false),
+                Some(inkwell::module::Linkage::Internal),
+            );
+            self.builder
+                .position_at_end(self.context.append_basic_block(entrypoint, "entry"));
+            let result = self
+                .builder
+                .build_call(
+                    function,
+                    &[entrypoint.get_nth_param(0).unwrap().into()],
+                    "result",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("Library entrypoint must return a result")?;
+            self.builder
+                .build_store(
+                    entrypoint.get_nth_param(1).unwrap().into_pointer_value(),
+                    result,
+                )
+                .map_err(|error| error.to_string())?;
+            self.builder
+                .build_return(None)
+                .map_err(|error| error.to_string())?;
             let wrapper = self.module.add_function(&export.symbol, wrapper_type, None);
             if self
                 .module
@@ -362,7 +393,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(
                     invoke,
                     &[
-                        function.as_global_value().as_pointer_value().into(),
+                        entrypoint.as_global_value().as_pointer_value().into(),
                         input.into(),
                         input_len.into(),
                         output.into(),
@@ -1182,6 +1213,11 @@ mod tests {
                 "{ir}"
             );
             assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
+            assert!(
+                ir.contains("define internal void @__mesh_library_entry_mesh_mobile_echo(ptr")
+                    && ir.contains("store ptr"),
+                "The runtime callback must write through an explicit result pointer: {ir}"
+            );
         }
     }
 

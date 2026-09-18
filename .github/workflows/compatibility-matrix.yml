@@ -153,9 +153,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $dest = "$env:USERPROFILE\llvm\lib\libxml2s.lib"
+          if (Test-Path $dest) { exit 0 }
           vcpkg install libxml2:x64-windows-static
           $vcpkgLib = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static\lib"
-          $dest = "$env:USERPROFILE\llvm\lib\libxml2s.lib"
           $candidates = @("$vcpkgLib\libxml2s.lib", "$vcpkgLib\libxml2.lib", "$vcpkgLib\xml2s.lib", "$vcpkgLib\xml2.lib")
           $src = $null
           foreach ($c in $candidates) {

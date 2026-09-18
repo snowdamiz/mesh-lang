@@ -46,24 +46,24 @@ unsafe extern "C" fn secure_store_put(
     0
 }
 
-unsafe extern "C-unwind" fn echo(input: *mut MeshBytes) -> MeshLibraryCallResult {
-    MeshLibraryCallResult {
+unsafe extern "C-unwind" fn echo(input: *mut MeshBytes, output: *mut MeshLibraryCallResult) {
+    output.write(MeshLibraryCallResult {
         tag: 0,
         _padding: [0; 7],
         value: input.cast(),
-    }
+    });
 }
 
-unsafe extern "C-unwind" fn reject(_input: *mut MeshBytes) -> MeshLibraryCallResult {
+unsafe extern "C-unwind" fn reject(_input: *mut MeshBytes, output: *mut MeshLibraryCallResult) {
     let message = b"rejected";
-    MeshLibraryCallResult {
+    output.write(MeshLibraryCallResult {
         tag: 1,
         _padding: [0; 7],
         value: mesh_string_new(message.as_ptr(), message.len() as u64).cast(),
-    }
+    });
 }
 
-unsafe extern "C-unwind" fn panic_entry(_input: *mut MeshBytes) -> MeshLibraryCallResult {
+unsafe extern "C-unwind" fn panic_entry(_input: *mut MeshBytes, _output: *mut MeshLibraryCallResult) {
     panic!("contained")
 }
 

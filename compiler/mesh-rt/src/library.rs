@@ -43,7 +43,7 @@ pub struct MeshLibraryCallResult {
 }
 
 pub type MeshLibraryEntrypoint =
-    unsafe extern "C-unwind" fn(*mut MeshBytes) -> MeshLibraryCallResult;
+    unsafe extern "C-unwind" fn(*mut MeshBytes, *mut MeshLibraryCallResult);
 pub type MeshLibraryHostCallback = unsafe extern "C" fn(
     context: *mut c_void,
     input: *const u8,
@@ -266,7 +266,15 @@ pub unsafe extern "C" fn mesh_library_invoke(
     let previous_pid = stack::get_current_pid();
     stack::set_current_pid(pid);
     let managed_input = mesh_bytes_new(input, input_len as u64);
-    let result = catch_unwind(AssertUnwindSafe(|| entrypoint(managed_input)));
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let mut result = MeshLibraryCallResult {
+            tag: u8::MAX,
+            _padding: [0; 7],
+            value: ptr::null_mut(),
+        };
+        entrypoint(managed_input, &mut result);
+        result
+    }));
     stack::clear_current_pid();
     if let Some(previous_pid) = previous_pid {
         stack::set_current_pid(previous_pid);
