@@ -1,4 +1,7 @@
 //! Stable embedding boundary for static and dynamic Mesh libraries.
+//!
+//! Each invocation owns a short-lived runtime process. Only copied response
+//! bytes cross the ABI; persistent state belongs in storage or spawned actors.
 
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -129,6 +132,23 @@ static LIFECYCLE: Mutex<Lifecycle> = Mutex::new(Lifecycle::New);
 static CALL_LOCK: Mutex<()> = Mutex::new(());
 static HOST_CALLBACKS: RwLock<Option<RegisteredCallbacks>> = RwLock::new(None);
 
+struct CallContext {
+    pid: ProcessId,
+    previous_pid: Option<ProcessId>,
+}
+
+impl Drop for CallContext {
+    fn drop(&mut self) {
+        if let Some(scheduler) = actor::GLOBAL_SCHEDULER.get() {
+            scheduler.finalize_host_process(self.pid);
+        }
+        stack::clear_current_pid();
+        if let Some(pid) = self.previous_pid {
+            stack::set_current_pid(pid);
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_library_init() -> i32 {
     let mut lifecycle = LIFECYCLE.lock();
@@ -258,13 +278,23 @@ pub unsafe extern "C" fn mesh_library_invoke(
     let Some(_call) = CALL_LOCK.try_lock() else {
         return MESH_LIBRARY_ERR_BUSY;
     };
-    let pid = match *LIFECYCLE.lock() {
-        Lifecycle::Running(pid) => pid,
-        Lifecycle::New | Lifecycle::Shutdown => return MESH_LIBRARY_ERR_NOT_INITIALIZED,
+    if !matches!(*LIFECYCLE.lock(), Lifecycle::Running(_)) {
+        return MESH_LIBRARY_ERR_NOT_INITIALIZED;
+    }
+    let Some(scheduler) = actor::GLOBAL_SCHEDULER.get() else {
+        return MESH_LIBRARY_ERR_NOT_INITIALIZED;
     };
 
-    let previous_pid = stack::get_current_pid();
-    stack::set_current_pid(pid);
+    // The byte ABI copies the result to caller-owned memory before this scope
+    // ends. Reclaim the call's managed values and secrets on every exit path.
+    let context = CallContext {
+        pid: scheduler.create_main_process(),
+        previous_pid: stack::get_current_pid(),
+    };
+    if let Some(process) = scheduler.get_process(context.pid) {
+        process.lock().library_call = true;
+    }
+    stack::set_current_pid(context.pid);
     let managed_input = mesh_bytes_new(input, input_len as u64);
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut result = MeshLibraryCallResult {
@@ -275,11 +305,6 @@ pub unsafe extern "C" fn mesh_library_invoke(
         entrypoint(managed_input, &mut result);
         result
     }));
-    stack::clear_current_pid();
-    if let Some(previous_pid) = previous_pid {
-        stack::set_current_pid(previous_pid);
-    }
-
     match result {
         Ok(result) if result.tag == 0 => copy_mesh_value(result.value, true, output),
         Ok(result) if result.tag == 1 => {

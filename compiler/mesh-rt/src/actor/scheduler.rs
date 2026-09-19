@@ -39,7 +39,9 @@ use super::process::{
     ExitReason, Priority, Process, ProcessId, ProcessState, TerminateCallback, DEFAULT_REDUCTIONS,
 };
 use super::registry;
-use super::stack::{clear_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER};
+use super::stack::{
+    clear_current_pid, get_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER,
+};
 
 // ---------------------------------------------------------------------------
 // SpawnRequest
@@ -211,7 +213,19 @@ impl Scheduler {
         let priority = Priority::from_u8(priority);
 
         // Create process entry in the table.
-        let process = Process::new(pid, priority);
+        let mut process = Process::new(pid, priority);
+        // ponytail: pin the entire call heap for actors borrowing its arguments;
+        // use typed argument copying if long-lived actors make retention costly.
+        process.library_heap_owner = get_current_pid()
+            .and_then(|pid| self.get_process(pid))
+            .and_then(|owner| {
+                let parent = owner.lock();
+                if parent.library_call {
+                    Some(Arc::clone(&owner))
+                } else {
+                    parent.library_heap_owner.clone()
+                }
+            });
         let process = Arc::new(Mutex::new(process));
         self.process_table.write().insert(pid, process);
 

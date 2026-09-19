@@ -9,6 +9,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 
 use super::heap::{ActorHeap, MessageBuffer};
@@ -270,6 +271,11 @@ pub struct Process {
     /// and enable per-actor memory reclamation.
     pub heap: ActorHeap,
 
+    /// Embedded calls have no coroutine GC and release their heap on return.
+    pub(crate) library_call: bool,
+    /// Spawn arguments can borrow an embedded call's heap beyond its return.
+    pub(crate) library_heap_owner: Option<Arc<Mutex<Process>>>,
+
     /// Optional cleanup callback invoked before termination.
     /// Set when the actor defines a `terminate do ... end` block.
     pub terminate_callback: Option<TerminateCallback>,
@@ -302,6 +308,8 @@ impl Process {
             monitored_by: FxHashMap::default(),
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
+            library_call: false,
+            library_heap_owner: None,
             terminate_callback: None,
             exit_finalization_started: false,
             stack_base: std::ptr::null(),
