@@ -2972,7 +2972,7 @@ fn continuity_submit_impl(request: SubmitRequest) -> *mut MeshResult {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_submit_with_durability(
+pub extern "C-unwind" fn mesh_continuity_submit_with_durability(
     request_key: *const MeshString,
     payload_hash: *const MeshString,
     ingress_node: *const MeshString,
@@ -3004,7 +3004,7 @@ pub extern "C" fn mesh_continuity_submit_with_durability(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_submit_declared_work(
+pub extern "C-unwind" fn mesh_continuity_submit_declared_work(
     runtime_name: *const MeshString,
     request_key: *const MeshString,
     payload_hash: *const MeshString,
@@ -3033,7 +3033,7 @@ pub extern "C" fn mesh_continuity_submit_declared_work(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_submit(
+pub extern "C-unwind" fn mesh_continuity_submit(
     request_key: *const MeshString,
     payload_hash: *const MeshString,
     ingress_node: *const MeshString,
@@ -3055,7 +3055,7 @@ pub extern "C" fn mesh_continuity_submit(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_status(request_key: *const MeshString) -> *mut MeshResult {
+pub extern "C-unwind" fn mesh_continuity_status(request_key: *const MeshString) -> *mut MeshResult {
     let request_key = mesh_string_to_owned(request_key);
     match continuity_registry().record(&request_key) {
         Some(record) => continuity_ok_record(&record),
@@ -3064,12 +3064,12 @@ pub extern "C" fn mesh_continuity_status(request_key: *const MeshString) -> *mut
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_authority_status() -> *mut MeshResult {
+pub extern "C-unwind" fn mesh_continuity_authority_status() -> *mut MeshResult {
     continuity_ok_authority_status(continuity_registry().authority_status())
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_mark_completed(
+pub extern "C-unwind" fn mesh_continuity_mark_completed(
     request_key: *const MeshString,
     attempt_id: *const MeshString,
     execution_node: *const MeshString,
@@ -3084,7 +3084,7 @@ pub extern "C" fn mesh_continuity_mark_completed(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_complete_declared_work(
+pub extern "C-unwind" fn mesh_continuity_complete_declared_work(
     request_key: *const MeshString,
     attempt_id: *const MeshString,
 ) -> *mut MeshResult {
@@ -3097,7 +3097,7 @@ pub extern "C" fn mesh_continuity_complete_declared_work(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_continuity_acknowledge_replica(
+pub extern "C-unwind" fn mesh_continuity_acknowledge_replica(
     request_key: *const MeshString,
     attempt_id: *const MeshString,
 ) -> *mut MeshResult {

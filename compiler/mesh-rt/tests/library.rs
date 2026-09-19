@@ -46,6 +46,22 @@ unsafe extern "C" fn secure_store_put(
     0
 }
 
+unsafe extern "C" fn secure_store_delete(
+    _context: *mut c_void,
+    input: *const u8,
+    input_len: u64,
+    _output: *mut u8,
+    _output_capacity: u64,
+    output_len: *mut u64,
+) -> i32 {
+    secure_store()
+        .lock()
+        .unwrap()
+        .remove(std::slice::from_raw_parts(input, input_len as usize));
+    output_len.write(0);
+    0
+}
+
 unsafe extern "C-unwind" fn echo(input: *mut MeshBytes, output: *mut MeshLibraryCallResult) {
     output.write(MeshLibraryCallResult {
         tag: 0,
@@ -63,7 +79,10 @@ unsafe extern "C-unwind" fn reject(_input: *mut MeshBytes, output: *mut MeshLibr
     });
 }
 
-unsafe extern "C-unwind" fn panic_entry(_input: *mut MeshBytes, _output: *mut MeshLibraryCallResult) {
+unsafe extern "C-unwind" fn panic_entry(
+    _input: *mut MeshBytes,
+    _output: *mut MeshLibraryCallResult,
+) {
     panic!("contained")
 }
 
@@ -122,6 +141,7 @@ fn embedded_lifecycle_contains_failures_and_bounds_callback_ownership() {
     let callbacks = MeshLibraryHostCallbacksV1 {
         secure_store_put: Some(secure_store_put),
         secure_store_get: Some(secure_store_get),
+        secure_store_delete: Some(secure_store_delete),
         ..MeshLibraryHostCallbacksV1::default()
     };
     assert_eq!(
@@ -156,13 +176,67 @@ fn embedded_lifecycle_contains_failures_and_bounds_callback_ownership() {
         )
     };
     assert_eq!(opened_bytes, b"encrypted local message");
-    let store = secure_store().lock().unwrap();
-    assert_eq!(store[b"mesh/storage-key/v1".as_slice()].len(), 36);
+    let record = secure_store()
+        .lock()
+        .unwrap()
+        .get(b"mesh/storage-key/v2".as_slice())
+        .cloned()
+        .expect("key and counter must be one atomic record");
+    assert_eq!(record.len(), 44);
+    assert_eq!(&record[36..], &1u64.to_be_bytes());
+    assert_eq!(secure_store().lock().unwrap().len(), 1);
+
+    // Exercise an old installation, including interrupted/partial restore.
+    secure_store()
+        .lock()
+        .unwrap()
+        .remove(b"mesh/storage-key/v2".as_slice());
+    secure_store()
+        .lock()
+        .unwrap()
+        .insert(b"mesh/storage-key/v1".to_vec(), record[..36].to_vec());
+    secure_store()
+        .lock()
+        .unwrap()
+        .insert(b"mesh/storage-counter/v1".to_vec(), record[36..].to_vec());
+    for missing in [
+        b"mesh/storage-counter/v1".as_slice(),
+        b"mesh/storage-key/v1".as_slice(),
+    ] {
+        let saved = secure_store().lock().unwrap().remove(missing).unwrap();
+        let incomplete = secure_store().lock().unwrap().clone();
+        let result = mesh_storage_key_platform();
+        assert_eq!(
+            unsafe { (*result).tag },
+            1,
+            "accepted incomplete key record"
+        );
+        assert_eq!(
+            *secure_store().lock().unwrap(),
+            incomplete,
+            "modified recoverable key records"
+        );
+        secure_store()
+            .lock()
+            .unwrap()
+            .insert(missing.to_vec(), saved);
+    }
+    let migrated = mesh_storage_key_platform();
+    assert_eq!(unsafe { (*migrated).tag }, 0);
+    let migrated = unsafe { (*migrated).value.cast::<MeshSecretHandle>() };
     assert_eq!(
-        store[b"mesh/storage-counter/v1".as_slice()],
-        1u64.to_be_bytes()
+        secure_store().lock().unwrap().len(),
+        1,
+        "retired legacy records remained available to an older binary"
     );
-    drop(store);
+    assert_eq!(
+        secure_store().lock().unwrap()[b"mesh/storage-key/v2".as_slice()],
+        record
+    );
+    assert_eq!(
+        unsafe { (*mesh_storage_key_unseal_bytes(sealed, migrated, context)).tag },
+        0
+    );
 
     let mut output = MeshLibraryBytes::default();
     assert_eq!(

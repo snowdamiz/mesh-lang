@@ -7,3 +7,7 @@ description = "Shared types for the Mesh compiler (tokens, spans, errors)"
 [dependencies]
 rustc-hash = { workspace = true }
 serde = { workspace = true }
+
+[[bench]]
+name = "module_graph"
+harness = false

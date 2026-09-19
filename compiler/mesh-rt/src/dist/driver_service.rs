@@ -309,7 +309,7 @@ fn signature_matches<T>(
 }
 
 fn decode_hex_signature(value: &str) -> Option<[u8; 32]> {
-    if value.len() != 64 {
+    if value.len() != 64 || !value.is_ascii() {
         return None;
     }
     let mut bytes = [0_u8; 32];
@@ -862,6 +862,15 @@ fn fault_list_enabled(raw: &str, expected: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hex_signature_rejects_non_ascii_without_panicking() {
+        for prefix in ["€", "é", "🦀"] {
+            let signature = format!("{prefix}{}", "0".repeat(64 - prefix.len()));
+            assert!(decode_hex_signature(&signature).is_none());
+        }
+        assert_eq!(decode_hex_signature(&"aF".repeat(32)).unwrap(), [0xaf; 32]);
+    }
 
     #[test]
     fn driver_service_signatures_cover_action_and_result() {

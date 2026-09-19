@@ -22,6 +22,9 @@ use std::cell::Cell;
 // Thread-local current-actor context
 // ---------------------------------------------------------------------------
 
+/// Private unwind marker for a normal stop, distinct from an actor failure.
+pub(crate) struct ActorStopped;
+
 thread_local! {
     /// Raw pointer to the current coroutine's Yielder.
     ///
@@ -190,15 +193,17 @@ impl CoroutineHandle {
     /// Resume an actor while converting an unwinding Mesh panic into an exit
     /// reason that the scheduler can propagate to links and supervisors.
     pub(crate) fn resume_catching_panic(&mut self) -> Result<bool, String> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume())).map_err(|panic| {
-            if let Some(message) = panic.downcast_ref::<String>() {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume())) {
+            Ok(value) => Ok(value),
+            Err(panic) if panic.is::<ActorStopped>() => Ok(false),
+            Err(panic) => Err(if let Some(message) = panic.downcast_ref::<String>() {
                 message.clone()
             } else if let Some(message) = panic.downcast_ref::<&str>() {
                 (*message).to_string()
             } else {
                 "actor panicked".to_string()
-            }
-        })
+            }),
+        }
     }
 
     /// Check whether the coroutine has finished.

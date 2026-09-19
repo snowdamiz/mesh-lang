@@ -109,10 +109,7 @@ pub(crate) fn parse_upgrade_response_bytes(
         .collect::<Vec<_>>();
     let has_token = |name: &str, expected: &str| {
         headers.iter().any(|(header_name, value)| {
-            header_name == name
-                && value
-                    .split(',')
-                    .any(|token| token.trim().eq_ignore_ascii_case(expected))
+            header_name == name && header_list_has_token(value, expected)
         })
     };
     if !has_token("upgrade", "websocket") || !has_token("connection", "upgrade") {
@@ -139,6 +136,30 @@ pub fn compute_accept_key(client_key: &str) -> String {
     BASE64.encode(hash)
 }
 
+/// Whether a comma-separated header list (`Connection`, `Upgrade`) contains
+/// `expected` as a whole, case-insensitive token. Substring matches such as
+/// `notwebsocket` or `upgraded` are not upgrades.
+fn header_list_has_token(value: &str, expected: &str) -> bool {
+    value
+        .split(',')
+        .any(|token| token.trim().eq_ignore_ascii_case(expected))
+}
+
+/// Length in bytes of a decoded `Sec-WebSocket-Key` (RFC 6455 Section 4.2.1).
+const WS_KEY_NONCE_BYTES: usize = 16;
+
+/// Whether `key` is the base64 encoding of a 16-byte nonce, as RFC 6455
+/// requires. The accept key is derived from the exact text the client sent,
+/// so anything else (empty, non-base64, wrong length, embedded controls) is
+/// refused rather than echoed back into the 101 response.
+fn is_valid_client_key(key: &str) -> bool {
+    key.len() == 24
+        && key.is_ascii()
+        && BASE64
+            .decode(key)
+            .is_ok_and(|nonce| nonce.len() == WS_KEY_NONCE_BYTES)
+}
+
 /// Validate an HTTP upgrade request per RFC 6455 Section 4.2.1.
 ///
 /// Returns `Ok(client_key)` if all required headers are present and valid,
@@ -160,21 +181,23 @@ pub fn validate_upgrade_request(
             .map(|(_, v)| v.as_str())
     };
 
-    // Upgrade header must contain "websocket" (case-insensitive value)
+    // Upgrade header must list the "websocket" protocol token
     match find_header("Upgrade") {
-        Some(v) if v.to_ascii_lowercase().contains("websocket") => {}
+        Some(v) if header_list_has_token(v, "websocket") => {}
         _ => return Err("missing or invalid Upgrade header"),
     }
 
-    // Connection header must contain "upgrade" (case-insensitive, may have multiple tokens)
+    // Connection header must list the "upgrade" option token (it may also
+    // carry others, e.g. `keep-alive, Upgrade`)
     match find_header("Connection") {
-        Some(v) if v.to_ascii_lowercase().contains("upgrade") => {}
+        Some(v) if header_list_has_token(v, "upgrade") => {}
         _ => return Err("missing or invalid Connection header"),
     }
 
-    // Sec-WebSocket-Key must be present
+    // Sec-WebSocket-Key must be present and decode to a 16-byte nonce
     let client_key = match find_header("Sec-WebSocket-Key") {
-        Some(k) => k.to_string(),
+        Some(k) if is_valid_client_key(k) => k.to_string(),
+        Some(_) => return Err("invalid Sec-WebSocket-Key header (must be base64 of 16 bytes)"),
         None => return Err("missing Sec-WebSocket-Key header"),
     };
 
@@ -352,6 +375,96 @@ mod tests {
         let result = validate_upgrade_request("GET", &headers);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "dGhlIHNhbXBsZSBub25jZQ==");
+    }
+
+    fn valid_upgrade_headers() -> Vec<(String, String)> {
+        vec![
+            ("Upgrade".to_string(), "websocket".to_string()),
+            ("Connection".to_string(), "Upgrade".to_string()),
+            (
+                "Sec-WebSocket-Key".to_string(),
+                "dGhlIHNhbXBsZSBub25jZQ==".to_string(),
+            ),
+            ("Sec-WebSocket-Version".to_string(), "13".to_string()),
+        ]
+    }
+
+    fn with_header(name: &str, value: &str) -> Vec<(String, String)> {
+        valid_upgrade_headers()
+            .into_iter()
+            .map(|(header, current)| {
+                if header.eq_ignore_ascii_case(name) {
+                    (header, value.to_string())
+                } else {
+                    (header, current)
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn upgrade_validation_matches_whole_tokens_not_substrings() {
+        for (name, value) in [
+            ("Upgrade", "notwebsocket"),
+            ("Upgrade", "websockets"),
+            ("Upgrade", "web socket"),
+            ("Upgrade", ""),
+            ("Connection", "notupgrade"),
+            ("Connection", "upgraded"),
+            ("Connection", "keep-alive"),
+            ("Connection", ""),
+        ] {
+            assert!(
+                validate_upgrade_request("GET", &with_header(name, value)).is_err(),
+                "{name}: {value:?} must be rejected"
+            );
+        }
+
+        for (name, value) in [
+            ("Upgrade", "WebSocket"),
+            ("Upgrade", "h2c, websocket"),
+            ("Connection", "keep-alive, Upgrade"),
+            ("Connection", "Upgrade,keep-alive"),
+            ("Connection", "UPGRADE"),
+        ] {
+            assert!(
+                validate_upgrade_request("GET", &with_header(name, value)).is_ok(),
+                "{name}: {value:?} must be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn upgrade_validation_requires_a_base64_16_byte_key() {
+        for key in [
+            "",
+            "not base64!",
+            "dGhlIHNhbXBsZSBub25jZQ",       // missing padding
+            "dGhlIHNhbXBsZSBub25jZQ=",      // wrong padding
+            "dGhlIHNhbXBsZQ==",             // decodes to 10 bytes
+            "dGhlIHNhbXBsZSBub25jZSB4eHg=", // decodes to 20 bytes
+            "dGhlIHNhbXBsZSBub25jZQ==\r\nX-Injected: 1",
+        ] {
+            let result = validate_upgrade_request("GET", &with_header("Sec-WebSocket-Key", key));
+            assert!(result.is_err(), "key {key:?} must be rejected");
+            assert!(
+                result.unwrap_err().contains("Sec-WebSocket-Key"),
+                "rejection for {key:?} must name the key header"
+            );
+        }
+
+        let nonce = BASE64.encode([0xA5_u8; 16]);
+        assert_eq!(
+            validate_upgrade_request("GET", &with_header("Sec-WebSocket-Key", &nonce)).unwrap(),
+            nonce
+        );
+
+        // The whole request parser reports the same rejection instead of
+        // producing a 101 for an impostor upgrade.
+        let request = b"GET /ws HTTP/1.1\r\nUpgrade: notwebsocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+        assert!(parse_upgrade_request_bytes(request).is_err());
+        let request = b"GET /ws HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: short\r\nSec-WebSocket-Version: 13\r\n\r\n";
+        assert!(parse_upgrade_request_bytes(request).is_err());
     }
 
     #[test]

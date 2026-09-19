@@ -951,7 +951,7 @@ fn operator_control_signature_matches(raw_keys: &str, payload: &[u8], signature:
 }
 
 fn decode_hex_signature(signature: &str) -> Result<[u8; 32], String> {
-    if signature.len() != 64 {
+    if signature.len() != 64 || !signature.is_ascii() {
         return Err("operator_control_signature_invalid".to_string());
     }
     let mut bytes = [0u8; 32];
@@ -2439,6 +2439,15 @@ mod tests {
 
     fn fresh_registry() -> ContinuityRegistry {
         ContinuityRegistry::new()
+    }
+
+    #[test]
+    fn hex_signature_rejects_non_ascii_without_panicking() {
+        for prefix in ["€", "é", "🦀"] {
+            let signature = format!("{prefix}{}", "0".repeat(64 - prefix.len()));
+            assert!(decode_hex_signature(&signature).is_err());
+        }
+        assert_eq!(decode_hex_signature(&"aF".repeat(32)).unwrap(), [0xaf; 32]);
     }
 
     #[test]

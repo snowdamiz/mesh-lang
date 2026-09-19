@@ -21,6 +21,7 @@ pub use printer::FormatConfig;
 /// Parses the source, walks the CST to produce format IR, and prints the
 /// result as a formatted string. Comments are preserved in their original
 /// positions relative to code.
+/// Invalid source is returned unchanged so parser recovery cannot discard code.
 ///
 /// # Example
 ///
@@ -33,6 +34,9 @@ pub use printer::FormatConfig;
 /// ```
 pub fn format_source(source: &str, config: &FormatConfig) -> String {
     let parse = mesh_parser::parse(source);
+    if !parse.errors().is_empty() {
+        return source.to_owned();
+    }
     let root = parse.syntax();
     let doc = walker::walk_node(&root);
     printer::print(&doc, config)
@@ -41,6 +45,12 @@ pub fn format_source(source: &str, config: &FormatConfig) -> String {
 #[cfg(test)]
 mod idempotency_tests {
     use super::{format_source, FormatConfig};
+
+    #[test]
+    fn invalid_source_is_preserved_including_following_declarations() {
+        let source = "fn broken(x) do\ncase x do\nErr(_) -> return None\nend\nend\n\nfn retained() do\n42\nend\n";
+        assert_eq!(format_source(source, &FormatConfig::default()), source);
+    }
 
     fn assert_idempotent(name: &str, source: &str) {
         let config = FormatConfig::default();

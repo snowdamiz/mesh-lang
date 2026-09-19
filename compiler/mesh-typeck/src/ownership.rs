@@ -183,8 +183,14 @@ pub(crate) fn check(
     signatures.insert("Secret.concat".to_string(), concat_signature.clone());
     signatures.insert("secret_concat".to_string(), concat_signature);
     let secret_map = Ty::secret_map();
-    for name in ["insert", "contains", "copy", "delete"] {
-        let arity = if name == "insert" { 3 } else { 2 };
+    for name in ["insert", "contains", "copy", "delete", "fork"] {
+        let arity = if name == "insert" {
+            3
+        } else if name == "fork" {
+            1
+        } else {
+            2
+        };
         let mut modes = vec![ParamOwnership::Borrow; arity];
         let mut formal_types = vec![None; arity];
         formal_types[0] = Some(secret_map.clone());

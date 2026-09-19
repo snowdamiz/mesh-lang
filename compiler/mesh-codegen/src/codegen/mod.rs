@@ -36,6 +36,11 @@ use crate::StartupWorkRegistration;
 
 use self::types::{create_sum_type_layout, llvm_closure_fn_type, llvm_fn_type, llvm_type};
 
+/// Runtime `REMOTE_SPAWN_ARG_*` marker for a parameter that cannot be supplied
+/// through the remote spawn wire format. The runtime never spawns an entry
+/// whose registered signature contains it.
+const REMOTE_SPAWN_ARG_UNSUPPORTED: u8 = 0;
+
 // ── CodeGen ──────────────────────────────────────────────────────────
 
 /// The main LLVM code generation context.
@@ -950,6 +955,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Get the LLVM function value for this MIR function.
             if let Some(fn_val) = self.functions.get(&mir_fn.name) {
+                let (arg_tags_ptr, arg_count) = self.remote_spawn_signature_constant(mir_fn);
                 self.builder
                     .build_call(
                         register_fn,
@@ -957,6 +963,8 @@ impl<'ctx> CodeGen<'ctx> {
                             name_global.as_pointer_value().into(),
                             name_len.into(),
                             fn_val.as_global_value().as_pointer_value().into(),
+                            arg_tags_ptr.into(),
+                            arg_count.into(),
                         ],
                         "",
                     )
@@ -1105,6 +1113,70 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         Ok(())
+    }
+
+    /// Argument signature the runtime must enforce before spawning `mir_fn`
+    /// on behalf of a remote node.
+    ///
+    /// Only actor wrappers (a single `__args_ptr` parameter plus a matching
+    /// `__actor_{name}_body`) read typed arguments out of the args buffer, so
+    /// they advertise their body parameter tags. Zero-parameter functions take
+    /// no arguments. Anything else cannot be entered through the actor ABI with
+    /// remote arguments, so every parameter is marked unsupported and the
+    /// runtime refuses to spawn it remotely.
+    fn remote_spawn_signature(&self, mir_fn: &MirFunction) -> Vec<u8> {
+        let actor_body_name = format!("__actor_{}_body", mir_fn.name);
+        let is_actor_wrapper = mir_fn.params.len() == 1
+            && mir_fn.params[0].0 == "__args_ptr"
+            && mir_fn.params[0].1 == MirType::Ptr;
+        let actor_body = is_actor_wrapper
+            .then(|| {
+                self.mir_functions
+                    .iter()
+                    .find(|function| function.name == actor_body_name)
+            })
+            .flatten();
+
+        match actor_body {
+            Some(body) => body
+                .params
+                .iter()
+                .map(|(_, ty)| {
+                    self.remote_spawn_arg_tag(ty)
+                        .unwrap_or(REMOTE_SPAWN_ARG_UNSUPPORTED)
+                })
+                .collect(),
+            None => vec![REMOTE_SPAWN_ARG_UNSUPPORTED; mir_fn.params.len()],
+        }
+    }
+
+    /// Emit the remote spawn signature of `mir_fn` as a private constant and
+    /// return the `(arg_tags_ptr, arg_count)` pair for `mesh_register_function`.
+    fn remote_spawn_signature_constant(
+        &self,
+        mir_fn: &MirFunction,
+    ) -> (PointerValue<'ctx>, inkwell::values::IntValue<'ctx>) {
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let signature = self.remote_spawn_signature(mir_fn);
+        if signature.is_empty() {
+            return (ptr_type.const_null(), i64_type.const_int(0, false));
+        }
+
+        let signature_data = self.context.const_string(&signature, false);
+        let signature_global = self.module.add_global(
+            signature_data.get_type(),
+            None,
+            &format!("fn_sig_{}", mir_fn.name),
+        );
+        signature_global.set_initializer(&signature_data);
+        signature_global.set_constant(true);
+        signature_global.set_unnamed_addr(true);
+        signature_global.set_linkage(inkwell::module::Linkage::Private);
+        (
+            signature_global.as_pointer_value(),
+            i64_type.const_int(signature.len() as u64, false),
+        )
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -1333,6 +1405,85 @@ mod tests {
         let ir = codegen.get_llvm_ir();
         assert!(ir.contains("define i32 @main"), "Should have main wrapper");
         assert!(ir.contains("mesh_rt_init"), "Should call mesh_rt_init");
+    }
+
+    #[test]
+    fn remote_spawn_registration_carries_the_argument_signature() {
+        let mut mir = hello_world_mir();
+        // Actor wrapper: reads (String, Int) out of the args buffer via its body.
+        mir.functions.push(MirFunction {
+            name: "greeter".to_string(),
+            params: vec![("__args_ptr".to_string(), MirType::Ptr)],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        mir.functions.push(MirFunction {
+            name: "__actor_greeter_body".to_string(),
+            params: vec![
+                ("name".to_string(), MirType::String),
+                ("count".to_string(), MirType::Int),
+            ],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        // Plain two-parameter function: not enterable through the actor ABI
+        // with remote arguments.
+        mir.functions.push(MirFunction {
+            name: "add".to_string(),
+            params: vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            return_type: MirType::Int,
+            body: MirExpr::Var("a".to_string(), MirType::Int),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "remote_spawn_signature", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+
+        // Tags follow mesh-rt's REMOTE_SPAWN_ARG_* encoding: String = 4, Int = 1.
+        assert!(
+            ir.contains("@fn_sig_greeter = private unnamed_addr constant [2 x i8] c\"\\04\\01\""),
+            "{ir}"
+        );
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_greeter, i64 7, ptr @greeter, ptr @fn_sig_greeter, i64 2)"
+            ),
+            "{ir}"
+        );
+        // Every parameter of a non-actor function is marked unsupported (0), so
+        // the runtime refuses to spawn it remotely rather than guessing an ABI.
+        assert!(
+            ir.contains("@fn_sig_add = private unnamed_addr constant [2 x i8] zeroinitializer"),
+            "{ir}"
+        );
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_add, i64 3, ptr @add, ptr @fn_sig_add, i64 2)"
+            ),
+            "{ir}"
+        );
+        // Zero-parameter functions register an empty signature.
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_mesh_main, i64 9, ptr @mesh_main, ptr null, i64 0)"
+            ),
+            "{ir}"
+        );
+        // The actor body itself stays internal: only the wrapper is spawnable.
+        assert!(!ir.contains("@fn_reg___actor_greeter_body"), "{ir}");
     }
 
     #[test]

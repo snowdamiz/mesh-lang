@@ -1059,29 +1059,33 @@ impl ContinuityStore for SqliteContinuityStore {
         let (high_water_mark, records) = self.snapshot_state()?;
         let snapshot_id = format!("snapshot-{high_water_mark}-{}", records.len());
         let mut payloads: Vec<Vec<u8>> = Vec::new();
-        let mut current: Vec<StoredContinuityRecord> = Vec::new();
+        let mut current = vec![b'['];
         for record in records {
-            let mut candidate = current.clone();
-            candidate.push(record.clone());
-            let encoded = serde_json::to_vec(&candidate)
+            let encoded = serde_json::to_vec(&record)
                 .map_err(|error| format!("continuity_snapshot_encode_failed:{error}"))?;
-            if encoded.len() > chunk_bytes && !current.is_empty() {
-                payloads.push(
-                    serde_json::to_vec(&current)
-                        .map_err(|error| format!("continuity_snapshot_encode_failed:{error}"))?,
-                );
-                current = vec![record];
-            } else if encoded.len() > chunk_bytes {
+            if encoded.len() > chunk_bytes - 2 {
                 return Err("continuity_snapshot_record_exceeds_chunk_bound".to_string());
-            } else {
-                current = candidate;
             }
+            // Include the comma and closing bracket in the chunk bound.
+            if current.len() > 1
+                && current
+                    .len()
+                    .saturating_add(encoded.len())
+                    .saturating_add(2)
+                    > chunk_bytes
+            {
+                current.push(b']');
+                payloads.push(current);
+                current = vec![b'['];
+            }
+            if current.len() > 1 {
+                current.push(b',');
+            }
+            current.extend_from_slice(&encoded);
         }
-        if !current.is_empty() || payloads.is_empty() {
-            payloads.push(
-                serde_json::to_vec(&current)
-                    .map_err(|error| format!("continuity_snapshot_encode_failed:{error}"))?,
-            );
+        if current.len() > 1 || payloads.is_empty() {
+            current.push(b']');
+            payloads.push(current);
         }
         let final_sequence = payloads.len().saturating_sub(1);
         let checksums: Vec<[u8; 32]> = payloads
@@ -2109,6 +2113,101 @@ mod tests {
         }
 
         assert_eq!(target.all_records().expect("target records").len(), 8);
+    }
+
+    #[test]
+    fn snapshot_chunks_preserve_payloads_and_checksums_at_boundaries() {
+        for count in [0, 1, 6] {
+            let source = store();
+            for index in 0..count {
+                let mut value = record(
+                    &format!("operation-{index}"),
+                    1,
+                    StoredContinuityPhase::Completed,
+                );
+                value.request_hash = "quotes\"\\\n\té🦀".to_string();
+                value.response_body = vec![0, 10, 127, 255];
+                source.upsert(&value).unwrap();
+            }
+            let records = source.all_records().unwrap();
+            let single_bound = records
+                .iter()
+                .map(|record| serde_json::to_vec(record).unwrap().len() + 2)
+                .max()
+                .unwrap_or(128);
+            let pair_bound = serde_json::to_vec(&records[..records.len().min(2)])
+                .unwrap()
+                .len()
+                .max(single_bound);
+            let full_bound = serde_json::to_vec(&records).unwrap().len().max(128);
+            for bound in [
+                single_bound,
+                single_bound + 1,
+                pair_bound,
+                full_bound,
+                usize::MAX,
+            ] {
+                // The previous algorithm's greedy serialization is the wire-format oracle.
+                let mut expected = Vec::new();
+                let mut current = Vec::new();
+                for record in &records {
+                    current.push(record);
+                    if serde_json::to_vec(&current).unwrap().len() > bound {
+                        current.pop();
+                        expected.push(serde_json::to_vec(&current).unwrap());
+                        current.clear();
+                        current.push(record);
+                    }
+                }
+                if !current.is_empty() || expected.is_empty() {
+                    expected.push(serde_json::to_vec(&current).unwrap());
+                }
+                let checksums: Vec<[u8; 32]> = expected
+                    .iter()
+                    .map(|payload| Sha256::digest(payload).into())
+                    .collect();
+                let snapshot_checksum: [u8; 32] = Sha256::digest(checksums.concat()).into();
+                let chunks = source.snapshot_chunks(bound).unwrap();
+                assert_eq!(chunks.len(), expected.len());
+                for (sequence, chunk) in chunks.iter().enumerate() {
+                    assert_eq!(chunk.payload, expected[sequence]);
+                    assert!(chunk.payload.len() <= bound);
+                    assert_eq!(chunk.checksum, checksums[sequence]);
+                    assert_eq!(chunk.snapshot_checksum, snapshot_checksum);
+                    assert_eq!(chunk.snapshot_id, format!("snapshot-{count}-{count}"));
+                    assert_eq!(chunk.high_water_mark, count);
+                    assert_eq!(chunk.sequence as usize, sequence);
+                    assert_eq!(chunk.final_chunk, sequence + 1 == chunks.len());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn snapshot_rejects_small_bounds_and_oversized_records_at_every_position() {
+        assert_eq!(
+            store().snapshot_chunks(127),
+            Err("continuity_snapshot_chunk_bound_too_small".to_string())
+        );
+        for oversized in 0..3 {
+            let source = store();
+            for index in 0..3 {
+                let mut value = record(
+                    &format!("operation-{index}"),
+                    1,
+                    StoredContinuityPhase::Completed,
+                );
+                if index == oversized {
+                    value.response_body = vec![255; 1024];
+                }
+                source.upsert(&value).unwrap();
+            }
+            assert_eq!(
+                source.snapshot_chunks(1024),
+                Err("continuity_snapshot_record_exceeds_chunk_bound".to_string()),
+                "oversized record at position {oversized}"
+            );
+        }
     }
 
     #[test]

@@ -67,8 +67,8 @@ dependency as defined by the [constant-time policy](constant-time-policy.md).
 
 A cryptographic algorithm implemented directly in Mesh also requires
 differential tests, generated-machine-code inspection, timing-distribution
-tests, all supported optimization levels and architectures, and external
-specialist review.
+tests, and all supported optimization levels and architectures. External
+specialist review is valuable additional scrutiny, not a release prerequisite.
 
 ## Gate 6: Integration proof
 
@@ -77,8 +77,9 @@ specialist review.
 - Protocol codecs, snapshots, and stored secret blobs have explicit versions.
 - Mobile builds execute the same vectors on every supported platform before
   that platform is advertised.
-- Production-target profiles receive independent security review before a
-  production security claim is made.
+- Production-target profiles require internally verified evidence for the exact
+  candidate and applicable platforms. Independent review is reported accurately
+  and is not an activation requirement.
 
 ## Stop-ship conditions
 
@@ -101,9 +102,9 @@ KEM primitive, and an Argon2id v1.3 password KDF, plus affine secret resources,
 a static production provider, a test-only deterministic provider, known-answer
 and negative tests, a published NIST ACVP ML-KEM-768 key-generation vector
 executed through the public Mesh API, and an iOS compilation proof. The hybrid
-messenger suite remains disabled until its
-protocol negotiation, downgrade, target-performance, and external-review gates
-pass. This is not yet a release-approved profile:
+messenger suite is callable; there is no software-enforced external-review
+disable. Release readiness requires protocol negotiation, downgrade and target
+performance evidence at the exact candidate. No independent audit is claimed:
 
 - Native fuzz targets now exercise byte operations, including bounded
   Argon2id calls through the production provider,
@@ -129,5 +130,5 @@ clean release revision to produce the audit JSON, CycloneDX 1.5 SBOM,
 secure-equality timing record, reproducibility comparison, release record,
 published ML-KEM vector, public-Mesh vector test log, logs, and checksums. The
 output record explicitly lists the remaining vector, fuzzing, target-matrix,
-secret-leak, and independent review evidence that this command does not
-provide.
+secret-leak evidence that this command does not provide. Independent review
+is recorded separately and is not an approval credential.

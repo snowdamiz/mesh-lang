@@ -842,7 +842,7 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_http_send(handle: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_http_send(handle: u64) -> *mut u8 {
     send_cooperatively(http_agent(), handle)
 }
 
@@ -863,7 +863,7 @@ pub extern "C" fn mesh_http_client_close(handle: u64) {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_http_send_with(client_handle: u64, request_handle: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_http_send_with(client_handle: u64, request_handle: u64) -> *mut u8 {
     let Some(agent) = clients().lock().get(&client_handle).cloned() else {
         return mesh_error("closed or unknown HTTP client handle");
     };

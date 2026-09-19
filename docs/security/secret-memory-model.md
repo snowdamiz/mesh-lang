@@ -109,3 +109,23 @@ The model is not complete until tests prove:
 
 The remaining cryptographic evidence is defined by the
 [cryptographic release gates](cryptographic-release-gates.md).
+
+
+## Bounded speculative maps
+
+`SecretMap.fork(borrow map)` returns an independent actor-owned map with the
+same capacity and entries, or a typed resource-limit error. Both maps retain
+affine ownership and zeroizing storage. Mutating or destroying the candidate
+does not alter the original. Use a fork to prepare a transition, authenticate
+it, then replace the committed map; discard the candidate on failure. Forking
+deliberately retains another copy until that candidate is consumed or dropped.
+Cleanup skips cleared nested enum payloads after a move, including inside
+`Option` and `Result`; it never dereferences their null sentinels.
+
+Service calls and casts copy top-level string arguments into owned mailbox data
+before the sender can exit. Receive relocates those strings into the receiver's
+heap. String replies use the same ownership transfer. This prevents service
+state (for example a rate-limit map key) from referencing a finished HTTP request
+actor's heap. The SQLite todo runtime test exercises this across independent
+HTTP requests. This change does not claim deep copying of arbitrary aggregates
+containing pointers.

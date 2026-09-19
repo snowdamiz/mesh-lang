@@ -229,6 +229,10 @@ pub(crate) fn secure_store_put_raw(input: &[u8]) -> Result<(), i32> {
     call_raw_host_callback(1, input, &mut ignored).map(|_| ())
 }
 
+pub(crate) fn secure_store_delete_raw(input: &[u8]) -> Result<(), i32> {
+    call_raw_host_callback(3, input, &mut []).map(|_| ())
+}
+
 fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
     if input.len() > MAX_BOUNDARY_BYTES || output.len() > MAX_BOUNDARY_BYTES {
         return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);

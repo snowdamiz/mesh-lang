@@ -383,28 +383,16 @@ pub extern "C" fn mesh_list_to_string(list: *mut u8, elem_to_str: *mut u8) -> *m
         let data = list_data(list);
         let f: ElemToStr = std::mem::transmute(elem_to_str);
 
-        // Build the result string piece by piece using mesh_string_concat.
-        let mut result = crate::string::mesh_string_new(b"[".as_ptr(), 1) as *mut u8;
+        let mut result = String::from("[");
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::mesh_string_concat(
-                    result as *const crate::string::MeshString,
-                    sep as *const crate::string::MeshString,
-                ) as *mut u8;
+                result.push_str(", ");
             }
-            let elem_str = f(*data.add(i));
-            result = crate::string::mesh_string_concat(
-                result as *const crate::string::MeshString,
-                elem_str as *const crate::string::MeshString,
-            ) as *mut u8;
+            let elem_str = f(*data.add(i)) as *const crate::string::MeshString;
+            result.push_str((*elem_str).as_str());
         }
-        let close = crate::string::mesh_string_new(b"]".as_ptr(), 1) as *mut u8;
-        result = crate::string::mesh_string_concat(
-            result as *const crate::string::MeshString,
-            close as *const crate::string::MeshString,
-        ) as *mut u8;
-        result
+        result.push(']');
+        crate::string::mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
     }
 }
 
@@ -1016,6 +1004,58 @@ mod tests {
         let s = unsafe { &*(result as *const crate::string::MeshString) };
         let text = unsafe { s.as_str() };
         assert_eq!(text, "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_collection_to_string_callback_order_unicode_and_nesting() {
+        use crate::collections::{map, set};
+        use crate::string::{mesh_string_new, MeshString};
+        use std::cell::RefCell;
+
+        thread_local! {
+            static CALLS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+        }
+        extern "C" fn render(value: u64) -> *mut u8 {
+            CALLS.with(|calls| calls.borrow_mut().push(value));
+            let text = format!("雪{value}");
+            mesh_string_new(text.as_ptr(), text.len() as u64).cast()
+        }
+        extern "C" fn render_list(value: u64) -> *mut u8 {
+            mesh_list_to_string(value as *mut u8, render as *mut u8)
+        }
+
+        mesh_rt_init();
+        let values = [2, 1];
+        let list = mesh_list_from_array(values.as_ptr(), values.len() as i64);
+        let map = map::mesh_map_put(map::mesh_map_new(), 2, 20);
+        let map = map::mesh_map_put(map, 1, 10);
+        let set = set::mesh_set_add(set::mesh_set_new(), 2);
+        let set = set::mesh_set_add(set, 1);
+        for (result, expected) in [
+            (mesh_list_to_string(list, render as *mut u8), "[雪2, 雪1]"),
+            (
+                map::mesh_map_to_string(map, render as *mut u8, render as *mut u8),
+                "%{雪2 => 雪20, 雪1 => 雪10}",
+            ),
+            (
+                set::mesh_set_to_string(set, render as *mut u8),
+                "#{雪2, 雪1}",
+            ),
+        ] {
+            assert_eq!(
+                unsafe { (*(result as *const MeshString)).as_str() },
+                expected
+            );
+        }
+        CALLS.with(|calls| assert_eq!(*calls.borrow(), [2, 1, 2, 20, 1, 10, 2, 1]));
+
+        let nested = [list as u64, mesh_list_new() as u64];
+        let nested = mesh_list_from_array(nested.as_ptr(), nested.len() as i64);
+        let result = mesh_list_to_string(nested, render_list as *mut u8);
+        assert_eq!(
+            unsafe { (*(result as *const MeshString)).as_str() },
+            "[[雪2, 雪1], []]"
+        );
     }
 
     #[test]

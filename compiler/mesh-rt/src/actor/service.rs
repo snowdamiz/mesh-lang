@@ -36,11 +36,47 @@ use super::GLOBAL_SCHEDULER;
 /// - `payload_ptr`: pointer to argument bytes (array of i64 values)
 /// - `payload_size`: size of the payload in bytes
 #[no_mangle]
-pub extern "C" fn mesh_service_call(
+pub extern "C-unwind" fn mesh_service_call(
     target_pid: u64,
     msg_tag: u64,
     payload_ptr: *const u8,
     payload_size: u64,
+) -> *const u8 {
+    mesh_service_call_typed(
+        target_pid,
+        msg_tag,
+        payload_ptr,
+        payload_size,
+        std::ptr::null(),
+    )
+}
+
+fn own_strings(buffer: &mut MessageBuffer, tags: *const u8, offset: usize, count: usize) {
+    if tags.is_null() {
+        return;
+    }
+    for index in 0..count {
+        unsafe {
+            if *tags.add(index) == 1 {
+                let slot = offset + index * 8;
+                let raw = u64::from_ne_bytes(buffer.data[slot..slot + 8].try_into().unwrap());
+                let string = &*(raw as *const crate::string::MeshString);
+                buffer
+                    .owned_strings
+                    .push((slot, string.as_bytes().to_vec()));
+            }
+        }
+    }
+}
+
+/// Copy string arguments while the caller still owns its heap.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_service_call_typed(
+    target_pid: u64,
+    msg_tag: u64,
+    payload_ptr: *const u8,
+    payload_size: u64,
+    tags: *const u8,
 ) -> *const u8 {
     // Get the caller's PID.
     let caller_pid = match stack::get_current_pid() {
@@ -64,7 +100,8 @@ pub extern "C" fn mesh_service_call(
     }
 
     // The type_tag for the MessageBuffer is the msg_tag itself.
-    let buffer = MessageBuffer::new(data, msg_tag);
+    let mut buffer = MessageBuffer::new(data, msg_tag);
+    own_strings(&mut buffer, tags, 16, payload_size as usize / 8);
     let msg = Message { buffer };
 
     // Send the call message to the target service.
@@ -127,6 +164,45 @@ pub extern "C" fn mesh_service_reply(caller_pid: u64, reply_ptr: *const u8, repl
     super::mesh_actor_send(caller_pid, reply_ptr, reply_size);
 }
 
+/// Fire-and-forget service message with owned string arguments.
+#[no_mangle]
+pub extern "C" fn mesh_service_cast_typed(
+    target_pid: u64,
+    data: *const u8,
+    size: u64,
+    tags: *const u8,
+) {
+    let bytes = unsafe { std::slice::from_raw_parts(data, size as usize) }.to_vec();
+    let tag = u64::from_ne_bytes(bytes[..8].try_into().unwrap());
+    let mut buffer = MessageBuffer::new(bytes, tag);
+    own_strings(&mut buffer, tags, 16, (size as usize - 16) / 8);
+    send_owned(target_pid, buffer);
+}
+
+/// String replies must survive the service changing state or terminating.
+#[no_mangle]
+pub extern "C" fn mesh_service_reply_string(caller_pid: u64, reply: *const u8) {
+    let bytes = unsafe { std::slice::from_raw_parts(reply, 8) }.to_vec();
+    let mut buffer = MessageBuffer::new(bytes, 0);
+    own_strings(&mut buffer, &1, 0, 1);
+    send_owned(caller_pid, buffer);
+}
+
+fn send_owned(target_pid: u64, buffer: MessageBuffer) {
+    if let Some(sched) = GLOBAL_SCHEDULER.get() {
+        if let Some(target) = sched.get_process(ProcessId(target_pid)) {
+            let mut proc = target.lock();
+            proc.mailbox.push(Message { buffer });
+            if matches!(proc.state, super::process::ProcessState::Waiting)
+                && proc.set_live_state(super::process::ProcessState::Ready)
+            {
+                drop(proc);
+                sched.wake_process(ProcessId(target_pid));
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -134,6 +210,22 @@ pub extern "C" fn mesh_service_reply(caller_pid: u64, reply_ptr: *const u8, repl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn service_payload_owns_strings_after_sender_storage_changes() {
+        let mut source = Vec::new();
+        let value = "retained-é".as_bytes();
+        source.extend_from_slice(&(value.len() as u64).to_ne_bytes());
+        source.extend_from_slice(value);
+        let mut data = vec![0; 16];
+        data.extend_from_slice(&(source.as_ptr() as u64).to_ne_bytes());
+        data.extend_from_slice(&42u64.to_ne_bytes());
+        let mut message = MessageBuffer::new(data, 7);
+        own_strings(&mut message, [1, 0].as_ptr(), 16, 2);
+        source.fill(0);
+        assert_eq!(message.owned_strings, vec![(16, value.to_vec())]);
+        assert_eq!(&message.data[24..], &42u64.to_ne_bytes());
+    }
 
     #[test]
     fn test_service_reply_sends_message() {

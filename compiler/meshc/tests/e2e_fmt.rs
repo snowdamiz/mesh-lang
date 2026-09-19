@@ -66,6 +66,28 @@ fn fmt_formats_single_file_in_place() {
 }
 
 #[test]
+fn fmt_rejects_invalid_source_without_rewriting() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("invalid.mpl");
+    let source = "fn broken(x) do\ncase x do\nErr(_) -> return None\nend\nend\n\nfn retained() do\n42\nend\n";
+    for check in [false, true] {
+        std::fs::write(&file, source).unwrap();
+        let mut command = Command::new(find_meshc());
+        command.arg("fmt").arg(&file);
+        if check {
+            command.arg("--check");
+        }
+        let output = command.output().unwrap();
+        assert!(
+            !output.status.success(),
+            "invalid syntax must fail formatting"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
+        assert!(String::from_utf8_lossy(&output.stderr).contains("parse"));
+    }
+}
+
+#[test]
 fn fmt_already_formatted_file_unchanged() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("good.mpl");

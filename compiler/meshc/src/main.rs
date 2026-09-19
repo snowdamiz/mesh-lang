@@ -1520,6 +1520,13 @@ fn fmt_command(
         let source = std::fs::read_to_string(file)
             .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
 
+        if !mesh_parser::parse(&source).errors().is_empty() {
+            return Err(format!(
+                "Cannot format '{}': source contains parse errors",
+                file.display()
+            ));
+        }
+
         let formatted = mesh_fmt::format_source(&source, config);
         total += 1;
 

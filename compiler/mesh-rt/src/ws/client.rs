@@ -276,7 +276,7 @@ fn validate_options(options: &WsClientOptions) -> Result<(), String> {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_ws_client_connect(
+pub extern "C-unwind" fn mesh_ws_client_connect(
     url: *const MeshString,
     options_handle: i64,
 ) -> *mut MeshResult {
@@ -586,7 +586,7 @@ pub extern "C" fn mesh_ws_client_send_bytes(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *mut MeshResult {
+pub extern "C-unwind" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *mut MeshResult {
     if timeout_ms < 0 {
         return error("WebSocket receive timeout must be non-negative");
     }

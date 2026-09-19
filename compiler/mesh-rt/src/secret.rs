@@ -219,6 +219,20 @@ pub extern "C" fn mesh_secret_map_new(capacity: i64) -> *mut MeshResult {
     }
 }
 
+/// Fork a bounded map for speculative updates without aliasing its secret values.
+#[no_mangle]
+pub extern "C" fn mesh_secret_map_fork(map: *const MeshSecretHandle) -> *mut MeshResult {
+    match with_current_secret_process(|process| {
+        let map = validate_handle_pointer(process, map)
+            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle))?;
+        let copied = secret_table().lock().secret_map_fork(process.pid, map)?;
+        Ok(allocate_handle(process, copied))
+    }) {
+        Ok(handle) => alloc_result(0, handle.cast()),
+        Err(error) => secret_map_error_result(error),
+    }
+}
+
 /// Move one secret into a borrowed map. The secret is destroyed on every error.
 #[no_mangle]
 pub extern "C" fn mesh_secret_map_insert(
@@ -1208,6 +1222,20 @@ impl ResourceTable {
         valid_secret_map_key(key)?;
         let data = SecretMapData::decode(self.validate(owner, map, ResourceKind::SecretMap)?)?;
         Ok(data.entries.iter().any(|(candidate, _)| candidate == key))
+    }
+
+    fn secret_map_fork(
+        &mut self,
+        owner: ProcessId,
+        map: ResourceHandle,
+    ) -> Result<ResourceHandle, SecretMapError> {
+        let bytes = Zeroizing::new(
+            self.validate(owner, map, ResourceKind::SecretMap)?
+                .to_vec()
+                .into_boxed_slice(),
+        );
+        self.insert(owner, ResourceKind::SecretMap, bytes)
+            .map_err(SecretMapError::Resource)
     }
 
     fn secret_map_copy(

@@ -671,7 +671,15 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
         let path_ty = self.resolve_path_type(scrutinee_ty, path)?;
-        let llvm_ty = self.llvm_type(&path_ty);
+        // Tuple expressions use a runtime pointer, including control-flow results
+        // and nested tuple fields. Do not load the semantic by-value tuple type.
+        let llvm_ty = if matches!(path_ty, MirType::Tuple(_)) {
+            self.context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()
+        } else {
+            self.llvm_type(&path_ty)
+        };
         let val = self
             .builder
             .build_load(llvm_ty, ptr, "path_val")

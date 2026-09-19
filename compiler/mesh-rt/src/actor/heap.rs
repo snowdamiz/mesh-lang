@@ -603,12 +603,18 @@ pub struct MessageBuffer {
     /// In Phase 6, this is a simple hash of the type name. Future phases
     /// may use a more sophisticated type identification scheme.
     pub type_tag: u64,
+    /// Owned string payloads and the pointer slots to relocate in the receiver.
+    pub owned_strings: Vec<(usize, Vec<u8>)>,
 }
 
 impl MessageBuffer {
     /// Create a new message buffer from raw bytes and a type tag.
     pub fn new(data: Vec<u8>, type_tag: u64) -> Self {
-        MessageBuffer { data, type_tag }
+        MessageBuffer {
+            data,
+            type_tag,
+            owned_strings: Vec::new(),
+        }
     }
 
     /// Deep-copy this message's data into the target actor's heap.

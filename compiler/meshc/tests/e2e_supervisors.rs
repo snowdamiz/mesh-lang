@@ -138,8 +138,8 @@ fn run_with_timeout(binary: &Path, timeout_secs: u64) -> String {
 
     assert!(
         output.status.success(),
-        "binary failed with {:?}: {}",
-        output.status.code(),
+        "binary failed with {}: {}",
+        output.status,
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).to_string()
@@ -314,5 +314,32 @@ fn supervisor_typed_error_rejected() {
         "Should report child start type error (E0018).\nstdout: {}\nstderr: {}",
         stdout,
         stderr
+    );
+}
+
+#[test]
+fn shutdown_stops_a_receive_inside_a_closure_without_returning_to_its_caller() {
+    let source = r#"
+actor worker() do
+  let wait_for_work = fn ->
+    receive do
+      _ -> println("unexpected message")
+    end
+  end
+  wait_for_work()
+  println("worker alive")
+end
+fn main() do
+  let worker_id = spawn(worker)
+  Timer.sleep(50)
+  println("nested worker started")
+end
+"#;
+    let (_temp_dir, binary) = compile_mesh(source);
+    let stdout = run_with_timeout(&binary, 10);
+    assert_eq!(
+        stdout.trim(),
+        "nested worker started",
+        "shutdown returned from receive: {stdout}"
     );
 }

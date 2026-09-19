@@ -213,27 +213,16 @@ pub extern "C" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) -> *mut
         let data = set_data(set);
         let f: ElemToStr = std::mem::transmute(elem_to_str);
 
-        let mut result = crate::string::mesh_string_new(b"#{".as_ptr(), 2) as *mut u8;
+        let mut result = String::from("#{");
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::mesh_string_concat(
-                    result as *const crate::string::MeshString,
-                    sep as *const crate::string::MeshString,
-                ) as *mut u8;
+                result.push_str(", ");
             }
-            let elem_str = f(*data.add(i));
-            result = crate::string::mesh_string_concat(
-                result as *const crate::string::MeshString,
-                elem_str as *const crate::string::MeshString,
-            ) as *mut u8;
+            let elem_str = f(*data.add(i)) as *const crate::string::MeshString;
+            result.push_str((*elem_str).as_str());
         }
-        let close = crate::string::mesh_string_new(b"}".as_ptr(), 1) as *mut u8;
-        result = crate::string::mesh_string_concat(
-            result as *const crate::string::MeshString,
-            close as *const crate::string::MeshString,
-        ) as *mut u8;
-        result
+        result.push('}');
+        crate::string::mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
     }
 }
 

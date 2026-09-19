@@ -121,7 +121,11 @@ fn builds_hosted_dynamic_and_static_libraries() {
 fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
     let mut nm = Command::new("nm");
     if cfg!(target_os = "macos") {
-        nm.arg("-gU");
+        // Apple's llvm-nm prefers an object's embedded bitcode over its Mach-O
+        // symbol table, and the Rust standard library ships bitcode from a
+        // newer LLVM than Xcode can read. Exported symbols live in the symbol
+        // table, so disable the bitcode reader.
+        nm.args(["-gU", "--no-llvm-bc"]);
     } else if dynamic {
         nm.args(["-D", "--defined-only"]);
     } else {

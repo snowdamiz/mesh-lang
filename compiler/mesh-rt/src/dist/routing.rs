@@ -799,11 +799,11 @@ pub fn select_record_replicas(
                 && !crate::dist::operator::drain_requested(&candidate.node_id)
         })
         .collect();
-    choices.sort_by_key(|candidate| {
+    choices.sort_by_key(|&candidate| {
         (
             candidate.failure_domain == owner_domain,
-            candidate.failure_domain.clone(),
-            candidate.node_id.clone(),
+            candidate.failure_domain.as_str(),
+            candidate.node_id.as_str(),
         )
     });
     if choices.len() < required {
@@ -937,8 +937,11 @@ mod tests {
         );
     }
 
+    static ROUTING_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn routing_never_selects_draining_node() {
+        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let registry = load_report_registry();
         registry.clear();
         let now = Instant::now();
@@ -965,6 +968,7 @@ mod tests {
 
     #[test]
     fn routing_favors_lower_normalized_pressure() {
+        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let registry = load_report_registry();
         registry.clear();
         let now = Instant::now();
@@ -991,6 +995,7 @@ mod tests {
 
     #[test]
     fn ingress_reservation_moves_the_next_choice_to_an_unreserved_peer() {
+        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let reports = load_report_registry();
         reports.clear();
         let now = Instant::now();
@@ -1041,5 +1046,39 @@ mod tests {
             select_record_replicas("owner", 3, &candidates).expect("replicas"),
             vec!["replica-a".to_string(), "replica-b".to_string()]
         );
+    }
+
+    #[test]
+    fn replicas_order_by_other_domain_then_domain_and_node() {
+        let mut candidates: Vec<_> = [
+            ("order-owner", "zone-a", NodeLifecycleState::Ready),
+            ("order-local", "zone-a", NodeLifecycleState::Ready),
+            ("order-remote-z", "zone-b", NodeLifecycleState::Ready),
+            ("order-remote-a", "zone-b", NodeLifecycleState::Ready),
+            ("order-other", "zone-c", NodeLifecycleState::Ready),
+            ("order-unready", "zone-0", NodeLifecycleState::Draining),
+        ]
+        .into_iter()
+        .map(|(node, domain, state)| {
+            let mut candidate = report(node, 0, state);
+            candidate.failure_domain = domain.to_string();
+            candidate
+        })
+        .collect();
+        let expected = [
+            "order-remote-a",
+            "order-remote-z",
+            "order-other",
+            "order-local",
+        ];
+        for _ in 0..candidates.len() {
+            for count in 0..=expected.len() {
+                assert_eq!(
+                    select_record_replicas("order-owner", count + 1, &candidates).unwrap(),
+                    expected[..count]
+                );
+            }
+            candidates.rotate_left(1);
+        }
     }
 }

@@ -94,6 +94,12 @@ fn proof() -> Int ! CryptoError do
   let copied = SecretMap.copy(committed, first_key) ?
   Secret.destroy(copied)
 
+  let forked = SecretMap.fork(committed) ?
+  SecretMap.delete(forked, first_key) ?
+  if !SecretMap.contains(committed, first_key) || SecretMap.contains(forked, first_key) do
+    println("fork-aliased")
+  end
+
   let candidate = SecretMap.new(1) ?
   let second_key = Bytes.from_utf8("second")
   let second = Secret.random(32) ?
@@ -492,4 +498,113 @@ end
         String::from_utf8_lossy(&run.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
+}
+
+#[test]
+fn moved_nested_resource_sum_payload_cleanup_does_not_dereference_null() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "nested-resource-cleanup",
+        r#"
+pub resource struct Boxed do
+  key :: SecretBytes
+end
+pub type Keys do
+  Pair(first :: SecretBytes, second :: SecretBytes)
+end
+fn update(base :: consume Boxed, keys :: consume Keys) -> Boxed do
+  case keys do
+    Pair(first, second) -> do
+      Secret.destroy(second)
+      %{base | key: first}
+    end
+  end
+end
+fn finish(base :: consume Boxed, keys :: Option<Keys>) -> Boxed do
+  let material = base
+  let material = case keys do
+    None -> material
+    Some(value) -> update(material, value)
+  end
+  material
+end
+fn run() -> Int ! CryptoError do
+  let base = Boxed {key: Secret.random(32) ?}
+  let keys = Pair(Secret.random(32) ?, Secret.random(32) ?)
+  let next = finish(base, Some(keys))
+  let derived = Crypto.hkdf_sha256(next.key, Bytes.empty(), Bytes.from_utf8("check"), 32) ?
+  Secret.destroy(derived)
+  Ok(1)
+end
+fn main() do
+  case run() do
+    Ok(value) -> println(Int.to_string(value))
+    Err(_) -> println("error")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("nested-resource-cleanup"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "nested resource cleanup crashed: {:?}",
+        run.status
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "1\n");
+}
+
+#[test]
+fn conditional_resource_tuple_preserves_runtime_layout_and_ownership() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "conditional-resource-tuple",
+        r#"
+resource struct Owned do
+  key :: SecretBytes
+  number :: Int
+end
+fn choose(reverse :: Bool) -> Int ! CryptoError do
+  let one = Owned { key : Secret.random(16) ?, number : 1 }
+  let two = Owned { key : Secret.random(32) ?, number : 2 }
+  let (left, right) = if reverse do (two, one) else (one, two) end
+  let result = left.number * 10 + right.number
+  Ok(result)
+end
+fn main() do
+  case choose(false) do
+    Ok(value) -> println(Int.to_string(value))
+    Err(_) -> println("failed")
+  end
+  case choose(true) do
+    Ok(value) -> println(Int.to_string(value))
+    Err(_) -> println("failed")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("conditional-resource-tuple"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "12\n21\n");
 }

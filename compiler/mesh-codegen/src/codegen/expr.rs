@@ -649,7 +649,27 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(())
             }
             MirResourceDestructor::SumVariants(variants) => {
+                if variants.is_empty() {
+                    return Ok(());
+                }
+                let function = self.current_function();
+                let continue_block = self
+                    .context
+                    .append_basic_block(function, "resource_sum_live");
                 let aggregate = if value.is_pointer_value() {
+                    // Moving a boxed variant payload clears its pointer before outer cleanup.
+                    let pointer = value.into_pointer_value();
+                    let is_null = self
+                        .builder
+                        .build_is_null(pointer, "resource_sum_is_null")
+                        .map_err(|error| error.to_string())?;
+                    let load_block = self
+                        .context
+                        .append_basic_block(function, "resource_sum_load");
+                    self.builder
+                        .build_conditional_branch(is_null, continue_block, load_block)
+                        .map_err(|error| error.to_string())?;
+                    self.builder.position_at_end(load_block);
                     self.builder
                         .build_load(
                             self.llvm_type(resource_ty),
@@ -661,10 +681,6 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     value.into_struct_value()
                 };
-                if variants.is_empty() {
-                    return Ok(());
-                }
-
                 let sum_slot = self
                     .builder
                     .build_alloca(aggregate.get_type(), "resource_sum_slot")
@@ -677,10 +693,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(aggregate, 0, "resource_sum_tag")
                     .map_err(|error| error.to_string())?
                     .into_int_value();
-                let function = self.current_function();
-                let continue_block = self
-                    .context
-                    .append_basic_block(function, "resource_sum_live");
 
                 for (index, variant) in variants.iter().enumerate() {
                     let destroy_block = self
@@ -3382,7 +3394,9 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| "mesh_global_register returned void".to_string())
     }
 
-    fn remote_spawn_arg_tag(&self, ty: &MirType) -> Result<u8, String> {
+    /// Runtime `REMOTE_SPAWN_ARG_*` tag for a remotely transferable value type.
+    /// Must stay in sync with the decoder in `mesh-rt/src/dist/node.rs`.
+    pub(crate) fn remote_spawn_arg_tag(&self, ty: &MirType) -> Result<u8, String> {
         match ty {
             MirType::Int => Ok(1),
             MirType::Float => Ok(2),
@@ -3645,7 +3659,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // When timeout_body is present, we need null-check branching:
         //   [mesh_actor_receive] -> [is_null?] -> timeout_bb (null) / msg_bb (non-null) -> recv_merge_bb
-        // When timeout_body is None, the runtime waits indefinitely (no null possible).
+        // An untimed receive also returns null during scheduler shutdown.
         if let Some(timeout_expr) = timeout_body {
             let fn_val = self.current_function();
             let result_llvm_ty = self.llvm_type(result_ty);
@@ -3715,7 +3729,25 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
             Ok(result)
         } else {
-            // No timeout body: infinite wait path (existing behavior, no null possible).
+            let function = self.current_function();
+            let stopped = self.context.append_basic_block(function, "receive_stopped");
+            let received = self.context.append_basic_block(function, "receive_message");
+            let empty = self
+                .builder
+                .build_is_null(msg_ptr, "receive_empty")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(empty, stopped, received)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(stopped);
+            let stop = get_intrinsic(&self.module, "mesh_actor_stop");
+            self.builder
+                .build_call(stop, &[], "")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_unreachable()
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(received);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
             self.codegen_recv_process_arms(arms, msg_val)
         }
@@ -4720,92 +4752,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or("Handler returned void")?;
 
             let new_state = if *is_call {
-                // For call handlers, the result is the body return value.
-                // The call handler body returns a tuple (new_state, reply).
-                // At the MIR level, we lowered the body as-is. The handler returns
-                // the full body result. We need to extract new_state and reply.
-                //
-                // Convention: call handler returns the body value directly.
-                // The body should return a tuple (new_state, reply_value).
-                // Since tuples are lowered to runtime allocations, and our handler
-                // functions return Int (which is how the body evaluates), we need to
-                // handle this carefully.
-                //
-                // SIMPLIFICATION: For scalar state and reply types (Int), the call handler
-                // body returns a Tuple which at the LLVM level is a struct {i64, i64}.
-                // But our handler function has return type Int (i64).
-                //
-                // REALITY CHECK: The handler body returns whatever the Mesh code returns.
-                // For a counter service: `(count, count)` returns a tuple.
-                // But MIR lowered the handler with return_type: MirType::Int.
-                //
-                // This means the handler will actually return the tuple evaluation
-                // which in our LLVM codegen produces a struct value, but the function
-                // signature says i64. This mismatch needs to be resolved.
-                //
-                // PRAGMATIC FIX: Since all Mesh values can be represented as i64 at
-                // the LLVM level (ints, pointers, bools), and tuples are allocated
-                // as runtime objects that return a pointer, we can treat the handler
-                // return as i64 and interpret it accordingly.
-                //
-                // For now: treat handler_result as i64.
-                // The reply value is the same as handler_result (for simple cases).
-                // The new_state is the first element of the tuple.
-                //
-                // SIMPLEST APPROACH: The handler function returns whatever its body
-                // evaluates to. For call handlers that return (new_state, reply),
-                // we'll treat the result as the reply value, and the new_state
-                // is passed back via a convention (the handler modifies state by
-                // returning a new value).
-                //
-                // ACTUAL DESIGN: In the type checker, call handlers return (state, reply).
-                // The handler body expression evaluates to this tuple. At the LLVM level,
-                // tuples become runtime allocated {i64, i64} structs. The handler function
-                // returns this as a pointer.
-                //
-                // For now let's use a simple convention: the handler result IS the reply,
-                // and the new state is the same as old state (for get_count which is
-                // read-only), or we extract from the result.
-                //
-                // Actually the handler body (as lowered from Mesh source) already computes
-                // both new_state and reply. E.g.:
-                //   call get_count() |count| :: Int do
-                //     (count, count)
-                //   end
-                // This returns a tuple. The handler function body IS this expression.
-                // At LLVM level, (count, count) becomes a heap-allocated tuple ptr.
-                //
-                // We need to:
-                //   1. Extract reply from result[1] (second element)
-                //   2. Extract new_state from result[0] (first element)
-                //   3. Call mesh_service_reply(caller_pid, &reply, 8)
-                //   4. Recurse with new_state
-                //
-                // Since tuples are represented as runtime pointers, we need to load
-                // from the tuple. Mesh tuples use mesh_tuple_first/mesh_tuple_second.
-                //
-                // HOWEVER: The Mesh tuple (count, count) in the handler body will be
-                // lowered by lower_tuple_expr which creates a runtime tuple allocation.
-                // The result is a pointer (MirType::Ptr).
-                //
-                // Our handler function has return_type MirType::Int, but the body
-                // returns a tuple pointer. This is already a type mismatch that
-                // codegen_expr handles by truncating/coercing.
-                //
-                // Let me look at how the tuple works at LLVM level...
-                // Actually, this complexity means I should use a simpler encoding.
-                //
-                // NEW APPROACH: Instead of having the handler return a tuple,
-                // generate TWO separate calls from the loop:
-                //   1. Call a "handler_body" function that takes (state, args) and
-                //      returns the raw body result (a tuple ptr)
-                //   2. Extract reply via mesh_tuple_second(result)
-                //   3. Extract new_state via mesh_tuple_first(result)
-                //   4. Reply with the reply value
-                //
-                // But this requires the handler function to return Ptr (tuple pointer).
-                // Let me adjust the handler function return type.
-                //
                 // The handler returns a heap-allocated tuple pointer.
                 // Integer-encoded ABI results must be cast back to a pointer;
                 // pointer results can be used directly.
@@ -4849,13 +4795,25 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 let reply_size = i64_ty.const_int(8, false);
 
-                let service_reply_fn = get_intrinsic(&self.module, "mesh_service_reply");
-                self.builder
-                    .build_call(
-                        service_reply_fn,
-                        &[caller_pid.into(), reply_alloca.into(), reply_size.into()],
-                        "",
+                let helper_name = handler_fn_name.replacen("_handle_call_", "_call_", 1);
+                let string_reply = self
+                    .mir_functions
+                    .iter()
+                    .find(|f| f.name == helper_name)
+                    .is_some_and(|f| f.return_type == MirType::String);
+                let (service_reply_fn, reply_args) = if string_reply {
+                    (
+                        get_intrinsic(&self.module, "mesh_service_reply_string"),
+                        vec![caller_pid.into(), reply_alloca.into()],
                     )
+                } else {
+                    (
+                        get_intrinsic(&self.module, "mesh_service_reply"),
+                        vec![caller_pid.into(), reply_alloca.into(), reply_size.into()],
+                    )
+                };
+                self.builder
+                    .build_call(service_reply_fn, &reply_args, "")
                     .map_err(|e| e.to_string())?;
 
                 // Convert new_state_val (i64 from tuple) to the proper state type.
@@ -5190,6 +5148,29 @@ impl<'ctx> CodeGen<'ctx> {
     /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
     /// Calls mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
     /// Loads the reply from the returned pointer and converts based on expected type.
+    fn service_string_tags(
+        &self,
+        args: &[MirExpr],
+    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        let tags: Vec<_> = args
+            .iter()
+            .map(|a| {
+                self.context
+                    .i8_type()
+                    .const_int(u64::from(matches!(a.ty(), MirType::String)), false)
+            })
+            .collect();
+        let global = self.module.add_global(
+            self.context.i8_type().array_type(tags.len() as u32),
+            None,
+            "service_string_tags",
+        );
+        global.set_initializer(&self.context.i8_type().const_array(&tags));
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        Ok(global.as_pointer_value())
+    }
+
     fn codegen_service_call_helper(
         &mut self,
         args: &[MirExpr],
@@ -5241,7 +5222,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Call mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
-        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call");
+        let string_tags = self.service_string_tags(&args[2..])?;
+        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call_typed");
         let result_ptr = self
             .builder
             .build_call(
@@ -5251,6 +5233,7 @@ impl<'ctx> CodeGen<'ctx> {
                     tag_val.into(),
                     payload_ptr.into(),
                     payload_size_val.into(),
+                    string_tags.into(),
                 ],
                 "call_result",
             )
@@ -5462,9 +5445,19 @@ impl<'ctx> CodeGen<'ctx> {
         let msg_size = i64_ty.const_int((num_elements * 8) as u64, false);
 
         // Call mesh_actor_send(pid, msg_ptr, msg_size).
-        let send_fn = get_intrinsic(&self.module, "mesh_actor_send");
+        let string_tags = self.service_string_tags(&args[2..])?;
+        let send_fn = get_intrinsic(&self.module, "mesh_service_cast_typed");
         self.builder
-            .build_call(send_fn, &[pid_val.into(), buf.into(), msg_size.into()], "")
+            .build_call(
+                send_fn,
+                &[
+                    pid_val.into(),
+                    buf.into(),
+                    msg_size.into(),
+                    string_tags.into(),
+                ],
+                "",
+            )
             .map_err(|e| e.to_string())?;
 
         // Cast returns Unit.

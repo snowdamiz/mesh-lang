@@ -200,7 +200,8 @@ pub(crate) fn cooperative_recv_timeout<T>(
 }
 
 // ---------------------------------------------------------------------------
-// extern "C" ABI functions
+// ABI functions. Operations that can yield use C-unwind: dropping a cancelled
+// coroutine unwinds its suspended Rust frames so owned values are released.
 // ---------------------------------------------------------------------------
 
 /// Initialize the actor scheduler.
@@ -309,7 +310,7 @@ pub extern "C" fn mesh_actor_self() -> u64 {
 ///
 /// The reduction counter is reset to `DEFAULT_REDUCTIONS` (4000) after yield.
 #[no_mangle]
-pub extern "C" fn mesh_reduction_check() {
+pub extern "C-unwind" fn mesh_reduction_check() {
     // Get the current actor's process from the process table.
     // We decrement a thread-local shadow counter to avoid locking on every
     // reduction check. The actual Process.reductions field is updated by
@@ -660,8 +661,14 @@ pub extern "C" fn mesh_actor_send_named(
 /// The returned pointer points to a layout: `[u64 type_tag, u64 data_len, u8... data]`
 /// allocated in the current actor's heap.
 #[no_mangle]
-pub extern "C" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
+pub extern "C-unwind" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     actor_receive_matching(timeout_ms, |_| true)
+}
+
+/// Stop a generated actor without returning a fabricated receive value.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_actor_stop() -> ! {
+    std::panic::resume_unwind(Box::new(stack::ActorStopped))
 }
 
 /// Receive the first mailbox message matching `predicate`, leaving all other
@@ -869,7 +876,7 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
 /// once. The shared timer reactor makes it Ready at the deadline, so sleeping
 /// actors do not create runnable pressure or busy-resume loops.
 #[no_mangle]
-pub extern "C" fn mesh_timer_sleep(ms: i64) {
+pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
     if ms <= 0 {
         return;
     }
@@ -966,6 +973,12 @@ pub(crate) fn copy_msg_to_actor_heap(sched: &Scheduler, pid: ProcessId, msg: Mes
                     ptr.add(header_size),
                     msg.buffer.data.len(),
                 );
+            }
+            for (offset, bytes) in &msg.buffer.owned_strings {
+                let string = proc.heap.alloc(8 + bytes.len(), 8);
+                (string as *mut u64).write(bytes.len() as u64);
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), string.add(8), bytes.len());
+                (ptr.add(header_size + offset) as *mut u64).write_unaligned(string as u64);
             }
         }
 
@@ -1240,7 +1253,7 @@ extern "C" fn supervisor_entry(_args: *const u8) {
 ///
 /// Returns the supervisor PID as `u64`, or `u64::MAX` on error.
 #[no_mangle]
-pub extern "C" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64) -> u64 {
+pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64) -> u64 {
     if config_ptr.is_null() || config_size == 0 {
         return u64::MAX;
     }
@@ -1300,7 +1313,7 @@ pub extern "C" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64)
 ///
 /// Returns the child PID as `u64`, or `u64::MAX` on error.
 #[no_mangle]
-pub extern "C" fn mesh_supervisor_start_child(
+pub extern "C-unwind" fn mesh_supervisor_start_child(
     sup_pid: u64,
     args_ptr: *const u8,
     args_size: u64,

@@ -135,7 +135,7 @@ fn spawn_job_actor(fn_ptr: *const u8, env_ptr: *const u8, caller_pid: u64) -> u6
 ///
 /// Unpacks the args buffer, links to the caller, calls the user function,
 /// sends the result, and exits.
-extern "C" fn job_entry(args: *const u8) {
+extern "C-unwind" fn job_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
@@ -167,7 +167,7 @@ extern "C" fn job_entry(args: *const u8) {
     }
 
     // Call the user function: fn(env_ptr) -> i64
-    let user_fn: extern "C" fn(*const u8) -> i64 = unsafe { std::mem::transmute(fn_ptr) };
+    let user_fn: extern "C-unwind" fn(*const u8) -> i64 = unsafe { std::mem::transmute(fn_ptr) };
     let result = user_fn(env_ptr);
 
     // Send the result to the caller tagged with JOB_RESULT_TAG.
@@ -217,7 +217,7 @@ extern "C" fn job_entry(args: *const u8) {
 ///
 /// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_job_await(job_pid: u64) -> *const u8 {
+pub extern "C-unwind" fn mesh_job_await(job_pid: u64) -> *const u8 {
     let msg_ptr = receive_job_message(job_pid, -1);
     if msg_ptr.is_null() {
         return err_result("job await: no message received") as *const u8;
@@ -236,7 +236,7 @@ pub extern "C" fn mesh_job_await(job_pid: u64) -> *const u8 {
 ///
 /// Returns a pointer to a heap-allocated MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_job_await_timeout(job_pid: u64, timeout_ms: i64) -> *const u8 {
+pub extern "C-unwind" fn mesh_job_await_timeout(job_pid: u64, timeout_ms: i64) -> *const u8 {
     let msg_ptr = receive_job_message(job_pid, timeout_ms);
     if msg_ptr.is_null() {
         return err_result("timeout") as *const u8;
@@ -372,7 +372,7 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
 ///
 /// Returns a pointer to a new Mesh list containing MeshResult values.
 #[no_mangle]
-pub extern "C" fn mesh_job_map(
+pub extern "C-unwind" fn mesh_job_map(
     list_ptr: *const u8,
     fn_ptr: *const u8,
     env_ptr: *const u8,
@@ -446,7 +446,7 @@ pub extern "C" fn mesh_job_map(
 ///
 /// Unpacks args: [u64 fn_ptr][u64 env_ptr][u64 element][u64 caller_pid]
 /// Calls fn_ptr(env_ptr, element) and sends result to caller.
-extern "C" fn map_job_entry(args: *const u8) {
+extern "C-unwind" fn map_job_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
@@ -478,7 +478,7 @@ extern "C" fn map_job_entry(args: *const u8) {
     }
 
     // Call the mapping function: fn(env_ptr, element) -> i64
-    let user_fn: extern "C" fn(*const u8, i64) -> i64 =
+    let user_fn: extern "C-unwind" fn(*const u8, i64) -> i64 =
         unsafe { std::mem::transmute(fn_ptr as *const u8) };
     let result = user_fn(env_ptr as *const u8, element as i64);
 

@@ -13,15 +13,22 @@
 //!
 //! ## Trust Model
 //!
-//! TLS provides confidentiality and integrity. Authentication is handled by the
-//! Autonomous peers require mTLS plus a signed, cluster-scoped identity claim.
-//! The HMAC-SHA256 cookie handshake remains a compatibility and
-//! defense-in-depth layer, with comma-separated keyrings for rolling rotation.
-//! The client-side TLS config intentionally skips certificate verification.
+//! TLS provides confidentiality and integrity. Autonomous peers require mTLS
+//! plus a signed, cluster-scoped identity claim. The HMAC-SHA256 cookie
+//! handshake remains a compatibility and defense-in-depth layer, with
+//! comma-separated keyrings for rolling rotation.
+//!
+//! In legacy (non-mTLS) mode the client-side TLS config intentionally skips
+//! certificate verification, so the cookie handshake is the only peer
+//! authentication. Every cookie proof is therefore bound to the RFC 9266
+//! `tls-exporter` value of the TLS session it travels over; a relay that
+//! terminates TLS towards both peers cannot splice two sessions together by
+//! forwarding the handshake messages.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -257,12 +264,26 @@ struct FnPtr(*const u8);
 unsafe impl Send for FnPtr {}
 unsafe impl Sync for FnPtr {}
 
-/// Global registry mapping function names to their code pointers.
+/// A function remote nodes may spawn by name, together with the argument
+/// signature its generated actor entry expects.
+#[derive(Clone)]
+struct RegisteredFunction {
+    fn_ptr: FnPtr,
+    /// One `REMOTE_SPAWN_ARG_*` tag per parameter the actor wrapper loads from
+    /// the args buffer. `REMOTE_SPAWN_ARG_UNSUPPORTED` marks parameters that
+    /// cannot be supplied over the wire; such entries are never spawned remotely.
+    arg_signature: Vec<u8>,
+}
+
+/// Global registry mapping function names to their code pointers and
+/// expected argument signatures.
 ///
 /// Populated at program startup by codegen-emitted `mesh_register_function`
 /// calls. Used by the remote spawn handler to look up a function pointer
-/// by name when a DIST_SPAWN request arrives from another node.
-static FUNCTION_REGISTRY: OnceLock<RwLock<FxHashMap<String, FnPtr>>> = OnceLock::new();
+/// by name when a DIST_SPAWN request arrives from another node, and to reject
+/// requests whose arity or argument types do not match what the generated
+/// entry will load from the args buffer.
+static FUNCTION_REGISTRY: OnceLock<RwLock<FxHashMap<String, RegisteredFunction>>> = OnceLock::new();
 
 #[derive(Clone)]
 struct DeclaredHandlerEntry {
@@ -290,7 +311,7 @@ static STARTUP_KEEPALIVE_SPAWNED: AtomicBool = AtomicBool::new(false);
 static STARTUP_WORK_TRIGGERED: AtomicBool = AtomicBool::new(false);
 
 /// Get or initialize the function registry.
-fn function_registry() -> &'static RwLock<FxHashMap<String, FnPtr>> {
+fn function_registry() -> &'static RwLock<FxHashMap<String, RegisteredFunction>> {
     FUNCTION_REGISTRY.get_or_init(|| RwLock::new(FxHashMap::default()))
 }
 
@@ -311,8 +332,21 @@ fn startup_work_registry() -> &'static RwLock<Vec<String>> {
 /// Called by codegen-emitted code in the main wrapper at program startup.
 /// Each top-level (non-closure) function is registered so that remote nodes
 /// can spawn it by name.
+///
+/// `arg_tags_ptr`/`arg_count` describe the `REMOTE_SPAWN_ARG_*` tag of every
+/// parameter the generated actor entry loads from its args buffer. A
+/// DIST_SPAWN request is only honoured when its argument tags match this
+/// signature exactly; otherwise the generated loads would read past the
+/// buffer or reinterpret integers as pointers. `arg_tags_ptr` may be null
+/// when `arg_count` is zero.
 #[no_mangle]
-pub extern "C" fn mesh_register_function(name_ptr: *const u8, name_len: u64, fn_ptr: *const u8) {
+pub extern "C" fn mesh_register_function(
+    name_ptr: *const u8,
+    name_len: u64,
+    fn_ptr: *const u8,
+    arg_tags_ptr: *const u8,
+    arg_count: u64,
+) {
     if name_ptr.is_null() || fn_ptr.is_null() {
         return;
     }
@@ -320,7 +354,22 @@ pub extern "C" fn mesh_register_function(name_ptr: *const u8, name_len: u64, fn_
         let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
         std::str::from_utf8_unchecked(slice).to_string()
     };
-    function_registry().write().insert(name, FnPtr(fn_ptr));
+    let arg_signature = if arg_count == 0 {
+        Vec::new()
+    } else if arg_tags_ptr.is_null() {
+        // No signature was supplied for a function that takes arguments, so
+        // nothing can be validated: keep it unreachable from remote spawn.
+        vec![REMOTE_SPAWN_ARG_UNSUPPORTED; arg_count.min(u16::MAX as u64) as usize]
+    } else {
+        unsafe { std::slice::from_raw_parts(arg_tags_ptr, arg_count as usize) }.to_vec()
+    };
+    function_registry().write().insert(
+        name,
+        RegisteredFunction {
+            fn_ptr: FnPtr(fn_ptr),
+            arg_signature,
+        },
+    );
 }
 
 #[no_mangle]
@@ -417,11 +466,9 @@ pub extern "C" fn mesh_trigger_startup_work() {
     );
 }
 
-/// Look up a registered function by name.
-///
-/// Returns `Some(fn_ptr)` if the function was registered, `None` otherwise.
-pub(crate) fn lookup_function(name: &str) -> Option<*const u8> {
-    function_registry().read().get(name).map(|p| p.0)
+/// Look up a remotely spawnable function and its argument signature by name.
+fn lookup_registered_function(name: &str) -> Option<RegisteredFunction> {
+    function_registry().read().get(name).cloned()
 }
 
 fn lookup_declared_handler(name: &str) -> Option<DeclaredHandlerEntry> {
@@ -1216,6 +1263,10 @@ pub(crate) const DIST_SPAWN: u8 = 0x19;
 /// Wire format: [tag][u64 request_id][u8 status][u64 spawned_pid]
 pub(crate) const DIST_SPAWN_REPLY: u8 = 0x1A;
 
+/// Registry-only marker for a parameter that cannot be supplied through the
+/// remote spawn wire format (or an entry that does not follow the actor args
+/// ABI at all). Never valid on the wire.
+const REMOTE_SPAWN_ARG_UNSUPPORTED: u8 = 0;
 const REMOTE_SPAWN_ARG_INT: u8 = 1;
 const REMOTE_SPAWN_ARG_FLOAT: u8 = 2;
 const REMOTE_SPAWN_ARG_BOOL: u8 = 3;
@@ -2070,11 +2121,9 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                             if msg.len() >= 20 + fn_name_len {
                                 let fn_name =
                                     std::str::from_utf8(&msg[20..20 + fn_name_len]).unwrap_or("");
-                                let decoded_args =
-                                    decode_remote_spawn_args(&msg[20 + fn_name_len..]);
 
-                                match (lookup_function(fn_name), decoded_args) {
-                                    (Some(fn_ptr), Ok(decoded_args)) => {
+                                match prepare_remote_spawn(fn_name, &msg[20 + fn_name_len..]) {
+                                    Ok((fn_ptr, decoded_args)) => {
                                         let args_ptr = allocate_remote_spawn_args(&decoded_args);
                                         let args_size = (decoded_args.len()
                                             * std::mem::size_of::<u64>())
@@ -2115,25 +2164,11 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                         // Reply with the spawned process's local_id.
                                         send_spawn_reply(&session, req_id, 0, spawned.local_id());
                                     }
-                                    (Some(_), Err(reason)) => {
+                                    Err(reason) => {
                                         eprintln!(
                                             "mesh node spawn rejected from {} for fn {}: {}",
                                             session.remote_name, fn_name, reason
                                         );
-                                        send_spawn_reply(&session, req_id, 1, 0);
-                                    }
-                                    (None, _) => {
-                                        if lookup_declared_handler_executable(fn_name).is_some() {
-                                            eprintln!(
-                                                "mesh node spawn rejected from {}: declared handler executable not remote-registered {}",
-                                                session.remote_name, fn_name
-                                            );
-                                        } else {
-                                            eprintln!(
-                                                "mesh node spawn rejected from {}: function not found {}",
-                                                session.remote_name, fn_name
-                                            );
-                                        }
                                         send_spawn_reply(&session, req_id, 1, 0);
                                     }
                                 }
@@ -4227,6 +4262,74 @@ fn read_dist_msg_bounded(stream: &mut impl Read, max_frame_bytes: u32) -> io::Re
 }
 
 // ---------------------------------------------------------------------------
+// TLS channel binding for the cookie handshake
+// ---------------------------------------------------------------------------
+
+/// RFC 9266 `tls-exporter` channel binding of the TLS session that carries
+/// the cookie handshake.
+///
+/// Legacy (non-mTLS) node TLS does not verify certificates, so on its own the
+/// cookie proof would authenticate whoever is at the far end of *some* TLS
+/// session: a relay that terminates TLS towards both endpoints could forward
+/// the four handshake messages unchanged and then read or modify distribution
+/// traffic. Mixing this exporter into every HMAC ties each proof to the exact
+/// TLS session it was sent over. A relay sees two different bindings, so the
+/// proofs it forwards fail verification at both endpoints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChannelBinding([u8; 32]);
+
+/// Exporter label defined by RFC 9266 for the `tls-exporter` channel binding.
+const TLS_EXPORTER_CHANNEL_BINDING_LABEL: &[u8] = b"EXPORTER-Channel-Binding";
+
+/// Transport the cookie handshake runs over.
+///
+/// The transport must be able to finish its own security handshake and hand
+/// out a channel binding before the first cookie message is exchanged.
+trait HandshakeTransport: Read + Write {
+    fn channel_binding(&mut self) -> Result<ChannelBinding, String>;
+}
+
+impl<C, T, S> HandshakeTransport for StreamOwned<C, T>
+where
+    C: DerefMut + Deref<Target = rustls::ConnectionCommon<S>>,
+    T: Read + Write,
+    S: rustls::SideData,
+{
+    /// Drive the TLS handshake to completion (rustls otherwise completes it
+    /// lazily on the first read or write), then export the RFC 9266 binding.
+    fn channel_binding(&mut self) -> Result<ChannelBinding, String> {
+        while self.conn.is_handshaking() {
+            let (read, written) = self
+                .conn
+                .complete_io(&mut self.sock)
+                .map_err(|error| format!("tls_handshake_failed:{error}"))?;
+            if read == 0 && written == 0 && self.conn.is_handshaking() {
+                return Err("tls_handshake_stalled".to_string());
+            }
+        }
+        let exported = self
+            .conn
+            .export_keying_material([0u8; 32], TLS_EXPORTER_CHANNEL_BINDING_LABEL, Some(&[]))
+            .map_err(|error| format!("tls_channel_binding_unavailable:{error}"))?;
+        Ok(ChannelBinding(exported))
+    }
+}
+
+/// In-process handshake tests pair plain Unix sockets without TLS; both ends
+/// share a fixed binding so the cookie exchange itself can be exercised.
+#[cfg(test)]
+impl HandshakeTransport for std::os::unix::net::UnixStream {
+    fn channel_binding(&mut self) -> Result<ChannelBinding, String> {
+        Ok(ChannelBinding::TEST_PLAIN_TRANSPORT)
+    }
+}
+
+#[cfg(test)]
+impl ChannelBinding {
+    const TEST_PLAIN_TRANSPORT: Self = Self([0x5A; 32]);
+}
+
+// ---------------------------------------------------------------------------
 // HMAC-SHA256 challenge/response functions
 // ---------------------------------------------------------------------------
 
@@ -4235,7 +4338,8 @@ fn generate_challenge() -> [u8; 32] {
     rand::random()
 }
 
-/// Compute HMAC-SHA256(cookie, challenge) as the challenge response.
+/// Compute HMAC-SHA256(cookie, challenge || channel_binding) as the challenge
+/// response, proving knowledge of the cookie for this TLS session only.
 ///
 /// Follows the pattern from `db/pg.rs` SCRAM-SHA-256 authentication.
 fn cluster_cookie_keys(cookie: &str) -> impl Iterator<Item = &str> {
@@ -4256,11 +4360,16 @@ fn validate_cluster_cookie_strength(cookie: &str, autonomous: bool) -> Result<()
     Ok(())
 }
 
-fn compute_response(cookie: &str, challenge: &[u8; 32]) -> [u8; 32] {
+fn compute_response(
+    cookie: &str,
+    challenge: &[u8; 32],
+    channel_binding: &ChannelBinding,
+) -> [u8; 32] {
     let signing_key = cluster_cookie_keys(cookie).next().unwrap_or(cookie);
     let mut mac =
         HmacSha256::new_from_slice(signing_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(challenge);
+    mac.update(&channel_binding.0);
     let result = mac.finalize().into_bytes();
     let mut out = [0u8; 32];
     out.copy_from_slice(&result);
@@ -4269,13 +4378,23 @@ fn compute_response(cookie: &str, challenge: &[u8; 32]) -> [u8; 32] {
 
 /// Verify a challenge response using constant-time comparison.
 ///
+/// The response must have been computed over the same challenge *and* the
+/// same TLS channel binding, so a proof relayed from another TLS session is
+/// rejected even though the peer knows the cookie.
+///
 /// Uses `Mac::verify_slice` for constant-time comparison, preventing
 /// timing attacks (research pitfall 3).
-fn verify_response(cookie: &str, challenge: &[u8; 32], response: &[u8; 32]) -> bool {
+fn verify_response(
+    cookie: &str,
+    challenge: &[u8; 32],
+    channel_binding: &ChannelBinding,
+    response: &[u8; 32],
+) -> bool {
     cluster_cookie_keys(cookie).any(|key| {
         let mut mac =
             HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC can take key of any size");
         mac.update(challenge);
+        mac.update(&channel_binding.0);
         mac.verify_slice(response).is_ok()
     })
 }
@@ -4538,6 +4657,9 @@ fn validate_advertised_node_name(name: &str) -> Result<(), String> {
 /// 3. Initiator sends REPLY (response to challenge + own challenge)
 /// 4. Acceptor sends ACK (response to initiator's challenge)
 ///
+/// Every response is `HMAC(cookie, challenge || tls-exporter)`, so it is only
+/// valid on the TLS session it was produced for (see [`ChannelBinding`]).
+///
 /// Returns `(remote_name, remote_creation)` on success, or an error string.
 fn validate_remote_node_identity(
     remote_name: &str,
@@ -4595,7 +4717,7 @@ fn validate_remote_node_identity(
 }
 
 fn perform_handshake_with_identity(
-    stream: &mut (impl Read + Write),
+    stream: &mut impl HandshakeTransport,
     local_name: &str,
     local_cookie: &str,
     local_creation: u8,
@@ -4609,6 +4731,10 @@ fn perform_handshake_with_identity(
     ),
     String,
 > {
+    // Finish the TLS handshake first so every cookie proof below is bound to
+    // this exact TLS session rather than to whoever relays the messages.
+    let channel_binding = stream.channel_binding()?;
+
     if is_initiator {
         // Step 1: Send our name
         send_name(stream, local_name, local_creation)?;
@@ -4618,13 +4744,18 @@ fn perform_handshake_with_identity(
         validate_advertised_node_name(&remote_name)?;
 
         // Step 3: Compute response + generate our own challenge
-        let our_response = compute_response(local_cookie, &their_challenge);
+        let our_response = compute_response(local_cookie, &their_challenge, &channel_binding);
         let our_challenge = generate_challenge();
         send_challenge_reply(stream, &our_response, &our_challenge)?;
 
         // Step 4: Receive and verify their response to our challenge
         let their_response = recv_challenge_ack(stream)?;
-        if !verify_response(local_cookie, &our_challenge, &their_response) {
+        if !verify_response(
+            local_cookie,
+            &our_challenge,
+            &channel_binding,
+            &their_response,
+        ) {
             return Err(format!(
                 "cookie mismatch: authentication failed from {}",
                 remote_name
@@ -4652,7 +4783,12 @@ fn perform_handshake_with_identity(
         let (their_response, their_challenge) = recv_challenge_reply(stream)?;
 
         // Verify their response to our challenge
-        if !verify_response(local_cookie, &our_challenge, &their_response) {
+        if !verify_response(
+            local_cookie,
+            &our_challenge,
+            &channel_binding,
+            &their_response,
+        ) {
             return Err(format!(
                 "cookie mismatch: authentication failed from {}",
                 remote_name
@@ -4660,7 +4796,7 @@ fn perform_handshake_with_identity(
         }
 
         // Step 4: Compute our response to their challenge and send ACK
-        let our_response = compute_response(local_cookie, &their_challenge);
+        let our_response = compute_response(local_cookie, &their_challenge, &channel_binding);
         send_challenge_ack(stream, &our_response)?;
 
         let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
@@ -4670,7 +4806,7 @@ fn perform_handshake_with_identity(
 }
 
 fn perform_handshake_negotiated(
-    stream: &mut (impl Read + Write),
+    stream: &mut impl HandshakeTransport,
     state: &NodeState,
     is_initiator: bool,
 ) -> Result<
@@ -4693,7 +4829,7 @@ fn perform_handshake_negotiated(
 
 #[cfg(test)]
 fn perform_handshake(
-    stream: &mut (impl Read + Write),
+    stream: &mut impl HandshakeTransport,
     state: &NodeState,
     is_initiator: bool,
 ) -> Result<(String, u8), String> {
@@ -5014,7 +5150,9 @@ fn build_node_server_config(
 /// Build the TLS client config for connecting to remote nodes.
 ///
 /// Certificate verification is intentionally skipped. Trust is established
-/// by the HMAC-SHA256 cookie challenge/response (Plan 02), not by PKI.
+/// by the HMAC-SHA256 cookie challenge/response (Plan 02), not by PKI. The
+/// cookie proofs are bound to the TLS session's exporter (RFC 9266), which is
+/// what prevents a certificate-less relay from splicing two sessions together.
 fn build_node_client_config() -> Arc<ClientConfig> {
     let config = ClientConfig::builder()
         .dangerous()
@@ -5150,7 +5288,9 @@ fn operator_tls_client_config() -> Result<Arc<ClientConfig>, String> {
 ///
 /// This is intentional: inter-node TLS provides encryption and integrity,
 /// while authentication is handled by the HMAC-SHA256 cookie challenge
-/// that runs after the TLS handshake completes.
+/// that runs after the TLS handshake completes. Because the certificate is
+/// unauthenticated, the cookie proofs are bound to the TLS exporter of the
+/// session (see [`ChannelBinding`]) rather than trusting the transport alone.
 #[derive(Debug)]
 struct SkipCertVerification;
 
@@ -5422,7 +5562,7 @@ fn transient_http_route_compatibility_allowed(
     !autonomous_requested && negotiated.version == PROTOCOL_V1
 }
 
-extern "C" fn transient_http_route_reply_entry(args: *const u8) {
+extern "C-unwind" fn transient_http_route_reply_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
@@ -5874,7 +6014,7 @@ struct HttpRouteV2ReplyTask {
     _reservation: AcceptedHttpReservation,
 }
 
-extern "C" fn http_route_v2_reply_entry(args: *const u8) {
+extern "C-unwind" fn http_route_v2_reply_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
@@ -6976,7 +7116,51 @@ fn encode_remote_spawn_args(args_data: &[u8], arg_tags: &[u8]) -> Result<Vec<u8>
     Ok(payload)
 }
 
-fn decode_remote_spawn_args(data: &[u8]) -> Result<Vec<u64>, String> {
+/// Resolve a DIST_SPAWN target and decode its arguments.
+///
+/// The peer is authenticated by the time a DIST_SPAWN arrives, but it still
+/// chooses the arity and argument types on the wire while the generated actor
+/// entry loads a fixed number of typed words from the args buffer. The
+/// registered signature is therefore checked before any argument value is
+/// materialized, so a mismatched request is rejected without ever reaching
+/// the generated loads.
+fn prepare_remote_spawn(
+    fn_name: &str,
+    encoded_args: &[u8],
+) -> Result<(*const u8, Vec<u64>), String> {
+    let Some(registered) = lookup_registered_function(fn_name) else {
+        return Err(if lookup_declared_handler_executable(fn_name).is_some() {
+            "declared_handler_executable_not_remote_registered".to_string()
+        } else {
+            "function_not_found".to_string()
+        });
+    };
+    let decoded_args = decode_remote_spawn_args(encoded_args, &registered.arg_signature)?;
+    Ok((registered.fn_ptr.0, decoded_args))
+}
+
+/// Check the argument tags a peer sent against the registered signature.
+fn validate_remote_spawn_signature(expected: &[u8], provided: &[u8]) -> Result<(), String> {
+    if expected.contains(&REMOTE_SPAWN_ARG_UNSUPPORTED) {
+        return Err("remote_spawn_target_not_remotely_spawnable".to_string());
+    }
+    if expected.len() != provided.len() {
+        return Err(format!(
+            "remote_spawn_arity_mismatch:expected={}:received={}",
+            expected.len(),
+            provided.len()
+        ));
+    }
+    if let Some(index) = (0..expected.len()).find(|&index| expected[index] != provided[index]) {
+        return Err(format!(
+            "remote_spawn_arg_type_mismatch:index={}:expected={}:received={}",
+            index, expected[index], provided[index]
+        ));
+    }
+    Ok(())
+}
+
+fn decode_remote_spawn_args(data: &[u8], expected_tags: &[u8]) -> Result<Vec<u64>, String> {
     if data.len() < 2 {
         return Err("remote_spawn_args_too_short".to_string());
     }
@@ -6987,6 +7171,7 @@ fn decode_remote_spawn_args(data: &[u8]) -> Result<Vec<u64>, String> {
     }
 
     let arg_tags = &data[2..2 + arg_count];
+    validate_remote_spawn_signature(expected_tags, arg_tags)?;
     let mut pos = 2 + arg_count;
     let mut values = Vec::with_capacity(arg_count);
 
@@ -8357,7 +8542,7 @@ pub fn submit_declared_work(
 /// - Remote PID (u64) on success
 /// - 0 on failure (not connected, function not found, write error, etc.)
 #[no_mangle]
-pub extern "C" fn mesh_node_spawn(
+pub extern "C-unwind" fn mesh_node_spawn(
     node_ptr: *const u8,
     node_len: u64,
     fn_name_ptr: *const u8,
@@ -9096,18 +9281,20 @@ mod tests {
         let _result = node_state(); // should not panic
     }
 
+    const TEST_BINDING: ChannelBinding = ChannelBinding::TEST_PLAIN_TRANSPORT;
+
     #[test]
     fn test_compute_response_deterministic() {
         // Same inputs must produce the same output
         let cookie = "secret_cookie";
         let challenge = [42u8; 32];
-        let r1 = compute_response(cookie, &challenge);
-        let r2 = compute_response(cookie, &challenge);
+        let r1 = compute_response(cookie, &challenge, &TEST_BINDING);
+        let r2 = compute_response(cookie, &challenge, &TEST_BINDING);
         assert_eq!(r1, r2);
 
         // Different challenge produces different output
         let different_challenge = [99u8; 32];
-        let r3 = compute_response(cookie, &different_challenge);
+        let r3 = compute_response(cookie, &different_challenge, &TEST_BINDING);
         assert_ne!(r1, r3);
     }
 
@@ -9115,35 +9302,76 @@ mod tests {
     fn test_verify_response_correct() {
         let cookie = "my_cookie";
         let challenge = generate_challenge();
-        let response = compute_response(cookie, &challenge);
-        assert!(verify_response(cookie, &challenge, &response));
+        let response = compute_response(cookie, &challenge, &TEST_BINDING);
+        assert!(verify_response(
+            cookie,
+            &challenge,
+            &TEST_BINDING,
+            &response
+        ));
     }
 
     #[test]
     fn test_verify_response_wrong_cookie() {
         let challenge = generate_challenge();
-        let response = compute_response("correct_cookie", &challenge);
+        let response = compute_response("correct_cookie", &challenge, &TEST_BINDING);
         // Wrong cookie should fail verification
-        assert!(!verify_response("wrong_cookie", &challenge, &response));
+        assert!(!verify_response(
+            "wrong_cookie",
+            &challenge,
+            &TEST_BINDING,
+            &response
+        ));
+    }
+
+    #[test]
+    fn cookie_response_is_bound_to_the_tls_channel() {
+        let cookie = "shared_cookie";
+        let challenge = generate_challenge();
+        let response = compute_response(cookie, &challenge, &TEST_BINDING);
+
+        // A proof produced on one TLS session must not verify on another, even
+        // though the cookie and the challenge are identical.
+        let other_session = ChannelBinding([0xA5; 32]);
+        assert_ne!(TEST_BINDING, other_session);
+        assert!(!verify_response(
+            cookie,
+            &challenge,
+            &other_session,
+            &response
+        ));
+        assert!(verify_response(
+            cookie,
+            &challenge,
+            &TEST_BINDING,
+            &response
+        ));
     }
 
     #[test]
     fn test_cookie_keyring_allows_rolling_rotation() {
         let challenge = [99_u8; 32];
-        let old_response = compute_response("old-cookie,new-cookie", &challenge);
-        let new_response = compute_response("new-cookie,old-cookie", &challenge);
+        let old_response = compute_response("old-cookie,new-cookie", &challenge, &TEST_BINDING);
+        let new_response = compute_response("new-cookie,old-cookie", &challenge, &TEST_BINDING);
 
         assert!(verify_response(
             "new-cookie,old-cookie",
             &challenge,
+            &TEST_BINDING,
             &old_response
         ));
         assert!(verify_response(
             "old-cookie,new-cookie",
             &challenge,
+            &TEST_BINDING,
             &new_response
         ));
-        assert!(!verify_response("new-cookie", &challenge, &old_response));
+        assert!(!verify_response(
+            "new-cookie",
+            &challenge,
+            &TEST_BINDING,
+            &old_response
+        ));
     }
 
     #[test]
@@ -9910,10 +10138,11 @@ mod tests {
                 .map_err(|error| format!("protocol_one_send_challenge_failed:{error}"))?;
 
             let (response, remote_challenge) = recv_challenge_reply(&mut stream)?;
-            if !verify_response(&protocol_one_cookie, &challenge, &response) {
+            let binding = stream.channel_binding()?;
+            if !verify_response(&protocol_one_cookie, &challenge, &binding, &response) {
                 return Err("protocol_one_cookie_response_invalid".to_string());
             }
-            let ack = compute_response(&protocol_one_cookie, &remote_challenge);
+            let ack = compute_response(&protocol_one_cookie, &remote_challenge, &binding);
             send_challenge_ack(&mut stream, &ack)?;
             Ok(remote_name)
         });
@@ -10203,6 +10432,111 @@ mod tests {
         assert_eq!(creation_from_server, 3);
     }
 
+    /// A relay that terminates legacy node TLS towards both peers and forwards
+    /// the four cookie handshake messages verbatim must not end up with an
+    /// authenticated session on either side: every proof is bound to the TLS
+    /// session it was produced on, and the relay sits on two different ones.
+    #[test]
+    fn legacy_tls_relay_cannot_splice_cookie_handshake() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        const IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+        let cookie = "relay_test_cookie".to_string();
+        let bob_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let bob_port = bob_listener.local_addr().unwrap().port();
+        let relay_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let relay_port = relay_listener.local_addr().unwrap().port();
+
+        let bob_cookie = cookie.clone();
+        let bob = std::thread::spawn(move || {
+            let (tcp, _) = bob_listener.accept().unwrap();
+            tcp.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+            let (cert, key) = generate_ephemeral_cert();
+            let conn = rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap();
+            let mut tls = StreamOwned::new(conn, tcp);
+            perform_handshake_with_identity(&mut tls, "bob@127.0.0.1", &bob_cookie, 2, false)
+        });
+
+        // The relay never learns the cookie. Legacy mode checks no certificates,
+        // so both of its TLS sessions complete normally.
+        let relay = std::thread::spawn(
+            move || -> Result<(usize, ChannelBinding, ChannelBinding), String> {
+                let (from_alice, _) = relay_listener.accept().unwrap();
+                from_alice.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+                let (cert, key) = generate_ephemeral_cert();
+                let mut alice_side = StreamOwned::new(
+                    rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap(),
+                    from_alice,
+                );
+
+                let to_bob = TcpStream::connect(format!("127.0.0.1:{bob_port}")).unwrap();
+                to_bob.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+                let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+                let mut bob_side = StreamOwned::new(
+                    rustls::ClientConnection::new(build_node_client_config(), server_name).unwrap(),
+                    to_bob,
+                );
+
+                let alice_binding = alice_side.channel_binding()?;
+                let bob_binding = bob_side.channel_binding()?;
+
+                fn forward(source: &mut impl Read, sink: &mut impl Write) -> io::Result<()> {
+                    let message = read_msg(source)?;
+                    write_msg(sink, &message)
+                }
+
+                // The cookie handshake strictly alternates: NAME (alice),
+                // CHALLENGE (bob), REPLY (alice), ACK (bob). Forward until a
+                // peer gives up.
+                let mut forwarded = 0;
+                while forwarded < 4 {
+                    let step = if forwarded % 2 == 0 {
+                        forward(&mut alice_side, &mut bob_side)
+                    } else {
+                        forward(&mut bob_side, &mut alice_side)
+                    };
+                    if step.is_err() {
+                        break;
+                    }
+                    forwarded += 1;
+                }
+                Ok((forwarded, alice_binding, bob_binding))
+            },
+        );
+
+        let alice_tcp = TcpStream::connect(format!("127.0.0.1:{relay_port}")).unwrap();
+        alice_tcp.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+        let mut alice = StreamOwned::new(
+            rustls::ClientConnection::new(build_node_client_config(), server_name).unwrap(),
+            alice_tcp,
+        );
+        let alice_result =
+            perform_handshake_with_identity(&mut alice, "alice@127.0.0.1", &cookie, 1, true);
+        drop(alice);
+
+        let bob_result = bob.join().unwrap();
+        let (forwarded, alice_binding, bob_binding) = relay.join().unwrap().unwrap();
+
+        assert_ne!(
+            alice_binding, bob_binding,
+            "relay must sit on two distinct TLS sessions"
+        );
+        // Bob receives alice's proof unchanged, but it was bound to the
+        // alice<->relay session, so verification against bob's own session fails.
+        let bob_error = bob_result.expect_err("relayed handshake must be rejected by the acceptor");
+        assert!(bob_error.contains("cookie mismatch"), "{bob_error}");
+        // Bob refused to answer, so alice never receives a valid ACK either.
+        assert!(
+            alice_result.is_err(),
+            "initiator must not authenticate through a relay: {alice_result:?}"
+        );
+        assert_eq!(
+            forwarded, 3,
+            "NAME, CHALLENGE and REPLY were relayed intact; the ACK was never produced"
+        );
+    }
+
     #[test]
     fn test_heartbeat_ping_pong_wire_format() {
         use std::io::Cursor;
@@ -10256,6 +10590,174 @@ mod tests {
     // -------------------------------------------------------------------
     // Plan 65-03 Task 1: Wire format and message routing unit tests
     // -------------------------------------------------------------------
+
+    extern "C" fn remote_spawn_test_entry(_args: *const u8) {}
+
+    fn register_remote_spawn_test_function(name: &str, signature: &[u8]) {
+        mesh_register_function(
+            name.as_ptr(),
+            name.len() as u64,
+            remote_spawn_test_entry as *const u8,
+            signature.as_ptr(),
+            signature.len() as u64,
+        );
+    }
+
+    /// Encode the argument section of a DIST_SPAWN request:
+    /// `[u16 count][tags][encoded values]`, exactly as a peer chooses it.
+    fn encode_spawn_arg_section(args: &[(u8, Vec<u8>)]) -> Vec<u8> {
+        let mut payload = (args.len() as u16).to_le_bytes().to_vec();
+        payload.extend(args.iter().map(|(tag, _)| *tag));
+        for (_, value) in args {
+            payload.extend_from_slice(value);
+        }
+        payload
+    }
+
+    fn spawn_string_value(value: &str) -> Vec<u8> {
+        let mut bytes = (value.len() as u32).to_le_bytes().to_vec();
+        bytes.extend_from_slice(value.as_bytes());
+        bytes
+    }
+
+    fn spawn_int_value(value: u64) -> Vec<u8> {
+        value.to_le_bytes().to_vec()
+    }
+
+    #[test]
+    fn authenticated_remote_spawn_rejects_arguments_that_do_not_match_the_signature() {
+        let name = "remote_spawn_signature_test_string_actor";
+        register_remote_spawn_test_function(name, &[REMOTE_SPAWN_ARG_STRING]);
+
+        // Zero arguments for an actor whose generated entry loads one String pointer.
+        assert_eq!(
+            prepare_remote_spawn(name, &encode_spawn_arg_section(&[])).err(),
+            Some("remote_spawn_arity_mismatch:expected=1:received=0".to_string())
+        );
+        // An integer where the entry would dereference a String pointer.
+        assert_eq!(
+            prepare_remote_spawn(
+                name,
+                &encode_spawn_arg_section(&[(REMOTE_SPAWN_ARG_INT, spawn_int_value(7))])
+            )
+            .err(),
+            Some(format!(
+                "remote_spawn_arg_type_mismatch:index=0:expected={REMOTE_SPAWN_ARG_STRING}:received={REMOTE_SPAWN_ARG_INT}"
+            ))
+        );
+        // More arguments than the entry reads.
+        assert_eq!(
+            prepare_remote_spawn(
+                name,
+                &encode_spawn_arg_section(&[
+                    (REMOTE_SPAWN_ARG_STRING, spawn_string_value("a")),
+                    (REMOTE_SPAWN_ARG_STRING, spawn_string_value("b")),
+                ])
+            )
+            .err(),
+            Some("remote_spawn_arity_mismatch:expected=1:received=2".to_string())
+        );
+        // A tag that is never valid on the wire.
+        assert_eq!(
+            prepare_remote_spawn(
+                name,
+                &encode_spawn_arg_section(&[(REMOTE_SPAWN_ARG_UNSUPPORTED, Vec::new())])
+            )
+            .err(),
+            Some(format!(
+                "remote_spawn_arg_type_mismatch:index=0:expected={REMOTE_SPAWN_ARG_STRING}:received={REMOTE_SPAWN_ARG_UNSUPPORTED}"
+            ))
+        );
+        // Signature satisfied but the value bytes are truncated.
+        let mut truncated =
+            encode_spawn_arg_section(&[(REMOTE_SPAWN_ARG_STRING, spawn_string_value("hello"))]);
+        truncated.truncate(truncated.len() - 2);
+        assert_eq!(
+            prepare_remote_spawn(name, &truncated).err(),
+            Some("remote_spawn_arg_string_truncated".to_string())
+        );
+
+        // The node keeps serving: the registration is intact and a well-formed
+        // request is still honoured after the malformed ones were rejected.
+        let (fn_ptr, args) = prepare_remote_spawn(
+            name,
+            &encode_spawn_arg_section(&[(REMOTE_SPAWN_ARG_STRING, spawn_string_value("hello"))]),
+        )
+        .unwrap();
+        assert_eq!(fn_ptr, remote_spawn_test_entry as *const u8);
+        assert_eq!(args.len(), 1);
+        let decoded = unsafe { &*(args[0] as *const crate::string::MeshString) };
+        assert_eq!(unsafe { decoded.as_bytes() }, b"hello");
+    }
+
+    #[test]
+    fn remote_spawn_refuses_functions_without_a_complete_wire_signature() {
+        // Registered with parameters but no signature: nothing can be validated.
+        let unsigned = "remote_spawn_signature_test_unsigned_function";
+        mesh_register_function(
+            unsigned.as_ptr(),
+            unsigned.len() as u64,
+            remote_spawn_test_entry as *const u8,
+            std::ptr::null(),
+            2,
+        );
+        for args in [
+            encode_spawn_arg_section(&[]),
+            encode_spawn_arg_section(&[
+                (REMOTE_SPAWN_ARG_INT, spawn_int_value(1)),
+                (REMOTE_SPAWN_ARG_INT, spawn_int_value(2)),
+            ]),
+        ] {
+            assert_eq!(
+                prepare_remote_spawn(unsigned, &args).err(),
+                Some("remote_spawn_target_not_remotely_spawnable".to_string())
+            );
+        }
+
+        // Codegen marks parameters it cannot transfer as unsupported; one such
+        // parameter makes the whole function unreachable from remote spawn.
+        let partial = "remote_spawn_signature_test_partially_supported";
+        register_remote_spawn_test_function(
+            partial,
+            &[REMOTE_SPAWN_ARG_INT, REMOTE_SPAWN_ARG_UNSUPPORTED],
+        );
+        assert_eq!(
+            prepare_remote_spawn(
+                partial,
+                &encode_spawn_arg_section(&[
+                    (REMOTE_SPAWN_ARG_INT, spawn_int_value(1)),
+                    (REMOTE_SPAWN_ARG_UNSUPPORTED, Vec::new()),
+                ])
+            )
+            .err(),
+            Some("remote_spawn_target_not_remotely_spawnable".to_string())
+        );
+
+        // Zero-parameter functions accept exactly zero arguments.
+        let zero_arity = "remote_spawn_signature_test_zero_arity";
+        register_remote_spawn_test_function(zero_arity, &[]);
+        let (fn_ptr, args) =
+            prepare_remote_spawn(zero_arity, &encode_spawn_arg_section(&[])).unwrap();
+        assert_eq!(fn_ptr, remote_spawn_test_entry as *const u8);
+        assert!(args.is_empty());
+        assert_eq!(
+            prepare_remote_spawn(
+                zero_arity,
+                &encode_spawn_arg_section(&[(REMOTE_SPAWN_ARG_INT, spawn_int_value(1))])
+            )
+            .err(),
+            Some("remote_spawn_arity_mismatch:expected=0:received=1".to_string())
+        );
+
+        assert_eq!(
+            prepare_remote_spawn(
+                "remote_spawn_signature_test_never_registered",
+                &encode_spawn_arg_section(&[])
+            )
+            .err(),
+            Some("function_not_found".to_string())
+        );
+    }
 
     #[test]
     fn test_dist_send_wire_format() {

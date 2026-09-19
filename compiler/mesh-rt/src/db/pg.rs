@@ -29,6 +29,7 @@ use rand::Rng;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use rustls_pki_types::ServerName;
 use sha2::Sha256;
+use subtle::ConstantTimeEq;
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::list::{
@@ -707,6 +708,29 @@ fn scram_client_final(
     Ok((client_final, server_signature))
 }
 
+/// A server must prove knowledge of the password before the connection is usable.
+fn verify_scram_server_final(body: &[u8], expected: &[u8]) -> Result<(), String> {
+    let signature = std::str::from_utf8(body)
+        .ok()
+        .and_then(|message| message.strip_prefix("v="))
+        .and_then(|encoded| BASE64.decode(encoded).ok())
+        .ok_or_else(|| "SCRAM: invalid server signature".to_string())?;
+    if !bool::from(signature.as_slice().ct_eq(expected)) {
+        return Err("SCRAM: server signature mismatch".to_string());
+    }
+    Ok(())
+}
+
+fn authentication_body(tag: u8, body: &[u8], expected: i32) -> Result<&[u8], String> {
+    if tag == b'E' {
+        return Err(parse_error_response(body));
+    }
+    if tag != b'R' || body.get(..4) != Some(expected.to_be_bytes().as_slice()) {
+        return Err(format!("expected authentication message {expected}"));
+    }
+    Ok(&body[4..])
+}
+
 // ── Error Response Parsing ─────────────────────────────────────────────
 
 /// Structured PostgreSQL error extracted from an ErrorResponse message.
@@ -1294,13 +1318,8 @@ pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
                 }
 
                 // Verify server signature
-                let server_final = std::str::from_utf8(&body[4..]).unwrap_or("");
-                if let Some(v_str) = server_final.strip_prefix("v=") {
-                    if let Ok(sig) = BASE64.decode(v_str) {
-                        if sig != expected_server_sig {
-                            return err_result("SCRAM: server signature mismatch");
-                        }
-                    }
+                if let Err(error) = verify_scram_server_final(&body[4..], &expected_server_sig) {
+                    return err_result(&error);
                 }
 
                 // Read AuthenticationOk
@@ -2039,13 +2058,11 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
                 .map_err(|e| format!("send password: {}", e))?;
             let (tag, body) =
                 read_message(&mut stream).map_err(|e| format!("read auth response: {}", e))?;
-            if tag == b'E' {
-                return Err(parse_error_response(&body));
-            }
+            authentication_body(tag, &body, 0)?;
         }
         5 => {
             // MD5Password
-            let salt = &body[4..8];
+            let salt = body.get(4..8).ok_or("MD5 auth: missing salt")?;
             let hashed = compute_md5_password(&pg_url.user, &pg_url.password, salt);
             let mut buf = Vec::new();
             write_password_message(&mut buf, &hashed);
@@ -2054,9 +2071,7 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
                 .map_err(|e| format!("send md5: {}", e))?;
             let (tag, body) =
                 read_message(&mut stream).map_err(|e| format!("read md5 response: {}", e))?;
-            if tag == b'E' {
-                return Err(parse_error_response(&body));
-            }
+            authentication_body(tag, &body, 0)?;
         }
         10 => {
             // SASL
@@ -2069,14 +2084,9 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
 
             let (tag, body) =
                 read_message(&mut stream).map_err(|e| format!("read SASL continue: {}", e))?;
-            if tag == b'E' {
-                return Err(parse_error_response(&body));
-            }
-            if tag != b'R' {
-                return Err("expected SASL continue".to_string());
-            }
-            let server_first = String::from_utf8_lossy(&body[4..]).to_string();
-            let (client_final, _expected_sig) =
+            let server_first = std::str::from_utf8(authentication_body(tag, &body, 11)?)
+                .map_err(|_| "invalid SCRAM server-first encoding")?;
+            let (client_final, expected_sig) =
                 scram_client_final(&pg_url.password, &client_nonce, &server_first)?;
 
             let mut buf = Vec::new();
@@ -2090,19 +2100,11 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
             if tag == b'E' {
                 return Err(parse_error_response(&body));
             }
-            // AuthenticationSASLFinal
-            if tag == b'R' {
-                let auth2 = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-                if auth2 != 12 && auth2 != 0 {
-                    return Err(format!("unexpected SASL auth type: {}", auth2));
-                }
-            }
+            verify_scram_server_final(authentication_body(tag, &body, 12)?, &expected_sig)?;
             // Read AuthenticationOk if not already received
             let (tag, body) =
                 read_message(&mut stream).map_err(|e| format!("read auth ok: {}", e))?;
-            if tag == b'E' {
-                return Err(parse_error_response(&body));
-            }
+            authentication_body(tag, &body, 0)?;
         }
         _ => {
             return Err(format!("unsupported auth type: {}", auth_type));
@@ -2291,6 +2293,140 @@ mod tests {
     use crate::collections::list::{mesh_list_append, mesh_list_new};
     use crate::collections::map::{mesh_map_entry_value, mesh_map_size};
     use crate::gc::mesh_rt_init;
+
+    // A wire-level peer exercises both public connection APIs without a database.
+    fn scram_test_server(final_message: Option<&[u8]>) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "postgres://user:password@{}/db?sslmode=disable",
+            listener.local_addr().unwrap()
+        );
+        let final_message = final_message.map(Vec::from);
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut length = [0; 4];
+            socket.read_exact(&mut length).unwrap();
+            let mut startup = vec![0; u32::from_be_bytes(length) as usize - 4];
+            socket.read_exact(&mut startup).unwrap();
+            let mut stream = PgStream::Plain(socket);
+            fn auth(output: &mut Vec<u8>, kind: i32, data: &[u8]) {
+                output.push(b'R');
+                output.extend_from_slice(&(8 + data.len() as i32).to_be_bytes());
+                output.extend_from_slice(&kind.to_be_bytes());
+                output.extend_from_slice(data);
+            }
+            let mut output = Vec::new();
+            auth(&mut output, 10, b"SCRAM-SHA-256\0\0");
+            stream.write_all(&output).unwrap();
+            let (tag, initial) = read_message(&mut stream).unwrap();
+            assert_eq!(tag, b'p');
+            let mechanism_end = initial.iter().position(|b| *b == 0).unwrap();
+            let first = std::str::from_utf8(&initial[mechanism_end + 5..]).unwrap();
+            let nonce = first.strip_prefix("n,,n=,r=").unwrap();
+            let challenge = format!("r={nonce}server,s=c2FsdA==,i=4096");
+            let (_, signature) = scram_client_final("password", nonce, &challenge).unwrap();
+            output.clear();
+            auth(&mut output, 11, challenge.as_bytes());
+            stream.write_all(&output).unwrap();
+            assert_eq!(read_message(&mut stream).unwrap().0, b'p');
+            output.clear();
+            let valid_final = format!("v={}", BASE64.encode(signature));
+            auth(
+                &mut output,
+                12,
+                final_message.as_deref().unwrap_or(valid_final.as_bytes()),
+            );
+            auth(&mut output, 0, b"");
+            output.extend_from_slice(b"Z\0\0\0\x05I");
+            stream.write_all(&output).unwrap();
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn native_connect_rejects_truncated_md5_auth_without_panicking() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "postgres://user:password@{}/db?sslmode=disable",
+            listener.local_addr().unwrap()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut length = [0; 4];
+            socket.read_exact(&mut length).unwrap();
+            let mut startup = vec![0; u32::from_be_bytes(length) as usize - 4];
+            socket.read_exact(&mut startup).unwrap();
+            // AuthenticationMD5Password requires four salt bytes after its type.
+            socket.write_all(b"R\0\0\0\x08\0\0\0\x05").unwrap();
+        });
+        let result = std::panic::catch_unwind(|| native_pg_connect(&url));
+        server.join().unwrap();
+        assert!(result.is_ok(), "malformed authentication panicked");
+        assert!(result.unwrap().is_err());
+    }
+
+    #[test]
+    fn scram_native_connect_requires_valid_server_signature() {
+        for final_message in [
+            b"".as_slice(),
+            b"v=???",
+            b"e=invalid-proof",
+            b"v=AAAA",
+            b"\xff",
+        ] {
+            let (url, server) = scram_test_server(Some(final_message));
+            let result = native_pg_connect(&url);
+            server.join().unwrap();
+            assert!(
+                result.is_err(),
+                "accepted invalid SCRAM proof: {final_message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn scram_mesh_connect_requires_valid_server_signature() {
+        mesh_rt_init();
+        for final_message in [
+            b"".as_slice(),
+            b"v=???",
+            b"e=invalid-proof",
+            b"v=AAAA",
+            b"\xff",
+        ] {
+            let (url, server) = scram_test_server(Some(final_message));
+            let result = mesh_pg_connect(mesh_string_new(url.as_ptr(), url.len() as u64));
+            server.join().unwrap();
+            let result = unsafe { &*(result as *const MeshResult) };
+            if result.tag == 0 {
+                mesh_pg_close(unsafe { *(result.value as *const u64) });
+            }
+            assert_eq!(
+                result.tag, 1,
+                "accepted invalid SCRAM proof: {final_message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn scram_connect_accepts_valid_server_signature() {
+        let (url, server) = scram_test_server(None);
+        assert!(native_pg_connect(&url).is_ok());
+        server.join().unwrap();
+        mesh_rt_init();
+        let (url, server) = scram_test_server(None);
+        let result = mesh_pg_connect(mesh_string_new(url.as_ptr(), url.len() as u64));
+        let result = unsafe { &*(result as *const MeshResult) };
+        server.join().unwrap();
+        assert_eq!(result.tag, 0);
+        mesh_pg_close(unsafe { *(result.value as *const u64) });
+    }
 
     #[test]
     fn typed_bind_keeps_binary_parameter_bytes_raw() {

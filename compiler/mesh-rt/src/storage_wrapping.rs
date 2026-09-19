@@ -9,7 +9,7 @@ use crate::actor::Process;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::crypto::provider::{CryptoProvider, ProviderError, SystemProvider};
 use crate::io::{alloc_result, MeshResult};
-use crate::library::{secure_store_get_raw, secure_store_put_raw};
+use crate::library::{secure_store_delete_raw, secure_store_get_raw, secure_store_put_raw};
 use crate::secret::{
     commit_storage_counter, crypto_error, insert_ephemeral_storage_key_resource,
     insert_owned_resource, insert_storage_key_resource, prepare_owned_resource,
@@ -34,6 +34,8 @@ const MAX_PLAINTEXT_BYTES: usize = 65_536;
 const MAX_BLOB_BYTES: usize = FIXED_OVERHEAD_BYTES + MAX_PLAINTEXT_BYTES;
 const FORMAT_VERSION: u8 = 1;
 const ALGORITHM_CHACHA20_POLY1305: u16 = 1;
+const PLATFORM_RECORD_ID: &[u8] = b"mesh/storage-key/v2";
+const PLATFORM_RECORD_BYTES: usize = STORAGE_KEY_MATERIAL_BYTES + 8;
 const PLATFORM_KEY_ID: &[u8] = b"mesh/storage-key/v1";
 const PLATFORM_COUNTER_ID: &[u8] = b"mesh/storage-counter/v1";
 const HOST_NOT_FOUND: i32 = 2;
@@ -707,25 +709,75 @@ fn write_platform_record(key: &[u8], value: &[u8]) -> Result<(), StorageFailure>
     secure_store_put_raw(&request).map_err(platform_failure)
 }
 
+fn retire_legacy_records(record: &[u8]) -> Result<(), StorageFailure> {
+    let material = read_platform_record(PLATFORM_KEY_ID, STORAGE_KEY_MATERIAL_BYTES)?;
+    let counter = read_platform_record(PLATFORM_COUNTER_ID, 8)?;
+    if material
+        .as_ref()
+        .is_some_and(|value| value.as_slice() != &record[..STORAGE_KEY_MATERIAL_BYTES])
+    {
+        return Err(platform_failure(HOST_NOT_FOUND));
+    }
+    if let Some(counter) = &counter {
+        if counter.len() != 8 || counter.as_slice() > &record[STORAGE_KEY_MATERIAL_BYTES..] {
+            return Err(platform_failure(HOST_NOT_FOUND));
+        }
+    }
+    // The v2 record is durable first. Remove the old key before its counter so
+    // an older binary cannot restart that key's nonce counter after rollback.
+    for (key, present) in [
+        (PLATFORM_KEY_ID, material.is_some()),
+        (PLATFORM_COUNTER_ID, counter.is_some()),
+    ] {
+        if present {
+            match secure_store_delete_raw(key) {
+                Ok(()) | Err(HOST_NOT_FOUND) => {}
+                Err(status) => return Err(platform_failure(status)),
+            }
+        }
+    }
+    Ok(())
+}
+
 fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
-    let material = match read_platform_record(PLATFORM_KEY_ID, STORAGE_KEY_MATERIAL_BYTES)? {
-        Some(material) if material.len() == STORAGE_KEY_MATERIAL_BYTES => material,
-        Some(material) => return Err(invalid_length(STORAGE_KEY_MATERIAL_BYTES, material.len())),
+    let record = match read_platform_record(PLATFORM_RECORD_ID, PLATFORM_RECORD_BYTES)? {
+        Some(record) => {
+            if record.len() != PLATFORM_RECORD_BYTES {
+                return Err(invalid_length(PLATFORM_RECORD_BYTES, record.len()));
+            }
+            record
+        }
         None => {
-            let mut material = Zeroizing::new(vec![0u8; STORAGE_KEY_MATERIAL_BYTES]);
-            SystemProvider
-                .fill_random(&mut material)
-                .map_err(provider_failure)?;
-            write_platform_record(PLATFORM_KEY_ID, &material)?;
-            material
+            let material = read_platform_record(PLATFORM_KEY_ID, STORAGE_KEY_MATERIAL_BYTES)?;
+            let counter = read_platform_record(PLATFORM_COUNTER_ID, 8)?;
+            let mut record = Zeroizing::new(Vec::with_capacity(PLATFORM_RECORD_BYTES));
+            match (material, counter) {
+                (None, None) => {
+                    record.resize(STORAGE_KEY_MATERIAL_BYTES, 0);
+                    SystemProvider
+                        .fill_random(&mut record)
+                        .map_err(provider_failure)?;
+                    record.extend_from_slice(&0u64.to_be_bytes());
+                }
+                (Some(material), Some(counter))
+                    if material.len() == STORAGE_KEY_MATERIAL_BYTES && counter.len() == 8 =>
+                {
+                    record.extend_from_slice(&material);
+                    record.extend_from_slice(&counter);
+                }
+                // Preserve incomplete legacy records; never reset a used counter.
+                _ => return Err(platform_failure(HOST_NOT_FOUND)),
+            }
+            write_platform_record(PLATFORM_RECORD_ID, &record)?;
+            record
         }
     };
-    match read_platform_record(PLATFORM_COUNTER_ID, 8)? {
-        Some(counter) if counter.len() == 8 => {}
-        Some(counter) => return Err(invalid_length(8, counter.len())),
-        None => write_platform_record(PLATFORM_COUNTER_ID, &0u64.to_be_bytes())?,
-    }
-    Ok(Zeroizing::new(material.to_vec().into_boxed_slice()))
+    retire_legacy_records(&record)?;
+    Ok(Zeroizing::new(
+        record[..STORAGE_KEY_MATERIAL_BYTES]
+            .to_vec()
+            .into_boxed_slice(),
+    ))
 }
 
 // ponytail: one process-wide lock; use a host atomic-increment callback if app
@@ -736,16 +788,21 @@ unsafe extern "C" fn reserve_platform_counter(_context: *mut c_void, counter_out
     }
     let _guard = PLATFORM_STORAGE_LOCK.lock();
     let result = (|| {
-        let counter = read_platform_record(PLATFORM_COUNTER_ID, 8)?
+        let mut record = read_platform_record(PLATFORM_RECORD_ID, PLATFORM_RECORD_BYTES)?
             .ok_or_else(|| platform_failure(HOST_NOT_FOUND))?;
-        if counter.len() != 8 {
-            return Err(invalid_length(8, counter.len()));
+        if record.len() != PLATFORM_RECORD_BYTES {
+            return Err(invalid_length(PLATFORM_RECORD_BYTES, record.len()));
         }
-        let current = u64::from_be_bytes(counter.as_slice().try_into().expect("checked counter"));
+        let current = u64::from_be_bytes(
+            record[STORAGE_KEY_MATERIAL_BYTES..]
+                .try_into()
+                .expect("checked record"),
+        );
         let next = current
             .checked_add(1)
             .ok_or_else(|| failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0))?;
-        write_platform_record(PLATFORM_COUNTER_ID, &next.to_be_bytes())?;
+        record[STORAGE_KEY_MATERIAL_BYTES..].copy_from_slice(&next.to_be_bytes());
+        write_platform_record(PLATFORM_RECORD_ID, &record)?;
         unsafe { counter_out.write(current) };
         Ok(())
     })();

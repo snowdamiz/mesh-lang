@@ -176,6 +176,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_actor_stop",
+        void_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_actor_self() -> i64
     let self_ty = i64_type.fn_type(&[], false);
     module.add_function(
@@ -1002,6 +1008,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_secret_map_new",
         ptr_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_map_fork",
+        ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
@@ -2941,6 +2952,39 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_service_call_typed",
+        ptr_type.fn_type(
+            &[
+                i64_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_service_cast_typed",
+        void_type.fn_type(
+            &[
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_service_reply_string",
+        void_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Job runtime functions (Phase 9 Plan 04) ──────────────────────────
 
     // mesh_job_async(fn_ptr: ptr, env_ptr: ptr) -> i64 (PID)
@@ -3092,10 +3136,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_register_function(name_ptr: ptr, name_len: i64, fn_ptr: ptr) -> void
+    // mesh_register_function(name_ptr: ptr, name_len: i64, fn_ptr: ptr,
+    //     arg_tags_ptr: ptr, arg_count: i64) -> void
     module.add_function(
         "mesh_register_function",
-        void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 

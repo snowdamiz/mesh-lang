@@ -938,7 +938,8 @@ const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
 
 fn configure_accepted_stream(stream: &TcpStream) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
-    stream.set_read_timeout(Some(Duration::from_secs(30)))
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))
 }
 
 fn read_bounded_line<R: BufRead>(
@@ -1059,6 +1060,47 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
 
 // ── HTTP/1.1 Response Writer ────────────────────────────────────────────
 
+/// Headers `write_response` always emits itself so the framing it advertises
+/// matches the body it actually writes. Handler-supplied copies are rejected
+/// rather than emitted alongside the writer's values.
+const WRITER_OWNED_HEADERS: [&str; 3] = ["content-length", "transfer-encoding", "connection"];
+
+/// Reject handler-supplied headers that could split the response or override
+/// writer-owned framing. Handlers may copy request data into headers, so this
+/// is the shared sink where CR/LF and other control bytes are refused.
+///
+/// Names must be RFC 9110 tokens. Values may contain HTAB, SP, visible ASCII,
+/// and obs-text bytes (non-ASCII UTF-8), but no CR, LF, NUL, or other controls.
+fn validate_response_headers(headers: &[(String, String)]) -> Result<(), String> {
+    for (name, value) in headers {
+        if name.is_empty() || !name.bytes().all(is_header_token_byte) {
+            return Err(format!("invalid response header name {name:?}"));
+        }
+        if WRITER_OWNED_HEADERS
+            .iter()
+            .any(|owned| name.eq_ignore_ascii_case(owned))
+        {
+            return Err(format!(
+                "response header {name:?} is owned by the response writer"
+            ));
+        }
+        if !value.bytes().all(is_header_value_byte) {
+            return Err(format!(
+                "response header {name:?} value contains a control byte"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_header_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
+}
+
+fn is_header_value_byte(byte: u8) -> bool {
+    byte == b'\t' || (byte >= 0x20 && byte != 0x7F)
+}
+
 /// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
 /// Format: status line, Content-Type, Content-Length, Connection: close,
@@ -1066,13 +1108,19 @@ fn parse_request(stream: &mut HttpStream) -> Result<ParsedRequest, String> {
 /// replaces the JSON default.
 ///
 /// When `extra_headers` is `Some`, each header is emitted as `{name}: {value}\r\n`
-/// between the standard headers and the blank line.
+/// between the standard headers and the blank line. All extra headers are
+/// validated first; an invalid header returns an error before any byte is
+/// written so the caller can still send a well-formed error response.
 fn write_response(
     stream: &mut impl Write,
     status: u16,
     body: &[u8],
     extra_headers: Option<Vec<(String, String)>>,
 ) -> Result<(), String> {
+    if let Some(headers) = extra_headers.as_deref() {
+        validate_response_headers(headers)?;
+    }
+
     let status_text = match status {
         200 => "OK",
         201 => "Created",
@@ -1182,7 +1230,13 @@ extern "C" fn connection_handler_entry(args: *const u8) {
         match parse_request(&mut stream) {
             Ok(parsed) => {
                 let (status, body, headers) = process_request(router_ptr, parsed);
-                let _ = write_response(&mut stream, status, &body, headers);
+                let _ = match headers.as_deref().map_or(Ok(()), validate_response_headers) {
+                    Ok(()) => write_response(&mut stream, status, &body, headers),
+                    Err(error) => {
+                        eprintln!("[mesh-rt] HTTP handler response rejected: {}", error);
+                        write_response(&mut stream, 500, b"Internal Server Error", None)
+                    }
+                };
             }
             Err(e) => {
                 eprintln!("[mesh-rt] HTTP parse error: {}", e);
@@ -1901,6 +1955,10 @@ mod tests {
             .set_nonblocking(true)
             .expect("reproduce inherited listener mode");
         configure_accepted_stream(&accepted).expect("configure accepted stream");
+        assert_eq!(
+            accepted.write_timeout().unwrap(),
+            Some(Duration::from_secs(30))
+        );
 
         let sender = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(20));
@@ -1913,6 +1971,68 @@ mod tests {
 
         assert_eq!(parsed.method, "GET");
         assert_eq!(parsed.path, "/health");
+    }
+
+    /// Shrink both socket buffers so a peer that stops reading stalls the
+    /// writer after a few KiB instead of after the kernel's multi-MiB defaults.
+    #[cfg(unix)]
+    fn shrink_socket_buffers(stream: &TcpStream) {
+        use std::os::unix::io::AsRawFd;
+        let size: libc::c_int = 4 * 1024;
+        for option in [libc::SO_SNDBUF, libc::SO_RCVBUF] {
+            let rc = unsafe {
+                libc::setsockopt(
+                    stream.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    option,
+                    (&size as *const libc::c_int).cast(),
+                    std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                )
+            };
+            assert_eq!(rc, 0, "setsockopt: {}", std::io::Error::last_os_error());
+        }
+    }
+
+    /// A client that requests a large response and then never reads must not
+    /// pin the connection actor (and its scheduler worker) forever: the write
+    /// timeout configured on the accepted socket turns the stalled write into
+    /// an error that `write_response` reports to the handler.
+    #[cfg(unix)]
+    #[test]
+    fn stalled_client_cannot_block_response_writes_indefinitely() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let client = TcpStream::connect(listener.local_addr().expect("listener address"))
+            .expect("connect client");
+        let (accepted, _) = listener.accept().expect("accept connection");
+        shrink_socket_buffers(&client);
+        shrink_socket_buffers(&accepted);
+
+        configure_accepted_stream(&accepted).expect("configure accepted stream");
+        assert_eq!(
+            accepted.write_timeout().unwrap(),
+            Some(Duration::from_secs(30)),
+            "accepted sockets must carry the production write timeout"
+        );
+        // Keep the test fast: the production value is asserted above, the
+        // behaviour under a stalled peer is exercised with a short deadline.
+        accepted
+            .set_write_timeout(Some(Duration::from_millis(250)))
+            .expect("shorten write timeout for the test");
+
+        let body = vec![b'x'; 8 * 1024 * 1024];
+        let started = std::time::Instant::now();
+        let error = write_response(&mut HttpStream::Plain(accepted), 200, &body, None)
+            .expect_err("a write to a peer that never reads must time out");
+        assert!(
+            error.starts_with("write response"),
+            "timeout must surface through write_response: {error}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "stalled write must fail on the write timeout, took {:?}",
+            started.elapsed()
+        );
+        drop(client);
     }
 
     #[test]
@@ -1942,6 +2062,73 @@ mod tests {
             assert_eq!(body_str.as_str(), "{\"retry_after\":60}");
             assert!(!resp.headers.is_null());
             assert_eq!(map::mesh_map_size(resp.headers), 1);
+        }
+    }
+
+    #[test]
+    fn response_rejects_header_injection_before_writing() {
+        for (name, value) in [
+            ("Location", "/ok\r\nSet-Cookie: admin=1"),
+            ("X-Test\r\nSet-Cookie", "admin=1"),
+            ("Content-Type", "text/plain\r\n\r\ninjected"),
+            ("X-Test", "bad\0value"),
+            ("Bad Name", "value"),
+            ("", "value"),
+        ] {
+            let mut response = Vec::new();
+            assert!(
+                write_response(
+                    &mut response,
+                    200,
+                    b"ok",
+                    Some(owned_pairs(&[(name, value)]))
+                )
+                .is_err(),
+                "accepted invalid header {name:?}: {value:?}"
+            );
+            assert!(response.is_empty());
+        }
+    }
+
+    #[test]
+    fn response_accepts_valid_custom_headers() {
+        let mut response = Vec::new();
+        write_response(
+            &mut response,
+            429,
+            b"{}",
+            Some(owned_pairs(&[
+                ("Retry-After", "60"),
+                ("X-Reason", "rate\tlimited"),
+                ("X-Unicode", "café"),
+            ])),
+        )
+        .unwrap();
+
+        let response = String::from_utf8(response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 429 Too Many Requests\r\n"));
+        assert!(response.contains("\r\nRetry-After: 60\r\n"));
+        assert!(response.contains("\r\nX-Reason: rate\tlimited\r\n"));
+        assert!(response.contains("\r\nX-Unicode: café\r\n"));
+        assert!(response.ends_with("\r\n\r\n{}"));
+    }
+
+    #[test]
+    fn response_rejects_conflicting_framing_headers() {
+        for (name, value) in [
+            ("content-length", "0"),
+            ("Transfer-Encoding", "chunked"),
+            ("Connection", "keep-alive"),
+        ] {
+            let mut response = Vec::new();
+            assert!(write_response(
+                &mut response,
+                200,
+                b"ok",
+                Some(owned_pairs(&[(name, value)]))
+            )
+            .is_err());
+            assert!(response.is_empty());
         }
     }
 

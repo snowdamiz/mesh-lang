@@ -389,8 +389,12 @@ impl<'a> Lowerer<'a> {
                 .entry(alias.to_string())
                 .or_insert_with(|| vec![ParamOwnership::Consume, ParamOwnership::Consume]);
         }
-        for operation in ["insert", "contains", "copy", "delete"] {
-            let mut modes = vec![ParamOwnership::Borrow, ParamOwnership::Move];
+        for operation in ["insert", "contains", "copy", "delete", "fork"] {
+            let mut modes = if operation == "fork" {
+                vec![ParamOwnership::Borrow]
+            } else {
+                vec![ParamOwnership::Borrow, ParamOwnership::Move]
+            };
             if operation == "insert" {
                 modes.push(ParamOwnership::Consume);
             }
@@ -15541,6 +15545,7 @@ fn map_builtin_name(name: &str) -> String {
         "secret_map_new"
         | "secret_map_insert"
         | "secret_map_contains"
+        | "secret_map_fork"
         | "secret_map_copy"
         | "secret_map_delete"
         | "secret_map_merge" => format!("mesh_{name}"),

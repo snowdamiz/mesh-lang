@@ -865,6 +865,13 @@ pub fn register_builtins(
         )),
     );
     env.insert(
+        "secret_map_fork".into(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone()],
+            Ty::result(secret_map.clone(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
         "secret_map_insert".into(),
         Scheme::mono(Ty::fun(
             vec![secret_map.clone(), Ty::bytes(), Ty::secret_bytes()],

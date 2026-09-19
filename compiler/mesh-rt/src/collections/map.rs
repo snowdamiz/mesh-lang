@@ -242,9 +242,9 @@ pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let mut list = super::list::mesh_list_new();
+        let list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            list = super::list::mesh_list_append(list, (*entries.add(i))[0]);
+            super::list::mesh_list_builder_push(list, (*entries.add(i))[0]);
         }
         list
     }
@@ -256,9 +256,9 @@ pub extern "C" fn mesh_map_values(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let mut list = super::list::mesh_list_new();
+        let list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            list = super::list::mesh_list_append(list, (*entries.add(i))[1]);
+            super::list::mesh_list_builder_push(list, (*entries.add(i))[1]);
         }
         list
     }
@@ -316,39 +316,21 @@ pub extern "C" fn mesh_map_to_string(
         let kf: ElemToStr = std::mem::transmute(key_to_str);
         let vf: ElemToStr = std::mem::transmute(val_to_str);
 
-        let mut result = crate::string::mesh_string_new(b"%{".as_ptr(), 2) as *mut u8;
+        let mut result = String::from("%{");
         for i in 0..len {
             if i > 0 {
-                let sep = crate::string::mesh_string_new(b", ".as_ptr(), 2) as *mut u8;
-                result = crate::string::mesh_string_concat(
-                    result as *const crate::string::MeshString,
-                    sep as *const crate::string::MeshString,
-                ) as *mut u8;
+                result.push_str(", ");
             }
             let key = (*entries.add(i))[0];
             let val = (*entries.add(i))[1];
-            let key_str = kf(key);
-            result = crate::string::mesh_string_concat(
-                result as *const crate::string::MeshString,
-                key_str as *const crate::string::MeshString,
-            ) as *mut u8;
-            let arrow = crate::string::mesh_string_new(b" => ".as_ptr(), 4) as *mut u8;
-            result = crate::string::mesh_string_concat(
-                result as *const crate::string::MeshString,
-                arrow as *const crate::string::MeshString,
-            ) as *mut u8;
-            let val_str = vf(val);
-            result = crate::string::mesh_string_concat(
-                result as *const crate::string::MeshString,
-                val_str as *const crate::string::MeshString,
-            ) as *mut u8;
+            let key_str = kf(key) as *const crate::string::MeshString;
+            result.push_str((*key_str).as_str());
+            result.push_str(" => ");
+            let val_str = vf(val) as *const crate::string::MeshString;
+            result.push_str((*val_str).as_str());
         }
-        let close = crate::string::mesh_string_new(b"}".as_ptr(), 1) as *mut u8;
-        result = crate::string::mesh_string_concat(
-            result as *const crate::string::MeshString,
-            close as *const crate::string::MeshString,
-        ) as *mut u8;
-        result
+        result.push('}');
+        crate::string::mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
     }
 }
 
@@ -520,6 +502,20 @@ mod tests {
         let vals = mesh_map_values(map);
         assert_eq!(super::super::list::mesh_list_length(keys), 2);
         assert_eq!(super::super::list::mesh_list_length(vals), 2);
+        for (index, key, value) in [(0, 1, 10), (1, 2, 20)] {
+            assert_eq!(super::super::list::mesh_list_get(keys, index), key);
+            assert_eq!(super::super::list::mesh_list_get(vals, index), value);
+            assert_eq!(mesh_map_get(map, key), value);
+        }
+        let empty = mesh_map_new();
+        assert_eq!(
+            super::super::list::mesh_list_length(mesh_map_keys(empty)),
+            0
+        );
+        assert_eq!(
+            super::super::list::mesh_list_length(mesh_map_values(empty)),
+            0
+        );
     }
 
     #[test]

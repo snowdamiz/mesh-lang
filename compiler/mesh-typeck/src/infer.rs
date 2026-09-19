@@ -686,6 +686,13 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         )),
     );
     secret_map_mod.insert(
+        "fork".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![secret_map.clone()],
+            secret_map_result(secret_map.clone()),
+        )),
+    );
+    secret_map_mod.insert(
         "insert".to_string(),
         Scheme::mono(Ty::fun(
             vec![secret_map.clone(), Ty::bytes(), Ty::secret_bytes()],

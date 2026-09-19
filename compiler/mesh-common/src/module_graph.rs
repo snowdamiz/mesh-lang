@@ -128,6 +128,14 @@ pub fn topological_sort(graph: &ModuleGraph) -> Result<Vec<ModuleId>, CycleError
         .map(|m| m.dependencies.len() as u32)
         .collect();
 
+    // Index reverse edges once instead of scanning the graph for every module.
+    let mut dependents = vec![Vec::new(); n];
+    for (i, module) in graph.modules.iter().enumerate() {
+        for dependency in &module.dependencies {
+            dependents[dependency.0 as usize].push(i);
+        }
+    }
+
     // Seed queue with modules that have no dependencies.
     let mut ready: Vec<ModuleId> = (0..n)
         .filter(|&i| in_degree[i] == 0)
@@ -147,12 +155,10 @@ pub fn topological_sort(graph: &ModuleGraph) -> Result<Vec<ModuleId>, CycleError
         order.push(id);
         // For every other module that depends on `id`, decrement its in_degree.
         let mut newly_ready = Vec::new();
-        for (i, module) in graph.modules.iter().enumerate() {
-            if in_degree[i] > 0 && module.dependencies.contains(&id) {
-                in_degree[i] -= 1;
-                if in_degree[i] == 0 {
-                    newly_ready.push(ModuleId(i as u32));
-                }
+        for &i in &dependents[id.0 as usize] {
+            in_degree[i] -= 1;
+            if in_degree[i] == 0 {
+                newly_ready.push(ModuleId(i as u32));
             }
         }
         // Sort newly ready modules alphabetically for determinism.
@@ -388,5 +394,26 @@ mod tests {
             .map(|id| graph.get(*id).name.as_str())
             .collect();
         assert_eq!(names, vec!["Math", "Utils", "Main"]);
+    }
+
+    #[test]
+    fn test_toposort_preserves_ready_batches_and_deduplicates_edges() {
+        let mut graph = ModuleGraph::new();
+        let z = graph.add_module("Z".into(), "z.mpl".into(), false);
+        let c = graph.add_module("C".into(), "c.mpl".into(), false);
+        let b = graph.add_module("B".into(), "b.mpl".into(), false);
+        let a = graph.add_module("A".into(), "a.mpl".into(), false);
+        graph.add_dependency(c, b);
+        graph.add_dependency(a, b);
+        graph.add_dependency(a, b);
+        // B releases A and C alphabetically, behind the already queued Z.
+        assert_eq!(topological_sort(&graph).unwrap(), vec![b, z, a, c]);
+
+        graph.add_dependency(b, a);
+        assert_eq!(
+            topological_sort(&graph).unwrap_err().cycle_path,
+            ["B", "A", "B"]
+        );
+        assert!(topological_sort(&ModuleGraph::new()).unwrap().is_empty());
     }
 }

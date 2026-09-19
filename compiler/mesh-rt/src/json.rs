@@ -99,23 +99,25 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
         }
         serde_json::Value::Array(arr) => {
             // Build a MeshList from the array elements.
-            let mut mesh_list = list::mesh_list_new();
+            let mesh_list = list::mesh_list_builder_new(arr.len() as i64);
             for item in arr {
                 let json_ptr = serde_value_to_mesh_json(item);
-                mesh_list = list::mesh_list_append(mesh_list, json_ptr as u64);
+                list::mesh_list_builder_push(mesh_list, json_ptr as u64);
             }
             alloc_json(JSON_ARRAY, mesh_list as u64)
         }
         serde_json::Value::Object(obj) => {
             // Build a MeshMap from the object entries.
             // Keys are stored as MeshString pointers (as u64), values as MeshJson pointers (as u64).
-            // Use typed map with KEY_TYPE_STR (1) so lookups use string content comparison.
-            let mut mesh_map = map::mesh_map_new_typed(1);
+            // Serde has already deduplicated keys; bulk construction preserves their order
+            // and the string-key tag without scanning/copying every preceding entry.
+            let mut entries = Vec::with_capacity(obj.len());
             for (key, val) in obj {
                 let key_str = mesh_string_new(key.as_ptr(), key.len() as u64);
                 let val_json = serde_value_to_mesh_json(val);
-                mesh_map = map::mesh_map_put(mesh_map, key_str as u64, val_json as u64);
+                entries.push([key_str as u64, val_json as u64]);
             }
+            let mesh_map = map::mesh_map_from_string_entries(&entries);
             alloc_json(JSON_OBJECT, mesh_map as u64)
         }
     }
@@ -557,13 +559,13 @@ pub extern "C" fn mesh_json_from_list(
     elem_fn: extern "C" fn(u64) -> *mut u8,
 ) -> *mut u8 {
     let len = list::mesh_list_length(list_ptr);
-    let mut arr = mesh_json_array_new();
+    let arr = list::mesh_list_builder_new(len);
     for i in 0..len {
         let elem = list::mesh_list_get(list_ptr, i);
         let json_elem = elem_fn(elem);
-        arr = mesh_json_array_push(arr, json_elem);
+        list::mesh_list_builder_push(arr, json_elem as u64);
     }
-    arr
+    alloc_json(JSON_ARRAY, arr as u64).cast()
 }
 
 /// Convert a MeshMap to a JSON object using a per-value callback.
@@ -602,7 +604,7 @@ pub extern "C" fn mesh_json_to_list(
         }
         let inner_list = (*j).value as *mut u8;
         let len = list::mesh_list_length(inner_list);
-        let mut result_list = list::mesh_list_new();
+        let result_list = list::mesh_list_builder_new(len);
         for i in 0..len {
             let elem = list::mesh_list_get(inner_list, i);
             let decoded = elem_fn(elem as *mut u8);
@@ -611,7 +613,7 @@ pub extern "C" fn mesh_json_to_list(
                 // Propagate error
                 return decoded;
             }
-            result_list = list::mesh_list_append(result_list, (*res).value as u64);
+            list::mesh_list_builder_push(result_list, (*res).value as u64);
         }
         alloc_result(0, result_list as *mut u8) as *mut u8
     }
@@ -765,6 +767,36 @@ mod tests {
             assert_eq!(reparsed["a"], 1);
             assert_eq!(reparsed["b"], "hello");
             assert_eq!(reparsed["c"], true);
+        }
+    }
+
+    #[test]
+    fn test_json_parse_nested_collections_and_duplicate_keys() {
+        for text in [
+            "[]",
+            "{}",
+            r#"[1,{"a":[null,true,"雪"]},[]]"#,
+            r#"{"z":0,"a":1,"a":2}"#,
+        ] {
+            let expected: serde_json::Value = serde_json::from_str(text).unwrap();
+            let result = mesh_json_parse(make_string(text));
+            unsafe {
+                assert_eq!((*result).tag, 0);
+                for parsed in [(*result).value, mesh_json_parse_raw(make_string(text))] {
+                    let encoded = mesh_json_encode(parsed);
+                    assert_eq!(
+                        serde_json::from_str::<serde_json::Value>((*encoded).as_str()).unwrap(),
+                        expected
+                    );
+                }
+                if expected.get("a").is_some() {
+                    let field =
+                        mesh_json_object_get((*result).value, make_string("a").cast_mut().cast());
+                    let field = &*(field as *const MeshResult);
+                    assert_eq!(field.tag, 0);
+                    assert_eq!((*(field.value as *const MeshJson)).value, 2);
+                }
+            }
         }
     }
 
@@ -1063,6 +1095,24 @@ mod tests {
 
     extern "C" fn json_to_int_result(json: *mut u8) -> *mut u8 {
         mesh_json_as_int(json)
+    }
+
+    #[test]
+    fn test_json_list_conversion_empty_and_large() {
+        for size in [0, 256] {
+            let values: Vec<u64> = (0..size).collect();
+            let source = list::mesh_list_from_array(values.as_ptr(), size as i64);
+            let json = mesh_json_from_list(source, int_to_json);
+            let result = mesh_json_to_list(json, json_to_int_result) as *const MeshResult;
+            unsafe {
+                assert_eq!((*result).tag, 0);
+                assert_eq!(list::mesh_list_length((*result).value), size as i64);
+                for i in 0..size {
+                    assert_eq!(list::mesh_list_get((*result).value, i as i64), i);
+                    assert_eq!(list::mesh_list_get(source, i as i64), i);
+                }
+            }
+        }
     }
 
     #[test]
