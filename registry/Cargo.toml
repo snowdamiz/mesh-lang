@@ -5,7 +5,11 @@ resolver = "2"
 [workspace.dependencies]
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate", "macros"] }
+# `tls-rustls` is required, not optional: Neon refuses a plaintext connection,
+# and without a TLS feature sqlx fails the handshake with "TLS upgrade required
+# by connect options but SQLx was built without TLS support enabled". The Fly
+# Postgres this replaced was reached over a private network and needed none.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "migrate", "macros"] }
 aws-config = "1"
 aws-sdk-s3 = "1"
 aws-credential-types = "1"
