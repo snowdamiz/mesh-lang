@@ -10,6 +10,7 @@
 // environment has to be forwarded here: the plain ones from `vars` in
 // wrangler.jsonc, the rest from `wrangler secret put`.
 import { Container, getContainer } from "@cloudflare/containers";
+import type { DurableObject } from "cloudflare:workers";
 
 interface Env {
   REGISTRY: DurableObjectNamespace<RegistryContainer>;
@@ -35,7 +36,9 @@ export class RegistryContainer extends Container<Env> {
   // reclaimed: the next request pays a cold start rather than a wrong answer.
   sleepAfter = "20m";
 
-  constructor(ctx: DurableObjectState, env: Env) {
+  // Matches @cloudflare/containers' own signature; a bare DurableObjectState
+  // resolves its state generic to `unknown` and does not assign.
+  constructor(ctx: DurableObject["ctx"], env: Env) {
     super(ctx, env);
     this.envVars = {
       DATABASE_URL: env.DATABASE_URL,
@@ -54,8 +57,34 @@ export class RegistryContainer extends Container<Env> {
   }
 }
 
+// The service reads its whole configuration from the environment and exits on
+// the first missing variable, which reaches the client as an opaque "Failed to
+// start container". Name what is missing instead: an unconfigured deployment
+// is the normal state of a fresh environment, not a mystery to debug.
+const REQUIRED = [
+  "DATABASE_URL",
+  "SESSION_SECRET",
+  "STORAGE_ENDPOINT",
+  "STORAGE_BUCKET",
+  "STORAGE_ACCESS_KEY_ID",
+  "STORAGE_SECRET_ACCESS_KEY",
+  "GITHUB_CLIENT_SECRET",
+  "GITHUB_CALLBACK_URL",
+] as const;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const missing = REQUIRED.filter((name) => !env[name as keyof Env]);
+    if (missing.length > 0) {
+      return new Response(
+        `mesh-registry is not configured: ${missing.join(", ")} ` +
+          `${missing.length === 1 ? "is" : "are"} unset. ` +
+          `Set them with \`wrangler secret put <NAME>\` in registry/, or as ` +
+          `\`vars\` in registry/wrangler.jsonc for the non-secret ones. ` +
+          `See registry/README.md.\n`,
+        { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
+    }
     // One instance: the service is stateless (sessions are rows in Postgres),
     // but a single instance keeps one connection pool rather than one per
     // instance, which is what a free Neon branch can hold.
