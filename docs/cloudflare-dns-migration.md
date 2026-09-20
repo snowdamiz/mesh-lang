@@ -61,6 +61,17 @@ allowed, so Worker custom domains can get certificates without changing them.
   `DEPLOYMENT_NOT_FOUND` for every name, including ones that look real like
   `docs.` and `blog.`. Recreating it would shadow future subdomains with a 404.
 
+What the import scan actually produced, when this was done: `6 A, 3 CAA,
+2 CNAME` and **no TXT**. So it
+
+- missed `_github-pages-challenge-snowdamiz` entirely, exactly the record whose
+  absence shows up only later, as GitHub unverifying the domain;
+- imported the Vercel wildcard as two proxied `A` records to `216.150.1.x`;
+- turned proxying **on** for the GitHub Pages apex records, which have to be
+  DNS only.
+
+Treat the scan as a starting point to be diffed, never as the migration.
+
 ## Steps
 
 The registry cannot start until steps 1 and 2 are done: it reads its whole
