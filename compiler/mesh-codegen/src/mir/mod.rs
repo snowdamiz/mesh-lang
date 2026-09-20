@@ -101,6 +101,52 @@ pub enum MirType {
     Pid(Option<Box<MirType>>),
 }
 
+/// Where the heap references are inside a value that crosses actors.
+///
+/// `MirType` erases what a collection holds (`List<String>` is just `Ptr`), so
+/// this is built during lowering from the type checker's full types. Codegen
+/// maps it onto real offsets and boxing, and the runtime uses the result to
+/// give the receiving actor its own copy; see `mesh-rt`'s `msg_shape`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MsgShape {
+    /// No heap references: Int, Float, Bool, Pid, function pointers, handles.
+    Scalar,
+    /// Pointer to an object with no references inside: String, Bytes, wide ints, Range.
+    Leaf,
+    /// List or Set of the element shape.
+    List(Box<MsgShape>),
+    Map(Box<MsgShape>, Box<MsgShape>),
+    Tuple(Vec<MsgShape>),
+    Queue(Box<MsgShape>),
+    /// Self-describing JSON tree.
+    Json,
+    /// By-value struct: its MIR name and each field's shape, in declaration order.
+    Struct(String, Vec<MsgShape>),
+    /// By-value sum type: its MIR name and each variant's name and field shapes.
+    Sum(String, Vec<(String, Vec<MsgShape>)>),
+    /// The enclosing struct or sum type of this name, for recursive types.
+    Recur(String),
+    /// A reference whose layout the type does not describe (a closure's
+    /// environment, an opaque runtime object, an unresolved type). It is not
+    /// copied; the heap that owns it keeps it alive for the receiver.
+    Shared,
+}
+
+impl MsgShape {
+    /// True when the value holds no heap references at all.
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            MsgShape::Scalar => true,
+            MsgShape::Tuple(_) => false,
+            MsgShape::Struct(_, fields) => fields.iter().all(MsgShape::is_scalar),
+            MsgShape::Sum(_, variants) => variants
+                .iter()
+                .all(|(_, fields)| fields.iter().all(MsgShape::is_scalar)),
+            _ => false,
+        }
+    }
+}
+
 /// Runtime destruction plan retained after nominal resource types lower to LLVM-level pointers.
 #[derive(Debug, Clone)]
 pub enum MirResourceDestructor {
@@ -346,6 +392,13 @@ pub enum MirExpr {
         /// Observable delivery status code.
         ty: MirType,
     },
+    /// A value about to cross to another actor, with the shape of the heap
+    /// references inside it. Evaluates to `value`; only the send, timer and
+    /// service-call sites look at `shape`.
+    Shaped {
+        value: Box<MirExpr>,
+        shape: MsgShape,
+    },
     /// Receive a message (blocking). Contains compiled match arms.
     ActorReceive {
         /// Match arms for incoming messages.
@@ -519,6 +572,7 @@ impl MirExpr {
             MirExpr::Unit => &MirType::Unit,
             MirExpr::ActorSpawn { ty, .. } => ty,
             MirExpr::ActorSend { ty, .. } => ty,
+            MirExpr::Shaped { value, .. } => value.ty(),
             MirExpr::ActorReceive { ty, .. } => ty,
             MirExpr::ActorSelf { ty } => ty,
             MirExpr::ActorLink { ty, .. } => ty,

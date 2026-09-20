@@ -25,6 +25,16 @@ use std::cell::Cell;
 /// Private unwind marker for a normal stop, distinct from an actor failure.
 pub(crate) struct ActorStopped;
 
+/// The running coroutine's yielder and this thread's reduction countdown.
+///
+/// They share one thread-local because `mesh_reduction_check` reads both at
+/// every call site and loop back-edge, and each thread-local access is a
+/// function call on some targets.
+pub struct YielderSlot {
+    pub(crate) yielder: Cell<Option<*const ()>>,
+    pub(crate) reductions: Cell<u32>,
+}
+
 thread_local! {
     /// Raw pointer to the current coroutine's Yielder.
     ///
@@ -35,7 +45,12 @@ thread_local! {
     /// We store it as `*const ()` to erase the lifetime; the Yielder is
     /// borrowed from within the coroutine body and remains valid for the
     /// duration of that resume.
-    pub static CURRENT_YIELDER: Cell<Option<*const ()>> = const { Cell::new(None) };
+    pub static CURRENT_YIELDER: YielderSlot = const {
+        YielderSlot {
+            yielder: Cell::new(None),
+            reductions: Cell::new(super::process::DEFAULT_REDUCTIONS),
+        }
+    };
 
     /// PID of the currently executing actor on this thread.
     pub static CURRENT_PID: Cell<Option<ProcessId>> = const { Cell::new(None) };
@@ -61,6 +76,7 @@ pub fn get_current_pid() -> Option<ProcessId> {
 /// Clear the current actor PID on this thread.
 pub fn clear_current_pid() {
     CURRENT_PID.with(|c| c.set(None));
+    crate::gc::forget_current_process();
 }
 
 /// Get the base address of the current coroutine's stack.
@@ -89,12 +105,16 @@ pub fn set_stack_base(base: *const u8) {
 ///
 /// Must only be called from within a running coroutine (i.e., CURRENT_YIELDER
 /// is set). Panics if called outside of a coroutine context.
+// Never inlined: a context switch saves every callee-saved register, and
+// inlining it would put that prologue on `mesh_reduction_check`'s fast path.
+#[inline(never)]
 pub fn yield_current() {
     // Every suspension is a safe cooperative collection point, including
     // blocking receive in long-lived actors that may never exhaust reductions.
     super::try_trigger_gc();
 
     CURRENT_YIELDER.with(|c| {
+        let c = &c.yielder;
         let ptr = c
             .get()
             .expect("yield_current called outside of coroutine context");
@@ -161,7 +181,8 @@ impl CoroutineHandle {
 
             // Install yielder in thread-local so mesh_reduction_check can access it.
             CURRENT_YIELDER.with(|c| {
-                c.set(Some(yielder as *const Yielder<(), ()> as *const ()));
+                c.yielder
+                    .set(Some(yielder as *const Yielder<(), ()> as *const ()));
             });
 
             // Call the actor entry function.

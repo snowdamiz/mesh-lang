@@ -849,30 +849,16 @@ fn wait_for_server_ready(guard: &mut ServerGuard) {
     assert!(ready, "Server did not start within 10 seconds");
 }
 
-/// Poll until the server exits or the timeout elapses.
-fn wait_for_server_exit(guard: &mut ServerGuard, timeout: std::time::Duration) -> bool {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        if guard
-            .child
-            .try_wait()
-            .expect("failed to poll server process")
-            .is_some()
-        {
-            return true;
-        }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-}
-
-#[test]
-fn e2e_http_server_runtime() {
-    // This test starts a real HTTP server from a compiled Mesh program,
-    // makes an HTTP request, and verifies the response body.
-    let source = read_fixture("stdlib_http_server_runtime.mpl");
+/// Start the server in `fixture` on a free port and GET each of `paths`.
+///
+/// The server binds the wildcard address, so a process already listening on
+/// 127.0.0.1 at the fixture's own port (18080) would answer instead.
+fn get_from_served_fixture(fixture: &str, paths: &[&str]) -> Vec<String> {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("no free port")
+        .port();
+    let source = read_fixture(fixture).replace("18080", &port.to_string());
     let mut guard = compile_and_start_server(&source);
 
     // Wait for the server to be ready by reading stderr for the listening message.
@@ -901,35 +887,44 @@ fn e2e_http_server_runtime() {
         .unwrap_or(false);
     assert!(ready, "Server did not start within 10 seconds");
 
-    // Make an HTTP GET request to the server using raw TcpStream.
+    // Make HTTP GET requests to the server using raw TcpStream.
     // Retry up to 5 times with 200ms between attempts for robustness.
-    let mut response = String::new();
-    let mut connected = false;
-    for attempt in 0..5 {
-        if attempt > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-        match std::net::TcpStream::connect("127.0.0.1:18080") {
-            Ok(mut stream) => {
+    paths
+        .iter()
+        .map(|path| {
+            for attempt in 0..5 {
+                if attempt > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", port)) else {
+                    continue;
+                };
                 stream
                     .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                     .unwrap();
+                let request =
+                    format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
                 stream
-                    .write_all(
-                        b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-                    )
+                    .write_all(request.as_bytes())
                     .expect("failed to write HTTP request");
+                let mut response = String::new();
                 stream
                     .read_to_string(&mut response)
                     .expect("failed to read HTTP response");
-                connected = true;
-                break;
+                return response;
             }
-            Err(_) => continue,
-        }
-    }
+            panic!("Failed to connect to server after 5 attempts");
+        })
+        .collect()
+    // ServerGuard Drop will kill the server process.
+}
 
-    assert!(connected, "Failed to connect to server after 5 attempts");
+#[test]
+fn e2e_http_server_runtime() {
+    // This test starts a real HTTP server from a compiled Mesh program,
+    // makes an HTTP request, and verifies the response body.
+    let responses = get_from_served_fixture("stdlib_http_server_runtime.mpl", &["/health"]);
+    let response = &responses[0];
     assert!(
         response.contains("200"),
         "Expected HTTP 200 in response, got: {}",
@@ -942,8 +937,24 @@ fn e2e_http_server_runtime() {
         "Expected JSON body in response, got: {}",
         response
     );
+}
 
-    // ServerGuard Drop will kill the server process.
+/// A closure, with what it captured, as a route handler and as middleware.
+/// Registration used to drop the environment and pass a box as the function.
+#[test]
+fn e2e_http_closure_handler_and_middleware() {
+    let responses =
+        get_from_served_fixture("stdlib_http_closure_handler.mpl", &["/closure", "/stamp"]);
+    assert!(
+        responses[0].contains("200") && responses[0].contains(r#"{"from":"closure-42"}"#),
+        "handler closure: {}",
+        responses[0]
+    );
+    assert!(
+        responses[1].contains("200") && responses[1].contains("stamped-7"),
+        "middleware closure: {}",
+        responses[1]
+    );
 }
 
 #[test]
@@ -2192,9 +2203,12 @@ fn e2e_route_bare_handler_control() {
     );
 }
 
-/// Confirms closure-based HTTP routes still fail only at live request time.
+/// A closure route handler serves live requests, like the bare-function
+/// control above. This used to be the known limit: the closure form built but
+/// crashed the server at request time, because route registration had no way
+/// to receive the closure's environment.
 #[test]
-fn e2e_route_closure_runtime_failure() {
+fn e2e_route_closure_handler() {
     let mut guard = compile_and_start_server(route_closure_server_source());
     wait_for_server_ready(&mut guard);
 
@@ -2202,18 +2216,16 @@ fn e2e_route_closure_runtime_failure() {
         18123,
         "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
-    let crashed = wait_for_server_exit(&mut guard, std::time::Duration::from_secs(2));
-    let returned_200 = response.contains("HTTP/1.1 200 OK");
-
     assert!(
-        !returned_200,
-        "Expected closure route to fail with empty reply, non-200, or crash; got: {}",
+        response.contains("HTTP/1.1 200 OK"),
+        "Expected the closure route to return HTTP 200, got: {}",
         response
     );
-    assert!(
-        response.is_empty() || crashed || !response.contains("closure_ok"),
-        "Closure route unexpectedly returned its success body without an HTTP failure signal; response={:?}, crashed={}",
-        response,
-        crashed
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
+    assert_eq!(
+        body.trim(),
+        "closure_ok",
+        "Expected the closure route body 'closure_ok', got: {:?}",
+        body
     );
 }

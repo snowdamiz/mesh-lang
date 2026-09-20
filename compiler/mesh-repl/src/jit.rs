@@ -79,6 +79,10 @@ fn register_runtime_symbols() {
     );
     add_sym("mesh_string_eq", mesh_rt::mesh_string_eq as *const ());
     add_sym(
+        "mesh_string_compare",
+        mesh_rt::mesh_string_compare as *const (),
+    );
+    add_sym(
         "mesh_string_contains",
         mesh_rt::mesh_string_contains as *const (),
     );
@@ -140,7 +144,15 @@ fn register_runtime_symbols() {
         mesh_rt::mesh_rt_run_scheduler as *const (),
     );
     add_sym("mesh_actor_spawn", mesh_rt::mesh_actor_spawn as *const ());
+    add_sym(
+        "mesh_actor_spawn_shaped",
+        mesh_rt::mesh_actor_spawn_shaped as *const (),
+    );
     add_sym("mesh_actor_send", mesh_rt::mesh_actor_send as *const ());
+    add_sym(
+        "mesh_actor_send_shaped",
+        mesh_rt::mesh_actor_send_shaped as *const (),
+    );
     add_sym(
         "mesh_actor_receive",
         mesh_rt::mesh_actor_receive as *const (),
@@ -166,6 +178,18 @@ fn register_runtime_symbols() {
 
     // Services
     add_sym("mesh_service_call", mesh_rt::mesh_service_call as *const ());
+    add_sym(
+        "mesh_service_call_shaped",
+        mesh_rt::mesh_service_call_shaped as *const (),
+    );
+    add_sym(
+        "mesh_service_cast_shaped",
+        mesh_rt::mesh_service_cast_shaped as *const (),
+    );
+    add_sym(
+        "mesh_service_reply_shaped",
+        mesh_rt::mesh_service_reply_shaped as *const (),
+    );
     add_sym(
         "mesh_service_reply",
         mesh_rt::mesh_service_reply as *const (),
@@ -386,6 +410,10 @@ fn register_runtime_symbols() {
     add_sym(
         "mesh_timer_send_after",
         mesh_rt::mesh_timer_send_after as *const (),
+    );
+    add_sym(
+        "mesh_timer_send_after_shaped",
+        mesh_rt::mesh_timer_send_after_shaped as *const (),
     );
     add_sym(
         "mesh_process_monitor",
@@ -941,11 +969,12 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
         return Err(rendered.join("\n"));
     }
 
-    // Get the result type from the type checker
-    let result_type_name = if let Some(ref ty) = typeck.result_type {
-        format!("{}", ty)
-    } else {
-        "Unit".to_string()
+    // The wrapper is the last item, so the checker's result type is the
+    // wrapper's, `() -> T`; the expression's type is what it returns.
+    let result_type_name = match &typeck.result_type {
+        Some(mesh_typeck::ty::Ty::Fun(_, ret)) => format!("{}", ret),
+        Some(ty) => format!("{}", ty),
+        None => "Unit".to_string(),
     };
 
     // Step 3: Lower to MIR
@@ -990,6 +1019,14 @@ fn jit_execute(
         .create_jit_execution_engine(inkwell::OptimizationLevel::None)
         .map_err(|e| format!("Failed to create JIT engine: {}", e))?;
 
+    // A Float comes back in a floating-point register, not where an i64 does.
+    if result_type == "Float" {
+        let jit_fn =
+            unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>(wrapper_fn_name) }
+                .map_err(|e| format!("Failed to find JIT function '{}': {}", wrapper_fn_name, e))?;
+        return Ok(format!("{:?}", unsafe { jit_fn.call() }));
+    }
+
     // Look up the wrapper function
     let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> i64>(wrapper_fn_name) };
 
@@ -1028,9 +1065,10 @@ fn format_jit_result(raw: i64, type_name: &str) -> String {
                 "false".to_string()
             }
         }
-        "Float" => {
-            let f = f64::from_bits(raw as u64);
-            format!("{}", f)
+        "String" if raw != 0 => {
+            // The value is a pointer to a runtime string.
+            let text = unsafe { (*(raw as *const mesh_rt::MeshString)).as_str() };
+            format!("{:?}", text)
         }
         "Unit" | "()" => "()".to_string(),
         _ => format!("<{} at 0x{:x}>", type_name, raw),
@@ -1132,6 +1170,29 @@ mod tests {
         let mut session = ReplSession::new();
         let result = jit_eval("   ", &mut session).unwrap();
         assert_eq!(result.ty, "Unit");
+    }
+
+    /// Evaluates real input end to end. Nothing did, and every evaluation
+    /// failed in codegen (`<` on strings in a generated helper the REPL, having
+    /// no entry point, never prunes), results were labelled with the wrapper's
+    /// type, floats were read from the wrong register and `let` bindings were
+    /// invisible to later lines.
+    #[test]
+    fn test_eval_expressions_through_the_jit() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        let mut eval = |input: &str| {
+            let result = jit_eval(input, &mut session).unwrap_or_else(|e| panic!("{input}: {e}"));
+            format!("{} :: {}", result.value, result.ty)
+        };
+        assert_eq!(eval("1 + 41"), "42 :: Int");
+        assert_eq!(eval("2.5 * 2.0"), "5.0 :: Float");
+        assert_eq!(eval("\"apple\" < \"banana\""), "true :: Bool");
+        assert_eq!(eval("\"a\" <> \"b-${1 + 1}\""), "\"ab-2\" :: String");
+        eval("fn double(n :: Int) -> Int do n * 2 end");
+        eval("let twice = fn (n :: Int) -> n * 2 end");
+        eval("let x = 4");
+        assert_eq!(eval("double(x) + twice(x)"), "16 :: Int");
     }
 
     #[test]

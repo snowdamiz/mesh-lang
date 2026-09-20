@@ -1293,6 +1293,7 @@ fn compile_expr_patterns(expr: &mut MirExpr, sum_type_defs: &FxHashMap<String, M
             }
         }
         MirExpr::ActorSelf { .. } => {}
+        MirExpr::Shaped { value, .. } => compile_expr_patterns(value, sum_type_defs),
         MirExpr::ActorLink { target, .. } => {
             compile_expr_patterns(target, sum_type_defs);
         }

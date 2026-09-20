@@ -295,6 +295,7 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             }
         }
         MirExpr::ActorSelf { .. } => {}
+        MirExpr::Shaped { value, .. } => collect_function_refs(value, refs),
         MirExpr::ActorLink { target, .. } => {
             collect_function_refs(target, refs);
         }

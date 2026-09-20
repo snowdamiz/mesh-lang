@@ -160,11 +160,43 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_actor_spawn_shaped(fn_ptr: ptr, args: ptr, args_size: i64, priority: i8, shape: ptr) -> i64
+    module.add_function(
+        "mesh_actor_spawn_shaped",
+        i64_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i8_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> i64
     let send_ty = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
     module.add_function(
         "mesh_actor_send",
         send_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_actor_send_shaped(target_pid: i64, msg_ptr: ptr, msg_size: i64, shape: ptr) -> i64
+    let send_typed_ty = i64_type.fn_type(
+        &[
+            i64_type.into(),
+            ptr_type.into(),
+            i64_type.into(),
+            ptr_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_actor_send_shaped",
+        send_typed_ty,
         Some(inkwell::module::Linkage::External),
     );
 
@@ -354,6 +386,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_string_eq",
         string_eq_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_string_compare(a: ptr, b: ptr) -> i64 (-1, 0, 1)
+    module.add_function(
+        "mesh_string_compare",
+        i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -2177,10 +2216,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_http_route(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    // mesh_http_route(router: ptr, pattern: ptr, handler_fn: ptr, handler_env: ptr) -> ptr
     module.add_function(
         "mesh_http_route",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -2451,31 +2498,63 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     // ── Phase 51: Method-specific routing and path parameter extraction ──
 
-    // mesh_http_route_get(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    // mesh_http_route_get(router: ptr, pattern: ptr, handler_fn: ptr, handler_env: ptr) -> ptr
     module.add_function(
         "mesh_http_route_get",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_http_route_post(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    // mesh_http_route_post(router: ptr, pattern: ptr, handler_fn: ptr, handler_env: ptr) -> ptr
     module.add_function(
         "mesh_http_route_post",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_http_route_put(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    // mesh_http_route_put(router: ptr, pattern: ptr, handler_fn: ptr, handler_env: ptr) -> ptr
     module.add_function(
         "mesh_http_route_put",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_http_route_delete(router: ptr, pattern: ptr, handler_fn: ptr) -> ptr
+    // mesh_http_route_delete(router: ptr, pattern: ptr, handler_fn: ptr, handler_env: ptr) -> ptr
     module.add_function(
         "mesh_http_route_delete",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -2488,10 +2567,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     // ── Phase 52: Middleware ──────────────────────────────────────────────
 
-    // mesh_http_use_middleware(router: ptr, middleware_fn: ptr) -> ptr
+    // mesh_http_use_middleware(router: ptr, middleware_fn: ptr, middleware_env: ptr) -> ptr
     module.add_function(
         "mesh_http_use_middleware",
-        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -2952,8 +3031,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // The `_shaped` variants take a shape table (see codegen/msg_shape.rs) so
+    // the runtime can copy what the arguments or reply reference.
     module.add_function(
-        "mesh_service_call_typed",
+        "mesh_service_call_shaped",
         ptr_type.fn_type(
             &[
                 i64_type.into(),
@@ -2967,7 +3048,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
-        "mesh_service_cast_typed",
+        "mesh_service_cast_shaped",
         void_type.fn_type(
             &[
                 i64_type.into(),
@@ -2980,8 +3061,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
-        "mesh_service_reply_string",
-        void_type.fn_type(&[i64_type.into(), ptr_type.into()], false),
+        "mesh_service_reply_shaped",
+        void_type.fn_type(
+            &[
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -3019,6 +3108,29 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // The `_shaped` job variants take the shape of the job's one-slot result,
+    // so the caller gets its own copy before the job actor's heap is freed.
+    // mesh_job_async_shaped(fn_ptr: ptr, env_ptr: ptr, result_shape: ptr) -> i64
+    module.add_function(
+        "mesh_job_async_shaped",
+        i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    // mesh_job_map_shaped(list_ptr: ptr, fn_ptr: ptr, env_ptr: ptr, result_shape: ptr) -> ptr
+    module.add_function(
+        "mesh_job_map_shaped",
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
 
     // mesh_timer_sleep(ms: i64) -> void
@@ -3042,6 +3154,21 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_timer_send_after",
         timer_send_after_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+    // mesh_timer_send_after_shaped(pid, ms, msg_ptr, msg_size, shape: ptr) -> void
+    module.add_function(
+        "mesh_timer_send_after_shaped",
+        void_type.fn_type(
+            &[
+                i64_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -4457,7 +4584,9 @@ mod tests {
         // Actor runtime functions
         assert!(module.get_function("mesh_rt_init_actor").is_some());
         assert!(module.get_function("mesh_actor_spawn").is_some());
+        assert!(module.get_function("mesh_actor_spawn_shaped").is_some());
         assert!(module.get_function("mesh_actor_send").is_some());
+        assert!(module.get_function("mesh_actor_send_shaped").is_some());
         assert!(module.get_function("mesh_actor_receive").is_some());
         assert!(module.get_function("mesh_actor_self").is_some());
         assert!(module.get_function("mesh_actor_link").is_some());
@@ -4493,6 +4622,7 @@ mod tests {
         assert!(module.get_function("mesh_string_to_lower").is_some());
         assert!(module.get_function("mesh_string_replace").is_some());
         assert!(module.get_function("mesh_string_eq").is_some());
+        assert!(module.get_function("mesh_string_compare").is_some());
         assert!(module.get_function("mesh_string_split").is_some());
         assert!(module.get_function("mesh_string_join").is_some());
         assert!(module.get_function("mesh_string_to_int").is_some());
@@ -4679,6 +4809,8 @@ mod tests {
         assert!(module.get_function("mesh_job_await").is_some());
         assert!(module.get_function("mesh_job_await_timeout").is_some());
         assert!(module.get_function("mesh_job_map").is_some());
+        assert!(module.get_function("mesh_job_async_shaped").is_some());
+        assert!(module.get_function("mesh_job_map_shaped").is_some());
 
         // JSON functions (Phase 8 Plan 04)
         assert!(module.get_function("mesh_json_parse").is_some());
@@ -4735,6 +4867,9 @@ mod tests {
         // Timer functions (Phase 44 Plan 02)
         assert!(module.get_function("mesh_timer_sleep").is_some());
         assert!(module.get_function("mesh_timer_send_after").is_some());
+        assert!(module
+            .get_function("mesh_timer_send_after_shaped")
+            .is_some());
 
         // WebSocket functions (Phase 60)
         assert!(module.get_function("mesh_ws_serve").is_some());

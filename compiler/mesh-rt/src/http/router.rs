@@ -162,9 +162,10 @@ fn route_with_method(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
     method: Option<&str>,
 ) -> *mut u8 {
-    let handler_env: *mut u8 = std::ptr::null_mut();
+    crate::actor::pin_closure_env(handler_env);
     let clustered_metadata = crate::dist::node::lookup_declared_handler_route_metadata(handler_fn);
     unsafe {
         let old = &*(router as *const MeshRouter);
@@ -223,8 +224,9 @@ pub extern "C" fn mesh_http_route(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
 ) -> *mut u8 {
-    route_with_method(router, pattern, handler_fn, None)
+    route_with_method(router, pattern, handler_fn, handler_env, None)
 }
 
 /// Add a GET-only route. Returns a NEW router pointer.
@@ -233,8 +235,9 @@ pub extern "C" fn mesh_http_route_get(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
 ) -> *mut u8 {
-    route_with_method(router, pattern, handler_fn, Some("GET"))
+    route_with_method(router, pattern, handler_fn, handler_env, Some("GET"))
 }
 
 /// Add a POST-only route. Returns a NEW router pointer.
@@ -243,8 +246,9 @@ pub extern "C" fn mesh_http_route_post(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
 ) -> *mut u8 {
-    route_with_method(router, pattern, handler_fn, Some("POST"))
+    route_with_method(router, pattern, handler_fn, handler_env, Some("POST"))
 }
 
 /// Add a PUT-only route. Returns a NEW router pointer.
@@ -253,8 +257,9 @@ pub extern "C" fn mesh_http_route_put(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
 ) -> *mut u8 {
-    route_with_method(router, pattern, handler_fn, Some("PUT"))
+    route_with_method(router, pattern, handler_fn, handler_env, Some("PUT"))
 }
 
 /// Add a DELETE-only route. Returns a NEW router pointer.
@@ -263,8 +268,9 @@ pub extern "C" fn mesh_http_route_delete(
     router: *mut u8,
     pattern: *const MeshString,
     handler_fn: *mut u8,
+    handler_env: *mut u8,
 ) -> *mut u8 {
-    route_with_method(router, pattern, handler_fn, Some("DELETE"))
+    route_with_method(router, pattern, handler_fn, handler_env, Some("DELETE"))
 }
 
 /// Add middleware to the router. Returns a NEW router pointer (immutable semantics).
@@ -272,7 +278,12 @@ pub extern "C" fn mesh_http_route_delete(
 /// The middleware function receives (request, next_closure) and returns a response.
 /// Multiple middleware compose in registration order: first added = outermost.
 #[no_mangle]
-pub extern "C" fn mesh_http_use_middleware(router: *mut u8, middleware_fn: *mut u8) -> *mut u8 {
+pub extern "C" fn mesh_http_use_middleware(
+    router: *mut u8,
+    middleware_fn: *mut u8,
+    middleware_env: *mut u8,
+) -> *mut u8 {
+    crate::actor::pin_closure_env(middleware_env);
     unsafe {
         let old = &*(router as *const MeshRouter);
 
@@ -293,7 +304,7 @@ pub extern "C" fn mesh_http_use_middleware(router: *mut u8, middleware_fn: *mut 
         let mut new_middlewares = old.middlewares.clone();
         new_middlewares.push(MiddlewareEntry {
             fn_ptr: middleware_fn,
-            env_ptr: std::ptr::null_mut(),
+            env_ptr: middleware_env,
         });
 
         let new_router = Box::new(MeshRouter {
@@ -459,7 +470,7 @@ mod tests {
         let pattern = mesh_string_new(b"/hello".as_ptr(), 6);
         let handler_fn = 42usize as *mut u8;
 
-        let router2 = mesh_http_route(router, pattern, handler_fn);
+        let router2 = mesh_http_route(router, pattern, handler_fn, std::ptr::null_mut());
         assert!(!router2.is_null());
 
         unsafe {
@@ -492,7 +503,12 @@ mod tests {
 
         let router = mesh_http_router();
         let pattern = mesh_string_new(b"/todos".as_ptr(), 6);
-        let routed = mesh_http_route_get(router, pattern, clustered_route_handler as *mut u8);
+        let routed = mesh_http_route_get(
+            router,
+            pattern,
+            clustered_route_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
 
         unsafe {
             let router = &*(routed as *const MeshRouter);

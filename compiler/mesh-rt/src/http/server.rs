@@ -2325,7 +2325,12 @@ mod tests {
 
         let router = mesh_http_router();
         let pattern = mesh_string_new(b"/todos".as_ptr(), 6);
-        let router = mesh_http_route_get(router, pattern, clustered_route_test_handler as *mut u8);
+        let router = mesh_http_route_get(
+            router,
+            pattern,
+            clustered_route_test_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
 
         let first_request = ParsedRequest {
             method: "GET".to_string(),
@@ -2423,7 +2428,12 @@ mod tests {
 
         let router = mesh_http_router();
         let pattern = mesh_string_new(b"/todos".as_ptr(), 6);
-        let router = mesh_http_route_get(router, pattern, clustered_route_test_handler as *mut u8);
+        let router = mesh_http_route_get(
+            router,
+            pattern,
+            clustered_route_test_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
 
         let (status, body, headers) = process_request(
             router,
@@ -2477,7 +2487,12 @@ mod tests {
         );
         let router = mesh_http_router();
         let pattern = mesh_string_new(b"/todos".as_ptr(), 6);
-        let router = mesh_http_route_get(router, pattern, idempotency_test_handler as *mut u8);
+        let router = mesh_http_route_get(
+            router,
+            pattern,
+            idempotency_test_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
         let request = || ParsedRequest {
             method: "GET".to_string(),
             path: "/todos".to_string(),

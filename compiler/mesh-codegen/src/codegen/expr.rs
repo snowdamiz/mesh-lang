@@ -157,6 +157,8 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::ActorLink { target, ty: _ } => self.codegen_actor_link(target),
 
+            MirExpr::Shaped { value, .. } => self.codegen_expr(value),
+
             MirExpr::ListLit { elements, .. } => self.codegen_list_lit(elements),
 
             MirExpr::While { cond, body, ty } => self.codegen_while(cond, body, ty),
@@ -778,28 +780,25 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 
+    /// Emit a string literal as a static `MeshString` (`{ len, bytes }`).
+    ///
+    /// Mesh strings are never mutated in place and the GC ignores pointers
+    /// outside its own pages, so a literal needs no allocation or copy each
+    /// time it is evaluated.
     pub(crate) fn codegen_string_lit(&mut self, s: &str) -> Result<BasicValueEnum<'ctx>, String> {
-        // Create a global constant for the string data
-        let str_val = self.context.const_string(s.as_bytes(), false);
-        let global = self.module.add_global(str_val.get_type(), None, ".str");
-        global.set_initializer(&str_val);
+        let len = self.context.i64_type().const_int(s.len() as u64, false);
+        let bytes = self.context.const_string(s.as_bytes(), false);
+        let literal = self
+            .context
+            .const_struct(&[len.into(), bytes.into()], false);
+
+        let global = self.module.add_global(literal.get_type(), None, ".str");
+        global.set_initializer(&literal);
         global.set_constant(true);
         global.set_unnamed_addr(true);
+        global.set_alignment(8);
 
-        // Call mesh_string_new(data_ptr, len)
-        let data_ptr = global.as_pointer_value();
-        let len = self.context.i64_type().const_int(s.len() as u64, false);
-
-        let string_new = get_intrinsic(&self.module, "mesh_string_new");
-        let result = self
-            .builder
-            .build_call(string_new, &[data_ptr.into(), len.into()], "str")
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_string_new returned void".to_string())
+        Ok(global.as_pointer_value().into())
     }
 
     // ── Variable reference ───────────────────────────────────────────
@@ -826,15 +825,44 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_load(llvm_ty, alloca, name)
                 .map_err(|e| e.to_string())?;
             Ok(val)
-        } else if let Some(fn_val) = self.functions.get(name) {
-            // Known function reference (for passing as fn ptr)
-            Ok(fn_val.as_global_value().as_pointer_value().into())
-        } else if let Some(fn_val) = self.module.get_function(name) {
-            // Runtime intrinsic function (e.g., mesh_int_to_string used as a
-            // callback function pointer for collection Display).
-            Ok(fn_val.as_global_value().as_pointer_value().into())
+        } else if let Some(fn_ptr) = self.fn_item_pointer(name) {
+            // A known function or runtime intrinsic. As a value it is a
+            // closure with no environment; typed `FnPtr`, the bare pointer.
+            if matches!(ty, MirType::Closure(..)) {
+                let null_env = self
+                    .context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .const_null();
+                return Ok(closure_type(self.context)
+                    .const_named_struct(&[fn_ptr.into(), null_env.into()])
+                    .into());
+            }
+            Ok(fn_ptr.into())
         } else {
             Err(format!("Undefined variable '{}'", name))
+        }
+    }
+
+    /// The code pointer `name` refers to, unless a local shadows it.
+    fn fn_item_pointer(&self, name: &str) -> Option<inkwell::values::PointerValue<'ctx>> {
+        if self.locals.contains_key(name) {
+            return None;
+        }
+        self.functions
+            .get(name)
+            .copied()
+            .or_else(|| self.module.get_function(name))
+            .map(|function| function.as_global_value().as_pointer_value())
+    }
+
+    /// `arg` as the bare function pointer the runtime expects, when it is a
+    /// known function by name. Only as a Mesh value is a function a closure.
+    fn fn_item_arg(&self, arg: &MirExpr) -> Option<inkwell::values::PointerValue<'ctx>> {
+        match arg {
+            MirExpr::Var(name, MirType::Closure(..) | MirType::FnPtr(..)) => {
+                self.fn_item_pointer(name)
+            }
+            _ => None,
         }
     }
 
@@ -867,8 +895,13 @@ impl<'ctx> CodeGen<'ctx> {
             return self.codegen_string_concat(lhs_val, rhs_val);
         }
 
-        // String equality
-        if matches!(lhs_ty, MirType::String) && matches!(op, BinOp::Eq | BinOp::NotEq) {
+        // String equality and ordering
+        if matches!(lhs_ty, MirType::String)
+            && matches!(
+                op,
+                BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq
+            )
+        {
             return self.codegen_string_compare(op, lhs_val, rhs_val);
         }
 
@@ -1182,6 +1215,32 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        let ordering = match op {
+            BinOp::Lt => Some(IntPredicate::SLT),
+            BinOp::Gt => Some(IntPredicate::SGT),
+            BinOp::LtEq => Some(IntPredicate::SLE),
+            BinOp::GtEq => Some(IntPredicate::SGE),
+            _ => None,
+        };
+        if let Some(predicate) = ordering {
+            // mesh_string_compare gives -1, 0 or 1: compare that with zero.
+            let compare_fn = get_intrinsic(&self.module, "mesh_string_compare");
+            let order = self
+                .builder
+                .build_call(compare_fn, &[lhs.into(), rhs.into()], "str_cmp")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("mesh_string_compare returned void")?
+                .into_int_value();
+            let zero = self.context.i64_type().const_zero();
+            return self
+                .builder
+                .build_int_compare(predicate, order, zero, "str_ord")
+                .map(Into::into)
+                .map_err(|e| e.to_string());
+        }
+
         let eq_fn = get_intrinsic(&self.module, "mesh_string_eq");
         let result = self
             .builder
@@ -1286,18 +1345,20 @@ impl<'ctx> CodeGen<'ctx> {
         // only for runtime intrinsics that expect separate pointer arguments.
         //
         // To avoid adding spurious env_ptr args to functions that don't expect them
-        // (e.g., mesh_http_route_post takes a plain fn_ptr, not a closure pair),
-        // we check whether expanding closures/FnPtrs would exceed the target function's
-        // declared parameter count.
-        let target_param_count: Option<usize> = if let MirExpr::Var(name, _) = func {
+        // (one that takes a plain fn_ptr, not a closure pair), we check whether
+        // expanding closures/FnPtrs would exceed the target function's declared
+        // parameter count. A function that may receive a closure has to declare
+        // the pair, as mesh_http_route and mesh_ws_serve do: otherwise the closure
+        // is boxed and the box passed as the function pointer.
+        let target_fn = if let MirExpr::Var(name, _) = func {
             self.functions
                 .get(name)
                 .copied()
                 .or_else(|| self.module.get_function(name))
-                .map(|f| f.count_params() as usize)
         } else {
             None
         };
+        let target_param_count: Option<usize> = target_fn.map(|f| f.count_params() as usize);
         // Pre-compute how many LLVM args we'd produce with expansion.
         let expanded_arg_count: usize = args
             .iter()
@@ -1312,16 +1373,46 @@ impl<'ctx> CodeGen<'ctx> {
             .sum();
         // Only expand closure/FnPtr args if the expanded count matches the target's param count.
         // If expansion would cause a mismatch, pass values as-is.
+        // `__mesh_make_tuple` is synthetic and its arguments are the tuple's
+        // elements: values, so a closure stays whole. Splitting it made
+        // `(f, 5)` a three-element tuple `[fn, env, 5]`.
+        let is_tuple_literal = matches!(func, MirExpr::Var(name, _) if name == "__mesh_make_tuple");
         let should_expand_closures = match target_param_count {
             Some(expected) => expanded_arg_count == expected && !is_user_fn,
-            None => !is_user_fn, // unknown target, expand by default
+            None => !is_user_fn && !is_tuple_literal, // unknown target, expand by default
         };
 
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         let mut _has_closure_args = false;
         for arg in args {
-            let val = self.codegen_expr(arg)?;
-            if matches!(arg.ty(), MirType::Closure(_, _)) && should_expand_closures {
+            // A named function goes to the runtime as the bare pointer it
+            // always was -- unless the parameter is a uniform `i64` value slot
+            // (`Map.put`, `List.append`), which stores it as the closure value
+            // that reading it back expects.
+            let wants_pointer = should_expand_closures
+                || target_fn
+                    .and_then(|f| f.get_type().get_param_types().get(arg_vals.len()).copied())
+                    .is_some_and(|param| param.is_pointer_type());
+            let fn_item = if is_user_fn || !wants_pointer {
+                None
+            } else {
+                self.fn_item_arg(arg)
+            };
+            let val = match fn_item {
+                Some(fn_ptr) => fn_ptr.into(),
+                None => self.codegen_expr(arg)?,
+            };
+            if fn_item.is_some() && should_expand_closures {
+                // Runtime expects (fn_ptr, env_ptr) pairs; env_ptr is null for
+                // a function that takes no environment.
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                arg_vals.push(val.into());
+                arg_vals.push(ptr_ty.const_null().into());
+                _has_closure_args = true;
+            } else if matches!(arg.ty(), MirType::Closure(_, _))
+                && fn_item.is_none()
+                && should_expand_closures
+            {
                 // Extract fn_ptr and env_ptr from the closure struct { ptr, ptr }.
                 let cls_ty = closure_type(self.context);
                 let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -1384,10 +1475,31 @@ impl<'ctx> CodeGen<'ctx> {
             if name == "__mesh_make_tuple" {
                 return self.codegen_make_tuple(&arg_vals);
             }
+            // Job.async(f) / Job.map(list, f): the job actor exits once it has
+            // sent its result, so a result that is a reference comes with its
+            // shape (`job_result_shape`) and the caller receives its own copy.
+            // The callback, in its uniform-slot adapter, is the last argument.
+            if let (true, Some(MirExpr::Shaped { shape, .. })) = (
+                (name == "mesh_job_async" && arg_vals.len() == 2)
+                    || (name == "mesh_job_map" && arg_vals.len() == 3),
+                args.last(),
+            ) {
+                if let Some(shape_table) = self.shape_table_for_element(shape) {
+                    arg_vals.push(shape_table.into());
+                    let shaped_fn = get_intrinsic(&self.module, &format!("{name}_shaped"));
+                    return self
+                        .builder
+                        .build_call(shaped_fn, &arg_vals, "job")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value()
+                        .basic()
+                        .ok_or_else(|| format!("{name}_shaped returned void"));
+                }
+            }
             // Timer.send_after(pid, ms, msg) -> mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
             // The 3rd arg (msg) needs message serialization like codegen_actor_send.
             if name == "mesh_timer_send_after" && args.len() == 3 {
-                return self.codegen_timer_send_after(args);
+                return self.codegen_timer_send_after(args, &arg_vals);
             }
             // ── Phase 67: Node distribution special codegen ─────────────────
             // Node.start(name, cookie) -> mesh_node_start(name_ptr, name_len, cookie_ptr, cookie_len)
@@ -2098,6 +2210,25 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
+                // A tuple field holds an aggregate of one word or less inline and
+                // only a larger one in a box (`codegen_make_tuple`), unlike a
+                // collection element, which is always boxed.
+                if matches!(
+                    name.as_str(),
+                    "mesh_tuple_first" | "mesh_tuple_second" | "mesh_tuple_nth"
+                ) && matches!(
+                    ty,
+                    MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(..)
+                ) {
+                    if let BasicValueEnum::IntValue(iv) = result {
+                        let element = self.materialize_tuple_element_ptr(iv, ty)?;
+                        return self
+                            .builder
+                            .build_load(self.llvm_type(ty), element, "tuple_element")
+                            .map_err(|e| e.to_string());
+                    }
+                }
+
                 // Generic collections store structs and sums as boxed pointers.
                 // Recover the source-level value when get/head returns that pointer as u64.
                 if matches!(
@@ -2159,7 +2290,27 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Indirect call through a function pointer or closure
+        // Lowering's last resort for `"${value}"`: no Display or Debug impl
+        // was found for the value's type, and there is no generic `to_string`.
+        if let MirExpr::Var(name, _) = func {
+            if name == "to_string" && !self.locals.contains_key(name) {
+                let ty = args
+                    .first()
+                    .map_or_else(String::new, |arg| arg.ty().to_string());
+                return Err(format!(
+                    "cannot convert a value of type `{ty}` to a string: the type has no \
+                     `Display` implementation (derive or implement it, or convert the value yourself)"
+                ));
+            }
+        }
+
+        // A function value (`x |> f`, where `f` is a local) carries its
+        // environment; only a bare pointer is called directly.
+        if matches!(func.ty(), MirType::Closure(..)) {
+            return self.codegen_closure_call(func, args, ty);
+        }
+
+        // Indirect call through a function pointer
         let fn_ptr = self.codegen_expr(func)?;
         let ret_ty = self.llvm_type(ty);
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> =
@@ -2231,39 +2382,85 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(|e| e.to_string())?;
 
-        // Build call args: env_ptr first, then user args
-        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![env_ptr.into()];
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        let fn_ptr = fn_ptr.into_pointer_value();
+        let env_ptr = env_ptr.into_pointer_value();
+        let mut user_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        let mut user_param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> = Vec::new();
         for arg in args {
-            let val = self.codegen_expr(arg)?;
-            call_args.push(val.into());
+            user_args.push(self.codegen_expr(arg)?.into());
+            user_param_types.push(self.llvm_type(arg.ty()).into());
         }
-
-        // Build the function type for the indirect call
         let ret_ty = self.llvm_type(ty);
-        let mut param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> = vec![self
-            .context
-            .ptr_type(inkwell::AddressSpace::default())
-            .into()];
-        for arg in args {
-            param_types.push(self.llvm_type(arg.ty()).into());
-        }
-        let fn_type = ret_ty.fn_type(&param_types, false);
 
-        let call = self
+        // A null environment marks a plain function used as a value
+        // (`codegen_var`): it takes no `__env` parameter. The runtime's
+        // higher-order functions follow the same convention.
+        let fn_val = self.current_function();
+        let bare_bb = self.context.append_basic_block(fn_val, "fn_value_bare");
+        let closure_bb = self.context.append_basic_block(fn_val, "fn_value_closure");
+        let merge_bb = self.context.append_basic_block(fn_val, "fn_value_merge");
+        let is_bare = self
             .builder
-            .build_indirect_call(fn_type, fn_ptr.into_pointer_value(), &call_args, "clscall")
+            .build_is_null(env_ptr, "env_is_null")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(is_bare, bare_bb, closure_bb)
             .map_err(|e| e.to_string())?;
 
-        // Insert reduction check after closure call
-        self.emit_reduction_check();
+        self.builder.position_at_end(bare_bb);
+        let bare_call = self
+            .builder
+            .build_indirect_call(
+                ret_ty.fn_type(&user_param_types, false),
+                fn_ptr,
+                &user_args,
+                "fncall",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(|e| e.to_string())?;
 
+        self.builder.position_at_end(closure_bb);
+        let mut closure_param_types = vec![ptr_ty.into()];
+        closure_param_types.extend(user_param_types);
+        let mut closure_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![env_ptr.into()];
+        closure_args.extend(user_args);
+        let closure_call = self
+            .builder
+            .build_indirect_call(
+                ret_ty.fn_type(&closure_param_types, false),
+                fn_ptr,
+                &closure_args,
+                "clscall",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(merge_bb);
         if matches!(ty, MirType::Unit) {
+            self.emit_reduction_check();
             return Ok(self.context.struct_type(&[], false).const_zero().into());
         }
 
-        call.try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "Closure call returned void".to_string())
+        let (bare_val, closure_val) = match (
+            bare_call.try_as_basic_value().basic(),
+            closure_call.try_as_basic_value().basic(),
+        ) {
+            (Some(bare_val), Some(closure_val)) => (bare_val, closure_val),
+            _ => return Err("Closure call returned void".to_string()),
+        };
+        // The phi has to lead its block, so the reduction check follows it.
+        let result = self
+            .builder
+            .build_phi(ret_ty, "fn_value_result")
+            .map_err(|e| e.to_string())?;
+        result.add_incoming(&[(&bare_val, bare_bb), (&closure_val, closure_bb)]);
+        self.emit_reduction_check();
+        Ok(result.as_basic_value())
     }
 
     // ── If/else expression ───────────────────────────────────────────
@@ -2839,7 +3036,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// sum layouts (like builtin Result/Option) can safely carry scalar
     /// values such as Int, Bool, and Float.
     fn box_variant_payload(
-        &mut self,
+        &self,
         val: BasicValueEnum<'ctx>,
         name: &str,
     ) -> Result<BasicValueEnum<'ctx>, String> {
@@ -3013,8 +3210,12 @@ impl<'ctx> CodeGen<'ctx> {
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let i64_ty = self.context.i64_type();
 
-        // Get function pointer for the actor entry function.
-        let fn_ptr_val = self.codegen_expr(func)?;
+        // Get function pointer for the actor entry function: by name, since a
+        // function evaluated as a value is a closure.
+        let fn_ptr_val = match self.fn_item_arg(func) {
+            Some(fn_ptr) => fn_ptr.into(),
+            None => self.codegen_expr(func)?,
+        };
         let fn_ptr = if fn_ptr_val.is_pointer_value() {
             fn_ptr_val.into_pointer_value()
         } else {
@@ -3024,36 +3225,29 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
         };
 
-        // Serialize arguments to a byte buffer.
-        // For scalar args (int, ptr, float): each is stored as an i64 (8 bytes).
-        // For struct args: the struct is stored directly with its full byte size.
+        // Serialize arguments into a buffer of 8-byte slots, which is how the
+        // actor wrapper reads them back. An aggregate that fits a word travels
+        // as its bits and a larger one in a box (see `coerce_to_i64`); packing
+        // structs at their full size put every later argument at an offset the
+        // wrapper never looked at.
         let (args_ptr, args_size) = if args.is_empty() {
             (ptr_ty.const_null(), i64_ty.const_int(0, false))
         } else {
-            let arg_vals: Vec<BasicValueEnum<'ctx>> = args
+            let slots: Vec<inkwell::values::IntValue<'ctx>> = args
                 .iter()
-                .map(|a| self.codegen_expr(a))
+                .map(|a| {
+                    let value = self.codegen_expr(a)?;
+                    self.coerce_to_i64(value)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
-
-            // Compute the total byte size needed for all args.
-            // Scalar values (int, ptr, float) take 8 bytes each.
-            // Struct values take their full LLVM store size.
-            let target_data = self.target_machine.get_target_data();
-            let mut total_size: u64 = 0;
-            let mut arg_offsets: Vec<u64> = Vec::new();
-            for val in &arg_vals {
-                arg_offsets.push(total_size);
-                if val.is_struct_value() {
-                    let st = val.into_struct_value().get_type();
-                    total_size += target_data.get_store_size(&st);
-                } else {
-                    total_size += 8; // i64, ptr, or float
-                }
-            }
+            let total_size = 8 * slots.len() as u64;
 
             // Allocate spawn args on the GC heap (not the stack) because the
             // actor runs asynchronously after the caller returns. Stack allocas
-            // would be freed before the actor reads the args.
+            // would be freed before the actor reads the args. The runtime
+            // recognises a buffer on the spawner's heap, copies it for the new
+            // actor and keeps what its words point at alive, so this buffer is
+            // ordinary garbage once the call returns.
             let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
             let size_val = i64_ty.const_int(total_size, false);
             let align_val = i64_ty.const_int(8, false);
@@ -3070,51 +3264,18 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or("mesh_gc_alloc_actor returned void")?
                 .into_pointer_value();
 
-            // Store each arg into the buffer at its computed offset.
-            let i8_ty = self.context.i8_type();
-            for (i, val) in arg_vals.iter().enumerate() {
-                let offset = arg_offsets[i];
-                let element_ptr = if offset == 0 {
-                    buf_alloca
-                } else {
-                    unsafe {
-                        self.builder
-                            .build_gep(
-                                i8_ty,
-                                buf_alloca,
-                                &[i64_ty.const_int(offset, false)],
-                                &format!("arg_ptr_{}", i),
-                            )
-                            .map_err(|e| e.to_string())?
-                    }
+            let arr_ty = i64_ty.array_type(slots.len() as u32);
+            let zero = self.context.i32_type().const_int(0, false);
+            for (i, slot) in slots.iter().enumerate() {
+                let idx = self.context.i32_type().const_int(i as u64, false);
+                let element_ptr = unsafe {
+                    self.builder
+                        .build_gep(arr_ty, buf_alloca, &[zero, idx], &format!("arg_ptr_{}", i))
+                        .map_err(|e| e.to_string())?
                 };
-
-                if val.is_struct_value() {
-                    // Store the full struct value directly.
-                    self.builder
-                        .build_store(element_ptr, *val)
-                        .map_err(|e| e.to_string())?;
-                } else {
-                    // Convert scalar to i64 and store.
-                    let int_val = if val.is_int_value() {
-                        val.into_int_value()
-                    } else if val.is_pointer_value() {
-                        self.builder
-                            .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
-                            .map_err(|e| e.to_string())?
-                    } else if val.is_float_value() {
-                        self.builder
-                            .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
-                            .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
-                            .into_int_value()
-                    } else {
-                        // Fallback: store as zero
-                        i64_ty.const_int(0, false)
-                    };
-                    self.builder
-                        .build_store(element_ptr, int_val)
-                        .map_err(|e| e.to_string())?;
-                }
+                self.builder
+                    .build_store(element_ptr, *slot)
+                    .map_err(|e| e.to_string())?;
             }
 
             (buf_alloca, i64_ty.const_int(total_size, false))
@@ -3122,20 +3283,26 @@ impl<'ctx> CodeGen<'ctx> {
 
         let priority_val = self.context.i8_type().const_int(priority as u64, false);
 
-        // Call mesh_actor_spawn(fn_ptr, args, args_size, priority) -> i64
-        let spawn_fn = get_intrinsic(&self.module, "mesh_actor_spawn");
+        // Call mesh_actor_spawn[_shaped](fn_ptr, args, args_size, priority[, shape]) -> i64.
+        // With a shape the new actor gets its own copy of what the arguments
+        // reference; without one they are all plain values.
+        let shapes: Vec<_> = args.iter().map(|arg| self.message_shape(arg)).collect();
+        let mut spawn_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
+            fn_ptr.into(),
+            args_ptr.into(),
+            args_size.into(),
+            priority_val.into(),
+        ];
+        let spawn_fn = match self.shape_table_for_slots(&shapes) {
+            Some(shape_table) => {
+                spawn_args.push(shape_table.into());
+                "mesh_actor_spawn_shaped"
+            }
+            None => "mesh_actor_spawn",
+        };
         let pid_val = self
             .builder
-            .build_call(
-                spawn_fn,
-                &[
-                    fn_ptr.into(),
-                    args_ptr.into(),
-                    args_size.into(),
-                    priority_val.into(),
-                ],
-                "pid",
-            )
+            .build_call(get_intrinsic(&self.module, spawn_fn), &spawn_args, "pid")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
@@ -3173,11 +3340,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Serialize the message to bytes.
         let msg_val = self.codegen_expr(message)?;
+        let mut shape_table = None;
         let (msg_ptr, msg_size) = if matches!(message.ty(), MirType::Unit) {
             (ptr_ty.const_null(), i64_ty.const_int(0, false))
         } else {
             // Store the message value on the stack and pass a pointer + size.
             let msg_ty = self.llvm_type(message.ty());
+            shape_table = self.shape_table_for_value(&self.message_shape(message), msg_ty);
             let msg_alloca = self
                 .builder
                 .build_alloca(msg_ty, "msg_buf")
@@ -3193,16 +3362,28 @@ impl<'ctx> CodeGen<'ctx> {
             (msg_alloca, i64_ty.const_int(size, false))
         };
 
-        // Call mesh_actor_send(target_pid, msg_ptr, msg_size)
-        let send_fn = get_intrinsic(&self.module, "mesh_actor_send");
-        let call = self
-            .builder
-            .build_call(
-                send_fn,
+        // A message that references heap values points into this actor's heap.
+        // The shape table tells the runtime where, so the receiver gets a copy.
+        // Call mesh_actor_send[_shaped](target_pid, msg_ptr, msg_size[, shape])
+        let call = if let Some(shape_table) = shape_table {
+            self.builder.build_call(
+                get_intrinsic(&self.module, "mesh_actor_send_shaped"),
+                &[
+                    target_val.into(),
+                    msg_ptr.into(),
+                    msg_size.into(),
+                    shape_table.into(),
+                ],
+                "send_status",
+            )
+        } else {
+            self.builder.build_call(
+                get_intrinsic(&self.module, "mesh_actor_send"),
                 &[target_val.into(), msg_ptr.into(), msg_size.into()],
                 "send_status",
             )
-            .map_err(|e| e.to_string())?;
+        }
+        .map_err(|e| e.to_string())?;
 
         call.try_as_basic_value()
             .basic()
@@ -3216,15 +3397,22 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_timer_send_after(
         &mut self,
         args: &[MirExpr],
+        evaluated: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
 
-        // Evaluate pid (i64) and ms (i64).
-        let pid_val = self.codegen_expr(&args[0])?.into_int_value();
-        let ms_val = self.codegen_expr(&args[1])?.into_int_value();
+        // The caller has already evaluated the arguments. Evaluating them
+        // again here ran the message expression, and its side effects, twice.
+        let values: Vec<BasicValueEnum<'ctx>> = evaluated
+            .iter()
+            .filter_map(|value| BasicValueEnum::try_from(*value).ok())
+            .collect();
+        let [pid_val, ms_val, msg_val] = values[..] else {
+            return Err("Timer.send_after takes a pid, a delay and a message".to_string());
+        };
+        let (pid_val, ms_val) = (pid_val.into_int_value(), ms_val.into_int_value());
 
         // Serialize the message (3rd arg) to (ptr, size) -- same pattern as codegen_actor_send.
-        let msg_val = self.codegen_expr(&args[2])?;
         let (msg_ptr, msg_size) = {
             let msg_ty = self.llvm_type(args[2].ty());
             let msg_alloca = self
@@ -3241,19 +3429,24 @@ impl<'ctx> CodeGen<'ctx> {
             (msg_alloca, i64_ty.const_int(size, false))
         };
 
-        // Call mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
-        let send_after_fn = get_intrinsic(&self.module, "mesh_timer_send_after");
+        // Call mesh_timer_send_after[_shaped](pid, ms, msg_ptr, msg_size[, shape])
+        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
+            pid_val.into(),
+            ms_val.into(),
+            msg_ptr.into(),
+            msg_size.into(),
+        ];
+        let shape_table =
+            self.shape_table_for_value(&self.message_shape(&args[2]), self.llvm_type(args[2].ty()));
+        let send_after_fn = match shape_table {
+            Some(shape_table) => {
+                call_args.push(shape_table.into());
+                "mesh_timer_send_after_shaped"
+            }
+            None => "mesh_timer_send_after",
+        };
         self.builder
-            .build_call(
-                send_after_fn,
-                &[
-                    pid_val.into(),
-                    ms_val.into(),
-                    msg_ptr.into(),
-                    msg_size.into(),
-                ],
-                "",
-            )
+            .build_call(get_intrinsic(&self.module, send_after_fn), &call_args, "")
             .map_err(|e| e.to_string())?;
 
         // Returns Unit.
@@ -3705,7 +3898,7 @@ impl<'ctx> CodeGen<'ctx> {
             // msg_bb: process the received message (existing logic).
             self.builder.position_at_end(msg_bb);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            let msg_result = self.codegen_recv_process_arms(arms, msg_val)?;
+            let msg_result = self.codegen_recv_process_arms(arms, msg_ptr, msg_val)?;
             if self
                 .builder
                 .get_insert_block()
@@ -3749,7 +3942,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
             self.builder.position_at_end(received);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            self.codegen_recv_process_arms(arms, msg_val)
+            self.codegen_recv_process_arms(arms, msg_ptr, msg_val)
         }
     }
 
@@ -3802,16 +3995,88 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(msg_val)
     }
 
+    /// The received message as a value of the pattern variable's own type.
+    ///
+    /// `msg_val` is the first word of the message, loaded for the receive
+    /// expression's result type. That is all a word-sized message needs, but
+    /// a struct or a sum type with a payload is wider, and binding the word
+    /// truncated it. Wider values are copied out of the message instead, into
+    /// a zeroed temporary and never past the delivered length, so a shorter
+    /// message than the type expects reads as zeroes rather than out of bounds.
+    fn codegen_recv_message_as(
+        &mut self,
+        msg_ptr: inkwell::values::PointerValue<'ctx>,
+        ty: &MirType,
+        msg_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        if matches!(ty, MirType::Unit | MirType::Never) {
+            return Ok(msg_val);
+        }
+        let llvm_ty = self.llvm_type(ty);
+        let size = self
+            .target_machine
+            .get_target_data()
+            .get_store_size(&llvm_ty);
+        if size <= 8 {
+            return Ok(msg_val);
+        }
+
+        let i64_ty = self.context.i64_type();
+        let i8_ty = self.context.i8_type();
+        // Message layout: [u64 type_tag][u64 data_len][data...]
+        let (len_ptr, data_ptr) = unsafe {
+            (
+                self.builder
+                    .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(8, false)], "len_ptr")
+                    .map_err(|e| e.to_string())?,
+                self.builder
+                    .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "wide_ptr")
+                    .map_err(|e| e.to_string())?,
+            )
+        };
+        let delivered = self
+            .builder
+            .build_load(i64_ty, len_ptr, "data_len")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let wanted = i64_ty.const_int(size, false);
+        let shorter = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, delivered, wanted, "msg_is_short")
+            .map_err(|e| e.to_string())?;
+        let copied = self
+            .builder
+            .build_select(shorter, delivered, wanted, "msg_bytes")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+
+        let wide = self
+            .builder
+            .build_alloca(llvm_ty, "msg_wide")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(wide, llvm_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_memcpy(wide, 8, data_ptr, 8, copied)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_load(llvm_ty, wide, "msg_value")
+            .map_err(|e| e.to_string())
+    }
+
     /// Process receive arms: bind pattern variable and execute arm body.
     fn codegen_recv_process_arms(
         &mut self,
         arms: &[MirMatchArm],
+        msg_ptr: inkwell::values::PointerValue<'ctx>,
         msg_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         if let Some(arm) = arms.first() {
             // Bind the pattern variable if it's a simple variable pattern.
             match &arm.pattern {
-                MirPattern::Var(name, _) => {
+                MirPattern::Var(name, ty) => {
+                    let msg_val = self.codegen_recv_message_as(msg_ptr, ty, msg_val)?;
                     let alloca = if self.tce_loop_header.is_some() {
                         self.build_entry_alloca(msg_val.get_type(), name)?
                     } else {
@@ -4187,9 +4452,30 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value())
             }
             BasicValueEnum::StructValue(sv) => {
+                // Same convention as tuple slots and service replies: an
+                // aggregate that fits a word travels as its bits, a larger one
+                // in a box. Loading a wide struct as one i64 kept only its
+                // first field.
+                let size = self
+                    .target_machine
+                    .get_target_data()
+                    .get_store_size(&sv.get_type());
+                if size > 8 {
+                    let boxed = self
+                        .box_variant_payload(sv.into(), "arg_box")?
+                        .into_pointer_value();
+                    return self
+                        .builder
+                        .build_ptr_to_int(boxed, i64_ty, "arg_box_to_i64")
+                        .map_err(|e| e.to_string());
+                }
+                // Zeroed first: the bits are narrower than the word read back.
                 let alloca = self
                     .builder
-                    .build_alloca(sv.get_type(), "struct_tmp")
+                    .build_alloca(i64_ty, "struct_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, i64_ty.const_zero())
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_store(alloca, sv)
@@ -4497,9 +4783,25 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(ptr_ty, args_ptr_alloca, "args_ptr_val")
             .map_err(|e| e.to_string())?
             .into_pointer_value();
+        // Spawn arguments are 8-byte slots: a state struct wider than a word
+        // arrives in a box (see `coerce_to_i64`).
+        let state_is_boxed = state_llvm_ty.is_struct_type()
+            && self
+                .target_machine
+                .get_target_data()
+                .get_store_size(&state_llvm_ty)
+                > 8;
+        let state_source = if state_is_boxed {
+            self.builder
+                .build_load(ptr_ty, args_ptr_val, "init_state_box")
+                .map_err(|e| e.to_string())?
+                .into_pointer_value()
+        } else {
+            args_ptr_val
+        };
         let init_state = self
             .builder
-            .build_load(state_llvm_ty, args_ptr_val, "init_state")
+            .build_load(state_llvm_ty, state_source, "init_state")
             .map_err(|e| e.to_string())?;
 
         // Create a state alloca to hold the mutable state across iterations.
@@ -4714,11 +5016,37 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .map_err(|e| e.to_string())?
                     } else if expected_meta_ty.is_struct_type() {
-                        // Small struct: bitcast i64 -> struct via alloca
                         let expected_ty = inkwell::types::BasicTypeEnum::try_from(expected_meta_ty)
                             .map_err(|_| {
                                 format!("Cannot convert struct param type for arg {}", arg_idx)
                             })?;
+                        let size = self
+                            .target_machine
+                            .get_target_data()
+                            .get_store_size(&expected_ty);
+                        if size > 8 {
+                            // Large struct: the slot points at a box; see coerce_to_i64.
+                            let boxed = self
+                                .builder
+                                .build_int_to_ptr(
+                                    arg_val.into_int_value(),
+                                    ptr_ty,
+                                    &format!("arg_{}_box", arg_idx),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            handler_args.push(
+                                self.builder
+                                    .build_load(
+                                        expected_ty,
+                                        boxed,
+                                        &format!("arg_{}_as_struct", arg_idx),
+                                    )
+                                    .map_err(|e| e.to_string())?
+                                    .into(),
+                            );
+                            continue;
+                        }
+                        // Small struct: bitcast i64 -> struct via alloca
                         let alloca = self
                             .builder
                             .build_alloca(
@@ -4795,25 +5123,35 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 let reply_size = i64_ty.const_int(8, false);
 
+                // The reply is one tuple slot. What it references must outlive
+                // this service changing state or exiting, so the caller gets a
+                // copy; the call helper carries the reply's shape.
                 let helper_name = handler_fn_name.replacen("_handle_call_", "_call_", 1);
-                let string_reply = self
+                let reply_shape = self
                     .mir_functions
                     .iter()
                     .find(|f| f.name == helper_name)
-                    .is_some_and(|f| f.return_type == MirType::String);
-                let (service_reply_fn, reply_args) = if string_reply {
-                    (
-                        get_intrinsic(&self.module, "mesh_service_reply_string"),
-                        vec![caller_pid.into(), reply_alloca.into()],
-                    )
-                } else {
-                    (
-                        get_intrinsic(&self.module, "mesh_service_reply"),
-                        vec![caller_pid.into(), reply_alloca.into(), reply_size.into()],
-                    )
+                    .map(|helper| match &helper.body {
+                        MirExpr::Shaped { shape, .. } => shape.clone(),
+                        body => self.message_shape(body),
+                    });
+                let shape_table =
+                    reply_shape.and_then(|shape| self.shape_table_for_slots(&[shape]));
+                let mut reply_args: Vec<BasicMetadataValueEnum<'ctx>> =
+                    vec![caller_pid.into(), reply_alloca.into(), reply_size.into()];
+                let service_reply_fn = match shape_table {
+                    Some(shape_table) => {
+                        reply_args.push(shape_table.into());
+                        "mesh_service_reply_shaped"
+                    }
+                    None => "mesh_service_reply",
                 };
                 self.builder
-                    .build_call(service_reply_fn, &reply_args, "")
+                    .build_call(
+                        get_intrinsic(&self.module, service_reply_fn),
+                        &reply_args,
+                        "",
+                    )
                     .map_err(|e| e.to_string())?;
 
                 // Convert new_state_val (i64 from tuple) to the proper state type.
@@ -4967,11 +5305,47 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder
                     .build_bit_cast(raw, param_ty, &format!("arg_float_{}", i))
                     .map_err(|e| e.to_string())?
-            } else {
-                // Integer type: load as i64 directly
+            } else if param_ty.is_struct_type() {
+                // Aggregates arrive as their bits when they fit a word, and in
+                // a box otherwise; see `coerce_to_i64`.
+                let size = self
+                    .target_machine
+                    .get_target_data()
+                    .get_store_size(&param_ty);
+                let source = if size > 8 {
+                    let raw = self
+                        .builder
+                        .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
+                        .map_err(|e| e.to_string())?
+                        .into_int_value();
+                    self.builder
+                        .build_int_to_ptr(raw, ptr_ty, &format!("arg_box_{}", i))
+                        .map_err(|e| e.to_string())?
+                } else {
+                    element_ptr
+                };
                 self.builder
-                    .build_load(i64_ty, element_ptr, &format!("arg_{}", i))
+                    .build_load(param_ty, source, &format!("arg_struct_{}", i))
                     .map_err(|e| e.to_string())?
+            } else {
+                // Integer type: load as i64, narrowed for Bool.
+                let raw = self
+                    .builder
+                    .build_load(i64_ty, element_ptr, &format!("arg_{}", i))
+                    .map_err(|e| e.to_string())?;
+                let int_ty = param_ty.into_int_type();
+                if int_ty.get_bit_width() < 64 {
+                    self.builder
+                        .build_int_truncate(
+                            raw.into_int_value(),
+                            int_ty,
+                            &format!("arg_narrow_{}", i),
+                        )
+                        .map_err(|e| e.to_string())?
+                        .into()
+                } else {
+                    raw
+                }
             };
 
             call_args.push(loaded_val.into());
@@ -5144,33 +5518,21 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(tuple_ptr.into())
     }
 
+    /// Shape table for service handler arguments, which travel as 8-byte
+    /// slots; a null pointer when none of them references the heap.
+    fn service_args_shape(&self, args: &[MirExpr]) -> inkwell::values::PointerValue<'ctx> {
+        let shapes: Vec<_> = args.iter().map(|arg| self.message_shape(arg)).collect();
+        self.shape_table_for_slots(&shapes).unwrap_or_else(|| {
+            self.context
+                .ptr_type(inkwell::AddressSpace::default())
+                .const_null()
+        })
+    }
+
     /// Takes MIR args: [pid, tag, ...handler_args]
     /// Packs into a message buffer: [u64 handler_args[0], handler_args[1], ...]
     /// Calls mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
     /// Loads the reply from the returned pointer and converts based on expected type.
-    fn service_string_tags(
-        &self,
-        args: &[MirExpr],
-    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
-        let tags: Vec<_> = args
-            .iter()
-            .map(|a| {
-                self.context
-                    .i8_type()
-                    .const_int(u64::from(matches!(a.ty(), MirType::String)), false)
-            })
-            .collect();
-        let global = self.module.add_global(
-            self.context.i8_type().array_type(tags.len() as u32),
-            None,
-            "service_string_tags",
-        );
-        global.set_initializer(&self.context.i8_type().const_array(&tags));
-        global.set_constant(true);
-        global.set_linkage(inkwell::module::Linkage::Private);
-        Ok(global.as_pointer_value())
-    }
-
     fn codegen_service_call_helper(
         &mut self,
         args: &[MirExpr],
@@ -5221,9 +5583,9 @@ impl<'ctx> CodeGen<'ctx> {
             (buf, i64_ty.const_int(payload_size as u64, false))
         };
 
-        // Call mesh_service_call(pid, tag, payload_ptr, payload_size) -> ptr
-        let string_tags = self.service_string_tags(&args[2..])?;
-        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call_typed");
+        // Call mesh_service_call_shaped(pid, tag, payload_ptr, payload_size, shape) -> ptr
+        let shape_table = self.service_args_shape(&args[2..]);
+        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call_shaped");
         let result_ptr = self
             .builder
             .build_call(
@@ -5233,7 +5595,7 @@ impl<'ctx> CodeGen<'ctx> {
                     tag_val.into(),
                     payload_ptr.into(),
                     payload_size_val.into(),
-                    string_tags.into(),
+                    shape_table.into(),
                 ],
                 "call_result",
             )
@@ -5444,9 +5806,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         let msg_size = i64_ty.const_int((num_elements * 8) as u64, false);
 
-        // Call mesh_actor_send(pid, msg_ptr, msg_size).
-        let string_tags = self.service_string_tags(&args[2..])?;
-        let send_fn = get_intrinsic(&self.module, "mesh_service_cast_typed");
+        // Call mesh_service_cast_shaped(pid, msg_ptr, msg_size, shape).
+        let shape_table = self.service_args_shape(&args[2..]);
+        let send_fn = get_intrinsic(&self.module, "mesh_service_cast_shaped");
         self.builder
             .build_call(
                 send_fn,
@@ -5454,7 +5816,7 @@ impl<'ctx> CodeGen<'ctx> {
                     pid_val.into(),
                     buf.into(),
                     msg_size.into(),
-                    string_tags.into(),
+                    shape_table.into(),
                 ],
                 "",
             )

@@ -31,7 +31,7 @@ use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, reso
 use super::{
     BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
     MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
-    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, UnaryOp,
+    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -208,6 +208,45 @@ fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
     }
 }
 
+/// The dispatch tag of a service call or cast helper: the integer literal it
+/// passes as its second argument. A call helper's body may be wrapped in
+/// `Shaped` to carry the reply's shape.
+fn service_helper_tag(functions: &[MirFunction], helper: &str) -> u64 {
+    let body = functions.iter().find(|f| f.name == helper).map(|f| &f.body);
+    let call = match body {
+        Some(MirExpr::Shaped { value, .. }) => Some(value.as_ref()),
+        other => other,
+    };
+    match call {
+        Some(MirExpr::Call { args, .. }) => match args.get(1) {
+            Some(MirExpr::IntLit(tag, _)) => *tag as u64,
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
+/// Service helper arguments as MIR variables, marked with the shape of the
+/// heap references they carry to the service actor.
+fn shaped_params(names: &[String], types: &[MirType], shapes: &[MsgShape]) -> Vec<MirExpr> {
+    names
+        .iter()
+        .zip(types)
+        .zip(shapes)
+        .map(|((name, ty), shape)| {
+            let value = MirExpr::Var(name.clone(), ty.clone());
+            if shape.is_scalar() {
+                value
+            } else {
+                MirExpr::Shaped {
+                    value: Box::new(value),
+                    shape: shape.clone(),
+                }
+            }
+        })
+        .collect()
+}
+
 // ── Lowerer ──────────────────────────────────────────────────────────
 
 /// The AST-to-MIR lowering context.
@@ -335,6 +374,24 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+/// The type of a call to `callee`, given what the type checker says it is.
+///
+/// A nested tuple read out of a tuple (`Tuple.first(((1, "a"), 2))`) is a
+/// pointer like every other tuple value, whatever its static type.
+fn tuple_slot_type(callee: &MirExpr, ty: MirType) -> MirType {
+    match callee {
+        MirExpr::Var(name, _)
+            if matches!(
+                name.as_str(),
+                "mesh_tuple_first" | "mesh_tuple_second" | "mesh_tuple_nth"
+            ) =>
+        {
+            runtime_value_type(ty)
+        }
+        _ => ty,
+    }
+}
+
 fn uniform_callback_index(name: &str) -> Option<usize> {
     match name {
         "mesh_list_map" | "mesh_list_filter" | "mesh_list_sort" | "mesh_list_find"
@@ -342,6 +399,8 @@ fn uniform_callback_index(name: &str) -> Option<usize> {
         | "mesh_range_filter" | "mesh_job_map" | "mesh_iter_map" | "mesh_iter_filter"
         | "mesh_iter_any" | "mesh_iter_all" | "mesh_iter_find" => Some(1),
         "mesh_list_reduce" | "mesh_iter_reduce" => Some(2),
+        // The runtime calls a job as `fn(env) -> i64`, whatever it returns.
+        "mesh_job_async" => Some(0),
         _ => None,
     }
 }
@@ -600,7 +659,7 @@ impl<'a> Lowerer<'a> {
                         self.resource_destructor_inner(field_ty, visiting)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
-                                ty: resolve_type(field_ty, self.registry, false),
+                                ty: resolve_type(field_ty, self.registry),
                                 destructor,
                             })
                     })
@@ -616,7 +675,7 @@ impl<'a> Lowerer<'a> {
                         self.resource_destructor_inner(element, visiting)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
-                                ty: resolve_type(element, self.registry, false),
+                                ty: resolve_type(element, self.registry),
                                 destructor,
                             })
                     })
@@ -654,7 +713,7 @@ impl<'a> Lowerer<'a> {
                         self.resource_destructor_inner(&field_ty, visiting)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
-                                ty: resolve_type(&field_ty, self.registry, false),
+                                ty: resolve_type(&field_ty, self.registry),
                                 destructor,
                             })
                     })
@@ -713,7 +772,7 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_else(|| {
                         concrete_fields
                             .iter()
-                            .map(|field_ty| resolve_type(field_ty, self.registry, false))
+                            .map(|field_ty| resolve_type(field_ty, self.registry))
                             .collect()
                     });
                 let resource_fields = concrete_fields
@@ -723,7 +782,7 @@ impl<'a> Lowerer<'a> {
                         self.resource_destructor_inner(field_ty, visiting)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
-                                ty: resolve_type(field_ty, self.registry, false),
+                                ty: resolve_type(field_ty, self.registry),
                                 destructor,
                             })
                     })
@@ -1101,6 +1160,10 @@ impl<'a> Lowerer<'a> {
                 message: Box::new(self.cleanup_before_exits(*message, cleanup, loop_depth)),
                 ty,
             },
+            MirExpr::Shaped { value, shape } => MirExpr::Shaped {
+                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
+                shape,
+            },
             MirExpr::ActorLink { target, ty } => MirExpr::ActorLink {
                 target: Box::new(self.cleanup_before_exits(*target, cleanup, loop_depth)),
                 ty,
@@ -1172,7 +1235,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn wrap_resource_scope(&mut self, body: MirExpr, name: &str, typeck_ty: &Ty) -> MirExpr {
-        let resource_ty = resolve_type(typeck_ty, self.registry, false);
+        let resource_ty = resolve_type(typeck_ty, self.registry);
         let Some(destructor) = self.resource_destructor(typeck_ty) else {
             return body;
         };
@@ -1258,15 +1321,7 @@ impl<'a> Lowerer<'a> {
 
     fn resolve_range(&self, range: TextRange) -> MirType {
         if let Some(ty) = self.types.get(&range) {
-            resolve_type(ty, self.registry, false)
-        } else {
-            MirType::Unit
-        }
-    }
-
-    fn resolve_range_closure(&self, range: TextRange) -> MirType {
-        if let Some(ty) = self.types.get(&range) {
-            resolve_type(ty, self.registry, true)
+            resolve_type(ty, self.registry)
         } else {
             MirType::Unit
         }
@@ -1274,6 +1329,154 @@ impl<'a> Lowerer<'a> {
 
     fn get_ty(&self, range: TextRange) -> Option<&Ty> {
         self.types.get(&range)
+    }
+
+    /// `expr` typed as the bare function it names, when it names one.
+    ///
+    /// A function used as a value is a closure (`resolve_type`), but one that
+    /// is called, or handed to the runtime by name, is just its code pointer.
+    /// Anything that is not a local is a function: user-defined, imported,
+    /// a trait method or a runtime intrinsic.
+    fn as_fn_item(&self, expr: MirExpr) -> MirExpr {
+        match expr {
+            MirExpr::Var(name, MirType::Closure(params, ret))
+                if self.lookup_non_global_var(&name).is_none() =>
+            {
+                MirExpr::Var(name, MirType::FnPtr(params, ret))
+            }
+            other => other,
+        }
+    }
+
+    fn lower_callee(&mut self, callee: &Expr) -> MirExpr {
+        let lowered = self.lower_expr(callee);
+        self.as_fn_item(lowered)
+    }
+
+    // ── Message shapes ───────────────────────────────────────────────
+
+    /// The shape of the value the syntax at `range` evaluates to.
+    fn msg_shape_at(&self, range: TextRange) -> MsgShape {
+        self.get_ty(range)
+            .map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()))
+    }
+
+    /// Mark `value`, the expression at `range`, as about to cross to another
+    /// actor. Scalars need nothing and stay as they are.
+    fn shaped(&self, value: MirExpr, range: TextRange) -> MirExpr {
+        let shape = self.msg_shape_at(range);
+        if shape.is_scalar() {
+            return value;
+        }
+        MirExpr::Shaped {
+            value: Box::new(value),
+            shape,
+        }
+    }
+
+    /// Where the heap references are in a value of type `ty`.
+    ///
+    /// `open` holds the named types currently being described, so a recursive
+    /// type refers back to itself instead of unfolding forever. Anything not
+    /// known to be copyable is `Shared`, which is always safe: the owning heap
+    /// keeps it alive for the receiver.
+    fn msg_shape(&self, ty: &Ty, open: &mut Vec<String>) -> MsgShape {
+        let (name, args): (&str, &[Ty]) = match ty {
+            Ty::Never => return MsgShape::Scalar,
+            // An unresolved type has an unknown representation, and a
+            // closure's environment is not described by its type.
+            Ty::Var(_) | Ty::Fun(..) => return MsgShape::Shared,
+            Ty::Tuple(elems) if elems.is_empty() => return MsgShape::Scalar,
+            Ty::Tuple(elems) => {
+                return MsgShape::Tuple(elems.iter().map(|e| self.msg_shape(e, open)).collect())
+            }
+            Ty::Con(con) => (&con.name, &[]),
+            Ty::App(con, args) => match con.as_ref() {
+                Ty::Con(con) => (&con.name, args),
+                _ => return MsgShape::Shared,
+            },
+        };
+        let mut arg = |index: usize| {
+            Box::new(
+                args.get(index)
+                    .map_or(MsgShape::Shared, |a| self.msg_shape(a, open)),
+            )
+        };
+        match name {
+            "Int" | "Float" | "Bool" | "Unit" | "()" | "Pid" | "DateTime" | "SqliteConn"
+            | "PgConn" | "PoolHandle" => return MsgShape::Scalar,
+            "String" | "Atom" | "Bytes" | "U64" | "U128" | "I128" | "Range" => {
+                return MsgShape::Leaf
+            }
+            "List" | "Set" => return MsgShape::List(arg(0)),
+            "Map" => return MsgShape::Map(arg(0), arg(1)),
+            "Queue" => return MsgShape::Queue(arg(0)),
+            "Json" => return MsgShape::Json,
+            _ => {}
+        }
+
+        // User-defined and builtin generic types. Resources are owner-bound
+        // handles, never duplicated.
+        if self.registry.is_resource_name(name) {
+            return MsgShape::Shared;
+        }
+        let (MirType::Struct(mir_name) | MirType::SumType(mir_name)) =
+            resolve_type(ty, self.registry)
+        else {
+            return MsgShape::Shared;
+        };
+        if open.contains(&mir_name) {
+            return MsgShape::Recur(mir_name);
+        }
+        let (params, variants): (&[String], Vec<(Option<&str>, Vec<&Ty>)>) =
+            if let Some(info) = self.registry.struct_defs.get(name) {
+                let fields = info.fields.iter().map(|(_, field)| field).collect();
+                (&info.generic_params, vec![(None, fields)])
+            } else if let Some(info) = self.registry.sum_type_defs.get(name) {
+                let variants = info
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        let fields = variant
+                            .fields
+                            .iter()
+                            .map(|field| match field {
+                                mesh_typeck::VariantFieldInfo::Positional(ty)
+                                | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
+                            })
+                            .collect();
+                        (Some(variant.name.as_str()), fields)
+                    })
+                    .collect();
+                (&info.generic_params, variants)
+            } else {
+                return MsgShape::Shared;
+            };
+
+        let subst: HashMap<String, &Ty> = params.iter().cloned().zip(args).collect();
+        open.push(mir_name.clone());
+        let mut described: Vec<(Option<&str>, Vec<MsgShape>)> = variants
+            .into_iter()
+            .map(|(variant, fields)| {
+                let shapes = fields
+                    .into_iter()
+                    .map(|field| self.msg_shape(&substitute_type_params(field, &subst), open))
+                    .collect();
+                (variant, shapes)
+            })
+            .collect();
+        open.pop();
+
+        match described.first() {
+            Some((None, _)) => MsgShape::Struct(mir_name, described.remove(0).1),
+            _ => MsgShape::Sum(
+                mir_name,
+                described
+                    .into_iter()
+                    .map(|(variant, shapes)| (variant.unwrap_or_default().to_string(), shapes))
+                    .collect(),
+            ),
+        }
     }
 
     /// Determine the key_type tag for a Map.new() call based on the resolved type.
@@ -1442,11 +1645,7 @@ impl<'a> Lowerer<'a> {
         for usage_ty in self.fn_value_usage_types.get(fn_name)?.iter() {
             if let Ty::Fun(usage_params, _) = usage_ty {
                 if let Some(specific_ty) = usage_params.get(param_idx) {
-                    let mir = resolve_type(
-                        specific_ty,
-                        self.registry,
-                        matches!(specific_ty, Ty::Fun(..)),
-                    );
+                    let mir = resolve_type(specific_ty, self.registry);
                     if mir != MirType::Unit {
                         return Some(mir);
                     }
@@ -1543,11 +1742,11 @@ impl<'a> Lowerer<'a> {
         let mut parts: Vec<String> = params
             .iter()
             .map(|param_ty| {
-                let mir_ty = resolve_type(param_ty, self.registry, matches!(param_ty, Ty::Fun(..)));
+                let mir_ty = resolve_type(param_ty, self.registry);
                 Self::mir_type_specialization_component(&mir_ty)
             })
             .collect();
-        let ret_mir_ty = resolve_type(ret, self.registry, matches!(ret.as_ref(), Ty::Fun(..)));
+        let ret_mir_ty = resolve_type(ret, self.registry);
         parts.push("ret".to_string());
         parts.push(Self::mir_type_specialization_component(&ret_mir_ty));
         format!("{}__spec__{}", base_name, parts.join("__"))
@@ -1608,7 +1807,7 @@ impl<'a> Lowerer<'a> {
             }
         };
 
-        let lowered_handler = self.lower_expr(&handler_expr);
+        let lowered_handler = self.lower_callee(&handler_expr);
         let handler_ty = lowered_handler.ty().clone();
         let (param_types, return_type) = match handler_ty.clone() {
             MirType::FnPtr(params, ret)
@@ -1791,7 +1990,7 @@ impl<'a> Lowerer<'a> {
                                 );
                                 // Use the return type from the trait method sig, fallback to Unit.
                                 let fn_ty = if let Some(ret_ty) = &trait_method.return_type {
-                                    resolve_type(ret_ty, self.registry, false)
+                                    resolve_type(ret_ty, self.registry)
                                 } else {
                                     MirType::Unit
                                 };
@@ -4704,11 +4903,7 @@ impl<'a> Lowerer<'a> {
                             .name()
                             .map(|name| name.text().to_string())
                             .unwrap_or_else(|| "_".to_string()),
-                        runtime_value_type(resolve_type(
-                            ty,
-                            self.registry,
-                            matches!(ty, Ty::Fun(..)),
-                        )),
+                        runtime_value_type(resolve_type(ty, self.registry)),
                     )
                 })
                 .collect();
@@ -4716,11 +4911,7 @@ impl<'a> Lowerer<'a> {
                 name: base_name,
                 symbol: native.symbol().unwrap_or_default(),
                 params,
-                return_type: runtime_value_type(resolve_type(
-                    return_ty,
-                    self.registry,
-                    matches!(return_ty.as_ref(), Ty::Fun(..)),
-                )),
+                return_type: runtime_value_type(resolve_type(return_ty, self.registry)),
             });
             return;
         }
@@ -4780,8 +4971,7 @@ impl<'a> Lowerer<'a> {
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let is_closure = matches!(param_ty, Ty::Fun(..));
-                    let mut mir_ty = resolve_type(param_ty, self.registry, is_closure);
+                    let mut mir_ty = resolve_type(param_ty, self.registry);
                     if mir_ty == MirType::Unit && matches!(param_ty, Ty::Var(_)) {
                         if let Some(recovered) =
                             self.resolve_param_from_usage(original_name, param_idx)
@@ -4822,11 +5012,7 @@ impl<'a> Lowerer<'a> {
         }
 
         let return_type = if let Some(Ty::Fun(_, ret)) = concrete_fn_ty.or(fn_ty_raw) {
-            runtime_value_type(resolve_type(
-                ret,
-                self.registry,
-                matches!(ret.as_ref(), Ty::Fun(..)),
-            ))
+            runtime_value_type(resolve_type(ret, self.registry))
         } else {
             MirType::Unit
         };
@@ -4926,8 +5112,7 @@ impl<'a> Lowerer<'a> {
 
                     // Use the Ty::Fun param type for all params (including self).
                     // The type checker stores the impl type as the first param type.
-                    let is_closure = matches!(param_ty, Ty::Fun(..));
-                    let mir_ty = resolve_type(param_ty, self.registry, is_closure);
+                    let mir_ty = resolve_type(param_ty, self.registry);
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     params.push((param_name, mir_ty));
                 }
@@ -4954,7 +5139,6 @@ impl<'a> Lowerer<'a> {
                         resolve_type(
                             &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
                             self.registry,
-                            false,
                         )
                     } else {
                         self.resolve_range(param.syntax().text_range())
@@ -4968,7 +5152,7 @@ impl<'a> Lowerer<'a> {
 
         // Return type.
         let return_type = if let Some(Ty::Fun(_, ret)) = &fn_ty_raw {
-            resolve_type(ret, self.registry, false)
+            resolve_type(ret, self.registry)
         } else {
             MirType::Unit
         };
@@ -5084,7 +5268,6 @@ impl<'a> Lowerer<'a> {
                     resolve_type(
                         &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
                         self.registry,
-                        false,
                     )
                 } else {
                     self.resolve_range(param.syntax().text_range())
@@ -5155,8 +5338,7 @@ impl<'a> Lowerer<'a> {
                 pts.iter()
                     .enumerate()
                     .map(|(param_idx, t)| {
-                        let is_closure = matches!(t, Ty::Fun(..));
-                        let mut mir_ty = resolve_type(t, self.registry, is_closure);
+                        let mut mir_ty = resolve_type(t, self.registry);
                         // Recover concrete type for Ty::Var parameters from usage sites.
                         if mir_ty == MirType::Unit && matches!(t, Ty::Var(_)) {
                             if let Some(recovered) = self.resolve_param_from_usage(&name, param_idx)
@@ -5167,7 +5349,7 @@ impl<'a> Lowerer<'a> {
                         mir_ty
                     })
                     .collect::<Vec<_>>(),
-                resolve_type(ret, self.registry, false),
+                resolve_type(ret, self.registry),
             )
         } else {
             (Vec::new(), MirType::Unit)
@@ -5580,7 +5762,7 @@ impl<'a> Lowerer<'a> {
             if let Some(info) = self.registry.struct_defs.get(&name) {
                 info.fields
                     .iter()
-                    .map(|(fname, fty)| (fname.clone(), resolve_type(fty, self.registry, false)))
+                    .map(|(fname, fty)| (fname.clone(), resolve_type(fty, self.registry)))
                     .collect()
             } else {
                 Vec::new()
@@ -5733,10 +5915,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|(fname, fty)| {
                 let concrete_ty = substitute_type_params(fty, &subst);
-                (
-                    fname.clone(),
-                    resolve_type(&concrete_ty, self.registry, false),
-                )
+                (fname.clone(), resolve_type(&concrete_ty, self.registry))
             })
             .collect();
 
@@ -5803,7 +5982,7 @@ impl<'a> Lowerer<'a> {
                                     mesh_typeck::VariantFieldInfo::Positional(ty) => ty,
                                     mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
                                 };
-                                resolve_type(ty, self.registry, false)
+                                resolve_type(ty, self.registry)
                             })
                             .collect();
                         MirVariantDef {
@@ -7851,7 +8030,7 @@ impl<'a> Lowerer<'a> {
             } else {
                 // All other types: lower to the raw Mesh value then convert to a JSON pointer.
                 let val_lowered = self.lower_expr(&val_expr);
-                let mir_ty = resolve_type(&val_ty, self.registry, false);
+                let mir_ty = resolve_type(&val_ty, self.registry);
                 match &mir_ty {
                     MirType::Unit => {
                         // nil literal: emit mesh_json_null()
@@ -9501,7 +9680,43 @@ impl<'a> Lowerer<'a> {
 
     // ── Expression lowering ──────────────────────────────────────────
 
-    fn adapt_uniform_callback_call(&mut self, expr: MirExpr) -> MirExpr {
+    /// Job.async(f) / Job.map(list, f): f's result crosses back to the caller
+    /// once the job actor is gone, so its shape goes along with the callback.
+    /// `result` is what f returns; `range` is the whole call, whose own type
+    /// (`Pid<T>`, `List<Result<T, String>>`) names T for piped calls as well.
+    fn job_result_shape(&self, name: &str, result: &MirType, range: TextRange) -> Option<MsgShape> {
+        let result_ty = match (name, self.get_ty(range)) {
+            ("mesh_job_async", Some(Ty::App(_, args))) => args.first(),
+            ("mesh_job_map", Some(Ty::App(_, args))) => match args.first() {
+                Some(Ty::App(_, result_args)) => result_args.first(),
+                _ => None,
+            },
+            ("mesh_job_async" | "mesh_job_map", _) => None,
+            _ => return None,
+        };
+        // The representation, not the type, says whether the word is a
+        // reference at all: the runtime boxes a scalar result and hands a
+        // reference on as it is.
+        if matches!(
+            result,
+            MirType::Int
+                | MirType::Float
+                | MirType::Bool
+                | MirType::Unit
+                | MirType::Never
+                | MirType::Pid(_)
+        ) {
+            return None;
+        }
+        let shape = result_ty.map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()));
+        Some(if shape.is_scalar() {
+            MsgShape::Shared
+        } else {
+            shape
+        })
+    }
+
+    fn adapt_uniform_callback_call(&mut self, expr: MirExpr, range: TextRange) -> MirExpr {
         let MirExpr::Call { func, mut args, ty } = expr else {
             return expr;
         };
@@ -9514,6 +9729,7 @@ impl<'a> Lowerer<'a> {
         let Some(callback) = args.get(callback_index).cloned() else {
             return MirExpr::Call { func, args, ty };
         };
+        let callback = self.as_fn_item(callback);
         let callback_ty = callback.ty().clone();
         let (param_types, return_type, is_closure) = match &callback_ty {
             MirType::Closure(params, ret) => (params.clone(), (**ret).clone(), true),
@@ -9581,13 +9797,20 @@ impl<'a> Lowerer<'a> {
             captures: vec![("__callback".to_string(), callback_ty)],
             has_tail_calls: false,
         });
-        args[callback_index] = MirExpr::MakeClosure {
+        let adapter = MirExpr::MakeClosure {
             fn_name: adapter_name,
             captures: vec![callback],
             ty: MirType::Closure(
                 raw_params.into_iter().map(|(_, ty)| ty).collect(),
                 Box::new(MirType::Int),
             ),
+        };
+        args[callback_index] = match self.job_result_shape(name, &return_type, range) {
+            Some(shape) => MirExpr::Shaped {
+                value: Box::new(adapter),
+                shape,
+            },
+            None => adapter,
         };
         MirExpr::Call { func, args, ty }
     }
@@ -9671,7 +9894,7 @@ impl<'a> Lowerer<'a> {
             // Json object literal -- Phase 132-02 codegen
             Expr::JsonExpr(json_expr) => self.lower_json_expr(json_expr),
         };
-        self.adapt_uniform_callback_call(lowered)
+        self.adapt_uniform_callback_call(lowered, expr.syntax().text_range())
     }
 
     // ── Literal lowering ─────────────────────────────────────────────
@@ -10186,6 +10409,22 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
+        let lowered = self.lower_call_expr_unshaped(call);
+        // Timer.send_after(pid, ms, message): the message crosses to another actor.
+        let MirExpr::Call { func, mut args, ty } = lowered else {
+            return lowered;
+        };
+        let message = call.arg_list().and_then(|list| list.args().nth(2));
+        if let (MirExpr::Var(name, _), 3, Some(message)) = (func.as_ref(), args.len(), message) {
+            if name == "mesh_timer_send_after" {
+                let value = args.pop().unwrap();
+                args.push(self.shaped(value, message.syntax().text_range()));
+            }
+        }
+        MirExpr::Call { func, args, ty }
+    }
+
+    fn lower_call_expr_unshaped(&mut self, call: &CallExpr) -> MirExpr {
         if let Some(metadata) = self
             .clustered_route_wrappers
             .get(&call.syntax().text_range())
@@ -10246,7 +10485,7 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
-                    let ty = self.resolve_range_closure(call.syntax().text_range());
+                    let ty = self.resolve_range(call.syntax().text_range());
 
                     // Route through the shared trait dispatch helper
                     let first_arg_ty = args[0].ty().clone();
@@ -10519,19 +10758,20 @@ impl<'a> Lowerer<'a> {
                 .unwrap_or(MirType::Unit);
             Some(MirExpr::Var(mangled_name.clone(), callee_ty))
         } else {
-            call.callee().map(|e| self.lower_expr(&e))
+            call.callee().map(|e| self.lower_callee(&e))
         };
         let args: Vec<MirExpr> = call
             .arg_list()
             .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
             .unwrap_or_default();
 
-        let mut ty = self.resolve_range_closure(call.syntax().text_range());
+        let ty = self.resolve_range(call.syntax().text_range());
 
         let callee = match callee {
             Some(c) => c,
             None => return MirExpr::Unit,
         };
+        let mut ty = tuple_slot_type(&callee, ty);
 
         // When calling a known stdlib function whose return type is Ptr but
         // the typeck resolved to a Tuple type, use Ptr. This prevents LLVM
@@ -10888,12 +11128,12 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(MirExpr::Unit);
 
         let rhs = pipe.rhs();
-        let ty = self.resolve_range_closure(pipe.syntax().text_range());
+        let ty = self.resolve_range(pipe.syntax().text_range());
 
         let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
                 // `x |> f(a, b)` -> `f(x, a, b)` -- prepend lhs to existing args.
-                let callee = call.callee().map(|e| self.lower_expr(&e));
+                let callee = call.callee().map(|e| self.lower_callee(&e));
                 let mut args: Vec<MirExpr> = Vec::new();
                 args.push(lhs);
                 if let Some(arg_list) = call.arg_list() {
@@ -10907,19 +11147,19 @@ impl<'a> Lowerer<'a> {
                 };
                 let args = self.apply_direct_resource_modes(&callee, args);
                 MirExpr::Call {
+                    ty: tuple_slot_type(&callee, ty),
                     func: Box::new(callee),
                     args,
-                    ty,
                 }
             }
             Some(rhs_expr) => {
                 // `x |> f` -> `f(x)` -- bare function reference.
-                let func = self.lower_expr(&rhs_expr);
+                let func = self.lower_callee(&rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
+                    ty: tuple_slot_type(&func, ty),
                     func: Box::new(func),
                     args,
-                    ty,
                 }
             }
             None => MirExpr::Unit,
@@ -10957,11 +11197,11 @@ impl<'a> Lowerer<'a> {
 
         let slot = pipe.slot().unwrap_or(2) as usize; // 1-indexed
         let insert_idx = slot - 1; // 0-indexed position to insert lhs
-        let ty = self.resolve_range_closure(pipe.syntax().text_range());
+        let ty = self.resolve_range(pipe.syntax().text_range());
 
         match pipe.rhs() {
             Some(Expr::CallExpr(call)) => {
-                let callee = call.callee().map(|e| self.lower_expr(&e));
+                let callee = call.callee().map(|e| self.lower_callee(&e));
                 let mut explicit_args: Vec<MirExpr> = Vec::new();
                 if let Some(arg_list) = call.arg_list() {
                     for arg in arg_list.args() {
@@ -10977,19 +11217,19 @@ impl<'a> Lowerer<'a> {
                 };
                 let explicit_args = self.apply_direct_resource_modes(&callee, explicit_args);
                 MirExpr::Call {
+                    ty: tuple_slot_type(&callee, ty),
                     func: Box::new(callee),
                     args: explicit_args,
-                    ty,
                 }
             }
             Some(rhs_expr) => {
                 // Bare function reference with slot — treat as regular pipe (insert at position 0)
-                let func = self.lower_expr(&rhs_expr);
+                let func = self.lower_callee(&rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
+                    ty: tuple_slot_type(&func, ty),
                     func: Box::new(func),
                     args,
-                    ty,
                 }
             }
             None => MirExpr::Unit,
@@ -11367,7 +11607,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|| "_".to_string());
 
         // Resolve the MIR type to get the impl name for mangling.
-        let mir_ty = resolve_type(ty, self.registry, false);
+        let mir_ty = resolve_type(ty, self.registry);
         let type_name = mir_type_to_impl_name(&mir_ty);
 
         // Determine iter_fn and next_fn names, and the element type.
@@ -11420,7 +11660,7 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(&elem_ty, self.registry, false);
+        let elem_mir_ty = resolve_type(&elem_ty, self.registry);
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
@@ -11490,7 +11730,7 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(elem_ty_src, self.registry, false);
+        let elem_mir_ty = resolve_type(elem_ty_src, self.registry);
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
@@ -11543,8 +11783,8 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let key_mir_ty = resolve_type(key_ty_src, self.registry, false);
-        let val_mir_ty = resolve_type(val_ty_src, self.registry, false);
+        let key_mir_ty = resolve_type(key_ty_src, self.registry);
+        let val_mir_ty = resolve_type(val_ty_src, self.registry);
 
         self.push_scope();
         self.insert_var(key_var.clone(), key_mir_ty.clone());
@@ -11581,7 +11821,7 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(elem_ty_src, self.registry, false);
+        let elem_mir_ty = resolve_type(elem_ty_src, self.registry);
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
@@ -11694,7 +11934,7 @@ impl<'a> Lowerer<'a> {
                 // they must be lowered as Constructor patterns for correct
                 // pattern matching codegen (switch on tag).
                 if name.starts_with(|c: char| c.is_uppercase()) {
-                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry, false));
+                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
                     if let Some(type_name) =
                         find_type_for_variant(&name, expected_mir.as_ref(), self.registry, None)
                     {
@@ -11709,7 +11949,7 @@ impl<'a> Lowerer<'a> {
                         // Payload-bearing constructor without explicit binder: treat as
                         // Constructor(_) -- wildcards cover all fields, bind nothing.
                         let concrete_type_name = expected
-                            .map(|ty| resolve_type(ty, self.registry, false))
+                            .map(|ty| resolve_type(ty, self.registry))
                             .and_then(|ty| match ty {
                                 MirType::SumType(name) => Some(name),
                                 _ => None,
@@ -11725,7 +11965,7 @@ impl<'a> Lowerer<'a> {
                 }
 
                 let ty = expected
-                    .map(|ty| resolve_type(ty, self.registry, false))
+                    .map(|ty| resolve_type(ty, self.registry))
                     .unwrap_or_else(|| self.resolve_range(ident.syntax().text_range()));
                 let ty = if matches!(ty, MirType::Tuple(_)) {
                     MirType::Ptr
@@ -11772,7 +12012,7 @@ impl<'a> Lowerer<'a> {
                     tn.text().to_string()
                 } else {
                     // Find the type name from the registry for unqualified constructors.
-                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry, false));
+                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
                     find_type_for_variant(&variant_name, expected_mir.as_ref(), self.registry, None)
                         .unwrap_or_default()
                 };
@@ -11825,7 +12065,7 @@ impl<'a> Lowerer<'a> {
                 let bindings = collect_pattern_bindings(&fields);
 
                 let concrete_type_name = expected
-                    .map(|ty| resolve_type(ty, self.registry, false))
+                    .map(|ty| resolve_type(ty, self.registry))
                     .and_then(|ty| match ty {
                         MirType::SumType(name) => Some(name),
                         _ => None,
@@ -11889,7 +12129,7 @@ impl<'a> Lowerer<'a> {
                 let elem_mir_ty =
                     if let Some(typeck_ty) = self.get_ty(cons_pat.syntax().text_range()).cloned() {
                         if let Some(elem_ty) = extract_list_elem_type(&typeck_ty) {
-                            resolve_type(&elem_ty, self.registry, false)
+                            resolve_type(&elem_ty, self.registry)
                         } else {
                             // Fallback: if the list type is not properly resolved,
                             // use Int as a default element type.
@@ -11945,15 +12185,9 @@ impl<'a> Lowerer<'a> {
         if let Some(Ty::Fun(params, ret)) = &closure_ty {
             param_types = params
                 .iter()
-                .map(|p| {
-                    runtime_value_type(resolve_type(p, self.registry, matches!(p, Ty::Fun(..))))
-                })
+                .map(|p| runtime_value_type(resolve_type(p, self.registry)))
                 .collect();
-            return_type = runtime_value_type(resolve_type(
-                ret,
-                self.registry,
-                matches!(ret.as_ref(), Ty::Fun(..)),
-            ));
+            return_type = runtime_value_type(resolve_type(ret, self.registry));
         } else {
             return_type = MirType::Unit;
         }
@@ -12075,15 +12309,9 @@ impl<'a> Lowerer<'a> {
             (
                 params
                     .iter()
-                    .map(|p| {
-                        runtime_value_type(resolve_type(p, self.registry, matches!(p, Ty::Fun(..))))
-                    })
+                    .map(|p| runtime_value_type(resolve_type(p, self.registry)))
                     .collect::<Vec<_>>(),
-                runtime_value_type(resolve_type(
-                    ret,
-                    self.registry,
-                    matches!(ret.as_ref(), Ty::Fun(..)),
-                )),
+                runtime_value_type(resolve_type(ret, self.registry)),
             )
         } else {
             (Vec::new(), MirType::Unit)
@@ -13683,11 +13911,11 @@ impl<'a> Lowerer<'a> {
             let target_err_name = fn_err_name.as_deref().unwrap();
             let source_err_ty = error_types
                 .as_ref()
-                .map(|(operand, _)| resolve_type(operand, self.registry, false))
+                .map(|(operand, _)| resolve_type(operand, self.registry))
                 .unwrap_or_else(|| self.type_name_to_mir_type(source_err_name));
             let target_err_ty = error_types
                 .as_ref()
-                .map(|(_, function)| resolve_type(function, self.registry, false))
+                .map(|(_, function)| resolve_type(function, self.registry))
                 .unwrap_or_else(|| self.type_name_to_mir_type(target_err_name));
 
             // Normalize struct error types to Ptr for the Result variant layout.
@@ -13725,7 +13953,7 @@ impl<'a> Lowerer<'a> {
         let pattern_err_ty = if needs_from_conversion {
             error_types
                 .as_ref()
-                .map(|(operand, _)| resolve_type(operand, self.registry, false))
+                .map(|(operand, _)| resolve_type(operand, self.registry))
                 .unwrap_or_else(|| self.type_name_to_mir_type(operand_err_name.as_deref().unwrap()))
         } else {
             error_ty.clone()
@@ -14070,8 +14298,7 @@ impl<'a> Lowerer<'a> {
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let is_closure = matches!(param_ty, Ty::Fun(..));
-                    let mir_ty = resolve_type(param_ty, self.registry, is_closure);
+                    let mir_ty = resolve_type(param_ty, self.registry);
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     params.push((param_name, mir_ty));
                 }
@@ -14417,6 +14644,10 @@ impl<'a> Lowerer<'a> {
             tag: u64,
             param_names: Vec<String>,
             param_types: Vec<MirType>,
+            /// Shapes of the arguments and the reply, which cross between the
+            /// caller and the service actor.
+            param_shapes: Vec<MsgShape>,
+            reply_shape: MsgShape,
             state_param: Option<String>,
             /// The MIR type of the reply value (second element of the handler's
             /// return tuple). Used to set the correct return type on the call
@@ -14432,6 +14663,7 @@ impl<'a> Lowerer<'a> {
             tag: u64,
             param_names: Vec<String>,
             param_types: Vec<MirType>,
+            param_shapes: Vec<MsgShape>,
             state_param: Option<String>,
         }
 
@@ -14444,6 +14676,7 @@ impl<'a> Lowerer<'a> {
             let snake_name = to_snake_case(&variant_name);
             let mut param_names: Vec<String> = Vec::new();
             let mut param_types: Vec<MirType> = Vec::new();
+            let mut param_shapes: Vec<MsgShape> = Vec::new();
             if let Some(pl) = handler.params() {
                 for p in pl.params() {
                     let p_name = p
@@ -14458,6 +14691,7 @@ impl<'a> Lowerer<'a> {
                     };
                     param_names.push(p_name);
                     param_types.push(mir_ty);
+                    param_shapes.push(self.msg_shape_at(p.syntax().text_range()));
                 }
             }
             let state_param = handler.state_param_name();
@@ -14493,6 +14727,18 @@ impl<'a> Lowerer<'a> {
                     }
                 })
                 .unwrap_or(MirType::Int);
+            // The handler returns (state, reply); only the reply leaves the service.
+            let reply_shape = handler
+                .body()
+                .and_then(|block| block.tail_expr())
+                .and_then(|expr| self.get_ty(expr.syntax().text_range()))
+                .and_then(|ty| match ty {
+                    Ty::Tuple(elems) => elems.get(1),
+                    _ => None,
+                })
+                .map_or(MsgShape::Shared, |reply| {
+                    self.msg_shape(reply, &mut Vec::new())
+                });
 
             call_infos.push(CallInfo {
                 variant_name,
@@ -14500,6 +14746,8 @@ impl<'a> Lowerer<'a> {
                 tag: i as u64,
                 param_names,
                 param_types,
+                param_shapes,
+                reply_shape,
                 state_param,
                 reply_type,
             });
@@ -14514,6 +14762,7 @@ impl<'a> Lowerer<'a> {
             let snake_name = to_snake_case(&variant_name);
             let mut param_names: Vec<String> = Vec::new();
             let mut param_types: Vec<MirType> = Vec::new();
+            let mut param_shapes: Vec<MsgShape> = Vec::new();
             if let Some(pl) = handler.params() {
                 for p in pl.params() {
                     let p_name = p
@@ -14528,6 +14777,7 @@ impl<'a> Lowerer<'a> {
                     };
                     param_names.push(p_name);
                     param_types.push(mir_ty);
+                    param_shapes.push(self.msg_shape_at(p.syntax().text_range()));
                 }
             }
             let state_param = handler.state_param_name();
@@ -14537,6 +14787,7 @@ impl<'a> Lowerer<'a> {
                 tag: (num_calls + i) as u64,
                 param_names,
                 param_types,
+                param_shapes,
                 state_param,
             });
         }
@@ -14555,8 +14806,7 @@ impl<'a> Lowerer<'a> {
                             .name()
                             .map(|t| t.text().to_string())
                             .unwrap_or_else(|| "_".to_string());
-                        let is_closure = matches!(param_ty, Ty::Fun(..));
-                        let mir_ty = resolve_type(param_ty, self.registry, is_closure);
+                        let mir_ty = resolve_type(param_ty, self.registry);
                         self.insert_var(param_name.clone(), mir_ty.clone());
                         init_params.push((param_name, mir_ty));
                     }
@@ -14903,12 +15153,24 @@ impl<'a> Lowerer<'a> {
                     ];
                     // Pack the call arguments as the payload.
                     // Codegen will coerce each arg to i64 for the message buffer.
-                    for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
-                        args.push(MirExpr::Var(p_name.clone(), p_ty.clone()));
-                    }
+                    args.extend(shaped_params(
+                        &info.param_names,
+                        &info.param_types,
+                        &info.param_shapes,
+                    ));
                     args
                 },
                 ty: info.reply_type.clone(),
+            };
+            // The service loop reads the reply's shape from here when it
+            // sends the reply back; to the caller the wrapper is transparent.
+            let body = if info.reply_shape.is_scalar() {
+                body
+            } else {
+                MirExpr::Shaped {
+                    value: Box::new(body),
+                    shape: info.reply_shape.clone(),
+                }
             };
 
             self.functions.push(MirFunction {
@@ -14952,9 +15214,11 @@ impl<'a> Lowerer<'a> {
                         MirExpr::Var("__pid".to_string(), MirType::Int),
                         MirExpr::IntLit(info.tag as i64, MirType::Int),
                     ];
-                    for (p_name, p_ty) in info.param_names.iter().zip(info.param_types.iter()) {
-                        args.push(MirExpr::Var(p_name.clone(), p_ty.clone()));
-                    }
+                    args.extend(shaped_params(
+                        &info.param_names,
+                        &info.param_types,
+                        &info.param_shapes,
+                    ));
                     args
                 },
                 ty: MirType::Unit,
@@ -15172,9 +15436,22 @@ impl<'a> Lowerer<'a> {
             ty
         };
 
+        // Everything after the function crosses to the new actor.
         let args: Vec<MirExpr> = spawn
             .arg_list()
-            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .map(|al| {
+                al.args()
+                    .enumerate()
+                    .map(|(index, a)| {
+                        // The actor itself is named, not passed as a value.
+                        if index == 0 {
+                            return self.lower_callee(&a);
+                        }
+                        let lowered = self.lower_expr(&a);
+                        self.shaped(lowered, a.syntax().text_range())
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         // First argument is the function to spawn; rest are initial state.
@@ -15213,9 +15490,22 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_send_expr(&mut self, send: &SendExpr) -> MirExpr {
+        // send(target, message): the message crosses to another actor.
         let args: Vec<MirExpr> = send
             .arg_list()
-            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .map(|al| {
+                al.args()
+                    .enumerate()
+                    .map(|(index, a)| {
+                        let lowered = self.lower_expr(&a);
+                        if index == 1 {
+                            self.shaped(lowered, a.syntax().text_range())
+                        } else {
+                            lowered
+                        }
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         // send(target, message) -> Int status
@@ -16469,6 +16759,7 @@ fn collect_free_vars(
             }
         }
         MirExpr::ActorSelf { .. } => {}
+        MirExpr::Shaped { value, .. } => collect_free_vars(value, params, outer_vars, captures),
         MirExpr::ActorLink { target, .. } => {
             collect_free_vars(target, params, outer_vars, captures);
         }
@@ -16716,7 +17007,7 @@ pub fn lower_to_mir(
                                 return MirType::Ptr;
                             }
                         }
-                        resolve_type(ty, &typeck.type_registry, false)
+                        resolve_type(ty, &typeck.type_registry)
                     })
                     .collect();
                 MirVariantDef {
@@ -16751,12 +17042,7 @@ pub fn lower_to_mir(
                 fields: definition
                     .fields
                     .iter()
-                    .map(|(field, ty)| {
-                        (
-                            field.clone(),
-                            resolve_type(ty, &typeck.type_registry, false),
-                        )
-                    })
+                    .map(|(field, ty)| (field.clone(), resolve_type(ty, &typeck.type_registry)))
                     .collect(),
             });
         }
@@ -17027,22 +17313,7 @@ pub fn lower_to_mir(
                     // Find the tag from the matching call helper function.
                     let method_name = f.name.strip_prefix(&call_prefix).unwrap_or("");
                     let call_fn = format!("__service_{}_call_{}", service_name, method_name);
-                    // Find the tag by looking at the call helper's IntLit arg.
-                    let tag = lowerer
-                        .functions
-                        .iter()
-                        .find(|cf| cf.name == call_fn)
-                        .and_then(|cf| {
-                            if let MirExpr::Call { args, .. } = &cf.body {
-                                if args.len() >= 2 {
-                                    if let MirExpr::IntLit(tag, _) = &args[1] {
-                                        return Some(*tag as u64);
-                                    }
-                                }
-                            }
-                            None
-                        })
-                        .unwrap_or(0);
+                    let tag = service_helper_tag(&lowerer.functions, &call_fn);
                     call_handlers.push((tag, f.name.clone(), num_args));
                 } else if f.name.starts_with(&cast_prefix) {
                     let num_args = if f.params.len() > 1 {
@@ -17052,21 +17323,7 @@ pub fn lower_to_mir(
                     };
                     let method_name = f.name.strip_prefix(&cast_prefix).unwrap_or("");
                     let cast_fn = format!("__service_{}_cast_{}", service_name, method_name);
-                    let tag = lowerer
-                        .functions
-                        .iter()
-                        .find(|cf| cf.name == cast_fn)
-                        .and_then(|cf| {
-                            if let MirExpr::Call { args, .. } = &cf.body {
-                                if args.len() >= 2 {
-                                    if let MirExpr::IntLit(tag, _) = &args[1] {
-                                        return Some(*tag as u64);
-                                    }
-                                }
-                            }
-                            None
-                        })
-                        .unwrap_or(0);
+                    let tag = service_helper_tag(&lowerer.functions, &cast_fn);
                     cast_handlers.push((tag, f.name.clone(), num_args));
                 }
             }
