@@ -91,6 +91,11 @@ tmp/
 /examples/todo-postgres/todo-postgres
 /examples/todo-sqlite/todo-sqlite
 
+# Wrangler's local state (build output, dev caches, .dev.vars secrets).
+.wrangler/
+.dev.vars
+.dev.vars.*
+
 # AppleDouble sidecars macOS writes beside every file on a drive without
 # extended attributes (exFAT, FAT, network shares). Keep this last: a later
 # `!` rule, like the one for compiler/mesh-rt/src/dist/*.rs, would let them back in.
