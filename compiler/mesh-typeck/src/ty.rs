@@ -231,6 +231,49 @@ impl Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new("Result"))), vec![ok, err])
     }
 
+    /// A tuple known only by its first elements: `elems`, then whatever
+    /// `tail` stands for -- a type variable, or once it is known the tuple of
+    /// the remaining elements. It is what `Tuple.first(p)` can say about a `p`
+    /// whose type inference has not reached yet, such as an unannotated
+    /// parameter: a tuple of at least one element. `InferCtx::resolve` turns a
+    /// row whose tail is known into the plain tuple.
+    pub fn tuple_row(mut elems: Vec<Ty>, tail: Ty) -> Ty {
+        elems.push(tail);
+        Ty::App(Box::new(Ty::Con(TyCon::new(TUPLE_ROW))), elems)
+    }
+
+    /// The leading elements and the tail of a `tuple_row`.
+    pub fn as_tuple_row(&self) -> Option<(&[Ty], &Ty)> {
+        match self {
+            Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(c) if c.name == TUPLE_ROW) => {
+                let (tail, elems) = args.split_last()?;
+                Some((elems, tail))
+            }
+            _ => None,
+        }
+    }
+
+    /// A row whose tail is known, as the tuple (or longer row) it stands for.
+    pub fn normalize_tuple_row(self) -> Ty {
+        let Some((elems, tail)) = self.as_tuple_row() else {
+            return self;
+        };
+        let mut all = elems.to_vec();
+        match tail {
+            Ty::Tuple(rest) => {
+                all.extend(rest.iter().cloned());
+                Ty::Tuple(all)
+            }
+            row => match row.as_tuple_row() {
+                Some((more, tail)) => {
+                    all.extend(more.iter().cloned());
+                    Ty::tuple_row(all, tail.clone())
+                }
+                None => self,
+            },
+        }
+    }
+
     /// Create a function type.
     pub fn fun(params: Vec<Ty>, ret: Ty) -> Ty {
         Ty::Fun(params, Box::new(ret))
@@ -313,6 +356,14 @@ impl fmt::Display for Ty {
                 }
                 write!(f, ") -> {}", ret)
             }
+            Ty::App(..) if self.as_tuple_row().is_some() => {
+                let (elems, _) = self.as_tuple_row().unwrap();
+                write!(f, "(")?;
+                for e in elems {
+                    write!(f, "{}, ", e)?;
+                }
+                write!(f, "..)")
+            }
             Ty::App(con, args) => {
                 write!(f, "{}", con)?;
                 if !args.is_empty() {
@@ -341,6 +392,9 @@ impl fmt::Display for Ty {
         }
     }
 }
+
+/// Name of the type constructor behind `Ty::tuple_row`.
+pub const TUPLE_ROW: &str = "TupleRow";
 
 /// A polymorphic type scheme: a type with universally quantified variables.
 ///

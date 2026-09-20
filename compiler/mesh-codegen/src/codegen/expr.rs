@@ -3095,10 +3095,17 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or("mesh_gc_alloc_actor returned void")?;
             env_raw.into_pointer_value()
         } else {
-            // Build an env struct type from capture types
-            let cap_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> =
-                captures.iter().map(|c| self.llvm_type(c.ty())).collect();
-            let env_struct_ty = self.context.struct_type(&cap_types, false);
+            // The env struct: a pointer to the shape table that describes it
+            // (so it can be copied to another actor), then the captures. The
+            // closure function reads it back the same way (`compile_function`).
+            let mut env_fields: Vec<inkwell::types::BasicTypeEnum<'ctx>> = vec![self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()];
+            env_fields.extend(captures.iter().map(|c| self.llvm_type(c.ty())));
+            let env_struct_ty = self.context.struct_type(&env_fields, false);
+            let capture_shapes: Vec<_> = captures.iter().map(|c| self.message_shape(c)).collect();
+            let env_shape = self.shape_table_for_env(&capture_shapes, env_struct_ty);
 
             // Calculate size via target data
             let target_data = self.target_machine.get_target_data();
@@ -3117,13 +3124,19 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or("mesh_gc_alloc_actor returned void")?;
 
             let env_ptr_val = env_raw.into_pointer_value();
+            // Fresh memory is zeroed: no table means nothing to copy.
+            if let Some(env_shape) = env_shape {
+                self.builder
+                    .build_store(env_ptr_val, env_shape)
+                    .map_err(|e| e.to_string())?;
+            }
 
             // Store each captured value into the env struct
             for (i, cap_expr) in captures.iter().enumerate() {
                 let val = self.codegen_expr(cap_expr)?;
                 let field_ptr = self
                     .builder
-                    .build_struct_gep(env_struct_ty, env_ptr_val, i as u32, "cap_ptr")
+                    .build_struct_gep(env_struct_ty, env_ptr_val, i as u32 + 1, "cap_ptr")
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_store(field_ptr, val)
@@ -4316,12 +4329,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                self.builder
+                // The builder moves when it grows: keep what push returns.
+                let pushed = self
+                    .builder
                     .build_call(
                         list_builder_push,
                         &[result_loaded.into(), body_as_i64.into()],
-                        "",
+                        "res_list_pushed",
                     )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_list_builder_push returned void")?;
+                self.builder
+                    .build_store(result_alloca, pushed)
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_unconditional_branch(latch_bb)
@@ -6141,12 +6162,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                self.builder
+                // The builder moves when it grows: keep what push returns.
+                let pushed = self
+                    .builder
                     .build_call(
                         list_builder_push,
                         &[result_loaded.into(), body_as_i64.into()],
-                        "",
+                        "res_list_pushed",
                     )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_list_builder_push returned void")?;
+                self.builder
+                    .build_store(result_alloca, pushed)
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_unconditional_branch(latch_bb)
@@ -6450,12 +6479,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                self.builder
+                // The builder moves when it grows: keep what push returns.
+                let pushed = self
+                    .builder
                     .build_call(
                         list_builder_push,
                         &[result_loaded.into(), body_as_i64.into()],
-                        "",
+                        "res_list_pushed",
                     )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_list_builder_push returned void")?;
+                self.builder
+                    .build_store(result_alloca, pushed)
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_unconditional_branch(latch_bb)
@@ -6670,12 +6707,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                self.builder
+                // The builder moves when it grows: keep what push returns.
+                let pushed = self
+                    .builder
                     .build_call(
                         list_builder_push,
                         &[result_loaded.into(), body_as_i64.into()],
-                        "",
+                        "res_list_pushed",
                     )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_list_builder_push returned void")?;
+                self.builder
+                    .build_store(result_alloca, pushed)
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_unconditional_branch(latch_bb)
@@ -6885,12 +6930,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ptr_ty, result_alloca, "res_list")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                self.builder
+                // The builder moves when it grows: keep what push returns.
+                let pushed = self
+                    .builder
                     .build_call(
                         list_builder_push,
                         &[result_loaded.into(), body_as_i64.into()],
-                        "",
+                        "res_list_pushed",
                     )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("mesh_list_builder_push returned void")?;
+                self.builder
+                    .build_store(result_alloca, pushed)
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_unconditional_branch(latch_bb)

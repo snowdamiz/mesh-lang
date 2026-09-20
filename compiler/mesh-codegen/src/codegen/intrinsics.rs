@@ -1675,9 +1675,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // Returns the builder, which moves when it has to grow.
     module.add_function(
         "mesh_list_builder_push",
-        void_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -3154,6 +3155,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_timer_send_after",
         timer_send_after_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+    // mesh_timer_apply_after(ms: i64, fn_ptr: ptr, env_ptr: ptr) -> void
+    module.add_function(
+        "mesh_timer_apply_after",
+        void_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
     // mesh_timer_send_after_shaped(pid, ms, msg_ptr, msg_size, shape: ptr) -> void
@@ -4867,6 +4874,7 @@ mod tests {
         // Timer functions (Phase 44 Plan 02)
         assert!(module.get_function("mesh_timer_sleep").is_some());
         assert!(module.get_function("mesh_timer_send_after").is_some());
+        assert!(module.get_function("mesh_timer_apply_after").is_some());
         assert!(module
             .get_function("mesh_timer_send_after_shaped")
             .is_some());

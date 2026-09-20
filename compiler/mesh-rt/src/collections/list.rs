@@ -24,7 +24,6 @@ unsafe fn list_len(list: *const u8) -> u64 {
 }
 
 /// Read the capacity field from a list pointer.
-#[allow(dead_code)]
 unsafe fn list_cap(list: *const u8) -> u64 {
     *((list as *const u64).add(1))
 }
@@ -288,16 +287,25 @@ pub extern "C" fn mesh_list_builder_new(capacity: i64) -> *mut u8 {
     unsafe { alloc_list(capacity.max(0) as u64) }
 }
 
-/// Push an element to a list builder (in-place mutation, O(1)).
+/// Push an element to a list builder (amortized O(1)) and return the builder,
+/// which has moved if it was full: callers must keep what comes back.
 /// SAFETY: Only valid during construction before the list is shared.
-/// Increments len and writes element at data[len].
+///
+/// A full builder grows. It used to be written past its end instead, and a
+/// `for` over an iterator, whose length is unknown, starts from capacity 0:
+/// every element it produced landed on whatever followed it on the heap.
 #[no_mangle]
-pub extern "C" fn mesh_list_builder_push(list: *mut u8, element: u64) {
+pub extern "C" fn mesh_list_builder_push(list: *mut u8, element: u64) -> *mut u8 {
     unsafe {
-        let len = list_len(list) as usize;
-        let data = list_data_mut(list);
-        *data.add(len) = element;
-        *(list as *mut u64) = (len + 1) as u64;
+        let len = list_len(list);
+        let list = if len < list_cap(list) {
+            list
+        } else {
+            alloc_list_from(list_data(list), len, (len * 2).max(4))
+        };
+        *list_data_mut(list).add(len as usize) = element;
+        *(list as *mut u64) = len + 1;
+        list
     }
 }
 
@@ -1200,12 +1208,30 @@ mod tests {
     }
 
     #[test]
+    fn test_list_builder_push_grows_a_full_builder_instead_of_overrunning_it() {
+        mesh_rt_init();
+        // What a `for` over an iterator does: no capacity, then push.
+        let mut list = mesh_list_builder_new(0);
+        let sentinel = mesh_list_builder_new(1);
+        let sentinel = mesh_list_builder_push(sentinel, 0xfeed);
+        for value in 0..100 {
+            list = mesh_list_builder_push(list, value);
+        }
+        assert_eq!(mesh_list_length(list), 100);
+        assert_eq!(mesh_list_get(list, 0), 0);
+        assert_eq!(mesh_list_get(list, 99), 99);
+        // The object allocated right after the empty builder is untouched.
+        assert_eq!(mesh_list_length(sentinel), 1);
+        assert_eq!(mesh_list_get(sentinel, 0), 0xfeed);
+    }
+
+    #[test]
     fn test_list_builder_push_three_elements() {
         mesh_rt_init();
         let list = mesh_list_builder_new(3);
-        mesh_list_builder_push(list, 10);
-        mesh_list_builder_push(list, 20);
-        mesh_list_builder_push(list, 30);
+        let list = mesh_list_builder_push(list, 10);
+        let list = mesh_list_builder_push(list, 20);
+        let list = mesh_list_builder_push(list, 30);
         assert_eq!(mesh_list_length(list), 3);
         assert_eq!(mesh_list_get(list, 0), 10);
         assert_eq!(mesh_list_get(list, 1), 20);

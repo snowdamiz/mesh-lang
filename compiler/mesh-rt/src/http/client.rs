@@ -1005,9 +1005,13 @@ fn start_stream(
         registry.insert(handle, Arc::clone(&cancel));
         handle
     };
+    // The callback runs on its own thread while the caller carries on and
+    // collects; the loan keeps its environment alive until the stream ends.
+    let env_loan = crate::actor::lend_closure_env(callback_env);
     let callback_fn = callback_fn as usize;
     let callback_env = callback_env as usize;
     std::thread::spawn(move || {
+        let _env_loan = env_loan;
         let _ = execute_stream(
             http_agent(),
             request,

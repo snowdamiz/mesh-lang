@@ -985,6 +985,8 @@ pub(crate) fn prepare_project_build(
         return Err("Compilation failed due to errors above.".to_string());
     }
 
+    reject_duplicate_pub_functions(&project, &all_exports)?;
+
     let source_cluster_declarations =
         collect_source_cluster_declarations(&project.graph, &project.module_parses);
     let clustered_execution_plan = if !source_cluster_declarations.is_empty() {
@@ -1078,6 +1080,63 @@ pub(crate) fn prepare_project_build(
                 .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
         )?,
     })
+}
+
+/// Reject programs where two modules export a `pub fn` under the same symbol.
+///
+/// `Lowerer::qualify_name` deliberately leaves `pub` function names unqualified so
+/// importing modules can call them by their bare name, and `merge_mir_modules` then
+/// keys merged functions by that bare name, keeping the first one it sees. Two modules
+/// exporting the same name therefore collapse into one symbol: the later module's body
+/// is dropped, and every call site — including `from B import f` — binds to the earlier
+/// module's body while the type checker went on believing it had `B`'s signature. That
+/// mismatch is silent, and when the signatures differ it reinterprets values across
+/// types (an `Int` returned where a `String` was expected becomes a wild pointer).
+///
+/// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
+fn reject_duplicate_pub_functions(
+    project: &discovery::ProjectData,
+    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
+) -> Result<(), String> {
+    // Export keys are exactly the `pub_fns` handed to the lowerer, so a key collision
+    // is a symbol collision. Same-name/different-arity pub fns inside one module are
+    // already disambiguated by `collect_exports` as `name__<arity>`.
+    let mut owners: std::collections::BTreeMap<&str, Vec<&mesh_common::module_graph::ModuleInfo>> =
+        Default::default();
+    for &id in &project.compilation_order {
+        let Some(exports) = all_exports.get(id.0 as usize).and_then(Option::as_ref) else {
+            continue;
+        };
+        let module = project.graph.get(id);
+        for name in exports.functions.keys() {
+            owners.entry(name.as_str()).or_default().push(module);
+        }
+    }
+
+    let mut conflicted = false;
+    for (symbol, modules) in owners.iter().filter(|(_, m)| m.len() > 1) {
+        conflicted = true;
+        // Strip the `__<arity>` suffix `collect_exports` adds to overloaded pub fns.
+        let display = symbol
+            .rsplit_once("__")
+            .filter(|(_, arity)| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))
+            .map(|(base, _)| base)
+            .unwrap_or(symbol);
+        eprintln!("error: public function `{display}` is defined in more than one module:");
+        for module in modules {
+            eprintln!("  - `{}` ({})", module.name, module.path.display());
+        }
+        eprintln!(
+            "note: public function names share one global symbol space, so a call to \
+             `{display}` would silently run only one of these definitions."
+        );
+        eprintln!("help: rename all but one of them, or make the others private.");
+    }
+
+    if conflicted {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+    Ok(())
 }
 
 fn collect_library_exports(

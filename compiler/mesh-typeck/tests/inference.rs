@@ -227,3 +227,24 @@ fn test_nested_function_inference() {
     let result = check_source("let apply = fn (f, x) -> f(x) end\napply(fn (n) -> n + 1 end, 42)");
     assert_result_type(&result, Ty::int());
 }
+
+// ── Tuple accessors ────────────────────────────────────────────────────
+
+#[test]
+fn test_computed_tuple_index_needs_one_element_type() {
+    // Any element could be the one selected, so a computed index on a tuple
+    // of mixed types has no knowable result type. Accepting it would read a
+    // reference's slot as the declared `Int`, handing back its address.
+    let result = check_source("let t = (1, \"two\", 3)\nlet i = 1 + 0\nTuple.nth(t, i)");
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch (computed index into a mixed tuple)",
+    );
+}
+
+#[test]
+fn test_computed_tuple_index_takes_the_shared_element_type() {
+    let result = check_source("let t = (\"a\", \"b\")\nlet i = 1 + 0\nTuple.nth(t, i)");
+    assert_result_type(&result, Ty::string());
+}

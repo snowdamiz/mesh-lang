@@ -62,7 +62,7 @@ pub use actor::{
     mesh_actor_spawn_shaped, mesh_actor_stop, mesh_actor_whereis, mesh_global_register,
     mesh_global_unregister, mesh_global_whereis, mesh_node_monitor, mesh_process_demonitor,
     mesh_process_monitor, mesh_reduction_check, mesh_rt_init_actor, mesh_rt_run_scheduler,
-    mesh_timer_send_after, mesh_timer_send_after_shaped, mesh_timer_sleep,
+    mesh_timer_apply_after, mesh_timer_send_after, mesh_timer_send_after_shaped, mesh_timer_sleep,
 };
 pub use channel::{
     mesh_channel_bounded, mesh_channel_bounded_bytes, mesh_channel_byte_depth, mesh_channel_depth,

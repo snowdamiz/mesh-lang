@@ -253,6 +253,12 @@ fn shaped_params(names: &[String], types: &[MirType], shapes: &[MsgShape]) -> Ve
 struct Lowerer<'a> {
     /// Type map from typeck: TextRange -> Ty.
     types: &'a FxHashMap<TextRange, Ty>,
+    /// Types of the function being lowered, with its type variables replaced by
+    /// what this specialization was called with. A function with unannotated
+    /// parameters is checked once, generically, and lowered once per usage
+    /// type; without this, an inner expression typed by one of its variables
+    /// (`Tuple.first(p)` in `fn head(p)`) had no concrete type to lower with.
+    spec_types: FxHashMap<TextRange, Ty>,
     /// Type registry for struct/sum type lookups.
     registry: &'a mesh_typeck::TypeRegistry,
     /// Trait registry for trait method dispatch resolution.
@@ -374,6 +380,53 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+/// Read off which type each variable of `generic` stands for in `concrete`.
+fn bind_type_vars(generic: &Ty, concrete: &Ty, bindings: &mut Vec<(mesh_typeck::ty::TyVar, Ty)>) {
+    let bind_all = |generic: &[Ty], concrete: &[Ty], bindings: &mut Vec<_>| {
+        for (generic, concrete) in generic.iter().zip(concrete) {
+            bind_type_vars(generic, concrete, bindings);
+        }
+    };
+    match (generic, concrete) {
+        (Ty::Var(var), concrete) => {
+            if !bindings.iter().any(|(bound, _)| bound == var) {
+                bindings.push((*var, concrete.clone()));
+            }
+        }
+        (Ty::Fun(params, ret), Ty::Fun(concrete_params, concrete_ret)) => {
+            bind_all(params, concrete_params, bindings);
+            bind_type_vars(ret, concrete_ret, bindings);
+        }
+        (Ty::Tuple(elems), Ty::Tuple(concrete_elems)) => bind_all(elems, concrete_elems, bindings),
+        // A tuple known by its first elements, against the whole tuple.
+        (row, Ty::Tuple(all)) if row.as_tuple_row().is_some() => {
+            let (elems, tail) = row.as_tuple_row().unwrap();
+            if all.len() >= elems.len() {
+                let (named, rest) = all.split_at(elems.len());
+                bind_all(elems, named, bindings);
+                bind_type_vars(tail, &Ty::Tuple(rest.to_vec()), bindings);
+            }
+        }
+        (Ty::App(_, args), Ty::App(_, concrete_args)) => bind_all(args, concrete_args, bindings),
+        _ => {}
+    }
+}
+
+/// `ty` with the variables in `bindings` replaced.
+fn apply_type_vars(ty: &Ty, bindings: &[(mesh_typeck::ty::TyVar, Ty)]) -> Ty {
+    let all = |tys: &[Ty]| tys.iter().map(|ty| apply_type_vars(ty, bindings)).collect();
+    match ty {
+        Ty::Var(var) => bindings
+            .iter()
+            .find(|(bound, _)| bound == var)
+            .map_or_else(|| ty.clone(), |(_, concrete)| concrete.clone()),
+        Ty::Fun(params, ret) => Ty::Fun(all(params), Box::new(apply_type_vars(ret, bindings))),
+        Ty::Tuple(elems) => Ty::Tuple(all(elems)),
+        Ty::App(con, args) => Ty::App(con.clone(), all(args)).normalize_tuple_row(),
+        Ty::Con(_) | Ty::Never => ty.clone(),
+    }
+}
+
 /// The type of a call to `callee`, given what the type checker says it is.
 ///
 /// A nested tuple read out of a tuple (`Tuple.first(((1, "a"), 2))`) is a
@@ -401,6 +454,7 @@ fn uniform_callback_index(name: &str) -> Option<usize> {
         "mesh_list_reduce" | "mesh_iter_reduce" => Some(2),
         // The runtime calls a job as `fn(env) -> i64`, whatever it returns.
         "mesh_job_async" => Some(0),
+        "mesh_timer_apply_after" => Some(1),
         _ => None,
     }
 }
@@ -528,6 +582,7 @@ impl<'a> Lowerer<'a> {
 
         Lowerer {
             types: &typeck.types,
+            spec_types: FxHashMap::default(),
             registry: &typeck.type_registry,
             trait_registry: &typeck.trait_registry,
             default_method_bodies: &typeck.default_method_bodies,
@@ -1320,7 +1375,7 @@ impl<'a> Lowerer<'a> {
     // ── Type resolution helper ───────────────────────────────────────
 
     fn resolve_range(&self, range: TextRange) -> MirType {
-        if let Some(ty) = self.types.get(&range) {
+        if let Some(ty) = self.get_ty(range) {
             resolve_type(ty, self.registry)
         } else {
             MirType::Unit
@@ -1328,7 +1383,34 @@ impl<'a> Lowerer<'a> {
     }
 
     fn get_ty(&self, range: TextRange) -> Option<&Ty> {
-        self.types.get(&range)
+        self.spec_types
+            .get(&range)
+            .or_else(|| self.types.get(&range))
+    }
+
+    /// Fill `spec_types` for the function at `fn_range`, checked as `generic`
+    /// and lowered here as `concrete`. Returns what was there before, for the
+    /// caller to put back.
+    fn specialize_types(
+        &mut self,
+        fn_range: TextRange,
+        generic: Option<&Ty>,
+        concrete: Option<&Ty>,
+    ) -> FxHashMap<TextRange, Ty> {
+        let mut bindings = Vec::new();
+        if let (Some(generic), Some(concrete)) = (generic, concrete) {
+            bind_type_vars(generic, concrete, &mut bindings);
+        }
+        let specialized = if bindings.is_empty() {
+            FxHashMap::default()
+        } else {
+            self.types
+                .iter()
+                .filter(|(range, ty)| fn_range.contains_range(**range) && Self::ty_contains_var(ty))
+                .map(|(range, ty)| (*range, apply_type_vars(ty, &bindings)))
+                .collect()
+        };
+        std::mem::replace(&mut self.spec_types, specialized)
     }
 
     /// `expr` typed as the bare function it names, when it names one.
@@ -1361,6 +1443,27 @@ impl<'a> Lowerer<'a> {
             .map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()))
     }
 
+    /// `capture`, a variable a closure captures, with the shape of what it
+    /// holds. The shape goes into the environment's own shape table, which is
+    /// what lets a closure be copied to another actor. The variable's type is
+    /// read off one of its uses inside the closure.
+    fn shaped_capture(&self, closure: &mesh_parser::SyntaxNode, capture: MirExpr) -> MirExpr {
+        let MirExpr::Var(name, _) = &capture else {
+            return capture;
+        };
+        let used_at = closure.descendants().find_map(|node| {
+            let name_ref = NameRef::cast(node)?;
+            (name_ref.text().as_deref() == Some(name)).then(|| name_ref.syntax().text_range())
+        });
+        match used_at.and_then(|range| self.get_ty(range)) {
+            Some(ty) => MirExpr::Shaped {
+                shape: self.msg_shape(ty, &mut Vec::new()),
+                value: Box::new(capture),
+            },
+            None => capture,
+        }
+    }
+
     /// Mark `value`, the expression at `range`, as about to cross to another
     /// actor. Scalars need nothing and stay as they are.
     fn shaped(&self, value: MirExpr, range: TextRange) -> MirExpr {
@@ -1383,9 +1486,9 @@ impl<'a> Lowerer<'a> {
     fn msg_shape(&self, ty: &Ty, open: &mut Vec<String>) -> MsgShape {
         let (name, args): (&str, &[Ty]) = match ty {
             Ty::Never => return MsgShape::Scalar,
-            // An unresolved type has an unknown representation, and a
-            // closure's environment is not described by its type.
-            Ty::Var(_) | Ty::Fun(..) => return MsgShape::Shared,
+            // An unresolved type has an unknown representation.
+            Ty::Var(_) => return MsgShape::Shared,
+            Ty::Fun(..) => return MsgShape::Closure,
             Ty::Tuple(elems) if elems.is_empty() => return MsgShape::Scalar,
             Ty::Tuple(elems) => {
                 return MsgShape::Tuple(elems.iter().map(|e| self.msg_shape(e, open)).collect())
@@ -4695,6 +4798,17 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Unit),
             ),
         );
+        // mesh_timer_apply_after(ms: i64, fn_ptr: ptr, env_ptr: ptr) -> void (Unit)
+        self.known_functions.insert(
+            "mesh_timer_apply_after".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Int,
+                    MirType::Closure(vec![], Box::new(MirType::Int)),
+                ],
+                Box::new(MirType::Unit),
+            ),
+        );
         // ── Service runtime functions (Phase 9 Plan 03) ─────────────────
         self.known_functions.insert(
             "mesh_service_call".to_string(),
@@ -4960,6 +5074,8 @@ impl<'a> Lowerer<'a> {
         let mut params = Vec::new();
         let mut owned_resource_params = Vec::new();
         self.push_scope();
+        let outer_spec_types =
+            self.specialize_types(fn_def.syntax().text_range(), fn_ty_raw, concrete_fn_ty);
 
         if let Some(param_list) = fn_def.param_list() {
             let param_ty_source = concrete_fn_ty.or(fn_ty_raw);
@@ -5051,6 +5167,7 @@ impl<'a> Lowerer<'a> {
 
         self.current_fn_return_type = prev_fn_return_type;
         self.current_fn_return_typeck = prev_fn_return_typeck;
+        self.spec_types = outer_spec_types;
         self.pop_scope();
 
         let fn_ty = MirType::FnPtr(
@@ -12259,7 +12376,8 @@ impl<'a> Lowerer<'a> {
         let mut capture_exprs: Vec<MirExpr> = Vec::new();
         collect_free_vars(&body, &param_set, &outer_vars, &mut captures);
         for (name, ty) in &captures {
-            capture_exprs.push(MirExpr::Var(name.clone(), ty.clone()));
+            let capture = MirExpr::Var(name.clone(), ty.clone());
+            capture_exprs.push(self.shaped_capture(closure.syntax(), capture));
         }
 
         // Create the lifted function.
@@ -12441,7 +12559,8 @@ impl<'a> Lowerer<'a> {
         let mut capture_exprs: Vec<MirExpr> = Vec::new();
         collect_free_vars(&body, &param_set, &outer_vars, &mut captures);
         for (name, ty) in &captures {
-            capture_exprs.push(MirExpr::Var(name.clone(), ty.clone()));
+            let capture = MirExpr::Var(name.clone(), ty.clone());
+            capture_exprs.push(self.shaped_capture(closure.syntax(), capture));
         }
 
         // Create the lifted function.
@@ -16316,6 +16435,7 @@ fn map_builtin_name(name: &str) -> String {
         // ── Timer functions (Phase 44 Plan 02) ──────────────────────────
         "timer_sleep" => "mesh_timer_sleep".to_string(),
         "timer_send_after" => "mesh_timer_send_after".to_string(),
+        "timer_apply_after" => "mesh_timer_apply_after".to_string(),
         // ── WebSocket functions (Phase 60) ────────────────────────────
         "ws_serve" => "mesh_ws_serve".to_string(),
         "ws_send" => "mesh_ws_send".to_string(),

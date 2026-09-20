@@ -2236,6 +2236,17 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
             ),
         },
     );
+    // Timer.apply_after: fn(Int, fn() -> T) -> Unit
+    timer_mod.insert(
+        "apply_after".to_string(),
+        Scheme {
+            vars: vec![timer_t_var],
+            ty: Ty::fun(
+                vec![Ty::int(), Ty::fun(vec![], Ty::Var(timer_t_var))],
+                Ty::Tuple(vec![]),
+            ),
+        },
+    );
     modules.insert("Timer".to_string(), timer_mod);
 
     // ── Sqlite module (Phase 53) ──────────────────────────────────────
@@ -8581,12 +8592,48 @@ fn tuple_accessor(
     }
 }
 
-/// The type of element `index` of `tuple_ty`, or `Int` when the tuple's type
-/// is not known here (an untyped `Tuple`, or a parameter not yet inferred).
-fn tuple_element_type(ctx: &mut InferCtx, tuple_ty: &Ty, index: Option<usize>) -> Ty {
+/// The type of element `index` of the tuple an accessor is applied to.
+///
+/// A tuple whose type is known gives its element's type. One whose type
+/// inference has not reached yet -- an unannotated parameter, as in
+/// `fn head(p) do Tuple.first(p) end` -- is constrained to be a tuple with at
+/// least that many elements (`Ty::tuple_row`), and the element's type comes out
+/// when the rest is known; `head` generalizes like any other function. A
+/// computed index needs every element of a known tuple to share one type,
+/// since any of them could be the one selected. Only an untyped `Tuple` is
+/// left reading as `Int`, as declared.
+fn tuple_element_type(
+    ctx: &mut InferCtx,
+    tuple_ty: &Ty,
+    index: Option<usize>,
+    origin: ConstraintOrigin,
+) -> Result<Ty, TypeError> {
     match (ctx.resolve(tuple_ty.clone()), index) {
-        (Ty::Tuple(elems), Some(index)) if index < elems.len() => elems[index].clone(),
-        _ => Ty::int(),
+        (Ty::Tuple(elems), Some(index)) if index < elems.len() => Ok(elems[index].clone()),
+        (unknown, Some(index))
+            if matches!(unknown, Ty::Var(_)) || unknown.as_tuple_row().is_some() =>
+        {
+            let elems: Vec<Ty> = (0..=index).map(|_| ctx.fresh_var()).collect();
+            let element = elems[index].clone();
+            let tail = ctx.fresh_var();
+            ctx.unify(tuple_ty.clone(), Ty::tuple_row(elems, tail), origin)?;
+            Ok(element)
+        }
+        // A computed index can land on any element, so the element's type is
+        // knowable only when every element shares one. Reading the slot as the
+        // declared `Int` instead would hand back a reference's address.
+        (Ty::Tuple(elems), None) if !elems.is_empty() => {
+            let element = elems[0].clone();
+            for other in elems.iter().skip(1) {
+                ctx.unify(element.clone(), other.clone(), origin.clone())?;
+            }
+            Ok(element)
+        }
+        _ => {
+            // Anything that is not a tuple at all is rejected here.
+            ctx.unify(tuple_ty.clone(), Ty::Con(TyCon::new("Tuple")), origin)?;
+            Ok(Ty::int())
+        }
     }
 }
 
@@ -8792,12 +8839,18 @@ fn infer_call(
     let accessor = tuple_accessor(ctx, &callee_expr, args.get(1));
     if matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_)) {
         let param_types: Vec<Ty> = (0..args.len()).map(|_| ctx.fresh_var()).collect();
-        // A tuple accessor's declared `Int` stays off the call's result.
-        let declared_ret = match accessor {
-            Some(_) => ctx.fresh_var(),
-            None => ret_var.clone(),
+        // A tuple accessor is typed by `tuple_element_type`, not by its
+        // declared `(Tuple, ..) -> Int`, which would pin an argument of
+        // unknown type to the untyped `Tuple`. Only `nth`'s index stays declared.
+        if accessor.is_some() {
+            if let Some(index_ty) = param_types.get(1) {
+                ctx.unify(index_ty.clone(), Ty::int(), origin.clone())?;
+            }
+        }
+        let expected_fn_ty = match accessor {
+            Some(_) => callee_ty.clone(),
+            None => Ty::Fun(param_types.clone(), Box::new(ret_var.clone())),
         };
-        let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(declared_ret));
 
         // Establish the callee's parameter types first, then constrain arguments in source
         // order. This lets an earlier argument specialize the expected type of a later closure.
@@ -8839,7 +8892,7 @@ fn infer_call(
     }
 
     if let (Some(index), Some(tuple_ty)) = (accessor, arg_types.first()) {
-        let element = tuple_element_type(ctx, tuple_ty, index);
+        let element = tuple_element_type(ctx, tuple_ty, index, origin.clone())?;
         ctx.unify(ret_var.clone(), element, origin.clone())?;
     }
 
@@ -9053,11 +9106,15 @@ fn infer_pipe(
             let accessor = tuple_accessor(ctx, &callee_expr, args.first());
             if callee_is_callable {
                 let param_types: Vec<Ty> = (0..=args.len()).map(|_| ctx.fresh_var()).collect();
-                let declared_ret = match accessor {
-                    Some(_) => ctx.fresh_var(),
-                    None => ret_var.clone(),
+                if accessor.is_some() {
+                    if let Some(index_ty) = param_types.get(1) {
+                        ctx.unify(index_ty.clone(), Ty::int(), origin.clone())?;
+                    }
+                }
+                let expected_fn_ty = match accessor {
+                    Some(_) => callee_ty.clone(),
+                    None => Ty::Fun(param_types.clone(), Box::new(ret_var.clone())),
                 };
-                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(declared_ret));
                 ctx.unify(callee_ty.clone(), expected_fn_ty, origin.clone())?;
                 ctx.unify(lhs_ty.clone(), param_types[0].clone(), origin.clone())?;
 
@@ -9109,7 +9166,7 @@ fn infer_pipe(
             }
 
             if let (Some(index), true) = (accessor, callee_is_callable) {
-                let element = tuple_element_type(ctx, &lhs_ty, index);
+                let element = tuple_element_type(ctx, &lhs_ty, index, origin.clone())?;
                 ctx.unify(ret_var.clone(), element, origin.clone())?;
             }
 
@@ -9240,16 +9297,16 @@ fn infer_pipe(
                 trait_registry,
                 fn_constraints,
             )?;
-            let accessor = tuple_accessor(ctx, &rhs, None);
-            let declared_ret = match accessor {
-                Some(_) => ctx.fresh_var(),
-                None => ret_var.clone(),
-            };
-            let expected_fn = Ty::Fun(vec![lhs_ty.clone()], Box::new(declared_ret));
-            ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
-            if let Some(index) = accessor {
-                let element = tuple_element_type(ctx, &lhs_ty, index);
-                ctx.unify(ret_var.clone(), element, ConstraintOrigin::Builtin)?;
+            match tuple_accessor(ctx, &rhs, None) {
+                Some(index) => {
+                    let element =
+                        tuple_element_type(ctx, &lhs_ty, index, ConstraintOrigin::Builtin)?;
+                    ctx.unify(ret_var.clone(), element, ConstraintOrigin::Builtin)?;
+                }
+                None => {
+                    let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
+                    ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
+                }
             }
         }
     }

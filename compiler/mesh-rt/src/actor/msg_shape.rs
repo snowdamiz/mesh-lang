@@ -37,6 +37,13 @@
 //! | `JSON` | | pointer to a `MeshJson` tree |
 //! | `QUEUE` | elem | pointer to `{front list, back list}` |
 //! | `SHARED` | | a reference that cannot be copied by type |
+//! | `CLOSURE` | | by-value `{fn, env}`; `env` points to an environment |
+//!
+//! A closure's type says nothing about what it captured, so an environment
+//! describes itself: its first word points at the shape table the compiler
+//! emitted for it (root: the environment by value), or is null when it holds
+//! no references. An environment that is not an object of the sender's heap,
+//! such as one the runtime made, is lent like any `SHARED` reference.
 
 use rustc_hash::FxHashMap;
 
@@ -53,6 +60,7 @@ pub(crate) const SUM: u32 = 7;
 pub(crate) const JSON: u32 = 8;
 pub(crate) const QUEUE: u32 = 9;
 pub(crate) const SHARED: u32 = 10;
+pub(crate) const CLOSURE: u32 = 11;
 
 // Nodes the runtime supplies itself, for the self-describing JSON tree. They
 // sit above any real table index.
@@ -60,6 +68,38 @@ const JSON_NODE: u32 = u32::MAX;
 const JSON_ARRAY_NODE: u32 = u32::MAX - 1;
 const JSON_OBJECT_NODE: u32 = u32::MAX - 2;
 const LEAF_NODE: u32 = u32::MAX - 3;
+/// A closure environment, which names its own table.
+const ENV_NODE: u32 = u32::MAX - 4;
+
+/// A shape table: `words[0]` is its length in words.
+#[derive(Clone, Copy)]
+struct Table {
+    words: *const u32,
+    len: usize,
+}
+
+impl Table {
+    /// Longer than any table a type could need; a sanity bound on a length
+    /// that, for an environment, is read through a pointer found in the heap.
+    const MAX_WORDS: usize = 1 << 20;
+
+    /// # Safety
+    ///
+    /// `words` must be null or point to a shape table.
+    unsafe fn at(words: *const u32) -> Option<Table> {
+        if words.is_null() || !words.is_aligned() {
+            return None;
+        }
+        let len = *words as usize;
+        (2..=Self::MAX_WORDS)
+            .contains(&len)
+            .then_some(Table { words, len })
+    }
+
+    fn get(&self, index: usize) -> Option<u32> {
+        (index < self.len).then(|| unsafe { *self.words.add(index) })
+    }
+}
 
 const JSON_TAG_STR: u8 = 3;
 const JSON_TAG_ARRAY: u8 = 4;
@@ -131,10 +171,9 @@ pub(crate) unsafe fn capture(
     base: usize,
     shape: *const u32,
 ) -> Captured {
-    if shape.is_null() {
+    let Some(table) = Table::at(shape) else {
         return Captured::default();
-    }
-    let table = std::slice::from_raw_parts(shape, *shape as usize);
+    };
     let mut capture = Capture {
         heap,
         table,
@@ -146,7 +185,8 @@ pub(crate) unsafe fn capture(
     capture.value(None, 1, base);
     // Pointer chains are walked from this stack, not by recursion: a
     // million-cell structure must not overflow a 512 KiB actor stack.
-    while let Some((object, node)) = capture.pending.pop() {
+    while let Some((object, table, node)) = capture.pending.pop() {
+        capture.table = table;
         capture.body(object, node);
     }
     capture.out
@@ -154,18 +194,21 @@ pub(crate) unsafe fn capture(
 
 struct Capture<'a> {
     heap: &'a ActorHeap,
-    table: &'a [u32],
+    /// The table the node being visited belongs to: the message's, or a
+    /// closure environment's own.
+    table: Table,
     data: &'a [u8],
     out: Captured,
     /// Sender address -> index in `out.objects`, so shared structure stays shared.
     seen: FxHashMap<usize, u32>,
-    /// Captured objects whose insides still have to be walked.
-    pending: Vec<(u32, u32)>,
+    /// Captured objects whose insides still have to be walked, each with the
+    /// table its node is in.
+    pending: Vec<(u32, Table, u32)>,
 }
 
 impl Capture<'_> {
     fn word(&self, index: u32) -> Option<u32> {
-        self.table.get(index as usize).copied()
+        self.table.get(index as usize)
     }
 
     fn kind(&self, node: u32) -> u32 {
@@ -218,6 +261,20 @@ impl Capture<'_> {
             }
             SUM => self.sum(container, node, offset),
             SCALAR => {}
+            CLOSURE => {
+                // `{fn, env}` by value. Code is not data; the environment is
+                // an object, unless the closure is a plain function (null).
+                let Some(env) = self.read_word(container, offset + 8) else {
+                    return;
+                };
+                if env == 0 {
+                    return;
+                }
+                match self.object(env, ENV_NODE) {
+                    Some(index) => self.relocs(container).push((offset + 8, index)),
+                    None => self.out.lend.push(env),
+                }
+            }
             kind => {
                 let Some(word) = self.read_word(container, offset) else {
                     return;
@@ -282,15 +339,25 @@ impl Capture<'_> {
         });
         self.seen.insert(address, index);
         if self.kind(node) != LEAF {
-            self.pending.push((index, node));
+            self.pending.push((index, self.table, node));
         }
         Some(index)
     }
 
     /// Walk the insides of a captured object.
     fn body(&mut self, object: u32, node: u32) {
-        let size = self.out.objects[object as usize].bytes.len();
         let container = Some(object);
+        if node == ENV_NODE {
+            // The environment's first word is its table; its root describes
+            // the environment by value. The rest of the walk is in that table.
+            let table = self.read_word(container, 0).unwrap_or(0) as *const u32;
+            if let Some(table) = unsafe { Table::at(table) } {
+                self.table = table;
+                self.value(container, 1, 0);
+            }
+            return;
+        }
+        let size = self.out.objects[object as usize].bytes.len();
         // `{len, ...}` headers are trusted only as far as the allocation goes.
         let count = |header: usize, stride: usize| {
             let len = self.read_word(container, 0).unwrap_or(0);
@@ -557,6 +624,65 @@ mod tests {
         let leaf = unsafe { *array.add(2) as *const usize };
         assert_eq!(unsafe { text(*leaf.add(1)) }, "deep");
         assert_eq!(unsafe { *(*array.add(3) as *const usize).add(1) }, 5);
+    }
+
+    #[test]
+    fn a_closure_is_copied_through_the_table_its_environment_names() {
+        let mut sender = ActorHeap::new();
+        let captured = string(&mut sender, "captured by the closure");
+        // What codegen emits for an environment holding one String: the table
+        // pointer at offset 0, the capture at offset 8.
+        let env_table: &'static [u32; 6] = Box::leak(Box::new([6, AGG, 1, 8, 5, LEAF]));
+        let env = sender.alloc(16, 8) as *mut usize;
+        unsafe {
+            env.write(env_table.as_ptr() as usize);
+            env.add(1).write(captured);
+        }
+        let code = 0x1234usize;
+        let mut data = Vec::new();
+        data.extend_from_slice(&code.to_ne_bytes());
+        data.extend_from_slice(&(env as usize).to_ne_bytes());
+        let shape = [6, AGG, 1, 0, 5, CLOSURE];
+
+        let captured_message = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+        assert_eq!(captured_message.objects.len(), 2, "environment and string");
+        assert!(captured_message.lend.is_empty(), "nothing is left to lend");
+
+        drop(sender);
+        let mut receiver = ActorHeap::new();
+        let mut received = data.clone();
+        unsafe { captured_message.materialize(&mut receiver, received.as_mut_ptr()) };
+        assert_eq!(word(&received, 0), code, "the code pointer is not data");
+        let new_env = word(&received, 8) as *const usize;
+        assert_ne!(new_env as usize, env as usize);
+        unsafe {
+            assert_eq!(
+                *new_env,
+                env_table.as_ptr() as usize,
+                "still describes itself"
+            );
+            assert_eq!(text(*new_env.add(1)), "captured by the closure");
+        }
+    }
+
+    #[test]
+    fn a_plain_function_or_a_foreign_environment_is_not_followed() {
+        let sender = ActorHeap::new();
+        let foreign = Box::leak(Box::new([0usize; 2])) as *const _ as usize;
+        let mut data = Vec::new();
+        for words in [[0x1234usize, 0], [0x1234, foreign]] {
+            for word in words {
+                data.extend_from_slice(&word.to_ne_bytes());
+            }
+        }
+        let shape = [9, AGG, 2, 0, 7, 16, 7, CLOSURE, SCALAR];
+        let captured = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+        assert!(captured.objects.is_empty());
+        assert_eq!(
+            captured.lend,
+            vec![foreign],
+            "kept alive by whoever owns it"
+        );
     }
 
     #[test]

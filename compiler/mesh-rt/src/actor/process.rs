@@ -273,6 +273,14 @@ pub struct Process {
 
     /// Embedded calls have no coroutine GC and release their heap on return.
     pub(crate) library_call: bool,
+    /// The main thread's process. It is not a coroutine and never yields, so
+    /// instead of collecting at a yield it collects at a reduction check, once
+    /// the allocator has asked for it (`YielderSlot::gc_wanted`).
+    pub(crate) collects_at_safepoints: bool,
+    /// The scheduler worker that runs this process, once one has started it:
+    /// a coroutine never leaves the thread that created it. Lets a waker
+    /// unpark that worker and no other.
+    pub(crate) worker: Option<usize>,
     /// Spawn arguments can borrow an embedded call's heap beyond its return.
     pub(crate) library_heap_owner: Option<Arc<Mutex<Process>>>,
 
@@ -340,6 +348,8 @@ impl Process {
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             library_call: false,
+            collects_at_safepoints: false,
+            worker: None,
             library_heap_owner: None,
             spawn_args: None,
             heap_borrows: Vec::new(),

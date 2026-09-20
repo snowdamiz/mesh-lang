@@ -131,10 +131,12 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
         _ => return MirType::Ptr, // fallback for complex type expressions
     };
 
-    // Collection types are opaque pointers regardless of type parameters.
+    // Collection types are opaque pointers regardless of type parameters. So is
+    // a tuple known only by its first elements (`Ty::tuple_row`): a tuple is a
+    // pointer whatever it holds.
     if matches!(
         base_name.as_str(),
-        "List" | "Map" | "Set" | "Range" | "Queue"
+        "List" | "Map" | "Set" | "Range" | "Queue" | mesh_typeck::ty::TUPLE_ROW
     ) {
         return MirType::Ptr;
     }

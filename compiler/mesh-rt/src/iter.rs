@@ -500,7 +500,8 @@ pub extern "C" fn mesh_iter_reduce(
 /// List.collect(iter) -- materialize iterator into a List.
 /// Collects all elements into a safe Rust Vec, then builds the final
 /// GC-allocated list via mesh_list_from_array in one shot.
-/// This avoids mesh_list_builder_push which has NO bounds checking.
+/// One allocation of the right size, rather than the repeated growth of
+/// `mesh_list_builder_push` over an iterator of unknown length.
 #[no_mangle]
 pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
     unsafe {

@@ -206,8 +206,9 @@ fn send_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
 
         // Wake if waiting.
         if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
+            let worker = proc.worker;
             drop(proc);
-            sched.wake_process(target);
+            sched.wake_worker(worker, target);
         }
     }
 }

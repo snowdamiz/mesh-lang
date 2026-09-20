@@ -198,7 +198,8 @@ impl InferCtx {
             Ty::App(con, args) => {
                 let con = Box::new(self.resolve(*con));
                 let args = args.into_iter().map(|a| self.resolve(a)).collect();
-                Ty::App(con, args)
+                // A tuple row whose tail has become known is that tuple.
+                Ty::App(con, args).normalize_tuple_row()
             }
             Ty::Tuple(elems) => {
                 let elems = elems.into_iter().map(|e| self.resolve(e)).collect();
@@ -273,6 +274,68 @@ impl InferCtx {
         is_iter_ptr(&c1.name) && is_iter_ptr(&c2.name)
     }
 
+    /// Unify a tuple row (`Ty::tuple_row`) with a tuple, another row, or the
+    /// untyped `Tuple`. `None` when neither side is a row, or the other side is
+    /// a variable, which `unify` binds to the row like to any other type.
+    fn unify_tuple_row(
+        &mut self,
+        a: &Ty,
+        b: &Ty,
+        origin: &ConstraintOrigin,
+    ) -> Option<Result<(), TypeError>> {
+        // (the row's leading elements, its tail, what they must equal, what the tail must equal)
+        let (elems, tail, known, rest) = match (a.as_tuple_row(), b.as_tuple_row()) {
+            (None, None) => return None,
+            // Two rows agree on the elements both name; the shorter one's tail
+            // is the longer one's remainder.
+            (Some(row_a), Some(row_b)) => {
+                let (short, long) = if row_a.0.len() <= row_b.0.len() {
+                    (row_a, row_b)
+                } else {
+                    (row_b, row_a)
+                };
+                let (named, remainder) = long.0.split_at(short.0.len());
+                let rest = if remainder.is_empty() {
+                    long.1.clone()
+                } else {
+                    Ty::tuple_row(remainder.to_vec(), long.1.clone())
+                };
+                (short.0.to_vec(), short.1.clone(), named.to_vec(), rest)
+            }
+            (Some(row), None) | (None, Some(row)) => {
+                let other = if a.as_tuple_row().is_some() { b } else { a };
+                let (known, rest) = match other {
+                    Ty::Var(_) => return None,
+                    // The row's elements are the tuple's first ones, its tail the rest.
+                    Ty::Tuple(all) if all.len() >= row.0.len() => {
+                        let (named, remainder) = all.split_at(row.0.len());
+                        (named.to_vec(), Ty::Tuple(remainder.to_vec()))
+                    }
+                    // The untyped `Tuple` promises `Int` elements, as its accessors do.
+                    Ty::Con(c) if c.name == "Tuple" => {
+                        (vec![Ty::int(); row.0.len()], row.1.clone())
+                    }
+                    _ => {
+                        let err = TypeError::Mismatch {
+                            expected: a.clone(),
+                            found: b.clone(),
+                            origin: origin.clone(),
+                        };
+                        self.errors.push(err.clone());
+                        return Some(Err(err));
+                    }
+                };
+                (row.0.to_vec(), row.1.clone(), known, rest)
+            }
+        };
+        for (elem, known) in elems.into_iter().zip(known) {
+            if let Err(err) = self.unify(elem, known, origin.clone()) {
+                return Some(Err(err));
+            }
+        }
+        Some(self.unify(tail, rest, origin.clone()))
+    }
+
     // ── Unification ─────────────────────────────────────────────────────
 
     /// Unify two types, making them equal.
@@ -283,6 +346,10 @@ impl InferCtx {
     pub fn unify(&mut self, a: Ty, b: Ty, origin: ConstraintOrigin) -> Result<(), TypeError> {
         let a = self.resolve(a);
         let b = self.resolve(b);
+
+        if let Some(result) = self.unify_tuple_row(&a, &b, &origin) {
+            return result;
+        }
 
         match (a, b) {
             // Two identical variables -- already unified.
@@ -577,6 +644,63 @@ mod tests {
 
     fn builtin_origin() -> ConstraintOrigin {
         ConstraintOrigin::Builtin
+    }
+
+    #[test]
+    fn a_tuple_row_takes_its_elements_from_the_tuple_it_meets() {
+        let mut ctx = InferCtx::new();
+        // What `Tuple.first(p)` says about a `p` of unknown type.
+        let (p, first, tail) = (ctx.fresh_var(), ctx.fresh_var(), ctx.fresh_var());
+        let row = Ty::tuple_row(vec![first.clone()], tail);
+        assert!(ctx.unify(p.clone(), row, builtin_origin()).is_ok());
+        assert!(ctx.resolve(p.clone()).as_tuple_row().is_some());
+
+        let pair = Ty::Tuple(vec![Ty::string(), Ty::int()]);
+        assert!(ctx.unify(p.clone(), pair.clone(), builtin_origin()).is_ok());
+        assert_eq!(ctx.resolve(first), Ty::string());
+        assert_eq!(ctx.resolve(p), pair, "a row with a known tail is the tuple");
+    }
+
+    #[test]
+    fn two_tuple_rows_agree_on_the_elements_both_name() {
+        let mut ctx = InferCtx::new();
+        // `Tuple.first(p)` and then `Tuple.second(p)` on the same unknown `p`.
+        let p = ctx.fresh_var();
+        let (a, t1) = (ctx.fresh_var(), ctx.fresh_var());
+        let (b, c, t2) = (ctx.fresh_var(), ctx.fresh_var(), ctx.fresh_var());
+        let first = Ty::tuple_row(vec![a.clone()], t1);
+        let second = Ty::tuple_row(vec![b, c.clone()], t2);
+        assert!(ctx.unify(p.clone(), first, builtin_origin()).is_ok());
+        assert!(ctx.unify(p.clone(), second, builtin_origin()).is_ok());
+
+        let triple = Ty::Tuple(vec![Ty::int(), Ty::bool(), Ty::string()]);
+        assert!(ctx
+            .unify(p.clone(), triple.clone(), builtin_origin())
+            .is_ok());
+        assert_eq!(ctx.resolve(a), Ty::int());
+        assert_eq!(ctx.resolve(c), Ty::bool());
+        assert_eq!(ctx.resolve(p), triple);
+    }
+
+    #[test]
+    fn a_tuple_row_rejects_what_cannot_be_that_tuple() {
+        let mut ctx = InferCtx::new();
+        let row = |ctx: &mut InferCtx| {
+            let (a, b, tail) = (ctx.fresh_var(), ctx.fresh_var(), ctx.fresh_var());
+            Ty::tuple_row(vec![a, b], tail)
+        };
+        let too_short = Ty::Tuple(vec![Ty::int()]);
+        let r = row(&mut ctx);
+        assert!(ctx.unify(r, too_short, builtin_origin()).is_err());
+        let r = row(&mut ctx);
+        assert!(ctx.unify(r, Ty::int(), builtin_origin()).is_err());
+
+        // The untyped `Tuple` promises Int elements, as its accessors always have.
+        let (a, tail) = (ctx.fresh_var(), ctx.fresh_var());
+        let r = Ty::tuple_row(vec![a.clone()], tail);
+        let untyped = Ty::Con(TyCon::new("Tuple"));
+        assert!(ctx.unify(r, untyped, builtin_origin()).is_ok());
+        assert_eq!(ctx.resolve(a), Ty::int());
     }
 
     #[test]

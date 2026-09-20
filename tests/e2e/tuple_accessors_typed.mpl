@@ -22,6 +22,17 @@ fn color_name(c :: Color) -> String do
   end
 end
 
+# A helper with an unannotated parameter works on any tuple: the accessor says
+# only that its argument is a tuple with enough elements, and each call site
+# supplies the rest. It used to pin the parameter to a tuple of Ints.
+fn head(p) do
+  Tuple.first(p)
+end
+
+fn label(p) do
+  "${Tuple.first(p)}:${Tuple.second(p)}"
+end
+
 fn main() do
   let pair = ("name-${1 + 1}", 7)
   println(Tuple.first(pair))
@@ -40,6 +51,8 @@ fn main() do
   println("${Tuple.second(inner)} ${Tuple.second(nested)}")
 
   println(pair |> Tuple.first)
+
+  println("${head(pair)} ${head((41, "x")) + 1} ${label(("k-${2 + 3}", 9))} ${label((1.5, true, 3))}")
 
   # A tuple of Ints behind an unannotated parameter works as it always did.
   let sums = List.map([(3, 4)], fn (p) do Tuple.first(p) + Tuple.second(p) end)

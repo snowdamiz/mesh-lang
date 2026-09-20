@@ -33,6 +33,10 @@ pub(crate) struct ActorStopped;
 pub struct YielderSlot {
     pub(crate) yielder: Cell<Option<*const ()>>,
     pub(crate) reductions: Cell<u32>,
+    /// Raised by the allocator when the main thread's heap is due a
+    /// collection. The main thread is no coroutine and never yields, which is
+    /// where an actor collects, so it collects at its next reduction check.
+    pub(crate) gc_wanted: Cell<bool>,
 }
 
 thread_local! {
@@ -49,6 +53,7 @@ thread_local! {
         YielderSlot {
             yielder: Cell::new(None),
             reductions: Cell::new(super::process::DEFAULT_REDUCTIONS),
+            gc_wanted: Cell::new(false),
         }
     };
 
@@ -304,5 +309,50 @@ mod tests {
         assert_eq!(get_current_pid().unwrap(), pid);
         clear_current_pid();
         assert!(get_current_pid().is_none());
+    }
+}
+
+/// The highest address of the calling thread's stack, where a conservative
+/// scan of it has to stop, or null where the platform offers no way to ask
+/// (the thread then never collects, as the main thread used not to).
+pub(crate) fn current_thread_stack_base() -> *const u8 {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    unsafe {
+        libc::pthread_get_stackaddr_np(libc::pthread_self()) as *const u8
+    }
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) != 0 {
+            return std::ptr::null();
+        }
+        let mut lowest: *mut libc::c_void = std::ptr::null_mut();
+        let mut size: libc::size_t = 0;
+        let found = libc::pthread_attr_getstack(&attr, &mut lowest, &mut size) == 0;
+        libc::pthread_attr_destroy(&mut attr);
+        if found && !lowest.is_null() {
+            (lowest as *const u8).add(size)
+        } else {
+            std::ptr::null()
+        }
+    }
+    #[cfg(windows)]
+    unsafe {
+        extern "system" {
+            fn GetCurrentThreadStackLimits(low: *mut usize, high: *mut usize);
+        }
+        let (mut low, mut high) = (0usize, 0usize);
+        GetCurrentThreadStackLimits(&mut low, &mut high);
+        high as *const u8
+    }
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "android",
+        windows
+    )))]
+    {
+        std::ptr::null()
     }
 }

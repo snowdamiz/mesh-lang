@@ -111,8 +111,9 @@ impl<T> CooperativeSender<T> {
             let mut process = process.lock();
             if matches!(process.state, ProcessState::Waiting) {
                 if process.set_live_state(ProcessState::Ready) {
+                    let worker = process.worker;
                     drop(process);
-                    scheduler.wake_process(pid);
+                    scheduler.wake_worker(worker, pid);
                 }
             }
         }
@@ -251,6 +252,13 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
         // This enables mesh_service_call to work from non-coroutine context.
         let main_pid = sched.create_main_process();
         stack::set_current_pid(main_pid);
+        // The main thread collects too. It has its own stack, not a coroutine's,
+        // so record where a scan of it ends.
+        if let Some(main) = sched.get_process(main_pid) {
+            let mut main = main.lock();
+            main.stack_base = stack::current_thread_stack_base();
+            main.collects_at_safepoints = !main.stack_base.is_null();
+        }
 
         // Start worker threads in the background immediately so that actors
         // spawned during mesh_main() can begin executing right away.
@@ -338,26 +346,31 @@ pub extern "C-unwind" fn mesh_reduction_check() {
     //
     // The closure stays tiny, with the yield outside it, so the whole fast
     // path inlines into this function.
-    let exhausted = stack::CURRENT_YIELDER.with(|slot| {
+    const YIELD: u8 = 1;
+    const COLLECT: u8 = 2;
+    let action = stack::CURRENT_YIELDER.with(|slot| {
         // Only yield if we're running inside a coroutine context (i.e., inside an actor).
         // The main thread also calls functions that trigger reduction_check, but the
         // main thread is not a coroutine so yield_current would panic.
         // Check the yielder to detect coroutine context (more reliable than PID
         // since the main thread now also has a PID for service call support).
+        // It collects here instead, when the allocator has asked it to.
         if slot.yielder.get().is_none() {
-            return false;
+            return if slot.gc_wanted.get() { COLLECT } else { 0 };
         }
 
         let remaining = slot.reductions.get();
         if remaining == 0 {
             slot.reductions.set(DEFAULT_REDUCTIONS);
-            true
+            YIELD
         } else {
             slot.reductions.set(remaining - 1);
-            false
+            0
         }
     });
-    if exhausted {
+    if action == COLLECT {
+        collect_at_safepoint();
+    } else if action == YIELD {
         stack::yield_current();
     }
 }
@@ -374,6 +387,15 @@ pub extern "C-unwind" fn mesh_reduction_check() {
 /// - No actor context is available (not in a coroutine)
 /// - The heap is below the pressure threshold
 /// - GC is already in progress
+/// Collect the main thread's heap from a reduction check. Out of line and
+/// cold: the check itself runs at every call site and loop back-edge.
+#[cold]
+#[inline(never)]
+fn collect_at_safepoint() {
+    stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
+    try_trigger_gc();
+}
+
 fn try_trigger_gc() {
     let pid = match stack::get_current_pid() {
         Some(pid) => pid,
@@ -549,18 +571,24 @@ impl MainThreadWait {
 }
 
 /// Keep `env`, a closure environment that a Rust-owned structure now points
-/// at, alive: no collector sees that pointer. A no-op on the main thread,
-/// which never collects.
-// ponytail: the loan is never returned, like the routers that need it (they
-// are never freed either); hand the borrow to its holder if one ever is.
-pub(crate) fn pin_closure_env(env: *mut u8) {
+/// at, alive for as long as the returned loan is held: no collector sees that
+/// pointer. Empty for a null environment or outside an actor or `main`.
+pub(crate) fn lend_closure_env(env: *mut u8) -> Vec<process::HeapBorrow> {
     if env.is_null() {
-        return;
+        return Vec::new();
     }
-    let owner = stack::get_current_pid().and_then(|pid| global_scheduler().get_process(pid));
-    if let Some(owner) = owner {
-        std::mem::forget(scheduler::lend_words(&owner, &[env as usize]));
-    }
+    stack::get_current_pid()
+        .and_then(|pid| global_scheduler().get_process(pid))
+        .map_or_else(Vec::new, |owner| {
+            scheduler::lend_words(&owner, &[env as usize])
+        })
+}
+
+/// `lend_closure_env` for a structure that is never freed, like a router.
+// ponytail: the loan is never returned either; hand it to the holder
+// (`lend_closure_env`) if one of these ever gets a destructor.
+pub(crate) fn pin_closure_env(env: *mut u8) {
+    std::mem::forget(lend_closure_env(env));
 }
 
 pub(crate) fn detach_from_sender(
@@ -643,8 +671,9 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
         if matches!(proc.state, ProcessState::Waiting) {
             if proc.set_live_state(ProcessState::Ready) {
                 // Signal the scheduler to re-enqueue this process.
+                let worker = proc.worker;
                 drop(proc);
-                sched.wake_process(pid);
+                sched.wake_worker(worker, pid);
             }
         }
         0
@@ -988,8 +1017,9 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
                 let mut process = process.lock();
                 if matches!(process.state, ProcessState::Waiting) {
                     if process.set_live_state(ProcessState::Ready) {
+                        let worker = process.worker;
                         drop(process);
-                        scheduler.wake_process(timer.pid);
+                        scheduler.wake_worker(worker, timer.pid);
                     }
                 }
             }
@@ -1060,6 +1090,47 @@ pub extern "C" fn mesh_timer_send_after(
     msg_size: i64,
 ) {
     mesh_timer_send_after_shaped(target_pid, ms, msg_ptr, msg_size, std::ptr::null());
+}
+
+/// Run `fn_ptr(env_ptr)` after `ms` milliseconds, in an actor of its own.
+///
+/// `Timer.send_after` delivers a plain message, which a service's `cast`
+/// handler never sees: a service dispatches on a tag only its generated
+/// functions know. With this, a delayed cast is just a function that casts.
+///
+/// The environment is lent to the new actor like any spawn argument. The
+/// caller is not linked to it: a failing callback does not take the caller down.
+#[no_mangle]
+pub extern "C" fn mesh_timer_apply_after(ms: i64, fn_ptr: *const u8, env_ptr: *const u8) {
+    if fn_ptr.is_null() {
+        return;
+    }
+    // [u64 fn_ptr][u64 env_ptr][i64 ms], on the caller's heap so that
+    // `adopt_spawn_args` copies it and lends what it points at.
+    let words = [fn_ptr as u64, env_ptr as u64, ms.max(0) as u64];
+    let args = crate::gc::mesh_gc_alloc_actor(24, 8) as *mut u64;
+    unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), args, words.len()) };
+    global_scheduler().spawn(timer_apply_entry as *const u8, args as *const u8, 24, 1);
+}
+
+extern "C-unwind" fn timer_apply_entry(args: *const u8) {
+    if args.is_null() {
+        return;
+    }
+    let word = |index: usize| unsafe { (args.add(8 * index) as *const u64).read_unaligned() };
+    let (fn_ptr, env_ptr, ms) = (word(0), word(1), word(2));
+    mesh_timer_sleep(ms as i64);
+    // A null environment marks a plain function, which takes none.
+    unsafe {
+        if env_ptr == 0 {
+            let function: extern "C-unwind" fn() -> i64 = std::mem::transmute(fn_ptr as *const u8);
+            function();
+        } else {
+            let function: extern "C-unwind" fn(*const u8) -> i64 =
+                std::mem::transmute(fn_ptr as *const u8);
+            function(env_ptr as *const u8);
+        }
+    }
 }
 
 /// `mesh_timer_send_after` for a message that references heap values.
@@ -1636,8 +1707,9 @@ fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
             // Wake if Waiting.
             if matches!(proc.state, ProcessState::Waiting) {
                 if proc.set_live_state(ProcessState::Ready) {
+                    let worker = proc.worker;
                     drop(proc);
-                    sched.wake_process(pid);
+                    sched.wake_worker(worker, pid);
                 }
             }
         } else {

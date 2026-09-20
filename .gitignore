@@ -85,6 +85,12 @@ tmp/
 # ── GSD baseline (auto-generated) ──
 .gsd-id
 
+# Example programs compile in place: `meshc build examples/x` writes the
+# binary as examples/x/x, beside its sources. A new example needs a line here.
+/examples/native-math/native-math
+/examples/todo-postgres/todo-postgres
+/examples/todo-sqlite/todo-sqlite
+
 # AppleDouble sidecars macOS writes beside every file on a drive without
 # extended attributes (exFAT, FAT, network shares). Keep this last: a later
 # `!` rule, like the one for compiler/mesh-rt/src/dist/*.rs, would let them back in.

@@ -126,9 +126,12 @@ pub enum MsgShape {
     Sum(String, Vec<(String, Vec<MsgShape>)>),
     /// The enclosing struct or sum type of this name, for recursive types.
     Recur(String),
-    /// A reference whose layout the type does not describe (a closure's
-    /// environment, an opaque runtime object, an unresolved type). It is not
-    /// copied; the heap that owns it keeps it alive for the receiver.
+    /// A function value `{fn, env}`. Its type does not say what it captured,
+    /// but its environment does: it starts with a pointer to its own shape.
+    Closure,
+    /// A reference whose layout the type does not describe (an opaque runtime
+    /// object, an unresolved type). It is not copied; the heap that owns it
+    /// keeps it alive for the receiver.
     Shared,
 }
 

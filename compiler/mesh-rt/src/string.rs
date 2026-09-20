@@ -298,10 +298,10 @@ pub extern "C" fn mesh_string_split(s: *const MeshString, delim: *const MeshStri
         let text = (*s).as_str();
         let delimiter = (*delim).as_str();
         let parts: Vec<&str> = text.split(delimiter).collect();
-        let list = mesh_list_builder_new(parts.len() as i64);
+        let mut list = mesh_list_builder_new(parts.len() as i64);
         for part in &parts {
             let mesh_str = mesh_string_new(part.as_ptr(), part.len() as u64);
-            mesh_list_builder_push(list, mesh_str as u64);
+            list = mesh_list_builder_push(list, mesh_str as u64);
         }
         list
     }

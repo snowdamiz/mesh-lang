@@ -712,14 +712,15 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?
                 .into_pointer_value();
 
-            // Build the env struct type from capture types.
-            let cap_llvm_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = func
-                .captures
-                .iter()
-                .map(|(_, ty)| {
-                    llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
-                })
-                .collect();
+            // The env struct, as `codegen_make_closure` lays it out: the
+            // pointer to its shape table, then the captures.
+            let mut cap_llvm_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = vec![self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()];
+            cap_llvm_types.extend(func.captures.iter().map(|(_, ty)| {
+                llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
+            }));
             let env_struct_ty = self.context.struct_type(&cap_llvm_types, false);
 
             // Load each captured variable from the env struct and create a local alloca.
@@ -728,7 +729,12 @@ impl<'ctx> CodeGen<'ctx> {
                     llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts);
                 let field_ptr = self
                     .builder
-                    .build_struct_gep(env_struct_ty, env_ptr, i as u32, &format!("cap_{}", name))
+                    .build_struct_gep(
+                        env_struct_ty,
+                        env_ptr,
+                        i as u32 + 1,
+                        &format!("cap_{}", name),
+                    )
                     .map_err(|e| e.to_string())?;
                 let val = self
                     .builder
@@ -2531,6 +2537,79 @@ mod tests {
         assert!(
             ir.contains("define { ptr, ptr } @test_fn"),
             "test_fn should return closure struct: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_closure_environment_describes_itself() {
+        // A closure's type does not say what it captured, so its environment
+        // starts with a pointer to a shape table of its own, which is what
+        // lets the closure be copied to another actor. Here: `{table, name,
+        // count}` with a String at offset 8 and an Int nobody needs to follow.
+        let closure_ty = MirType::Closure(vec![], Box::new(MirType::String));
+        let captures = vec![
+            ("name".to_string(), MirType::String),
+            ("count".to_string(), MirType::Int),
+        ];
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "__closure_0".to_string(),
+                    params: vec![("__env".to_string(), MirType::Ptr)],
+                    return_type: MirType::String,
+                    body: MirExpr::Var("name".to_string(), MirType::String),
+                    is_closure_fn: true,
+                    captures: captures.clone(),
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: captures.clone(),
+                    return_type: closure_ty.clone(),
+                    body: MirExpr::MakeClosure {
+                        fn_name: "__closure_0".to_string(),
+                        captures: captures
+                            .iter()
+                            .map(|(name, ty)| MirExpr::Var(name.clone(), ty.clone()))
+                            .collect(),
+                        ty: closure_ty,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        // [len, root AGG 1 (0 -> 7), LEAF, SCALAR, env AGG 1 (8 -> 5)]: the
+        // String at offset 8 is followed, the Int at offset 16 is not listed.
+        assert!(
+            ir.contains(
+                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 1, i32 0, i32 6, i32 1, \
+                 i32 8, i32 5]"
+            ),
+            "environment shape table, a String at offset 8: {}",
+            ir
+        );
+        assert!(
+            ir.contains("store ptr @msg_shape, ptr %env_raw"),
+            "the environment's first word is its table: {}",
+            ir
+        );
+        // The closure reads its captures past that word.
+        assert!(
+            ir.contains("getelementptr inbounds nuw { ptr, ptr, i64 }, ptr %env_ptr, i32 0, i32 1"),
+            "captures start at field 1: {}",
             ir
         );
     }
