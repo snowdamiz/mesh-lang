@@ -15,7 +15,7 @@ recording why so nobody re-litigates it:
 
 | Step | Why no CLI |
 |---|---|
-| Add the `meshlang.dev` zone | `wrangler login --scopes-list` offers `zone:read` only; there is no zone-write or zone-create scope, and the machine holds no other Cloudflare credential. |
+| Add the `meshlang.dev` zone | Cloudflare exposes **no API-token permission for creating a zone**. `com.cloudflare.api.account.zone.create` — the permission its own error names — is in no permission group, and the token UI's Account resource list has no plain "Zone" entry. Scoping a better token does not help; only the dashboard (or a legacy Global API Key, which is unscoped full-account access) can do it. |
 | Change the nameservers | `meshlang.dev` is registered **at Vercel**, and `vercel domains` has no nameserver subcommand — only list/inspect/add/buy/move/transfer-in/renew. |
 | Create the R2 S3 API token | `wrangler r2` has no token subcommand, and minting one through the API needs token-create permission the OAuth token does not carry. |
 | Create the GitHub OAuth app | GitHub's REST API has no endpoint for creating OAuth apps; both `/applications` and `/user/applications` are 404. Only the GitHub App *manifest* flow exists, and it is also a browser redirect. |
@@ -109,9 +109,16 @@ binding.
 ### 4. Move the zone
 
 1. <https://dash.cloudflare.com/> → **Add a site** → `meshlang.dev`, free plan.
-   Cloudflare scans public DNS and imports what it finds; check the result
-   against the table above. Scans routinely miss the TXT and CAA records, and
-   the GitHub Pages ones must be **DNS only** (grey cloud).
+   Stop there; do not let it change nameservers yet. Cloudflare scans public
+   DNS and imports what it finds, but scans routinely miss TXT and CAA
+   records, and the GitHub Pages entries must be **DNS only** (grey cloud).
+
+   The records can then be written and checked from the CLI with a token that
+   carries **Zone → DNS → Edit** and **Zone → Zone → Read** — both of which do
+   exist, unlike zone creation:
+
+       curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+         "https://api.cloudflare.com/client/v4/zones?name=meshlang.dev"
 2. Cloudflare shows two assigned nameservers. `meshlang.dev` is registered at
    Vercel, so change them there:
    <https://vercel.com/120356aas-projects/~/domains> → `meshlang.dev` →
