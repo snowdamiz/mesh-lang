@@ -44,6 +44,21 @@ listed there never reaches the service.
 R2 S3 credentials come from the Cloudflare dashboard (**R2 → API → Manage API
 Tokens**); wrangler cannot mint them.
 
+## The CI deploy token
+
+`CLOUDFLARE_API_TOKEN` needs all of these. The zone-scoped Workers Routes
+permission is easy to miss: without it the script uploads and the deploy then
+fails on `/zones/<id>/workers/routes`, which looks like a deploy fault rather
+than a missing permission.
+
+| Scope | Permission |
+|---|---|
+| Account | Workers Scripts: Edit |
+| Account | Workers R2 Storage: Edit |
+| Account | Cloudflare Containers: Edit |
+| Zone (`meshlang.dev`) | Workers Routes: Edit |
+| Zone (`meshlang.dev`) | Zone: Read |
+
 ## Local development
 
 `wrangler dev` runs the Worker and builds the container locally. Put secrets in
