@@ -179,9 +179,21 @@ run_known_answer_vectors() {
 
   (
     cd "${source_root}"
+    # The vector test compiles a Mesh program, so it needs the runtime static
+    # library as well as the compiler. Nothing else in this script builds it,
+    # and meshc cannot find it on its own here: it locates the library by
+    # walking up from its own executable looking for a directory called
+    # `target`, and these builds go to an isolated --target-dir under the
+    # scratch root, which is not called that and holds no copy of the
+    # workspace. Build it alongside and name it outright.
     CARGO_INCREMENTAL=0 \
       SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
       RUSTFLAGS="${remap_flags}" \
+      cargo build --locked --release -p mesh-rt --target-dir "${target_root}"
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      MESH_RT_LIB_PATH="${target_root}/release/libmesh_rt.a" \
       cargo test --locked --release -p meshc \
         --test e2e_crypto_v2 "${MLKEM_VECTOR_TEST}" \
         --target-dir "${target_root}" -- --exact
