@@ -44,6 +44,7 @@ jobs:
               ;;
           esac
 
+          bash scripts/verify-no-sidecar-files.sh --diff-range "$range"
           bash scripts/verify-whitespace.sh --diff-range "$range"
 
   rust-core:
