@@ -445,9 +445,9 @@ pub extern "C" fn mesh_bytes_to_list(bytes: *const MeshBytes) -> *mut u8 {
         return mesh_list_builder_new(0);
     }
     unsafe {
-        let values = mesh_list_builder_new((*bytes).len as i64);
+        let mut values = mesh_list_builder_new((*bytes).len as i64);
         for byte in (*bytes).as_slice() {
-            mesh_list_builder_push(values, *byte as u64);
+            values = mesh_list_builder_push(values, *byte as u64);
         }
         values
     }

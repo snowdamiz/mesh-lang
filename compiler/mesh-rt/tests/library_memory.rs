@@ -51,7 +51,16 @@ unsafe extern "C-unwind" fn fail(_: *mut MeshBytes, _: *mut MeshLibraryCallResul
 static READ: AtomicBool = AtomicBool::new(false);
 static VALUE: AtomicU8 = AtomicU8::new(0);
 
-extern "C" fn read_after_return(input: *const u8) {
+// Spawn arguments are a block of one 8-byte slot per argument. The runtime
+// copies that block for the new actor and keeps alive whatever the slots point
+// at, so the object an actor borrows is named by a slot, never passed as the
+// block itself: `args_size` bytes are all that is copied, and reading past
+// them reads the copy's neighbour.
+extern "C" fn read_after_return(args: *const u8) {
+    // The entry owns the block, as the runtime's own spawners do: the runtime
+    // hands back this very pointer because it is not an object of the
+    // spawner's heap.
+    let input = unsafe { Box::from_raw(args as *mut [u64; 1]) }[0] as *const u8;
     while !READ.load(Ordering::Acquire) {
         std::thread::sleep(Duration::from_millis(1));
     }
@@ -62,7 +71,8 @@ unsafe extern "C-unwind" fn spawn_reader(
     input: *mut MeshBytes,
     output: *mut MeshLibraryCallResult,
 ) {
-    mesh_rt::mesh_actor_spawn(read_after_return as *const u8, input.cast(), 8, 1);
+    let args = Box::into_raw(Box::new([input as u64]));
+    mesh_rt::mesh_actor_spawn(read_after_return as *const u8, args.cast(), 8, 1);
     echo(input, output);
 }
 

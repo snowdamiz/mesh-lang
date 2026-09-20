@@ -242,9 +242,9 @@ pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let list = super::list::mesh_list_builder_new(len as i64);
+        let mut list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            super::list::mesh_list_builder_push(list, (*entries.add(i))[0]);
+            list = super::list::mesh_list_builder_push(list, (*entries.add(i))[0]);
         }
         list
     }
@@ -256,9 +256,9 @@ pub extern "C" fn mesh_map_values(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let list = super::list::mesh_list_builder_new(len as i64);
+        let mut list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            super::list::mesh_list_builder_push(list, (*entries.add(i))[1]);
+            list = super::list::mesh_list_builder_push(list, (*entries.add(i))[1]);
         }
         list
     }
@@ -372,12 +372,12 @@ pub extern "C" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
-        let list = super::list::mesh_list_builder_new(len as i64);
+        let mut list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
             let key = (*entries.add(i))[0];
             let val = (*entries.add(i))[1];
             let pair = alloc_pair(key, val);
-            super::list::mesh_list_builder_push(list, pair as u64);
+            list = super::list::mesh_list_builder_push(list, pair as u64);
         }
         list
     }

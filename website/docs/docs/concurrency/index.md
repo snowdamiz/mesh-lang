@@ -358,6 +358,7 @@ Timers use monotonic deadlines. Sleeping an actor yields its scheduler worker so
 |----------|---------|-------------|
 | `Timer.sleep(milliseconds)` | `Unit` | Suspend the current actor until the delay expires |
 | `Timer.send_after(pid, milliseconds, message)` | `Unit` | Deliver a typed message after a delay |
+| `Timer.apply_after(milliseconds, function)` | `Unit` | Call a zero-argument function after a delay, in an actor of its own |
 
 ```mesh
 actor reminder() do
@@ -372,6 +373,29 @@ fn main() do
   Timer.sleep(200)
 end
 ```
+
+`Timer.send_after` delivers a plain message, which an actor's `receive` sees but a service's `cast` handler does not: a service dispatches on a tag that only its generated functions know. To reach a service after a delay, schedule a function that casts:
+
+```mesh
+service Writer do
+  fn init(start :: Int) -> Int do
+    start
+  end
+
+  cast Flush(reason :: String) do |flushed|
+    println("flush: #{reason}")
+    flushed + 1
+  end
+end
+
+fn main() do
+  let writer = Writer.start(0)
+  Timer.apply_after(100, fn () -> Writer.flush(writer, "timer") end)
+  Timer.sleep(200)
+end
+```
+
+The function runs in its own actor, which is not linked to the caller: a failing callback does not take the caller down. Values it captures stay alive until it has run. As with `send_after`, the program does not wait for a pending timer once `main` has returned and every remaining actor is idle.
 
 ## Bounded Channels
 

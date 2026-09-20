@@ -412,6 +412,10 @@ fn register_runtime_symbols() {
         mesh_rt::mesh_timer_send_after as *const (),
     );
     add_sym(
+        "mesh_timer_apply_after",
+        mesh_rt::mesh_timer_apply_after as *const (),
+    );
+    add_sym(
         "mesh_timer_send_after_shaped",
         mesh_rt::mesh_timer_send_after_shaped as *const (),
     );

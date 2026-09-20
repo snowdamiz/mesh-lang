@@ -101,8 +101,9 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
         // Wake the target if it's waiting.
         if matches!(proc.state, super::process::ProcessState::Waiting) {
             if proc.set_live_state(super::process::ProcessState::Ready) {
+                let worker = proc.worker;
                 drop(proc);
-                sched.wake_process(target);
+                sched.wake_worker(worker, target);
             }
         }
     } else {
@@ -190,8 +191,9 @@ fn send_owned(target_pid: u64, mut buffer: MessageBuffer) {
             if matches!(proc.state, super::process::ProcessState::Waiting)
                 && proc.set_live_state(super::process::ProcessState::Ready)
             {
+                let worker = proc.worker;
                 drop(proc);
-                sched.wake_process(ProcessId(target_pid));
+                sched.wake_worker(worker, ProcessId(target_pid));
             }
         }
     }

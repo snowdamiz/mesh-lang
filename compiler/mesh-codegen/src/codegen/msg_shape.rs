@@ -32,6 +32,7 @@ const SUM: u32 = 7;
 const JSON: u32 = 8;
 const QUEUE: u32 = 9;
 const SHARED: u32 = 10;
+const CLOSURE: u32 = 11;
 
 impl<'ctx> CodeGen<'ctx> {
     /// The shape of the value `expr` evaluates to: what lowering worked out
@@ -55,7 +56,8 @@ impl<'ctx> CodeGen<'ctx> {
             | MirType::Pid(_)
             | MirType::FnPtr(..) => MsgShape::Scalar,
             MirType::String => MsgShape::Leaf,
-            MirType::Ptr | MirType::Closure(..) => MsgShape::Shared,
+            MirType::Ptr => MsgShape::Shared,
+            MirType::Closure(..) => MsgShape::Closure,
             MirType::Tuple(elems) => MsgShape::Tuple(
                 elems
                     .iter()
@@ -121,6 +123,30 @@ impl<'ctx> CodeGen<'ctx> {
                 .iter()
                 .enumerate()
                 .map(|(index, shape)| (8 * index as u32, table.packed_slot(shape)))
+                .collect();
+            table.aggregate(fields)
+        });
+        table.emit()
+    }
+
+    /// Table for a closure environment of LLVM type `env`, whose field 0 is the
+    /// pointer to this very table and whose field `i + 1` holds capture `i`.
+    /// `None` when no capture holds a reference.
+    pub(crate) fn shape_table_for_env(
+        &self,
+        captures: &[MsgShape],
+        env: StructType<'ctx>,
+    ) -> Option<PointerValue<'ctx>> {
+        let mut table = ShapeTable::new(self);
+        table.root(|table| {
+            let fields = captures
+                .iter()
+                .enumerate()
+                .map(|(index, shape)| {
+                    let field = index as u32 + 1;
+                    let ty = env.get_field_type_at_index(field).unwrap();
+                    (table.offset_of(&env, field), table.value(shape, ty))
+                })
                 .collect();
             table.aggregate(fields)
         });
@@ -239,6 +265,11 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
             MsgShape::Leaf => self.plain(LEAF),
             MsgShape::Json => self.plain(JSON),
             MsgShape::Shared => self.plain(SHARED),
+            // Two words: in a slot it sits in a box, like any aggregate.
+            MsgShape::Closure => {
+                let closure = self.plain(CLOSURE);
+                self.node(&[BOXED, closure])
+            }
             MsgShape::List(elem) => {
                 let elem = self.slot(elem);
                 self.node(&[LIST, elem])
@@ -306,8 +337,9 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
                 None => self.plain(SCALAR),
             },
             MsgShape::Scalar => self.plain(SCALAR),
-            // A closure `{ fn, env }`, or an aggregate the shape does not
-            // describe: every pointer in it is a reference to keep alive.
+            MsgShape::Closure => self.plain(CLOSURE),
+            // An aggregate the shape does not describe: every pointer in it
+            // is a reference to keep alive.
             _ => self.pointers_of(struct_ty),
         }
     }

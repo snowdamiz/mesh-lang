@@ -99,10 +99,10 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
         }
         serde_json::Value::Array(arr) => {
             // Build a MeshList from the array elements.
-            let mesh_list = list::mesh_list_builder_new(arr.len() as i64);
+            let mut mesh_list = list::mesh_list_builder_new(arr.len() as i64);
             for item in arr {
                 let json_ptr = serde_value_to_mesh_json(item);
-                list::mesh_list_builder_push(mesh_list, json_ptr as u64);
+                mesh_list = list::mesh_list_builder_push(mesh_list, json_ptr as u64);
             }
             alloc_json(JSON_ARRAY, mesh_list as u64)
         }
@@ -559,11 +559,11 @@ pub extern "C" fn mesh_json_from_list(
     elem_fn: extern "C" fn(u64) -> *mut u8,
 ) -> *mut u8 {
     let len = list::mesh_list_length(list_ptr);
-    let arr = list::mesh_list_builder_new(len);
+    let mut arr = list::mesh_list_builder_new(len);
     for i in 0..len {
         let elem = list::mesh_list_get(list_ptr, i);
         let json_elem = elem_fn(elem);
-        list::mesh_list_builder_push(arr, json_elem as u64);
+        arr = list::mesh_list_builder_push(arr, json_elem as u64);
     }
     alloc_json(JSON_ARRAY, arr as u64).cast()
 }
@@ -604,7 +604,7 @@ pub extern "C" fn mesh_json_to_list(
         }
         let inner_list = (*j).value as *mut u8;
         let len = list::mesh_list_length(inner_list);
-        let result_list = list::mesh_list_builder_new(len);
+        let mut result_list = list::mesh_list_builder_new(len);
         for i in 0..len {
             let elem = list::mesh_list_get(inner_list, i);
             let decoded = elem_fn(elem as *mut u8);
@@ -613,7 +613,7 @@ pub extern "C" fn mesh_json_to_list(
                 // Propagate error
                 return decoded;
             }
-            list::mesh_list_builder_push(result_list, (*res).value as u64);
+            result_list = list::mesh_list_builder_push(result_list, (*res).value as u64);
         }
         alloc_result(0, result_list as *mut u8) as *mut u8
     }

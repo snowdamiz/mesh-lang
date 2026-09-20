@@ -183,7 +183,14 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
             *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
         }
         let (_, process) = cached.as_ref()?;
-        let ptr = process.lock().heap.alloc(size, align);
+        let mut process = process.lock();
+        let ptr = process.heap.alloc(size, align);
+        // Not here: runtime functions keep fresh objects in Rust-side
+        // temporaries no scan can see. Compiled code's next reduction check is
+        // a point where every live value is on the stack or in a register.
+        if process.collects_at_safepoints && process.heap.should_collect() {
+            crate::actor::stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(true));
+        }
         Some(ptr)
     };
     // `try_with`: a thread that is tearing down falls back to the global arena.

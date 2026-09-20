@@ -113,9 +113,9 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `Tuple.first(tuple)` | `Int` | First integer element |
-| `Tuple.second(tuple)` | `Int` | Second integer element |
-| `Tuple.nth(tuple, index)` | `Int` | Integer element at a zero-based index |
+| `Tuple.first(tuple)` | element's own type | First element |
+| `Tuple.second(tuple)` | element's own type | Second element |
+| `Tuple.nth(tuple, index)` | element's own type | Element at a zero-based index |
 | `Tuple.size(tuple)` | `Int` | Tuple arity |
 | `Range.new(start, end)` | `Range` | Create the half-open range `[start, end)` |
 | `Range.length(range)` | `Int` | Number of integers in the range |
@@ -128,6 +128,8 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 | `Queue.peek(queue)` | `Int` | Read the front value |
 | `Queue.size(queue)` | `Int` | Count queued values |
 | `Queue.is_empty(queue)` | `Bool` | Test for an empty queue |
+
+A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, which includes an untyped `Tuple` such as `Queue.pop`'s and an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. An index past the end panics at run time.
 
 `Queue.pop` and `Queue.peek` require a non-empty queue.
 

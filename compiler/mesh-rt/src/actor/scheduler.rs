@@ -78,6 +78,53 @@ type ProcessTable = Arc<RwLock<FxHashMap<ProcessId, Arc<Mutex<Process>>>>>;
 ///
 /// Manages a pool of OS worker threads, each with a local work-stealing deque.
 /// New actors are enqueued as spawn requests and distributed to workers.
+/// One per worker thread, so that whoever makes work can wake the worker that
+/// should run it rather than wait out its poll interval.
+#[derive(Default)]
+struct WorkerSleep {
+    thread: std::sync::OnceLock<std::thread::Thread>,
+    /// Set from the worker's first park until it finds work again.
+    idle: AtomicBool,
+    /// Processes of this worker that were Waiting and have been made Ready.
+    woken: Mutex<Vec<ProcessId>>,
+}
+
+impl WorkerSleep {
+    /// Unpark the worker if it is parked. Cheap for a busy one: an atomic load.
+    fn wake(&self) -> bool {
+        let idle = self.idle.load(Ordering::SeqCst);
+        if let (true, Some(thread)) = (idle, self.thread.get()) {
+            thread.unpark();
+        }
+        idle
+    }
+}
+
+/// A worker's stretch without work. It counts as idle for the whole stretch,
+/// scans included, so a wake during a scan is not lost: the unpark token it
+/// leaves makes the next park return at once. Only a wake that lands before
+/// the first park of a stretch waits out that one park, as every wake used to.
+struct IdleStretch<'a> {
+    worker: &'a WorkerSleep,
+}
+
+impl IdleStretch<'_> {
+    fn park(&mut self, timeout: std::time::Duration) {
+        self.worker.idle.store(true, Ordering::SeqCst);
+        std::thread::park_timeout(timeout);
+    }
+
+    fn end(&mut self) {
+        self.worker.idle.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Drop for IdleStretch<'_> {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+
 pub struct Scheduler {
     /// Maximum number of initialized OS worker threads.
     num_threads: usize,
@@ -117,6 +164,9 @@ pub struct Scheduler {
 
     /// Handles for background worker threads (populated by `start()`).
     worker_handles: Mutex<Vec<std::thread::JoinHandle<()>>>,
+
+    /// Where each worker stands, indexed like the workers themselves.
+    sleepers: Arc<Vec<WorkerSleep>>,
 }
 
 impl Scheduler {
@@ -169,6 +219,7 @@ impl Scheduler {
             shutdown: Arc::new(AtomicBool::new(false)),
             active_count: Arc::new(AtomicU64::new(0)),
             worker_handles: Mutex::new(Vec::new()),
+            sleepers: Arc::new((0..max_threads).map(|_| WorkerSleep::default()).collect()),
         }
     }
 
@@ -266,6 +317,8 @@ impl Scheduler {
                 self.injector.push(request);
             }
         }
+        // Any worker can take a queued request: wake one that has none.
+        let _ = self.sleepers.iter().any(WorkerSleep::wake);
 
         pid
     }
@@ -300,6 +353,7 @@ impl Scheduler {
             let active_count = Arc::clone(&self.active_count);
             let process_table = Arc::clone(&self.process_table);
             let active_threads = Arc::clone(&self.active_threads);
+            let sleepers = Arc::clone(&self.sleepers);
 
             let handle = std::thread::spawn(move || {
                 let shared = WorkerLoopShared {
@@ -308,6 +362,7 @@ impl Scheduler {
                     active_count,
                     process_table,
                     active_threads,
+                    sleepers,
                 };
                 worker_loop(i, worker, high_rx, stealers, shared);
             });
@@ -353,6 +408,7 @@ impl Scheduler {
                 let active_count = Arc::clone(&self.active_count);
                 let process_table = Arc::clone(&self.process_table);
                 let active_threads = Arc::clone(&self.active_threads);
+                let sleepers = Arc::clone(&self.sleepers);
 
                 scope.spawn(move |_| {
                     let shared = WorkerLoopShared {
@@ -361,6 +417,7 @@ impl Scheduler {
                         active_count,
                         process_table,
                         active_threads,
+                        sleepers,
                     };
                     worker_loop(i, worker, high_rx, stealers, shared);
                 });
@@ -456,15 +513,29 @@ impl Scheduler {
     ///
     /// The wake mechanism is cooperative: the worker thread that owns the
     /// coroutine will see the Ready state on its next iteration and resume it.
-    pub fn wake_process(&self, _pid: ProcessId) {
-        // The process state has already been set to Ready by the caller.
-        // The worker loop checks process state before resuming suspended
-        // coroutines, so the state change is sufficient to wake the process.
-        //
-        // No additional signaling is needed because:
-        // 1. Workers poll suspended coroutines on every iteration
-        // 2. The Waiting state prevents busy-resume until a message arrives
-        // 3. The state change from Waiting -> Ready happens under lock
+    /// Tell the worker that runs `pid` that it has become Ready.
+    ///
+    /// The state change, made by the caller under the process lock, is what
+    /// makes the process runnable. A worker does not look at its Waiting
+    /// coroutines on every pass, though, and parks when it has nothing to run:
+    /// this puts the process back on its run list and wakes it. A worker also
+    /// sweeps its Waiting coroutines now and then, so a path that forgets to
+    /// call this costs latency, not liveness. `worker` is `Process::worker`,
+    /// read while the caller still held the lock; a process no worker has
+    /// started yet sits in a queue, which has woken one already.
+    pub fn wake_worker(&self, worker: Option<usize>, pid: ProcessId) {
+        if let Some(worker) = worker.and_then(|index| self.sleepers.get(index)) {
+            worker.woken.lock().push(pid);
+            worker.wake();
+        }
+    }
+
+    /// `wake_worker` for a caller that has already let go of the process lock.
+    pub fn wake_process(&self, pid: ProcessId) {
+        let worker = self
+            .get_process(pid)
+            .and_then(|process| process.lock().worker);
+        self.wake_worker(worker, pid);
     }
 }
 
@@ -499,6 +570,7 @@ struct WorkerLoopShared {
     active_count: Arc<AtomicU64>,
     process_table: ProcessTable,
     active_threads: Arc<AtomicUsize>,
+    sleepers: Arc<Vec<WorkerSleep>>,
 }
 
 fn worker_loop(
@@ -514,19 +586,29 @@ fn worker_loop(
         active_count,
         process_table,
         active_threads,
+        sleepers,
     } = shared;
-    // Local list of suspended coroutines (yielded, waiting to resume).
-    // These are !Send so they must stay on this thread.
-    let mut suspended: Vec<(ProcessId, CoroutineHandle)> = Vec::new();
+    // Coroutines this worker has started and not finished. They are !Send, so
+    // they stay on this thread. The runnable ones are resumed on every pass.
+    // The waiting ones are blocked in a receive or a sleep and are left alone
+    // until something makes them Ready: looking at each of them on every pass,
+    // a table lookup and a lock apiece, is what let a backlog of waiting actors
+    // bring every worker to a crawl.
+    let mut runnable: Vec<(ProcessId, CoroutineHandle)> = Vec::new();
+    let mut waiting: FxHashMap<ProcessId, CoroutineHandle> = FxHashMap::default();
+    let mut next_sweep = Instant::now();
 
     let mut spin_count: u32 = 0;
+    let sleep = &sleepers[worker_index];
+    let _ = sleep.thread.set(std::thread::current());
+    let mut idle = IdleStretch { worker: sleep };
 
     loop {
         let cycle_started_at = Instant::now();
         let mut did_work = false;
         let accepting_new_work = worker_index < active_threads.load(Ordering::Acquire);
 
-        if !accepting_new_work && suspended.is_empty() {
+        if !accepting_new_work && runnable.is_empty() && waiting.is_empty() {
             if shutdown.load(Ordering::SeqCst) && active_count.load(Ordering::SeqCst) == 0 {
                 break;
             }
@@ -537,31 +619,45 @@ fn worker_loop(
         }
 
         // --- Phase 1: Run suspended coroutines (they have priority) ---
-        // Drain suspended list, resuming each. If still not done, re-add.
-        // Skip Waiting processes -- they should not be resumed until woken
-        // (state changed to Ready by a message send).
-        let mut still_suspended = Vec::new();
-        for (pid, mut handle) in suspended.drain(..) {
-            // Check if process is Waiting (blocked on receive).
-            let is_waiting = process_table
-                .read()
-                .get(&pid)
-                .map(|p| matches!(p.lock().state, ProcessState::Waiting))
-                .unwrap_or(false);
-
-            if is_waiting {
-                // Don't resume -- keep suspended without counting as work.
-                still_suspended.push((pid, handle));
-                continue;
-            }
-
-            did_work = true;
-
-            if resume_process(&process_table, &active_count, pid, &mut handle) {
-                still_suspended.push((pid, handle));
+        // Whoever made a waiting process Ready said so (`wake_worker`).
+        let woken = std::mem::take(&mut *sleep.woken.lock());
+        for pid in woken {
+            if let Some(handle) = waiting.remove(&pid) {
+                runnable.push((pid, handle));
             }
         }
-        suspended = still_suspended;
+        // Not every path does (links, supervisors, shutdown), so look at all of
+        // them now and then: seldom enough that however many are waiting, the
+        // looking stays a small part of this worker's time.
+        if !waiting.is_empty() && cycle_started_at >= next_sweep {
+            let ready: Vec<ProcessId> = waiting
+                .keys()
+                .copied()
+                .filter(|pid| {
+                    !process_table
+                        .read()
+                        .get(pid)
+                        .is_some_and(|p| matches!(p.lock().state, ProcessState::Waiting))
+                })
+                .collect();
+            for pid in ready {
+                if let Some(handle) = waiting.remove(&pid) {
+                    runnable.push((pid, handle));
+                }
+            }
+            let cost = cycle_started_at.elapsed();
+            next_sweep = Instant::now() + (cost * 8).max(std::time::Duration::from_millis(1));
+        }
+        for (pid, mut handle) in std::mem::take(&mut runnable) {
+            did_work = true;
+            match resume_process(&process_table, &active_count, pid, &mut handle) {
+                Resumed::Runnable => runnable.push((pid, handle)),
+                Resumed::Waiting => {
+                    waiting.insert(pid, handle);
+                }
+                Resumed::Finished => {}
+            }
+        }
 
         // --- Phase 2: Try to get new spawn requests ---
         let request = accepting_new_work
@@ -576,6 +672,7 @@ fn worker_loop(
                     ProcessState::Exited(reason) => Some(reason.clone()),
                     ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
                         process.set_live_state(ProcessState::Running);
+                        process.worker = Some(worker_index);
                         None
                     }
                 }
@@ -586,8 +683,12 @@ fn worker_loop(
             } else if process_table.read().contains_key(&req.pid) {
                 // Create the coroutine only after confirming the queued actor is live.
                 let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
-                if resume_process(&process_table, &active_count, req.pid, &mut handle) {
-                    suspended.push((req.pid, handle));
+                match resume_process(&process_table, &active_count, req.pid, &mut handle) {
+                    Resumed::Runnable => runnable.push((req.pid, handle)),
+                    Resumed::Waiting => {
+                        waiting.insert(req.pid, handle);
+                    }
+                    Resumed::Finished => {}
                 }
             }
         }
@@ -602,14 +703,7 @@ fn worker_loop(
             // no Ready actors remaining. If so, force-terminate them. This
             // handles service loops that block forever on receive after the
             // main actor has exited.
-            let all_waiting = !suspended.is_empty()
-                && suspended.iter().all(|(pid, _)| {
-                    process_table
-                        .read()
-                        .get(pid)
-                        .map(|p| matches!(p.lock().state, ProcessState::Waiting))
-                        .unwrap_or(true)
-                });
+            let all_waiting = runnable.is_empty() && !waiting.is_empty();
 
             if all_waiting {
                 // Check globally: are there any non-waiting active processes?
@@ -625,13 +719,14 @@ fn worker_loop(
                     // The mesh_actor_receive function checks is_shutdown()
                     // and returns null when no other actors are active,
                     // causing the service loop to exit cleanly.
-                    for (pid, _) in suspended.iter() {
-                        if let Some(proc_arc) = process_table.read().get(pid) {
+                    for (pid, handle) in waiting.drain() {
+                        if let Some(proc_arc) = process_table.read().get(&pid) {
                             let mut proc = proc_arc.lock();
                             if matches!(proc.state, ProcessState::Waiting) {
                                 proc.set_live_state(ProcessState::Ready);
                             }
                         }
+                        runnable.push((pid, handle));
                     }
                     // The actors will be resumed in Phase 1 on the next
                     // iteration, and will exit when receive returns null.
@@ -640,24 +735,29 @@ fn worker_loop(
 
             // Also: if this worker has an empty suspended list, no pending
             // requests, and shutdown is active, exit the worker loop.
-            if suspended.is_empty() && !did_work && active_count.load(Ordering::SeqCst) == 0 {
+            if runnable.is_empty()
+                && waiting.is_empty()
+                && !did_work
+                && active_count.load(Ordering::SeqCst) == 0
+            {
                 break;
             }
         }
 
-        // Backoff when idle to avoid burning CPU.
+        // Backoff when idle to avoid burning CPU: spin, then park for as long
+        // as this used to sleep. `WorkerSleep::wake` cuts the park short.
         if !did_work {
             spin_count += 1;
-            if spin_count > 100 {
-                std::thread::sleep(std::time::Duration::from_micros(100));
-                if spin_count > 1000 {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
+            if spin_count > 1000 {
+                idle.park(std::time::Duration::from_micros(1_100));
+            } else if spin_count > 100 {
+                idle.park(std::time::Duration::from_micros(100));
             } else {
                 std::hint::spin_loop();
             }
         } else {
             spin_count = 0;
+            idle.end();
         }
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
@@ -755,12 +855,21 @@ fn adopt_spawn_args(
 }
 
 /// Resume one actor timeslice and turn a Mesh panic into a linked error exit.
+/// What became of a coroutine that was resumed.
+enum Resumed {
+    Finished,
+    /// Preempted or yielded: resume it again on the next pass.
+    Runnable,
+    /// Blocked in a receive or a sleep until something makes it Ready.
+    Waiting,
+}
+
 fn resume_process(
     process_table: &ProcessTable,
     active_count: &AtomicU64,
     pid: ProcessId,
     handle: &mut CoroutineHandle,
-) -> bool {
+) -> Resumed {
     let exited_reason =
         process_table
             .read()
@@ -771,7 +880,7 @@ fn resume_process(
             });
     if let Some(reason) = exited_reason {
         finalize_managed_process(process_table, active_count, pid, reason);
-        return false;
+        return Resumed::Finished;
     }
 
     set_current_pid(pid);
@@ -781,12 +890,16 @@ fn resume_process(
 
     match result {
         Ok(true) => {
+            let mut outcome = Resumed::Runnable;
             let exited_reason = if let Some(process) = process_table.read().get(&pid) {
                 let mut process = process.lock();
                 process.reductions = DEFAULT_REDUCTIONS;
                 match &process.state {
                     ProcessState::Exited(reason) => Some(reason.clone()),
-                    ProcessState::Waiting => None,
+                    ProcessState::Waiting => {
+                        outcome = Resumed::Waiting;
+                        None
+                    }
                     ProcessState::Ready | ProcessState::Running => {
                         process.set_live_state(ProcessState::Ready);
                         None
@@ -797,9 +910,9 @@ fn resume_process(
             };
             if let Some(reason) = exited_reason {
                 finalize_managed_process(process_table, active_count, pid, reason);
-                return false;
+                return Resumed::Finished;
             }
-            true
+            outcome
         }
         result => {
             let reason = match result {
@@ -808,7 +921,7 @@ fn resume_process(
                 Ok(true) => unreachable!(),
             };
             finalize_managed_process(process_table, active_count, pid, reason);
-            false
+            Resumed::Finished
         }
     }
 }
@@ -1060,11 +1173,9 @@ mod tests {
         let active_count = AtomicU64::new(1);
         let mut handle = CoroutineHandle::new(yield_once as *const u8, std::ptr::null());
 
-        assert!(resume_process(
-            &process_table,
-            &active_count,
-            pid,
-            &mut handle
+        assert!(matches!(
+            resume_process(&process_table, &active_count, pid, &mut handle),
+            Resumed::Runnable
         ));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         process_table
@@ -1074,11 +1185,9 @@ mod tests {
             .lock()
             .mark_exited(ExitReason::Killed);
 
-        assert!(!resume_process(
-            &process_table,
-            &active_count,
-            pid,
-            &mut handle
+        assert!(matches!(
+            resume_process(&process_table, &active_count, pid, &mut handle),
+            Resumed::Finished
         ));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
@@ -1126,7 +1235,7 @@ mod tests {
             resume_process(&process_table, &active_count, pid, &mut handle)
         });
 
-        assert!(!retained);
+        assert!(matches!(retained, Resumed::Finished));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
         assert!(!process_table.read().contains_key(&pid));

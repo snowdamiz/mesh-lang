@@ -796,14 +796,16 @@ fn e2e_fn_values() {
 }
 
 /// Tuple.first / second / nth give the element's own type rather than `Int`:
-/// strings, floats, bools, variants, structs and nested tuples, direct and piped.
+/// strings, floats, bools, variants, structs and nested tuples, direct and
+/// piped, and through a helper whose parameter type is inferred.
 #[test]
 fn e2e_tuple_accessors_typed() {
     let source = read_fixture("tuple_accessors_typed.mpl");
     let output = compile_and_run(&source);
     assert_eq!(
         output,
-        "name-2\n8\n2.5 true\ngreen tag-5\ninner-8 9\nname-2\n7\n"
+        "name-2\n8\n2.5 true\ngreen tag-5\ninner-8 9\nname-2\n\
+         name-2 42 k-5:9 1.5:true\n7\n"
     );
 }
 
@@ -3109,6 +3111,34 @@ fn e2e_iterator_iterable() {
     let source = read_fixture("iterator_iterable.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "[4, 8, 12, 16, 20]\n2\n4\n6\n8\n10\n");
+}
+
+/// A `for` over an iterator does not know how many results it will collect.
+/// Its builder started with no capacity and never grew, so every element was
+/// written past its end, over the strings the loop body had just allocated.
+#[test]
+fn e2e_for_in_iterator_builds_result() {
+    let source = read_fixture("for_in_iterator_builds_result.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "200 v-10 v-20 v-2000\n4 even-50,even-100,even-150,even-200\n"
+    );
+}
+
+/// The other half of the same fault: `List.concat` and string interpolation
+/// size their result from their inputs' length fields and then copy into it,
+/// so one allocated too small writes over its neighbour on the heap rather
+/// than over itself. Reads back both ends of each concat, and a list
+/// allocated after one.
+#[test]
+fn e2e_concat_large_list_and_string() {
+    let source = read_fixture("concat_large_list_and_string.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "2000 l-0 l-999 r-0 r-999\n1000 a-0 a-999\n400 true true\n"
+    );
 }
 
 // ── Phase 77: From/Into Conversion E2E Tests ────────────────────────────
@@ -7289,8 +7319,28 @@ end
 "#;
 
 const TIMER_SERVICE_CAST_MAIN: &str = r#"
+service Counter do
+  fn init(start :: Int) -> Int do
+    start
+  end
+
+  cast Add(n :: Int) do |count|
+    count + n
+  end
+
+  call Get() :: Int do |count|
+    (count, count)
+  end
+end
+
 fn main() do
-  println("0")
+  let counter = Counter.start(0)
+  let step = 5
+  Timer.apply_after(60, fn () -> Counter.add(counter, step) end)
+  Timer.apply_after(10, fn () -> Counter.add(counter, 100) end)
+  println("${Counter.get(counter)}")
+  Timer.sleep(400)
+  println("${Counter.get(counter)}")
 end
 "#;
 
@@ -7504,11 +7554,15 @@ fn e2e_nested_and() {
     assert_eq!(output, "no\n");
 }
 
-/// Freezes the timer-to-service-cast no-op until timer dispatch is implemented.
+/// A timer reaches a service's `cast` handler. `Timer.send_after` cannot: it
+/// delivers a plain message, and a service dispatches on a tag only its
+/// generated functions know. `Timer.apply_after` runs a function after the
+/// delay instead, and a function can cast. This used to be the frozen limit
+/// `e2e_timer_service_cast_known_dispatch_limit`.
 #[test]
-fn e2e_timer_service_cast_known_dispatch_limit() {
+fn e2e_timer_apply_after_reaches_a_service_cast() {
     let output = compile_and_run(TIMER_SERVICE_CAST_MAIN);
-    assert_eq!(output, "0\n");
+    assert_eq!(output, "0\n105\n");
 }
 
 /// Bare payload-bearing constructor in pattern position (no explicit binder).

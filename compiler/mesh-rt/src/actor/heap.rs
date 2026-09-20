@@ -112,6 +112,18 @@ impl GcHeader {
 /// Default GC pressure threshold: 256 KiB.
 const DEFAULT_GC_THRESHOLD: usize = 256 * 1024;
 
+/// The threshold a heap starts from and never goes below. `MESH_GC_STRESS`
+/// makes it zero, so a heap collects at every opportunity: a root the
+/// collector cannot see then fails at once instead of once in a while.
+fn min_gc_threshold() -> usize {
+    static STRESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *STRESS.get_or_init(|| std::env::var_os("MESH_GC_STRESS").is_some()) {
+        0
+    } else {
+        DEFAULT_GC_THRESHOLD
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Free bins
 // ---------------------------------------------------------------------------
@@ -341,7 +353,7 @@ impl ActorHeap {
             all_objects: ptr::null_mut(),
             free_bins: None,
             lent: Vec::new(),
-            gc_threshold: DEFAULT_GC_THRESHOLD,
+            gc_threshold: min_gc_threshold(),
             gc_in_progress: false,
         }
     }
@@ -773,7 +785,10 @@ impl ActorHeap {
 
         self.all_objects = if first { ptr::null_mut() } else { new_head };
         self.total_allocated = live_bytes;
-        self.gc_threshold = DEFAULT_GC_THRESHOLD.max(live_bytes.saturating_mul(2));
+        self.gc_threshold = match min_gc_threshold() {
+            0 => 0,
+            floor => floor.max(live_bytes.saturating_mul(2)),
+        };
     }
 }
 

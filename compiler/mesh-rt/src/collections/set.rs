@@ -255,9 +255,9 @@ pub extern "C" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
     unsafe {
         let len = set_len(set) as usize;
         let src = set_data(set);
-        let list = super::list::mesh_list_builder_new(len as i64);
+        let mut list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            super::list::mesh_list_builder_push(list, *src.add(i));
+            list = super::list::mesh_list_builder_push(list, *src.add(i));
         }
         list
     }

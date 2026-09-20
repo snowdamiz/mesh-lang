@@ -163,11 +163,11 @@ pub extern "C" fn mesh_regex_captures(rx_ptr: *const u8, s: *const MeshString) -
             None => alloc_option(1, std::ptr::null_mut()) as *mut u8,
             Some(caps) => {
                 let n = caps.len();
-                let list = mesh_list_builder_new(n as i64);
+                let mut list = mesh_list_builder_new(n as i64);
                 for i in 0..n {
                     let group_str = caps.get(i).map(|m| m.as_str()).unwrap_or("");
                     let ms = mesh_string_new(group_str.as_ptr(), group_str.len() as u64);
-                    mesh_list_builder_push(list, ms as u64);
+                    list = mesh_list_builder_push(list, ms as u64);
                 }
                 alloc_option(0, list) as *mut u8
             }
@@ -202,10 +202,10 @@ pub extern "C" fn mesh_regex_split(rx_ptr: *const u8, s: *const MeshString) -> *
         let rx = regex_from_handle(rx_ptr);
         let text = (*s).as_str();
         let parts: Vec<&str> = rx.split(text).collect();
-        let list = mesh_list_builder_new(parts.len() as i64);
+        let mut list = mesh_list_builder_new(parts.len() as i64);
         for part in &parts {
             let ms = mesh_string_new(part.as_ptr(), part.len() as u64);
-            mesh_list_builder_push(list, ms as u64);
+            list = mesh_list_builder_push(list, ms as u64);
         }
         list
     }
