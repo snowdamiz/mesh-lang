@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mesh-packages",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_als"],
+  "observability": { "enabled": true },
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  },
+  // Where the server-side loads fetch package metadata from. Overridable so
+  // the site can be pointed at the registry's workers.dev URL before
+  // api.packages.meshlang.dev resolves to it.
+  "vars": {
+    "REGISTRY_URL": "https://api.packages.meshlang.dev"
+  }
+}
