@@ -31,7 +31,7 @@
     "STORAGE_ENDPOINT": "https://7b014829093f04800becabbee5ef24b0.r2.cloudflarestorage.com",
     "STORAGE_BUCKET": "mesh-packages",
     "STORAGE_REGION": "auto",
-    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CLIENT_ID": "Ov23liFx7W6anRvC6giB",
     "GITHUB_CALLBACK_URL": "https://api.packages.meshlang.dev/auth/github/callback",
     "FRONTEND_URL": "https://packages.meshlang.dev"
   }
