@@ -5,6 +5,8 @@
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
 
+  "routes": [{ "pattern": "api.packages.meshlang.dev", "custom_domain": true }],
+
   // The Dockerfile is the one that ran on Fly, unchanged. `basic` is 1 GiB,
   // matching the VM it replaces.
   "containers": [
