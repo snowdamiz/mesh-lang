@@ -108,7 +108,10 @@ binding.
 
 ### 4. Move the zone
 
-1. <https://dash.cloudflare.com/> → **Add a site** → `meshlang.dev`, free plan.
+1. <https://dash.cloudflare.com/> → **Domains** (left sidebar, or the Domains
+   card on Account home) → **Add a domain** → `meshlang.dev`, free plan. The
+   control was called "Add a site" in the older dashboard.
+
    Stop there; do not let it change nameservers yet. Cloudflare scans public
    DNS and imports what it finds, but scans routinely miss TXT and CAA
    records, and the GitHub Pages entries must be **DNS only** (grey cloud).
