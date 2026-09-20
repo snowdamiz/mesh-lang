@@ -697,14 +697,17 @@ fn e2e_deriving_struct() {
     assert_eq!(output, "Point(1, 2)\ntrue\nfalse\n");
 }
 
-/// Sum type with deriving: variant-aware Display and Eq (nullary variants).
-/// Note: sum type Constructor pattern field bindings have a pre-existing LLVM
-/// codegen limitation for non-nullary variants; tested with nullary only here.
+/// Sum type with deriving: variant-aware Display and Eq, for nullary variants
+/// and for variants that carry values.
 #[test]
 fn e2e_deriving_sum_type() {
     let source = read_fixture("deriving_sum_type.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "Red\nGreen\nBlue\ntrue\nfalse\n");
+    assert_eq!(
+        output,
+        "Red\nGreen\nBlue\ntrue\nfalse\n\
+         Circle(1.5) Rect(2, 3) Named(box-2) Empty\ntrue false true\n"
+    );
 }
 
 /// Backward compatibility: no deriving clause = derive all defaults.
@@ -762,6 +765,57 @@ fn e2e_fun_type_annotations() {
     assert_eq!(
         output, "42\n99\n30\n",
         "Expected: apply(int_to_str, 42)='42', run_thunk(->99)=99, apply2(add, 10, 20)=30"
+    );
+}
+
+/// Functions as values: named functions and closures passed, returned,
+/// captured, stored in Option/Result/variants/structs/tuples/lists/maps, bound
+/// by patterns, piped into, handed to the runtime and sent to an actor. Stored
+/// and pattern-bound functions used to lose their environment, and a named
+/// function could not be passed to a `Fun` parameter at all.
+#[test]
+fn e2e_fn_values() {
+    let source = read_fixture("fn_values.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "param: 42 8 10 6\n\
+         returned: 42 42 42 42 42\n\
+         captured: 42 36\n\
+         option: 42 16 42\n\
+         result: 42 none made\n\
+         variant: 42 18 42\n\
+         struct: 42 14\n\
+         tuple: 47 43\n\
+         list: 42 12 42\n\
+         map: 42 22\n\
+         pipe: 42 42\n\
+         runtime: 6 4 2 2\n\
+         actor: 42\n"
+    );
+}
+
+/// Tuple.first / second / nth give the element's own type rather than `Int`:
+/// strings, floats, bools, variants, structs and nested tuples, direct and piped.
+#[test]
+fn e2e_tuple_accessors_typed() {
+    let source = read_fixture("tuple_accessors_typed.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "name-2\n8\n2.5 true\ngreen tag-5\ninner-8 9\nname-2\n7\n"
+    );
+}
+
+/// `<`, `>`, `<=`, `>=` and `compare` on strings, which type-checked but had
+/// no codegen ("Unsupported binop type: String").
+#[test]
+fn e2e_string_ordering() {
+    let source = read_fixture("string_ordering.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "true false true true false\nless greater equal\napple,fig,pear\n"
     );
 }
 

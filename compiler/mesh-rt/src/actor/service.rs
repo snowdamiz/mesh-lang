@@ -42,7 +42,7 @@ pub extern "C-unwind" fn mesh_service_call(
     payload_ptr: *const u8,
     payload_size: u64,
 ) -> *const u8 {
-    mesh_service_call_typed(
+    mesh_service_call_shaped(
         target_pid,
         msg_tag,
         payload_ptr,
@@ -51,32 +51,19 @@ pub extern "C-unwind" fn mesh_service_call(
     )
 }
 
-fn own_strings(buffer: &mut MessageBuffer, tags: *const u8, offset: usize, count: usize) {
-    if tags.is_null() {
-        return;
-    }
-    for index in 0..count {
-        unsafe {
-            if *tags.add(index) == 1 {
-                let slot = offset + index * 8;
-                let raw = u64::from_ne_bytes(buffer.data[slot..slot + 8].try_into().unwrap());
-                let string = &*(raw as *const crate::string::MeshString);
-                buffer
-                    .owned_strings
-                    .push((slot, string.as_bytes().to_vec()));
-            }
-        }
-    }
-}
+/// Service messages are `[u64 tag][u64 caller_pid][u64 args...]`.
+const PAYLOAD_OFFSET: usize = 16;
 
-/// Copy string arguments while the caller still owns its heap.
+/// A service call whose arguments reference heap values. `shape` describes the
+/// payload's argument slots (see `msg_shape`), so the service gets its own
+/// copies while the caller still owns its heap.
 #[no_mangle]
-pub extern "C-unwind" fn mesh_service_call_typed(
+pub extern "C-unwind" fn mesh_service_call_shaped(
     target_pid: u64,
     msg_tag: u64,
     payload_ptr: *const u8,
     payload_size: u64,
-    tags: *const u8,
+    shape: *const u32,
 ) -> *const u8 {
     // Get the caller's PID.
     let caller_pid = match stack::get_current_pid() {
@@ -101,12 +88,13 @@ pub extern "C-unwind" fn mesh_service_call_typed(
 
     // The type_tag for the MessageBuffer is the msg_tag itself.
     let mut buffer = MessageBuffer::new(data, msg_tag);
-    own_strings(&mut buffer, tags, 16, payload_size as usize / 8);
-    let msg = Message { buffer };
+    super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
+    let mut msg = Message { buffer };
 
     // Send the call message to the target service.
     let target = ProcessId(target_pid);
     if let Some(proc_arc) = sched.get_process(target) {
+        msg.buffer.addressed_to(&proc_arc);
         let mut proc = proc_arc.lock();
         proc.mailbox.push(msg);
 
@@ -129,13 +117,14 @@ pub extern "C-unwind" fn mesh_service_call_typed(
     let caller_pid_obj = stack::get_current_pid().unwrap();
 
     // Check if we're in a coroutine context (CURRENT_YIELDER is set).
-    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
 
     if in_coroutine {
         // Standard path: yield to scheduler while waiting for reply.
         super::mesh_actor_receive(-1)
     } else {
         // Main thread path: spin-wait on the mailbox.
+        let mut wait = super::MainThreadWait::new();
         loop {
             if let Some(proc_arc) = sched.get_process(caller_pid_obj) {
                 let proc = proc_arc.lock();
@@ -144,8 +133,7 @@ pub extern "C-unwind" fn mesh_service_call_typed(
                     return super::copy_msg_to_actor_heap(sched, caller_pid_obj, msg);
                 }
             }
-            // Brief sleep to avoid burning CPU.
-            std::thread::sleep(std::time::Duration::from_micros(10));
+            wait.pause();
         }
     }
 }
@@ -164,33 +152,39 @@ pub extern "C" fn mesh_service_reply(caller_pid: u64, reply_ptr: *const u8, repl
     super::mesh_actor_send(caller_pid, reply_ptr, reply_size);
 }
 
-/// Fire-and-forget service message with owned string arguments.
+/// A reply that references heap values. It must survive the service changing
+/// state or terminating, so the caller gets its own copy.
 #[no_mangle]
-pub extern "C" fn mesh_service_cast_typed(
+pub extern "C" fn mesh_service_reply_shaped(
+    caller_pid: u64,
+    reply_ptr: *const u8,
+    reply_size: u64,
+    shape: *const u32,
+) {
+    super::mesh_actor_send_shaped(caller_pid, reply_ptr, reply_size, shape);
+}
+
+/// Fire-and-forget service message whose arguments reference heap values.
+#[no_mangle]
+pub extern "C" fn mesh_service_cast_shaped(
     target_pid: u64,
     data: *const u8,
     size: u64,
-    tags: *const u8,
+    shape: *const u32,
 ) {
     let bytes = unsafe { std::slice::from_raw_parts(data, size as usize) }.to_vec();
     let tag = u64::from_ne_bytes(bytes[..8].try_into().unwrap());
     let mut buffer = MessageBuffer::new(bytes, tag);
-    own_strings(&mut buffer, tags, 16, (size as usize - 16) / 8);
+    if let Some(sched) = GLOBAL_SCHEDULER.get() {
+        super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
+    }
     send_owned(target_pid, buffer);
 }
 
-/// String replies must survive the service changing state or terminating.
-#[no_mangle]
-pub extern "C" fn mesh_service_reply_string(caller_pid: u64, reply: *const u8) {
-    let bytes = unsafe { std::slice::from_raw_parts(reply, 8) }.to_vec();
-    let mut buffer = MessageBuffer::new(bytes, 0);
-    own_strings(&mut buffer, &1, 0, 1);
-    send_owned(caller_pid, buffer);
-}
-
-fn send_owned(target_pid: u64, buffer: MessageBuffer) {
+fn send_owned(target_pid: u64, mut buffer: MessageBuffer) {
     if let Some(sched) = GLOBAL_SCHEDULER.get() {
         if let Some(target) = sched.get_process(ProcessId(target_pid)) {
+            buffer.addressed_to(&target);
             let mut proc = target.lock();
             proc.mailbox.push(Message { buffer });
             if matches!(proc.state, super::process::ProcessState::Waiting)
@@ -213,18 +207,28 @@ mod tests {
 
     #[test]
     fn service_payload_owns_strings_after_sender_storage_changes() {
-        let mut source = Vec::new();
+        use crate::actor::msg_shape::{self, AGG, LEAF};
+
+        // [tag][caller][String arg][Int arg], with the string on the caller's heap.
+        let mut caller = crate::actor::ActorHeap::new();
         let value = "retained-é".as_bytes();
-        source.extend_from_slice(&(value.len() as u64).to_ne_bytes());
-        source.extend_from_slice(value);
+        let source = caller.alloc(8 + value.len(), 8);
+        unsafe {
+            (source as *mut u64).write(value.len() as u64);
+            std::ptr::copy_nonoverlapping(value.as_ptr(), source.add(8), value.len());
+        }
         let mut data = vec![0; 16];
-        data.extend_from_slice(&(source.as_ptr() as u64).to_ne_bytes());
+        data.extend_from_slice(&(source as u64).to_ne_bytes());
         data.extend_from_slice(&42u64.to_ne_bytes());
-        let mut message = MessageBuffer::new(data, 7);
-        own_strings(&mut message, [1, 0].as_ptr(), 16, 2);
-        source.fill(0);
-        assert_eq!(message.owned_strings, vec![(16, value.to_vec())]);
-        assert_eq!(&message.data[24..], &42u64.to_ne_bytes());
+        let shape = [6, AGG, 1, 0, 5, LEAF];
+
+        let captured =
+            unsafe { msg_shape::capture(&caller, &data, PAYLOAD_OFFSET, shape[..].as_ptr()) };
+        unsafe { std::ptr::write_bytes(source, 0, 8 + value.len()) };
+
+        assert_eq!(captured.relocs, vec![(16, 0)]);
+        assert_eq!(&captured.objects[0].bytes[8..], value);
+        assert_eq!(&data[24..], &42u64.to_ne_bytes());
     }
 
     #[test]

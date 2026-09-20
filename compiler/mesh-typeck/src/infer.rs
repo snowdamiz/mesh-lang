@@ -8541,6 +8541,55 @@ fn infer_call_argument(
     Ok(arg_ty)
 }
 
+/// Which element a call to `Tuple.first`, `Tuple.second` or `Tuple.nth` selects:
+/// `Some(Some(i))` for a known position, `Some(None)` for `nth` with a computed
+/// index, `None` when `callee` is not one of them.
+///
+/// They are declared `(Tuple, ..) -> Int`, the most an untyped `Tuple` allows,
+/// which made them a type error, or the element's address, on any tuple whose
+/// element is not an `Int`. A call usually knows the tuple's type, so it takes
+/// the element's type from there (`tuple_element_type`).
+fn tuple_accessor(
+    ctx: &InferCtx,
+    callee: &Expr,
+    index_arg: Option<&Expr>,
+) -> Option<Option<usize>> {
+    let name = match callee {
+        Expr::FieldAccess(access) => {
+            let Some(Expr::NameRef(module)) = access.base() else {
+                return None;
+            };
+            // A user module called `Tuple` shadows the stdlib one.
+            if module.text().as_deref() != Some("Tuple")
+                || ctx.qualified_modules.contains_key("Tuple")
+            {
+                return None;
+            }
+            access.field()?.text().to_string()
+        }
+        Expr::NameRef(name) => name.text()?.strip_prefix("tuple_")?.to_string(),
+        _ => return None,
+    };
+    match name.as_str() {
+        "first" => Some(Some(0)),
+        "second" => Some(Some(1)),
+        "nth" => Some(index_arg.and_then(|index| match index {
+            Expr::Literal(literal) => literal.token()?.text().parse().ok(),
+            _ => None,
+        })),
+        _ => None,
+    }
+}
+
+/// The type of element `index` of `tuple_ty`, or `Int` when the tuple's type
+/// is not known here (an untyped `Tuple`, or a parameter not yet inferred).
+fn tuple_element_type(ctx: &mut InferCtx, tuple_ty: &Ty, index: Option<usize>) -> Ty {
+    match (ctx.resolve(tuple_ty.clone()), index) {
+        (Ty::Tuple(elems), Some(index)) if index < elems.len() => elems[index].clone(),
+        _ => Ty::int(),
+    }
+}
+
 /// Infer the type of a function call expression with where-clause enforcement.
 fn infer_call(
     ctx: &mut InferCtx,
@@ -8740,9 +8789,15 @@ fn infer_call(
     };
     let mut arg_types = Vec::with_capacity(args.len());
 
+    let accessor = tuple_accessor(ctx, &callee_expr, args.get(1));
     if matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_)) {
         let param_types: Vec<Ty> = (0..args.len()).map(|_| ctx.fresh_var()).collect();
-        let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+        // A tuple accessor's declared `Int` stays off the call's result.
+        let declared_ret = match accessor {
+            Some(_) => ctx.fresh_var(),
+            None => ret_var.clone(),
+        };
+        let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(declared_ret));
 
         // Establish the callee's parameter types first, then constrain arguments in source
         // order. This lets an earlier argument specialize the expected type of a later closure.
@@ -8781,6 +8836,11 @@ fn infer_call(
         }
         let expected_fn_ty = Ty::Fun(arg_types.clone(), Box::new(ret_var.clone()));
         ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+    }
+
+    if let (Some(index), Some(tuple_ty)) = (accessor, arg_types.first()) {
+        let element = tuple_element_type(ctx, tuple_ty, index);
+        ctx.unify(ret_var.clone(), element, origin.clone())?;
     }
 
     if is_http_route_registration_callee(&callee_expr) {
@@ -8990,9 +9050,14 @@ fn infer_pipe(
             let callee_is_callable =
                 matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_));
 
+            let accessor = tuple_accessor(ctx, &callee_expr, args.first());
             if callee_is_callable {
                 let param_types: Vec<Ty> = (0..=args.len()).map(|_| ctx.fresh_var()).collect();
-                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
+                let declared_ret = match accessor {
+                    Some(_) => ctx.fresh_var(),
+                    None => ret_var.clone(),
+                };
+                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(declared_ret));
                 ctx.unify(callee_ty.clone(), expected_fn_ty, origin.clone())?;
                 ctx.unify(lhs_ty.clone(), param_types[0].clone(), origin.clone())?;
 
@@ -9041,6 +9106,11 @@ fn infer_pipe(
             if !callee_is_callable {
                 let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
                 ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+            }
+
+            if let (Some(index), true) = (accessor, callee_is_callable) {
+                let element = tuple_element_type(ctx, &lhs_ty, index);
+                ctx.unify(ret_var.clone(), element, origin.clone())?;
             }
 
             // Record type for the CallExpr node so MIR lowering can resolve it.
@@ -9170,8 +9240,17 @@ fn infer_pipe(
                 trait_registry,
                 fn_constraints,
             )?;
-            let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
+            let accessor = tuple_accessor(ctx, &rhs, None);
+            let declared_ret = match accessor {
+                Some(_) => ctx.fresh_var(),
+                None => ret_var.clone(),
+            };
+            let expected_fn = Ty::Fun(vec![lhs_ty.clone()], Box::new(declared_ret));
             ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
+            if let Some(index) = accessor {
+                let element = tuple_element_type(ctx, &lhs_ty, index);
+                ctx.unify(ret_var.clone(), element, ConstraintOrigin::Builtin)?;
+            }
         }
     }
 
@@ -11946,15 +12025,10 @@ fn infer_actor_def(
     let mut param_types = Vec::new();
     if let Some(param_list) = actor_def.param_list() {
         for param in param_list.params() {
-            let param_ty = if let Some(ann) = param.type_annotation() {
-                if let Some(type_name) = resolve_type_name_str(&ann) {
-                    name_to_type(&type_name)
-                } else {
-                    ctx.fresh_var()
-                }
-            } else {
-                ctx.fresh_var()
-            };
+            let param_ty = param
+                .type_annotation()
+                .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+                .unwrap_or_else(|| ctx.fresh_var());
             if let Some(name_tok) = param.name() {
                 let name_text = name_tok.text().to_string();
                 env.insert(name_text, Scheme::mono(param_ty.clone()));
@@ -12282,15 +12356,10 @@ fn infer_service_def(
         // Infer init parameters.
         if let Some(param_list) = init_fn.param_list() {
             for param in param_list.params() {
-                let param_ty = if let Some(ann) = param.type_annotation() {
-                    if let Some(type_name) = resolve_type_name_str(&ann) {
-                        name_to_type(&type_name)
-                    } else {
-                        ctx.fresh_var()
-                    }
-                } else {
-                    ctx.fresh_var()
-                };
+                let param_ty = param
+                    .type_annotation()
+                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+                    .unwrap_or_else(|| ctx.fresh_var());
                 if let Some(name_tok) = param.name() {
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
@@ -12350,15 +12419,10 @@ fn infer_service_def(
         let mut handler_param_types = Vec::new();
         if let Some(param_list) = handler.params() {
             for param in param_list.params() {
-                let param_ty = if let Some(ann) = param.type_annotation() {
-                    if let Some(type_name) = resolve_type_name_str(&ann) {
-                        name_to_type(&type_name)
-                    } else {
-                        ctx.fresh_var()
-                    }
-                } else {
-                    ctx.fresh_var()
-                };
+                let param_ty = param
+                    .type_annotation()
+                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+                    .unwrap_or_else(|| ctx.fresh_var());
                 if let Some(name_tok) = param.name() {
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
@@ -12370,16 +12434,10 @@ fn infer_service_def(
         }
 
         // Parse return type annotation (:: Type).
-        let reply_ty = if let Some(ann) = handler.return_type() {
-            if let Some(type_name) = resolve_type_name_str(&ann) {
-                name_to_type(&type_name)
-            } else {
-                // Try full type annotation resolution (for generic types).
-                resolve_type_annotation(ctx, &ann, type_registry).unwrap_or_else(|| ctx.fresh_var())
-            }
-        } else {
-            ctx.fresh_var()
-        };
+        let reply_ty = handler
+            .return_type()
+            .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+            .unwrap_or_else(|| ctx.fresh_var());
 
         // Infer call handler body -- should return (new_state, reply) tuple.
         let body_ty = if let Some(body) = handler.body() {
@@ -12426,15 +12484,10 @@ fn infer_service_def(
         let mut handler_param_types = Vec::new();
         if let Some(param_list) = handler.params() {
             for param in param_list.params() {
-                let param_ty = if let Some(ann) = param.type_annotation() {
-                    if let Some(type_name) = resolve_type_name_str(&ann) {
-                        name_to_type(&type_name)
-                    } else {
-                        ctx.fresh_var()
-                    }
-                } else {
-                    ctx.fresh_var()
-                };
+                let param_ty = param
+                    .type_annotation()
+                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+                    .unwrap_or_else(|| ctx.fresh_var());
                 if let Some(name_tok) = param.name() {
                     let name_text = name_tok.text().to_string();
                     env.insert(name_text, Scheme::mono(param_ty.clone()));
@@ -13135,6 +13188,19 @@ fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
     }
 
     constraints
+}
+
+/// Resolve an actor or service annotation the way function parameters are:
+/// the whole type first, so `List<String>`, tuples and `Option<T>` keep their
+/// arguments, and the bare name only as a fallback. Resolving by name alone
+/// turned `List<String>` into a `List` no argument could match.
+fn resolve_param_annotation(
+    ctx: &mut InferCtx,
+    ann: &mesh_parser::ast::item::TypeAnnotation,
+    type_registry: &TypeRegistry,
+) -> Option<Ty> {
+    resolve_type_annotation(ctx, ann, type_registry)
+        .or_else(|| resolve_type_name_str(ann).map(|name| name_to_type(&name)))
 }
 
 /// Resolve a type annotation to a Ty, from the annotation's type name.

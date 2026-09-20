@@ -12,15 +12,21 @@ use super::MirType;
 /// Convert a type checker `Ty` to a concrete `MirType`.
 ///
 /// The `type_registry` is used to determine whether a named type is a struct
-/// or a sum type. The `is_closure_context` flag indicates whether function types
-/// should be treated as closures (true for values that may be closures) or as
-/// known function pointers (false for named functions).
+/// or a sum type.
+///
+/// A function type always resolves to a closure `{fn, env}`, the one
+/// representation a function *value* has: `env` is null for a plain named
+/// function (`codegen_var`), the convention the runtime's higher-order
+/// functions already follow. A bare `FnPtr` is only the type lowering gives a
+/// known function it calls or hands to the runtime by name. Resolving stored
+/// and pattern-bound functions to `FnPtr` made them load one word of a
+/// two-word value and call it without its environment.
 ///
 /// # Panics
 ///
 /// Panics if a `Ty::Var` is encountered, which indicates an unresolved type
 /// variable that should not exist after type checking.
-pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) -> MirType {
+pub fn resolve_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
     match ty {
         Ty::Var(_v) => {
             // Unresolved type variables can occur when the type checker produces
@@ -33,16 +39,10 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) 
         Ty::Con(con) => resolve_con(con, registry),
 
         Ty::Fun(params, ret) => {
-            let param_types: Vec<MirType> = params
-                .iter()
-                .map(|p| resolve_type(p, registry, false))
-                .collect();
-            let ret_type = Box::new(resolve_type(ret, registry, false));
-            if is_closure_context {
-                MirType::Closure(param_types, ret_type)
-            } else {
-                MirType::FnPtr(param_types, ret_type)
-            }
+            let param_types: Vec<MirType> =
+                params.iter().map(|p| resolve_type(p, registry)).collect();
+            let ret_type = Box::new(resolve_type(ret, registry));
+            MirType::Closure(param_types, ret_type)
         }
 
         Ty::App(con_ty, args) => resolve_app(con_ty, args, registry),
@@ -51,10 +51,8 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry, is_closure_context: bool) 
             if elems.is_empty() {
                 MirType::Unit
             } else {
-                let mir_elems: Vec<MirType> = elems
-                    .iter()
-                    .map(|e| resolve_type(e, registry, false))
-                    .collect();
+                let mir_elems: Vec<MirType> =
+                    elems.iter().map(|e| resolve_type(e, registry)).collect();
                 MirType::Tuple(mir_elems)
             }
         }
@@ -144,7 +142,7 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
     // Handle Pid<M> -> MirType::Pid(Some(M))
     if base_name == "Pid" {
         return if args.len() == 1 {
-            let msg_ty = resolve_type(&args[0], registry, false);
+            let msg_ty = resolve_type(&args[0], registry);
             MirType::Pid(Some(Box::new(msg_ty)))
         } else {
             MirType::Pid(None)
@@ -181,7 +179,7 @@ pub fn mangle_type_name(base: &str, args: &[Ty], registry: &TypeRegistry) -> Str
             Ty::Con(constructor) if registry.is_resource_name(&constructor.name) => {
                 constructor.name.clone()
             }
-            _ => mir_type_suffix(&resolve_type(arg, registry, false)),
+            _ => mir_type_suffix(&resolve_type(arg, registry)),
         };
         name.push_str(&suffix);
     }
@@ -271,31 +269,31 @@ mod tests {
     #[test]
     fn resolve_int() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::int(), &reg, false), MirType::Int);
+        assert_eq!(resolve_type(&Ty::int(), &reg), MirType::Int);
     }
 
     #[test]
     fn resolve_float() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::float(), &reg, false), MirType::Float);
+        assert_eq!(resolve_type(&Ty::float(), &reg), MirType::Float);
     }
 
     #[test]
     fn resolve_bool() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::bool(), &reg, false), MirType::Bool);
+        assert_eq!(resolve_type(&Ty::bool(), &reg), MirType::Bool);
     }
 
     #[test]
     fn resolve_string() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::string(), &reg, false), MirType::String);
+        assert_eq!(resolve_type(&Ty::string(), &reg), MirType::String);
     }
 
     #[test]
     fn resolve_unit_tuple() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::Tuple(vec![]), &reg, false), MirType::Unit);
+        assert_eq!(resolve_type(&Ty::Tuple(vec![]), &reg), MirType::Unit);
     }
 
     #[test]
@@ -303,35 +301,36 @@ mod tests {
         let reg = empty_registry();
         let ty = Ty::Tuple(vec![Ty::int(), Ty::string()]);
         assert_eq!(
-            resolve_type(&ty, &reg, false),
+            resolve_type(&ty, &reg),
             MirType::Tuple(vec![MirType::Int, MirType::String])
         );
     }
 
     #[test]
-    fn resolve_fn_ptr() {
+    fn a_function_type_is_a_closure_wherever_it_appears() {
         let reg = empty_registry();
-        let ty = Ty::fun(vec![Ty::int()], Ty::string());
+        let callback = Ty::fun(vec![Ty::int()], Ty::string());
+        let closure = MirType::Closure(vec![MirType::Int], Box::new(MirType::String));
+        assert_eq!(resolve_type(&callback, &reg), closure);
+        // Nested in a parameter, a tuple and a generic argument too.
         assert_eq!(
-            resolve_type(&ty, &reg, false),
-            MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String))
+            resolve_type(&Ty::fun(vec![callback.clone()], Ty::int()), &reg),
+            MirType::Closure(vec![closure.clone()], Box::new(MirType::Int))
         );
-    }
-
-    #[test]
-    fn resolve_closure() {
-        let reg = empty_registry();
-        let ty = Ty::fun(vec![Ty::int()], Ty::string());
         assert_eq!(
-            resolve_type(&ty, &reg, true),
-            MirType::Closure(vec![MirType::Int], Box::new(MirType::String))
+            resolve_type(&Ty::Tuple(vec![callback.clone(), Ty::int()]), &reg),
+            MirType::Tuple(vec![closure, MirType::Int])
+        );
+        assert_eq!(
+            resolve_type(&Ty::option(callback), &reg),
+            MirType::SumType("Option_Closure_Int_to_String".to_string())
         );
     }
 
     #[test]
     fn resolve_never() {
         let reg = empty_registry();
-        assert_eq!(resolve_type(&Ty::Never, &reg, false), MirType::Never);
+        assert_eq!(resolve_type(&Ty::Never, &reg), MirType::Never);
     }
 
     #[test]
@@ -358,7 +357,7 @@ mod tests {
         );
         let ty = Ty::option(Ty::int());
         assert_eq!(
-            resolve_type(&ty, &reg, false),
+            resolve_type(&ty, &reg),
             MirType::SumType("Option_Int".to_string())
         );
     }
@@ -380,7 +379,7 @@ mod tests {
         // Ty::App(Con("Point"), []) resolves to Struct("Point")
         let ty = Ty::struct_ty("Point", vec![]);
         assert_eq!(
-            resolve_type(&ty, &reg, false),
+            resolve_type(&ty, &reg),
             MirType::Struct("Point".to_string())
         );
     }
@@ -401,7 +400,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_type(&Ty::Con(TyCon::new("StorageKey")), &reg, false),
+            resolve_type(&Ty::Con(TyCon::new("StorageKey")), &reg),
             MirType::Ptr
         );
     }
@@ -421,7 +420,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_type(&Ty::crypto_error(), &reg, false),
+            resolve_type(&Ty::crypto_error(), &reg),
             MirType::SumType("CryptoError".to_string())
         );
     }
@@ -442,7 +441,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_type(&Ty::Con(TyCon::new("DecryptOutcome")), &reg, false),
+            resolve_type(&Ty::Con(TyCon::new("DecryptOutcome")), &reg),
             MirType::SumType("DecryptOutcome".to_string())
         );
     }
@@ -470,11 +469,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve_type(
-                &Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
-                &reg,
-                false,
-            ),
+            resolve_type(&Ty::result(Ty::secret_bytes(), Ty::crypto_error()), &reg,),
             MirType::SumType("Result_SecretBytes_CryptoError".to_string())
         );
     }
@@ -490,10 +485,7 @@ mod tests {
     fn resolve_untyped_pid() {
         let reg = empty_registry();
         // Ty::Con("Pid") -> MirType::Pid(None)
-        assert_eq!(
-            resolve_type(&Ty::untyped_pid(), &reg, false),
-            MirType::Pid(None)
-        );
+        assert_eq!(resolve_type(&Ty::untyped_pid(), &reg), MirType::Pid(None));
     }
 
     #[test]
@@ -501,7 +493,7 @@ mod tests {
         let reg = empty_registry();
         // Ty::App(Con("Pid"), [Int]) -> MirType::Pid(Some(Int))
         assert_eq!(
-            resolve_type(&Ty::pid(Ty::int()), &reg, false),
+            resolve_type(&Ty::pid(Ty::int()), &reg),
             MirType::Pid(Some(Box::new(MirType::Int)))
         );
     }
@@ -511,7 +503,7 @@ mod tests {
         let reg = empty_registry();
         // SqliteConn is an opaque u64 handle, lowered to MirType::Int.
         assert_eq!(
-            resolve_type(&Ty::Con(TyCon::new("SqliteConn")), &reg, false),
+            resolve_type(&Ty::Con(TyCon::new("SqliteConn")), &reg),
             MirType::Int,
         );
     }
@@ -522,7 +514,7 @@ mod tests {
         reg.register_resource_type("PgConn");
 
         assert_eq!(
-            resolve_type(&Ty::Con(TyCon::new("PgConn")), &reg, false),
+            resolve_type(&Ty::Con(TyCon::new("PgConn")), &reg),
             MirType::Int,
             "PgConn is an affine resource at type-check time but remains a u64 ABI handle",
         );
@@ -533,7 +525,7 @@ mod tests {
         use mesh_typeck::ty::TyVar;
         let reg = empty_registry();
         // Unresolved type variables fall back to Unit for graceful degradation.
-        assert_eq!(resolve_type(&Ty::Var(TyVar(0)), &reg, false), MirType::Unit);
+        assert_eq!(resolve_type(&Ty::Var(TyVar(0)), &reg), MirType::Unit);
     }
 
     // ── mir_type_to_ty tests ─────────────────────────────────────────

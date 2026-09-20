@@ -51,12 +51,12 @@ fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
     }
 }
 
-/// Store a job's machine-word result in owned payload memory.
+/// Store a job's scalar result in owned payload memory.
 ///
-/// Generic `Result<T, String>` uses a pointer payload slot. Pattern lowering
-/// dereferences that slot for scalar values and pointer values alike, so a raw
-/// integer cast to a pointer (for example `42 as *mut u8`) is not a valid
-/// result payload.
+/// Generic `Result<T, String>` uses a pointer payload slot, and pattern
+/// lowering loads a scalar T through it, so a raw integer cast to a pointer
+/// (for example `42 as *mut u8`) is not a valid result payload. References
+/// are not boxed: they are the payload.
 fn box_job_value(value: i64) -> *mut u8 {
     unsafe {
         let ptr = mesh_gc_alloc_actor(std::mem::size_of::<i64>() as u64, 8) as *mut i64;
@@ -89,30 +89,44 @@ fn err_result(msg: &str) -> *mut MeshResult {
 /// - `env_ptr`: pointer to the closure environment
 #[no_mangle]
 pub extern "C" fn mesh_job_async(fn_ptr: *const u8, env_ptr: *const u8) -> u64 {
-    let caller_pid = match stack::get_current_pid() {
-        Some(pid) => pid.as_u64(),
-        None => {
-            // Outside actor context -- cannot link. Still spawn.
-            return spawn_job_actor(fn_ptr, env_ptr, u64::MAX);
-        }
-    };
+    mesh_job_async_shaped(fn_ptr, env_ptr, std::ptr::null())
+}
 
-    spawn_job_actor(fn_ptr, env_ptr, caller_pid)
+/// `mesh_job_async` for a job whose result references heap values.
+///
+/// The job actor exits as soon as it has sent its result, and its heap goes
+/// with it. `result_shape` describes the one-slot result (see `msg_shape`) so
+/// the caller receives its own copy.
+#[no_mangle]
+pub extern "C" fn mesh_job_async_shaped(
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    result_shape: *const u32,
+) -> u64 {
+    // Outside actor context there is nobody to link to. Still spawn.
+    let caller_pid = stack::get_current_pid().map_or(u64::MAX, |pid| pid.as_u64());
+    spawn_job_actor(fn_ptr, env_ptr, caller_pid, result_shape)
 }
 
 /// Internal: spawn the job actor with the given caller PID.
-fn spawn_job_actor(fn_ptr: *const u8, env_ptr: *const u8, caller_pid: u64) -> u64 {
+fn spawn_job_actor(
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    caller_pid: u64,
+    result_shape: *const u32,
+) -> u64 {
     let sched = match GLOBAL_SCHEDULER.get() {
         Some(s) => s,
         None => return u64::MAX,
     };
 
     // Pack the job parameters into a buffer that the job entry function can read.
-    // Layout: [u64 fn_ptr][u64 env_ptr][u64 caller_pid]
-    let mut args = Vec::with_capacity(24);
+    // Layout: [u64 fn_ptr][u64 env_ptr][u64 caller_pid][u64 result_shape]
+    let mut args = Vec::with_capacity(32);
     args.extend_from_slice(&(fn_ptr as u64).to_le_bytes());
     args.extend_from_slice(&(env_ptr as u64).to_le_bytes());
     args.extend_from_slice(&caller_pid.to_le_bytes());
+    args.extend_from_slice(&(result_shape as u64).to_le_bytes());
 
     // Allocate args on the GC heap so they survive past this function.
     let args_heap = unsafe {
@@ -124,7 +138,7 @@ fn spawn_job_actor(fn_ptr: *const u8, env_ptr: *const u8, caller_pid: u64) -> u6
     let pid = sched.spawn(
         job_entry as *const u8,
         args_heap as *const u8,
-        24,
+        32,
         1, // Normal priority
     );
 
@@ -140,26 +154,10 @@ extern "C-unwind" fn job_entry(args: *const u8) {
         return;
     }
 
-    // Unpack: [u64 fn_ptr][u64 env_ptr][u64 caller_pid]
-    let (fn_ptr, env_ptr, caller_pid) = unsafe {
-        let fn_ptr_val =
-            u64::from_le_bytes(std::slice::from_raw_parts(args, 8).try_into().unwrap());
-        let env_ptr_val = u64::from_le_bytes(
-            std::slice::from_raw_parts(args.add(8), 8)
-                .try_into()
-                .unwrap(),
-        );
-        let caller_val = u64::from_le_bytes(
-            std::slice::from_raw_parts(args.add(16), 8)
-                .try_into()
-                .unwrap(),
-        );
-        (
-            fn_ptr_val as *const u8,
-            env_ptr_val as *const u8,
-            caller_val,
-        )
-    };
+    // Unpack: [u64 fn_ptr][u64 env_ptr][u64 caller_pid][u64 result_shape]
+    let word = |index: usize| unsafe { (args.add(8 * index) as *const u64).read_unaligned() };
+    let (fn_ptr, env_ptr, caller_pid) = (word(0) as *const u8, word(1) as *const u8, word(2));
+    let result_shape = word(3) as *const u32;
 
     // Link to the caller (if valid).
     if caller_pid != u64::MAX {
@@ -170,41 +168,48 @@ extern "C-unwind" fn job_entry(args: *const u8) {
     let user_fn: extern "C-unwind" fn(*const u8) -> i64 = unsafe { std::mem::transmute(fn_ptr) };
     let result = user_fn(env_ptr);
 
-    // Send the result to the caller tagged with JOB_RESULT_TAG.
-    if caller_pid != u64::MAX {
-        // Message layout: [u64 JOB_RESULT_TAG][u64 job_pid][i64 result]
-        let mut msg_data = Vec::with_capacity(24);
-        msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
-        let job_pid = stack::get_current_pid()
-            .map(ProcessId::as_u64)
-            .unwrap_or(u64::MAX);
-        msg_data.extend_from_slice(&job_pid.to_le_bytes());
-        msg_data.extend_from_slice(&result.to_le_bytes());
+    send_job_result(caller_pid, result, result_shape);
+    // Actor exits normally after this function returns.
+}
 
-        let sched = match GLOBAL_SCHEDULER.get() {
-            Some(s) => s,
-            None => return,
-        };
+/// Send a finished job's result to its caller, tagged with JOB_RESULT_TAG.
+///
+/// The job actor is about to exit and take its heap with it, so whatever the
+/// result references leaves that heap first, guided by `result_shape`. The
+/// compiler gives a shape exactly when the result word is a reference.
+fn send_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
+    if caller_pid == u64::MAX {
+        return;
+    }
+    let Some(sched) = GLOBAL_SCHEDULER.get() else {
+        return;
+    };
 
-        let target = ProcessId(caller_pid);
-        let buffer = MessageBuffer::new(msg_data, JOB_RESULT_TAG);
-        let msg = Message { buffer };
+    // Message layout: [u64 JOB_RESULT_TAG][u64 job_pid][i64 result][u64 result_is_pointer]
+    const RESULT_OFFSET: usize = 16;
+    let job = stack::get_current_pid();
+    let result_is_pointer = !result_shape.is_null();
+    let mut msg_data = Vec::with_capacity(32);
+    msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
+    msg_data.extend_from_slice(&job.map_or(u64::MAX, ProcessId::as_u64).to_le_bytes());
+    msg_data.extend_from_slice(&result.to_le_bytes());
+    msg_data.extend_from_slice(&u64::from(result_is_pointer).to_le_bytes());
 
-        if let Some(proc_arc) = sched.get_process(target) {
-            let mut proc = proc_arc.lock();
-            proc.mailbox.push(msg);
+    let mut buffer = MessageBuffer::new(msg_data, JOB_RESULT_TAG);
+    super::detach_from_sender(sched, &mut buffer, RESULT_OFFSET, result_shape);
 
-            // Wake if waiting.
-            if matches!(proc.state, ProcessState::Waiting) {
-                if proc.set_live_state(ProcessState::Ready) {
-                    drop(proc);
-                    sched.wake_process(target);
-                }
-            }
+    let target = ProcessId(caller_pid);
+    if let Some(proc_arc) = sched.get_process(target) {
+        buffer.addressed_to(&proc_arc);
+        let mut proc = proc_arc.lock();
+        proc.mailbox.push(Message { buffer });
+
+        // Wake if waiting.
+        if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
+            drop(proc);
+            sched.wake_process(target);
         }
     }
-
-    // Actor exits normally after this function returns.
 }
 
 /// Block until the job completes and return a `MeshResult`.
@@ -281,9 +286,28 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
                     .try_into()
                     .unwrap(),
             );
-            // Return Ok(result_value). The payload slot owns a machine word;
-            // consumers load the concrete T from this storage.
-            alloc_result(0, box_job_value(result_value)) as *const u8
+            // Return Ok(result_value). A `Result` payload is a pointer: a
+            // String, list or other reference IS that pointer, exactly as
+            // `err_result` stores its message, while a scalar sits in a box
+            // the consumer loads the concrete T from. Boxing a reference made
+            // every `Ok(text)` read the box as if it were the string.
+            let data_len = u64::from_le_bytes(
+                std::slice::from_raw_parts(msg_ptr.add(8), 8)
+                    .try_into()
+                    .unwrap(),
+            );
+            let result_is_pointer = data_len >= 32
+                && u64::from_le_bytes(
+                    std::slice::from_raw_parts(data_ptr.add(24), 8)
+                        .try_into()
+                        .unwrap(),
+                ) != 0;
+            let payload = if result_is_pointer {
+                result_value as usize as *mut u8
+            } else {
+                box_job_value(result_value)
+            };
+            alloc_result(0, payload) as *const u8
         } else if type_tag == EXIT_SIGNAL_TAG {
             // Job crashed. The data contains exit signal info.
             // Try to extract a reason string from the exit signal.
@@ -377,6 +401,18 @@ pub extern "C-unwind" fn mesh_job_map(
     fn_ptr: *const u8,
     env_ptr: *const u8,
 ) -> *const u8 {
+    mesh_job_map_shaped(list_ptr, fn_ptr, env_ptr, std::ptr::null())
+}
+
+/// `mesh_job_map` for a mapping function whose results reference heap values;
+/// see `mesh_job_async_shaped`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_job_map_shaped(
+    list_ptr: *const u8,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    result_shape: *const u32,
+) -> *const u8 {
     use crate::collections::list::{
         mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
     };
@@ -399,12 +435,13 @@ pub extern "C-unwind" fn mesh_job_map(
             .map(|p| p.as_u64())
             .unwrap_or(u64::MAX);
 
-        // Pack [fn_ptr, env_ptr, element, caller_pid] for the map job entry.
-        let mut full_args = Vec::with_capacity(32);
+        // Pack [fn_ptr, env_ptr, element, caller_pid, result_shape] for the map job entry.
+        let mut full_args = Vec::with_capacity(40);
         full_args.extend_from_slice(&(fn_ptr as u64).to_le_bytes());
         full_args.extend_from_slice(&(env_ptr as u64).to_le_bytes());
         full_args.extend_from_slice(&element.to_le_bytes());
         full_args.extend_from_slice(&caller_pid.to_le_bytes());
+        full_args.extend_from_slice(&(result_shape as u64).to_le_bytes());
 
         let full_args_heap = unsafe {
             let ptr = mesh_gc_alloc_actor(full_args.len() as u64, 8);
@@ -420,7 +457,7 @@ pub extern "C-unwind" fn mesh_job_map(
         let pid = sched.spawn(
             map_job_entry as *const u8,
             full_args_heap as *const u8,
-            32,
+            40,
             1, // Normal priority
         );
         job_pids.push(pid.as_u64());
@@ -444,35 +481,17 @@ pub extern "C-unwind" fn mesh_job_map(
 
 /// Entry function for map job actors.
 ///
-/// Unpacks args: [u64 fn_ptr][u64 env_ptr][u64 element][u64 caller_pid]
+/// Unpacks args: [u64 fn_ptr][u64 env_ptr][u64 element][u64 caller_pid][u64 result_shape]
 /// Calls fn_ptr(env_ptr, element) and sends result to caller.
 extern "C-unwind" fn map_job_entry(args: *const u8) {
     if args.is_null() {
         return;
     }
+    let word = |index: usize| unsafe { (args.add(8 * index) as *const u64).read_unaligned() };
+    let (fn_ptr, env_ptr, element, caller_pid) = (word(0), word(1), word(2), word(3));
+    let result_shape = word(4) as *const u32;
 
-    let (fn_ptr, env_ptr, element, caller_pid) = unsafe {
-        let fn_ptr_val =
-            u64::from_le_bytes(std::slice::from_raw_parts(args, 8).try_into().unwrap());
-        let env_ptr_val = u64::from_le_bytes(
-            std::slice::from_raw_parts(args.add(8), 8)
-                .try_into()
-                .unwrap(),
-        );
-        let element_val = u64::from_le_bytes(
-            std::slice::from_raw_parts(args.add(16), 8)
-                .try_into()
-                .unwrap(),
-        );
-        let caller_val = u64::from_le_bytes(
-            std::slice::from_raw_parts(args.add(24), 8)
-                .try_into()
-                .unwrap(),
-        );
-        (fn_ptr_val, env_ptr_val, element_val, caller_val)
-    };
-
-    // Link to the caller.
+    // Link to caller.
     if caller_pid != u64::MAX {
         super::mesh_actor_link(caller_pid);
     }
@@ -482,37 +501,7 @@ extern "C-unwind" fn map_job_entry(args: *const u8) {
         unsafe { std::mem::transmute(fn_ptr as *const u8) };
     let result = user_fn(env_ptr as *const u8, element as i64);
 
-    // Send result to caller.
-    if caller_pid != u64::MAX {
-        let mut msg_data = Vec::with_capacity(24);
-        msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
-        let job_pid = stack::get_current_pid()
-            .map(ProcessId::as_u64)
-            .unwrap_or(u64::MAX);
-        msg_data.extend_from_slice(&job_pid.to_le_bytes());
-        msg_data.extend_from_slice(&result.to_le_bytes());
-
-        let sched = match GLOBAL_SCHEDULER.get() {
-            Some(s) => s,
-            None => return,
-        };
-
-        let target = ProcessId(caller_pid);
-        let buffer = MessageBuffer::new(msg_data, JOB_RESULT_TAG);
-        let msg = Message { buffer };
-
-        if let Some(proc_arc) = sched.get_process(target) {
-            let mut proc = proc_arc.lock();
-            proc.mailbox.push(msg);
-
-            if matches!(proc.state, ProcessState::Waiting) {
-                if proc.set_live_state(ProcessState::Ready) {
-                    drop(proc);
-                    sched.wake_process(target);
-                }
-            }
-        }
-    }
+    send_job_result(caller_pid, result, result_shape);
 }
 
 // ---------------------------------------------------------------------------

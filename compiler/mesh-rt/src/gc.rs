@@ -169,15 +169,43 @@ pub extern "C" fn mesh_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
 /// succeeded. Returns `None` if no actor context is available.
 fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
     use crate::actor::stack::get_current_pid;
+    use crate::actor::GLOBAL_SCHEDULER;
 
     let pid = get_current_pid()?;
 
-    // Access the global scheduler's process table to find this actor's heap.
-    use crate::actor::GLOBAL_SCHEDULER;
-    let sched = GLOBAL_SCHEDULER.get()?;
-    let proc_arc = sched.get_process(pid)?;
-    let mut proc = proc_arc.lock();
-    Some(proc.heap.alloc(size, align))
+    let alloc = |cached: &CachedProcess| {
+        let mut cached = cached.borrow_mut();
+        // Look the actor up in the global process table only when a different
+        // actor starts allocating on this thread. That table is one RwLock
+        // shared by every worker, so taking it per allocation serialized
+        // allocation-heavy actors across cores.
+        if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
+            *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
+        }
+        let (_, process) = cached.as_ref()?;
+        let ptr = process.lock().heap.alloc(size, align);
+        Some(ptr)
+    };
+    // `try_with`: a thread that is tearing down falls back to the global arena.
+    CURRENT_PROCESS.try_with(alloc).ok().flatten()
+}
+
+thread_local! {
+    /// The process that last allocated on this thread, keyed by its PID.
+    static CURRENT_PROCESS: CachedProcess = const { std::cell::RefCell::new(None) };
+}
+
+type CachedProcess = std::cell::RefCell<
+    Option<(
+        crate::actor::ProcessId,
+        std::sync::Arc<parking_lot::Mutex<crate::actor::Process>>,
+    )>,
+>;
+
+/// Release the cached process when its actor leaves this thread, so a finished
+/// actor's heap is not kept alive by an idle worker.
+pub(crate) fn forget_current_process() {
+    let _ = CURRENT_PROCESS.try_with(|cached| cached.borrow_mut().take());
 }
 
 /// Trigger garbage collection on the current actor's heap.

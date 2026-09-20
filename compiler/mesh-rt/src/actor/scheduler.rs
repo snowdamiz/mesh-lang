@@ -36,7 +36,8 @@ use std::time::Instant;
 
 use super::link;
 use super::process::{
-    ExitReason, Priority, Process, ProcessId, ProcessState, TerminateCallback, DEFAULT_REDUCTIONS,
+    ExitReason, HeapBorrow, Priority, Process, ProcessId, ProcessState, TerminateCallback,
+    DEFAULT_REDUCTIONS,
 };
 use super::registry;
 use super::stack::{
@@ -206,26 +207,42 @@ impl Scheduler {
         &self,
         fn_ptr: *const u8,
         args_ptr: *const u8,
-        _args_size: u64,
+        args_size: u64,
         priority: u8,
+    ) -> ProcessId {
+        self.spawn_shaped(fn_ptr, args_ptr, args_size, priority, std::ptr::null())
+    }
+
+    /// `spawn` for arguments that reference heap values: `shape` describes the
+    /// argument slots (see `msg_shape`) so the new actor gets its own copy.
+    pub fn spawn_shaped(
+        &self,
+        fn_ptr: *const u8,
+        args_ptr: *const u8,
+        args_size: u64,
+        priority: u8,
+        shape: *const u32,
     ) -> ProcessId {
         let pid = ProcessId::next();
         let priority = Priority::from_u8(priority);
 
         // Create process entry in the table.
         let mut process = Process::new(pid, priority);
+        let spawner = get_current_pid().and_then(|pid| self.get_process(pid));
         // ponytail: pin the entire call heap for actors borrowing its arguments;
         // use typed argument copying if long-lived actors make retention costly.
-        process.library_heap_owner = get_current_pid()
-            .and_then(|pid| self.get_process(pid))
-            .and_then(|owner| {
-                let parent = owner.lock();
-                if parent.library_call {
-                    Some(Arc::clone(&owner))
-                } else {
-                    parent.library_heap_owner.clone()
-                }
-            });
+        process.library_heap_owner = spawner.as_ref().and_then(|owner| {
+            let parent = owner.lock();
+            if parent.library_call {
+                Some(Arc::clone(owner))
+            } else {
+                parent.library_heap_owner.clone()
+            }
+        });
+        let args_ptr = match &spawner {
+            Some(spawner) => adopt_spawn_args(&mut process, spawner, args_ptr, args_size, shape),
+            None => args_ptr,
+        };
         let process = Arc::new(Mutex::new(process));
         self.process_table.write().insert(pid, process);
 
@@ -647,6 +664,96 @@ fn worker_loop(
     }
 }
 
+/// Have every heap that `words` point into keep those objects alive.
+///
+/// Covers `lender`'s own heap and, because it may be passing on something it
+/// was itself lent, every heap it borrows from. Words that point nowhere
+/// (integers, static data) produce no loan. Locks one process at a time.
+pub(crate) fn lend_words(lender: &Arc<Mutex<Process>>, words: &[usize]) -> Vec<HeapBorrow> {
+    let mut loans = Vec::new();
+    if words.is_empty() {
+        return loans;
+    }
+    let mut seen = Vec::new();
+    let mut pending = vec![Arc::clone(lender)];
+    while let Some(owner) = pending.pop() {
+        let mut process = owner.lock();
+        if seen.contains(&process.pid) {
+            continue;
+        }
+        seen.push(process.pid);
+        pending.extend(process.heap_borrows.iter().filter_map(|b| b.owner.clone()));
+        if let Some(lent) = process.heap.lend(words) {
+            drop(process);
+            loans.push(HeapBorrow {
+                owner: Some(owner),
+                _lent: lent,
+            });
+        }
+    }
+    loans
+}
+
+/// Give a spawned actor arguments that survive its spawner's collections.
+///
+/// Compiled `spawn` packs its arguments into a buffer on the spawner's GC heap
+/// and passes pointer-typed arguments by reference, but the child runs later,
+/// on another thread, and a collector only scans its own actor's roots. So:
+///
+/// - The buffer is copied for the child when it is an object on the spawner's
+///   heap. Any other pointer (a Rust `Box`, the global arena) belongs to the
+///   caller and is handed over untouched.
+/// - With a `shape`, what the arguments reference is copied into the child's
+///   own heap, which nothing else can touch yet. Only what the shape cannot
+///   describe (a closure's environment, an opaque runtime object) stays
+///   shared.
+/// - Whatever stays shared is lent by the heap that owns it, and that heap is
+///   pinned by the child: the spawner's own, or an ancestor's when the spawner
+///   passes on something it was itself given. Without a shape every argument
+///   word is treated this way; words that point nowhere borrow nothing.
+///
+/// Returns the pointer the child's entry function should receive.
+// ponytail: a lent heap stays whole until the borrower's process is dropped, so
+// a chain of short-lived spawners that each hand an uncopyable value to the
+// next pins every ancestor. Make closure environments self-describing so they
+// copy too if that ever matters.
+fn adopt_spawn_args(
+    child: &mut Process,
+    spawner: &Arc<Mutex<Process>>,
+    args_ptr: *const u8,
+    args_size: u64,
+    shape: *const u32,
+) -> *const u8 {
+    let Ok(size) = usize::try_from(args_size) else {
+        return args_ptr;
+    };
+    if args_ptr.is_null() || size == 0 {
+        return args_ptr;
+    }
+    // Read once, up front: the buffer is alive for the duration of this call.
+    let bytes = unsafe { std::slice::from_raw_parts(args_ptr, size) };
+    let owns_buffer = spawner.lock().heap.is_live_allocation(args_ptr, size);
+
+    let mut copy = vec![0u64; size.div_ceil(8)].into_boxed_slice();
+    unsafe { std::ptr::copy_nonoverlapping(args_ptr, copy.as_mut_ptr() as *mut u8, size) };
+
+    let shared: Vec<usize> = if owns_buffer && !shape.is_null() {
+        let captured = unsafe { super::msg_shape::capture(&spawner.lock().heap, bytes, 0, shape) };
+        unsafe { captured.materialize(&mut child.heap, copy.as_mut_ptr() as *mut u8) };
+        captured.lend
+    } else {
+        copy[..size / 8].iter().map(|&word| word as usize).collect()
+    };
+    child.heap_borrows = lend_words(spawner, &shared);
+
+    if !owns_buffer {
+        return args_ptr;
+    }
+    let copied = copy.as_ptr() as *const u8;
+    child.spawn_args = Some(copy);
+    copied
+}
+
 /// Resume one actor timeslice and turn a Mesh panic into a linked error exit.
 fn resume_process(
     process_table: &ProcessTable,
@@ -670,7 +777,7 @@ fn resume_process(
     set_current_pid(pid);
     let result = handle.resume_catching_panic();
     clear_current_pid();
-    CURRENT_YIELDER.with(|current| current.set(None));
+    CURRENT_YIELDER.with(|current| current.yielder.set(None));
 
     match result {
         Ok(true) => {
@@ -1109,6 +1216,186 @@ mod tests {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::thread::current().id().hash(&mut hasher);
         hasher.finish()
+    }
+
+    #[test]
+    fn spawn_copies_gc_args_and_lends_what_they_point_into() {
+        let sched = Scheduler::new(1);
+        let spawner_pid = sched.create_main_process();
+        let spawner = sched.get_process(spawner_pid).unwrap();
+        set_current_pid(spawner_pid);
+
+        // A heap value, and a compiled-style argument buffer naming it.
+        let (value, args) = {
+            let mut process = spawner.lock();
+            let value = process.heap.alloc(24, 8);
+            let args = process.heap.alloc(16, 8) as *mut usize;
+            unsafe {
+                args.write(value as usize);
+                args.add(1).write(7);
+            }
+            (value, args as *const u8)
+        };
+        let child_pid = sched.spawn(increment_entry as *const u8, args, 16, 1);
+
+        {
+            let child = sched.get_process(child_pid).unwrap();
+            let child = child.lock();
+            let copy = child.spawn_args.as_ref().expect("buffer copied for child");
+            assert_eq!(&copy[..], &[value as u64, 7]);
+            assert_ne!(copy.as_ptr() as *const u8, args);
+            assert_eq!(child.heap_borrows.len(), 1);
+            assert!(Arc::ptr_eq(
+                child.heap_borrows[0].owner.as_ref().unwrap(),
+                &spawner
+            ));
+        }
+
+        // The spawner forgets both and collects: the value is on loan, while
+        // the buffer was copied and is ordinary garbage.
+        let dummy: u64 = 0;
+        let stack = &dummy as *const u64 as *const u8;
+        spawner.lock().heap.collect(stack, stack);
+        assert!(spawner.lock().heap.is_live_allocation(value, 24));
+        assert!(!spawner.lock().heap.is_live_allocation(args, 16));
+
+        // Once the child's process is gone the loan ends.
+        sched.process_table.write().remove(&child_pid);
+        spawner.lock().heap.collect(stack, stack);
+        assert!(!spawner.lock().heap.is_live_allocation(value, 24));
+
+        clear_current_pid();
+    }
+
+    #[test]
+    fn shaped_spawn_gives_the_child_its_own_copy() {
+        use crate::actor::msg_shape::{AGG, LEAF, SHARED};
+
+        let sched = Scheduler::new(1);
+        let spawner_pid = sched.create_main_process();
+        let spawner = sched.get_process(spawner_pid).unwrap();
+        set_current_pid(spawner_pid);
+
+        // Arguments: a string, an integer, and something only a loan can cover.
+        let (value, opaque, args) = {
+            let mut process = spawner.lock();
+            let value = process.heap.alloc(24, 8);
+            unsafe { (value as *mut u64).write(16) };
+            let opaque = process.heap.alloc(32, 8);
+            let args = process.heap.alloc(24, 8) as *mut usize;
+            unsafe {
+                args.write(value as usize);
+                args.add(1).write(7);
+                args.add(2).write(opaque as usize);
+            }
+            (value, opaque, args as *const u8)
+        };
+        let shape = [9, AGG, 2, 0, 7, 16, 8, LEAF, SHARED];
+        let child_pid =
+            sched.spawn_shaped(increment_entry as *const u8, args, 24, 1, shape.as_ptr());
+        clear_current_pid();
+
+        let child = sched.get_process(child_pid).unwrap();
+        let child = child.lock();
+        let copy = child.spawn_args.as_ref().expect("buffer copied for child");
+        assert_ne!(copy[0], value as u64, "the string was copied");
+        assert!(child.heap.is_live_allocation(copy[0] as *const u8, 24));
+        assert_eq!(unsafe { *(copy[0] as *const u64) }, 16);
+        assert_eq!(copy[1], 7);
+        assert_eq!(copy[2], opaque as u64, "the opaque value stays shared");
+        assert_eq!(child.heap_borrows.len(), 1);
+
+        // The spawner may drop and collect the string; the loan keeps the rest.
+        let dummy: u64 = 0;
+        let stack = &dummy as *const u64 as *const u8;
+        spawner.lock().heap.collect(stack, stack);
+        assert!(!spawner.lock().heap.is_live_allocation(value, 24));
+        assert!(spawner.lock().heap.is_live_allocation(opaque, 32));
+    }
+
+    #[test]
+    fn spawn_borrows_nothing_for_integers_and_leaves_foreign_buffers_alone() {
+        let sched = Scheduler::new(1);
+        let spawner_pid = sched.create_main_process();
+        let spawner = sched.get_process(spawner_pid).unwrap();
+        set_current_pid(spawner_pid);
+
+        let ints = {
+            let args = spawner.lock().heap.alloc(16, 8) as *mut usize;
+            unsafe {
+                args.write(30);
+                args.add(1).write(12);
+            }
+            args as *const u8
+        };
+        let child_pid = sched.spawn(increment_entry as *const u8, ints, 16, 1);
+        {
+            let child = sched.get_process(child_pid).unwrap();
+            let child = child.lock();
+            assert_eq!(&child.spawn_args.as_ref().unwrap()[..], &[30, 12]);
+            assert!(child.heap_borrows.is_empty(), "integers pin no heap");
+        }
+
+        // Runtime callers hand over a `Box` the entry function takes ownership
+        // of; copying it would make that `Box::from_raw` free the wrong block.
+        let boxed = Box::into_raw(Box::new([1u64, 2])) as *const u8;
+        let child_pid = sched.spawn(increment_entry as *const u8, boxed, 16, 1);
+        {
+            let child = sched.get_process(child_pid).unwrap();
+            let child = child.lock();
+            assert!(child.spawn_args.is_none());
+            assert!(child.heap_borrows.is_empty());
+        }
+        drop(unsafe { Box::from_raw(boxed as *mut [u64; 2]) });
+
+        clear_current_pid();
+    }
+
+    #[test]
+    fn spawn_lends_a_value_passed_on_from_the_spawners_own_arguments() {
+        let sched = Scheduler::new(1);
+        let grandparent_pid = sched.create_main_process();
+        let grandparent = sched.get_process(grandparent_pid).unwrap();
+
+        // Grandparent -> parent: a heap value.
+        set_current_pid(grandparent_pid);
+        let (value, args) = {
+            let mut process = grandparent.lock();
+            let value = process.heap.alloc(24, 8);
+            let args = process.heap.alloc(8, 8) as *mut usize;
+            unsafe { args.write(value as usize) };
+            (value, args as *const u8)
+        };
+        let parent_pid = sched.spawn(increment_entry as *const u8, args, 8, 1);
+        let parent = sched.get_process(parent_pid).unwrap();
+
+        // Parent -> child: the same value, from a buffer on the parent's heap.
+        set_current_pid(parent_pid);
+        let args = {
+            let args = parent.lock().heap.alloc(8, 8) as *mut usize;
+            unsafe { args.write(value as usize) };
+            args as *const u8
+        };
+        let child_pid = sched.spawn(increment_entry as *const u8, args, 8, 1);
+        clear_current_pid();
+
+        {
+            let child = sched.get_process(child_pid).unwrap();
+            let child = child.lock();
+            assert_eq!(child.heap_borrows.len(), 1);
+            assert!(Arc::ptr_eq(
+                child.heap_borrows[0].owner.as_ref().unwrap(),
+                &grandparent
+            ));
+        }
+
+        // The parent goes away first; the child still holds the value.
+        drop(parent);
+        sched.process_table.write().remove(&parent_pid);
+        let dummy: u64 = 0;
+        let stack = &dummy as *const u64 as *const u8;
+        grandparent.lock().heap.collect(stack, stack);
+        assert!(grandparent.lock().heap.is_live_allocation(value, 24));
     }
 
     #[test]

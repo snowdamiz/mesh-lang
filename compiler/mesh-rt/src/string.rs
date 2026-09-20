@@ -114,8 +114,13 @@ pub extern "C" fn mesh_string_concat(
 /// Convert an i64 integer to a GC-managed Mesh string.
 #[no_mangle]
 pub extern "C" fn mesh_int_to_string(val: i64) -> *mut MeshString {
-    let s = val.to_string();
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    // Format on the stack: every `"${n}"` lands here, and `to_string` would
+    // allocate and free a heap `String` just to be copied. i64::MIN is 20 bytes.
+    let mut buf = [0u8; 20];
+    let mut remaining = &mut buf[..];
+    write!(remaining, "{val}").expect("an i64 fits in 20 bytes");
+    let len = 20 - remaining.len();
+    mesh_string_new(buf.as_ptr(), len as u64)
 }
 
 /// Convert an f64 float to a GC-managed Mesh string.
@@ -275,6 +280,13 @@ pub extern "C" fn mesh_string_eq(a: *const MeshString, b: *const MeshString) -> 
     }
 }
 
+/// Order two Mesh strings: -1, 0 or 1. Byte order, which for UTF-8 is code
+/// point order.
+#[no_mangle]
+pub extern "C" fn mesh_string_compare(a: *const MeshString, b: *const MeshString) -> i64 {
+    unsafe { (*a).as_str().cmp((*b).as_str()) as i64 }
+}
+
 // ── String split/join/parse operations (Phase 46 Plan 02) ────────────
 
 /// Split a string by a delimiter, returning a List<String>.
@@ -387,6 +399,25 @@ mod tests {
         let s = mesh_int_to_string(42);
         unsafe {
             assert_eq!((*s).as_str(), "42");
+        }
+    }
+
+    #[test]
+    fn test_string_compare_orders_by_bytes() {
+        mesh_rt_init();
+        let text = |s: &str| mesh_string_new(s.as_ptr(), s.len() as u64) as *const MeshString;
+        assert_eq!(mesh_string_compare(text("apple"), text("banana")), -1);
+        assert_eq!(mesh_string_compare(text("pear"), text("pear")), 0);
+        assert_eq!(mesh_string_compare(text("pears"), text("pear")), 1);
+        assert_eq!(mesh_string_compare(text(""), text("a")), -1);
+    }
+
+    #[test]
+    fn test_int_to_string_extremes() {
+        mesh_rt_init();
+        for val in [0, i64::MAX, i64::MIN] {
+            let s = mesh_int_to_string(val);
+            assert_eq!(unsafe { (*s).as_str() }, val.to_string());
         }
     }
 

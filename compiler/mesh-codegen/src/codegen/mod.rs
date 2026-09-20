@@ -13,6 +13,7 @@
 
 pub mod expr;
 pub mod intrinsics;
+mod msg_shape;
 pub mod pattern;
 pub mod types;
 
@@ -26,7 +27,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::StructType;
-use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::values::{FunctionValue, InstructionOpcode, PointerValue};
 use inkwell::OptimizationLevel;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -311,12 +312,53 @@ impl<'ctx> CodeGen<'ctx> {
             self.generate_main_wrapper(entry_name)?;
         }
 
-        // Step 7: Verify the module.
+        // Step 7: Keep every stack slot a static, entry-block allocation.
+        self.hoist_static_allocas();
+
+        // Step 8: Verify the module.
         self.module
             .verify()
             .map_err(|e| format!("LLVM module verification failed: {}", e))?;
 
         Ok(())
+    }
+
+    /// Move every fixed-size `alloca` into its function's entry block.
+    ///
+    /// An alloca outside the entry block is a dynamic stack allocation: it
+    /// runs again on every loop trip and is only released when the function
+    /// returns. Struct literals, variants, field temporaries and `for`/`while`
+    /// state inside a loop therefore leaked stack per iteration until the
+    /// actor's coroutine stack overflowed. Entry-block allocas are also the
+    /// only ones mem2reg/SROA promote to registers. Each slot is written
+    /// before it is read, so sharing one slot across iterations is safe.
+    fn hoist_static_allocas(&self) {
+        for function in self.module.get_functions() {
+            let Some(entry) = function.get_first_basic_block() else {
+                continue;
+            };
+            let Some(anchor) = entry.get_first_instruction() else {
+                continue;
+            };
+            for block in function.get_basic_block_iter().skip(1) {
+                let mut next = block.get_first_instruction();
+                while let Some(instruction) = next {
+                    next = instruction.get_next_instruction();
+                    let is_static_alloca = instruction.get_opcode() == InstructionOpcode::Alloca
+                        && instruction
+                            .get_operand(0)
+                            .and_then(|size| size.value())
+                            .is_some_and(|size| {
+                                size.is_int_value() && size.into_int_value().is_const()
+                            });
+                    if is_static_alloca {
+                        instruction.remove_from_basic_block();
+                        self.builder.position_before(&anchor);
+                        self.builder.insert_instruction(&instruction, None);
+                    }
+                }
+            }
+        }
     }
 
     fn generate_library_export_wrappers(&mut self) -> Result<(), String> {
@@ -1240,7 +1282,7 @@ mod tests {
     use crate::mir::{
         BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirResourceDestructor,
         MirResourceField, MirResourceMoveSource, MirResourceVariant, MirStructDef, MirSumTypeDef,
-        MirType, MirVariantDef, UnaryOp,
+        MirType, MirVariantDef, MsgShape, UnaryOp,
     };
 
     fn empty_mir_module() -> MirModule {
@@ -2115,7 +2157,7 @@ mod tests {
     }
 
     #[test]
-    fn test_string_literal_calls_mesh_string_new() {
+    fn test_string_literal_is_a_static_mesh_string() {
         let body = MirExpr::Block(
             vec![MirExpr::StringLit(
                 "hello world".to_string(),
@@ -2124,9 +2166,17 @@ mod tests {
             MirType::String,
         );
         let ir = compile_expr_to_ir(body, MirType::String);
+        // `{ len, bytes }` constant, returned without allocating or copying.
         assert!(
-            ir.contains("mesh_string_new"),
-            "Should call mesh_string_new: {}",
+            ir.contains(
+                r#"constant { i64, [11 x i8] } { i64 11, [11 x i8] c"hello world" }, align 8"#
+            ),
+            "Should emit a static MeshString: {}",
+            ir
+        );
+        assert!(
+            !ir.contains("call ptr @mesh_string_new"),
+            "Literal must not allocate: {}",
             ir
         );
     }
@@ -2268,8 +2318,8 @@ mod tests {
 
         let ir = codegen.get_llvm_ir();
         assert!(
-            ir.contains("mesh_string_new"),
-            "Should call mesh_string_new"
+            !ir.contains("call ptr @mesh_string_new"),
+            "String literals are static and must not allocate"
         );
         assert!(ir.contains("mesh_println"), "Should call mesh_println");
         assert!(
@@ -2600,6 +2650,92 @@ mod tests {
         assert!(
             ir.contains("mesh_actor_send"),
             "Should call mesh_actor_send: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_send_copies_string_messages() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Var("text".to_string(), MirType::String)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("pid".to_string(), MirType::Pid(None)),
+                ("text".to_string(), MirType::String),
+            ],
+            body,
+            MirType::Int,
+        );
+        // A String message is a pointer into the sender's heap; the shape
+        // tells the runtime to copy it for the receiver. The table is
+        // [len, AGG, 1 field, offset 0, node 5, LEAF].
+        assert!(
+            ir.contains("call i64 @mesh_actor_send_shaped"),
+            "String messages should use the shaped send: {}",
+            ir
+        );
+        assert!(
+            ir.contains("[6 x i32] [i32 6, i32 6, i32 1, i32 0, i32 5, i32 1]"),
+            "shape table for a String: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_one_word_struct_is_described_inline_in_a_tuple_slot() {
+        // `Batch { names: List<String> }` is one word wide, so a tuple field
+        // holds its bits (the list pointer), not a box. Described as a box,
+        // the list would be copied as if it were the struct and its strings
+        // left behind in the sender's heap.
+        let batch = MsgShape::Struct(
+            "Batch".to_string(),
+            vec![MsgShape::List(Box::new(MsgShape::Leaf))],
+        );
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Shaped {
+                value: Box::new(MirExpr::Var("pair".to_string(), MirType::Ptr)),
+                shape: MsgShape::Tuple(vec![batch, MsgShape::Scalar]),
+            }),
+            ty: MirType::Int,
+        };
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![
+                    ("pid".to_string(), MirType::Pid(None)),
+                    ("pair".to_string(), MirType::Ptr),
+                ],
+                return_type: MirType::Int,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "Batch".to_string(),
+                fields: vec![("names".to_string(), MirType::Ptr)],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            native_functions: vec![],
+        };
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        // [len, AGG 1 (0 -> 13), Batch: AGG 1 (0 -> 10), LEAF, LIST 9, SCALAR,
+        //  TUPLE 2 (5, 12)]: the tuple's first field is the AGG itself.
+        assert!(
+            ir.contains(
+                "[17 x i32] [i32 17, i32 6, i32 1, i32 0, i32 13, i32 6, i32 1, i32 0, \
+                 i32 10, i32 1, i32 2, i32 9, i32 0, i32 4, i32 2, i32 5, i32 12]"
+            ),
+            "shape table for (Batch, Int): {}",
             ir
         );
     }

@@ -35,6 +35,7 @@ pub mod heap;
 pub mod job;
 pub mod link;
 pub mod mailbox;
+pub(crate) mod msg_shape;
 pub mod process;
 pub mod registry;
 pub mod scheduler;
@@ -124,7 +125,7 @@ impl<T> CooperativeSender<T> {
 pub(crate) fn cooperative_channel<T>() -> (CooperativeSender<T>, std::sync::mpsc::Receiver<T>) {
     let (sender, receiver) = std::sync::mpsc::channel();
     let waiter = stack::CURRENT_YIELDER
-        .with(|current| current.get().is_some())
+        .with(|current| current.yielder.get().is_some())
         .then(stack::get_current_pid)
         .flatten();
     (CooperativeSender { sender, waiter }, receiver)
@@ -140,7 +141,7 @@ pub(crate) fn cooperative_recv_timeout<T>(
     receiver: &std::sync::mpsc::Receiver<T>,
     timeout: std::time::Duration,
 ) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
-    let in_coroutine = stack::CURRENT_YIELDER.with(|current| current.get().is_some());
+    let in_coroutine = stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some());
     if !in_coroutine {
         return receiver.recv_timeout(timeout);
     }
@@ -277,9 +278,12 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
 /// - `args_size`: size of the arguments in bytes
 /// - `priority`: 0 = High, 1 = Normal, 2 = Low
 ///
-/// The scheduler does not copy `args`; the caller must keep the argument frame
-/// alive until the actor entry function takes ownership of it or no longer
-/// accesses it.
+/// When `args` is an object on the calling actor's GC heap, as compiled `spawn`
+/// produces, the actor receives its own copy of the buffer, and every heap the
+/// argument words point into keeps those objects alive until the actor's
+/// process is dropped (see `adopt_spawn_args` in the scheduler). Any other
+/// pointer is handed over as is: the caller must keep it valid until the entry
+/// function takes ownership of it or no longer accesses it.
 #[no_mangle]
 pub extern "C" fn mesh_actor_spawn(
     fn_ptr: *const u8,
@@ -289,6 +293,22 @@ pub extern "C" fn mesh_actor_spawn(
 ) -> u64 {
     let sched = global_scheduler();
     sched.spawn(fn_ptr, args, args_size, priority).as_u64()
+}
+
+/// `mesh_actor_spawn` for arguments that reference heap values. `shape`
+/// describes the 8-byte argument slots (see `msg_shape`), so the new actor gets
+/// its own copy of everything the arguments reach.
+#[no_mangle]
+pub extern "C" fn mesh_actor_spawn_shaped(
+    fn_ptr: *const u8,
+    args: *const u8,
+    args_size: u64,
+    priority: u8,
+    shape: *const u32,
+) -> u64 {
+    global_scheduler()
+        .spawn_shaped(fn_ptr, args, args_size, priority, shape)
+        .as_u64()
 }
 
 /// Get the PID of the currently running actor.
@@ -311,32 +331,35 @@ pub extern "C" fn mesh_actor_self() -> u64 {
 /// The reduction counter is reset to `DEFAULT_REDUCTIONS` (4000) after yield.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_reduction_check() {
-    // Get the current actor's process from the process table.
-    // We decrement a thread-local shadow counter to avoid locking on every
-    // reduction check. The actual Process.reductions field is updated by
-    // the scheduler after yield.
-    thread_local! {
-        static LOCAL_REDUCTIONS: std::cell::Cell<u32> = const { std::cell::Cell::new(DEFAULT_REDUCTIONS) };
-    }
+    // This runs at every call site and loop back-edge. The yielder and a
+    // thread-local shadow of the reduction counter share one thread-local, so
+    // the check costs a single TLS access and never locks; the actual
+    // Process.reductions field is updated by the scheduler after yield.
+    //
+    // The closure stays tiny, with the yield outside it, so the whole fast
+    // path inlines into this function.
+    let exhausted = stack::CURRENT_YIELDER.with(|slot| {
+        // Only yield if we're running inside a coroutine context (i.e., inside an actor).
+        // The main thread also calls functions that trigger reduction_check, but the
+        // main thread is not a coroutine so yield_current would panic.
+        // Check the yielder to detect coroutine context (more reliable than PID
+        // since the main thread now also has a PID for service call support).
+        if slot.yielder.get().is_none() {
+            return false;
+        }
 
-    // Only yield if we're running inside a coroutine context (i.e., inside an actor).
-    // The main thread also calls functions that trigger reduction_check, but the
-    // main thread is not a coroutine so yield_current would panic.
-    // Check CURRENT_YIELDER to detect coroutine context (more reliable than PID
-    // since the main thread now also has a PID for service call support).
-    if stack::CURRENT_YIELDER.with(|c| c.get().is_none()) {
-        return;
-    }
-
-    LOCAL_REDUCTIONS.with(|cell| {
-        let remaining = cell.get();
+        let remaining = slot.reductions.get();
         if remaining == 0 {
-            cell.set(DEFAULT_REDUCTIONS);
-            stack::yield_current();
+            slot.reductions.set(DEFAULT_REDUCTIONS);
+            true
         } else {
-            cell.set(remaining - 1);
+            slot.reductions.set(remaining - 1);
+            false
         }
     });
+    if exhausted {
+        stack::yield_current();
+    }
 }
 
 /// Attempt to trigger garbage collection on the current actor's heap.
@@ -468,12 +491,107 @@ pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
     }
 }
 
+/// Send a message that references heap values.
+///
+/// A plain send copies only the message's own bytes, which for anything but a
+/// scalar includes pointers into the sender's heap: the receiver would go on
+/// reading objects the sender is free to collect and reuse. `shape` is the
+/// compiler's description of where those references are (see `msg_shape`), so
+/// the receiver gets its own copy. Remote targets take the existing path.
+#[no_mangle]
+pub extern "C" fn mesh_actor_send_shaped(
+    target_pid: u64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+    shape: *const u32,
+) -> i64 {
+    if target_pid >> 48 == 0 {
+        local_send_with_scheduler(global_scheduler(), target_pid, msg_ptr, msg_size, shape)
+    } else {
+        dist_send(target_pid, msg_ptr, msg_size)
+    }
+}
+
+/// Detach a message from the sending actor's heap before it is queued.
+///
+/// What `shape` describes at `buffer.data[base..]` is copied into the buffer;
+/// references it cannot describe are lent by the heaps that own them. Outside
+/// an actor there is no heap to detach from, and such callers only hold
+/// static or arena data.
+/// Pacing for a wait on the main thread, which is not a coroutine and so
+/// polls its mailbox instead of yielding to the scheduler.
+///
+/// A reply from a running actor arrives within a few microseconds, far sooner
+/// than the 60 µs or more an OS takes to honour a 10 µs sleep: sleeping from
+/// the first miss made every service call from `main` cost about 85 µs, against
+/// 2.5 µs from inside an actor. So spin first, and sleep only once the message
+/// is clearly not coming at once.
+pub(crate) struct MainThreadWait {
+    polls: u32,
+}
+
+impl MainThreadWait {
+    /// Misses to spin through before sleeping: a few hundred microseconds.
+    const SPINS: u32 = 2_000;
+
+    pub(crate) fn new() -> Self {
+        MainThreadWait { polls: 0 }
+    }
+
+    pub(crate) fn pause(&mut self) {
+        if self.polls < Self::SPINS {
+            self.polls += 1;
+            std::hint::spin_loop();
+        } else {
+            std::thread::sleep(std::time::Duration::from_micros(10));
+        }
+    }
+}
+
+/// Keep `env`, a closure environment that a Rust-owned structure now points
+/// at, alive: no collector sees that pointer. A no-op on the main thread,
+/// which never collects.
+// ponytail: the loan is never returned, like the routers that need it (they
+// are never freed either); hand the borrow to its holder if one ever is.
+pub(crate) fn pin_closure_env(env: *mut u8) {
+    if env.is_null() {
+        return;
+    }
+    let owner = stack::get_current_pid().and_then(|pid| global_scheduler().get_process(pid));
+    if let Some(owner) = owner {
+        std::mem::forget(scheduler::lend_words(&owner, &[env as usize]));
+    }
+}
+
+pub(crate) fn detach_from_sender(
+    sched: &Scheduler,
+    buffer: &mut MessageBuffer,
+    base: usize,
+    shape: *const u32,
+) {
+    if shape.is_null() {
+        return;
+    }
+    let Some(sender) = stack::get_current_pid().and_then(|pid| sched.get_process(pid)) else {
+        return;
+    };
+    let captured = unsafe { msg_shape::capture(&sender.lock().heap, &buffer.data, base, shape) };
+    buffer.borrows = scheduler::lend_words(&sender, &captured.lend);
+    buffer.captured = captured;
+}
+
 /// Local send path -- the original mesh_actor_send body, unchanged.
 ///
 /// Deep-copies the message bytes into a `MessageBuffer`, pushes it into
 /// the target actor's FIFO mailbox, and wakes the target if it is Waiting.
 pub(crate) fn local_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
-    local_send_with_scheduler(global_scheduler(), target_pid, msg_ptr, msg_size)
+    local_send_with_scheduler(
+        global_scheduler(),
+        target_pid,
+        msg_ptr,
+        msg_size,
+        std::ptr::null(),
+    )
 }
 
 fn local_send_with_scheduler(
@@ -481,6 +599,7 @@ fn local_send_with_scheduler(
     target_pid: u64,
     msg_ptr: *const u8,
     msg_size: u64,
+    shape: *const u32,
 ) -> i64 {
     let pid = ProcessId(target_pid);
 
@@ -492,19 +611,26 @@ fn local_send_with_scheduler(
         slice.to_vec()
     };
 
-    // Derive type_tag from first 8 bytes (or zero-pad).
-    let type_tag = {
-        let mut tag_bytes = [0u8; 8];
-        let copy_len = data.len().min(8);
-        tag_bytes[..copy_len].copy_from_slice(&data[..copy_len]);
-        u64::from_le_bytes(tag_bytes)
-    };
+    let type_tag = message_type_tag(&data);
+    let mut buffer = MessageBuffer::new(data, type_tag);
+    detach_from_sender(sched, &mut buffer, 0, shape);
+    deliver_local(sched, pid, Message { buffer })
+}
 
-    let buffer = MessageBuffer::new(data, type_tag);
-    let msg = Message { buffer };
+/// Derive type_tag from first 8 bytes (or zero-pad).
+fn message_type_tag(data: &[u8]) -> u64 {
+    let mut tag_bytes = [0u8; 8];
+    let copy_len = data.len().min(8);
+    tag_bytes[..copy_len].copy_from_slice(&data[..copy_len]);
+    u64::from_le_bytes(tag_bytes)
+}
 
+/// Queue a prepared message for a local actor and wake it. Returns the
+/// observable send status.
+fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
     // Look up the target process and push message.
     if let Some(proc_arc) = sched.get_process(pid) {
+        msg.buffer.addressed_to(&proc_arc);
         let mut proc = proc_arc.lock();
         if let Err(error) = proc.mailbox.try_push(msg) {
             return match error {
@@ -700,7 +826,7 @@ where
     }
 
     // Check if we're in a coroutine context.
-    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
 
     if !in_coroutine {
         // Main thread path: spin-wait on the mailbox.
@@ -709,6 +835,7 @@ where
         } else {
             None
         };
+        let mut wait = MainThreadWait::new();
         loop {
             if let Some(proc_arc) = sched.get_process(my_pid) {
                 let proc = proc_arc.lock();
@@ -722,7 +849,7 @@ where
                     return std::ptr::null();
                 }
             }
-            std::thread::sleep(std::time::Duration::from_micros(10));
+            wait.pause();
         }
     }
 
@@ -881,7 +1008,7 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
         return;
     }
 
-    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.get().is_some());
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
 
     if !in_coroutine {
         // Main thread: just use thread::sleep
@@ -932,6 +1059,22 @@ pub extern "C" fn mesh_timer_send_after(
     msg_ptr: *const u8,
     msg_size: i64,
 ) {
+    mesh_timer_send_after_shaped(target_pid, ms, msg_ptr, msg_size, std::ptr::null());
+}
+
+/// `mesh_timer_send_after` for a message that references heap values.
+///
+/// The message is detached from the caller's heap now, while the caller is
+/// the running actor: by the time the timer fires, the sender may have
+/// collected, or exited.
+#[no_mangle]
+pub extern "C" fn mesh_timer_send_after_shaped(
+    target_pid: i64,
+    ms: i64,
+    msg_ptr: *const u8,
+    msg_size: i64,
+    shape: *const u32,
+) {
     // Deep-copy message bytes before spawning thread
     let data = if msg_ptr.is_null() || msg_size <= 0 {
         Vec::new()
@@ -943,16 +1086,39 @@ pub extern "C" fn mesh_timer_send_after(
     let pid = target_pid as u64;
     let delay = std::time::Duration::from_millis(if ms > 0 { ms as u64 } else { 0 });
 
+    // Remote targets and plain messages take the byte path, as before.
+    let prepared = (pid >> 48 == 0 && !shape.is_null()).then(|| {
+        let mut buffer = MessageBuffer::new(data.clone(), message_type_tag(&data));
+        detach_from_sender(global_scheduler(), &mut buffer, 0, shape);
+        SendOnTimer(buffer)
+    });
+
     std::thread::spawn(move || {
         std::thread::sleep(delay);
-        // Reuse mesh_actor_send: construct message and deliver
-        mesh_actor_send(pid, data.as_ptr(), data.len() as u64);
+        match prepared {
+            Some(SendOnTimer(buffer)) => {
+                deliver_local(global_scheduler(), ProcessId(pid), Message { buffer });
+            }
+            // Reuse mesh_actor_send: construct message and deliver
+            None => {
+                mesh_actor_send(pid, data.as_ptr(), data.len() as u64);
+            }
+        }
     });
 }
 
+/// A detached message waiting on a timer thread. Its loans hold `Process`
+/// handles, which are only ever touched under their own locks.
+struct SendOnTimer(MessageBuffer);
+unsafe impl Send for SendOnTimer {}
+
 /// Deep-copy a message into the actor's heap and return a pointer to the
 /// heap-allocated layout: `[u64 type_tag, u64 data_len, u8... data]`.
-pub(crate) fn copy_msg_to_actor_heap(sched: &Scheduler, pid: ProcessId, msg: Message) -> *const u8 {
+pub(crate) fn copy_msg_to_actor_heap(
+    sched: &Scheduler,
+    pid: ProcessId,
+    mut msg: Message,
+) -> *const u8 {
     if let Some(proc_arc) = sched.get_process(pid) {
         let mut proc = proc_arc.lock();
         // Layout: [u64 type_tag][u64 data_len][u8... data]
@@ -974,13 +1140,13 @@ pub(crate) fn copy_msg_to_actor_heap(sched: &Scheduler, pid: ProcessId, msg: Mes
                     msg.buffer.data.len(),
                 );
             }
-            for (offset, bytes) in &msg.buffer.owned_strings {
-                let string = proc.heap.alloc(8 + bytes.len(), 8);
-                (string as *mut u64).write(bytes.len() as u64);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), string.add(8), bytes.len());
-                (ptr.add(header_size + offset) as *mut u64).write_unaligned(string as u64);
-            }
+            // Heap values the message references arrive detached from the
+            // sender; rebuild them here and point the message at the copies.
+            msg.buffer
+                .captured
+                .materialize(&mut proc.heap, ptr.add(header_size));
         }
+        proc.heap_borrows.append(&mut msg.buffer.borrows);
 
         ptr as *const u8
     } else {
@@ -1338,10 +1504,23 @@ pub extern "C-unwind" fn mesh_supervisor_start_child(
         }
     };
 
+    // The spec outlives this call -- a restart reads the arguments again -- so
+    // it cannot keep pointing at the caller's buffer.
+    // ponytail: leaked, a few bytes per dynamic child; own the bytes in
+    // ChildSpec if supervisors ever churn through enough children to matter.
+    // What the arguments point at is still the caller's: nothing compiles to
+    // this entry point yet, and whatever does must pass a shape as `spawn` does.
+    let args: &'static [u8] = if args_ptr.is_null() || args_size == 0 {
+        &[]
+    } else {
+        let bytes = unsafe { std::slice::from_raw_parts(args_ptr, args_size as usize) };
+        Box::leak(bytes.to_vec().into_boxed_slice())
+    };
+
     let mut new_spec = template;
     new_spec.id = format!("dynamic_{}", state.children.len());
-    new_spec.start_args_ptr = args_ptr;
-    new_spec.start_args_size = args_size;
+    new_spec.start_args_ptr = args.as_ptr();
+    new_spec.start_args_size = args.len() as u64;
 
     let mut child_state = child_spec::ChildState {
         spec: new_spec,
@@ -2177,6 +2356,7 @@ mod tests {
                 target_pid.as_u64(),
                 four_bytes.as_ptr(),
                 four_bytes.len() as u64,
+                std::ptr::null(),
             ),
             0
         );
@@ -2186,6 +2366,7 @@ mod tests {
                 target_pid.as_u64(),
                 four_bytes.as_ptr(),
                 four_bytes.len() as u64,
+                std::ptr::null(),
             ),
             2
         );
@@ -2196,13 +2377,152 @@ mod tests {
                 target_pid.as_u64(),
                 five_bytes.as_ptr(),
                 five_bytes.len() as u64,
+                std::ptr::null(),
             ),
             3
         );
         assert_eq!(
-            local_send_with_scheduler(&sched, u64::MAX, std::ptr::null(), 0),
+            local_send_with_scheduler(&sched, u64::MAX, std::ptr::null(), 0, std::ptr::null()),
             1
         );
+    }
+
+    #[test]
+    fn shaped_send_copies_the_string_into_the_receivers_heap() {
+        let sched = Scheduler::new(1);
+        let sender_pid = create_test_process(&sched);
+        let target_pid = create_test_process(&sched);
+        let sender = sched.get_process(sender_pid).unwrap();
+        let text = "payload-42";
+        let sent = {
+            let object = sender.lock().heap.alloc(8 + text.len(), 8);
+            unsafe {
+                (object as *mut u64).write(text.len() as u64);
+                std::ptr::copy_nonoverlapping(text.as_ptr(), object.add(8), text.len());
+            }
+            object
+        };
+        let message = [sent as u64];
+        let shape = [2, msg_shape::LEAF];
+
+        stack::set_current_pid(sender_pid);
+        let status = local_send_with_scheduler(
+            &sched,
+            target_pid.as_u64(),
+            message.as_ptr() as *const u8,
+            8,
+            shape.as_ptr(),
+        );
+        stack::clear_current_pid();
+        assert_eq!(status, 0);
+        // The sender's string is overwritten, as if collected and reused.
+        unsafe { std::ptr::write_bytes(sent.add(8), b'x', text.len()) };
+
+        let process = sched.get_process(target_pid).unwrap();
+        let queued = process.lock().mailbox.pop().expect("message queued");
+        let delivered = copy_msg_to_actor_heap(&sched, target_pid, queued);
+        let received = unsafe { *(delivered.add(16) as *const *const crate::string::MeshString) };
+        assert_ne!(received as *const u8, sent as *const u8);
+        assert_eq!(unsafe { (*received).as_str() }, text);
+        assert!(process
+            .lock()
+            .heap
+            .is_live_allocation(received as *const u8, 8 + text.len()));
+        assert!(process.lock().heap_borrows.is_empty(), "copied, not lent");
+    }
+
+    #[test]
+    fn timer_send_carries_its_own_copy_of_the_message() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let sender_pid = sched.create_main_process();
+        let target_pid = sched.create_main_process();
+        let sender = sched.get_process(sender_pid).unwrap();
+        let text = "payload-42";
+        let sent = {
+            let object = sender.lock().heap.alloc(8 + text.len(), 8);
+            unsafe {
+                (object as *mut u64).write(text.len() as u64);
+                std::ptr::copy_nonoverlapping(text.as_ptr(), object.add(8), text.len());
+            }
+            object
+        };
+        let message = [sent as u64];
+        let shape = [2, msg_shape::LEAF];
+
+        let previous = stack::get_current_pid();
+        stack::set_current_pid(sender_pid);
+        mesh_timer_send_after_shaped(
+            target_pid.as_u64() as i64,
+            20,
+            message.as_ptr() as *const u8,
+            8,
+            shape.as_ptr(),
+        );
+        match previous {
+            Some(pid) => stack::set_current_pid(pid),
+            None => stack::clear_current_pid(),
+        }
+        // The sender forgets the string, and it is reused, before the timer fires.
+        unsafe { std::ptr::write_bytes(sent, 0, 8 + text.len()) };
+
+        let target = sched.get_process(target_pid).unwrap();
+        let queued = (0..200)
+            .find_map(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                target.lock().mailbox.pop()
+            })
+            .expect("timer delivered the message");
+        let delivered = copy_msg_to_actor_heap(sched, target_pid, queued);
+        let received = unsafe { *(delivered.add(16) as *const *const crate::string::MeshString) };
+        assert_eq!(unsafe { (*received).as_str() }, text);
+    }
+
+    #[test]
+    fn shaped_send_lends_what_it_cannot_copy_and_never_pins_itself() {
+        let sched = Scheduler::new(1);
+        let sender_pid = create_test_process(&sched);
+        let target_pid = create_test_process(&sched);
+        let sender = sched.get_process(sender_pid).unwrap();
+        let environment = sender.lock().heap.alloc(16, 8);
+        let message = [environment as u64];
+        let shape = [2, msg_shape::SHARED];
+        let send_to = |target: ProcessId| {
+            stack::set_current_pid(sender_pid);
+            let status = local_send_with_scheduler(
+                &sched,
+                target.as_u64(),
+                message.as_ptr() as *const u8,
+                8,
+                shape.as_ptr(),
+            );
+            stack::clear_current_pid();
+            assert_eq!(status, 0);
+            let process = sched.get_process(target).unwrap();
+            let queued = process.lock().mailbox.pop().expect("message queued");
+            copy_msg_to_actor_heap(&sched, target, queued)
+        };
+
+        // To another actor: same pointer, kept alive by a loan that pins the sender.
+        let delivered = send_to(target_pid);
+        assert_eq!(
+            unsafe { *(delivered.add(16) as *const u64) },
+            environment as u64
+        );
+        let dummy: u64 = 0;
+        let stack = &dummy as *const u64 as *const u8;
+        sender.lock().heap.collect(stack, stack);
+        assert!(sender.lock().heap.is_live_allocation(environment, 16));
+        let target = sched.get_process(target_pid).unwrap();
+        assert!(target.lock().heap_borrows[0].owner.is_some());
+
+        // To itself: still kept alive, but the process must not own itself.
+        send_to(sender_pid);
+        assert!(sender
+            .lock()
+            .heap_borrows
+            .iter()
+            .all(|loan| loan.owner.is_none()));
     }
 
     #[test]

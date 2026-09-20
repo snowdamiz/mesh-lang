@@ -276,6 +276,17 @@ pub struct Process {
     /// Spawn arguments can borrow an embedded call's heap beyond its return.
     pub(crate) library_heap_owner: Option<Arc<Mutex<Process>>>,
 
+    /// This actor's own copy of its spawn-argument buffer; see `Scheduler::spawn`.
+    pub(crate) spawn_args: Option<Box<[u64]>>,
+    /// Heaps that this actor's spawn arguments and received messages point
+    /// into. Held until the process is dropped, not merely exited: an actor
+    /// it lent to may still reach those heaps through objects in this one.
+    // ponytail: two actors that lend to each other keep each other's process
+    // alive after both exit. Only uncopyable values are lent (closures,
+    // opaque runtime objects); make closure environments self-describing so
+    // they copy too if that ever shows up.
+    pub(crate) heap_borrows: Vec<HeapBorrow>,
+
     /// Optional cleanup callback invoked before termination.
     /// Set when the actor defines a `terminate do ... end` block.
     pub terminate_callback: Option<TerminateCallback>,
@@ -294,6 +305,26 @@ pub struct Process {
 // owning actor's thread context.
 unsafe impl Send for Process {}
 
+/// One actor's claim on objects in another actor's heap.
+///
+/// Used for references that cross actors without being copied. While this
+/// exists the owner's collector treats the lent objects as roots, and the
+/// owner's heap stays mapped even if the owner exits first.
+#[derive(Clone)]
+pub(crate) struct HeapBorrow {
+    /// `None` for a loan from the borrower's own heap (a message to itself),
+    /// which needs no pin and must not make the process own itself.
+    pub(crate) owner: Option<Arc<Mutex<Process>>>,
+    /// Dropping this ends the loan; see `ActorHeap::lend`.
+    pub(crate) _lent: Arc<()>,
+}
+
+impl fmt::Debug for HeapBorrow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("HeapBorrow")
+    }
+}
+
 impl Process {
     /// Create a new process with the given PID and priority.
     pub fn new(pid: ProcessId, priority: Priority) -> Self {
@@ -310,6 +341,8 @@ impl Process {
             heap: ActorHeap::new(),
             library_call: false,
             library_heap_owner: None,
+            spawn_args: None,
+            heap_borrows: Vec::new(),
             terminate_callback: None,
             exit_finalization_started: false,
             stack_base: std::ptr::null(),

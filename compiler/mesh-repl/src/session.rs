@@ -48,14 +48,25 @@ impl ReplSession {
 
         let mut source = String::new();
 
-        // Prepend all accumulated definitions
-        for def in &self.definitions {
+        // Prepend all accumulated definitions. A `let` is not one the compiler
+        // keeps: a top-level binding is no global, so it goes into the wrapper.
+        // ponytail: each evaluation runs the bindings' initializers again; keep
+        // their values in the session if a side effect ever has to happen once.
+        let (bindings, items): (Vec<&String>, Vec<&String>) = self
+            .definitions
+            .iter()
+            .partition(|def| def.trim_start().starts_with("let "));
+        for def in items {
             source.push_str(def);
             source.push('\n');
         }
 
         // Wrap expression in a named function
-        source.push_str(&format!("fn {}() do\n  {}\nend\n", fn_name, expr));
+        source.push_str(&format!("fn {}() do\n", fn_name));
+        for binding in bindings {
+            source.push_str(&format!("  {}\n", binding));
+        }
+        source.push_str(&format!("  {}\nend\n", expr));
 
         (source, fn_name)
     }
@@ -115,6 +126,19 @@ mod tests {
         assert_eq!(fn_name, "__repl_eval_0");
         assert!(source.contains("fn __repl_eval_0() do"));
         assert!(source.contains("1 + 2"));
+    }
+
+    #[test]
+    fn test_wrap_expression_replays_bindings_inside_the_wrapper() {
+        let mut session = ReplSession::new();
+        session.add_definition("fn double(n :: Int) -> Int do n * 2 end");
+        session.add_definition("let x = 21");
+        let (source, _) = session.wrap_expression("double(x)");
+        assert_eq!(
+            source,
+            "fn double(n :: Int) -> Int do n * 2 end\n\
+             fn __repl_eval_0() do\n  let x = 21\n  double(x)\nend\n"
+        );
     }
 
     #[test]

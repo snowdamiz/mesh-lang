@@ -1,6 +1,6 @@
 # Mesh HTTP Benchmark
 
-For compiler and runtime operation benchmarks, see [Measured optimizations](OPTIMIZATIONS.md).
+For compiler and runtime operation benchmarks, and whole-program language benchmarks (`lang/`), see [Measured optimizations](OPTIMIZATIONS.md).
 
 Compares HTTP throughput and latency of four language implementations of a minimal `Hello, World!` HTTP server: **Mesh**, **Go**, **Rust**, and **Elixir**.
 
