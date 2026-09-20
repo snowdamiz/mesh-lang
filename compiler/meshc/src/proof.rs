@@ -30,10 +30,26 @@ const BURST_OPERATOR_QUERY_BUDGET_MILLIS: u64 = 3_000;
 const BURST_GATEWAY_HEALTH_BUDGET_MILLIS: u64 = 3_000;
 // The proof can remove three workers serially (max five down to min two).
 // Each step has a 4s scale-down window, a 30s drain deadline, and a 30s
-// termination deadline. Keep the waiter bounded while covering that declared
-// policy envelope, one final 30s provider observation, controller polling, and
-// consensus propagation.
-const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(240);
+// termination deadline, and the waiter also has to cover one final 30s
+// provider observation, controller tick polling, and consensus propagation.
+//
+// Derived rather than written as a number, because the number was the bug: the
+// envelope below already sums to 222s and the timeout was 240s, leaving about
+// eighteen seconds for everything the envelope does not name. That held on a
+// developer machine and failed on GitHub's runners, which run all eleven proof
+// containers on four cores. The evidence bundles from those runs show the
+// cluster reaching the desired two workers moments after the deadline -- the
+// final provider inspection has exactly two running managed workers with
+// matching labels -- so the proof was giving up during convergence, not
+// catching a stall. Doubling the envelope makes a slow machine a slow pass; a
+// cluster that genuinely cannot converge still fails, just later.
+const RUNTIME_SCALE_DOWN_STEPS: u64 = 3;
+const RUNTIME_SCALE_DOWN_STEP_SECONDS: u64 = 4 + 30 + 30;
+const RUNTIME_SCALE_DOWN_FINAL_OBSERVATION_SECONDS: u64 = 30;
+const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(
+    2 * (RUNTIME_SCALE_DOWN_STEPS * RUNTIME_SCALE_DOWN_STEP_SECONDS
+        + RUNTIME_SCALE_DOWN_FINAL_OBSERVATION_SECONDS),
+);
 
 #[derive(Subcommand, Debug)]
 pub enum ProofCommand {
@@ -3199,7 +3215,18 @@ fn wait_for_runtime_scale_down(
                         .unwrap_or_default();
                     return Ok((snapshot, draining, drain_load_summary));
                 }
-                last = format!("desired={desired:?}:autonomous={:?}", snapshot.autonomous);
+                // Lead with the three numbers that decide this wait. They are
+                // all inside the status dump that follows, but finding them
+                // there means reading a struct printed on one line.
+                let observed = snapshot
+                    .autonomous
+                    .last_reconcile
+                    .as_ref()
+                    .map(|reconcile| reconcile.observed_workers);
+                last = format!(
+                    "final_desired={final_desired}:desired={desired:?}:observed={observed:?}:autonomous={:?}",
+                    snapshot.autonomous
+                );
             }
             Err(error) => last = error.to_string(),
         }
