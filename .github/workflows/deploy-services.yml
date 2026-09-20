@@ -31,9 +31,29 @@ jobs:
           [[ -z "$CLOUDFLARE_API_TOKEN" ]] && missing+=("CLOUDFLARE_API_TOKEN")
           [[ -z "$CLOUDFLARE_ACCOUNT_ID" ]] && missing+=("CLOUDFLARE_ACCOUNT_ID")
           if (( ${#missing[@]} )); then
-            echo "::error title=Missing Cloudflare credentials::deploy-services.yml runs on push to main but this repo is missing: ${missing[*]}. Create an API token with Workers Scripts:Edit, Workers R2 Storage:Edit and Cloudflare Containers:Edit, then add it and the account ID as repository secrets."
+            echo "::error title=Missing Cloudflare credentials::deploy-services.yml runs on push to main but this repo is missing: ${missing[*]}. Create an API token with the permissions listed in registry/README.md, then add it and the account ID as repository secrets."
             exit 1
           fi
+
+      # Both Workers claim a custom domain, so the token needs zone-scoped
+      # Workers Routes on top of the account-scoped Workers permissions. A
+      # token without it deploys the script and then fails on
+      # /zones/<id>/workers/routes, which reads like a deploy failure.
+      - name: Check the token can manage Workers routes
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          zone=998e0a357209d828ebb006e2cfbacb2a
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/zones/$zone/workers/routes")
+          if [[ "$code" == "403" || "$code" == "401" ]]; then
+            echo "::error title=Token cannot manage Workers routes::CLOUDFLARE_API_TOKEN cannot read /zones/$zone/workers/routes (HTTP $code). Add 'Zone -> Workers Routes -> Edit' and 'Zone -> Zone -> Read' for meshlang.dev to the token; the custom domains in wrangler.jsonc cannot be applied without it."
+            exit 1
+          fi
+          echo "workers routes reachable (HTTP $code)"
 
   deploy-registry:
     name: Deploy mesh-registry
