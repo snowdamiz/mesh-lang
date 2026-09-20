@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mesh-registry",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // The Dockerfile is the one that ran on Fly, unchanged. `basic` is 1 GiB,
+  // matching the VM it replaces.
+  "containers": [
+    {
+      "class_name": "RegistryContainer",
+      "image": "./Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "REGISTRY", "class_name": "RegistryContainer" }]
+  },
+
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RegistryContainer"] }],
+
+  // Non-secret configuration. The secrets — DATABASE_URL, SESSION_SECRET,
+  // GITHUB_CLIENT_SECRET, STORAGE_ACCESS_KEY_ID, STORAGE_SECRET_ACCESS_KEY —
+  // are set with `wrangler secret put` and listed in registry/README.md.
+  "vars": {
+    "STORAGE_ENDPOINT": "https://7b014829093f04800becabbee5ef24b0.r2.cloudflarestorage.com",
+    "STORAGE_BUCKET": "mesh-packages",
+    "STORAGE_REGION": "auto",
+    "GITHUB_CLIENT_ID": "",
+    "GITHUB_CALLBACK_URL": "https://api.packages.meshlang.dev/auth/github/callback",
+    "FRONTEND_URL": "https://packages.meshlang.dev"
+  }
+}

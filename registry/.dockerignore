@@ -2,3 +2,22 @@ target/
 Cargo.lock
 .env
 .env.*
+
+# The Dockerfile copies this directory into the cargo-chef stages. Keep the
+# Cloudflare Worker side of the deployment, and anything generated, out of that
+# build context: node_modules alone is larger than the crate.
+node_modules
+worker
+wrangler.jsonc
+package.json
+package-lock.json
+tsconfig.json
+.wrangler
+.dev.vars
+.dev.vars.*
+
+# This checkout lives on exFAT, where macOS writes an AppleDouble sidecar
+# beside every file. Docker's context sender tries to read their xattrs and
+# fails with "operation not permitted", which aborts the build.
+._*
+.DS_Store

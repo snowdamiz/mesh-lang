@@ -1,4 +1,4 @@
-name: Deploy Services to Fly.io
+name: Deploy Services to Cloudflare
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-fly-production
+  group: deploy-cloudflare-production
   cancel-in-progress: false
 
 jobs:
@@ -20,14 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check FLY_API_TOKEN
+      - name: Check Cloudflare credentials
         shell: bash
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          if [[ -z "$FLY_API_TOKEN" ]]; then
-            echo "::error title=Missing FLY_API_TOKEN::mesh-lang deploy-services.yml now runs on push to main, but this repo has no FLY_API_TOKEN secret. GitHub Actions secrets are repo-scoped: copy FLY_API_TOKEN into mesh-lang or promote it to an org secret visible to mesh-lang."
+          missing=()
+          [[ -z "$CLOUDFLARE_API_TOKEN" ]] && missing+=("CLOUDFLARE_API_TOKEN")
+          [[ -z "$CLOUDFLARE_ACCOUNT_ID" ]] && missing+=("CLOUDFLARE_ACCOUNT_ID")
+          if (( ${#missing[@]} )); then
+            echo "::error title=Missing Cloudflare credentials::deploy-services.yml runs on push to main but this repo is missing: ${missing[*]}. Create an API token with Workers Scripts:Edit, Workers R2 Storage:Edit and Cloudflare Containers:Edit, then add it and the account ID as repository secrets."
             exit 1
           fi
 
@@ -35,21 +39,30 @@ jobs:
     name: Deploy mesh-registry
     needs: secrets-preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The container image is a Rust release build via cargo-chef, so this is
+    # the slow job; the image layers cache between runs on Cloudflare's side.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          version: 0.4.76
+          node-version: 20
 
-      - name: Deploy registry to Fly.io
-        run: flyctl deploy --remote-only
+      - name: Install Worker dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: registry
+
+      # wrangler builds the Dockerfile and pushes it to Cloudflare's managed
+      # registry as part of `deploy`; ubuntu-latest already provides Docker.
+      - name: Deploy registry to Cloudflare
+        run: npx wrangler deploy
         working-directory: registry
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-packages-website:
     name: Deploy mesh-packages website
@@ -60,16 +73,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          version: 0.4.76
+          node-version: 20
 
-      - name: Deploy packages website to Fly.io
-        run: flyctl deploy --remote-only
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: packages-website
+
+      - name: Build
+        run: npm run build
+        working-directory: packages-website
+
+      - name: Deploy packages website to Cloudflare
+        run: npx wrangler deploy
         working-directory: packages-website
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   health-check:
     name: Post-deploy health checks
