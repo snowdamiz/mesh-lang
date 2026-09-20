@@ -8,4 +8,5 @@ if [[ -z "$ROOT_DIR" ]]; then
 fi
 
 cd "$ROOT_DIR"
+bash scripts/verify-no-sidecar-files.sh --staged
 exec bash scripts/verify-whitespace.sh --staged --fix

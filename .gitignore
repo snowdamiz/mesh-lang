@@ -84,3 +84,8 @@ tmp/
 
 # ── GSD baseline (auto-generated) ──
 .gsd-id
+
+# AppleDouble sidecars macOS writes beside every file on a drive without
+# extended attributes (exFAT, FAT, network shares). Keep this last: a later
+# `!` rule, like the one for compiler/mesh-rt/src/dist/*.rs, would let them back in.
+._*
