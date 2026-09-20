@@ -154,14 +154,9 @@ jobs:
         shell: bash
         run: bash scripts/verify-m034-s04-extension.sh --package-only
 
-  # Reported but not blocking, for the reasons recorded on the same job in
-  # release.yml: at peak it needs roughly fifteen containers on a four-vCPU
-  # runner, two workers never leave `warming`, and scale-down then freezes on
-  # `scale_down_requires_complete_healthy_window`. It has failed on every
-  # commit since 2026-09-18, including ones that touched nothing near it,
-  # which made this workflow useless as a signal for the checks that do work.
-  autonomous-cluster-proof:
-    name: Autonomous cluster proof
-    needs: whitespace-guard
-    continue-on-error: true
-    uses: ./.github/workflows/autonomous-cluster-proof.yml
+# The autonomous cluster proof used to run here. It now runs on its own
+# schedule (autonomous-cluster-proof.yml), because it needs more machine than
+# a GitHub-hosted standard runner has and was failing every commit since
+# 2026-09-18 -- including commits that touched nothing near it -- which made
+# this workflow useless as a signal for the checks that do work. The reasoning
+# and the evidence are recorded on the job in release.yml.
