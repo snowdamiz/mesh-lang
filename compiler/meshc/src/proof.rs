@@ -62,9 +62,42 @@ const RUNTIME_SCALE_DOWN_STEPS: u64 = 3;
 const RUNTIME_SCALE_DOWN_STEP_SECONDS: u64 = 4 + 30 + 30;
 const RUNTIME_SCALE_DOWN_FINAL_OBSERVATION_SECONDS: u64 = 30;
 const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(
-    2 * (RUNTIME_SCALE_DOWN_STEPS * RUNTIME_SCALE_DOWN_STEP_SECONDS
-        + RUNTIME_SCALE_DOWN_FINAL_OBSERVATION_SECONDS),
+    RUNTIME_SCALE_DOWN_STEPS * RUNTIME_SCALE_DOWN_STEP_SECONDS
+        + RUNTIME_SCALE_DOWN_FINAL_OBSERVATION_SECONDS,
 );
+
+/// How much slower this machine is than the one the budgets were written on.
+///
+/// Every wall-clock deadline here was calibrated on a developer machine. CI
+/// runs all eleven proof containers on four cores, and three separate
+/// deadlines have now expired there mid-convergence -- scale-down, then the
+/// concurrent-burst p99, then managed-worker readiness -- each time with the
+/// evidence showing the cluster reaching the expected state moments later.
+/// Raising them one at a time just moves the failure to the next one, so the
+/// budgets stay at their declared values and the machine scales them.
+///
+/// A stall still fails, it just takes longer to say so.
+/// `MESH_PROOF_TIME_SCALE` overrides the estimate.
+fn proof_time_scale() -> u32 {
+    if let Ok(raw) = std::env::var("MESH_PROOF_TIME_SCALE") {
+        if let Ok(scale) = raw.parse::<u32>() {
+            return scale.clamp(1, 10);
+        }
+    }
+    match std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(4)
+    {
+        0..=4 => 3,
+        5..=8 => 2,
+        _ => 1,
+    }
+}
+
+/// A deadline for `timeout` worth of work, stretched for a slow machine.
+fn proof_deadline(timeout: Duration) -> Instant {
+    Instant::now() + timeout * proof_time_scale()
+}
 
 #[derive(Subcommand, Debug)]
 pub enum ProofCommand {
@@ -2694,7 +2727,7 @@ fn wait_for_runtime(
     minimum_nodes: usize,
     timeout: Duration,
 ) -> Result<OperatorRuntimeSnapshot, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last_error = "no observation".to_string();
     while Instant::now() < deadline {
         match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
@@ -2736,7 +2769,7 @@ fn wait_for_stable_runtime(
 ) -> Result<(OperatorRuntimeSnapshot, u16), String> {
     const STABLE_FOR: Duration = Duration::from_secs(2);
 
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut stable_since: Option<(Instant, u16)> = None;
     let mut last = "no runtime snapshot".to_string();
     while Instant::now() < deadline {
@@ -2806,7 +2839,7 @@ fn wait_for_consensus_applied(
     minimum_log_index: u64,
     timeout: Duration,
 ) -> Result<OperatorRuntimeSnapshot, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "consensus snapshot unavailable".to_string();
     while Instant::now() < deadline {
         match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
@@ -2835,7 +2868,7 @@ fn wait_for_managed_count(
     expected: usize,
     timeout: Duration,
 ) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     while Instant::now() < deadline {
         let ids = harness.checked(
             "docker",
@@ -2876,7 +2909,7 @@ fn wait_for_managed_exact(
     expected: usize,
     timeout: Duration,
 ) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = usize::MAX;
     while Instant::now() < deadline {
         last = managed_running_count(harness)?;
@@ -2909,7 +2942,7 @@ fn wait_for_runtime_desired(
     predicate: impl Fn(u16) -> bool,
     timeout: Duration,
 ) -> Result<(OperatorRuntimeSnapshot, u16), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "no runtime snapshot".to_string();
     while Instant::now() < deadline {
         match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
@@ -2952,7 +2985,7 @@ fn wait_for_committed_managed_operations(
     cluster_id: &str,
     timeout: Duration,
 ) -> Result<Vec<mesh_rt::DriverOperation>, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "operator runtime unavailable".to_string();
     while Instant::now() < deadline {
         match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
@@ -3035,7 +3068,7 @@ fn wait_for_routing_evidence(
     dynamic_workers: &BTreeSet<String>,
     timeout: Duration,
 ) -> Result<OperatorContinuityList, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "continuity unavailable".to_string();
     while Instant::now() < deadline {
         match query_operator_continuity_list_remote(
@@ -3101,7 +3134,7 @@ fn wait_for_autonomous_leader(
     targets: &[&str],
     timeout: Duration,
 ) -> Result<(String, OperatorRuntimeSnapshot), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "no candidate".to_string();
     while Instant::now() < deadline {
         for target in targets {
@@ -3126,7 +3159,7 @@ fn wait_for_autonomous_leader(
 }
 
 fn wait_for_driver_recovery(target: &str, timeout: Duration) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "runtime unavailable".to_string();
     while Instant::now() < deadline {
         match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
@@ -3191,7 +3224,7 @@ fn wait_for_runtime_scale_down(
     ),
     String,
 > {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut draining = None;
     let mut drain_load = None;
     let mut last = "no runtime snapshot".to_string();
@@ -3383,7 +3416,7 @@ fn http_request(
 }
 
 fn wait_for_http(port: u16, path: &str, timeout: Duration) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = proof_deadline(timeout);
     let mut last = "not attempted".to_string();
     while Instant::now() < deadline {
         match http_request(port, "GET", path, "", &[]) {
