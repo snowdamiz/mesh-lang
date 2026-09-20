@@ -32,7 +32,9 @@
     "STORAGE_BUCKET": "mesh-packages",
     "STORAGE_REGION": "auto",
     "GITHUB_CLIENT_ID": "Ov23liFx7W6anRvC6giB",
-    "GITHUB_CALLBACK_URL": "https://api.packages.meshlang.dev/auth/github/callback",
+    // Must match the route registered in src/routes/mod.rs, which is
+    // /auth/callback -- not /auth/github/callback.
+    "GITHUB_CALLBACK_URL": "https://api.packages.meshlang.dev/auth/callback",
     "FRONTEND_URL": "https://packages.meshlang.dev"
   }
 }
