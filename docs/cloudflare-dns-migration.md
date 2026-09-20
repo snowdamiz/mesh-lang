@@ -98,7 +98,7 @@ binding.
 
 1. <https://github.com/settings/developers> → **New OAuth App**.
 2. Homepage URL `https://packages.meshlang.dev`, Authorization callback URL
-   `https://api.packages.meshlang.dev/auth/github/callback`. The callback must
+   `https://api.packages.meshlang.dev/auth/callback`. The callback must
    match `GITHUB_CALLBACK_URL` in `registry/wrangler.jsonc` exactly.
 3. Generate a client secret, then:
 
