@@ -1,0 +1,137 @@
+name: Release
+
+# A push to the `release` branch ships everything: it bumps the language
+# version, tags it, builds and publishes the GitHub release, and deploys the
+# registry, the packages website and the docs site.
+#
+#   git push origin main:release
+#
+# The version is the newest `vX.Y.Z` tag plus a patch bump. Put `[minor]` or
+# `[major]` in the pushed commit's message to bump those instead, or run this
+# workflow by hand from the Actions tab and pick the bump.
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to increment
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write # push the version bump and the tag
+  actions: write # dispatch the release and deploy workflows
+
+# One release at a time: two concurrent runs would read the same newest tag
+# and try to publish the same version.
+concurrency:
+  group: release-branch
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Cut the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Every tag is needed to find the newest release.
+          fetch-depth: 0
+
+      - name: Decide the version
+        id: version
+        shell: bash
+        env:
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          DISPATCH_BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          bump="${DISPATCH_BUMP:-patch}"
+          if [[ -z "${DISPATCH_BUMP}" ]]; then
+            case "${HEAD_MESSAGE}" in
+              *"[major]"*) bump=major ;;
+              *"[minor]"*) bump=minor ;;
+            esac
+          fi
+          version="$(python3 scripts/bump-language-version.py next "${bump}")"
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "::error title=Version already released::${tag} already exists. Nothing was changed."
+            exit 1
+          fi
+          echo "releasing ${tag} (${bump} bump)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      # release.yml refuses a tag that does not match meshc and meshpkg, and
+      # builds with --locked, so the manifests and Cargo.lock move together.
+      # `cargo update --workspace` rewrites only the workspace members' own
+      # entries; no third-party dependency changes.
+      - name: Bump the language version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/bump-language-version.py set "${{ steps.version.outputs.version }}"
+          cargo update --workspace
+          cargo metadata --locked --format-version 1 >/dev/null
+
+      - name: Commit, tag and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add compiler/*/Cargo.toml Cargo.lock
+          git commit -m "Release ${tag}"
+          git tag -a "${tag}" -m "${tag}"
+          git push origin HEAD:release
+          git push origin "${tag}"
+          # Carry the bump to main as well, or the next `main:release` push is
+          # rejected as a non-fast-forward. Fast-forward only: if main has
+          # moved since, leave it and say so rather than merge on the user's
+          # behalf.
+          if git push origin HEAD:main; then
+            echo "main advanced to the release commit"
+          else
+            echo "::warning title=main not updated::main moved since this release was pushed. Merge release into main to carry the ${tag} version bump."
+          fi
+
+  # Pushes made with GITHUB_TOKEN do not start workflows, so the tag above does
+  # not trigger release.yml on its own. workflow_dispatch is the documented
+  # exception, and dispatching against the tag runs the same tag-gated
+  # pipeline a hand-pushed tag would: builds for every target, cryptographic
+  # evidence, the live registry proof, asset verification, the GitHub release.
+  release:
+    name: Build and publish
+    needs: cut
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch the release pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --repo "${{ github.repository }}" --ref "${{ needs.cut.outputs.tag }}"
+
+  deploy:
+    name: Deploy
+    needs: cut
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Deploy the registry and packages website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-services.yml --repo "${{ github.repository }}" --ref release
+
+      - name: Deploy the docs site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --repo "${{ github.repository }}" --ref release
