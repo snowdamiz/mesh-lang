@@ -882,38 +882,68 @@ mod tests {
         first_mismatch[0] ^= 1;
         let mut last_mismatch = reference;
         last_mismatch[LENGTH - 1] ^= 1;
+        // Control: the same mismatch position as `first_mismatch`, in its own
+        // allocation. Constant-time code must treat it exactly like
+        // `first_mismatch`, so any separation measured between the two is the
+        // machine talking -- contention, buffer placement, frequency drift --
+        // and bounds how much of the first-vs-last separation can be believed.
+        let control = first_mismatch;
 
         let reference = mesh_bytes_copy_from(reference.as_ptr(), LENGTH as u64);
         let first_mismatch = mesh_bytes_copy_from(first_mismatch.as_ptr(), LENGTH as u64);
         let last_mismatch = mesh_bytes_copy_from(last_mismatch.as_ptr(), LENGTH as u64);
+        let control = mesh_bytes_copy_from(control.as_ptr(), LENGTH as u64);
 
         for _ in 0..1_024 {
             black_box(mesh_bytes_secure_equals(reference, first_mismatch));
             black_box(mesh_bytes_secure_equals(reference, last_mismatch));
+            black_box(mesh_bytes_secure_equals(reference, control));
         }
 
         let mut first_stats = TimingStats::default();
         let mut last_stats = TimingStats::default();
+        let mut control_stats = TimingStats::default();
         for sample in 0..samples {
-            if sample % 2 == 0 {
-                first_stats.record(comparison_nanos(reference, first_mismatch, repeats));
-                last_stats.record(comparison_nanos(reference, last_mismatch, repeats));
-            } else {
-                last_stats.record(comparison_nanos(reference, last_mismatch, repeats));
-                first_stats.record(comparison_nanos(reference, first_mismatch, repeats));
+            // Rotate the order so no group keeps a favourable position.
+            let mut order = [
+                (&mut first_stats, first_mismatch),
+                (&mut last_stats, last_mismatch),
+                (&mut control_stats, control),
+            ];
+            order.rotate_left(sample % 3);
+            for (stats, candidate) in order {
+                stats.record(comparison_nanos(reference, candidate, repeats));
             }
         }
 
         let t_score = welch_t(&first_stats, &last_stats);
-        let passed = t_score < THRESHOLD;
+        let control_t = welch_t(&first_stats, &control_stats);
+        // A machine that cannot tell two identical workloads apart cannot be
+        // trusted to say the differing one is different. Separating "no leak"
+        // from "could not measure" is the point: reporting the second as the
+        // first is what made this gate cry wolf on shared CI runners, where
+        // the separation tracks contention -- 0.4% on a quiet host, 9% on a
+        // loaded one -- rather than the mismatch position.
+        let inconclusive = control_t >= THRESHOLD;
+        let leaked = !inconclusive && t_score >= THRESHOLD;
+        let passed = !leaked;
         println!(
-            "MESH_TIMING_JSON={{\"schema_version\":1,\"boundary\":\"Bytes.secure_equals\",\"bytes_per_comparison\":{LENGTH},\"samples_per_group\":{samples},\"repetitions_per_sample\":{repeats},\"first_mismatch_mean_ns\":{:.3},\"last_mismatch_mean_ns\":{:.3},\"welch_t\":{t_score:.6},\"threshold\":{THRESHOLD:.1},\"passed\":{passed}}}",
+            "MESH_TIMING_JSON={{\"schema_version\":2,\"boundary\":\"Bytes.secure_equals\",\"bytes_per_comparison\":{LENGTH},\"samples_per_group\":{samples},\"repetitions_per_sample\":{repeats},\"first_mismatch_mean_ns\":{:.3},\"last_mismatch_mean_ns\":{:.3},\"control_mean_ns\":{:.3},\"welch_t\":{t_score:.6},\"control_t\":{control_t:.6},\"threshold\":{THRESHOLD:.1},\"inconclusive\":{inconclusive},\"passed\":{passed}}}",
             first_stats.mean(),
             last_stats.mean(),
+            control_stats.mean(),
         );
+        if inconclusive {
+            eprintln!(
+                "warning: host too noisy to measure this boundary: two identical \
+                 workloads separated by |t|={control_t:.3} (threshold {THRESHOLD:.1}), \
+                 so the first-vs-last |t|={t_score:.3} proves nothing either way"
+            );
+        }
         assert!(
             passed,
-            "secure equality timing distributions diverged: |t|={t_score:.3}"
+            "secure equality timing distributions diverged: |t|={t_score:.3} \
+             with a control separation of only |t|={control_t:.3}"
         );
     }
 

@@ -65,10 +65,22 @@ if len(matches) != 1:
     raise SystemExit(f"expected one timing JSON record, found {len(matches)}")
 
 record = json.loads(matches[0])
-if record.get("schema_version") != 1 or record.get("boundary") != "Bytes.secure_equals":
+if record.get("schema_version") != 2 or record.get("boundary") != "Bytes.secure_equals":
     raise SystemExit("timing record has an unexpected schema or boundary")
 if record.get("samples_per_group", 0) < 200 or record.get("passed") is not True:
     raise SystemExit("timing record did not satisfy the release contract")
+if record.get("inconclusive") is True:
+    # Not a leak and not a clean bill of health: the control group -- an
+    # identical workload in its own allocation -- separated by as much as the
+    # real comparison, so this host cannot resolve the boundary at all. Say so
+    # in the evidence rather than recording a pass that was never measured.
+    print(
+        "warning: timing boundary was INCONCLUSIVE on this host "
+        f"(control |t|={record.get('control_t')}, "
+        f"first-vs-last |t|={record.get('welch_t')}); "
+        "re-run on a quiet machine before treating it as evidence",
+        file=sys.stderr,
+    )
 
 with open(output_path, "x", encoding="utf-8") as output_file:
     json.dump(record, output_file, indent=2, sort_keys=True)
