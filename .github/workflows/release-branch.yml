@@ -7,8 +7,9 @@ name: Release
 #   git push origin main:release
 #
 # The version is the newest `vX.Y.Z` tag plus a patch bump. Put `[minor]` or
-# `[major]` in the pushed commit's message to bump those instead, or run this
-# workflow by hand from the Actions tab and pick the bump.
+# `[major]` in the *subject line* of the pushed commit to bump those instead
+# (the body is ignored), or run this workflow by hand from the Actions tab and
+# pick the bump.
 on:
   push:
     branches:
@@ -55,7 +56,12 @@ jobs:
           set -euo pipefail
           bump="${DISPATCH_BUMP:-patch}"
           if [[ -z "${DISPATCH_BUMP}" ]]; then
-            case "${HEAD_MESSAGE}" in
+            # The subject line only. A body is where a commit explains itself,
+            # and the first release this workflow cut came out as v1.0.0
+            # because the commit introducing it described the markers in its
+            # body -- a substring match found "[major]" in the documentation.
+            subject="${HEAD_MESSAGE%%$'\n'*}"
+            case "${subject}" in
               *"[major]"*) bump=major ;;
               *"[minor]"*) bump=minor ;;
             esac
