@@ -95,6 +95,31 @@ Use the pull request template and paste the exact commands you ran.
 - Keep starter and docs workflows honest: do not document a command path that the repo does not actually verify.
 - Do not commit secrets, local `.env` files, generated release artifacts, or transient `.tmp/` output.
 
+## Releasing
+
+Everything ships from the `release` branch:
+
+```bash
+git push origin main:release
+```
+
+That bumps the language version, tags it, builds and publishes the GitHub
+release (binaries for every target, plus cryptographic evidence), and deploys
+the registry, the packages website and the docs site.
+
+- The version is the newest `vX.Y.Z` tag plus a **patch** bump.
+- Put `[minor]` or `[major]` in the **subject line** of the pushed commit to
+  bump those instead. The body is ignored on purpose: it is where a commit
+  explains itself, so it is where a marker turns up by accident.
+- Or run the **Release** workflow from the Actions tab and pick the bump.
+- The version bump is committed back to `main`, so the next
+  `main:release` push fast-forwards. If `main` moved during a release, the run
+  warns and you merge `release` into `main` yourself.
+
+The workflow is `.github/workflows/release-branch.yml`. It pushes with the
+built-in `GITHUB_TOKEN`, which starts no workflows, so it dispatches the release
+and deploy workflows explicitly rather than relying on the tag push.
+
 ## Where to file what
 
 - Reproducible defects: use the **Bug report** issue form.
