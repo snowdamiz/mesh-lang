@@ -1118,10 +1118,10 @@ impl ContinuityStore for SqliteContinuityStore {
         }
         let records: Vec<StoredContinuityRecord> = serde_json::from_slice(&chunk.payload)
             .map_err(|error| format!("continuity_snapshot_decode_failed:{error}"))?;
-        for record in records {
-            self.upsert(&record)?;
-        }
-        Ok(())
+        // One durable transaction per chunk, not per record: with
+        // `synchronous = FULL` each commit is an fsync, which made joining a
+        // 10,000-record snapshot take seconds.
+        self.upsert_batch(&records)
     }
 
     fn high_water_mark(&self) -> Result<u64, String> {
