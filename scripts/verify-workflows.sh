@@ -39,6 +39,7 @@ main() {
     "${workflows[@]/#/$ROOT_DIR/}" || fail "workflow YAML parsing failed"
 
   require_text ".github/workflows/autonomous-cluster-proof.yml" "workflow_call:"
+  require_text ".github/workflows/autonomous-cluster-proof.yml" "schedule:"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "uses: actions/checkout@v6"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "uses: actions/cache@v5"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "uses: actions/upload-artifact@v7"
@@ -49,14 +50,14 @@ main() {
   require_text ".github/workflows/autonomous-cluster-proof.yml" "--duration-seconds 10 --cycle-millis 10 --allow-short"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "path: target/proof/**"
 
-  require_text ".github/workflows/authoritative-verification.yml" "uses: ./.github/workflows/autonomous-cluster-proof.yml"
+  # The proof runs nightly and on release tags, where it reports without
+  # gating the release; it is not wired into per-push verification.
   require_text ".github/workflows/release.yml" "uses: ./.github/workflows/autonomous-cluster-proof.yml"
-  require_text ".github/workflows/release.yml" "authoritative-live-proof, autonomous-cluster-proof, verify-release-assets"
 
   {
     printf 'workflow_yaml=passed\n'
     printf 'autonomous_proof_contract=passed\n'
-    printf 'verification_wiring=passed\n'
+    printf 'nightly_schedule=passed\n'
     printf 'release_wiring=passed\n'
     printf 'removed_workflow_references=absent\n'
   } >"$SUMMARY_PATH"
