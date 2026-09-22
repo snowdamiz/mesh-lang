@@ -679,8 +679,9 @@ pub struct NodeSession {
     pub node_id: u16,
     /// Whether this transport was accepted locally or initiated outbound.
     pub(crate) direction: SessionDirection,
-    /// The TLS stream, shared between writer and reader threads
-    pub(crate) stream: Mutex<NodeStream>,
+    /// The TLS stream, shared between writer and reader threads. A
+    /// `parking_lot` mutex so the reader can hand it over fairly.
+    pub(crate) stream: parking_lot::Mutex<NodeStream>,
     /// Signals the session's reader/heartbeat threads to stop
     pub shutdown: AtomicBool,
     /// When this connection was established
@@ -799,7 +800,7 @@ impl NodeSession {
             remote_creation,
             node_id,
             direction,
-            stream: Mutex::new(stream),
+            stream: parking_lot::Mutex::new(stream),
             shutdown: AtomicBool::new(false),
             connected_at: Instant::now(),
             negotiated_protocol,
@@ -837,7 +838,7 @@ impl NodeSession {
             return Err("peer_session_shutdown".to_string());
         }
         if !self.persistent {
-            let mut stream = self.stream.lock().unwrap();
+            let mut stream = self.stream.lock();
             return write_msg(&mut *stream, &payload)
                 .map_err(|error| format!("peer_session_write_failed:{error}"));
         }
@@ -877,6 +878,29 @@ impl NodeSession {
         enqueue_outbound(sender, bytes, byte_limit, class, payload)
     }
 
+    /// Like `send`, but waits for room in the lane instead of failing when it
+    /// is full. For bulk state transfer, whose dropped frames nobody resends:
+    /// initial sync pushes one frame per record into a 64-frame lane.
+    pub(crate) fn send_waiting(
+        &self,
+        class: OutboundClass,
+        payload: Vec<u8>,
+    ) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            match self.send(class, payload.clone()) {
+                Err(error)
+                    if (error == "peer_outbound_queue_full"
+                        || error == "peer_outbound_byte_limit")
+                        && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                result => return result,
+            }
+        }
+    }
+
     fn send_heartbeat(&self, payload: Vec<u8>) -> Result<(), String> {
         if self.shutdown.load(Ordering::Acquire) {
             return Err("peer_session_shutdown".to_string());
@@ -892,7 +916,7 @@ impl NodeSession {
         // Heartbeats are liveness control, not application admission. Writing
         // them directly under the same stream mutex keeps frames atomic while
         // preventing a reservation burst from causing a false node failure.
-        let mut stream = self.stream.lock().unwrap();
+        let mut stream = self.stream.lock();
         write_msg(&mut *stream, &payload).map_err(|error| format!("peer_heartbeat_failed:{error}"))
     }
 
@@ -1791,7 +1815,7 @@ fn writer_loop_session(session: Arc<NodeSession>) {
         // instead of reacquiring this lock for every small protocol frame.
         let mut written_application = false;
         let result = {
-            let mut stream = session.stream.lock().unwrap();
+            let mut stream = session.stream.lock();
             let mut result = Ok(());
             for frame in &batch {
                 if let Err(error) = write_msg(&mut *stream, &frame.payload) {
@@ -1831,14 +1855,14 @@ fn writer_loop_session(session: Arc<NodeSession>) {
 /// - HEARTBEAT_PONG: validates payload matches pending ping and updates HeartbeatState
 /// - Other tags: ignored (Phase 65 will add message routing)
 ///
-/// Uses a 100ms read timeout to allow periodic shutdown checks without
-/// busy-waiting.
+/// Uses a 25ms read timeout to allow periodic shutdown checks and writer
+/// turns without busy-waiting.
 fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<HeartbeatState>>) {
     // The incremental frame reader preserves partial prefixes/bodies across
     // socket timeouts, allowing the shared rustls stream lock to be released
     // frequently for control-plane writes without desynchronizing framing.
     {
-        let s = session.stream.lock().unwrap();
+        let s = session.stream.lock();
         s.set_read_timeout(Some(Duration::from_millis(25))).ok();
     }
     let mut frame_reader = PersistentFrameReader::default();
@@ -1849,13 +1873,18 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
         }
 
         let result = {
-            let mut s = session.stream.lock().unwrap();
+            let mut s = session.stream.lock();
             let maximum = if session.negotiated_protocol.version >= PROTOCOL_V2 {
                 session.negotiated_protocol.max_frame_bytes
             } else {
                 MAX_DIST_MSG
             };
-            frame_reader.read_next(&mut *s, maximum)
+            let result = frame_reader.read_next(&mut *s, maximum);
+            // This loop takes the lock straight back, so a plain unlock lets
+            // it win every time and a writer waits for inbound traffic
+            // instead of at most one read timeout. Hand the stream over.
+            parking_lot::MutexGuard::unlock_fair(s);
+            result
         };
 
         match result {
@@ -5474,14 +5503,14 @@ pub(crate) fn handle_transient_operator_query_connection(
     ));
 
     {
-        let stream = session.stream.lock().unwrap();
+        let stream = session.stream.lock();
         stream
             .set_read_timeout(Some(timeout))
             .map_err(|error| format!("transient_operator_timeout_set_failed:{error}"))?;
     }
 
     let msg = {
-        let mut stream = session.stream.lock().unwrap();
+        let mut stream = session.stream.lock();
         read_dist_msg(&mut *stream)
             .map_err(|error| format!("transient_operator_read_failed:{error}"))?
     };
@@ -6663,7 +6692,7 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
             spawn_session_threads(&session);
             send_peer_list(&session);
             crate::dist::global::send_global_sync(&session);
-            crate::dist::continuity::send_continuity_sync(&session);
+            crate::dist::continuity::spawn_continuity_sync(&session);
         }
         Err(error) if error == format!("already_connected:{remote_name}") => {}
         Err(error) => {
@@ -6951,7 +6980,7 @@ fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSes
             spawn_session_threads(&session);
             send_peer_list(&session);
             crate::dist::global::send_global_sync(&session);
-            crate::dist::continuity::send_continuity_sync(&session);
+            crate::dist::continuity::spawn_continuity_sync(&session);
             Ok(session)
         }
         Err(error) if error == format!("already_connected:{}", remote_name) => {
@@ -9790,6 +9819,141 @@ mod tests {
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), Some(payload));
+    }
+
+    /// A persistent session over loopback TLS, with its reader and writer
+    /// threads running, to a peer that never writes and reports when each
+    /// frame arrives. Set `shutdown`, join the threads, then drop the session
+    /// before joining the peer.
+    fn quiet_peer_session() -> (
+        Arc<NodeSession>,
+        mpsc::Receiver<Instant>,
+        [std::thread::JoinHandle<()>; 3],
+    ) {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (arrivals, arrived) = mpsc::channel();
+        let peer = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            tcp.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+            let (cert, key) = generate_ephemeral_cert();
+            let mut tls = StreamOwned::new(
+                rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap(),
+                tcp,
+            );
+            // Never writes, so the session's reader only ever times out.
+            while read_msg(&mut tls).is_ok() {
+                if arrivals.send(Instant::now()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+        let mut tls = StreamOwned::new(
+            rustls::ClientConnection::new(build_node_client_config(), server_name).unwrap(),
+            tcp,
+        );
+        while tls.conn.is_handshaking() {
+            tls.conn.complete_io(&mut tls.sock).unwrap();
+        }
+        let session = Arc::new(NodeSession::new(
+            RemoteSessionEndpoint {
+                remote_name: "quiet@127.0.0.1".to_string(),
+                remote_creation: 1,
+                node_id: 1,
+                direction: SessionDirection::Outgoing,
+            },
+            NodeStream::ClientTls(tls),
+            true,
+            NegotiatedProtocol {
+                version: PROTOCOL_V1,
+                capabilities: super::super::protocol::Capabilities::default(),
+                max_frame_bytes: 4096,
+                autonomous_enabled: false,
+                disabled_reason: None,
+            },
+            None,
+        ));
+        let heartbeat = Arc::new(Mutex::new(HeartbeatState::new(
+            Duration::from_secs(60),
+            Duration::from_secs(15),
+        )));
+        let reader = std::thread::spawn({
+            let session = Arc::clone(&session);
+            move || reader_loop_session(session, heartbeat)
+        });
+        let writer = std::thread::spawn({
+            let session = Arc::clone(&session);
+            move || writer_loop_session(session)
+        });
+        (session, arrived, [reader, writer, peer])
+    }
+
+    fn stop_quiet_peer_session(
+        session: Arc<NodeSession>,
+        [reader, writer, peer]: [std::thread::JoinHandle<()>; 3],
+    ) {
+        session.shutdown.store(true, Ordering::SeqCst);
+        reader.join().unwrap();
+        writer.join().unwrap();
+        drop(session);
+        peer.join().unwrap();
+    }
+
+    /// On a connection whose peer is quiet, the reader spends nearly all its
+    /// time holding the stream lock inside a read that waits out its poll
+    /// timeout, then takes the lock straight back. Unless it hands the lock to
+    /// a waiting writer, outbound frames wait for inbound traffic: seconds per
+    /// hop, which timed out replica prepares and request dispatch in the
+    /// Docker cluster proof.
+    #[test]
+    fn idle_reader_does_not_starve_outbound_frames() {
+        let (session, arrived, threads) = quiet_peer_session();
+        let mut latencies = Vec::new();
+        for _ in 0..15 {
+            std::thread::sleep(Duration::from_millis(40));
+            let sent = Instant::now();
+            session
+                .send(OutboundClass::Control, vec![DIST_PEER_LIST])
+                .unwrap();
+            let delivered = arrived
+                .recv_timeout(Duration::from_secs(5))
+                .expect("frame delivered while the peer stays quiet");
+            latencies.push(delivered - sent);
+        }
+        stop_quiet_peer_session(session, threads);
+
+        latencies.sort();
+        // The reader's poll timeout is 25 ms, so a writer that is handed the
+        // lock waits at most that long; the median leaves room for a loaded host.
+        assert!(
+            latencies[latencies.len() / 2] < Duration::from_millis(150),
+            "outbound frame latencies: {latencies:?}"
+        );
+    }
+
+    /// Initial sync sends one frame per continuity record through the
+    /// 64-frame snapshot lane. After a busy period that is thousands of
+    /// frames; dropping the overflow left a new worker `warming` for good.
+    #[test]
+    fn bulk_sends_wait_for_lane_room_instead_of_dropping_frames() {
+        let (session, arrived, threads) = quiet_peer_session();
+        let frames = SNAPSHOT_QUEUE_ITEMS * 16;
+        for _ in 0..frames {
+            session
+                .send_waiting(OutboundClass::Snapshot, vec![DIST_PEER_LIST; 512])
+                .expect("frame queued once the writer makes room");
+        }
+        for index in 0..frames {
+            arrived
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap_or_else(|_| panic!("frame {index} of {frames} never arrived"));
+        }
+        stop_quiet_peer_session(session, threads);
     }
 
     #[test]

@@ -723,10 +723,7 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
     }
 
     // Write to the active TLS session and report failure to the caller.
-    let mut stream = match session.stream.lock() {
-        Ok(stream) => stream,
-        Err(_) => return 5,
-    };
+    let mut stream = session.stream.lock();
     match crate::dist::node::write_msg(&mut *stream, &payload) {
         Ok(()) => 0,
         Err(_) => 5,
@@ -790,10 +787,7 @@ pub extern "C" fn mesh_actor_send_named(
         payload.extend_from_slice(slice);
     }
 
-    let mut stream = match session.stream.lock() {
-        Ok(stream) => stream,
-        Err(_) => return 5,
-    };
+    let mut stream = session.stream.lock();
     match crate::dist::node::write_msg(&mut *stream, &payload) {
         Ok(()) => 0,
         Err(_) => 5,
@@ -1830,7 +1824,7 @@ fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&monitor_ref.to_le_bytes());
 
-    let mut stream = session.stream.lock().unwrap();
+    let mut stream = session.stream.lock();
     crate::dist::node::write_msg(&mut *stream, &payload).is_ok()
 }
 

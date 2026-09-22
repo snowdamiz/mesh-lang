@@ -2274,7 +2274,18 @@ fn send_continuity_upsert_to_node(
     let _ = session.send(super::node::OutboundClass::Continuity, payload);
 }
 
-pub(crate) fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
+/// Sends a new peer the continuity state on a thread of its own: it is one
+/// frame per record, and waiting for queue room must not hold up the accept or
+/// connect path that registered the session.
+pub(crate) fn spawn_continuity_sync(session: &Arc<super::node::NodeSession>) {
+    let session = Arc::clone(session);
+    std::thread::Builder::new()
+        .name(format!("mesh-continuity-sync-{}", session.remote_name))
+        .spawn(move || send_continuity_sync(&session))
+        .expect("failed to spawn continuity sync thread");
+}
+
+fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
     let snapshot = continuity_registry().snapshot();
     if snapshot.records.is_empty() && snapshot.next_attempt_token == 0 {
         send_durable_store_sync(session);
@@ -2286,14 +2297,21 @@ pub(crate) fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
         .capabilities
         .contains(super::protocol::Capabilities::CHUNKED_SNAPSHOTS)
     {
+        // Nothing resends a dropped frame, and the peer stays `warming` until
+        // the durable snapshot after these completes, so wait for room.
         for record in &snapshot.records {
             if let Ok(payload) = encode_upsert_payload(snapshot.next_attempt_token, record) {
-                let _ = session.send(super::node::OutboundClass::Snapshot, payload);
+                if session
+                    .send_waiting(super::node::OutboundClass::Snapshot, payload)
+                    .is_err()
+                {
+                    return;
+                }
             }
         }
         send_durable_store_sync(session);
     } else if let Ok(payload) = encode_sync_payload(&snapshot) {
-        let _ = session.send(super::node::OutboundClass::Snapshot, payload);
+        let _ = session.send_waiting(super::node::OutboundClass::Snapshot, payload);
     }
 }
 
@@ -2384,7 +2402,7 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
             return;
         };
         if session
-            .send(super::node::OutboundClass::Snapshot, frame)
+            .send_waiting(super::node::OutboundClass::Snapshot, frame)
             .is_err()
         {
             return;
@@ -2404,7 +2422,7 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
                 return;
             };
             if session
-                .send(super::node::OutboundClass::Snapshot, frame)
+                .send_waiting(super::node::OutboundClass::Snapshot, frame)
                 .is_err()
             {
                 return;
