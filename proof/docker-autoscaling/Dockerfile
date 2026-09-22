@@ -6,12 +6,16 @@ RUN apt-get update && apt-get install -y \
     libssl-dev libzstd-dev libffi-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
+# apt.llvm.org drops the odd request. Piping `wget -q` into apt-key turned
+# that into "no valid OpenPGP data"; retry, and fail on the download itself.
+RUN curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+        https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm-snapshot.gpg.key \
+    && apt-key add /tmp/llvm-snapshot.gpg.key \
     && echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" \
        > /etc/apt/sources.list.d/llvm.list \
-    && apt-get update \
-    && apt-get install -y llvm-21-dev libpolly-21-dev clang-21 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y llvm-21-dev libpolly-21-dev clang-21 \
+    && rm -rf /var/lib/apt/lists/* /tmp/llvm-snapshot.gpg.key
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
     -y --default-toolchain 1.92.0
