@@ -588,6 +588,62 @@ fn tokenize_test_source(source: &str) -> Vec<TToken> {
     tokens
 }
 
+/// How deep the mini token stream is inside `do...end` blocks.
+///
+/// Every block opener takes its own `do` and `end`, except `else if`: it
+/// continues the `if` before it and shares that chain's single `end`, so its
+/// `do` opens nothing. Counting `do` and `end` alone leaves the depth one too
+/// high after every chain; from then on a top-level `test(...)` block is
+/// emitted as ordinary source, and a chain inside a test body swallows
+/// whatever follows the block.
+struct BlockNesting {
+    depth: usize,
+    /// Block keywords still waiting for their `do`; `true` marks an `else if`.
+    openers: Vec<bool>,
+    /// Nothing but whitespace and comments since the last `else`.
+    after_else: bool,
+}
+
+impl BlockNesting {
+    fn new(depth: usize) -> Self {
+        Self {
+            depth,
+            openers: Vec::new(),
+            after_else: false,
+        }
+    }
+
+    /// Accounts for one token and returns the depth after it.
+    fn feed(&mut self, tok: &TToken) -> usize {
+        match tok {
+            TToken::If => self.openers.push(self.after_else),
+            TToken::Case
+            | TToken::While
+            | TToken::For
+            | TToken::Fn
+            | TToken::Actor
+            | TToken::Service
+            | TToken::Receive => self.openers.push(false),
+            TToken::Do => {
+                // A `do` with no keyword waiting for it is a bare block.
+                if !self.openers.pop().unwrap_or(false) {
+                    self.depth += 1;
+                }
+            }
+            TToken::End => self.depth = self.depth.saturating_sub(1),
+            _ => {}
+        }
+        self.after_else = match tok {
+            TToken::Other(text) if text == "else" => true,
+            TToken::Other(text) if text.trim().is_empty() || text.starts_with('#') => {
+                self.after_else
+            }
+            _ => false,
+        };
+        self.depth
+    }
+}
+
 /// Extract test blocks from the token stream.
 ///
 /// Recognizes:
@@ -618,25 +674,15 @@ fn extract_blocks_at(
     teardown_body: Option<&str>,
     blocks: &mut Vec<TestBlock>,
 ) {
-    // `block_depth` tracks how deep we are inside `do...end` blocks from non-test items
-    // (e.g., helper function bodies). Only incremented by `do`; decremented by `end`.
-    // When depth > 0, we are inside a non-test block and skip tokens without checking
+    // How deep we are inside `do...end` blocks from non-test items (e.g. helper
+    // function bodies). While inside one, tokens are skipped without checking
     // for test/describe keywords.
-    let mut block_depth: usize = 0;
+    let mut nesting = BlockNesting::new(0);
 
     while *i < tokens.len() {
         // Inside a non-test block (e.g., a helper `fn` body) — skip tokens until `end`.
-        if block_depth > 0 {
-            match &tokens[*i] {
-                TToken::Do => {
-                    block_depth += 1;
-                }
-                TToken::End => {
-                    block_depth -= 1;
-                    // When depth returns to 0, we've exited the non-test block.
-                }
-                _ => {}
-            }
+        if nesting.depth > 0 {
+            nesting.feed(&tokens[*i]);
             *i += 1;
             continue;
         }
@@ -689,12 +735,6 @@ fn extract_blocks_at(
                 // Advance past the describe body.
                 *i = inner_end;
             }
-            TToken::Do => {
-                // A `do` at the top level of the scan — we're entering a non-test block
-                // (e.g., a helper function body). Track depth so we skip its `end`.
-                block_depth += 1;
-                *i += 1;
-            }
             TToken::End => {
                 if group_prefix.is_some() {
                     // End of a describe block (caller handles this).
@@ -705,7 +745,11 @@ fn extract_blocks_at(
                 // (depth tracking above handles normal cases). Skip it.
                 *i += 1;
             }
-            _ => {
+            tok => {
+                // A `do` here enters a non-test block (e.g. a helper function
+                // body). The keyword before it, and any `else`, are tracked so
+                // the block's `end` is recognised.
+                nesting.feed(tok);
                 *i += 1;
             }
         }
@@ -727,12 +771,8 @@ fn extract_tests_from_describe(
 ) {
     let mut i = start;
     // end_idx points AFTER the describe's closing `end`, so we stop before it.
-    // The last token we should process is at end_idx - 2 (the closing `end` is at end_idx - 1,
-    // but peek_describe_body already consumed it). Actually end_idx is after the end, so we
-    // process tokens[start..end_idx-1] (exclusive of the closing `end`).
-    // We use a depth counter to skip setup/teardown sub-blocks.
-    let mut skip_depth: usize = 0;
-    let mut in_setup_teardown: bool = false;
+    // The setup/teardown sub-block being skipped, tracked from its opening `do`.
+    let mut skipped: Option<BlockNesting> = None;
 
     while i < tokens.len() {
         // Stop when we've passed the describe's closing token range.
@@ -742,23 +782,13 @@ fn extract_tests_from_describe(
             break;
         }
 
-        if skip_depth > 0 {
+        if let Some(nesting) = skipped.as_mut() {
             // Inside a setup/teardown block body — skip everything and track nesting.
-            // Only `do` opens a block; keywords like `if`, `case`, `while` precede `do`
-            // and must not be double-counted.
-            match &tokens[i] {
-                TToken::Do => {
-                    skip_depth += 1;
-                }
-                TToken::End => {
-                    skip_depth -= 1;
-                    if skip_depth == 0 {
-                        in_setup_teardown = false;
-                    }
-                }
-                _ => {}
-            }
+            let closed = nesting.feed(&tokens[i]) == 0;
             i += 1;
+            if closed {
+                skipped = None;
+            }
             continue;
         }
 
@@ -767,11 +797,9 @@ fn extract_tests_from_describe(
                 // Skip this setup/teardown sub-block entirely.
                 // Skip past the keyword, then find and consume the opening Do.
                 i += 1;
-                in_setup_teardown = true;
-                // Skip to the opening `do` of setup/teardown.
                 while i < tokens.len() {
                     if matches!(tokens[i], TToken::Do) {
-                        skip_depth = 1;
+                        skipped = Some(BlockNesting::new(1));
                         i += 1; // consume 'do', now inside the block
                         break;
                     }
@@ -800,7 +828,6 @@ fn extract_tests_from_describe(
             }
         }
     }
-    let _ = in_setup_teardown; // suppress unused variable warning
 }
 
 /// Parse the describe body to extract optional `setup()` and `teardown()` bodies.
@@ -811,11 +838,11 @@ fn peek_describe_body(tokens: &[TToken], start: usize) -> (Option<String>, Optio
     let mut setup = None;
     let mut teardown = None;
     let mut i = start;
-    let mut depth = 1usize; // we're inside the describe's 'do', depth starts at 1
+    let mut nesting = BlockNesting::new(1); // we're inside the describe's 'do', depth starts at 1
 
     while i < tokens.len() {
         match &tokens[i] {
-            TToken::SetupKw if depth == 1 => {
+            TToken::SetupKw if nesting.depth == 1 => {
                 i += 1;
                 // Expect `() do BODY end`
                 skip_to_do(tokens, &mut i);
@@ -825,7 +852,7 @@ fn peek_describe_body(tokens: &[TToken], start: usize) -> (Option<String>, Optio
                 let body = extract_block_body_raw(tokens, &mut i);
                 setup = Some(body);
             }
-            TToken::TeardownKw if depth == 1 => {
+            TToken::TeardownKw if nesting.depth == 1 => {
                 i += 1;
                 skip_to_do(tokens, &mut i);
                 if i < tokens.len() {
@@ -834,22 +861,12 @@ fn peek_describe_body(tokens: &[TToken], start: usize) -> (Option<String>, Optio
                 let body = extract_block_body_raw(tokens, &mut i);
                 teardown = Some(body);
             }
-            // Only `do` opens a block and increases depth.
-            // Keywords like `if`, `while`, `case`, `for`, `receive` precede a `do` and
-            // must NOT be double-counted — the `do` that follows them handles depth.
-            TToken::Do => {
-                depth += 1;
-                i += 1;
+            TToken::End if nesting.depth == 1 => {
+                i += 1; // consume the closing 'end' of describe
+                return (setup, teardown, i);
             }
-            TToken::End => {
-                if depth == 1 {
-                    i += 1; // consume the closing 'end' of describe
-                    return (setup, teardown, i);
-                }
-                depth -= 1;
-                i += 1;
-            }
-            _ => {
+            tok => {
+                nesting.feed(tok);
                 i += 1;
             }
         }
@@ -922,59 +939,21 @@ fn extract_block_body(tokens: &[TToken], i: &mut usize) -> String {
 
 /// Extract block body as raw source text, tracking do/end nesting.
 ///
-/// Only `do` increments depth — it is the actual block opener in all Mesh constructs.
-/// Keywords like `if`, `while`, `case`, `for`, `receive` always precede a `do` keyword
-/// that opens the block; they do NOT increment depth themselves (that would double-count).
-///
-/// Pattern:
-///   `if X do BODY end`      — `do` opens, `end` closes (depth: +1 by `do`, -1 by `end`)
-///   `case X do ARMS end`    — same
-///   `while X do BODY end`   — same
-///   `for X in Y do BODY end`— same
-///   `receive do ARMS end`   — same
-///   `fn X(args) do BODY end`— `fn` not counted; `do` opens, `end` closes
+/// Called AFTER consuming the opening `do`. Advances `i` past the matching `end`.
+/// `BlockNesting` says which `do` opens a block: every one except the `do` of an
+/// `else if`, which continues the chain before it and shares its `end`.
 fn extract_block_body_raw(tokens: &[TToken], i: &mut usize) -> String {
     let mut body = String::new();
-    let mut depth = 1usize;
+    let mut nesting = BlockNesting::new(1);
 
     while *i < tokens.len() {
-        match &tokens[*i] {
-            // Only `do` opens a block and increases depth.
-            // All other keywords (`if`, `while`, `case`, `for`, `receive`, `fn`) are emitted
-            // as text only — the `do` that follows them handles the depth increment.
-            TToken::Do => {
-                depth += 1;
-                body.push_str("do");
-            }
-            TToken::End => {
-                if depth == 0 {
-                    *i += 1;
-                    break;
-                }
-                depth -= 1;
-                if depth == 0 {
-                    *i += 1; // consume 'end'
-                    break;
-                }
-                body.push_str("end");
-            }
-            TToken::Fn => body.push_str("fn"),
-            TToken::If => body.push_str("if"),
-            TToken::While => body.push_str("while"),
-            TToken::Case => body.push_str("case"),
-            TToken::For => body.push_str("for"),
-            TToken::Actor => body.push_str("actor"),
-            TToken::Service => body.push_str("service"),
-            TToken::Receive => body.push_str("receive"),
-            TToken::TestKw => body.push_str("test"),
-            TToken::DescribeKw => body.push_str("describe"),
-            TToken::SetupKw => body.push_str("setup"),
-            TToken::TeardownKw => body.push_str("teardown"),
-            TToken::LParen => body.push('('),
-            TToken::RParen => body.push(')'),
-            TToken::StringLit(s) => body.push_str(s),
-            TToken::Other(s) => body.push_str(s),
+        let tok = &tokens[*i];
+        if matches!(tok, TToken::End) && nesting.depth <= 1 {
+            *i += 1; // consume the block's own 'end'
+            break;
         }
+        nesting.feed(tok);
+        body.push_str(&token_to_str(tok));
         *i += 1;
     }
 
@@ -1009,42 +988,32 @@ fn token_to_str(tok: &TToken) -> String {
 ///
 /// This preserves user-defined helper functions used in test bodies.
 ///
-/// Uses `tokenize_test_source` for token-level depth tracking, which correctly handles
-/// `describe` blocks containing `setup do...end` or `teardown do...end` sub-blocks.
+/// Uses `tokenize_test_source` and `BlockNesting` for token-level depth tracking,
+/// which correctly handles `describe` blocks containing `setup do...end` or
+/// `teardown do...end` sub-blocks, and `else if` chains that share one `end`.
 /// The old line-by-line `count_do_in_line`/`count_end_in_line` approach failed because
 /// each `setup do` and `teardown do` sub-block inside a describe block would confuse
 /// the depth counter, causing the describe's closing `end` to be missed.
 fn emit_non_test_items(source: &str, out: &mut String) {
     let tokens = tokenize_test_source(source);
     let mut i = 0;
-    // Depth of non-test blocks we are currently emitting (0 = top level).
-    let mut emit_depth: usize = 0;
-    // True when we are suppressing a test/describe block at top level.
-    let mut skipping: bool = false;
-    // Block depth inside the skipped test/describe block.
-    // When this reaches 0, we exit skip mode.
-    let mut skip_depth: usize = 0;
+    // Nesting of the non-test blocks being emitted (depth 0 = top level).
+    let mut emitted = BlockNesting::new(0);
+    // Between a top-level test/describe keyword and its opening `do`.
+    let mut skipping = false;
+    // The test/describe block being suppressed, tracked from its opening `do`.
+    let mut skipped: Option<BlockNesting> = None;
 
     while i < tokens.len() {
         let tok = &tokens[i];
 
-        if skip_depth > 0 {
+        if let Some(nesting) = skipped.as_mut() {
             // Inside a test/describe block body — skip everything and track nesting.
-            // Only `do` opens a block; keywords like `if`, `case`, `while`, `for`, `receive`
-            // precede a `do` and must not be double-counted.
-            match tok {
-                TToken::Do => {
-                    skip_depth += 1;
-                }
-                TToken::End => {
-                    skip_depth -= 1;
-                    if skip_depth == 0 {
-                        skipping = false;
-                    }
-                }
-                _ => {}
-            }
+            let closed = nesting.feed(tok) == 0;
             i += 1;
+            if closed {
+                skipped = None;
+            }
             continue;
         }
 
@@ -1052,33 +1021,22 @@ fn emit_non_test_items(source: &str, out: &mut String) {
             // Between TestKw/DescribeKw and the opening Do (skipping label, parens, etc.).
             // Once we see the Do keyword, start depth tracking.
             if matches!(tok, TToken::Do) {
-                skip_depth = 1;
+                skipped = Some(BlockNesting::new(1));
+                skipping = false;
             }
             // Do not emit anything while skipping.
             i += 1;
             continue;
         }
 
-        // Not skipping. emit_depth tracks depth of user-defined blocks being emitted.
-        // Only `do` increments depth; keywords like `if`, `case`, `while`, `for`, `receive`
-        // are emitted as text only — the `do` that follows them handles depth.
         match tok {
-            TToken::TestKw | TToken::DescribeKw if emit_depth == 0 => {
+            TToken::TestKw | TToken::DescribeKw if emitted.depth == 0 => {
                 // Start of a test/describe block at top level — suppress it entirely.
                 skipping = true;
                 // Do not emit the keyword.
             }
-            TToken::Do => {
-                emit_depth += 1;
-                out.push_str("do");
-            }
-            TToken::End => {
-                if emit_depth > 0 {
-                    emit_depth -= 1;
-                }
-                out.push_str(&token_to_str(tok));
-            }
             _ => {
+                emitted.feed(tok);
                 out.push_str(&token_to_str(tok));
             }
         }
@@ -1365,6 +1323,36 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn preprocess_test_source_keeps_else_if_chains_balanced() {
+        let source = "fn pick(n :: Int) -> Int do\n  if n < 0 do\n    0\n  else if n > 9 do\n    9\n  else\n    n\n  end\nend\n\ntest(\"pick\") do\n  if pick(3) == 3 do\n    assert(true)\n  else if pick(3) == 0 do\n    assert(false)\n  else\n    assert(false)\n  end\nend\n\nfn after() -> Int do\n  1\nend\n";
+
+        let out = preprocess_test_source(source);
+
+        // The helper before the chain-carrying test is kept, the test block is
+        // not emitted as ordinary source, and the helper after it is emitted
+        // once, outside the test body.
+        assert!(out.contains("fn pick(n :: Int) -> Int do"), "{out}");
+        assert!(!out.contains("test(\"pick\")"), "{out}");
+        assert_eq!(out.matches("fn after() -> Int do").count(), 1, "{out}");
+        let body_start = out.find("fn __test_body_0() do").unwrap();
+        let body = &out[body_start..out.find("fn main() do").unwrap()];
+        assert!(body.contains("else if pick(3) == 0 do"), "{out}");
+        assert!(!body.contains("fn after()"), "{out}");
+    }
+
+    #[test]
+    fn preprocess_test_source_keeps_else_if_chains_balanced_in_describe_setup() {
+        let source = "describe(\"group\") do\n  setup() do\n    if true do\n      1\n    else if false do\n      2\n    else\n      3\n    end\n  end\n  test(\"one\") do\n    assert(true)\n  end\nend\n\ntest(\"two\") do\n  assert(true)\nend\n";
+
+        let out = preprocess_test_source(source);
+
+        assert!(out.contains("test_begin(\"group > one\")"), "{out}");
+        assert!(out.contains("test_begin(\"two\")"), "{out}");
+        assert!(!out.contains("describe("), "{out}");
+        assert!(!out.contains("test(\"two\")"), "{out}");
     }
 
     #[test]
