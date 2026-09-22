@@ -489,25 +489,17 @@ jobs:
       MESH_PUBLISH_OWNER: ${{ secrets.MESH_PUBLISH_OWNER }}
       MESH_PUBLISH_TOKEN: ${{ secrets.MESH_PUBLISH_TOKEN }}
 
-  # Runs on every release and its result is reported, but it does not block:
-  # the proof needs more machine than a GitHub-hosted standard runner has.
+  # Runs on every release and its result is reported, but it does not block.
   #
-  # At peak it places roughly fifteen containers -- three controllers, two
-  # gateways, two static workers, five managed ones, Postgres, the capacity
-  # driver and a load generator -- on four vCPUs, and then fires a
-  # thousand-request concurrent burst. Two evidence bundles from consecutive
-  # failures show the same thing: two workers stuck in `warming`, never
-  # routing-eligible, so scale-down freezes on
-  # `scale_down_requires_complete_healthy_window` -- which is correct
-  # behaviour, not a scaling bug -- alongside `consensus_commit_timeout`. The
-  # same scale-down passes on a ten-core developer machine, and giving the
-  # waiter three times longer only raised the tick count from 605 to 2145
-  # without converging, so it is capacity rather than patience.
-  #
-  # Larger runners are an organisation feature and this repository belongs to
-  # a user account, so there is nothing to move it to. Blocking every release
-  # on a gate that cannot pass hides the gates that can. Restore `needs` on
-  # the release job once a bigger runner exists.
+  # It left the release's `needs` on 2026-09-20, when its failures -- workers
+  # stuck in `warming`, `consensus_commit_timeout`, a slow burst -- were read
+  # as four vCPUs being too little for fifteen containers. They were bugs,
+  # fixed on 2026-09-22: each node's transport reader starved its own writers
+  # of the shared TLS stream, delaying every inter-node frame by seconds, and
+  # a new peer's initial sync overflowed the snapshot lane, so workers that
+  # joined after the burst never left `warming`. A single request was just as
+  # slow on an idle ten-core machine. Put this job back in `needs` once the
+  # nightly run has a record of passing.
   autonomous-cluster-proof:
     name: Autonomous cluster proof
     if: startsWith(github.ref, 'refs/tags/v')
@@ -688,9 +680,8 @@ jobs:
 
   release:
     name: Create Release
-    # autonomous-cluster-proof is deliberately absent: see its job above. It
-    # still runs and still reports; it just cannot gate a release it is unable
-    # to pass on the available runners.
+    # autonomous-cluster-proof is deliberately absent for now: see its job
+    # above. It still runs and still reports.
     needs: [build, build-meshpkg, cryptographic-release-evidence, cryptographic-fuzz, authoritative-live-proof, verify-release-assets]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest

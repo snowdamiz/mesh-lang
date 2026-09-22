@@ -84,6 +84,8 @@ The first Docker run returned 874/1,000 successful burst responses and 126 HTTP 
 
 The isolated Docker retry also failed, at `proof_managed_worker_readiness_timeout`; its cleanup completed (`target/proof/docker-autoscaling/1789804307000/summary.json`). The full cluster release proof remains unresolved. Further investigation should measure distributed queue/transport delays, load-report freshness, and consensus commit timing; final first-run telemetry showed incomplete reports, dispatch timeouts, and queue rejections. No provider fencing, durability settings, or proof budgets were relaxed.
 
+Resolved on 2026-09-22 without changing any budget. The dispatch timeouts came from each session's reader holding the unfair TLS stream mutex through its read timeout, so outbound frames waited seconds for inbound traffic. The queue rejections were initial sync overflowing the 64-frame snapshot lane, which left late-joining workers `warming`. A proof race and one fsync per record in snapshot import were fixed with them. The Docker proof then passed three consecutive local runs with every assertion, burst p99 3.8 s, and snapshot import 2.4 s. It also passed on a GitHub-hosted four-vCPU runner: burst p99 6.4 s against 9 s, p99 under injected faults 3.2 s, and snapshot import 4.1 s against 10 s.
+
 ## Broader audit coverage and deferred candidates
 
 The scan included dirty and clean compiler/runtime modules, parser/lexer, type checking, code generation, actors, HTTP/WebSocket/database/distributed paths, formatter, LSP, package tooling, registry, and website/editor surfaces. It was a pattern-driven audit, not an exhaustive profile of every workload. These further candidates remain unimplemented and unbenchmarked:

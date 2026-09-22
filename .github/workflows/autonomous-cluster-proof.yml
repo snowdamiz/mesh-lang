@@ -1,11 +1,10 @@
 name: Autonomous cluster proof
 
 on:
-  # Nightly and on demand rather than on every push: the proof needs more
-  # machine than a GitHub-hosted standard runner has (the evidence is recorded
-  # on the job in release.yml), so gating every commit on it only hid the
-  # checks that do work. release.yml still calls it on a release tag, where it
-  # reports without blocking.
+  # Nightly and on demand rather than on every push. It moved here when its
+  # failures were blamed on the runner's size; they were runtime bugs, fixed
+  # since (the history is on the job in release.yml). release.yml still calls
+  # it on a release tag, where it reports without blocking.
   schedule:
     - cron: "0 5 * * *"
   workflow_dispatch:
