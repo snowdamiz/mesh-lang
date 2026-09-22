@@ -1962,6 +1962,11 @@ fn run_proof(
         peak_managed.saturating_add(1),
         Duration::from_secs(90),
     )?;
+    // The first create after the driver restart is the one the unhealthy-worker
+    // fault stops a second after it starts, so the count alone can be met by a
+    // doomed container. Wait until the replacement serves and reconcile is
+    // idle; otherwise the failover check below watches it being replaced.
+    wait_for_stable_runtime(&controller_target, Duration::from_secs(120))?;
     harness
         .assertions
         .insert("killed_worker_replaced".to_string(), true);
