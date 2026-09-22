@@ -357,6 +357,9 @@ impl Capture<'_> {
             }
             return;
         }
+        if self.kind(node) == LIST {
+            self.flatten_list_view(object);
+        }
         let size = self.out.objects[object as usize].bytes.len();
         // `{len, ...}` headers are trusted only as far as the allocation goes.
         let count = |header: usize, stride: usize| {
@@ -412,6 +415,39 @@ impl Capture<'_> {
         }
     }
 
+    /// A list view (`{len, VIEW, parent, offset}`, see `collections::list`)
+    /// shares its parent's buffer. The receiver gets an owned list holding
+    /// just the elements the view covers, read from the parent as far as the
+    /// parent's allocation goes. A parent that is not an object of this heap
+    /// cannot be read; the view is left as it is and the parent lent.
+    fn flatten_list_view(&mut self, object: u32) {
+        let container = Some(object);
+        if self.read_word(container, 8) != Some(crate::collections::list::VIEW as usize) {
+            return;
+        }
+        let (Some(len), Some(parent), Some(offset)) = (
+            self.read_word(container, 0),
+            self.read_word(container, 16),
+            self.read_word(container, 24),
+        ) else {
+            return;
+        };
+        let Some(parent_size) = self.heap.live_allocation_size(parent as *const u8) else {
+            self.out.lend.push(parent);
+            return;
+        };
+        let available = parent_size.saturating_sub(16) / 8;
+        let take = len.min(available.saturating_sub(offset));
+        let mut bytes = Vec::with_capacity(16 + 8 * take);
+        bytes.extend_from_slice(&(take as u64).to_ne_bytes());
+        bytes.extend_from_slice(&(take as u64).to_ne_bytes());
+        let slots = unsafe {
+            std::slice::from_raw_parts((parent as *const u8).add(16 + 8 * offset), 8 * take)
+        };
+        bytes.extend_from_slice(slots);
+        self.out.objects[object as usize].bytes = bytes;
+    }
+
     /// Capture a list whose elements are `elem`-shaped, without a LIST node
     /// of its own in the table.
     fn list_of(&mut self, address: usize, elem: u32) -> Option<u32> {
@@ -419,6 +455,7 @@ impl Capture<'_> {
             return None;
         }
         let index = self.object(address, LEAF_NODE)?;
+        self.flatten_list_view(index);
         if self.kind(elem) != SCALAR {
             let size = self.out.objects[index as usize].bytes.len();
             let len = self.read_word(Some(index), 0).unwrap_or(0);
@@ -473,6 +510,10 @@ mod tests {
 
     fn word(bytes: &[u8], offset: usize) -> usize {
         usize::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap())
+    }
+
+    fn word_at(address: usize, offset: usize) -> usize {
+        unsafe { ((address + offset) as *const usize).read_unaligned() }
     }
 
     #[test]
@@ -532,6 +573,42 @@ mod tests {
         let (_, received, captured) = transfer(&sender, &blank, &shape);
         assert_eq!(received, blank);
         assert!(captured.is_empty());
+    }
+
+    #[test]
+    fn list_views_are_captured_as_owned_lists() {
+        // A view onto a parent's buffer is sent as a plain list of the
+        // elements it covers; the receiver never sees the parent pointer.
+        let mut sender = ActorHeap::new();
+        let names = ["a", "b", "c", "d"].map(|text| string(&mut sender, text));
+        let parent = list(&mut sender, &names);
+        let view = sender.alloc(32, 8) as *mut usize;
+        unsafe {
+            view.write(2); // len
+            view.add(1).write(crate::collections::list::VIEW as usize);
+            view.add(2).write(parent);
+            view.add(3).write(1); // offset: ["b", "c"]
+        }
+        let shape = [4, LIST, 3, LEAF];
+        let data = (view as usize).to_ne_bytes();
+
+        let (receiver, received, captured) = transfer(&sender, &data, &shape);
+        let copy = word(&received, 0);
+        assert_ne!(copy, view as usize);
+        assert_eq!(
+            receiver.live_allocation_size(copy as *const u8),
+            Some(16 + 2 * 8)
+        );
+        assert_eq!(word_at(copy, 0), 2);
+        assert_eq!(word_at(copy, 8), 2);
+        assert_eq!(unsafe { text(word_at(copy, 16)) }, "b");
+        assert_eq!(unsafe { text(word_at(copy, 24)) }, "c");
+        assert!(captured.lend.is_empty());
+
+        // A view whose length outruns its parent is clamped to the parent.
+        unsafe { view.write(10) };
+        let (_, received, _) = transfer(&sender, &data, &shape);
+        assert_eq!(word_at(word(&received, 0), 0), 3);
     }
 
     #[test]

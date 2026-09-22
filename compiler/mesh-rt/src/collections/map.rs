@@ -236,6 +236,30 @@ pub extern "C" fn mesh_map_size(map: *mut u8) -> i64 {
     unsafe { map_len(map) as i64 }
 }
 
+/// Whether two maps hold the same keys with equal values, in any order.
+/// Keys compare as the map compares them; `val_eq` is a bare
+/// `fn(u64, u64) -> i8` over two raw value slots.
+#[no_mangle]
+pub extern "C" fn mesh_map_eq(a: *mut u8, b: *mut u8, val_eq: *mut u8) -> i8 {
+    type ValEq = unsafe extern "C" fn(u64, u64) -> i8;
+
+    unsafe {
+        if map_len(a) != map_len(b) {
+            return 0;
+        }
+        let f: ValEq = std::mem::transmute(val_eq);
+        let entries = map_entries(a);
+        for i in 0..map_len(a) as usize {
+            let [key, value] = *entries.add(i);
+            match find_key(b, key) {
+                Some(j) if f(value, (*map_entries(b).add(j))[1]) != 0 => {}
+                _ => return 0,
+            }
+        }
+        1
+    }
+}
+
 /// Return a List of all keys in the map.
 #[no_mangle]
 pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {

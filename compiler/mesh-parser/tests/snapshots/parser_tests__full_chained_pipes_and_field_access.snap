@@ -1,73 +1,88 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..86
-  FN_DEF@0..86
+SOURCE_FILE@0..108
+  FN_DEF@0..108
     FN_KW@0..2 "fn"
-    NAME@2..9
-      IDENT@2..9 "process"
-    PARAM_LIST@9..15
-      L_PAREN@9..10 "("
-      PARAM@10..14
-        IDENT@10..14 "data"
-      R_PAREN@14..15 ")"
-    DO_KW@15..17 "do"
-    BLOCK@17..83
-      NEWLINE@17..18 "\n"
-      PIPE_EXPR@18..82
-        PIPE_EXPR@18..57
-          FIELD_ACCESS@18..28
-            NAME_REF@18..22
-              IDENT@18..22 "data"
-            DOT@22..23 "."
-            IDENT@23..28 "items"
-          NEWLINE@28..29 "\n"
-          PIPE@29..31 "|>"
-          CALL_EXPR@31..57
-            NAME_REF@31..37
-              IDENT@31..37 "filter"
-            ARG_LIST@37..57
-              L_PAREN@37..38 "("
-              CLOSURE_EXPR@38..56
-                FN_KW@38..40 "fn"
-                PARAM_LIST@40..43
-                  L_PAREN@40..41 "("
-                  PARAM@41..42
-                    IDENT@41..42 "x"
-                  R_PAREN@42..43 ")"
-                ARROW@43..45 "->"
-                BLOCK@45..53
-                  FIELD_ACCESS@45..53
-                    NAME_REF@45..46
-                      IDENT@45..46 "x"
-                    DOT@46..47 "."
-                    IDENT@47..53 "active"
-                END_KW@53..56 "end"
-              R_PAREN@56..57 ")"
-        NEWLINE@57..58 "\n"
-        PIPE@58..60 "|>"
-        CALL_EXPR@60..82
-          NAME_REF@60..63
-            IDENT@60..63 "map"
-          ARG_LIST@63..82
-            L_PAREN@63..64 "("
-            CLOSURE_EXPR@64..81
-              FN_KW@64..66 "fn"
-              PARAM_LIST@66..69
-                L_PAREN@66..67 "("
-                PARAM@67..68
-                  IDENT@67..68 "x"
-                R_PAREN@68..69 ")"
-              ARROW@69..71 "->"
-              BLOCK@71..78
-                FIELD_ACCESS@71..78
-                  NAME_REF@71..72
-                    IDENT@71..72 "x"
-                  DOT@72..73 "."
-                  IDENT@73..78 "value"
-              END_KW@78..81 "end"
-            R_PAREN@81..82 ")"
-      NEWLINE@82..83 "\n"
-    END_KW@83..86 "end"
-  EOF@86..86 ""
+    WHITESPACE@2..3 " "
+    NAME@3..10
+      IDENT@3..10 "process"
+    PARAM_LIST@10..16
+      L_PAREN@10..11 "("
+      PARAM@11..15
+        IDENT@11..15 "data"
+      R_PAREN@15..16 ")"
+    WHITESPACE@16..17 " "
+    DO_KW@17..19 "do"
+    BLOCK@19..105
+      NEWLINE@19..20 "\n"
+      WHITESPACE@20..22 "  "
+      PIPE_EXPR@22..104
+        PIPE_EXPR@22..70
+          FIELD_ACCESS@22..32
+            NAME_REF@22..26
+              IDENT@22..26 "data"
+            DOT@26..27 "."
+            IDENT@27..32 "items"
+          NEWLINE@32..33 "\n"
+          WHITESPACE@33..37 "    "
+          PIPE@37..39 "|>"
+          WHITESPACE@39..40 " "
+          CALL_EXPR@40..70
+            NAME_REF@40..46
+              IDENT@40..46 "filter"
+            ARG_LIST@46..70
+              L_PAREN@46..47 "("
+              CLOSURE_EXPR@47..69
+                FN_KW@47..49 "fn"
+                WHITESPACE@49..50 " "
+                PARAM_LIST@50..53
+                  L_PAREN@50..51 "("
+                  PARAM@51..52
+                    IDENT@51..52 "x"
+                  R_PAREN@52..53 ")"
+                WHITESPACE@53..54 " "
+                ARROW@54..56 "->"
+                WHITESPACE@56..57 " "
+                BLOCK@57..65
+                  FIELD_ACCESS@57..65
+                    NAME_REF@57..58
+                      IDENT@57..58 "x"
+                    DOT@58..59 "."
+                    IDENT@59..65 "active"
+                WHITESPACE@65..66 " "
+                END_KW@66..69 "end"
+              R_PAREN@69..70 ")"
+        NEWLINE@70..71 "\n"
+        WHITESPACE@71..75 "    "
+        PIPE@75..77 "|>"
+        WHITESPACE@77..78 " "
+        CALL_EXPR@78..104
+          NAME_REF@78..81
+            IDENT@78..81 "map"
+          ARG_LIST@81..104
+            L_PAREN@81..82 "("
+            CLOSURE_EXPR@82..103
+              FN_KW@82..84 "fn"
+              WHITESPACE@84..85 " "
+              PARAM_LIST@85..88
+                L_PAREN@85..86 "("
+                PARAM@86..87
+                  IDENT@86..87 "x"
+                R_PAREN@87..88 ")"
+              WHITESPACE@88..89 " "
+              ARROW@89..91 "->"
+              WHITESPACE@91..92 " "
+              BLOCK@92..99
+                FIELD_ACCESS@92..99
+                  NAME_REF@92..93
+                    IDENT@92..93 "x"
+                  DOT@93..94 "."
+                  IDENT@94..99 "value"
+              WHITESPACE@99..100 " "
+              END_KW@100..103 "end"
+            R_PAREN@103..104 ")"
+      NEWLINE@104..105 "\n"
+    END_KW@105..108 "end"
+  EOF@108..108 ""

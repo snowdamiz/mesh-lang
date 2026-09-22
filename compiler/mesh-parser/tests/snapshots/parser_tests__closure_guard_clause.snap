@@ -1,24 +1,32 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn x when x > 0 -> x end\")"
 ---
-SOURCE_FILE@0..16
-  CLOSURE_EXPR@0..16
+SOURCE_FILE@0..24
+  CLOSURE_EXPR@0..24
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..3
-      PARAM@2..3
-        IDENT@2..3 "x"
-    GUARD_CLAUSE@3..10
-      WHEN_KW@3..7 "when"
-      BINARY_EXPR@7..10
-        NAME_REF@7..8
-          IDENT@7..8 "x"
-        GT@8..9 ">"
-        LITERAL@9..10
-          INT_LITERAL@9..10 "0"
-    ARROW@10..12 "->"
-    BLOCK@12..13
-      NAME_REF@12..13
-        IDENT@12..13 "x"
-    END_KW@13..16 "end"
-  EOF@16..16 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..4
+      PARAM@3..4
+        IDENT@3..4 "x"
+    WHITESPACE@4..5 " "
+    GUARD_CLAUSE@5..15
+      WHEN_KW@5..9 "when"
+      WHITESPACE@9..10 " "
+      BINARY_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          INT_LITERAL@14..15 "0"
+    WHITESPACE@15..16 " "
+    ARROW@16..18 "->"
+    WHITESPACE@18..19 " "
+    BLOCK@19..20
+      NAME_REF@19..20
+        IDENT@19..20 "x"
+    WHITESPACE@20..21 " "
+    END_KW@21..24 "end"
+  EOF@24..24 ""

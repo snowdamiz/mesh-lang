@@ -1,20 +1,22 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"foo(\\n  1,\\n  2\\n)\")"
 ---
-SOURCE_FILE@0..11
-  CALL_EXPR@0..11
+SOURCE_FILE@0..15
+  CALL_EXPR@0..15
     NAME_REF@0..3
       IDENT@0..3 "foo"
-    ARG_LIST@3..11
+    ARG_LIST@3..15
       L_PAREN@3..4 "("
-      LITERAL@4..6
+      LITERAL@4..8
         NEWLINE@4..5 "\n"
-        INT_LITERAL@5..6 "1"
-      COMMA@6..7 ","
-      LITERAL@7..9
-        NEWLINE@7..8 "\n"
-        INT_LITERAL@8..9 "2"
-      NEWLINE@9..10 "\n"
-      R_PAREN@10..11 ")"
-  EOF@11..11 ""
+        WHITESPACE@5..7 "  "
+        INT_LITERAL@7..8 "1"
+      COMMA@8..9 ","
+      LITERAL@9..13
+        NEWLINE@9..10 "\n"
+        WHITESPACE@10..12 "  "
+        INT_LITERAL@12..13 "2"
+      NEWLINE@13..14 "\n"
+      R_PAREN@14..15 ")"
+  EOF@15..15 ""

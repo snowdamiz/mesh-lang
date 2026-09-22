@@ -1,438 +1,399 @@
 /* ──────────────────────────────────────────────────
-   Landing — "living network" design system
-   Soft organic shapes · luminous signal-green accent
-   Bricolage Grotesque display · Instrument Serif accents
+   Landing — hairline frame, Archivo display, one signal colour
    ────────────────────────────────────────────────── */
 
 .landing {
-  /* Accent comes from the site-wide brand tokens; backgrounds stay neutral */
   --l-accent: var(--brand);
   --l-accent-hi: var(--brand-hi);
   --l-accent-ink: var(--brand-ink);
+  --l-line: color-mix(in oklab, var(--foreground) 10%, transparent);
+  --l-line-strong: color-mix(in oklab, var(--foreground) 24%, transparent);
+  --l-panel: oklch(0.985 0 0);
+  --l-panel-head: oklch(0.97 0 0);
+  --l-dot: color-mix(in oklab, var(--foreground) 13%, transparent);
 
   --ok: oklch(0.58 0.14 160);
-  --warn: oklch(0.7 0.13 75);
+  --warn: oklch(0.68 0.14 70);
   --err: oklch(0.58 0.19 25);
-
-  --l-shadow:
-    0 1px 2px oklch(0.3 0 0 / 0.04),
-    0 16px 40px -20px oklch(0.3 0.02 180 / 0.2);
 
   background: var(--background);
   color: var(--foreground);
+  overflow-x: clip;
 }
 
 .dark .landing {
+  --l-line: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --l-line-strong: color-mix(in oklab, var(--foreground) 22%, transparent);
+  --l-panel: oklch(0.14 0 0);
+  --l-panel-head: oklch(0.165 0 0);
+  --l-dot: color-mix(in oklab, var(--foreground) 12%, transparent);
+
   --ok: oklch(0.76 0.15 160);
   --warn: oklch(0.8 0.13 80);
-  --err: oklch(0.66 0.18 25);
-
-  --l-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.05),
-    0 20px 48px -24px oklch(0 0 0 / 0.6);
+  --err: oklch(0.68 0.18 25);
 }
 
 .landing ::selection {
   background: color-mix(in oklab, var(--l-accent) 30%, transparent);
 }
 
-/* Display face — Bricolage's soft ink traps carry the personality */
-.landing .font-display {
-  font-family: 'Bricolage Grotesque', var(--font-sans);
-  font-optical-sizing: auto;
-  letter-spacing: -0.025em;
+/* ── Type ───────────────────────────────────────── */
+
+.l-display,
+.l-h2 {
+  font-family: 'Archivo', var(--font-sans);
+  font-weight: 600;
+  text-wrap: balance;
+}
+.l-display {
+  font-stretch: 114%;
+  font-size: clamp(2.5rem, 0.6rem + 7vw, 6.5rem);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+}
+.l-h2 {
+  font-stretch: 110%;
+  font-size: clamp(2rem, 1.3rem + 2.4vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
 }
 
-/* Italic serif accent word inside headlines */
-.l-fancy {
-  font-family: 'Instrument Serif', Georgia, serif;
-  font-style: italic;
-  font-weight: 400;
-  font-size: 1.06em;
-  letter-spacing: 0.005em;
-  color: var(--l-accent);
-}
-
-/* Eyebrow — lowercase mono with a glowing dot */
-.l-eyebrow {
+.l-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.625rem;
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   color: var(--muted-foreground);
 }
-.l-eyebrow::before {
+.l-label::before {
   content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
+  width: 14px;
+  height: 2px;
   background: var(--l-accent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--l-accent) 80%, transparent);
 }
 
-/* Pill buttons */
+.l-lede {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+/* ── Frame: vertical rails, full-bleed rules, crosses where they meet ── */
+
+.l-frame {
+  max-width: 76rem;
+  margin-inline: auto;
+}
+.l-section {
+  position: relative;
+}
+.l-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 100vw;
+  height: 1px;
+  transform: translateX(-50%);
+  background: var(--l-line);
+}
+@media (min-width: 1024px) {
+  .l-frame {
+    border-inline: 1px solid var(--l-line);
+  }
+  .l-section::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -5px;
+    right: -5px;
+    height: 9px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--l-line-strong), var(--l-line-strong)) left 4px top 0 / 1px 9px no-repeat,
+      linear-gradient(var(--l-line-strong), var(--l-line-strong)) left 0 top 4px / 9px 1px no-repeat,
+      linear-gradient(var(--l-line-strong), var(--l-line-strong)) right 4px top 0 / 1px 9px no-repeat,
+      linear-gradient(var(--l-line-strong), var(--l-line-strong)) right 0 top 4px / 9px 1px no-repeat;
+  }
+}
+
+.l-pad {
+  padding: 5rem 1.25rem;
+}
+@media (min-width: 640px) {
+  .l-pad {
+    padding: 6rem 2.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .l-pad {
+    padding: 7rem 3.5rem;
+  }
+}
+
+/* ── Controls ───────────────────────────────────── */
+
 .l-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  height: 3.25rem;
-  padding: 0 1.9rem;
-  border-radius: 0.75rem;
-  font-size: 0.95rem;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, background-color 0.2s ease;
-}
-.l-btn:hover {
-  transform: translateY(-2px);
-}
-.l-btn:active {
-  transform: translateY(0) scale(0.98);
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 .l-btn-primary {
-  background: var(--l-accent);
-  color: var(--l-accent-ink);
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.25),
-    0 10px 28px -10px color-mix(in oklab, var(--l-accent) 65%, transparent);
+  background: var(--foreground);
+  color: var(--background);
 }
 .l-btn-primary:hover {
-  box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.25),
-    0 16px 36px -12px color-mix(in oklab, var(--l-accent) 80%, transparent);
+  background: color-mix(in oklab, var(--foreground) 86%, var(--background));
 }
-.l-btn-soft {
-  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+.l-btn-quiet {
+  border: 1px solid var(--l-line-strong);
   color: var(--foreground);
-  border: 1px solid var(--border);
 }
-.l-btn-soft:hover {
-  background: color-mix(in oklab, var(--foreground) 9%, transparent);
+.l-btn-quiet:hover {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
-
-/* Soft card */
-.l-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.875rem;
-  box-shadow: var(--l-shadow);
+.l-btn .l-arrow {
+  transition: transform 0.15s ease;
+}
+.l-btn:hover .l-arrow {
+  transform: translateX(2px);
 }
 
-/* Code / terminal window */
-.l-window {
+.l-link {
+  font-weight: 500;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--l-line-strong);
+  text-underline-offset: 4px;
+  transition: text-decoration-color 0.15s ease;
+}
+.l-link:hover {
+  text-decoration-color: var(--l-accent);
+}
+
+/* Copyable shell command */
+.l-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 2.75rem;
+  padding: 0 0.5rem 0 1rem;
+  border: 1px solid var(--l-line-strong);
+  border-radius: 0.5rem;
+  background: var(--l-panel);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--foreground);
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+.l-install:hover {
+  border-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+}
+.l-install-copy {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: 0.375rem;
+  color: var(--muted-foreground);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.l-install:hover .l-install-copy {
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+/* ── Panels and code ────────────────────────────── */
+
+.l-panel {
   overflow: hidden;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 0.875rem;
-  box-shadow: var(--l-shadow);
+  border: 1px solid var(--l-line-strong);
+  border-radius: 0.75rem;
+  background: var(--l-panel);
+  box-shadow: 0 24px 48px -32px oklch(0 0 0 / 0.28);
 }
-.l-window-head {
+.dark .l-panel {
+  box-shadow: 0 24px 64px -32px oklch(0 0 0 / 0.8);
+}
+.l-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.85rem 1.4rem;
-  border-bottom: 1px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.04em;
-  color: var(--muted-foreground);
-}
-.l-window-dots {
-  display: inline-flex;
-  gap: 6px;
-}
-.l-window-dots span {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 14%, transparent);
-}
-.l-window-dots span:first-child {
-  background: color-mix(in oklab, var(--l-accent) 65%, transparent);
-}
-
-/* Pill chip */
-.l-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.4rem 0.8rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--card);
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--l-line);
+  background: var(--l-panel-head);
   font-family: var(--font-mono);
   font-size: 12px;
-  letter-spacing: 0.02em;
   color: var(--muted-foreground);
-  white-space: nowrap;
+}
+.l-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--l-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
 }
 
-/* Aurora blob — position + size inline, this handles the softness */
-.l-aurora {
-  position: absolute;
+.l-code pre {
+  margin: 0;
+  padding: 1.1rem 0;
+  overflow-x: auto;
+  background: transparent !important;
+  counter-reset: ln;
+}
+.l-code code {
+  display: block;
+  min-width: max-content;
+}
+.l-code .line {
+  display: inline-block;
+  min-width: 100%;
+  padding-right: 1.5rem;
+  counter-increment: ln;
+}
+.l-code .line::before {
+  content: counter(ln);
+  display: inline-block;
+  width: 2.25rem;
+  margin-right: 1.25rem;
+  padding-right: 0.25rem;
+  text-align: right;
+  color: color-mix(in oklab, var(--foreground) 24%, transparent);
+  user-select: none;
+}
+.l-code .line.is-hl {
+  background: color-mix(in oklab, var(--l-accent) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--l-accent);
+}
+.l-code .line.is-hl::before {
+  color: var(--l-accent);
+}
+
+/* ── Hero ───────────────────────────────────────── */
+
+.l-announce {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.3rem;
+  border: 1px solid var(--l-line-strong);
   border-radius: 999px;
-  filter: blur(90px);
-  pointer-events: none;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.l-announce:hover {
+  color: var(--foreground);
+  border-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+}
+.l-announce-tag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--l-accent) 16%, transparent);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--l-accent);
 }
 
-@keyframes l-breathe {
-  0%, 100% { opacity: 0.5; transform: scale(1); }
-  50% { opacity: 0.9; transform: scale(1.06); }
-}
-.l-breathe {
-  animation: l-breathe 6s ease-in-out infinite;
-}
-
-/* Gentler variant for the sim node halos (SVG) */
-@keyframes l-halo-breathe {
-  0%, 100% { opacity: 0.08; transform: scale(1); }
-  50% { opacity: 0.17; transform: scale(1.08); }
-}
-.l-node-halo {
-  animation: l-halo-breathe 5s ease-in-out infinite;
+/* Dot grid the hero network sits on */
+.l-grid-bg {
+  background-image: radial-gradient(var(--l-dot) 1px, transparent 1.5px);
+  background-size: 24px 24px;
+  background-position: -12px -12px;
+  mask-image: radial-gradient(ellipse 70% 80% at 75% 35%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 75% 35%, black 20%, transparent 75%);
 }
 
-/* Spec pictogram: source lines pulsing into the binary */
-@keyframes l-code-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-.l-compile-lines line {
-  animation: l-code-pulse 2.6s ease-in-out infinite;
-}
-
-/* Spec pictogram: packets riding actor lanes */
-@keyframes l-lane {
-  0% { transform: translateX(0); opacity: 0; }
-  14% { opacity: 1; }
-  86% { opacity: 1; }
-  100% { transform: translateX(44px); opacity: 0; }
-}
-.l-lane-dot {
-  transform-box: fill-box;
-  animation: l-lane 3s linear infinite;
-}
-
-/* Hero entrance choreography — delays set inline per element */
 @keyframes l-rise {
   from {
     opacity: 0;
-    transform: translateY(26px);
-    filter: blur(6px);
+    transform: translateY(14px);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-@keyframes l-rise-zoom {
-  from {
-    opacity: 0;
-    transform: translateY(22px) scale(0.97);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-@keyframes l-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 .l-enter {
-  animation: l-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.l-enter-zoom {
-  animation: l-rise-zoom 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.l-enter-fade {
-  animation: l-fade-in 1.6s ease-out both;
+  animation: l-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Slow drift for the hero mesh */
-@keyframes l-drift {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-18px, 10px, 0); }
-}
-.l-drift {
-  animation: l-drift 26s ease-in-out infinite alternate;
-}
+/* ── Benchmarks ─────────────────────────────────── */
 
-/* Code panels: transparent shiki bg + line numbers */
-.landing-code pre {
-  background: transparent !important;
-  counter-reset: ln;
-  overflow-x: auto;
-  padding: 1.15rem 1.5rem;
-  font-size: 0.8125rem;
-  line-height: 1.9;
-}
-.landing-code .line {
-  counter-increment: ln;
-}
-.landing-code .line::before {
-  content: counter(ln, decimal-leading-zero);
-  display: inline-block;
-  width: 1.75em;
-  margin-right: 1.5em;
-  text-align: right;
-  color: color-mix(in oklab, var(--foreground) 25%, transparent);
-  user-select: none;
-}
-
-/* Benchmark bars */
-.l-bar-track {
-  position: relative;
-  height: 10px;
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
 .l-bar {
   height: 100%;
-  border-radius: 3px;
-  transition: width 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 20%, transparent);
+  transform-origin: left;
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.l-bar-mesh {
-  background: linear-gradient(90deg, var(--l-accent), var(--l-accent-hi));
-  box-shadow: 0 0 14px color-mix(in oklab, var(--l-accent) 45%, transparent);
-}
-.l-bar-other {
-  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+.l-bar.is-mesh {
+  background: var(--l-accent);
 }
 
-/* Gradient stat / wordmark text */
-.l-grad-text {
-  background: linear-gradient(120deg, var(--l-accent), var(--l-accent-hi));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.l-wordmark {
-  font-family: 'Bricolage Grotesque', var(--font-sans);
-  background: linear-gradient(180deg, color-mix(in oklab, var(--foreground) 30%, transparent), transparent 92%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+/* ── Failover simulation ────────────────────────── */
 
-/* Comparison marks */
-.l-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-}
-.l-mark-yes {
-  background: color-mix(in oklab, var(--ok) 16%, transparent);
-  color: var(--ok);
-}
-.l-mark-partial {
-  background: color-mix(in oklab, var(--warn) 16%, transparent);
-  color: var(--warn);
-}
-.l-mark-no {
-  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
-}
-
-/* Fault-injection pill */
 .l-fault-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 0.5rem;
+  height: 1.875rem;
+  padding: 0 0.75rem;
   border: 1px solid color-mix(in oklab, var(--err) 45%, transparent);
+  border-radius: 0.375rem;
   background: color-mix(in oklab, var(--err) 8%, transparent);
-  color: var(--err);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--err);
+  transition: background-color 0.15s ease;
 }
 .l-fault-btn:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--err) 16%, transparent);
-  transform: translateY(-1px);
+  background: color-mix(in oklab, var(--err) 15%, transparent);
 }
 .l-fault-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* Status blink (fault indicator) */
 @keyframes l-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
+  50% {
+    opacity: 0.25;
+  }
 }
 .l-blink {
   animation: l-blink 0.9s ease-in-out infinite;
 }
 
-/* Terminal caret */
-@keyframes l-caret {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.l-caret {
-  animation: l-caret 1.1s steps(2, jump-none) infinite;
-}
-
-/* Live ping dot */
-.l-ping {
-  position: relative;
-  display: inline-flex;
-  width: 8px;
-  height: 8px;
-}
-.l-ping::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: var(--ok);
-  animation: l-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-.l-ping::after {
-  content: '';
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--ok);
-}
-@keyframes l-ping {
-  0% { transform: scale(1); opacity: 0.7; }
-  75%, 100% { transform: scale(2.4); opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .l-blink,
-  .l-caret,
-  .l-breathe,
-  .l-node-halo,
-  .l-drift,
-  .l-compile-lines line,
-  .l-lane-dot,
   .l-enter,
-  .l-enter-zoom,
-  .l-enter-fade,
-  .l-ping::before {
+  .l-blink {
     animation: none;
   }
   .l-bar {
     transition: none;
+  }
+  .l-motion {
+    display: none;
   }
 }

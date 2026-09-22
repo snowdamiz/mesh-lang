@@ -69,7 +69,9 @@ fn fmt_formats_single_file_in_place() {
 fn fmt_rejects_invalid_source_without_rewriting() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("invalid.mpl");
-    let source = "fn broken(x) do\ncase x do\nErr(_) -> return None\nend\nend\n\nfn retained() do\n42\nend\n";
+    // `return` is an expression now, so the arm body is left dangling on `+`.
+    let source =
+        "fn broken(x) do\ncase x do\nErr(_) -> None +\nend\nend\n\nfn retained() do\n42\nend\n";
     for check in [false, true] {
         std::fs::write(&file, source).unwrap();
         let mut command = Command::new(find_meshc());

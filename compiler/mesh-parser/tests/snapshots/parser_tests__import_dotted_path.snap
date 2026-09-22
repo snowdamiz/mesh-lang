@@ -1,14 +1,15 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"import Foo.Bar.Baz\")"
 ---
-SOURCE_FILE@0..17
-  IMPORT_DECL@0..17
+SOURCE_FILE@0..18
+  IMPORT_DECL@0..18
     IMPORT_KW@0..6 "import"
-    PATH@6..17
-      IDENT@6..9 "Foo"
-      DOT@9..10 "."
-      IDENT@10..13 "Bar"
-      DOT@13..14 "."
-      IDENT@14..17 "Baz"
-  EOF@17..17 ""
+    WHITESPACE@6..7 " "
+    PATH@7..18
+      IDENT@7..10 "Foo"
+      DOT@10..11 "."
+      IDENT@11..14 "Bar"
+      DOT@14..15 "."
+      IDENT@15..18 "Baz"
+  EOF@18..18 ""

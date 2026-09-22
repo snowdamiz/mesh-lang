@@ -1521,6 +1521,11 @@ impl Checker<'_> {
                     self.bind_pattern(&tail);
                 }
             }
+            Pattern::List(list_pattern) => {
+                for child in list_pattern.patterns() {
+                    self.bind_pattern(&child);
+                }
+            }
             Pattern::Wildcard(_) | Pattern::Literal(_) => {}
         }
     }
@@ -1565,6 +1570,11 @@ impl Checker<'_> {
                 }
                 if let Some(tail) = cons_pattern.tail() {
                     self.check_unconsumed_pattern_resources(&tail);
+                }
+            }
+            Pattern::List(list_pattern) => {
+                for child in list_pattern.patterns() {
+                    self.check_unconsumed_pattern_resources(&child);
                 }
             }
             Pattern::Wildcard(_) | Pattern::Literal(_) => {}

@@ -1,35 +1,45 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"pub struct Pair<A, B> do\\n  first :: A\\n  second :: B\\nend\")"
 ---
-SOURCE_FILE@0..43
-  STRUCT_DEF@0..43
+SOURCE_FILE@0..55
+  STRUCT_DEF@0..55
     VISIBILITY@0..3
       PUB_KW@0..3 "pub"
-    STRUCT_KW@3..9 "struct"
-    NAME@9..13
-      IDENT@9..13 "Pair"
-    GENERIC_PARAM_LIST@13..18
-      LT@13..14 "<"
-      IDENT@14..15 "A"
-      COMMA@15..16 ","
-      IDENT@16..17 "B"
-      GT@17..18 ">"
-    DO_KW@18..20 "do"
-    NEWLINE@20..21 "\n"
-    STRUCT_FIELD@21..29
-      NAME@21..26
-        IDENT@21..26 "first"
-      TYPE_ANNOTATION@26..29
-        COLON_COLON@26..28 "::"
-        IDENT@28..29 "A"
-    NEWLINE@29..30 "\n"
-    STRUCT_FIELD@30..39
-      NAME@30..36
-        IDENT@30..36 "second"
-      TYPE_ANNOTATION@36..39
-        COLON_COLON@36..38 "::"
-        IDENT@38..39 "B"
-    NEWLINE@39..40 "\n"
-    END_KW@40..43 "end"
-  EOF@43..43 ""
+    WHITESPACE@3..4 " "
+    STRUCT_KW@4..10 "struct"
+    WHITESPACE@10..11 " "
+    NAME@11..15
+      IDENT@11..15 "Pair"
+    GENERIC_PARAM_LIST@15..21
+      LT@15..16 "<"
+      IDENT@16..17 "A"
+      COMMA@17..18 ","
+      WHITESPACE@18..19 " "
+      IDENT@19..20 "B"
+      GT@20..21 ">"
+    WHITESPACE@21..22 " "
+    DO_KW@22..24 "do"
+    NEWLINE@24..25 "\n"
+    WHITESPACE@25..27 "  "
+    STRUCT_FIELD@27..37
+      NAME@27..32
+        IDENT@27..32 "first"
+      WHITESPACE@32..33 " "
+      TYPE_ANNOTATION@33..37
+        COLON_COLON@33..35 "::"
+        WHITESPACE@35..36 " "
+        IDENT@36..37 "A"
+    NEWLINE@37..38 "\n"
+    WHITESPACE@38..40 "  "
+    STRUCT_FIELD@40..51
+      NAME@40..46
+        IDENT@40..46 "second"
+      WHITESPACE@46..47 " "
+      TYPE_ANNOTATION@47..51
+        COLON_COLON@47..49 "::"
+        WHITESPACE@49..50 " "
+        IDENT@50..51 "B"
+    NEWLINE@51..52 "\n"
+    END_KW@52..55 "end"
+  EOF@55..55 ""

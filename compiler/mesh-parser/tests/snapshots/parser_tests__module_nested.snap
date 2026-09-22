@@ -1,23 +1,29 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"module Outer do\\n  module Inner do\\n  end\\nend\")"
 ---
-SOURCE_FILE@0..35
-  MODULE_DEF@0..35
+SOURCE_FILE@0..43
+  MODULE_DEF@0..43
     MODULE_KW@0..6 "module"
-    NAME@6..11
-      IDENT@6..11 "Outer"
-    DO_KW@11..13 "do"
-    BLOCK@13..32
-      NEWLINE@13..14 "\n"
-      MODULE_DEF@14..31
-        MODULE_KW@14..20 "module"
-        NAME@20..25
-          IDENT@20..25 "Inner"
-        DO_KW@25..27 "do"
-        BLOCK@27..28
-          NEWLINE@27..28 "\n"
-        END_KW@28..31 "end"
-      NEWLINE@31..32 "\n"
-    END_KW@32..35 "end"
-  EOF@35..35 ""
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "Outer"
+    WHITESPACE@12..13 " "
+    DO_KW@13..15 "do"
+    BLOCK@15..40
+      NEWLINE@15..16 "\n"
+      WHITESPACE@16..18 "  "
+      MODULE_DEF@18..39
+        MODULE_KW@18..24 "module"
+        WHITESPACE@24..25 " "
+        NAME@25..30
+          IDENT@25..30 "Inner"
+        WHITESPACE@30..31 " "
+        DO_KW@31..33 "do"
+        BLOCK@33..34
+          NEWLINE@33..34 "\n"
+        WHITESPACE@34..36 "  "
+        END_KW@36..39 "end"
+      NEWLINE@39..40 "\n"
+    END_KW@40..43 "end"
+  EOF@43..43 ""

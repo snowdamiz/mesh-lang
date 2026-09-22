@@ -644,6 +644,44 @@ fn test_secure_store_fixture_is_available_only_to_meshc_test() {
 }
 
 #[test]
+fn test_assert_eq_and_assert_ne_compare_values_of_any_shown_type() {
+    // assert_eq used to type-check only Strings, rejecting the documented
+    // `assert_eq(10, 5 + 5)`.
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"asserts\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &project.path().join("main.mpl"),
+        "fn main() do\n  println(\"ok\")\nend\n",
+    );
+    let test_file = project.path().join("tests/asserts.test.mpl");
+    write_file(
+        &test_file,
+        "test(\"values\") do\n  assert_eq(10, 5 + 5)\n  assert_ne(3, 4)\n  assert_eq(1.5, 1.5)\n  assert_eq(true, 1 < 2)\n  assert_eq([1, 2], [1, 2])\n  assert_eq(\"a\", \"a\")\nend\n",
+    );
+    assert_meshc_test_target_reports_passes(project.path(), "1 passed");
+
+    // A failing comparison shows both sides as values.
+    write_file(
+        &test_file,
+        "test(\"wrong\") do\n  assert_eq(1 + 1, 3)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{all}");
+    assert!(all.contains("left:  2") && all.contains("right: 3"), "{all}");
+}
+
+#[test]
 fn test_push_token_fixture_is_isolated_and_composes_with_secure_store() {
     let project = tempfile::tempdir().unwrap();
     write_file(

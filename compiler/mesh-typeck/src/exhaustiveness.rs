@@ -241,6 +241,13 @@ fn infer_type_info_for_column(
         if let Some(info) = registry.lookup(tn) {
             return info.clone();
         }
+        if tn == TUPLE {
+            // A tuple type has exactly one constructor; its arity is whatever
+            // the tuple patterns in this column carry.
+            if let Some(arity) = find_tuple_arity_in_column(matrix, row, col) {
+                return tuple_type_info(arity);
+            }
+        }
     }
 
     // Check for bool literals
@@ -250,6 +257,60 @@ fn infer_type_info_for_column(
 
     // Default: infinite type
     TypeInfo::Infinite
+}
+
+/// Name shared by every tuple constructor and tuple type in abstract patterns.
+pub const TUPLE: &str = "Tuple";
+
+/// Type name of lists and the names of their two constructors in abstract patterns.
+pub const LIST: &str = "List";
+pub const CONS: &str = "::";
+pub const NIL: &str = "[]";
+
+/// The type info of a list: `head :: tail` or the empty list.
+pub fn list_type_info() -> TypeInfo {
+    TypeInfo::SumType {
+        variants: vec![
+            ConstructorSig {
+                name: CONS.to_string(),
+                arity: 2,
+            },
+            ConstructorSig {
+                name: NIL.to_string(),
+                arity: 0,
+            },
+        ],
+    }
+}
+
+/// The type info of a tuple: a single constructor of the given arity.
+pub fn tuple_type_info(arity: usize) -> TypeInfo {
+    TypeInfo::SumType {
+        variants: vec![ConstructorSig {
+            name: TUPLE.to_string(),
+            arity,
+        }],
+    }
+}
+
+/// Find the arity of the first tuple pattern in a specific column.
+fn find_tuple_arity_in_column(matrix: &PatternMatrix, row: &[Pat], col: usize) -> Option<usize> {
+    matrix
+        .rows
+        .iter()
+        .map(|mrow| mrow.as_slice())
+        .chain(std::iter::once(row))
+        .filter_map(|r| r.get(col))
+        .find_map(tuple_arity)
+}
+
+/// The arity of a pattern if it is a tuple pattern (looking through or-patterns).
+fn tuple_arity(pat: &Pat) -> Option<usize> {
+    match pat {
+        Pat::Constructor { name, args, .. } if name == TUPLE => Some(args.len()),
+        Pat::Or { alternatives } => alternatives.iter().find_map(tuple_arity),
+        _ => None,
+    }
 }
 
 /// Find the type_name of constructor patterns in a specific column.
@@ -639,9 +700,14 @@ pub fn check_exhaustiveness(
 ///
 /// Returns the indices (0-based) of arms that are unreachable.
 ///
+/// `guarded[i]` says whether arm `i` has a `when` guard. A guarded arm may
+/// fail its guard, so it never makes a later arm unreachable; it is still
+/// itself checked against the unguarded arms before it.
+///
 /// The `registry` provides complete constructor sets for all types.
 pub fn check_redundancy(
     arms: &[Pat],
+    guarded: &[bool],
     scrutinee_type: &TypeInfo,
     registry: &TypeRegistry,
 ) -> Vec<usize> {
@@ -650,7 +716,12 @@ pub fn check_redundancy(
 
     for i in 0..arms.len() {
         let prior_matrix = PatternMatrix {
-            rows: arms[..i].iter().map(|arm| vec![arm.clone()]).collect(),
+            rows: arms[..i]
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| !guarded.get(*j).copied().unwrap_or(false))
+                .map(|(_, arm)| vec![arm.clone()])
+                .collect(),
         };
         let row = vec![arms[i].clone()];
 
@@ -660,6 +731,122 @@ pub fn check_redundancy(
     }
 
     redundant
+}
+
+/// Refine a useful `row` by filling its wildcards of finite type with the
+/// first constructor that keeps the row useful, `depth` levels deep, so a
+/// match on `[]` and `[x]` reports the missing `_ :: _ :: []` rather than
+/// `_ :: _`, which would also cover the `[x]` arm.
+fn refine_row(
+    matrix: &PatternMatrix,
+    row: Vec<Pat>,
+    type_info: &[TypeInfo],
+    registry: &TypeRegistry,
+    depth: usize,
+) -> Vec<Pat> {
+    if row.is_empty() || depth == 0 {
+        return row;
+    }
+    match row[0].clone() {
+        Pat::Wildcard => {
+            let candidates: Vec<Pat> = match type_info.first() {
+                Some(TypeInfo::Bool) => ["true", "false"]
+                    .iter()
+                    .map(|value| Pat::Literal {
+                        value: value.to_string(),
+                        ty: LitKind::Bool,
+                    })
+                    .collect(),
+                Some(TypeInfo::SumType { variants }) => {
+                    let type_name = column_type_name(matrix, variants);
+                    variants
+                        .iter()
+                        .map(|v| Pat::Constructor {
+                            name: v.name.clone(),
+                            type_name: type_name.clone(),
+                            args: vec![Pat::Wildcard; v.arity],
+                        })
+                        .collect()
+                }
+                _ => Vec::new(),
+            };
+            for candidate in candidates {
+                let mut trial = row.clone();
+                trial[0] = candidate;
+                if is_useful_inner(matrix, &trial, type_info, registry) {
+                    return refine_row(matrix, trial, type_info, registry, depth - 1);
+                }
+            }
+            let rest = refine_row(
+                &default_matrix(matrix),
+                row[1..].to_vec(),
+                &type_info[1..],
+                registry,
+                depth,
+            );
+            std::iter::once(Pat::Wildcard).chain(rest).collect()
+        }
+        Pat::Constructor {
+            name,
+            type_name,
+            args,
+        } => {
+            let ctor = Constructor::Named {
+                name: name.clone(),
+                arity: args.len(),
+            };
+            let spec_matrix = specialize_matrix(matrix, &ctor);
+            let mut spec_row = args.clone();
+            spec_row.extend_from_slice(&row[1..]);
+            let inner_type_info = build_specialized_type_info(
+                &spec_matrix,
+                &spec_row,
+                args.len(),
+                &type_info[1..],
+                registry,
+            );
+            let refined = refine_row(
+                &spec_matrix,
+                spec_row,
+                &inner_type_info,
+                registry,
+                depth - 1,
+            );
+            let (new_args, rest) = refined.split_at(args.len().min(refined.len()));
+            std::iter::once(Pat::Constructor {
+                name,
+                type_name,
+                args: new_args.to_vec(),
+            })
+            .chain(rest.iter().cloned())
+            .collect()
+        }
+        _ => row,
+    }
+}
+
+/// The type name to give a witness constructor for a column: the name the
+/// column's own constructor patterns carry, or the list type's for a list.
+fn column_type_name(matrix: &PatternMatrix, variants: &[ConstructorSig]) -> String {
+    matrix
+        .rows
+        .iter()
+        .filter_map(|row| match row.first() {
+            Some(Pat::Constructor { type_name, .. }) if !type_name.is_empty() => {
+                Some(type_name.clone())
+            }
+            _ => None,
+        })
+        .next()
+        .unwrap_or_else(|| {
+            let is_list =
+                variants.iter().any(|v| v.name == CONS) && variants.iter().any(|v| v.name == NIL);
+            if is_list {
+                LIST.to_string()
+            } else {
+                String::new()
+            }
+        })
 }
 
 /// Find witness patterns for non-exhaustive match.
@@ -679,7 +866,8 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                 let type_info = vec![scrutinee_type.clone()];
 
                 if is_useful_inner(&matrix, &[ctor_pat.clone()], &type_info, registry) {
-                    missing.push(ctor_pat);
+                    let refined = refine_row(&matrix, vec![ctor_pat], &type_info, registry, 4);
+                    missing.push(refined.into_iter().next().unwrap_or(Pat::Wildcard));
                 }
             }
             if missing.is_empty() {
@@ -902,6 +1090,7 @@ mod tests {
         // arm 1 (Circle) is redundant because _ catches everything
         let result = check_redundancy(
             &[wildcard(), ctor("Circle", "Shape", vec![wildcard()])],
+            &[false; 2],
             &shape_type(),
             &test_registry(),
         );
@@ -917,6 +1106,7 @@ mod tests {
                 ctor("Circle", "Shape", vec![wildcard()]),
                 ctor("Point", "Shape", vec![]),
             ],
+            &[false; 2],
             &shape_type(),
             &test_registry(),
         );
@@ -933,6 +1123,7 @@ mod tests {
                 ctor("Circle", "Shape", vec![wildcard()]),
                 ctor("Point", "Shape", vec![]),
             ],
+            &[false; 3],
             &shape_type(),
             &test_registry(),
         );
@@ -1153,10 +1344,127 @@ mod tests {
         // arm 2 is redundant
         let result = check_redundancy(
             &[lit_bool(true), lit_bool(false), lit_bool(true)],
+            &[false; 3],
             &bool_type(),
             &empty_registry(),
         );
         assert_eq!(result, vec![2]);
+    }
+
+    #[test]
+    fn test_guarded_arm_covers_nothing_for_later_arms() {
+        // match b { true when g -> ..., true -> ..., false -> ... }
+        // arm 1 is reachable: arm 0 may fail its guard.
+        let arms = [lit_bool(true), lit_bool(true), lit_bool(false)];
+        let result = check_redundancy(
+            &arms,
+            &[true, false, false],
+            &bool_type(),
+            &empty_registry(),
+        );
+        assert!(
+            result.is_empty(),
+            "guarded arm must not shadow arm 1: {result:?}"
+        );
+        // The guarded arm itself is still checked against earlier unguarded arms.
+        let arms = [wildcard(), lit_bool(true)];
+        let result = check_redundancy(&arms, &[false, true], &bool_type(), &empty_registry());
+        assert_eq!(result, vec![1]);
+    }
+
+    fn tuple(args: Vec<Pat>) -> Pat {
+        ctor(TUPLE, TUPLE, args)
+    }
+
+    #[test]
+    fn test_tuple_of_bool_and_int_exhaustive() {
+        // case (b, n) do (true, 0) | (true, _) | (false, 0) | (false, _) end
+        let arms = [
+            tuple(vec![lit_bool(true), lit_int(0)]),
+            tuple(vec![lit_bool(true), wildcard()]),
+            tuple(vec![lit_bool(false), lit_int(0)]),
+            tuple(vec![lit_bool(false), wildcard()]),
+        ];
+        let registry = empty_registry();
+        assert_eq!(
+            check_exhaustiveness(&arms, &tuple_type_info(2), &registry),
+            None
+        );
+        assert!(check_redundancy(&arms, &[false; 4], &tuple_type_info(2), &registry).is_empty());
+    }
+
+    #[test]
+    fn test_tuple_missing_half_reports_tuple_witness() {
+        // The witness names the half that is missing, not just "some tuple".
+        let arms = [tuple(vec![lit_bool(true), wildcard()])];
+        let missing = check_exhaustiveness(&arms, &tuple_type_info(2), &empty_registry());
+        assert_eq!(
+            missing,
+            Some(vec![ctor(TUPLE, "", vec![lit_bool(false), wildcard()])])
+        );
+    }
+
+    #[test]
+    fn test_cons_pattern_needs_empty_list() {
+        // case xs do h :: t -> ... end   is missing []
+        let cons = ctor(CONS, LIST, vec![wildcard(), wildcard()]);
+        let registry = empty_registry();
+        assert_eq!(
+            check_exhaustiveness(&[cons.clone()], &list_type_info(), &registry),
+            Some(vec![ctor(NIL, "", vec![])])
+        );
+        // case xs do h :: t -> ... | _ -> ... end   is exhaustive and arm 1 is useful
+        let arms = [cons, wildcard()];
+        assert_eq!(
+            check_exhaustiveness(&arms, &list_type_info(), &registry),
+            None
+        );
+        assert!(check_redundancy(&arms, &[false; 2], &list_type_info(), &registry).is_empty());
+    }
+
+    #[test]
+    fn test_nested_tuple_inside_constructor_exhaustive() {
+        // case opt do Some((true, _)) | Some((false, _)) | None end
+        let arms = [
+            ctor(
+                "Some",
+                "Option",
+                vec![tuple(vec![lit_bool(true), wildcard()])],
+            ),
+            ctor(
+                "Some",
+                "Option",
+                vec![tuple(vec![lit_bool(false), wildcard()])],
+            ),
+            ctor("None", "Option", vec![]),
+        ];
+        let mut registry = TypeRegistry::new();
+        registry.register(
+            "Option",
+            TypeInfo::SumType {
+                variants: vec![
+                    ConstructorSig {
+                        name: "Some".into(),
+                        arity: 1,
+                    },
+                    ConstructorSig {
+                        name: "None".into(),
+                        arity: 0,
+                    },
+                ],
+            },
+        );
+        let opt = registry.lookup("Option").unwrap().clone();
+        assert_eq!(check_exhaustiveness(&arms, &opt, &registry), None);
+        let arms = [
+            ctor(
+                "Some",
+                "Option",
+                vec![tuple(vec![lit_bool(true), wildcard()])],
+            ),
+            ctor("None", "Option", vec![]),
+        ];
+        assert!(check_exhaustiveness(&arms, &opt, &registry).is_some());
     }
 
     // ── TypeInfo for nested specialization ───────────────────────────

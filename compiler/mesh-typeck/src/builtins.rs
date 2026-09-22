@@ -1861,7 +1861,10 @@ pub fn register_builtins(
     );
     env.insert(
         "queue_pop".into(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::Con(TyCon::new("Tuple")))),
+        Scheme::mono(Ty::fun(
+            vec![queue_t.clone()],
+            Ty::Tuple(vec![Ty::int(), queue_t.clone()]),
+        )),
     );
     env.insert(
         "queue_peek".into(),
@@ -2432,17 +2435,17 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![bool_t.clone()], unit_t.clone())),
     );
 
-    // assert_eq(lhs: String, rhs: String) -> Unit
-    env.insert(
-        "assert_eq".into(),
-        Scheme::mono(Ty::fun(vec![str_t.clone(), str_t.clone()], unit_t.clone())),
-    );
-
-    // assert_ne(lhs: String, rhs: String) -> Unit
-    env.insert(
-        "assert_ne".into(),
-        Scheme::mono(Ty::fun(vec![str_t.clone(), str_t.clone()], unit_t.clone())),
-    );
+    // assert_eq(lhs: T, rhs: T) -> Unit and assert_ne: both sides share a type,
+    // and the lowerer compares them as string interpolation would show them.
+    for (name, var) in [("assert_eq", TyVar(99003)), ("assert_ne", TyVar(99004))] {
+        env.insert(
+            name.into(),
+            Scheme {
+                vars: vec![var],
+                ty: Ty::fun(vec![Ty::Var(var), Ty::Var(var)], unit_t.clone()),
+            },
+        );
+    }
 
     // assert_raises(fn: fn() -> Unit) -> Unit
     let raise_cb = Ty::fun(vec![], unit_t.clone());
@@ -2907,6 +2910,80 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             methods,
             associated_types: FxHashMap::default(),
         });
+    }
+
+    // ── Structural impls ───────────────────────────────────────────
+    //
+    // Tuples (by arity), unit, the collections and the built-in sum types
+    // compare, order and print by their contents; the MIR lowerer generates
+    // each function on demand (`eq_expr`, `cmp_fn`, `display_by_type`).
+    let param = |name: &str| Ty::Con(TyCon::new(name));
+    let mut structural: Vec<(Ty, &str, &[&str])> = vec![
+        (param("Unit"), "Unit", &["Eq", "Ord", "Display", "Debug"]),
+        (
+            param("Ordering"),
+            "Ordering",
+            &["Eq", "Ord", "Display", "Debug"],
+        ),
+        (
+            Ty::option(param("T")),
+            "Option",
+            &["Eq", "Ord", "Display", "Debug"],
+        ),
+        (
+            Ty::result(param("T"), param("E")),
+            "Result",
+            &["Eq", "Ord", "Display", "Debug"],
+        ),
+        (Ty::map_untyped(), "Map", &["Eq", "Debug"]),
+        (Ty::map(param("K"), param("V")), "Map", &["Eq", "Debug"]),
+        (Ty::set_untyped(), "Set", &["Eq", "Debug"]),
+        (
+            Ty::App(Box::new(param("Set")), vec![param("T")]),
+            "Set",
+            &["Eq", "Debug"],
+        ),
+        (Ty::list_untyped(), "List", &["Debug"]),
+        (Ty::list(param("T")), "List", &["Debug"]),
+    ];
+    for arity in 0..=8u8 {
+        let elems = (0..arity)
+            .map(|i| param(&((b'A' + i) as char).to_string()))
+            .collect();
+        structural.push((
+            Ty::Tuple(elems),
+            "Tuple",
+            &["Eq", "Ord", "Display", "Debug"],
+        ));
+    }
+    for (ty, ty_name, traits) in structural {
+        for trait_name in traits {
+            let mut methods = FxHashMap::default();
+            let sigs: &[(&str, usize, Ty)] = match *trait_name {
+                "Eq" => &[("eq", 1, Ty::bool())],
+                "Ord" => &[("lt", 1, Ty::bool()), ("compare", 1, param("Ordering"))],
+                "Display" => &[("to_string", 0, Ty::string())],
+                _ => &[("inspect", 0, Ty::string())],
+            };
+            for (method, param_count, ret) in sigs {
+                methods.insert(
+                    method.to_string(),
+                    ImplMethodSig {
+                        has_self: true,
+                        param_count: *param_count,
+                        return_type: Some(ret.clone()),
+                    },
+                );
+            }
+            let _ = registry.register_impl(ImplDef {
+                trait_name: trait_name.to_string(),
+                trait_type_args: vec![],
+                impl_type: ty.clone(),
+                impl_type_name: ty_name.to_string(),
+                methods,
+                associated_types: FxHashMap::default(),
+            });
+        }
     }
 
     // ── Ord trait ───────────────────────────────────────────────────

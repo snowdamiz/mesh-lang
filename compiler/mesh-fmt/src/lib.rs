@@ -21,7 +21,8 @@ pub use printer::FormatConfig;
 /// Parses the source, walks the CST to produce format IR, and prints the
 /// result as a formatted string. Comments are preserved in their original
 /// positions relative to code.
-/// Invalid source is returned unchanged so parser recovery cannot discard code.
+/// Source that [`try_format`] cannot format is returned unchanged, so neither
+/// parser recovery nor a formatter bug can discard code.
 ///
 /// # Example
 ///
@@ -33,13 +34,47 @@ pub use printer::FormatConfig;
 /// assert_eq!(formatted, "fn add(a, b) do\n  a + b\nend\n");
 /// ```
 pub fn format_source(source: &str, config: &FormatConfig) -> String {
+    try_format(source, config).unwrap_or_else(|_| source.to_owned())
+}
+
+/// Format like [`format_source`], or say why the source cannot be formatted.
+pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String> {
     let parse = mesh_parser::parse(source);
     if !parse.errors().is_empty() {
-        return source.to_owned();
+        return Err("source contains parse errors".to_owned());
     }
-    let root = parse.syntax();
-    let doc = walker::walk_node(&root);
-    printer::print(&doc, config)
+    let formatted = printer::print(&walker::walk_node(&parse.syntax()), config);
+
+    // Formatting may only move whitespace. Output that parses to other tokens
+    // (a line comment swallowing the code after it, a dropped comment) is a
+    // formatter bug, and writing it would change the program.
+    let reparsed = mesh_parser::parse(&formatted);
+    if !reparsed.errors().is_empty() || significant_tokens(&parse) != significant_tokens(&reparsed) {
+        return Err("the formatter could not preserve it exactly (a formatter bug), so it was left unchanged".to_owned());
+    }
+    Ok(formatted)
+}
+
+/// Every token but whitespace, with the trailing blanks the printer trims and
+/// without trailing commas, which the formatter may drop (`import (a, b,)`).
+fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKind, String)> {
+    use mesh_parser::SyntaxKind;
+    let tokens: Vec<_> = parse
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !matches!(token.kind(), SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::EOF))
+        .map(|token| (token.kind(), token.text().trim_end().to_owned()))
+        .collect();
+    let closes = |kind| matches!(kind, SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE);
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(i, (kind, _))| {
+            !(*kind == SyntaxKind::COMMA && tokens.get(i + 1).is_some_and(|next| closes(next.0)))
+        })
+        .map(|(_, token)| token.clone())
+        .collect()
 }
 
 #[cfg(test)]
@@ -48,7 +83,8 @@ mod idempotency_tests {
 
     #[test]
     fn invalid_source_is_preserved_including_following_declarations() {
-        let source = "fn broken(x) do\ncase x do\nErr(_) -> return None\nend\nend\n\nfn retained() do\n42\nend\n";
+        let source =
+            "fn broken(x) do\ncase x do\nErr(_) -> None +\nend\nend\n\nfn retained() do\n42\nend\n";
         assert_eq!(format_source(source, &FormatConfig::default()), source);
     }
 
@@ -66,6 +102,47 @@ mod idempotency_tests {
     #[test]
     fn idempotent_empty_file() {
         assert_idempotent("empty file", "");
+    }
+
+    #[test]
+    fn match_arm_block_body_stays_on_following_lines() {
+        let source = "fn f(o) do
+  case o do
+    Some(x) ->
+      let y = x * 2
+      y + 1
+    None -> -1
+  end
+end
+";
+        let formatted = format_source(source, &FormatConfig::default());
+        assert!(
+            formatted.contains(
+                "Some(x) ->
+      let y = x * 2
+      y + 1
+"
+            ),
+            "arm block body must stay a block:
+{formatted}"
+        );
+        assert_idempotent("match arm block body", source);
+    }
+
+    #[test]
+    fn closure_statement_and_return_arm_format() {
+        let source = "fn compose(f, g) do
+  fn x -> g(f(x)) end
+end
+
+fn h(o) do
+  case o do
+    Some(x) -> x
+    None -> return -1
+  end
+end
+";
+        assert_idempotent("closure statement and return arm", source);
     }
 
     #[test]

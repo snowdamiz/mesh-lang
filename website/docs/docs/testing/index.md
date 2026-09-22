@@ -18,13 +18,15 @@ meshc test my-app/tests/config.test.mpl
 meshc test --quiet my-app
 ```
 
-`meshc test` discovers all `*.test.mpl` files under the requested project root or directory target, compiles and runs each independently, and prints a summary:
+`meshc test` discovers all `*.test.mpl` files under the requested project root or directory target, compiles and runs each independently, and prints each file's results followed by a summary across files:
 
 ```
-test arithmetic is correct ... ok
-test string operations/length ... ok
+  ✓ arithmetic is correct
+  ✓ string operations
 
-2 tests, 0 failures
+2 passed in 0.00s
+
+1 test file passed in 1.76s
 ```
 
 On failure, the output includes the failing assertion, the expected and actual values, and the file/test name. The exit code is non-zero if any test fails.

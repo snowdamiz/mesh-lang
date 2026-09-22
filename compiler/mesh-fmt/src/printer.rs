@@ -64,6 +64,8 @@ fn trim_line_end(out: &mut String) {
 pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
     let mut out = String::new();
     let mut col: usize = 0;
+    // Set by `LineEnd`: the next text must start on a new line.
+    let mut line_ended = false;
     let mut stack: Vec<PrintCmd> = vec![PrintCmd {
         indent: 0,
         mode: Mode::Break,
@@ -75,16 +77,29 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
             FormatIR::Empty => {}
 
             FormatIR::Text(s) => {
+                if line_ended {
+                    if s.trim().is_empty() {
+                        continue; // a separator space; the pending newline replaces it
+                    }
+                    line_ended = false;
+                    trim_line_end(&mut out);
+                    out.push('\n');
+                    out.push_str(&" ".repeat(cmd.indent));
+                    col = cmd.indent;
+                }
                 out.push_str(s);
                 col += s.len();
             }
 
+            FormatIR::LineEnd => line_ended = true,
+
             FormatIR::Space => match cmd.mode {
-                Mode::Flat => {
+                Mode::Flat if !line_ended => {
                     out.push(' ');
                     col += 1;
                 }
-                Mode::Break => {
+                _ => {
+                    line_ended = false;
                     trim_line_end(&mut out);
                     out.push('\n');
                     let indent_str = " ".repeat(cmd.indent);
@@ -94,6 +109,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
             },
 
             FormatIR::Hardline => {
+                line_ended = false;
                 trim_line_end(&mut out);
                 out.push('\n');
                 let indent_str = " ".repeat(cmd.indent);
@@ -177,7 +193,7 @@ fn measure_flat(ir: &FormatIR) -> usize {
         FormatIR::Empty => 0,
         FormatIR::Text(s) => s.len(),
         FormatIR::Space => 1,
-        FormatIR::Hardline => usize::MAX, // Forces a break
+        FormatIR::Hardline | FormatIR::LineEnd => usize::MAX, // Forces a break
         FormatIR::Indent(child) => measure_flat(child),
         FormatIR::Group(child) => measure_flat(child),
         FormatIR::IfBreak { flat, .. } => measure_flat(flat),

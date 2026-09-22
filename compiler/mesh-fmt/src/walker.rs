@@ -12,10 +12,23 @@
 //! Since the root context is always break mode, we use `sp()` (literal text " ")
 //! for unconditional spaces, and reserve `ir::space()` for inside `Group` nodes.
 
-use mesh_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
+use mesh_parser::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken};
 use rowan::NodeOrToken;
 
 use crate::ir::{self, FormatIR};
+
+/// The CST keeps WHITESPACE tokens so its offsets match the source. The
+/// formatter derives all spacing itself, so it walks every element but those.
+trait Elements {
+    fn elements(&self) -> impl Iterator<Item = SyntaxElement>;
+}
+
+impl Elements for SyntaxNode {
+    fn elements(&self) -> impl Iterator<Item = SyntaxElement> {
+        self.children_with_tokens()
+            .filter(|element| element.kind() != SyntaxKind::WHITESPACE)
+    }
+}
 
 /// Literal space text -- always emits " " regardless of mode.
 /// Use this for unconditional spaces (e.g., between `fn` and name).
@@ -84,6 +97,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
         SyntaxKind::STRUCT_LITERAL => walk_struct_literal(node),
         SyntaxKind::MAP_LITERAL => walk_map_literal(node),
+        SyntaxKind::JSON_EXPR => walk_json_expr(node),
         SyntaxKind::MAP_ENTRY => walk_map_entry(node),
         SyntaxKind::LIST_LITERAL => walk_list_literal(node),
         SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
@@ -124,6 +138,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::ASSOC_TYPE_DEF
         | SyntaxKind::FUN_TYPE
         | SyntaxKind::CONS_PAT
+        | SyntaxKind::LIST_PAT
         | SyntaxKind::PARAM => walk_tokens_inline(node),
         // Fallback: emit tokens with spaces.
         _ => walk_tokens_inline(node),
@@ -169,7 +184,7 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
     let mut items: Vec<(SourceFileItemKind, FormatIR)> = Vec::new();
     let mut pending_comments: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
@@ -220,7 +235,7 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
     let mut has_block = false;
     let mut has_expr_body = false;
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
@@ -246,7 +261,7 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::NEWLINE => {}
                     SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                         parts.push(sp());
-                        parts.push(ir::text(tok.text()));
+                        parts.push(inline_comment(&tok));
                     }
                     _ => {
                         add_token_with_context(&tok, &mut parts);
@@ -255,6 +270,18 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
             }
             NodeOrToken::Node(n) => {
                 match n.kind() {
+                    SyntaxKind::CLUSTER_DECORATOR_DECL
+                    | SyntaxKind::NATIVE_DECORATOR_DECL
+                    | SyntaxKind::EXPORT_DECORATOR_DECL => {
+                        parts.push(walk_decorator(&n));
+                        // Keep the decorator on the fn's line or its own, as written.
+                        let own_line = std::iter::successors(n.next_sibling_or_token(), |e| {
+                            e.next_sibling_or_token()
+                        })
+                        .take_while(|e| e.kind().is_trivia())
+                        .any(|e| e.kind() == SyntaxKind::NEWLINE);
+                        parts.push(if own_line { ir::hardline() } else { sp() });
+                    }
                     SyntaxKind::VISIBILITY => {
                         parts.push(walk_node(&n));
                         parts.push(sp());
@@ -311,12 +338,29 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
+/// `@cluster`, `@cluster(3)`, `@native("sym")`, `@export`: no spaces inside.
+fn walk_decorator(node: &SyntaxNode) -> FormatIR {
+    ir::concat(
+        node.descendants_with_tokens()
+            .filter_map(|e| e.into_token())
+            .filter(|t| !matches!(t.kind(), SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE))
+            .map(|t| {
+                if t.kind().is_trivia() {
+                    inline_comment(&t)
+                } else {
+                    ir::text(t.text())
+                }
+            })
+            .collect(),
+    )
+}
+
 // ── Let binding ────────────────────────────────────────────────────────
 
 fn walk_let_binding(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::LET_KW => {
@@ -353,7 +397,7 @@ fn walk_let_binding(node: &SyntaxNode) -> FormatIR {
 fn walk_if_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::IF_KW => {
@@ -397,7 +441,7 @@ fn walk_if_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::ELSE_KW => {
@@ -437,7 +481,7 @@ fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
 fn walk_while_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::WHILE_KW => {
@@ -480,7 +524,7 @@ fn walk_while_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::FOR_KW => {
@@ -539,7 +583,7 @@ fn walk_destructure_binding(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     parts.push(ir::text("{"));
     let mut first = true;
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
@@ -582,7 +626,7 @@ fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut arms: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::CASE_KW => {
@@ -632,10 +676,10 @@ fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let has_do = node
-        .children_with_tokens()
+        .elements()
         .any(|child| child.kind() == SyntaxKind::DO_KW);
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::ARROW | SyntaxKind::FAT_ARROW => {
@@ -655,7 +699,7 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     parts.push(sp());
-                    parts.push(ir::text(tok.text()));
+                    parts.push(inline_comment(&tok));
                 }
                 _ => {
                     add_token_with_context(&tok, &mut parts);
@@ -673,7 +717,9 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::hardline());
                         parts.push(ir::text("end"));
                     } else {
-                        parts.push(body);
+                        // Statements on the lines after `->`: keep them there,
+                        // indented, so the arm stays a block when re-parsed.
+                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                     }
                 }
                 _ => {
@@ -690,7 +736,7 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut first_bar = true;
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::DO_KW => {
@@ -728,7 +774,7 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
 fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
@@ -761,7 +807,7 @@ fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_unary_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
@@ -791,7 +837,7 @@ fn walk_unary_expr(node: &SyntaxNode) -> FormatIR {
 // ── Pipe expression ────────────────────────────────────────────────
 
 fn collect_pipe_segments(node: &SyntaxNode, segments: &mut Vec<FormatIR>) {
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::PIPE | SyntaxKind::NEWLINE => {}
@@ -839,7 +885,7 @@ fn walk_pipe_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_call_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
@@ -866,7 +912,7 @@ fn walk_block(node: &SyntaxNode) -> FormatIR {
 fn walk_block_body(node: &SyntaxNode) -> FormatIR {
     let mut stmts: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
@@ -902,7 +948,7 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
 fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_PAREN => {
@@ -958,7 +1004,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     let mut past_do = false;
     let mut inner_items: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::VISIBILITY => {
@@ -986,7 +1032,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                         inner_items.push(ir::text(tok.text()));
                     } else {
                         parts.push(sp());
-                        parts.push(ir::text(tok.text()));
+                        parts.push(inline_comment(&tok));
                     }
                 }
                 _ => {
@@ -1014,7 +1060,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                         }
                     }
                 } else if n.kind() == SyntaxKind::BLOCK {
-                    for block_child in n.children_with_tokens() {
+                    for block_child in n.elements() {
                         match block_child {
                             NodeOrToken::Token(t) => match t.kind() {
                                 SyntaxKind::NEWLINE => {}
@@ -1059,7 +1105,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
         parts.push(sp());
         parts.push(ir::text("deriving("));
         let traits: Vec<String> = dc
-            .children_with_tokens()
+            .elements()
             .filter_map(|it| it.into_token())
             .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
             .map(|t| t.text().to_string())
@@ -1132,7 +1178,7 @@ fn walk_child_spec_def(node: &SyntaxNode) -> FormatIR {
 fn walk_schema_option(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
@@ -1146,7 +1192,7 @@ fn walk_schema_option(node: &SyntaxNode) -> FormatIR {
                     if !parts.is_empty() {
                         parts.push(sp());
                     }
-                    parts.push(ir::text(tok.text()));
+                    parts.push(inline_comment(&tok));
                     continue;
                 }
                 if !parts.is_empty()
@@ -1178,10 +1224,10 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
         .children()
         .any(|child| child.kind() == SyntaxKind::RESOURCE_MODIFIER)
         && !node
-            .children_with_tokens()
+            .elements()
             .any(|child| child.kind() == SyntaxKind::STRUCT_KW);
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::STRUCT_KW => {
@@ -1199,7 +1245,7 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                     if in_body {
                         fields.push(ir::text(tok.text()));
                     } else {
-                        parts.push(ir::text(tok.text()));
+                        parts.push(inline_comment(&tok));
                     }
                 }
                 _ => {
@@ -1256,7 +1302,7 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
         parts.push(sp());
         parts.push(ir::text("deriving("));
         let traits: Vec<String> = dc
-            .children_with_tokens()
+            .elements()
             .filter_map(|it| it.into_token())
             .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
             .map(|t| t.text().to_string())
@@ -1278,16 +1324,14 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
     // Detect whether this closure uses do/end body form.
-    let has_do = node
-        .children_with_tokens()
-        .any(|c| c.kind() == SyntaxKind::DO_KW);
+    let has_do = node.elements().any(|c| c.kind() == SyntaxKind::DO_KW);
 
     // Detect whether this is a multi-clause closure (has CLOSURE_CLAUSE children).
     let _has_clauses = node
         .children()
         .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE);
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
@@ -1330,9 +1374,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                 match n.kind() {
                     SyntaxKind::PARAM_LIST => {
                         // Check if this is a bare param list (no parens) or parenthesized.
-                        let has_parens = n
-                            .children_with_tokens()
-                            .any(|c| c.kind() == SyntaxKind::L_PAREN);
+                        let has_parens = n.elements().any(|c| c.kind() == SyntaxKind::L_PAREN);
                         if has_parens {
                             // Parenthesized: use standard paren list formatting.
                             parts.push(walk_paren_list(&n));
@@ -1395,7 +1437,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::BAR => {
@@ -1413,9 +1455,7 @@ fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
             },
             NodeOrToken::Node(n) => match n.kind() {
                 SyntaxKind::PARAM_LIST => {
-                    let has_parens = n
-                        .children_with_tokens()
-                        .any(|c| c.kind() == SyntaxKind::L_PAREN);
+                    let has_parens = n.elements().any(|c| c.kind() == SyntaxKind::L_PAREN);
                     if has_parens {
                         parts.push(walk_paren_list(&n));
                         parts.push(sp());
@@ -1446,7 +1486,7 @@ fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
 fn walk_bare_param_list(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::COMMA => {
@@ -1472,7 +1512,7 @@ fn walk_bare_param_list(node: &SyntaxNode) -> FormatIR {
 fn walk_return_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::RETURN_KW => {
@@ -1502,7 +1542,7 @@ fn walk_import_decl(node: &SyntaxNode) -> FormatIR {
 fn walk_path(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::EOF | SyntaxKind::NEWLINE => {}
@@ -1510,7 +1550,7 @@ fn walk_path(node: &SyntaxNode) -> FormatIR {
                     if !parts.is_empty() {
                         parts.push(sp());
                     }
-                    parts.push(ir::text(tok.text()));
+                    parts.push(inline_comment(&tok));
                 }
                 _ => {
                     parts.push(ir::text(tok.text()));
@@ -1527,7 +1567,7 @@ fn walk_path(node: &SyntaxNode) -> FormatIR {
 
 fn walk_import_list(node: &SyntaxNode) -> FormatIR {
     // Check whether this import list is wrapped in parens.
-    let has_parens = node.children_with_tokens().any(
+    let has_parens = node.elements().any(
         |child| matches!(child, NodeOrToken::Token(ref tok) if tok.kind() == SyntaxKind::L_PAREN),
     );
 
@@ -1536,30 +1576,46 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         return walk_tokens_inline(node);
     }
 
-    // Parenthesized: collect name parts and emit one per indented line.
-    let mut names: Vec<FormatIR> = Vec::new();
-    for child in node.children_with_tokens() {
+    // Parenthesized: collect name parts and emit one per indented line. A
+    // comment stays after the name it follows, not as a name of its own.
+    let mut leading: Vec<FormatIR> = Vec::new();
+    let mut names: Vec<(FormatIR, Vec<FormatIR>)> = Vec::new();
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {}
                 SyntaxKind::COMMA | SyntaxKind::NEWLINE => {}
+                kind if kind.is_trivia() => match names.last_mut() {
+                    Some((_, comments)) => comments.push(inline_comment(&tok)),
+                    None => leading.push(inline_comment(&tok)),
+                },
                 _ => {
-                    names.push(ir::text(tok.text()));
+                    names.push((ir::text(tok.text()), Vec::new()));
                 }
             },
             NodeOrToken::Node(n) => {
-                names.push(walk_node(&n));
+                names.push((walk_node(&n), Vec::new()));
             }
         }
     }
 
     // Emit: "(\n  name1,\n  name2\n)"
     let mut inner_parts = Vec::new();
+    for comment in leading {
+        inner_parts.push(ir::hardline());
+        inner_parts.push(comment);
+    }
     inner_parts.push(ir::hardline());
-    for (i, name) in names.iter().enumerate() {
+    for (i, (name, comments)) in names.iter().enumerate() {
         inner_parts.push(name.clone());
         if i < names.len() - 1 {
             inner_parts.push(ir::text(","));
+        }
+        for comment in comments {
+            inner_parts.push(sp());
+            inner_parts.push(comment.clone());
+        }
+        if i < names.len() - 1 {
             inner_parts.push(ir::hardline());
         }
     }
@@ -1576,7 +1632,7 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
 fn walk_from_import_decl(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::IDENT => {
@@ -1611,12 +1667,12 @@ fn walk_from_import_decl(node: &SyntaxNode) -> FormatIR {
 fn walk_string_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -1631,12 +1687,12 @@ fn walk_string_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -1653,7 +1709,7 @@ fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
 fn walk_field_access(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::DOT => {
@@ -1661,7 +1717,7 @@ fn walk_field_access(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -1678,14 +1734,14 @@ fn walk_field_access(node: &SyntaxNode) -> FormatIR {
 fn walk_index_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
                 SyntaxKind::R_BRACKET => parts.push(ir::text("]")),
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -1703,7 +1759,7 @@ fn walk_impl_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut has_block = false;
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::IMPL_KW => {
@@ -1762,7 +1818,7 @@ fn walk_impl_def(node: &SyntaxNode) -> FormatIR {
 fn walk_type_alias_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::TYPE_KW => {
@@ -1776,7 +1832,7 @@ fn walk_type_alias_def(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => match n.kind() {
@@ -1806,7 +1862,7 @@ fn walk_receive_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut arms: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::RECEIVE_KW => {
@@ -1856,7 +1912,7 @@ fn walk_receive_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_spawn_send_link(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::SPAWN_KW | SyntaxKind::SEND_KW | SyntaxKind::LINK_KW => {
@@ -1870,7 +1926,7 @@ fn walk_spawn_send_link(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -1893,7 +1949,7 @@ fn walk_self_expr(node: &SyntaxNode) -> FormatIR {
 fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::CALL_KW => {
@@ -1942,7 +1998,7 @@ fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
 fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::CAST_KW => {
@@ -1987,7 +2043,7 @@ fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
 fn walk_terminate_clause(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::TERMINATE_KW => {
@@ -2027,7 +2083,7 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     let mut fields = Vec::new();
     let mut saw_l_brace = false;
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_BRACE => {
@@ -2087,11 +2143,48 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
+// ── JSON literal ────────────────────────────────────────────────────
+
+/// `json { key : value, ... }` on one line when it fits, one field per line
+/// when it does not.
+fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
+    let fields = node
+        .children()
+        .filter(|n| n.kind() == SyntaxKind::JSON_FIELD)
+        .count();
+    let mut inner = Vec::new();
+    let mut seen = 0;
+    for child in node.elements() {
+        match child {
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::JSON_FIELD => {
+                inner.push(ir::space());
+                inner.push(walk_node(&n));
+                seen += 1;
+                if seen < fields {
+                    inner.push(ir::text(","));
+                }
+            }
+            NodeOrToken::Token(tok) if tok.kind().is_trivia() && tok.kind() != SyntaxKind::NEWLINE => {
+                inner.push(sp());
+                inner.push(inline_comment(&tok));
+            }
+            // `json`, the braces, commas and newlines are re-emitted around the fields.
+            _ => {}
+        }
+    }
+    ir::group(ir::concat(vec![
+        ir::text("json {"),
+        ir::indent(ir::concat(inner)),
+        ir::space(),
+        ir::text("}"),
+    ]))
+}
+
 // ── Map literal ─────────────────────────────────────────────────────
 
 fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::PERCENT => parts.push(ir::text("%")),
@@ -2122,7 +2215,7 @@ fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
 
 fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::FAT_ARROW => {
@@ -2147,7 +2240,7 @@ fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
 
 fn walk_list_literal(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
@@ -2173,7 +2266,7 @@ fn walk_list_literal(node: &SyntaxNode) -> FormatIR {
 
 fn walk_assoc_type_binding(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::TYPE_KW => {
@@ -2187,7 +2280,7 @@ fn walk_assoc_type_binding(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    parts.push(ir::text(tok.text()));
+                    add_token_with_context(&tok, &mut parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -2205,7 +2298,7 @@ fn walk_assoc_type_binding(node: &SyntaxNode) -> FormatIR {
 fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
     let mut items: Vec<FormatIR> = Vec::new();
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
@@ -2240,8 +2333,12 @@ fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
 /// Walk all tokens in a node, emitting them with appropriate spacing.
 fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
+    // Nothing goes between an opening paren or bracket and what it encloses
+    // (`Some(x)`, not `Some( x)`). Braces stay spaced on both sides, since a
+    // space always precedes `}`: `json { id : 7 }`, not `json {id : 7 }`.
+    let mut after_open = false;
 
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
@@ -2255,19 +2352,21 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                     if !parts.is_empty() {
                         parts.push(sp());
                     }
-                    parts.push(ir::text(tok.text()));
+                    parts.push(inline_comment(&tok));
                     continue;
                 }
-                if !parts.is_empty() && needs_space_before(tok.kind()) {
+                if !parts.is_empty() && !after_open && needs_space_before(tok.kind()) {
                     parts.push(sp());
                 }
                 parts.push(ir::text(tok.text()));
+                after_open = matches!(kind, SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET);
             }
             NodeOrToken::Node(n) => {
-                if !parts.is_empty() && needs_space_before_node(n.kind()) {
+                if !parts.is_empty() && !after_open && needs_space_before_node(n.kind()) {
                     parts.push(sp());
                 }
                 parts.push(walk_node(&n));
+                after_open = false;
             }
         }
     }
@@ -2331,6 +2430,17 @@ fn is_operator(kind: SyntaxKind) -> bool {
 }
 
 /// Add a token to parts.
+/// A comment emitted inside a line of code. A line comment runs to the end of
+/// its line, so the line must end after it or the code that follows would be
+/// commented out; a `#= ... =#` block comment can stay inline.
+fn inline_comment(tok: &SyntaxToken) -> FormatIR {
+    if tok.text().starts_with("#=") {
+        ir::text(tok.text())
+    } else {
+        ir::concat(vec![ir::text(tok.text()), ir::line_end()])
+    }
+}
+
 fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
     let kind = tok.kind();
     if kind == SyntaxKind::EOF || kind == SyntaxKind::NEWLINE {
@@ -2343,7 +2453,7 @@ fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
         if !parts.is_empty() {
             parts.push(sp());
         }
-        parts.push(ir::text(tok.text()));
+        parts.push(inline_comment(tok));
         return;
     }
     parts.push(ir::text(tok.text()));
@@ -2352,7 +2462,7 @@ fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
 /// Count non-trivia children (statements) in a block.
 fn count_block_stmts(node: &SyntaxNode) -> usize {
     let mut count = 0;
-    for child in node.children_with_tokens() {
+    for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
                 if !tok.kind().is_trivia() && tok.kind() != SyntaxKind::EOF {
@@ -2546,6 +2656,43 @@ mod tests {
     fn call_with_args() {
         let result = fmt("foo(1, 2, 3)");
         assert_eq!(result, "foo(1, 2, 3)\n");
+    }
+
+    #[test]
+    fn line_comments_inside_expressions_never_swallow_code() {
+        // These comments used to be printed inline, commenting out the code after them.
+        let result = fmt(
+            "fn main() do\nlet xs = [\n1, # first\n2\n]\nlet s = add(\n1, # left\n2\n)\nlet j = json {\n# the id\nid: 7\n}\nxs\nend",
+        );
+        assert_eq!(
+            result,
+            "fn main() do\n  let xs = [1, # first\n  2]\n  let s = add(1,\n  # left\n  2)\n  let j = json {\n    # the id\n    id : 7\n  }\n  xs\nend\n"
+        );
+    }
+
+    #[test]
+    fn decorators_keep_their_spelling_and_line() {
+        // `@cluster pub fn` used to become `@ clusterpub fn`, which does not parse.
+        let source = "@cluster pub fn add() -> Int do\n  1\nend\n\n@cluster(3)\npub fn sync() -> Int do\n  3\nend\n\n@native(\"mesh_math_add\")\npub fn native_add(a :: Int, b :: Int) -> Int\n";
+        assert_eq!(fmt(source), source);
+    }
+
+    #[test]
+    fn long_json_literals_break_one_field_per_line() {
+        let result = fmt("fn health() do\njson { status: \"ok\", backend: \"postgres\", migrations: \"meshc migrate\", handler: \"Work.sync_todos\" }\nend");
+        assert_eq!(
+            result,
+            "fn health() do\n  json {\n    status : \"ok\",\n    backend : \"postgres\",\n    migrations : \"meshc migrate\",\n    handler : \"Work.sync_todos\"\n  }\nend\n"
+        );
+    }
+
+    #[test]
+    fn json_literal_braces_stay_balanced() {
+        let result = fmt("fn foo() do\nlet j = json { id: 7, ok: Some(x) }\nj\nend");
+        assert_eq!(
+            result,
+            "fn foo() do\n  let j = json { id : 7, ok : Some(x) }\n  j\nend\n"
+        );
     }
 
     #[test]

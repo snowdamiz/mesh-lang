@@ -1,26 +1,31 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"fn foo(x :: Int?) do\\n  x\\nend\")"
 ---
-SOURCE_FILE@0..22
-  FN_DEF@0..22
+SOURCE_FILE@0..28
+  FN_DEF@0..28
     FN_KW@0..2 "fn"
-    NAME@2..5
-      IDENT@2..5 "foo"
-    PARAM_LIST@5..14
-      L_PAREN@5..6 "("
-      PARAM@6..13
-        IDENT@6..7 "x"
-        TYPE_ANNOTATION@7..13
-          COLON_COLON@7..9 "::"
-          IDENT@9..12 "Int"
-          QUESTION@12..13 "?"
-      R_PAREN@13..14 ")"
-    DO_KW@14..16 "do"
-    BLOCK@16..19
-      NEWLINE@16..17 "\n"
-      NAME_REF@17..18
-        IDENT@17..18 "x"
-      NEWLINE@18..19 "\n"
-    END_KW@19..22 "end"
-  EOF@22..22 ""
+    WHITESPACE@2..3 " "
+    NAME@3..6
+      IDENT@3..6 "foo"
+    PARAM_LIST@6..17
+      L_PAREN@6..7 "("
+      PARAM@7..16
+        IDENT@7..8 "x"
+        WHITESPACE@8..9 " "
+        TYPE_ANNOTATION@9..16
+          COLON_COLON@9..11 "::"
+          WHITESPACE@11..12 " "
+          IDENT@12..15 "Int"
+          QUESTION@15..16 "?"
+      R_PAREN@16..17 ")"
+    WHITESPACE@17..18 " "
+    DO_KW@18..20 "do"
+    BLOCK@20..25
+      NEWLINE@20..21 "\n"
+      WHITESPACE@21..23 "  "
+      NAME_REF@23..24
+        IDENT@23..24 "x"
+      NEWLINE@24..25 "\n"
+    END_KW@25..28 "end"
+  EOF@28..28 ""

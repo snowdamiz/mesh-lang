@@ -1,31 +1,39 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..50
-  INTERFACE_DEF@0..50
+SOURCE_FILE@0..60
+  INTERFACE_DEF@0..60
     INTERFACE_KW@0..9 "interface"
-    NAME@9..17
-      IDENT@9..17 "Iterator"
-    DO_KW@17..19 "do"
-    NEWLINE@19..20 "\n"
-    ASSOC_TYPE_DEF@20..28
-      TYPE_KW@20..24 "type"
-      NAME@24..28
-        IDENT@24..28 "Item"
-    NEWLINE@28..29 "\n"
-    INTERFACE_METHOD@29..46
-      FN_KW@29..31 "fn"
-      NAME@31..35
-        IDENT@31..35 "next"
-      PARAM_LIST@35..41
-        L_PAREN@35..36 "("
-        PARAM@36..40
-          SELF_KW@36..40 "self"
-        R_PAREN@40..41 ")"
-      TYPE_ANNOTATION@41..46
-        ARROW@41..43 "->"
-        IDENT@43..46 "Int"
-    NEWLINE@46..47 "\n"
-    END_KW@47..50 "end"
-  EOF@50..50 ""
+    WHITESPACE@9..10 " "
+    NAME@10..18
+      IDENT@10..18 "Iterator"
+    WHITESPACE@18..19 " "
+    DO_KW@19..21 "do"
+    NEWLINE@21..22 "\n"
+    WHITESPACE@22..24 "  "
+    ASSOC_TYPE_DEF@24..33
+      TYPE_KW@24..28 "type"
+      WHITESPACE@28..29 " "
+      NAME@29..33
+        IDENT@29..33 "Item"
+    NEWLINE@33..34 "\n"
+    WHITESPACE@34..36 "  "
+    INTERFACE_METHOD@36..56
+      FN_KW@36..38 "fn"
+      WHITESPACE@38..39 " "
+      NAME@39..43
+        IDENT@39..43 "next"
+      PARAM_LIST@43..49
+        L_PAREN@43..44 "("
+        PARAM@44..48
+          SELF_KW@44..48 "self"
+        R_PAREN@48..49 ")"
+      WHITESPACE@49..50 " "
+      TYPE_ANNOTATION@50..56
+        ARROW@50..52 "->"
+        WHITESPACE@52..53 " "
+        IDENT@53..56 "Int"
+    NEWLINE@56..57 "\n"
+    END_KW@57..60 "end"
+  EOF@60..60 ""

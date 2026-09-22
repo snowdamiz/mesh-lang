@@ -1,12 +1,13 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "block_and_debug(\"let = 5\")"
 ---
-SOURCE_FILE@0..4
-  BLOCK@0..4
-    LET_BINDING@0..4
+SOURCE_FILE@0..5
+  BLOCK@0..5
+    LET_BINDING@0..5
       LET_KW@0..3 "let"
-      EQ@3..4 "="
+      WHITESPACE@3..4 " "
+      EQ@4..5 "="
 
 errors:
   - expected identifier or pattern after `let` @4..5

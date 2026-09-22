@@ -1,21 +1,24 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"foo(a, b + c)\")"
 ---
-SOURCE_FILE@0..10
-  CALL_EXPR@0..10
+SOURCE_FILE@0..13
+  CALL_EXPR@0..13
     NAME_REF@0..3
       IDENT@0..3 "foo"
-    ARG_LIST@3..10
+    ARG_LIST@3..13
       L_PAREN@3..4 "("
       NAME_REF@4..5
         IDENT@4..5 "a"
       COMMA@5..6 ","
-      BINARY_EXPR@6..9
-        NAME_REF@6..7
-          IDENT@6..7 "b"
-        PLUS@7..8 "+"
-        NAME_REF@8..9
-          IDENT@8..9 "c"
-      R_PAREN@9..10 ")"
-  EOF@10..10 ""
+      WHITESPACE@6..7 " "
+      BINARY_EXPR@7..12
+        NAME_REF@7..8
+          IDENT@7..8 "b"
+        WHITESPACE@8..9 " "
+        PLUS@9..10 "+"
+        WHITESPACE@10..11 " "
+        NAME_REF@11..12
+          IDENT@11..12 "c"
+      R_PAREN@12..13 ")"
+  EOF@13..13 ""

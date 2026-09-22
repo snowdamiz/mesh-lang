@@ -1,37 +1,48 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"service Counter do\\n  fn init(start_val :: Int) -> Int do\\n    start_val\\n  end\\nend\")"
 ---
-SOURCE_FILE@0..64
-  SERVICE_DEF@0..64
+SOURCE_FILE@0..80
+  SERVICE_DEF@0..80
     SERVICE_KW@0..7 "service"
-    NAME@7..14
-      IDENT@7..14 "Counter"
-    DO_KW@14..16 "do"
-    BLOCK@16..61
-      NEWLINE@16..17 "\n"
-      FN_DEF@17..60
-        FN_KW@17..19 "fn"
-        NAME@19..23
-          IDENT@19..23 "init"
-        PARAM_LIST@23..39
-          L_PAREN@23..24 "("
-          PARAM@24..38
-            IDENT@24..33 "start_val"
-            TYPE_ANNOTATION@33..38
-              COLON_COLON@33..35 "::"
-              IDENT@35..38 "Int"
-          R_PAREN@38..39 ")"
-        TYPE_ANNOTATION@39..44
-          ARROW@39..41 "->"
-          IDENT@41..44 "Int"
-        DO_KW@44..46 "do"
-        BLOCK@46..57
-          NEWLINE@46..47 "\n"
-          NAME_REF@47..56
-            IDENT@47..56 "start_val"
+    WHITESPACE@7..8 " "
+    NAME@8..15
+      IDENT@8..15 "Counter"
+    WHITESPACE@15..16 " "
+    DO_KW@16..18 "do"
+    BLOCK@18..77
+      NEWLINE@18..19 "\n"
+      WHITESPACE@19..21 "  "
+      FN_DEF@21..76
+        FN_KW@21..23 "fn"
+        WHITESPACE@23..24 " "
+        NAME@24..28
+          IDENT@24..28 "init"
+        PARAM_LIST@28..46
+          L_PAREN@28..29 "("
+          PARAM@29..45
+            IDENT@29..38 "start_val"
+            WHITESPACE@38..39 " "
+            TYPE_ANNOTATION@39..45
+              COLON_COLON@39..41 "::"
+              WHITESPACE@41..42 " "
+              IDENT@42..45 "Int"
+          R_PAREN@45..46 ")"
+        WHITESPACE@46..47 " "
+        TYPE_ANNOTATION@47..53
+          ARROW@47..49 "->"
+          WHITESPACE@49..50 " "
+          IDENT@50..53 "Int"
+        WHITESPACE@53..54 " "
+        DO_KW@54..56 "do"
+        BLOCK@56..71
           NEWLINE@56..57 "\n"
-        END_KW@57..60 "end"
-      NEWLINE@60..61 "\n"
-    END_KW@61..64 "end"
-  EOF@64..64 ""
+          WHITESPACE@57..61 "    "
+          NAME_REF@61..70
+            IDENT@61..70 "start_val"
+          NEWLINE@70..71 "\n"
+        WHITESPACE@71..73 "  "
+        END_KW@73..76 "end"
+      NEWLINE@76..77 "\n"
+    END_KW@77..80 "end"
+  EOF@80..80 ""

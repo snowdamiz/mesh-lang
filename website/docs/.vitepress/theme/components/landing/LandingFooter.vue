@@ -1,103 +1,63 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useData } from 'vitepress'
-import { useScrollReveal } from '@/composables/useScrollReveal'
-
-const { isDark } = useData()
-const { observe } = useScrollReveal()
-const wordmark = ref<HTMLElement>()
-const currentYear = new Date().getUTCFullYear()
-
-onMounted(() => {
-  if (wordmark.value) observe(wordmark.value)
-})
+const year = new Date().getUTCFullYear()
 
 const columns = [
   {
-    title: 'Resources',
+    title: 'Learn',
     links: [
-      { label: 'Getting Started', href: '/docs/getting-started/' },
-      { label: 'Language Guide', href: '/docs/language-basics/' },
-      { label: 'Complete Reference', href: '/docs/reference/' },
-      { label: 'Standard Library', href: '/docs/stdlib/' },
-      { label: 'Developer Tools', href: '/docs/tooling/' },
+      { label: 'Getting started', href: '/docs/getting-started/' },
+      { label: 'Language basics', href: '/docs/language-basics/' },
+      { label: 'Standard library', href: '/docs/stdlib/' },
+      { label: 'Reference', href: '/docs/reference/' },
     ],
   },
   {
-    title: 'Features',
+    title: 'Build',
     links: [
       { label: 'Concurrency', href: '/docs/concurrency/' },
-      { label: 'Web & HTTP', href: '/docs/web/' },
-      { label: 'Databases', href: '/docs/databases/' },
-      { label: 'Native Packages', href: '/docs/native-packages/' },
-      { label: 'Packages & Registry', href: '/docs/packages/' },
+      { label: 'Web and databases', href: '/docs/web/' },
+      { label: 'Distributed actors', href: '/docs/distributed/' },
+      { label: 'Tooling', href: '/docs/tooling/' },
     ],
   },
   {
-    title: 'Community',
+    title: 'Project',
     links: [
-      { label: 'GitHub', href: 'https://github.com/hyperpush-org/mesh-lang', target: '_blank' },
-      { label: 'Discussions', href: 'https://github.com/hyperpush-org/mesh-lang/discussions', target: '_blank' },
-      { label: 'Packages', href: 'https://packages.meshlang.dev', target: '_blank' },
+      { label: 'GitHub', href: 'https://github.com/hyperpush-org/mesh-lang', external: true },
+      { label: 'Packages', href: 'https://packages.meshlang.dev', external: true },
+      { label: 'Native packages', href: '/docs/native-packages/' },
+      { label: 'License', href: 'https://github.com/hyperpush-org/mesh-lang/blob/main/LICENSE', external: true },
     ],
   },
 ]
 </script>
 
 <template>
-  <footer class="overflow-hidden">
-    <div class="mx-auto max-w-6xl px-4 pt-16 sm:px-6 md:pt-20">
-      <div class="grid gap-10 sm:grid-cols-2 md:grid-cols-4">
-        <!-- Brand -->
-        <div>
-          <div class="flex items-center gap-2.5">
-            <img :src="isDark ? '/logo-icon-white.svg' : '/logo-icon-black.svg'" alt="Mesh" class="size-7" />
-            <span class="font-display text-lg font-extrabold text-foreground">Mesh</span>
-          </div>
-          <p class="mt-4 max-w-[230px] text-[13px] leading-relaxed text-muted-foreground">
-            Expressive, concurrent, type-safe. Compiled to native binaries, distributed by the runtime.
-          </p>
-        </div>
+  <footer class="l-section">
+    <div class="grid gap-12 px-5 py-16 sm:px-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16 lg:px-14">
+      <div class="flex flex-col justify-between gap-8">
+        <a href="/" class="w-fit" aria-label="Mesh home">
+          <img src="/logo-black.svg" alt="" class="h-6 w-auto dark:hidden" />
+          <img src="/logo-white.svg" alt="" class="hidden h-6 w-auto dark:block" />
+        </a>
+        <p class="font-mono text-xs text-muted-foreground">© {{ year }} The Mesh Programming Language</p>
+      </div>
 
-        <!-- Link columns -->
+      <nav class="grid grid-cols-2 gap-10 sm:grid-cols-3" aria-label="Footer">
         <div v-for="col in columns" :key="col.title">
-          <h3 class="font-mono text-xs font-semibold tracking-[0.1em] text-foreground">{{ col.title.toLowerCase() }}</h3>
-          <ul class="mt-5 space-y-2.5">
+          <h3 class="font-mono text-xs text-muted-foreground">{{ col.title }}</h3>
+          <ul class="mt-4 space-y-2.5">
             <li v-for="link in col.links" :key="link.href">
               <a
                 :href="link.href"
-                :target="(link as any).target"
-                class="text-sm text-muted-foreground transition-colors hover:text-[var(--l-accent)]"
-              >
-                {{ link.label }}
-              </a>
+                :target="link.external ? '_blank' : undefined"
+                :rel="link.external ? 'noopener' : undefined"
+                class="text-sm text-foreground/80 transition-colors hover:text-foreground"
+              >{{ link.label }}</a>
             </li>
           </ul>
         </div>
-      </div>
-
-      <!-- Bottom bar -->
-      <div class="relative mt-14 flex flex-col items-center justify-between gap-4 py-6 font-mono text-[11px] text-muted-foreground sm:flex-row">
-        <span
-          class="absolute inset-x-0 top-0 h-px"
-          style="background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);"
-          aria-hidden="true"
-        />
-        <p>© {{ currentYear }} The Mesh Programming Language</p>
-        <div class="flex items-center gap-5">
-          <a href="https://github.com/hyperpush-org/mesh-lang" class="transition-colors hover:text-[var(--l-accent)]">GitHub</a>
-          <a href="https://github.com/hyperpush-org/mesh-lang/blob/main/LICENSE" class="transition-colors hover:text-[var(--l-accent)]">License</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- Giant fading wordmark -->
-    <div ref="wordmark" class="reveal pointer-events-none select-none px-2 pb-0" aria-hidden="true">
-      <div
-        class="l-wordmark mx-auto max-w-6xl translate-y-[0.18em] text-center text-[clamp(6rem,21vw,19rem)] font-extrabold leading-none tracking-tight"
-      >
-        mesh
-      </div>
+      </nav>
     </div>
   </footer>
 </template>

@@ -191,6 +191,65 @@ end
 }
 
 #[test]
+fn mesh_http_client_sends_json_bodies_with_http_json() {
+    // `json` is a keyword, so `Http.json` used to fail to parse.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let headers = read_request(&mut stream);
+        assert!(headers.starts_with("POST /items HTTP/1.1\r\n"));
+        assert!(headers
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case("content-type: application/json")));
+        let length: usize = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse().unwrap())
+            })
+            .unwrap();
+        let mut body = vec![0u8; length];
+        stream.read_exact(&mut body).unwrap();
+        assert_eq!(
+            String::from_utf8(body).unwrap(),
+            r#"{"name":"widget","price":9}"#
+        );
+        stream
+            .write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+            .unwrap();
+    });
+
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("http-json-client");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::write(
+        project.join("main.mpl"),
+        format!(
+            r##"
+fn main() do
+  let request = Http.build(:post, "http://127.0.0.1:{port}/items")
+    |> Http.json(json {{ name: "widget", price: 9 }})
+  case Http.send(request) do
+    Ok(response) -> println("#{{response.status}}:#{{response.body}}")
+    Err(error) -> println("error:" <> error)
+  end
+end
+"##
+        ),
+    )
+    .unwrap();
+
+    let run = build_and_run(&project);
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "201:ok\n");
+    server.join().unwrap();
+}
+
+#[test]
 fn mesh_http_client_preserves_binary_request_and_response_bodies() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();

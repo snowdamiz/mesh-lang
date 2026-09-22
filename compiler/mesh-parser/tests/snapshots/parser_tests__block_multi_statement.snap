@@ -1,21 +1,26 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "block_and_debug(\"let x = 1\\nx + 1\")"
 ---
-SOURCE_FILE@0..10
-  BLOCK@0..10
-    LET_BINDING@0..6
+SOURCE_FILE@0..15
+  BLOCK@0..15
+    LET_BINDING@0..9
       LET_KW@0..3 "let"
-      NAME@3..4
-        IDENT@3..4 "x"
-      EQ@4..5 "="
-      LITERAL@5..6
-        INT_LITERAL@5..6 "1"
-    NEWLINE@6..7 "\n"
-    BINARY_EXPR@7..10
-      NAME_REF@7..8
-        IDENT@7..8 "x"
-      PLUS@8..9 "+"
-      LITERAL@9..10
-        INT_LITERAL@9..10 "1"
-  EOF@10..10 ""
+      WHITESPACE@3..4 " "
+      NAME@4..5
+        IDENT@4..5 "x"
+      WHITESPACE@5..6 " "
+      EQ@6..7 "="
+      WHITESPACE@7..8 " "
+      LITERAL@8..9
+        INT_LITERAL@8..9 "1"
+    NEWLINE@9..10 "\n"
+    BINARY_EXPR@10..15
+      NAME_REF@10..11
+        IDENT@10..11 "x"
+      WHITESPACE@11..12 " "
+      PLUS@12..13 "+"
+      WHITESPACE@13..14 " "
+      LITERAL@14..15
+        INT_LITERAL@14..15 "1"
+  EOF@15..15 ""

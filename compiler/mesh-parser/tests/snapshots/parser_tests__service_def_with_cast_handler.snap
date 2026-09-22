@@ -1,33 +1,41 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"service Counter do\\n  cast Reset() do |state|\\n    0\\n  end\\nend\")"
 ---
-SOURCE_FILE@0..47
-  SERVICE_DEF@0..47
+SOURCE_FILE@0..60
+  SERVICE_DEF@0..60
     SERVICE_KW@0..7 "service"
-    NAME@7..14
-      IDENT@7..14 "Counter"
-    DO_KW@14..16 "do"
-    BLOCK@16..44
-      NEWLINE@16..17 "\n"
-      CAST_HANDLER@17..43
-        CAST_KW@17..21 "cast"
-        NAME@21..26
-          IDENT@21..26 "Reset"
-        PARAM_LIST@26..28
-          L_PAREN@26..27 "("
-          R_PAREN@27..28 ")"
-        DO_KW@28..30 "do"
-        BAR@30..31 "|"
-        NAME@31..36
-          IDENT@31..36 "state"
-        BAR@36..37 "|"
-        BLOCK@37..40
-          NEWLINE@37..38 "\n"
-          LITERAL@38..39
-            INT_LITERAL@38..39 "0"
-          NEWLINE@39..40 "\n"
-        END_KW@40..43 "end"
-      NEWLINE@43..44 "\n"
-    END_KW@44..47 "end"
-  EOF@47..47 ""
+    WHITESPACE@7..8 " "
+    NAME@8..15
+      IDENT@8..15 "Counter"
+    WHITESPACE@15..16 " "
+    DO_KW@16..18 "do"
+    BLOCK@18..57
+      NEWLINE@18..19 "\n"
+      WHITESPACE@19..21 "  "
+      CAST_HANDLER@21..56
+        CAST_KW@21..25 "cast"
+        WHITESPACE@25..26 " "
+        NAME@26..31
+          IDENT@26..31 "Reset"
+        PARAM_LIST@31..33
+          L_PAREN@31..32 "("
+          R_PAREN@32..33 ")"
+        WHITESPACE@33..34 " "
+        DO_KW@34..36 "do"
+        WHITESPACE@36..37 " "
+        BAR@37..38 "|"
+        NAME@38..43
+          IDENT@38..43 "state"
+        BAR@43..44 "|"
+        BLOCK@44..51
+          NEWLINE@44..45 "\n"
+          WHITESPACE@45..49 "    "
+          LITERAL@49..50
+            INT_LITERAL@49..50 "0"
+          NEWLINE@50..51 "\n"
+        WHITESPACE@51..53 "  "
+        END_KW@53..56 "end"
+      NEWLINE@56..57 "\n"
+    END_KW@57..60 "end"
+  EOF@60..60 ""

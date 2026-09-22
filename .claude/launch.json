@@ -1,0 +1,34 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "website",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "website-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "website",
+        "run",
+        "preview",
+        "--",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
+    }
+  ]
+}

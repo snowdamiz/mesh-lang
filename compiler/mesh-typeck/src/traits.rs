@@ -4,10 +4,10 @@
 //! constraint checking. Also handles compiler-known traits for operator dispatch
 //! (Add, Sub, Mul, Div, Mod, Eq, Ord, Not).
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::error::{ConstraintOrigin, TypeError};
-use crate::ty::Ty;
+use crate::ty::{Ty, TyVar};
 use crate::unify::InferCtx;
 
 /// Check if a type contains `Self` (e.g., `Ty::Con("Self")` from a `Self.Item` projection).
@@ -104,12 +104,25 @@ pub struct TraitRegistry {
     /// Each trait maps to a list of impls; lookup uses structural type
     /// matching via temporary unification instead of string keys.
     impls: FxHashMap<String, Vec<ImplDef>>,
+    /// Declared type names: a single-letter name here (`struct P`) is a
+    /// type, not a type parameter, when impl types are matched.
+    nominal: FxHashSet<String>,
 }
 
 impl TraitRegistry {
     /// Create a new, empty trait registry.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Record a declared struct or sum type name.
+    pub fn register_nominal(&mut self, name: &str) {
+        self.nominal.insert(name.to_string());
+    }
+
+    /// `ty` with its type parameters replaced by fresh variables.
+    fn freshen(&self, ty: &Ty, ctx: &mut InferCtx) -> Ty {
+        freshen_type_params_with_names(ty, ctx, &[], &self.nominal)
     }
 
     /// Register a trait definition.
@@ -122,6 +135,7 @@ impl TraitRegistry {
     /// Validates that all required methods are present and have compatible
     /// signatures. Returns errors for missing or mismatched methods.
     pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<TypeError> {
+        let mut impl_def = impl_def;
         let mut errors = Vec::new();
 
         // Look up the trait definition.
@@ -130,8 +144,22 @@ impl TraitRegistry {
             for method in &trait_def.methods {
                 match impl_def.methods.get(&method.name) {
                     None => {
-                        // Skip error if the method has a default body in the trait.
-                        if !method.has_default_body {
+                        if method.has_default_body {
+                            // The impl inherits the default method, so method
+                            // lookup on the implementing type finds it; codegen
+                            // lowers the interface body for this type.
+                            impl_def.methods.insert(
+                                method.name.clone(),
+                                ImplMethodSig {
+                                    has_self: method.has_self,
+                                    param_count: method.param_count,
+                                    return_type: method
+                                        .return_type
+                                        .as_ref()
+                                        .map(|ret| replace_self(ret, &impl_def.impl_type)),
+                                },
+                            );
+                        } else {
                             errors.push(TypeError::MissingTraitMethod {
                                 trait_name: impl_def.trait_name.clone(),
                                 method_name: method.name.clone(),
@@ -189,11 +217,14 @@ impl TraitRegistry {
         // Check for duplicate (structurally overlapping) impls before inserting.
         // For parameterized traits (e.g., From<Int> vs From<Float> for String),
         // two impls are only duplicates if both impl_type AND trait_type_args unify.
+        let nominal = self.nominal.clone();
         let existing_impls = self.impls.entry(impl_def.trait_name.clone()).or_default();
         for existing in existing_impls.iter() {
             let mut ctx = InferCtx::new();
-            let freshened_existing = freshen_type_params(&existing.impl_type, &mut ctx);
-            let freshened_new = freshen_type_params(&impl_def.impl_type, &mut ctx);
+            let freshened_existing =
+                freshen_type_params_with_names(&existing.impl_type, &mut ctx, &[], &nominal);
+            let freshened_new =
+                freshen_type_params_with_names(&impl_def.impl_type, &mut ctx, &[], &nominal);
             if ctx
                 .unify(freshened_existing, freshened_new, ConstraintOrigin::Builtin)
                 .is_ok()
@@ -208,8 +239,8 @@ impl TraitRegistry {
                         .iter()
                         .zip(&impl_def.trait_type_args)
                     {
-                        let fa = freshen_type_params(a, &mut ctx);
-                        let fb = freshen_type_params(b, &mut ctx);
+                        let fa = freshen_type_params_with_names(a, &mut ctx, &[], &nominal);
+                        let fb = freshen_type_params_with_names(b, &mut ctx, &[], &nominal);
                         if ctx.unify(fa, fb, ConstraintOrigin::Builtin).is_err() {
                             args_match = false;
                             break;
@@ -340,21 +371,7 @@ impl TraitRegistry {
     /// stored type is freshened (type parameters replaced with fresh vars)
     /// and then unified against the query type in a throwaway InferCtx.
     pub fn has_impl(&self, trait_name: &str, ty: &Ty) -> bool {
-        let impls = match self.impls.get(trait_name) {
-            Some(v) => v,
-            None => return false,
-        };
-        for impl_def in impls {
-            let mut ctx = InferCtx::new();
-            let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
-            if ctx
-                .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
-                .is_ok()
-            {
-                return true;
-            }
-        }
-        false
+        self.find_impl(trait_name, ty).is_some()
     }
 
     /// Find the impl for a given trait and type.
@@ -365,9 +382,10 @@ impl TraitRegistry {
         let impls = self.impls.get(trait_name)?;
         for impl_def in impls {
             let mut ctx = InferCtx::new();
-            let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+            let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
+            let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
             if ctx
-                .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
+                .unify(freshened, query, ConstraintOrigin::Builtin)
                 .is_ok()
             {
                 return Some(impl_def);
@@ -395,9 +413,11 @@ impl TraitRegistry {
                 continue;
             }
             let mut ctx = InferCtx::new();
-            let freshened_impl = freshen_type_params(&impl_def.impl_type, &mut ctx);
+            let mut imported = FxHashMap::default();
+            let impl_query = import_vars(impl_ty, &mut ctx, &mut imported);
+            let freshened_impl = self.freshen(&impl_def.impl_type, &mut ctx);
             if ctx
-                .unify(freshened_impl, impl_ty.clone(), ConstraintOrigin::Builtin)
+                .unify(freshened_impl, impl_query, ConstraintOrigin::Builtin)
                 .is_err()
             {
                 continue;
@@ -405,9 +425,10 @@ impl TraitRegistry {
             // Also check trait type args match.
             let mut all_match = true;
             for (stored, query) in impl_def.trait_type_args.iter().zip(trait_type_args) {
-                let freshened = freshen_type_params(stored, &mut ctx);
+                let freshened = self.freshen(stored, &mut ctx);
+                let query = import_vars(query, &mut ctx, &mut imported);
                 if ctx
-                    .unify(freshened, query.clone(), ConstraintOrigin::Builtin)
+                    .unify(freshened, query, ConstraintOrigin::Builtin)
                     .is_err()
                 {
                     all_match = false;
@@ -458,9 +479,10 @@ impl TraitRegistry {
             for impl_def in impl_list {
                 if let Some(method_sig) = impl_def.methods.get(method_name) {
                     let mut ctx = InferCtx::new();
-                    let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+                    let query = import_vars(arg_ty, &mut ctx, &mut FxHashMap::default());
+                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
                     if ctx
-                        .unify(freshened, arg_ty.clone(), ConstraintOrigin::Builtin)
+                        .unify(freshened, query, ConstraintOrigin::Builtin)
                         .is_ok()
                     {
                         // Resolve the return type through the temp context
@@ -487,9 +509,10 @@ impl TraitRegistry {
             for impl_def in impl_list {
                 if let Some(method_sig) = impl_def.methods.get(method_name) {
                     let mut ctx = InferCtx::new();
-                    let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+                    let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
+                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
                     if ctx
-                        .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
+                        .unify(freshened, query, ConstraintOrigin::Builtin)
                         .is_ok()
                     {
                         return Some(method_sig.clone());
@@ -512,9 +535,10 @@ impl TraitRegistry {
             for impl_def in impl_list {
                 if impl_def.methods.contains_key(method_name) {
                     let mut ctx = InferCtx::new();
-                    let freshened = freshen_type_params(&impl_def.impl_type, &mut ctx);
+                    let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
+                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
                     if ctx
-                        .unify(freshened, ty.clone(), ConstraintOrigin::Builtin)
+                        .unify(freshened, query, ConstraintOrigin::Builtin)
                         .is_ok()
                     {
                         trait_names.push(trait_name.clone());
@@ -565,6 +589,46 @@ impl TraitRegistry {
     }
 }
 
+/// Replace `Self` in an interface signature with the implementing type.
+fn replace_self(ty: &Ty, impl_ty: &Ty) -> Ty {
+    match ty {
+        Ty::Con(tc) if tc.name == "Self" => impl_ty.clone(),
+        Ty::Con(_) | Ty::Var(_) | Ty::Never => ty.clone(),
+        Ty::Fun(params, ret) => Ty::Fun(
+            params.iter().map(|p| replace_self(p, impl_ty)).collect(),
+            Box::new(replace_self(ret, impl_ty)),
+        ),
+        Ty::App(con, args) => Ty::App(
+            Box::new(replace_self(con, impl_ty)),
+            args.iter().map(|a| replace_self(a, impl_ty)).collect(),
+        ),
+        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|e| replace_self(e, impl_ty)).collect()),
+    }
+}
+
+/// Copy a query type into a private unification table.
+///
+/// Inference variables in `ty` belong to the caller's table; resolving them
+/// in another `InferCtx` indexes a table that never allocated them. Each one
+/// becomes a fresh variable of `ctx` (the same variable maps to the same fresh
+/// one), so an unresolved type unifies with any impl, which is the deferred
+/// answer the caller wants before the type is known.
+fn import_vars(ty: &Ty, ctx: &mut InferCtx, map: &mut FxHashMap<TyVar, Ty>) -> Ty {
+    match ty {
+        Ty::Var(var) => map.entry(*var).or_insert_with(|| ctx.fresh_var()).clone(),
+        Ty::Con(_) | Ty::Never => ty.clone(),
+        Ty::Fun(params, ret) => Ty::Fun(
+            params.iter().map(|p| import_vars(p, ctx, map)).collect(),
+            Box::new(import_vars(ret, ctx, map)),
+        ),
+        Ty::App(con, args) => Ty::App(
+            Box::new(import_vars(con, ctx, map)),
+            args.iter().map(|a| import_vars(a, ctx, map)).collect(),
+        ),
+        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|e| import_vars(e, ctx, map)).collect()),
+    }
+}
+
 /// Replace type parameters in a type with fresh inference variables.
 ///
 /// A `Ty::Con` whose name is a single uppercase ASCII letter (A-Z) is
@@ -574,16 +638,17 @@ impl TraitRegistry {
 ///
 /// Concrete constructors (Int, Float, String, List, Option, etc.) are
 /// never freshened -- only single-uppercase-letter names are.
-fn freshen_type_params(ty: &Ty, ctx: &mut InferCtx) -> Ty {
-    freshen_type_params_with_names(ty, ctx, &[])
-}
-
 /// Like `freshen_type_params`, but also treats the given explicit names
 /// as type parameters (enables multi-character type parameter names like
-/// "Item", "Output", etc.).
-fn freshen_type_params_with_names(ty: &Ty, ctx: &mut InferCtx, type_param_names: &[String]) -> Ty {
+/// "Item", "Output", etc.), and never treats a `nominal` name as one.
+fn freshen_type_params_with_names(
+    ty: &Ty,
+    ctx: &mut InferCtx,
+    type_param_names: &[String],
+    nominal: &FxHashSet<String>,
+) -> Ty {
     let mut param_map: FxHashMap<String, Ty> = FxHashMap::default();
-    freshen_recursive(ty, ctx, &mut param_map, type_param_names)
+    freshen_recursive(ty, ctx, &mut param_map, type_param_names, nominal)
 }
 
 fn freshen_recursive(
@@ -591,12 +656,16 @@ fn freshen_recursive(
     ctx: &mut InferCtx,
     param_map: &mut FxHashMap<String, Ty>,
     type_param_names: &[String],
+    nominal: &FxHashSet<String>,
 ) -> Ty {
     match ty {
         Ty::Con(c) => {
-            // A single uppercase ASCII letter is a type parameter,
-            // or the name is in the explicit type_param_names list.
-            if (c.name.len() == 1 && c.name.as_bytes()[0].is_ascii_uppercase())
+            // A single uppercase ASCII letter is a type parameter unless it
+            // is a declared type, or the name is in the explicit
+            // type_param_names list.
+            if (c.name.len() == 1
+                && c.name.as_bytes()[0].is_ascii_uppercase()
+                && !nominal.contains(&c.name))
                 || type_param_names.iter().any(|n| n == &c.name)
             {
                 param_map
@@ -608,25 +677,25 @@ fn freshen_recursive(
             }
         }
         Ty::App(con, args) => {
-            let con_fresh = freshen_recursive(con, ctx, param_map, type_param_names);
+            let con_fresh = freshen_recursive(con, ctx, param_map, type_param_names, nominal);
             let args_fresh: Vec<Ty> = args
                 .iter()
-                .map(|a| freshen_recursive(a, ctx, param_map, type_param_names))
+                .map(|a| freshen_recursive(a, ctx, param_map, type_param_names, nominal))
                 .collect();
             Ty::App(Box::new(con_fresh), args_fresh)
         }
         Ty::Fun(params, ret) => {
             let params_fresh: Vec<Ty> = params
                 .iter()
-                .map(|p| freshen_recursive(p, ctx, param_map, type_param_names))
+                .map(|p| freshen_recursive(p, ctx, param_map, type_param_names, nominal))
                 .collect();
-            let ret_fresh = freshen_recursive(ret, ctx, param_map, type_param_names);
+            let ret_fresh = freshen_recursive(ret, ctx, param_map, type_param_names, nominal);
             Ty::Fun(params_fresh, Box::new(ret_fresh))
         }
         Ty::Tuple(elems) => {
             let elems_fresh: Vec<Ty> = elems
                 .iter()
-                .map(|e| freshen_recursive(e, ctx, param_map, type_param_names))
+                .map(|e| freshen_recursive(e, ctx, param_map, type_param_names, nominal))
                 .collect();
             Ty::Tuple(elems_fresh)
         }

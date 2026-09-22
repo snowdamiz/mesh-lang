@@ -30,8 +30,8 @@ pub enum AccessPath {
     VariantField(Box<AccessPath>, String, usize, MirType),
     /// Named field of a struct.
     StructField(Box<AccessPath>, String),
-    /// Head element of a list (first element).
-    ListHead(Box<AccessPath>),
+    /// Head element of a list (first element), with its element type.
+    ListHead(Box<AccessPath>, MirType),
     /// Tail of a list (remaining elements after head).
     ListTail(Box<AccessPath>),
 }

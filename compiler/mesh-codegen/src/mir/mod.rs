@@ -650,6 +650,14 @@ pub enum MirPattern {
         tail: Box<MirPattern>,
         elem_ty: MirType,
     },
+    /// `[]`: matches the empty list.
+    ListNil,
+    /// `inner as name`: binds the whole matched value and matches `inner`.
+    As {
+        name: std::string::String,
+        ty: MirType,
+        inner: Box<MirPattern>,
+    },
 }
 
 // ── MirLiteral ────────────────────────────────────────────────────────

@@ -121,18 +121,10 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
         if current == SyntaxKind::DOT && POSTFIX_BP >= min_bp {
             let m = p.open_before(lhs);
             p.advance(); // .
-                         // Accept IDENT or keywords that are valid as field names
-                         // (e.g., Node.self, Node.monitor, Node.spawn, Process.monitor, Ws.send,
-                         //  Changeset.cast).
-            if !p.eat(SyntaxKind::IDENT)
-                && !p.eat(SyntaxKind::SELF_KW)
-                && !p.eat(SyntaxKind::MONITOR_KW)
-                && !p.eat(SyntaxKind::SPAWN_KW)
-                && !p.eat(SyntaxKind::LINK_KW)
-                && !p.eat(SyntaxKind::SEND_KW)
-                && !p.eat(SyntaxKind::WHERE_KW)
-                && !p.eat(SyntaxKind::CAST_KW)
-            {
+            // An identifier, or a keyword stdlib modules use as a name (Node.self, Http.json).
+            if p.current().is_field_name() {
+                p.advance();
+            } else {
                 p.error("expected IDENT");
             }
             lhs = p.close(m, SyntaxKind::FIELD_ACCESS);
@@ -328,6 +320,8 @@ fn lhs(p: &mut Parser) -> Option<MarkClosed> {
         SyntaxKind::IF_KW => Some(parse_if_expr(p)),
         SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => Some(parse_case_expr(p)),
         SyntaxKind::FN_KW => Some(parse_closure(p)),
+        // `return` is an expression so it can be a match-arm or branch body.
+        SyntaxKind::RETURN_KW => Some(parse_return_expr(p)),
 
         // Map literal: %{key => value, ...}
         SyntaxKind::PERCENT => {
@@ -838,7 +832,7 @@ pub(crate) fn parse_let_binding(p: &mut Parser) {
 // ── Return Expression ─────────────────────────────────────────────────
 
 /// Parse a return expression: `return [expr]`
-pub(crate) fn parse_return_expr(p: &mut Parser) {
+pub(crate) fn parse_return_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // RETURN_KW
 
@@ -847,7 +841,7 @@ pub(crate) fn parse_return_expr(p: &mut Parser) {
         expr(p);
     }
 
-    p.close(m, SyntaxKind::RETURN_EXPR);
+    p.close(m, SyntaxKind::RETURN_EXPR)
 }
 
 /// Whether the current token could start an expression.
@@ -990,12 +984,87 @@ fn parse_match_arm(p: &mut Parser) {
             } else {
                 p.error("expected `end` to close case arm `do` block");
             }
+        } else if p.at(SyntaxKind::NEWLINE) {
+            parse_arm_block_body(p);
         } else {
             expr(p);
         }
     }
 
     p.close(m, SyntaxKind::MATCH_ARM);
+}
+
+/// Parse the body of a match arm that starts on the line after `->`:
+///
+///   pattern ->
+///     let x = expr
+///     x
+///
+/// The statements run until the next arm head or the `end` of the case.
+fn parse_arm_block_body(p: &mut Parser) {
+    let m = p.open();
+    let mut statements = 0;
+
+    loop {
+        p.eat_newlines();
+        while p.eat(SyntaxKind::SEMICOLON) {
+            p.eat_newlines();
+        }
+
+        if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) || at_match_arm_head(p) {
+            break;
+        }
+
+        super::parse_item_or_stmt(p);
+        statements += 1;
+
+        if p.has_error() {
+            break;
+        }
+    }
+
+    if statements == 0 && !p.has_error() {
+        p.error("expected expression after `->`");
+    }
+
+    p.close(m, SyntaxKind::BLOCK);
+}
+
+/// Whether the current line is a match-arm head: a pattern, optionally
+/// `when guard`, then `->`. Only pattern tokens may precede the arrow, so a
+/// statement (`x + 1`, `let ...`, `f(x)` followed by a newline) never
+/// qualifies.
+fn at_match_arm_head(p: &Parser) -> bool {
+    let mut depth = 0u32;
+    let mut k = 0;
+    loop {
+        match p.nth(k) {
+            SyntaxKind::ARROW | SyntaxKind::WHEN_KW if depth == 0 => return true,
+            SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET => depth += 1,
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET => {
+                if depth == 0 {
+                    return false;
+                }
+                depth -= 1;
+            }
+            SyntaxKind::IDENT
+            | SyntaxKind::INT_LITERAL
+            | SyntaxKind::FLOAT_LITERAL
+            | SyntaxKind::STRING_START
+            | SyntaxKind::STRING_CONTENT
+            | SyntaxKind::STRING_END
+            | SyntaxKind::TRUE_KW
+            | SyntaxKind::FALSE_KW
+            | SyntaxKind::NIL_KW
+            | SyntaxKind::COMMA
+            | SyntaxKind::DOT
+            | SyntaxKind::COLON_COLON
+            | SyntaxKind::BAR
+            | SyntaxKind::MINUS => {}
+            _ => return false,
+        }
+        k += 1;
+    }
 }
 
 // ── Closure Expression ────────────────────────────────────────────────
@@ -1531,15 +1600,19 @@ fn parse_continue_expr(p: &mut Parser) -> MarkClosed {
 
 /// Parse a for-in expression: `for binding in iterable do body end`
 ///
-/// Supports two binding forms:
+/// Supports three binding forms:
 /// - Simple: `for x in iterable do body end`
-/// - Destructuring: `for {k, v} in map do body end`
+/// - Map destructuring: `for {k, v} in map do body end`
+/// - Pattern: `for (a, b) in pairs do body end` (an irrefutable pattern)
 fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // FOR_KW
 
-    // Parse binding: either a single IDENT (NAME) or {k, v} (DESTRUCTURE_BINDING).
-    if p.at(SyntaxKind::L_BRACE) {
+    // Parse binding: a single IDENT (NAME), {k, v} (DESTRUCTURE_BINDING), or
+    // a tuple pattern.
+    if p.at(SyntaxKind::L_PAREN) {
+        super::patterns::parse_pattern(p);
+    } else if p.at(SyntaxKind::L_BRACE) {
         // Destructuring binding: {k, v}
         let dm = p.open();
         p.advance(); // {
@@ -1565,7 +1638,7 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
         p.advance(); // identifier
         p.close(name, SyntaxKind::NAME);
     } else {
-        p.error("expected loop variable name or {key, value} destructuring after `for`");
+        p.error("expected loop variable name, pattern, or {key, value} destructuring after `for`");
     }
 
     // Expect `in`.

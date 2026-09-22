@@ -1,10 +1,11 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"not done\")"
 ---
-SOURCE_FILE@0..7
-  UNARY_EXPR@0..7
+SOURCE_FILE@0..8
+  UNARY_EXPR@0..8
     NOT_KW@0..3 "not"
-    NAME_REF@3..7
-      IDENT@3..7 "done"
-  EOF@7..7 ""
+    WHITESPACE@3..4 " "
+    NAME_REF@4..8
+      IDENT@4..8 "done"
+  EOF@8..8 ""

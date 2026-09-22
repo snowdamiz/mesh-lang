@@ -47,20 +47,22 @@
 }
 
 @font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
   font-display: swap;
-  src: url('https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjgn7Motmp5r61.woff2') format('woff2');
+  src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdfoLmvDIaK18A.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
 @font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
   font-display: swap;
-  src: url('https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjjH7Motmp5g.woff2') format('woff2');
+  src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLmvDIaI.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -205,169 +207,13 @@
 }
 
 /* Animations */
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.05); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-
-@keyframes bar-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(var(--bar-scale, 1)); }
-}
-
-@keyframes counter-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes grain {
-  0%, 100% { transform: translate(0, 0); }
-  10% { transform: translate(-5%, -10%); }
-  20% { transform: translate(-15%, 5%); }
-  30% { transform: translate(7%, -25%); }
-  40% { transform: translate(-5%, 25%); }
-  50% { transform: translate(-15%, 10%); }
-  60% { transform: translate(15%, 0%); }
-  70% { transform: translate(0%, 15%); }
-  80% { transform: translate(3%, 35%); }
-  90% { transform: translate(-10%, 10%); }
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.7s ease-out both;
-}
-
 .animate-fade-in {
   animation: fade-in 0.6s ease-out both;
-}
-
-.animate-glow-pulse {
-  animation: glow-pulse 4s ease-in-out infinite;
-}
-
-.animate-shimmer {
-  background-size: 200% auto;
-  animation: shimmer 3s linear infinite;
-}
-
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-/* Noise grain overlay */
-.grain::before {
-  content: '';
-  position: absolute;
-  inset: -50%;
-  width: 300%;
-  height: 300%;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.035;
-  pointer-events: none;
-  animation: grain 8s steps(10) infinite;
-}
-.dark .grain::before {
-  opacity: 0.05;
-}
-
-/* Benchmark bar animation */
-.bar-animated {
-  transform-origin: left;
-  animation: bar-fill 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  transform: scaleX(0);
-}
-
-.counter-animated {
-  animation: counter-up 0.6s ease-out forwards;
-  animation-delay: 0.8s;
-  opacity: 0;
-}
-
-/* ──────────────────────────────────────────────────
-   Scroll reveal system
-   .reveal          — rise + fade
-   .reveal-zoom     — rise + fade + slight scale (big panels)
-   .reveal-stagger  — children cascade in one after another
-   .reveal-d1..d3   — extra delay for sequencing within a section
-   ────────────────────────────────────────────────── */
-.reveal,
-.reveal-zoom {
-  opacity: 0;
-  transform: translateY(28px);
-  transition:
-    opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.reveal-zoom {
-  transform: translateY(24px) scale(0.975);
-}
-.reveal.is-visible,
-.reveal-zoom.is-visible {
-  opacity: 1;
-  transform: none;
-}
-
-.reveal-stagger > * {
-  opacity: 0;
-  transform: translateY(22px);
-  transition:
-    opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.reveal-stagger.is-visible > * {
-  opacity: 1;
-  transform: none;
-}
-.reveal-stagger.is-visible > *:nth-child(2) { transition-delay: 0.07s; }
-.reveal-stagger.is-visible > *:nth-child(3) { transition-delay: 0.14s; }
-.reveal-stagger.is-visible > *:nth-child(4) { transition-delay: 0.21s; }
-.reveal-stagger.is-visible > *:nth-child(5) { transition-delay: 0.28s; }
-.reveal-stagger.is-visible > *:nth-child(6) { transition-delay: 0.35s; }
-.reveal-stagger.is-visible > *:nth-child(7) { transition-delay: 0.42s; }
-.reveal-stagger.is-visible > *:nth-child(8) { transition-delay: 0.49s; }
-.reveal-stagger.is-visible > *:nth-child(9) { transition-delay: 0.56s; }
-.reveal-stagger.is-visible > *:nth-child(10) { transition-delay: 0.63s; }
-.reveal-stagger.is-visible > *:nth-child(11) { transition-delay: 0.7s; }
-.reveal-stagger.is-visible > *:nth-child(n + 12) { transition-delay: 0.77s; }
-
-.reveal-d1 { transition-delay: 0.1s; }
-.reveal-d2 { transition-delay: 0.2s; }
-.reveal-d3 { transition-delay: 0.3s; }
-
-@media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .reveal-zoom,
-  .reveal-stagger > * {
-    opacity: 1 !important;
-    transform: none !important;
-    transition: none !important;
-  }
 }
 
 /* VitePress icon system (needed for search component icons) */
@@ -584,22 +430,6 @@ aside [data-slot="scroll-area-viewport"]::-webkit-scrollbar {
    ────────────────────────────────────────────────── */
 header.sticky {
   border-bottom-color: var(--border) !important;
-}
-
-/* ──────────────────────────────────────────────────
-   Mobile: better tap targets and safe-area padding
-   ────────────────────────────────────────────────── */
-@media (max-width: 640px) {
-  /* Hero headline sizing */
-  .hero-title {
-    font-size: 2rem !important;
-    line-height: 1.15 !important;
-  }
-
-  /* Prevent install command overflow on narrow screens */
-  code.install-cmd {
-    font-size: 0.7rem !important;
-  }
 }
 
 /* ──────────────────────────────────────────────────

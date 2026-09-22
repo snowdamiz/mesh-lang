@@ -1,44 +1,59 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..67
-  IMPL_DEF@0..67
+SOURCE_FILE@0..88
+  IMPL_DEF@0..88
     IMPL_KW@0..4 "impl"
-    PATH@4..12
-      IDENT@4..12 "Iterator"
-    FOR_KW@12..15 "for"
-    PATH@15..21
-      IDENT@15..21 "MyList"
-    DO_KW@21..23 "do"
-    BLOCK@23..64
-      NEWLINE@23..24 "\n"
-      ASSOC_TYPE_BINDING@24..36
-        TYPE_KW@24..28 "type"
-        NAME@28..32
-          IDENT@28..32 "Item"
-        EQ@32..33 "="
-        IDENT@33..36 "Int"
-      NEWLINE@36..37 "\n"
-      FN_DEF@37..63
-        FN_KW@37..39 "fn"
-        NAME@39..43
-          IDENT@39..43 "next"
-        PARAM_LIST@43..49
-          L_PAREN@43..44 "("
-          PARAM@44..48
-            SELF_KW@44..48 "self"
-          R_PAREN@48..49 ")"
-        TYPE_ANNOTATION@49..54
-          ARROW@49..51 "->"
-          IDENT@51..54 "Int"
-        DO_KW@54..56 "do"
-        BLOCK@56..60
-          NEWLINE@56..57 "\n"
-          LITERAL@57..59
-            INT_LITERAL@57..59 "42"
-          NEWLINE@59..60 "\n"
-        END_KW@60..63 "end"
-      NEWLINE@63..64 "\n"
-    END_KW@64..67 "end"
-  EOF@67..67 ""
+    WHITESPACE@4..5 " "
+    PATH@5..13
+      IDENT@5..13 "Iterator"
+    WHITESPACE@13..14 " "
+    FOR_KW@14..17 "for"
+    WHITESPACE@17..18 " "
+    PATH@18..24
+      IDENT@18..24 "MyList"
+    WHITESPACE@24..25 " "
+    DO_KW@25..27 "do"
+    BLOCK@27..85
+      NEWLINE@27..28 "\n"
+      WHITESPACE@28..30 "  "
+      ASSOC_TYPE_BINDING@30..45
+        TYPE_KW@30..34 "type"
+        WHITESPACE@34..35 " "
+        NAME@35..39
+          IDENT@35..39 "Item"
+        WHITESPACE@39..40 " "
+        EQ@40..41 "="
+        WHITESPACE@41..42 " "
+        IDENT@42..45 "Int"
+      NEWLINE@45..46 "\n"
+      WHITESPACE@46..48 "  "
+      FN_DEF@48..84
+        FN_KW@48..50 "fn"
+        WHITESPACE@50..51 " "
+        NAME@51..55
+          IDENT@51..55 "next"
+        PARAM_LIST@55..61
+          L_PAREN@55..56 "("
+          PARAM@56..60
+            SELF_KW@56..60 "self"
+          R_PAREN@60..61 ")"
+        WHITESPACE@61..62 " "
+        TYPE_ANNOTATION@62..68
+          ARROW@62..64 "->"
+          WHITESPACE@64..65 " "
+          IDENT@65..68 "Int"
+        WHITESPACE@68..69 " "
+        DO_KW@69..71 "do"
+        BLOCK@71..79
+          NEWLINE@71..72 "\n"
+          WHITESPACE@72..76 "    "
+          LITERAL@76..78
+            INT_LITERAL@76..78 "42"
+          NEWLINE@78..79 "\n"
+        WHITESPACE@79..81 "  "
+        END_KW@81..84 "end"
+      NEWLINE@84..85 "\n"
+    END_KW@85..88 "end"
+  EOF@88..88 ""

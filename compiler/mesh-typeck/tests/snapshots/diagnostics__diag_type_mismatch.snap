@@ -1,13 +1,13 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0001] Error: expected String, found Int
-   ╭─[ test.mpl:1:5 ]
+   ╭─[ test.mpl:1:7 ]
    │
  1 │ let x :: Int = "hello"
-   │     ──┬──  
-   │       ╰──── expected String from annotation
-   │ 
+   │       ───┬──
+   │          ╰──── expected String from annotation
+   │
    │ Help: use to_string()
 ───╯

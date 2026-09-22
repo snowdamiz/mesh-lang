@@ -1,20 +1,25 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..24
-  STRUCT_DEF@0..24
+SOURCE_FILE@0..30
+  STRUCT_DEF@0..30
     STRUCT_KW@0..6 "struct"
-    NAME@6..11
-      IDENT@6..11 "Point"
-    DO_KW@11..13 "do"
-    NEWLINE@13..14 "\n"
-    STRUCT_FIELD@14..20
-      NAME@14..15
-        IDENT@14..15 "x"
-      TYPE_ANNOTATION@15..20
-        COLON_COLON@15..17 "::"
-        IDENT@17..20 "Int"
-    NEWLINE@20..21 "\n"
-    END_KW@21..24 "end"
-  EOF@24..24 ""
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "Point"
+    WHITESPACE@12..13 " "
+    DO_KW@13..15 "do"
+    NEWLINE@15..16 "\n"
+    WHITESPACE@16..18 "  "
+    STRUCT_FIELD@18..26
+      NAME@18..19
+        IDENT@18..19 "x"
+      WHITESPACE@19..20 " "
+      TYPE_ANNOTATION@20..26
+        COLON_COLON@20..22 "::"
+        WHITESPACE@22..23 " "
+        IDENT@23..26 "Int"
+    NEWLINE@26..27 "\n"
+    END_KW@27..30 "end"
+  EOF@30..30 ""

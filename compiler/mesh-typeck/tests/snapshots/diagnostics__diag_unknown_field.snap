@@ -1,11 +1,11 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0009] Error: unknown field z in struct Point
-   ╭─[ test.mpl:5:1 ]
+   ╭─[ test.mpl:5:15 ]
    │
  5 │ Point { x: 1, z: 2 }
-   │ ─┬─  
-   │  ╰─── `Point` has no field `z`
+   │               ──┬─
+   │                 ╰─── `Point` has no field `z`
 ───╯

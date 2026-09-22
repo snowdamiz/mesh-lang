@@ -332,6 +332,20 @@ fn test_diag_receive_outside_actor() {
 }
 
 #[test]
+fn test_wrong_send_reports_only_the_send_mismatch() {
+    // The failed unification used to leave its own spanless mismatch too,
+    // rendered over the whole file with a misleading `to_string()` hint.
+    let src = "actor counter(total :: Int) do\n  receive do\n    amount -> counter(total + amount)\n  end\nend\n\nfn main() do\n  let pid = spawn(counter, 0)\n  send(pid, \"five\")\nend\n";
+    let result = check_source(src);
+    assert_eq!(result.errors.len(), 1, "{:?}", result.errors);
+    assert!(
+        matches!(result.errors[0], TypeError::SendTypeMismatch { .. }),
+        "{:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn test_diag_send_type_mismatch_details() {
     let src = "send(pid, \"hello\")";
     let err = TypeError::SendTypeMismatch {
@@ -381,8 +395,9 @@ fn test_json_one_line() {
     assert!(!result.errors.is_empty());
     let json_opts = DiagnosticOptions::json_mode();
     let output = render_diagnostic(&result.errors[0], src, "test.mpl", &json_opts, None);
+    // One object per line: a single trailing newline and none inside.
     assert!(
-        !output.contains('\n'),
+        output.ends_with('\n') && !output.trim_end().contains('\n'),
         "JSON output should be one line: {}",
         output
     );

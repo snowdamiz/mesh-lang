@@ -1,39 +1,50 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"impl Printable for Int do\\n  fn to_string(self) -> String do\\n    \\\"int\\\"\\n  end\\nend\")"
 ---
-SOURCE_FILE@0..63
-  IMPL_DEF@0..63
+SOURCE_FILE@0..79
+  IMPL_DEF@0..79
     IMPL_KW@0..4 "impl"
-    PATH@4..13
-      IDENT@4..13 "Printable"
-    FOR_KW@13..16 "for"
-    PATH@16..19
-      IDENT@16..19 "Int"
-    DO_KW@19..21 "do"
-    BLOCK@21..60
-      NEWLINE@21..22 "\n"
-      FN_DEF@22..59
-        FN_KW@22..24 "fn"
-        NAME@24..33
-          IDENT@24..33 "to_string"
-        PARAM_LIST@33..39
-          L_PAREN@33..34 "("
-          PARAM@34..38
-            SELF_KW@34..38 "self"
-          R_PAREN@38..39 ")"
-        TYPE_ANNOTATION@39..47
-          ARROW@39..41 "->"
-          IDENT@41..47 "String"
-        DO_KW@47..49 "do"
-        BLOCK@49..56
-          NEWLINE@49..50 "\n"
-          STRING_EXPR@50..55
-            STRING_START@50..51 "\""
-            STRING_CONTENT@51..54 "int"
-            STRING_END@54..55 "\""
-          NEWLINE@55..56 "\n"
-        END_KW@56..59 "end"
-      NEWLINE@59..60 "\n"
-    END_KW@60..63 "end"
-  EOF@63..63 ""
+    WHITESPACE@4..5 " "
+    PATH@5..14
+      IDENT@5..14 "Printable"
+    WHITESPACE@14..15 " "
+    FOR_KW@15..18 "for"
+    WHITESPACE@18..19 " "
+    PATH@19..22
+      IDENT@19..22 "Int"
+    WHITESPACE@22..23 " "
+    DO_KW@23..25 "do"
+    BLOCK@25..76
+      NEWLINE@25..26 "\n"
+      WHITESPACE@26..28 "  "
+      FN_DEF@28..75
+        FN_KW@28..30 "fn"
+        WHITESPACE@30..31 " "
+        NAME@31..40
+          IDENT@31..40 "to_string"
+        PARAM_LIST@40..46
+          L_PAREN@40..41 "("
+          PARAM@41..45
+            SELF_KW@41..45 "self"
+          R_PAREN@45..46 ")"
+        WHITESPACE@46..47 " "
+        TYPE_ANNOTATION@47..56
+          ARROW@47..49 "->"
+          WHITESPACE@49..50 " "
+          IDENT@50..56 "String"
+        WHITESPACE@56..57 " "
+        DO_KW@57..59 "do"
+        BLOCK@59..70
+          NEWLINE@59..60 "\n"
+          WHITESPACE@60..64 "    "
+          STRING_EXPR@64..69
+            STRING_START@64..65 "\""
+            STRING_CONTENT@65..68 "int"
+            STRING_END@68..69 "\""
+          NEWLINE@69..70 "\n"
+        WHITESPACE@70..72 "  "
+        END_KW@72..75 "end"
+      NEWLINE@75..76 "\n"
+    END_KW@76..79 "end"
+  EOF@79..79 ""

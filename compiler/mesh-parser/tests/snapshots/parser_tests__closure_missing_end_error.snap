@@ -1,22 +1,27 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn x -> x + 1\")"
 ---
-SOURCE_FILE@0..8
-  CLOSURE_EXPR@0..8
+SOURCE_FILE@0..13
+  CLOSURE_EXPR@0..13
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..3
-      PARAM@2..3
-        IDENT@2..3 "x"
-    ARROW@3..5 "->"
-    BLOCK@5..8
-      BINARY_EXPR@5..8
-        NAME_REF@5..6
-          IDENT@5..6 "x"
-        PLUS@6..7 "+"
-        LITERAL@7..8
-          INT_LITERAL@7..8 "1"
-  EOF@8..8 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..4
+      PARAM@3..4
+        IDENT@3..4 "x"
+    WHITESPACE@4..5 " "
+    ARROW@5..7 "->"
+    WHITESPACE@7..8 " "
+    BLOCK@8..13
+      BINARY_EXPR@8..13
+        NAME_REF@8..9
+          IDENT@8..9 "x"
+        WHITESPACE@9..10 " "
+        PLUS@10..11 "+"
+        WHITESPACE@11..12 " "
+        LITERAL@12..13
+          INT_LITERAL@12..13 "1"
+  EOF@13..13 ""
 
 errors:
   - unclosed closure -- expected `end` @13..13

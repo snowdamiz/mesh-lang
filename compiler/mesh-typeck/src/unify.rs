@@ -32,6 +32,9 @@ pub struct InferCtx {
     /// Current loop nesting depth (0 = not inside any loop).
     /// Incremented when entering a while body, reset to 0 when entering a closure body.
     pub loop_depth: u32,
+    /// The interface whose default method body is being checked, if any:
+    /// `self` then has the type `Self`, whose methods are the interface's own.
+    pub current_interface: Option<String>,
     /// User-defined module namespaces for qualified access (e.g., Vector.add()).
     /// Populated during ImportDecl processing, read during field access resolution.
     /// Key is the module namespace name, value maps function/type name to its scheme.
@@ -91,6 +94,7 @@ impl InferCtx {
             errors: Vec::new(),
             warnings: Vec::new(),
             loop_depth: 0,
+            current_interface: None,
             qualified_modules: FxHashMap::default(),
             imported_functions: Vec::new(),
             imported_function_origins: FxHashMap::default(),

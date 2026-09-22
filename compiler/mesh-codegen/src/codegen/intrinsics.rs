@@ -1695,6 +1695,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_option_box_scalar(option: ptr) -> ptr: boxes a raw scalar `Some` payload
+    module.add_function(
+        "mesh_option_box_scalar",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mesh_list_any(list: ptr, fn_ptr: ptr, env_ptr: ptr) -> i8 (Bool)
     module.add_function(
         "mesh_list_any",
@@ -2990,6 +2996,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     );
 
     // ── List Eq/Ord runtime functions (Phase 27 Plan 01) ──────────────
+
+    // mesh_map_eq(a: ptr, b: ptr, val_eq: ptr) -> i8
+    module.add_function(
+        "mesh_map_eq",
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_set_eq(a: ptr, b: ptr) -> i8
+    module.add_function(
+        "mesh_set_eq",
+        i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mesh_list_eq(list_a: ptr, list_b: ptr, elem_eq: ptr) -> i8
     module.add_function(

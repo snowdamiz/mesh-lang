@@ -1450,6 +1450,19 @@ impl<'ctx> CodeGen<'ctx> {
                 arg_vals.push(ptr_ty.const_null().into());
                 _has_closure_args = true;
             } else {
+                // A value whose representation differs from the parameter's
+                // (a boxed `Option` from the runtime handed to a by-value
+                // `{ i8, ptr }` parameter, or the reverse) is converted the
+                // way a `let` binding converts it.
+                let val = match target_fn
+                    .and_then(|f| f.get_type().get_param_types().get(arg_vals.len()).copied())
+                    .and_then(|param_ty| inkwell::types::BasicTypeEnum::try_from(param_ty).ok())
+                {
+                    Some(param_ty) if param_ty != val.get_type() => {
+                        self.coerce_value_to_type(val, param_ty)?
+                    }
+                    _ => val,
+                };
                 arg_vals.push(val.into());
             }
         }
@@ -2387,9 +2400,30 @@ impl<'ctx> CodeGen<'ctx> {
         let env_ptr = env_ptr.into_pointer_value();
         let mut user_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         let mut user_param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> = Vec::new();
-        for arg in args {
-            user_args.push(self.codegen_expr(arg)?.into());
-            user_param_types.push(self.llvm_type(arg.ty()).into());
+        // The callee's own parameter types decide the representation each
+        // argument is passed in (a runtime `Option` box becomes the by-value
+        // `{ i8, ptr }` a Mesh function receives).
+        let declared_params = match closure.ty() {
+            MirType::Closure(params, _) | MirType::FnPtr(params, _)
+                if params.len() == args.len() =>
+            {
+                Some(params.clone())
+            }
+            _ => None,
+        };
+        for (index, arg) in args.iter().enumerate() {
+            let param_ty = declared_params
+                .as_ref()
+                .map_or_else(|| arg.ty().clone(), |params| params[index].clone());
+            let expected = self.llvm_type(&param_ty);
+            let val = self.codegen_expr(arg)?;
+            let val = if val.get_type() != expected {
+                self.coerce_value_to_type(val, expected)?
+            } else {
+                val
+            };
+            user_args.push(val.into());
+            user_param_types.push(expected.into());
         }
         let ret_ty = self.llvm_type(ty);
 
@@ -5906,6 +5940,10 @@ impl<'ctx> CodeGen<'ctx> {
         mir_ty: &MirType,
     ) -> Result<inkwell::values::IntValue<'ctx>, String> {
         let i64_type = self.context.i64_type();
+        // A unit value (`{}`) has no bits to store; whatever MIR calls it.
+        if matches!(val, BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0) {
+            return Ok(i64_type.const_int(0, false));
+        }
         match mir_ty {
             MirType::Bool => {
                 let bool_val = val.into_int_value();
@@ -5955,10 +5993,19 @@ impl<'ctx> CodeGen<'ctx> {
                 // Unit values are stored as 0 in lists.
                 Ok(self.context.i64_type().const_int(0, false))
             }
-            _ => {
-                // For any other type, try as int value (best effort).
-                Ok(val.into_int_value())
-            }
+            _ => match val {
+                // A narrower integer (an `i8` bool or unit) widens to the slot.
+                BasicValueEnum::IntValue(iv) if iv.get_type().get_bit_width() < 64 => self
+                    .builder
+                    .build_int_z_extend(iv, i64_type, "narrow_to_i64")
+                    .map_err(|e| e.to_string()),
+                BasicValueEnum::IntValue(iv) => Ok(iv),
+                BasicValueEnum::PointerValue(pv) => self
+                    .builder
+                    .build_ptr_to_int(pv, i64_type, "ptr_to_i64")
+                    .map_err(|e| e.to_string()),
+                _ => Ok(i64_type.const_int(0, false)),
+            },
         }
     }
 

@@ -1,128 +1,169 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..214
-  SERVICE_DEF@0..214
+SOURCE_FILE@0..275
+  SERVICE_DEF@0..275
     SERVICE_KW@0..7 "service"
-    NAME@7..14
-      IDENT@7..14 "Counter"
-    DO_KW@14..16 "do"
-    BLOCK@16..211
-      NEWLINE@16..17 "\n"
-      FN_DEF@17..60
-        FN_KW@17..19 "fn"
-        NAME@19..23
-          IDENT@19..23 "init"
-        PARAM_LIST@23..39
-          L_PAREN@23..24 "("
-          PARAM@24..38
-            IDENT@24..33 "start_val"
-            TYPE_ANNOTATION@33..38
-              COLON_COLON@33..35 "::"
-              IDENT@35..38 "Int"
-          R_PAREN@38..39 ")"
-        TYPE_ANNOTATION@39..44
-          ARROW@39..41 "->"
-          IDENT@41..44 "Int"
-        DO_KW@44..46 "do"
-        BLOCK@46..57
-          NEWLINE@46..47 "\n"
-          NAME_REF@47..56
-            IDENT@47..56 "start_val"
+    WHITESPACE@7..8 " "
+    NAME@8..15
+      IDENT@8..15 "Counter"
+    WHITESPACE@15..16 " "
+    DO_KW@16..18 "do"
+    BLOCK@18..272
+      NEWLINE@18..19 "\n"
+      WHITESPACE@19..21 "  "
+      FN_DEF@21..76
+        FN_KW@21..23 "fn"
+        WHITESPACE@23..24 " "
+        NAME@24..28
+          IDENT@24..28 "init"
+        PARAM_LIST@28..46
+          L_PAREN@28..29 "("
+          PARAM@29..45
+            IDENT@29..38 "start_val"
+            WHITESPACE@38..39 " "
+            TYPE_ANNOTATION@39..45
+              COLON_COLON@39..41 "::"
+              WHITESPACE@41..42 " "
+              IDENT@42..45 "Int"
+          R_PAREN@45..46 ")"
+        WHITESPACE@46..47 " "
+        TYPE_ANNOTATION@47..53
+          ARROW@47..49 "->"
+          WHITESPACE@49..50 " "
+          IDENT@50..53 "Int"
+        WHITESPACE@53..54 " "
+        DO_KW@54..56 "do"
+        BLOCK@56..71
           NEWLINE@56..57 "\n"
-        END_KW@57..60 "end"
-      NEWLINE@60..61 "\n"
-      NEWLINE@61..62 "\n"
-      CALL_HANDLER@62..108
-        CALL_KW@62..66 "call"
-        NAME@66..74
-          IDENT@66..74 "GetCount"
-        PARAM_LIST@74..76
-          L_PAREN@74..75 "("
-          R_PAREN@75..76 ")"
-        TYPE_ANNOTATION@76..81
-          COLON_COLON@76..78 "::"
-          IDENT@78..81 "Int"
-        DO_KW@81..83 "do"
-        BAR@83..84 "|"
-        NAME@84..89
-          IDENT@84..89 "state"
-        BAR@89..90 "|"
-        BLOCK@90..105
-          NEWLINE@90..91 "\n"
-          TUPLE_EXPR@91..104
-            L_PAREN@91..92 "("
-            NAME_REF@92..97
-              IDENT@92..97 "state"
-            COMMA@97..98 ","
-            NAME_REF@98..103
-              IDENT@98..103 "state"
-            R_PAREN@103..104 ")"
-          NEWLINE@104..105 "\n"
-        END_KW@105..108 "end"
-      NEWLINE@108..109 "\n"
-      NEWLINE@109..110 "\n"
-      CALL_HANDLER@110..182
-        CALL_KW@110..114 "call"
-        NAME@114..123
-          IDENT@114..123 "Increment"
-        PARAM_LIST@123..136
-          L_PAREN@123..124 "("
-          PARAM@124..135
-            IDENT@124..130 "amount"
-            TYPE_ANNOTATION@130..135
-              COLON_COLON@130..132 "::"
-              IDENT@132..135 "Int"
-          R_PAREN@135..136 ")"
-        TYPE_ANNOTATION@136..141
-          COLON_COLON@136..138 "::"
-          IDENT@138..141 "Int"
-        DO_KW@141..143 "do"
-        BAR@143..144 "|"
-        NAME@144..149
-          IDENT@144..149 "state"
-        BAR@149..150 "|"
-        BLOCK@150..179
-          NEWLINE@150..151 "\n"
-          TUPLE_EXPR@151..178
-            L_PAREN@151..152 "("
-            BINARY_EXPR@152..164
-              NAME_REF@152..157
-                IDENT@152..157 "state"
-              PLUS@157..158 "+"
-              NAME_REF@158..164
-                IDENT@158..164 "amount"
-            COMMA@164..165 ","
-            BINARY_EXPR@165..177
-              NAME_REF@165..170
-                IDENT@165..170 "state"
-              PLUS@170..171 "+"
-              NAME_REF@171..177
-                IDENT@171..177 "amount"
-            R_PAREN@177..178 ")"
-          NEWLINE@178..179 "\n"
-        END_KW@179..182 "end"
-      NEWLINE@182..183 "\n"
-      NEWLINE@183..184 "\n"
-      CAST_HANDLER@184..210
-        CAST_KW@184..188 "cast"
-        NAME@188..193
-          IDENT@188..193 "Reset"
-        PARAM_LIST@193..195
-          L_PAREN@193..194 "("
-          R_PAREN@194..195 ")"
-        DO_KW@195..197 "do"
-        BAR@197..198 "|"
-        NAME@198..203
-          IDENT@198..203 "state"
-        BAR@203..204 "|"
-        BLOCK@204..207
-          NEWLINE@204..205 "\n"
-          LITERAL@205..206
-            INT_LITERAL@205..206 "0"
-          NEWLINE@206..207 "\n"
-        END_KW@207..210 "end"
-      NEWLINE@210..211 "\n"
-    END_KW@211..214 "end"
-  EOF@214..214 ""
+          WHITESPACE@57..61 "    "
+          NAME_REF@61..70
+            IDENT@61..70 "start_val"
+          NEWLINE@70..71 "\n"
+        WHITESPACE@71..73 "  "
+        END_KW@73..76 "end"
+      NEWLINE@76..77 "\n"
+      NEWLINE@77..78 "\n"
+      WHITESPACE@78..80 "  "
+      CALL_HANDLER@80..138
+        CALL_KW@80..84 "call"
+        WHITESPACE@84..85 " "
+        NAME@85..93
+          IDENT@85..93 "GetCount"
+        PARAM_LIST@93..95
+          L_PAREN@93..94 "("
+          R_PAREN@94..95 ")"
+        WHITESPACE@95..96 " "
+        TYPE_ANNOTATION@96..102
+          COLON_COLON@96..98 "::"
+          WHITESPACE@98..99 " "
+          IDENT@99..102 "Int"
+        WHITESPACE@102..103 " "
+        DO_KW@103..105 "do"
+        WHITESPACE@105..106 " "
+        BAR@106..107 "|"
+        NAME@107..112
+          IDENT@107..112 "state"
+        BAR@112..113 "|"
+        BLOCK@113..133
+          NEWLINE@113..114 "\n"
+          WHITESPACE@114..118 "    "
+          TUPLE_EXPR@118..132
+            L_PAREN@118..119 "("
+            NAME_REF@119..124
+              IDENT@119..124 "state"
+            COMMA@124..125 ","
+            WHITESPACE@125..126 " "
+            NAME_REF@126..131
+              IDENT@126..131 "state"
+            R_PAREN@131..132 ")"
+          NEWLINE@132..133 "\n"
+        WHITESPACE@133..135 "  "
+        END_KW@135..138 "end"
+      NEWLINE@138..139 "\n"
+      NEWLINE@139..140 "\n"
+      WHITESPACE@140..142 "  "
+      CALL_HANDLER@142..232
+        CALL_KW@142..146 "call"
+        WHITESPACE@146..147 " "
+        NAME@147..156
+          IDENT@147..156 "Increment"
+        PARAM_LIST@156..171
+          L_PAREN@156..157 "("
+          PARAM@157..170
+            IDENT@157..163 "amount"
+            WHITESPACE@163..164 " "
+            TYPE_ANNOTATION@164..170
+              COLON_COLON@164..166 "::"
+              WHITESPACE@166..167 " "
+              IDENT@167..170 "Int"
+          R_PAREN@170..171 ")"
+        WHITESPACE@171..172 " "
+        TYPE_ANNOTATION@172..178
+          COLON_COLON@172..174 "::"
+          WHITESPACE@174..175 " "
+          IDENT@175..178 "Int"
+        WHITESPACE@178..179 " "
+        DO_KW@179..181 "do"
+        WHITESPACE@181..182 " "
+        BAR@182..183 "|"
+        NAME@183..188
+          IDENT@183..188 "state"
+        BAR@188..189 "|"
+        BLOCK@189..227
+          NEWLINE@189..190 "\n"
+          WHITESPACE@190..194 "    "
+          TUPLE_EXPR@194..226
+            L_PAREN@194..195 "("
+            BINARY_EXPR@195..209
+              NAME_REF@195..200
+                IDENT@195..200 "state"
+              WHITESPACE@200..201 " "
+              PLUS@201..202 "+"
+              WHITESPACE@202..203 " "
+              NAME_REF@203..209
+                IDENT@203..209 "amount"
+            COMMA@209..210 ","
+            WHITESPACE@210..211 " "
+            BINARY_EXPR@211..225
+              NAME_REF@211..216
+                IDENT@211..216 "state"
+              WHITESPACE@216..217 " "
+              PLUS@217..218 "+"
+              WHITESPACE@218..219 " "
+              NAME_REF@219..225
+                IDENT@219..225 "amount"
+            R_PAREN@225..226 ")"
+          NEWLINE@226..227 "\n"
+        WHITESPACE@227..229 "  "
+        END_KW@229..232 "end"
+      NEWLINE@232..233 "\n"
+      NEWLINE@233..234 "\n"
+      WHITESPACE@234..236 "  "
+      CAST_HANDLER@236..271
+        CAST_KW@236..240 "cast"
+        WHITESPACE@240..241 " "
+        NAME@241..246
+          IDENT@241..246 "Reset"
+        PARAM_LIST@246..248
+          L_PAREN@246..247 "("
+          R_PAREN@247..248 ")"
+        WHITESPACE@248..249 " "
+        DO_KW@249..251 "do"
+        WHITESPACE@251..252 " "
+        BAR@252..253 "|"
+        NAME@253..258
+          IDENT@253..258 "state"
+        BAR@258..259 "|"
+        BLOCK@259..266
+          NEWLINE@259..260 "\n"
+          WHITESPACE@260..264 "    "
+          LITERAL@264..265
+            INT_LITERAL@264..265 "0"
+          NEWLINE@265..266 "\n"
+        WHITESPACE@266..268 "  "
+        END_KW@268..271 "end"
+      NEWLINE@271..272 "\n"
+    END_KW@272..275 "end"
+  EOF@275..275 ""

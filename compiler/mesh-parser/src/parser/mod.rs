@@ -483,6 +483,13 @@ impl<'src> Parser<'src> {
     pub(crate) fn build_tree(mut self) -> (rowan::GreenNode, Vec<ParseError>) {
         let mut builder = rowan::GreenNodeBuilder::new();
         let mut token_pos: usize = 0;
+        // End of the last token placed in the tree. The lexer drops spaces
+        // and tabs, so the gap up to the next token is emitted as a
+        // WHITESPACE token before the next node opens or the next token is
+        // placed: the tree's text is then the source text, every offset
+        // taken from the tree is a source offset, and leading whitespace
+        // stays outside the node it precedes.
+        let mut last_end: usize = 0;
         let mut forward_parents: Vec<(usize, SyntaxKind)> = Vec::new();
 
         let mut i = 0;
@@ -492,6 +499,13 @@ impl<'src> Parser<'src> {
                     kind,
                     forward_parent,
                 } => {
+                    emit_gap(
+                        &mut builder,
+                        self.source,
+                        &self.tokens,
+                        token_pos,
+                        &mut last_end,
+                    );
                     if forward_parent.is_some() {
                         // Follow the forward_parent chain, collecting (index, kind) pairs.
                         forward_parents.clear();
@@ -549,11 +563,19 @@ impl<'src> Parser<'src> {
                     builder.finish_node();
                 }
                 Event::Advance => {
+                    emit_gap(
+                        &mut builder,
+                        self.source,
+                        &self.tokens,
+                        token_pos,
+                        &mut last_end,
+                    );
                     if token_pos < self.tokens.len() {
                         let token = &self.tokens[token_pos];
                         let syntax_kind = SyntaxKind::from(token.kind.clone());
                         let text = &self.source[token.span.start as usize..token.span.end as usize];
                         builder.token(rowan::SyntaxKind(syntax_kind as u16), text);
+                        last_end = token.span.end as usize;
                         token_pos += 1;
                     }
                 }
@@ -566,6 +588,27 @@ impl<'src> Parser<'src> {
         }
 
         (builder.finish(), self.errors)
+    }
+}
+
+/// Place the source text between the last emitted token and the token at
+/// `token_pos` in the tree as a WHITESPACE token.
+fn emit_gap(
+    builder: &mut rowan::GreenNodeBuilder<'_>,
+    source: &str,
+    tokens: &[Token],
+    token_pos: usize,
+    last_end: &mut usize,
+) {
+    if let Some(token) = tokens.get(token_pos) {
+        let start = token.span.start as usize;
+        if start > *last_end {
+            builder.token(
+                rowan::SyntaxKind(SyntaxKind::WHITESPACE as u16),
+                &source[*last_end..start],
+            );
+            *last_end = start;
+        }
     }
 }
 
@@ -668,11 +711,12 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             }
         },
 
-        // fn/def: named function definition (fn + IDENT) vs closure (fn + L_PAREN/ARROW)
+        // fn/def: named function definition (`fn name(` / `fn name<`) vs a
+        // closure expression (`fn x -> ...`, `fn x, y do ...`, `fn(x) -> ...`).
         SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
-            // Disambiguate: if next token is IDENT, it's a named fn def.
-            // Otherwise it's a closure expression.
-            if p.nth(1) == SyntaxKind::IDENT {
+            if p.nth(1) == SyntaxKind::IDENT
+                && matches!(p.nth(2), SyntaxKind::L_PAREN | SyntaxKind::LT)
+            {
                 items::parse_fn_def(p);
             } else {
                 expressions::expr(p);
@@ -747,7 +791,9 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         SyntaxKind::LET_KW => expressions::parse_let_binding(p),
 
-        SyntaxKind::RETURN_KW => expressions::parse_return_expr(p),
+        SyntaxKind::RETURN_KW => {
+            expressions::parse_return_expr(p);
+        }
 
         _ => {
             expressions::expr(p);
@@ -792,12 +838,9 @@ mod tests {
         let root_node = crate::cst::SyntaxNode::new_root(green);
         assert_eq!(root_node.kind(), SyntaxKind::SOURCE_FILE);
 
-        // Verify the text is preserved.
-        assert_eq!(root_node.text().to_string(), "letx=5");
-        // Note: text is "letx=5" because the lexer strips whitespace and
-        // the parser emits tokens without whitespace. The CST text is the
-        // concatenation of token texts. Whitespace reconstruction would
-        // need additional logic.
+        // The CST is lossless: whitespace the lexer skipped comes back as
+        // WHITESPACE tokens, so the tree text is the source text.
+        assert_eq!(root_node.text().to_string(), source);
 
         // Verify child structure.
         let children: Vec<_> = root_node.children().collect();

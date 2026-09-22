@@ -566,7 +566,10 @@ pub fn render_diagnostic(
     suggestions: Option<&[String]>,
 ) -> String {
     if options.json {
-        return render_json_diagnostic(error, source, filename, suggestions);
+        // One object per line: the caller prints the rendering verbatim.
+        let mut line = render_json_diagnostic(error, source, filename, suggestions);
+        line.push('\n');
+        return line;
     }
 
     let config = if options.color {

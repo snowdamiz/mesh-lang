@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { useData } from 'vitepress'
 import { isActive, type SidebarItem } from '@/composables/useSidebar'
-import * as LucideIcons from 'lucide-vue-next'
+import {
+  Blocks, BookOpen, ClipboardList, Code2, Container, Database, FileText, FlaskConical, Globe,
+  Library, ListTree, Network, PackageOpen, Repeat, Shapes, ShieldCheck, Workflow, Wrench,
+} from 'lucide-vue-next'
+
+// The `icon` names used by the sidebar in config.mts. Importing the whole
+// icon set instead put all of Lucide into the theme chunk every page loads.
+const icons: Record<string, Component> = {
+  Blocks, BookOpen, ClipboardList, Code2, Container, Database, FileText, FlaskConical, Globe,
+  Library, ListTree, Network, PackageOpen, Repeat, Shapes, ShieldCheck, Workflow, Wrench,
+}
 
 const props = defineProps<{
   item: SidebarItem
@@ -12,10 +22,7 @@ const { page } = useData()
 
 const active = computed(() => isActive(page.value.relativePath, props.item.link))
 
-const iconComponent = computed(() => {
-  if (!props.item.icon) return null
-  return (LucideIcons as Record<string, unknown>)[props.item.icon] ?? null
-})
+const iconComponent = computed(() => (props.item.icon ? icons[props.item.icon] ?? null : null))
 </script>
 
 <template>

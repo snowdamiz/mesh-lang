@@ -421,6 +421,10 @@ Mesh provides these compiler-known traits:
 
 `Option`, `Result`, and `Ordering` are built-in sum types. `Ordering` has `Less`, `Equal`, and `Greater` constructors.
 
+Tuples, unit, `Option`, `Result`, `Ordering`, lists, maps and sets compare with `==` by their contents (a list of tuples of options works too), and tuples, `Option`, `Result` and `Ordering` also order with `<` and print with `to_string()`, `inspect()` and interpolation: `(1, "a")` prints as `(1, a)`, `Some(2.5)` as `Some(2.5)`, and `inspect()` quotes strings inside. A `Float` always prints with a decimal point (`42.0`, never `42`).
+
+A struct field of function type is called directly: for `struct Op do run :: Fun(Int) -> Int end`, `op.run(10)` calls the function stored in the field.
+
 `deriving(Json)` is convenient syntax that generates `ToJson` and `FromJson` implementations; the derived capability is not a single interface literally named `Json`. Likewise, `deriving(Row)` generates row decoding support and `deriving(Schema)` generates schema metadata.
 
 ## Deriving

@@ -1,30 +1,36 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"if x > 0 do\\n  x\\nelse\\n  -x\\nend\")"
 ---
-SOURCE_FILE@0..21
-  IF_EXPR@0..21
+SOURCE_FILE@0..29
+  IF_EXPR@0..29
     IF_KW@0..2 "if"
-    BINARY_EXPR@2..5
-      NAME_REF@2..3
-        IDENT@2..3 "x"
-      GT@3..4 ">"
-      LITERAL@4..5
-        INT_LITERAL@4..5 "0"
-    DO_KW@5..7 "do"
-    BLOCK@7..10
-      NEWLINE@7..8 "\n"
-      NAME_REF@8..9
-        IDENT@8..9 "x"
-      NEWLINE@9..10 "\n"
-    ELSE_BRANCH@10..21
-      ELSE_KW@10..14 "else"
-      BLOCK@14..18
-        NEWLINE@14..15 "\n"
-        UNARY_EXPR@15..17
-          MINUS@15..16 "-"
-          NAME_REF@16..17
-            IDENT@16..17 "x"
-        NEWLINE@17..18 "\n"
-      END_KW@18..21 "end"
-  EOF@21..21 ""
+    WHITESPACE@2..3 " "
+    BINARY_EXPR@3..8
+      NAME_REF@3..4
+        IDENT@3..4 "x"
+      WHITESPACE@4..5 " "
+      GT@5..6 ">"
+      WHITESPACE@6..7 " "
+      LITERAL@7..8
+        INT_LITERAL@7..8 "0"
+    WHITESPACE@8..9 " "
+    DO_KW@9..11 "do"
+    BLOCK@11..16
+      NEWLINE@11..12 "\n"
+      WHITESPACE@12..14 "  "
+      NAME_REF@14..15
+        IDENT@14..15 "x"
+      NEWLINE@15..16 "\n"
+    ELSE_BRANCH@16..29
+      ELSE_KW@16..20 "else"
+      BLOCK@20..26
+        NEWLINE@20..21 "\n"
+        WHITESPACE@21..23 "  "
+        UNARY_EXPR@23..25
+          MINUS@23..24 "-"
+          NAME_REF@24..25
+            IDENT@24..25 "x"
+        NEWLINE@25..26 "\n"
+      END_KW@26..29 "end"
+  EOF@29..29 ""

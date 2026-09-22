@@ -123,10 +123,11 @@ pub extern "C" fn mesh_int_to_string(val: i64) -> *mut MeshString {
     mesh_string_new(buf.as_ptr(), len as u64)
 }
 
-/// Convert an f64 float to a GC-managed Mesh string.
+/// Convert an f64 float to a GC-managed Mesh string. A whole number keeps
+/// its `.0` (`42.0`, never `42`) so a Float always reads as one.
 #[no_mangle]
 pub extern "C" fn mesh_float_to_string(val: f64) -> *mut MeshString {
-    let s = val.to_string();
+    let s = format!("{val:?}");
     mesh_string_new(s.as_ptr(), s.len() as u64)
 }
 
@@ -310,14 +311,11 @@ pub extern "C" fn mesh_string_split(s: *const MeshString, delim: *const MeshStri
 /// Join a list of strings with a separator, returning a new String.
 ///
 /// Reads list elements as MeshString pointers (stored as u64 in the list).
-/// List layout: u64 length at offset 0, u64 elements starting at offset 16
-/// (after length + capacity header).
 #[no_mangle]
 pub extern "C" fn mesh_string_join(list: *mut u8, sep: *const MeshString) -> *mut u8 {
     unsafe {
         let separator = (*sep).as_str();
-        let len = *(list as *const u64) as usize;
-        let data = (list as *const u64).add(2); // skip length + capacity header
+        let (len, data) = crate::collections::list::list_slots(list);
         let mut parts: Vec<&str> = Vec::with_capacity(len);
         for i in 0..len {
             let elem = *data.add(i);

@@ -1,24 +1,30 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn x -> x |> to_string() end\")"
 ---
-SOURCE_FILE@0..22
-  CLOSURE_EXPR@0..22
+SOURCE_FILE@0..28
+  CLOSURE_EXPR@0..28
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..3
-      PARAM@2..3
-        IDENT@2..3 "x"
-    ARROW@3..5 "->"
-    BLOCK@5..19
-      PIPE_EXPR@5..19
-        NAME_REF@5..6
-          IDENT@5..6 "x"
-        PIPE@6..8 "|>"
-        CALL_EXPR@8..19
-          NAME_REF@8..17
-            IDENT@8..17 "to_string"
-          ARG_LIST@17..19
-            L_PAREN@17..18 "("
-            R_PAREN@18..19 ")"
-    END_KW@19..22 "end"
-  EOF@22..22 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..4
+      PARAM@3..4
+        IDENT@3..4 "x"
+    WHITESPACE@4..5 " "
+    ARROW@5..7 "->"
+    WHITESPACE@7..8 " "
+    BLOCK@8..24
+      PIPE_EXPR@8..24
+        NAME_REF@8..9
+          IDENT@8..9 "x"
+        WHITESPACE@9..10 " "
+        PIPE@10..12 "|>"
+        WHITESPACE@12..13 " "
+        CALL_EXPR@13..24
+          NAME_REF@13..22
+            IDENT@13..22 "to_string"
+          ARG_LIST@22..24
+            L_PAREN@22..23 "("
+            R_PAREN@23..24 ")"
+    WHITESPACE@24..25 " "
+    END_KW@25..28 "end"
+  EOF@28..28 ""

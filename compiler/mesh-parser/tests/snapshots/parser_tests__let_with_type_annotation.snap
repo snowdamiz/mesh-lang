@@ -1,19 +1,24 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "block_and_debug(\"let name :: String = \\\"hello\\\"\")"
 ---
-SOURCE_FILE@0..23
-  BLOCK@0..23
-    LET_BINDING@0..23
+SOURCE_FILE@0..28
+  BLOCK@0..28
+    LET_BINDING@0..28
       LET_KW@0..3 "let"
-      NAME@3..7
-        IDENT@3..7 "name"
-      TYPE_ANNOTATION@7..15
-        COLON_COLON@7..9 "::"
-        IDENT@9..15 "String"
-      EQ@15..16 "="
-      STRING_EXPR@16..23
-        STRING_START@16..17 "\""
-        STRING_CONTENT@17..22 "hello"
-        STRING_END@22..23 "\""
-  EOF@23..23 ""
+      WHITESPACE@3..4 " "
+      NAME@4..8
+        IDENT@4..8 "name"
+      WHITESPACE@8..9 " "
+      TYPE_ANNOTATION@9..18
+        COLON_COLON@9..11 "::"
+        WHITESPACE@11..12 " "
+        IDENT@12..18 "String"
+      WHITESPACE@18..19 " "
+      EQ@19..20 "="
+      WHITESPACE@20..21 " "
+      STRING_EXPR@21..28
+        STRING_START@21..22 "\""
+        STRING_CONTENT@22..27 "hello"
+        STRING_END@27..28 "\""
+  EOF@28..28 ""

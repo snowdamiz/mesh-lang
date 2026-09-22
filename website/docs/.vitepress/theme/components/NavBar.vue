@@ -7,7 +7,7 @@ import { useSidebar } from '@/composables/useSidebar'
 import { Menu, X } from 'lucide-vue-next'
 
 const { hasSidebar, is960, toggle } = useSidebar()
-const { isDark, page } = useData()
+const { page } = useData()
 
 // Mobile menu for non-docs pages (landing, packages, etc.)
 const mobileMenuOpen = ref(false)
@@ -53,7 +53,9 @@ const activeSection = computed(() => {
           <Menu v-else class="size-5" />
         </button>
         <a href="/" class="flex items-center">
-          <img :src="withBase(isDark ? '/logo-white.svg' : '/logo-black.svg')" alt="Mesh" class="h-7 w-auto" />
+          <!-- Both logos, switched in CSS: the server renders before the colour scheme is known -->
+          <img :src="withBase('/logo-black.svg')" alt="Mesh" class="h-5 w-auto dark:hidden" />
+          <img :src="withBase('/logo-white.svg')" alt="Mesh" class="hidden h-5 w-auto dark:block" />
         </a>
       </div>
 

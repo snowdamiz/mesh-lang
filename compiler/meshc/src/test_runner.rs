@@ -354,11 +354,19 @@ pub fn run_tests(
     let elapsed = start.elapsed();
     let elapsed_secs = elapsed.as_secs_f64();
 
-    // Summary line
+    // Summary line. It counts files: each file's binary already printed its
+    // own test counts, so a bare "1 passed" here read like a lost test.
+    let files = |n: usize| if n == 1 { "test file" } else { "test files" };
     if failed > 0 {
-        println!("\n{RED}{BOLD}{failed} failed{RESET}, {passed} passed in {elapsed_secs:.2}s");
+        println!(
+            "\n{RED}{BOLD}{failed} {} failed{RESET}, {passed} passed in {elapsed_secs:.2}s",
+            files(failed)
+        );
     } else {
-        println!("\n{GREEN}{BOLD}{passed} passed{RESET} in {elapsed_secs:.2}s");
+        println!(
+            "\n{GREEN}{BOLD}{passed} {} passed{RESET} in {elapsed_secs:.2}s",
+            files(passed)
+        );
     }
 
     Ok(TestSummary { passed, failed })

@@ -77,8 +77,9 @@ pub use collections::list::{
     mesh_list_zip,
 };
 pub use collections::map::{
-    mesh_map_delete, mesh_map_from_list, mesh_map_get, mesh_map_has_key, mesh_map_keys,
-    mesh_map_merge, mesh_map_new, mesh_map_put, mesh_map_size, mesh_map_to_list, mesh_map_values,
+    mesh_map_delete, mesh_map_eq, mesh_map_from_list, mesh_map_get, mesh_map_has_key,
+    mesh_map_keys, mesh_map_merge, mesh_map_new, mesh_map_put, mesh_map_size, mesh_map_to_list,
+    mesh_map_values,
 };
 pub use collections::queue::{
     mesh_queue_is_empty, mesh_queue_new, mesh_queue_peek, mesh_queue_pop, mesh_queue_push,
@@ -88,7 +89,7 @@ pub use collections::range::{
     mesh_range_filter, mesh_range_length, mesh_range_map, mesh_range_new, mesh_range_to_list,
 };
 pub use collections::set::{
-    mesh_set_add, mesh_set_contains, mesh_set_difference, mesh_set_from_list,
+    mesh_set_add, mesh_set_contains, mesh_set_difference, mesh_set_eq, mesh_set_from_list,
     mesh_set_intersection, mesh_set_new, mesh_set_remove, mesh_set_size, mesh_set_to_list,
     mesh_set_union,
 };

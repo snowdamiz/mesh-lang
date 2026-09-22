@@ -23,6 +23,8 @@ use crate::mir::{MirExpr, MirType, MsgShape};
 
 const SCALAR: u32 = 0;
 const LEAF: u32 = 1;
+/// Lists may also be views (`{len, VIEW, parent, offset}`); the runtime
+/// flattens those while capturing.
 const LIST: u32 = 2;
 const MAP: u32 = 3;
 const TUPLE: u32 = 4;

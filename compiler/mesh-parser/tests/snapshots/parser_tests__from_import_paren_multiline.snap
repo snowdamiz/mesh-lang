@@ -1,23 +1,27 @@
 ---
 source: compiler/mesh-parser/tests/parser_tests.rs
-assertion_line: 597
 expression: "source_and_debug(\"from Math import (\\n  sqrt,\\n  pow\\n)\")"
 ---
-SOURCE_FILE@0..27
-  FROM_IMPORT_DECL@0..27
+SOURCE_FILE@0..34
+  FROM_IMPORT_DECL@0..34
     IDENT@0..4 "from"
-    PATH@4..8
-      IDENT@4..8 "Math"
-    IMPORT_KW@8..14 "import"
-    IMPORT_LIST@14..27
-      L_PAREN@14..15 "("
-      NAME@15..20
-        NEWLINE@15..16 "\n"
-        IDENT@16..20 "sqrt"
-      COMMA@20..21 ","
-      NAME@21..25
-        NEWLINE@21..22 "\n"
-        IDENT@22..25 "pow"
-      NEWLINE@25..26 "\n"
-      R_PAREN@26..27 ")"
-  EOF@27..27 ""
+    WHITESPACE@4..5 " "
+    PATH@5..9
+      IDENT@5..9 "Math"
+    WHITESPACE@9..10 " "
+    IMPORT_KW@10..16 "import"
+    WHITESPACE@16..17 " "
+    IMPORT_LIST@17..34
+      L_PAREN@17..18 "("
+      NAME@18..25
+        NEWLINE@18..19 "\n"
+        WHITESPACE@19..21 "  "
+        IDENT@21..25 "sqrt"
+      COMMA@25..26 ","
+      NAME@26..32
+        NEWLINE@26..27 "\n"
+        WHITESPACE@27..29 "  "
+        IDENT@29..32 "pow"
+      NEWLINE@32..33 "\n"
+      R_PAREN@33..34 ")"
+  EOF@34..34 ""

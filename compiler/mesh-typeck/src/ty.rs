@@ -222,6 +222,17 @@ impl Ty {
     }
 
     /// Create an `Option<T>` type.
+    /// Whether any inference variable occurs in this type.
+    pub fn has_type_vars(&self) -> bool {
+        match self {
+            Ty::Var(_) => true,
+            Ty::Con(_) | Ty::Never => false,
+            Ty::App(con, args) => con.has_type_vars() || args.iter().any(Ty::has_type_vars),
+            Ty::Fun(params, ret) => params.iter().any(Ty::has_type_vars) || ret.has_type_vars(),
+            Ty::Tuple(elems) => elems.iter().any(Ty::has_type_vars),
+        }
+    }
+
     pub fn option(inner: Ty) -> Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new("Option"))), vec![inner])
     }

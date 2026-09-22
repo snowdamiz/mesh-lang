@@ -1,16 +1,20 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"a and b or c\")"
 ---
-SOURCE_FILE@0..8
-  BINARY_EXPR@0..8
-    BINARY_EXPR@0..5
+SOURCE_FILE@0..12
+  BINARY_EXPR@0..12
+    BINARY_EXPR@0..7
       NAME_REF@0..1
         IDENT@0..1 "a"
-      AND_KW@1..4 "and"
-      NAME_REF@4..5
-        IDENT@4..5 "b"
-    OR_KW@5..7 "or"
-    NAME_REF@7..8
-      IDENT@7..8 "c"
-  EOF@8..8 ""
+      WHITESPACE@1..2 " "
+      AND_KW@2..5 "and"
+      WHITESPACE@5..6 " "
+      NAME_REF@6..7
+        IDENT@6..7 "b"
+    WHITESPACE@7..8 " "
+    OR_KW@8..10 "or"
+    WHITESPACE@10..11 " "
+    NAME_REF@11..12
+      IDENT@11..12 "c"
+  EOF@12..12 ""

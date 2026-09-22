@@ -2,16 +2,18 @@
 source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"x\\n  |> foo()\")"
 ---
-SOURCE_FILE@0..9
-  PIPE_EXPR@0..9
+SOURCE_FILE@0..12
+  PIPE_EXPR@0..12
     NAME_REF@0..1
       IDENT@0..1 "x"
     NEWLINE@1..2 "\n"
-    PIPE@2..4 "|>"
-    CALL_EXPR@4..9
-      NAME_REF@4..7
-        IDENT@4..7 "foo"
-      ARG_LIST@7..9
-        L_PAREN@7..8 "("
-        R_PAREN@8..9 ")"
-  EOF@9..9 ""
+    WHITESPACE@2..4 "  "
+    PIPE@4..6 "|>"
+    WHITESPACE@6..7 " "
+    CALL_EXPR@7..12
+      NAME_REF@7..10
+        IDENT@7..10 "foo"
+      ARG_LIST@10..12
+        L_PAREN@10..11 "("
+        R_PAREN@11..12 ")"
+  EOF@12..12 ""

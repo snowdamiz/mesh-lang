@@ -119,6 +119,19 @@ pub extern "C" fn mesh_set_size(set: *mut u8) -> i64 {
     unsafe { set_len(set) as i64 }
 }
 
+/// Whether two sets hold the same elements, in any order.
+#[no_mangle]
+pub extern "C" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
+    unsafe {
+        let len = set_len(a) as usize;
+        if len != set_len(b) as usize {
+            return 0;
+        }
+        let data = set_data(a);
+        (0..len).all(|i| contains_elem(b, *data.add(i))) as i8
+    }
+}
+
 /// Return a NEW set that is the union of `a` and `b`.
 #[no_mangle]
 pub extern "C" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
@@ -267,10 +280,9 @@ pub extern "C" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
-        let len = super::list::mesh_list_length(list);
-        let data = (list as *const u64).add(2); // skip len + cap header
+        let (len, data) = super::list::list_slots(list);
         let mut set = mesh_set_new();
-        for i in 0..len as usize {
+        for i in 0..len {
             set = mesh_set_add(set, *data.add(i));
         }
         set

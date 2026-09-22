@@ -19,6 +19,7 @@ pub enum Pattern {
     Or(OrPat),
     As(AsPat),
     Cons(ConsPat),
+    List(ListPat),
 }
 
 impl Pattern {
@@ -27,13 +28,25 @@ impl Pattern {
             SyntaxKind::WILDCARD_PAT => Some(Pattern::Wildcard(WildcardPat { syntax: node })),
             SyntaxKind::IDENT_PAT => Some(Pattern::Ident(IdentPat { syntax: node })),
             SyntaxKind::LITERAL_PAT => Some(Pattern::Literal(LiteralPat { syntax: node })),
-            SyntaxKind::TUPLE_PAT => Some(Pattern::Tuple(TuplePat { syntax: node })),
+            SyntaxKind::TUPLE_PAT => {
+                // `(pattern)` with no comma is a grouping, as in `h :: (h2 :: t)`;
+                // there are no one-element tuples.
+                let has_comma = node
+                    .children_with_tokens()
+                    .any(|element| element.kind() == SyntaxKind::COMMA);
+                let mut inner = node.children().filter_map(Pattern::cast);
+                match (inner.next(), has_comma) {
+                    (Some(only), false) if inner.next().is_none() => Some(only),
+                    _ => Some(Pattern::Tuple(TuplePat { syntax: node })),
+                }
+            }
             SyntaxKind::CONSTRUCTOR_PAT => {
                 Some(Pattern::Constructor(ConstructorPat { syntax: node }))
             }
             SyntaxKind::OR_PAT => Some(Pattern::Or(OrPat { syntax: node })),
             SyntaxKind::AS_PAT => Some(Pattern::As(AsPat { syntax: node })),
             SyntaxKind::CONS_PAT => Some(Pattern::Cons(ConsPat { syntax: node })),
+            SyntaxKind::LIST_PAT => Some(Pattern::List(ListPat { syntax: node })),
             _ => None,
         }
     }
@@ -49,6 +62,7 @@ impl Pattern {
             Pattern::Or(n) => &n.syntax,
             Pattern::As(n) => &n.syntax,
             Pattern::Cons(n) => &n.syntax,
+            Pattern::List(n) => &n.syntax,
         }
     }
 }
@@ -177,6 +191,18 @@ impl OrPat {
 }
 
 // ── Cons Pattern ────────────────────────────────────────────────────────
+
+// ── List Pattern ─────────────────────────────────────────────────────────
+
+ast_node!(ListPat, LIST_PAT);
+
+impl ListPat {
+    /// The element patterns: `[]` has none, `[a, b]` has two. The pattern
+    /// matches a list of exactly that many elements.
+    pub fn patterns(&self) -> impl Iterator<Item = Pattern> + '_ {
+        self.syntax.children().filter_map(Pattern::cast)
+    }
+}
 
 ast_node!(ConsPat, CONS_PAT);
 

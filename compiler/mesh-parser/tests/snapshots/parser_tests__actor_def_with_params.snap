@@ -1,26 +1,31 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"actor Counter(state) do\\n  state + 1\\nend\")"
 ---
-SOURCE_FILE@0..33
-  ACTOR_DEF@0..33
+SOURCE_FILE@0..39
+  ACTOR_DEF@0..39
     ACTOR_KW@0..5 "actor"
-    NAME@5..12
-      IDENT@5..12 "Counter"
-    PARAM_LIST@12..19
-      L_PAREN@12..13 "("
-      PARAM@13..18
-        IDENT@13..18 "state"
-      R_PAREN@18..19 ")"
-    DO_KW@19..21 "do"
-    BLOCK@21..30
-      NEWLINE@21..22 "\n"
-      BINARY_EXPR@22..29
-        NAME_REF@22..27
-          IDENT@22..27 "state"
-        PLUS@27..28 "+"
-        LITERAL@28..29
-          INT_LITERAL@28..29 "1"
-      NEWLINE@29..30 "\n"
-    END_KW@30..33 "end"
-  EOF@33..33 ""
+    WHITESPACE@5..6 " "
+    NAME@6..13
+      IDENT@6..13 "Counter"
+    PARAM_LIST@13..20
+      L_PAREN@13..14 "("
+      PARAM@14..19
+        IDENT@14..19 "state"
+      R_PAREN@19..20 ")"
+    WHITESPACE@20..21 " "
+    DO_KW@21..23 "do"
+    BLOCK@23..36
+      NEWLINE@23..24 "\n"
+      WHITESPACE@24..26 "  "
+      BINARY_EXPR@26..35
+        NAME_REF@26..31
+          IDENT@26..31 "state"
+        WHITESPACE@31..32 " "
+        PLUS@32..33 "+"
+        WHITESPACE@33..34 " "
+        LITERAL@34..35
+          INT_LITERAL@34..35 "1"
+      NEWLINE@35..36 "\n"
+    END_KW@36..39 "end"
+  EOF@39..39 ""

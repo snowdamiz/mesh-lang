@@ -16,6 +16,11 @@ pub enum FormatIR {
     Space,
     /// Always emits a newline + current indentation, regardless of mode.
     Hardline,
+    /// The current line ends here: the next text starts on a new line. Follows
+    /// every line comment, so code is never pulled onto the comment's line;
+    /// adds nothing when a line break follows anyway. Forces enclosing groups
+    /// to break.
+    LineEnd,
     /// Increase indentation for the child IR by the configured indent size.
     Indent(Box<FormatIR>),
     /// Try to render the child flat (on one line). If it exceeds the remaining
@@ -48,6 +53,11 @@ pub fn space() -> FormatIR {
 /// Create a `Hardline` node (always a newline).
 pub fn hardline() -> FormatIR {
     FormatIR::Hardline
+}
+
+/// Create a `LineEnd` node (the line ends here, e.g. after a line comment).
+pub fn line_end() -> FormatIR {
+    FormatIR::LineEnd
 }
 
 /// Create an `Indent` wrapper that increases indentation for its child.

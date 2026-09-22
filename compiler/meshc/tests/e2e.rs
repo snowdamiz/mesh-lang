@@ -3074,7 +3074,10 @@ end
 fn e2e_numeric_traits() {
     let source = read_fixture("numeric_traits.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "4\n6\n-2\n-2\n3\n8\n3\n12\n14\n26\n");
+    assert_eq!(
+        output,
+        "4.0\n6.0\n-2.0\n-2.0\n3.0\n8.0\n3\n12.0\n14.0\n26.0\n"
+    );
 }
 
 /// Phase 75: User-defined Neg trait for unary minus.
@@ -3084,7 +3087,7 @@ fn e2e_numeric_traits() {
 fn e2e_numeric_neg() {
     let source = read_fixture("numeric_neg.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "-3\n-7\n-42\n-3.5\n");
+    assert_eq!(output, "-3.0\n-7.0\n-42\n-3.5\n");
 }
 
 #[test]
@@ -3152,14 +3155,13 @@ fn e2e_from_user_defined() {
     assert_eq!(output, "42\n");
 }
 
-/// Phase 77 CONV-03: Built-in Float.from(42) produces a float value.
-/// The string interpolation uses mesh_float_to_string which formats
-/// whole-number floats without trailing ".0" (Rust's f64::to_string behavior).
+/// Phase 77 CONV-03: Built-in Float.from(42) produces a float value, and a
+/// whole-number float still prints as one (`42.0`).
 #[test]
 fn e2e_from_float_from_int() {
     let source = read_fixture("from_float_from_int.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output.trim(), "42");
+    assert_eq!(output.trim(), "42.0");
 }
 
 /// Phase 77 CONV-03: Built-in String.from(42) produces "42".
@@ -6456,12 +6458,11 @@ fn e2e_datetime_unix_secs() {
 
 /// Phase 136: DateTime.add and DateTime.diff arithmetic (DTIME-06, DTIME-07).
 /// Verifies: add 7 days returns 7.0 diff, add -1 hour returns 1.0 diff.
-/// Note: Rust's f64.to_string() prints whole-number floats without decimal (7.0 -> "7").
 #[test]
 fn e2e_datetime_add_diff() {
     let source = read_fixture("datetime_add_diff.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "7\n1\n");
+    assert_eq!(output, "7.0\n1.0\n");
 }
 
 /// Phase 136: DateTime.is_before and DateTime.is_after comparisons (DTIME-08).

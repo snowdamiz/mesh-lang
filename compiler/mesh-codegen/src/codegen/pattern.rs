@@ -774,10 +774,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(variant_ty, parent_ptr, (*index + 1) as u32, "variant_field")
                     .map_err(|e| e.to_string())?;
+                // A tuple is itself a pointer, stored as the slot's word.
                 if matches!(storage_ty, MirType::Ptr | MirType::Struct(_))
                     && !matches!(
                         semantic_ty,
-                        MirType::Ptr | MirType::String | MirType::Pid(_)
+                        MirType::Ptr | MirType::String | MirType::Pid(_) | MirType::Tuple(_)
                     )
                 {
                     self.builder
@@ -817,7 +818,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(field_ptr)
             }
 
-            AccessPath::ListHead(parent) => {
+            AccessPath::ListHead(parent, elem_ty) => {
                 // Load the list pointer, call mesh_list_head, store result in an alloca.
                 let parent_val =
                     self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
@@ -834,9 +835,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or("mesh_list_head returned void")?
                     .into_int_value();
 
-                // Convert u64 -> actual element type based on resolve_path_type.
-                let path_ty =
-                    self.resolve_path_type(scrutinee_ty, &AccessPath::ListHead(parent.clone()))?;
+                // Convert u64 -> the element type.
+                let path_ty = elem_ty.clone();
                 let converted = self.convert_list_elem_from_u64(head_i64, &path_ty)?;
 
                 // Store in an alloca so we can return a pointer.
@@ -1006,20 +1006,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
 
-            AccessPath::ListHead(_parent) => {
-                // The type of list head is determined by the column_types
-                // propagated through the pattern compiler. It's the element type.
-                // Since we can't derive it from scrutinee_ty alone (MirType::Ptr),
-                // we return the column type that was set during specialization.
-                // This is handled by the leaf binding's type, so returning Ptr
-                // is fine as a fallback -- the real type comes from the binding.
-                // For the navigate_access_path_ptr path, we use the elem_ty from
-                // the ListDecons node.
-                //
-                // The actual type will be resolved from the binding's MirType.
-                // For navigate purposes, the alloca is created with the right type.
-                Ok(MirType::Int) // Fallback; real type from column_types in compile.rs
-            }
+            AccessPath::ListHead(_, elem_ty) => Ok(elem_ty.clone()),
 
             AccessPath::ListTail(_parent) => {
                 // Tail of a list is always a list (Ptr at MIR level).

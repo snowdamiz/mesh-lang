@@ -1,27 +1,32 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"fn bar(x :: String!Error) do\\n  x\\nend\")"
 ---
-SOURCE_FILE@0..30
-  FN_DEF@0..30
+SOURCE_FILE@0..36
+  FN_DEF@0..36
     FN_KW@0..2 "fn"
-    NAME@2..5
-      IDENT@2..5 "bar"
-    PARAM_LIST@5..22
-      L_PAREN@5..6 "("
-      PARAM@6..21
-        IDENT@6..7 "x"
-        TYPE_ANNOTATION@7..21
-          COLON_COLON@7..9 "::"
-          IDENT@9..15 "String"
-          BANG@15..16 "!"
-          IDENT@16..21 "Error"
-      R_PAREN@21..22 ")"
-    DO_KW@22..24 "do"
-    BLOCK@24..27
-      NEWLINE@24..25 "\n"
-      NAME_REF@25..26
-        IDENT@25..26 "x"
-      NEWLINE@26..27 "\n"
-    END_KW@27..30 "end"
-  EOF@30..30 ""
+    WHITESPACE@2..3 " "
+    NAME@3..6
+      IDENT@3..6 "bar"
+    PARAM_LIST@6..25
+      L_PAREN@6..7 "("
+      PARAM@7..24
+        IDENT@7..8 "x"
+        WHITESPACE@8..9 " "
+        TYPE_ANNOTATION@9..24
+          COLON_COLON@9..11 "::"
+          WHITESPACE@11..12 " "
+          IDENT@12..18 "String"
+          BANG@18..19 "!"
+          IDENT@19..24 "Error"
+      R_PAREN@24..25 ")"
+    WHITESPACE@25..26 " "
+    DO_KW@26..28 "do"
+    BLOCK@28..33
+      NEWLINE@28..29 "\n"
+      WHITESPACE@29..31 "  "
+      NAME_REF@31..32
+        IDENT@31..32 "x"
+      NEWLINE@32..33 "\n"
+    END_KW@33..36 "end"
+  EOF@36..36 ""

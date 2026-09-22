@@ -21,9 +21,7 @@ test('public docs cover the current Mesh surface', () => {
   const stdlib = read('website/docs/docs/stdlib/index.md')
   const testing = read('website/docs/docs/testing/index.md')
   const home = read('website/docs/index.md')
-  const hero = read('website/docs/.vitepress/theme/components/landing/HeroSection.vue')
-  const infra = read('website/docs/.vitepress/theme/components/landing/InfraDiff.vue')
-  const landingStdlib = read('website/docs/.vitepress/theme/components/landing/StdlibGrid.vue')
+  const landing = read('website/docs/.vitepress/theme/components/landing/landing.data.mts')
   const socialImageSource = read('website/scripts/generate-og-image.py')
   const docs = [
     'website/docs/docs/language-basics/index.md',
@@ -63,12 +61,12 @@ test('public docs cover the current Mesh surface', () => {
   assert.doesNotMatch(web, /Ws\.serve_tls/)
   assert.doesNotMatch(`${testing}\n${docs}`, /String\.downcase|IO\.puts|\bpanic\(/)
   assert.match(testing, /assert_raises[\s\S]+assert\(false\)/)
-  assert.doesNotMatch(landingStdlib, /Pg\.query\(pool|Env\.get\("DATABASE_URL"\)|Ws\.broadcast\(conn/)
-  assert.doesNotMatch(landingStdlib, /Sqlite\.open\("app\.db"\)/)
-  assert.match(landingStdlib, /db :: SqliteConn/)
-  assert.doesNotMatch(`${hero}\n${infra}`, /from [^\n]+ import [^(\n]*,\n/)
-  assert.match(landingStdlib, /Ws\.join\(conn, "updates"\)[\s\S]*?\n  1/)
-  assert.doesNotMatch(landingStdlib, /Cluster\.telemetry\(\)[^\n]+continuity/)
+  assert.doesNotMatch(landing, /Pg\.query\(pool|Env\.get\("DATABASE_URL"\)|Ws\.broadcast\(conn/)
+  assert.doesNotMatch(landing, /Sqlite\.open\("app\.db"\)/)
+  assert.match(landing, /db :: SqliteConn/)
+  assert.doesNotMatch(landing, /from [^\n]+ import [^(\n]*,\n/)
+  assert.match(landing, /Ws\.join\(conn, "updates"\)[\s\S]*?\n  1/)
+  assert.doesNotMatch(landing, /Cluster\.telemetry\(\)[^\n]+continuity/)
   assert.doesNotMatch(`${home}\n${config}\n${socialImageSource}`, /Repo\.find|Continuity\.submit\(key, process_order\)|One public app URL/)
   assert.match(stdlib, /from_unix_(?:ms|secs).+Result<DateTime,\s*String>/s)
 
@@ -99,5 +97,16 @@ test('public docs cover the current Mesh surface', () => {
     'simulate_transaction_request',
   ]) {
     assert.ok(docs.includes(surface), `missing current public surface: ${surface}`)
+  }
+})
+
+test('every sidebar icon named in the config is imported', () => {
+  const config = read('website/docs/.vitepress/config.mts')
+  const sidebarItem = read('website/docs/.vitepress/theme/components/docs/DocsSidebarItem.vue')
+  const icons = [...config.matchAll(/icon: '(\w+)'/g)].map(([, icon]) => icon)
+
+  assert.ok(icons.length > 0)
+  for (const icon of icons) {
+    assert.match(sidebarItem, new RegExp(`\\b${icon}\\b`), `DocsSidebarItem.vue does not import sidebar icon ${icon}`)
   }
 })

@@ -24,8 +24,8 @@
     <!-- Logo -->
     <a href="/" class="flex items-center gap-3 shrink-0 no-underline">
       <span class="themed-logo" aria-hidden="true">
-        <img src="/logo-black.svg" alt="" class="themed-logo__light h-7 w-auto" />
-        <img src="/logo-white.svg" alt="" class="themed-logo__dark h-7 w-auto" />
+        <img src="/logo-black.svg" alt="" class="themed-logo__light h-5 w-auto" />
+        <img src="/logo-white.svg" alt="" class="themed-logo__dark h-5 w-auto" />
       </span>
       <span class="sr-only">Mesh</span>
       <span class="text-muted-foreground/30 text-xl font-light select-none">/</span>
@@ -90,8 +90,8 @@
       <!-- Logo + tagline -->
       <div class="flex items-center gap-2.5">
         <span class="themed-logo opacity-40" aria-hidden="true">
-          <img src="/logo-black.svg" alt="" class="themed-logo__light h-4 w-auto" />
-          <img src="/logo-white.svg" alt="" class="themed-logo__dark h-4 w-auto" />
+          <img src="/logo-black.svg" alt="" class="themed-logo__light h-3 w-auto" />
+          <img src="/logo-white.svg" alt="" class="themed-logo__dark h-3 w-auto" />
         </span>
         <span class="sr-only">Mesh</span>
         <span class="text-muted-foreground/40 font-light select-none">/</span>

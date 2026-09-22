@@ -547,29 +547,35 @@ fn fn_def_borrow_parameter() {
     assert_snapshot!(source_and_debug(
         "fn derive(root :: borrow SecretBytes) do\n  root\nend"
     ), @r#"
-    SOURCE_FILE@0..44
-      FN_DEF@0..44
+    SOURCE_FILE@0..51
+      FN_DEF@0..51
         FN_KW@0..2 "fn"
-        NAME@2..8
-          IDENT@2..8 "derive"
-        PARAM_LIST@8..33
-          L_PAREN@8..9 "("
-          PARAM@9..32
-            IDENT@9..13 "root"
-            TYPE_ANNOTATION@13..32
-              COLON_COLON@13..15 "::"
-              OWNERSHIP_MODIFIER@15..21
-                IDENT@15..21 "borrow"
-              IDENT@21..32 "SecretBytes"
-          R_PAREN@32..33 ")"
-        DO_KW@33..35 "do"
-        BLOCK@35..41
-          NEWLINE@35..36 "\n"
-          NAME_REF@36..40
-            IDENT@36..40 "root"
+        WHITESPACE@2..3 " "
+        NAME@3..9
+          IDENT@3..9 "derive"
+        PARAM_LIST@9..37
+          L_PAREN@9..10 "("
+          PARAM@10..36
+            IDENT@10..14 "root"
+            WHITESPACE@14..15 " "
+            TYPE_ANNOTATION@15..36
+              COLON_COLON@15..17 "::"
+              WHITESPACE@17..18 " "
+              OWNERSHIP_MODIFIER@18..24
+                IDENT@18..24 "borrow"
+              WHITESPACE@24..25 " "
+              IDENT@25..36 "SecretBytes"
+          R_PAREN@36..37 ")"
+        WHITESPACE@37..38 " "
+        DO_KW@38..40 "do"
+        BLOCK@40..48
           NEWLINE@40..41 "\n"
-        END_KW@41..44 "end"
-      EOF@44..44 ""
+          WHITESPACE@41..43 "  "
+          NAME_REF@43..47
+            IDENT@43..47 "root"
+          NEWLINE@47..48 "\n"
+        END_KW@48..51 "end"
+      EOF@51..51 ""
     "#);
 }
 
@@ -578,26 +584,31 @@ fn fn_def_consume_parameter() {
     assert_snapshot!(source_and_debug(
         "fn destroy(secret :: consume SecretBytes) do\nend"
     ), @r#"
-    SOURCE_FILE@0..43
-      FN_DEF@0..43
+    SOURCE_FILE@0..48
+      FN_DEF@0..48
         FN_KW@0..2 "fn"
-        NAME@2..9
-          IDENT@2..9 "destroy"
-        PARAM_LIST@9..37
-          L_PAREN@9..10 "("
-          PARAM@10..36
-            IDENT@10..16 "secret"
-            TYPE_ANNOTATION@16..36
-              COLON_COLON@16..18 "::"
-              OWNERSHIP_MODIFIER@18..25
-                IDENT@18..25 "consume"
-              IDENT@25..36 "SecretBytes"
-          R_PAREN@36..37 ")"
-        DO_KW@37..39 "do"
-        BLOCK@39..40
-          NEWLINE@39..40 "\n"
-        END_KW@40..43 "end"
-      EOF@43..43 ""
+        WHITESPACE@2..3 " "
+        NAME@3..10
+          IDENT@3..10 "destroy"
+        PARAM_LIST@10..41
+          L_PAREN@10..11 "("
+          PARAM@11..40
+            IDENT@11..17 "secret"
+            WHITESPACE@17..18 " "
+            TYPE_ANNOTATION@18..40
+              COLON_COLON@18..20 "::"
+              WHITESPACE@20..21 " "
+              OWNERSHIP_MODIFIER@21..28
+                IDENT@21..28 "consume"
+              WHITESPACE@28..29 " "
+              IDENT@29..40 "SecretBytes"
+          R_PAREN@40..41 ")"
+        WHITESPACE@41..42 " "
+        DO_KW@42..44 "do"
+        BLOCK@44..45
+          NEWLINE@44..45 "\n"
+        END_KW@45..48 "end"
+      EOF@48..48 ""
     "#);
 }
 
@@ -678,28 +689,31 @@ fn struct_pub_with_generics() {
 #[test]
 fn opaque_resource_declaration() {
     assert_snapshot!(source_and_debug("resource X25519PrivateKey"), @r#"
-    SOURCE_FILE@0..24
-      STRUCT_DEF@0..24
+    SOURCE_FILE@0..25
+      STRUCT_DEF@0..25
         RESOURCE_MODIFIER@0..8
           IDENT@0..8 "resource"
-        NAME@8..24
-          IDENT@8..24 "X25519PrivateKey"
-      EOF@24..24 ""
+        WHITESPACE@8..9 " "
+        NAME@9..25
+          IDENT@9..25 "X25519PrivateKey"
+      EOF@25..25 ""
     "#);
 }
 
 #[test]
 fn public_opaque_resource_declaration() {
     assert_snapshot!(source_and_debug("pub resource StorageKey"), @r#"
-    SOURCE_FILE@0..21
-      STRUCT_DEF@0..21
+    SOURCE_FILE@0..23
+      STRUCT_DEF@0..23
         VISIBILITY@0..3
           PUB_KW@0..3 "pub"
-        RESOURCE_MODIFIER@3..11
-          IDENT@3..11 "resource"
-        NAME@11..21
-          IDENT@11..21 "StorageKey"
-      EOF@21..21 ""
+        WHITESPACE@3..4 " "
+        RESOURCE_MODIFIER@4..12
+          IDENT@4..12 "resource"
+        WHITESPACE@12..13 " "
+        NAME@13..23
+          IDENT@13..23 "StorageKey"
+      EOF@23..23 ""
     "#);
 }
 
@@ -722,24 +736,30 @@ fn resource_struct_declaration() {
     assert_snapshot!(source_and_debug(
         "resource struct RatchetSecrets do\n  root_key :: SecretBytes\nend"
     ), @r#"
-    SOURCE_FILE@0..56
-      STRUCT_DEF@0..56
+    SOURCE_FILE@0..63
+      STRUCT_DEF@0..63
         RESOURCE_MODIFIER@0..8
           IDENT@0..8 "resource"
-        STRUCT_KW@8..14 "struct"
-        NAME@14..28
-          IDENT@14..28 "RatchetSecrets"
-        DO_KW@28..30 "do"
-        NEWLINE@30..31 "\n"
-        STRUCT_FIELD@31..52
-          NAME@31..39
-            IDENT@31..39 "root_key"
-          TYPE_ANNOTATION@39..52
-            COLON_COLON@39..41 "::"
-            IDENT@41..52 "SecretBytes"
-        NEWLINE@52..53 "\n"
-        END_KW@53..56 "end"
-      EOF@56..56 ""
+        WHITESPACE@8..9 " "
+        STRUCT_KW@9..15 "struct"
+        WHITESPACE@15..16 " "
+        NAME@16..30
+          IDENT@16..30 "RatchetSecrets"
+        WHITESPACE@30..31 " "
+        DO_KW@31..33 "do"
+        NEWLINE@33..34 "\n"
+        WHITESPACE@34..36 "  "
+        STRUCT_FIELD@36..59
+          NAME@36..44
+            IDENT@36..44 "root_key"
+          WHITESPACE@44..45 " "
+          TYPE_ANNOTATION@45..59
+            COLON_COLON@45..47 "::"
+            WHITESPACE@47..48 " "
+            IDENT@48..59 "SecretBytes"
+        NEWLINE@59..60 "\n"
+        END_KW@60..63 "end"
+      EOF@63..63 ""
     "#);
 }
 
@@ -1457,18 +1477,12 @@ fn error_module_missing_end() {
 // Newlines ARE preserved as tokens. The CST round-trip preserves all token text:
 // stripping spaces from the source should match the CST text exactly.
 
-fn strip_spaces(s: &str) -> String {
-    // Remove spaces and indentation but preserve newlines and all other chars
-    s.chars().filter(|c| *c != ' ').collect()
-}
-
 fn assert_lossless_roundtrip(source: &str) {
     let p = parse(source);
     let tree_text = p.syntax().text().to_string();
-    let expected = strip_spaces(source);
     assert_eq!(
-        tree_text, expected,
-        "round-trip failed: CST text does not match source (modulo whitespace)"
+        tree_text, source,
+        "round-trip failed: CST text does not match source"
     );
 }
 
@@ -3325,4 +3339,53 @@ fn slot_pipe_multiline_leading() {
 fn slot_pipe_multiline_trailing() {
     // |2> at end of line (new in Phase 126)
     assert_snapshot!(parse_and_debug("x |2>\n  foo(1)"));
+}
+
+// ── Statement-position closures, block arm bodies, return expressions ──
+
+#[test]
+fn closure_as_statement_is_not_a_fn_def() {
+    assert_snapshot!(source_and_debug("fn x -> x + 1 end"));
+}
+
+#[test]
+fn match_arm_body_on_following_lines() {
+    assert_snapshot!(source_and_debug(
+        "case o do
+  Some(x) ->
+    let y = x
+    y
+  None -> 0
+end"
+    ));
+}
+
+#[test]
+fn return_in_arm_body() {
+    assert_snapshot!(source_and_debug(
+        "case o do
+  Some(x) -> x
+  None -> return 0
+end"
+    ));
+}
+
+#[test]
+fn for_loop_binding_can_be_a_tuple_pattern() {
+    assert_snapshot!(source_and_debug(
+        "for (n, s) in pairs when n > 1 do
+  n
+end"
+    ));
+}
+
+#[test]
+fn list_patterns_match_fixed_lengths() {
+    assert_snapshot!(source_and_debug(
+        "case xs do
+  [] -> 0
+  [x, (a, b)] -> x
+  h :: t -> h
+end"
+    ));
 }

@@ -1,24 +1,27 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..16
-  FN_DEF@0..16
+SOURCE_FILE@0..19
+  FN_DEF@0..19
     FN_KW@0..2 "fn"
-    NAME@2..5
-      IDENT@2..5 "foo"
-    PARAM_LIST@5..14
-      L_PAREN@5..6 "("
-      PARAM@6..13
-        CONSTRUCTOR_PAT@6..13
-          IDENT@6..10 "Some"
-          L_PAREN@10..11 "("
-          IDENT_PAT@11..12
-            IDENT@11..12 "x"
-          R_PAREN@12..13 ")"
-      R_PAREN@13..14 ")"
-    EQ@14..15 "="
-    FN_EXPR_BODY@15..16
-      NAME_REF@15..16
-        IDENT@15..16 "x"
-  EOF@16..16 ""
+    WHITESPACE@2..3 " "
+    NAME@3..6
+      IDENT@3..6 "foo"
+    PARAM_LIST@6..15
+      L_PAREN@6..7 "("
+      PARAM@7..14
+        CONSTRUCTOR_PAT@7..14
+          IDENT@7..11 "Some"
+          L_PAREN@11..12 "("
+          IDENT_PAT@12..13
+            IDENT@12..13 "x"
+          R_PAREN@13..14 ")"
+      R_PAREN@14..15 ")"
+    WHITESPACE@15..16 " "
+    EQ@16..17 "="
+    WHITESPACE@17..18 " "
+    FN_EXPR_BODY@18..19
+      NAME_REF@18..19
+        IDENT@18..19 "x"
+  EOF@19..19 ""

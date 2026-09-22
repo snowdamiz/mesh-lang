@@ -1,41 +1,52 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"case x do\\n  -1 -> \\\"neg\\\"\\n  0 -> \\\"zero\\\"\\n  1 -> \\\"pos\\\"\\nend\")"
 ---
-SOURCE_FILE@0..40
-  CASE_EXPR@0..40
+SOURCE_FILE@0..54
+  CASE_EXPR@0..54
     CASE_KW@0..4 "case"
-    NAME_REF@4..5
-      IDENT@4..5 "x"
-    DO_KW@5..7 "do"
-    NEWLINE@7..8 "\n"
-    MATCH_ARM@8..17
-      LITERAL_PAT@8..10
-        MINUS@8..9 "-"
-        INT_LITERAL@9..10 "1"
-      ARROW@10..12 "->"
-      STRING_EXPR@12..17
-        STRING_START@12..13 "\""
-        STRING_CONTENT@13..16 "neg"
-        STRING_END@16..17 "\""
-    NEWLINE@17..18 "\n"
-    MATCH_ARM@18..27
-      LITERAL_PAT@18..19
-        INT_LITERAL@18..19 "0"
-      ARROW@19..21 "->"
-      STRING_EXPR@21..27
-        STRING_START@21..22 "\""
-        STRING_CONTENT@22..26 "zero"
-        STRING_END@26..27 "\""
-    NEWLINE@27..28 "\n"
-    MATCH_ARM@28..36
-      LITERAL_PAT@28..29
-        INT_LITERAL@28..29 "1"
-      ARROW@29..31 "->"
-      STRING_EXPR@31..36
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "x"
+    WHITESPACE@6..7 " "
+    DO_KW@7..9 "do"
+    NEWLINE@9..10 "\n"
+    WHITESPACE@10..12 "  "
+    MATCH_ARM@12..23
+      LITERAL_PAT@12..14
+        MINUS@12..13 "-"
+        INT_LITERAL@13..14 "1"
+      WHITESPACE@14..15 " "
+      ARROW@15..17 "->"
+      WHITESPACE@17..18 " "
+      STRING_EXPR@18..23
+        STRING_START@18..19 "\""
+        STRING_CONTENT@19..22 "neg"
+        STRING_END@22..23 "\""
+    NEWLINE@23..24 "\n"
+    WHITESPACE@24..26 "  "
+    MATCH_ARM@26..37
+      LITERAL_PAT@26..27
+        INT_LITERAL@26..27 "0"
+      WHITESPACE@27..28 " "
+      ARROW@28..30 "->"
+      WHITESPACE@30..31 " "
+      STRING_EXPR@31..37
         STRING_START@31..32 "\""
-        STRING_CONTENT@32..35 "pos"
-        STRING_END@35..36 "\""
-    NEWLINE@36..37 "\n"
-    END_KW@37..40 "end"
-  EOF@40..40 ""
+        STRING_CONTENT@32..36 "zero"
+        STRING_END@36..37 "\""
+    NEWLINE@37..38 "\n"
+    WHITESPACE@38..40 "  "
+    MATCH_ARM@40..50
+      LITERAL_PAT@40..41
+        INT_LITERAL@40..41 "1"
+      WHITESPACE@41..42 " "
+      ARROW@42..44 "->"
+      WHITESPACE@44..45 " "
+      STRING_EXPR@45..50
+        STRING_START@45..46 "\""
+        STRING_CONTENT@46..49 "pos"
+        STRING_END@49..50 "\""
+    NEWLINE@50..51 "\n"
+    END_KW@51..54 "end"
+  EOF@54..54 ""

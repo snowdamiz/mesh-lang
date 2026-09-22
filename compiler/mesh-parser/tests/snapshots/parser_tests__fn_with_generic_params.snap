@@ -1,32 +1,39 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"fn identity<T>(x :: T) -> T do\\n  x\\nend\")"
 ---
-SOURCE_FILE@0..30
-  FN_DEF@0..30
+SOURCE_FILE@0..38
+  FN_DEF@0..38
     FN_KW@0..2 "fn"
-    NAME@2..10
-      IDENT@2..10 "identity"
-    GENERIC_PARAM_LIST@10..13
-      LT@10..11 "<"
-      IDENT@11..12 "T"
-      GT@12..13 ">"
-    PARAM_LIST@13..19
-      L_PAREN@13..14 "("
-      PARAM@14..18
-        IDENT@14..15 "x"
-        TYPE_ANNOTATION@15..18
-          COLON_COLON@15..17 "::"
-          IDENT@17..18 "T"
-      R_PAREN@18..19 ")"
-    TYPE_ANNOTATION@19..22
-      ARROW@19..21 "->"
-      IDENT@21..22 "T"
-    DO_KW@22..24 "do"
-    BLOCK@24..27
-      NEWLINE@24..25 "\n"
-      NAME_REF@25..26
-        IDENT@25..26 "x"
-      NEWLINE@26..27 "\n"
-    END_KW@27..30 "end"
-  EOF@30..30 ""
+    WHITESPACE@2..3 " "
+    NAME@3..11
+      IDENT@3..11 "identity"
+    GENERIC_PARAM_LIST@11..14
+      LT@11..12 "<"
+      IDENT@12..13 "T"
+      GT@13..14 ">"
+    PARAM_LIST@14..22
+      L_PAREN@14..15 "("
+      PARAM@15..21
+        IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        TYPE_ANNOTATION@17..21
+          COLON_COLON@17..19 "::"
+          WHITESPACE@19..20 " "
+          IDENT@20..21 "T"
+      R_PAREN@21..22 ")"
+    WHITESPACE@22..23 " "
+    TYPE_ANNOTATION@23..27
+      ARROW@23..25 "->"
+      WHITESPACE@25..26 " "
+      IDENT@26..27 "T"
+    WHITESPACE@27..28 " "
+    DO_KW@28..30 "do"
+    BLOCK@30..35
+      NEWLINE@30..31 "\n"
+      WHITESPACE@31..33 "  "
+      NAME_REF@33..34
+        IDENT@33..34 "x"
+      NEWLINE@34..35 "\n"
+    END_KW@35..38 "end"
+  EOF@38..38 ""

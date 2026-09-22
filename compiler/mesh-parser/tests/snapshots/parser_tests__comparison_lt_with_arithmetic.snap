@@ -1,16 +1,20 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"x < y + 1\")"
 ---
-SOURCE_FILE@0..5
-  BINARY_EXPR@0..5
+SOURCE_FILE@0..9
+  BINARY_EXPR@0..9
     NAME_REF@0..1
       IDENT@0..1 "x"
-    LT@1..2 "<"
-    BINARY_EXPR@2..5
-      NAME_REF@2..3
-        IDENT@2..3 "y"
-      PLUS@3..4 "+"
-      LITERAL@4..5
-        INT_LITERAL@4..5 "1"
-  EOF@5..5 ""
+    WHITESPACE@1..2 " "
+    LT@2..3 "<"
+    WHITESPACE@3..4 " "
+    BINARY_EXPR@4..9
+      NAME_REF@4..5
+        IDENT@4..5 "y"
+      WHITESPACE@5..6 " "
+      PLUS@6..7 "+"
+      WHITESPACE@7..8 " "
+      LITERAL@8..9
+        INT_LITERAL@8..9 "1"
+  EOF@9..9 ""

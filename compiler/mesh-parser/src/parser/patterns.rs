@@ -10,7 +10,7 @@
 //! as_pattern    = cons_pattern ["as" IDENT]
 //! cons_pattern  = or_pattern ("::" cons_pattern)?
 //! or_pattern    = primary_pattern ("|" primary_pattern)*
-//! primary_pattern = wildcard | literal | tuple | constructor | ident
+//! primary_pattern = wildcard | literal | tuple | list | constructor | ident
 //! ```
 
 use crate::syntax_kind::SyntaxKind;
@@ -157,6 +157,23 @@ fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
             p.advance(); // -
             p.advance(); // number
             Some(p.close(m, SyntaxKind::LITERAL_PAT))
+        }
+
+        // List pattern: [] or [p1, p2, ...]
+        SyntaxKind::L_BRACKET => {
+            let m = p.open();
+            p.advance(); // [
+            if !p.at(SyntaxKind::R_BRACKET) {
+                parse_pattern(p);
+                while p.eat(SyntaxKind::COMMA) {
+                    if p.at(SyntaxKind::R_BRACKET) {
+                        break; // trailing comma
+                    }
+                    parse_pattern(p);
+                }
+            }
+            p.expect(SyntaxKind::R_BRACKET);
+            Some(p.close(m, SyntaxKind::LIST_PAT))
         }
 
         // Tuple pattern: (p1, p2, ...)

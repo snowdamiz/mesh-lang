@@ -413,7 +413,7 @@ fn main() do
 end
 ```
 
-Closures capture variables from their surrounding scope. There are two syntax forms:
+Closures capture variables from their surrounding scope. A closure bound with `let` is as polymorphic as a named function: `let id = fn x -> x end` can be applied to an `Int` and then to a `String`, and each use gets its own compiled copy. There are two syntax forms:
 
 - **Arrow syntax** for one-line closures: `fn x -> x * 2 end`
 - **Do-end syntax** for multi-line closures: `fn x do ... end`
@@ -487,6 +487,7 @@ Patterns can bind names and decompose tuples and constructors:
 | `(left, right)` | Tuple pattern |
 | `Some(value)`, `Result.Ok(value)` | Constructor pattern |
 | `head :: tail` | Match a non-empty list as its head and tail |
+| `[]`, `[first, second]` | Match a list of exactly that length, element by element |
 | `left | right` | Or-pattern; both sides must bind the same names |
 | `pattern as whole` | Match a pattern and also bind the complete value |
 
@@ -501,7 +502,19 @@ fn describe_pair(value) -> String do
 end
 ```
 
-List literal patterns such as `[first, second]` and struct patterns are not part of the current grammar. Use `head :: tail`, tuples, or sum-type constructors instead.
+List patterns combine with `head :: tail` for the usual recursion shape, and the exhaustiveness checker knows that `[]` and `head :: tail` together cover every list:
+
+```mesh
+fn describe(xs :: List<Int>) -> String do
+  case xs do
+    [] -> "empty"
+    [only] -> "one: #{only}"
+    first :: rest -> "starts with #{first}, #{List.length(rest)} more"
+  end
+end
+```
+
+Struct patterns are not part of the current grammar. Use tuples or sum-type constructors instead.
 
 ### Matching on Constructors
 
@@ -607,7 +620,7 @@ fn main() do
 end
 ```
 
-`start..end` is end-exclusive, so `0..5` yields `0`, `1`, `2`, `3`, and `4`.
+`start..end` is end-exclusive, so `0..5` yields `0`, `1`, `2`, `3`, and `4`. A range is also a value on its own: `let r = 1..5` builds the same `Range` as `Range.new(1, 5)`.
 
 For loops can also iterate over lists:
 
@@ -636,6 +649,25 @@ end
 ```
 
 Every `for` expression returns a list containing one body result per accepted element, making it a list comprehension even when the body is used primarily for side effects.
+
+#### Destructuring Loop Variables
+
+A tuple pattern in the loop header takes each element apart, exactly as `let (a, b) = ...` does. Over a map the pattern receives a `(key, value)` pair:
+
+```mesh
+fn main() do
+  let pairs = [(1, "one"), (2, "two")]
+  for (n, name) in pairs when n > 1 do
+    println("#{n} is #{name}")
+  end
+  for (word, count) in %{"a" => 1} do
+    println("#{word}: #{count}")
+  end
+  for (i, item) in List.enumerate(["x", "y"]) do
+    println("#{i}: #{item}")
+  end
+end
+```
 
 #### Map Iteration
 

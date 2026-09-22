@@ -1,10 +1,11 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"import Math\")"
 ---
-SOURCE_FILE@0..10
-  IMPORT_DECL@0..10
+SOURCE_FILE@0..11
+  IMPORT_DECL@0..11
     IMPORT_KW@0..6 "import"
-    PATH@6..10
-      IDENT@6..10 "Math"
-  EOF@10..10 ""
+    WHITESPACE@6..7 " "
+    PATH@7..11
+      IDENT@7..11 "Math"
+  EOF@11..11 ""

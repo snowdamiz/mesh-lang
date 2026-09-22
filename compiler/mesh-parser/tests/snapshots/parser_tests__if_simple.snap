@@ -1,17 +1,20 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"if true do\\n  1\\nend\")"
 ---
-SOURCE_FILE@0..14
-  IF_EXPR@0..14
+SOURCE_FILE@0..18
+  IF_EXPR@0..18
     IF_KW@0..2 "if"
-    LITERAL@2..6
-      TRUE_KW@2..6 "true"
-    DO_KW@6..8 "do"
-    BLOCK@8..11
-      NEWLINE@8..9 "\n"
-      LITERAL@9..10
-        INT_LITERAL@9..10 "1"
+    WHITESPACE@2..3 " "
+    LITERAL@3..7
+      TRUE_KW@3..7 "true"
+    WHITESPACE@7..8 " "
+    DO_KW@8..10 "do"
+    BLOCK@10..15
       NEWLINE@10..11 "\n"
-    END_KW@11..14 "end"
-  EOF@14..14 ""
+      WHITESPACE@11..13 "  "
+      LITERAL@13..14
+        INT_LITERAL@13..14 "1"
+      NEWLINE@14..15 "\n"
+    END_KW@15..18 "end"
+  EOF@18..18 ""

@@ -1,12 +1,11 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0001] Error: expected Int, found (Int) -> ?6
-   ╭─[ test.mpl:1:9 ]
+   ╭─[ test.mpl:2:1 ]
    │
- 1 │ ╭─▶ let x = 42
- 2 │ ├─▶ x(1)
-   │ │         
-   │ ╰───────── argument 1 has type (Int) -> ?6, expected Int
+ 2 │ x(1)
+   │ ──┬─
+   │   ╰─── argument 1 has type (Int) -> ?6, expected Int
 ───╯

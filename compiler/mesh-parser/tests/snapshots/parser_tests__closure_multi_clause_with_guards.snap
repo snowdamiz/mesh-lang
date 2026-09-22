@@ -1,37 +1,51 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn x when x > 0 -> x | x -> 0 - x end\")"
 ---
-SOURCE_FILE@0..23
-  CLOSURE_EXPR@0..23
+SOURCE_FILE@0..37
+  CLOSURE_EXPR@0..37
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..3
-      PARAM@2..3
-        IDENT@2..3 "x"
-    GUARD_CLAUSE@3..10
-      WHEN_KW@3..7 "when"
-      BINARY_EXPR@7..10
-        NAME_REF@7..8
-          IDENT@7..8 "x"
-        GT@8..9 ">"
-        LITERAL@9..10
-          INT_LITERAL@9..10 "0"
-    ARROW@10..12 "->"
-    BLOCK@12..13
-      NAME_REF@12..13
-        IDENT@12..13 "x"
-    CLOSURE_CLAUSE@13..20
-      BAR@13..14 "|"
-      PARAM_LIST@14..15
-        PARAM@14..15
-          IDENT@14..15 "x"
-      ARROW@15..17 "->"
-      BLOCK@17..20
-        BINARY_EXPR@17..20
-          LITERAL@17..18
-            INT_LITERAL@17..18 "0"
-          MINUS@18..19 "-"
-          NAME_REF@19..20
-            IDENT@19..20 "x"
-    END_KW@20..23 "end"
-  EOF@23..23 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..4
+      PARAM@3..4
+        IDENT@3..4 "x"
+    WHITESPACE@4..5 " "
+    GUARD_CLAUSE@5..15
+      WHEN_KW@5..9 "when"
+      WHITESPACE@9..10 " "
+      BINARY_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          INT_LITERAL@14..15 "0"
+    WHITESPACE@15..16 " "
+    ARROW@16..18 "->"
+    WHITESPACE@18..19 " "
+    BLOCK@19..20
+      NAME_REF@19..20
+        IDENT@19..20 "x"
+    WHITESPACE@20..21 " "
+    CLOSURE_CLAUSE@21..33
+      BAR@21..22 "|"
+      WHITESPACE@22..23 " "
+      PARAM_LIST@23..24
+        PARAM@23..24
+          IDENT@23..24 "x"
+      WHITESPACE@24..25 " "
+      ARROW@25..27 "->"
+      WHITESPACE@27..28 " "
+      BLOCK@28..33
+        BINARY_EXPR@28..33
+          LITERAL@28..29
+            INT_LITERAL@28..29 "0"
+          WHITESPACE@29..30 " "
+          MINUS@30..31 "-"
+          WHITESPACE@31..32 " "
+          NAME_REF@32..33
+            IDENT@32..33 "x"
+    WHITESPACE@33..34 " "
+    END_KW@34..37 "end"
+  EOF@37..37 ""

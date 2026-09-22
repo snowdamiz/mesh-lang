@@ -1,12 +1,14 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"a % b\")"
 ---
-SOURCE_FILE@0..3
-  BINARY_EXPR@0..3
+SOURCE_FILE@0..5
+  BINARY_EXPR@0..5
     NAME_REF@0..1
       IDENT@0..1 "a"
-    PERCENT@1..2 "%"
-    NAME_REF@2..3
-      IDENT@2..3 "b"
-  EOF@3..3 ""
+    WHITESPACE@1..2 " "
+    PERCENT@2..3 "%"
+    WHITESPACE@3..4 " "
+    NAME_REF@4..5
+      IDENT@4..5 "b"
+  EOF@5..5 ""

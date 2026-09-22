@@ -1,155 +1,198 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..184
-  FN_DEF@0..75
+SOURCE_FILE@0..252
+  FN_DEF@0..107
     FN_KW@0..2 "fn"
-    NAME@2..11
-      IDENT@2..11 "fibonacci"
-    PARAM_LIST@11..14
-      L_PAREN@11..12 "("
-      PARAM@12..13
-        IDENT@12..13 "n"
-      R_PAREN@13..14 ")"
-    DO_KW@14..16 "do"
-    BLOCK@16..72
-      NEWLINE@16..17 "\n"
-      CASE_EXPR@17..71
-        CASE_KW@17..21 "case"
-        NAME_REF@21..22
-          IDENT@21..22 "n"
-        DO_KW@22..24 "do"
-        NEWLINE@24..25 "\n"
-        MATCH_ARM@25..29
-          LITERAL_PAT@25..26
-            INT_LITERAL@25..26 "0"
-          ARROW@26..28 "->"
-          LITERAL@28..29
-            INT_LITERAL@28..29 "0"
-        NEWLINE@29..30 "\n"
-        MATCH_ARM@30..34
-          LITERAL_PAT@30..31
-            INT_LITERAL@30..31 "1"
-          ARROW@31..33 "->"
-          LITERAL@33..34
-            INT_LITERAL@33..34 "1"
-        NEWLINE@34..35 "\n"
-        MATCH_ARM@35..67
-          WILDCARD_PAT@35..36
-            IDENT@35..36 "_"
-          ARROW@36..38 "->"
-          BINARY_EXPR@38..67
-            CALL_EXPR@38..52
-              NAME_REF@38..47
-                IDENT@38..47 "fibonacci"
-              ARG_LIST@47..52
-                L_PAREN@47..48 "("
-                BINARY_EXPR@48..51
-                  NAME_REF@48..49
-                    IDENT@48..49 "n"
-                  MINUS@49..50 "-"
-                  LITERAL@50..51
-                    INT_LITERAL@50..51 "1"
-                R_PAREN@51..52 ")"
-            PLUS@52..53 "+"
-            CALL_EXPR@53..67
-              NAME_REF@53..62
-                IDENT@53..62 "fibonacci"
-              ARG_LIST@62..67
-                L_PAREN@62..63 "("
-                BINARY_EXPR@63..66
-                  NAME_REF@63..64
-                    IDENT@63..64 "n"
-                  MINUS@64..65 "-"
-                  LITERAL@65..66
-                    INT_LITERAL@65..66 "2"
-                R_PAREN@66..67 ")"
-        NEWLINE@67..68 "\n"
-        END_KW@68..71 "end"
-      NEWLINE@71..72 "\n"
-    END_KW@72..75 "end"
-  NEWLINE@75..76 "\n"
-  NEWLINE@76..77 "\n"
-  FN_DEF@77..184
-    FN_KW@77..79 "fn"
-    NAME@79..92
-      IDENT@79..92 "classify_pair"
-    PARAM_LIST@92..98
-      L_PAREN@92..93 "("
-      PARAM@93..97
-        IDENT@93..97 "pair"
-      R_PAREN@97..98 ")"
-    DO_KW@98..100 "do"
-    BLOCK@100..181
-      NEWLINE@100..101 "\n"
-      CASE_EXPR@101..180
-        CASE_KW@101..105 "case"
-        NAME_REF@105..109
-          IDENT@105..109 "pair"
-        DO_KW@109..111 "do"
-        NEWLINE@111..112 "\n"
-        MATCH_ARM@112..127
-          TUPLE_PAT@112..117
-            L_PAREN@112..113 "("
-            LITERAL_PAT@113..114
-              INT_LITERAL@113..114 "0"
-            COMMA@114..115 ","
-            LITERAL_PAT@115..116
-              INT_LITERAL@115..116 "0"
-            R_PAREN@116..117 ")"
-          ARROW@117..119 "->"
-          STRING_EXPR@119..127
-            STRING_START@119..120 "\""
-            STRING_CONTENT@120..126 "origin"
-            STRING_END@126..127 "\""
-        NEWLINE@127..128 "\n"
-        MATCH_ARM@128..143
-          TUPLE_PAT@128..133
-            L_PAREN@128..129 "("
-            IDENT_PAT@129..130
-              IDENT@129..130 "x"
-            COMMA@130..131 ","
-            LITERAL_PAT@131..132
-              INT_LITERAL@131..132 "0"
-            R_PAREN@132..133 ")"
-          ARROW@133..135 "->"
-          STRING_EXPR@135..143
-            STRING_START@135..136 "\""
-            STRING_CONTENT@136..142 "x-axis"
-            STRING_END@142..143 "\""
-        NEWLINE@143..144 "\n"
-        MATCH_ARM@144..159
-          TUPLE_PAT@144..149
-            L_PAREN@144..145 "("
-            LITERAL_PAT@145..146
-              INT_LITERAL@145..146 "0"
-            COMMA@146..147 ","
-            IDENT_PAT@147..148
-              IDENT@147..148 "y"
-            R_PAREN@148..149 ")"
-          ARROW@149..151 "->"
-          STRING_EXPR@151..159
-            STRING_START@151..152 "\""
-            STRING_CONTENT@152..158 "y-axis"
-            STRING_END@158..159 "\""
-        NEWLINE@159..160 "\n"
-        MATCH_ARM@160..176
-          TUPLE_PAT@160..165
-            L_PAREN@160..161 "("
-            IDENT_PAT@161..162
-              IDENT@161..162 "x"
-            COMMA@162..163 ","
-            IDENT_PAT@163..164
-              IDENT@163..164 "y"
-            R_PAREN@164..165 ")"
-          ARROW@165..167 "->"
-          STRING_EXPR@167..176
-            STRING_START@167..168 "\""
-            STRING_CONTENT@168..175 "general"
-            STRING_END@175..176 "\""
-        NEWLINE@176..177 "\n"
-        END_KW@177..180 "end"
-      NEWLINE@180..181 "\n"
-    END_KW@181..184 "end"
-  EOF@184..184 ""
+    WHITESPACE@2..3 " "
+    NAME@3..12
+      IDENT@3..12 "fibonacci"
+    PARAM_LIST@12..15
+      L_PAREN@12..13 "("
+      PARAM@13..14
+        IDENT@13..14 "n"
+      R_PAREN@14..15 ")"
+    WHITESPACE@15..16 " "
+    DO_KW@16..18 "do"
+    BLOCK@18..104
+      NEWLINE@18..19 "\n"
+      WHITESPACE@19..21 "  "
+      CASE_EXPR@21..103
+        CASE_KW@21..25 "case"
+        WHITESPACE@25..26 " "
+        NAME_REF@26..27
+          IDENT@26..27 "n"
+        WHITESPACE@27..28 " "
+        DO_KW@28..30 "do"
+        NEWLINE@30..31 "\n"
+        WHITESPACE@31..35 "    "
+        MATCH_ARM@35..41
+          LITERAL_PAT@35..36
+            INT_LITERAL@35..36 "0"
+          WHITESPACE@36..37 " "
+          ARROW@37..39 "->"
+          WHITESPACE@39..40 " "
+          LITERAL@40..41
+            INT_LITERAL@40..41 "0"
+        NEWLINE@41..42 "\n"
+        WHITESPACE@42..46 "    "
+        MATCH_ARM@46..52
+          LITERAL_PAT@46..47
+            INT_LITERAL@46..47 "1"
+          WHITESPACE@47..48 " "
+          ARROW@48..50 "->"
+          WHITESPACE@50..51 " "
+          LITERAL@51..52
+            INT_LITERAL@51..52 "1"
+        NEWLINE@52..53 "\n"
+        WHITESPACE@53..57 "    "
+        MATCH_ARM@57..97
+          WILDCARD_PAT@57..58
+            IDENT@57..58 "_"
+          WHITESPACE@58..59 " "
+          ARROW@59..61 "->"
+          WHITESPACE@61..62 " "
+          BINARY_EXPR@62..97
+            CALL_EXPR@62..78
+              NAME_REF@62..71
+                IDENT@62..71 "fibonacci"
+              ARG_LIST@71..78
+                L_PAREN@71..72 "("
+                BINARY_EXPR@72..77
+                  NAME_REF@72..73
+                    IDENT@72..73 "n"
+                  WHITESPACE@73..74 " "
+                  MINUS@74..75 "-"
+                  WHITESPACE@75..76 " "
+                  LITERAL@76..77
+                    INT_LITERAL@76..77 "1"
+                R_PAREN@77..78 ")"
+            WHITESPACE@78..79 " "
+            PLUS@79..80 "+"
+            WHITESPACE@80..81 " "
+            CALL_EXPR@81..97
+              NAME_REF@81..90
+                IDENT@81..90 "fibonacci"
+              ARG_LIST@90..97
+                L_PAREN@90..91 "("
+                BINARY_EXPR@91..96
+                  NAME_REF@91..92
+                    IDENT@91..92 "n"
+                  WHITESPACE@92..93 " "
+                  MINUS@93..94 "-"
+                  WHITESPACE@94..95 " "
+                  LITERAL@95..96
+                    INT_LITERAL@95..96 "2"
+                R_PAREN@96..97 ")"
+        NEWLINE@97..98 "\n"
+        WHITESPACE@98..100 "  "
+        END_KW@100..103 "end"
+      NEWLINE@103..104 "\n"
+    END_KW@104..107 "end"
+  NEWLINE@107..108 "\n"
+  NEWLINE@108..109 "\n"
+  FN_DEF@109..252
+    FN_KW@109..111 "fn"
+    WHITESPACE@111..112 " "
+    NAME@112..125
+      IDENT@112..125 "classify_pair"
+    PARAM_LIST@125..131
+      L_PAREN@125..126 "("
+      PARAM@126..130
+        IDENT@126..130 "pair"
+      R_PAREN@130..131 ")"
+    WHITESPACE@131..132 " "
+    DO_KW@132..134 "do"
+    BLOCK@134..249
+      NEWLINE@134..135 "\n"
+      WHITESPACE@135..137 "  "
+      CASE_EXPR@137..248
+        CASE_KW@137..141 "case"
+        WHITESPACE@141..142 " "
+        NAME_REF@142..146
+          IDENT@142..146 "pair"
+        WHITESPACE@146..147 " "
+        DO_KW@147..149 "do"
+        NEWLINE@149..150 "\n"
+        WHITESPACE@150..154 "    "
+        MATCH_ARM@154..172
+          TUPLE_PAT@154..160
+            L_PAREN@154..155 "("
+            LITERAL_PAT@155..156
+              INT_LITERAL@155..156 "0"
+            COMMA@156..157 ","
+            WHITESPACE@157..158 " "
+            LITERAL_PAT@158..159
+              INT_LITERAL@158..159 "0"
+            R_PAREN@159..160 ")"
+          WHITESPACE@160..161 " "
+          ARROW@161..163 "->"
+          WHITESPACE@163..164 " "
+          STRING_EXPR@164..172
+            STRING_START@164..165 "\""
+            STRING_CONTENT@165..171 "origin"
+            STRING_END@171..172 "\""
+        NEWLINE@172..173 "\n"
+        WHITESPACE@173..177 "    "
+        MATCH_ARM@177..195
+          TUPLE_PAT@177..183
+            L_PAREN@177..178 "("
+            IDENT_PAT@178..179
+              IDENT@178..179 "x"
+            COMMA@179..180 ","
+            WHITESPACE@180..181 " "
+            LITERAL_PAT@181..182
+              INT_LITERAL@181..182 "0"
+            R_PAREN@182..183 ")"
+          WHITESPACE@183..184 " "
+          ARROW@184..186 "->"
+          WHITESPACE@186..187 " "
+          STRING_EXPR@187..195
+            STRING_START@187..188 "\""
+            STRING_CONTENT@188..194 "x-axis"
+            STRING_END@194..195 "\""
+        NEWLINE@195..196 "\n"
+        WHITESPACE@196..200 "    "
+        MATCH_ARM@200..218
+          TUPLE_PAT@200..206
+            L_PAREN@200..201 "("
+            LITERAL_PAT@201..202
+              INT_LITERAL@201..202 "0"
+            COMMA@202..203 ","
+            WHITESPACE@203..204 " "
+            IDENT_PAT@204..205
+              IDENT@204..205 "y"
+            R_PAREN@205..206 ")"
+          WHITESPACE@206..207 " "
+          ARROW@207..209 "->"
+          WHITESPACE@209..210 " "
+          STRING_EXPR@210..218
+            STRING_START@210..211 "\""
+            STRING_CONTENT@211..217 "y-axis"
+            STRING_END@217..218 "\""
+        NEWLINE@218..219 "\n"
+        WHITESPACE@219..223 "    "
+        MATCH_ARM@223..242
+          TUPLE_PAT@223..229
+            L_PAREN@223..224 "("
+            IDENT_PAT@224..225
+              IDENT@224..225 "x"
+            COMMA@225..226 ","
+            WHITESPACE@226..227 " "
+            IDENT_PAT@227..228
+              IDENT@227..228 "y"
+            R_PAREN@228..229 ")"
+          WHITESPACE@229..230 " "
+          ARROW@230..232 "->"
+          WHITESPACE@232..233 " "
+          STRING_EXPR@233..242
+            STRING_START@233..234 "\""
+            STRING_CONTENT@234..241 "general"
+            STRING_END@241..242 "\""
+        NEWLINE@242..243 "\n"
+        WHITESPACE@243..245 "  "
+        END_KW@245..248 "end"
+      NEWLINE@248..249 "\n"
+    END_KW@249..252 "end"
+  EOF@252..252 ""

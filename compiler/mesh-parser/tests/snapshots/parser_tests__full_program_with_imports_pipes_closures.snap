@@ -1,109 +1,141 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..117
-  IMPORT_DECL@0..8
+SOURCE_FILE@0..151
+  IMPORT_DECL@0..9
     IMPORT_KW@0..6 "import"
-    PATH@6..8
-      IDENT@6..8 "IO"
-  NEWLINE@8..9 "\n"
-  FROM_IMPORT_DECL@9..33
-    IDENT@9..13 "from"
-    PATH@13..17
-      IDENT@13..17 "List"
-    IMPORT_KW@17..23 "import"
-    IMPORT_LIST@23..33
-      NAME@23..26
-        IDENT@23..26 "map"
-      COMMA@26..27 ","
-      NAME@27..33
-        IDENT@27..33 "filter"
-  NEWLINE@33..34 "\n"
-  NEWLINE@34..35 "\n"
-  FN_DEF@35..117
-    FN_KW@35..37 "fn"
-    NAME@37..41
-      IDENT@37..41 "main"
-    PARAM_LIST@41..43
-      L_PAREN@41..42 "("
-      R_PAREN@42..43 ")"
-    DO_KW@43..45 "do"
-    BLOCK@45..114
-      NEWLINE@45..46 "\n"
-      LET_BINDING@46..65
-        LET_KW@46..49 "let"
-        NAME@49..53
-          IDENT@49..53 "nums"
-        EQ@53..54 "="
-        TUPLE_EXPR@54..65
-          L_PAREN@54..55 "("
-          LITERAL@55..56
-            INT_LITERAL@55..56 "1"
-          COMMA@56..57 ","
-          LITERAL@57..58
-            INT_LITERAL@57..58 "2"
-          COMMA@58..59 ","
-          LITERAL@59..60
-            INT_LITERAL@59..60 "3"
-          COMMA@60..61 ","
-          LITERAL@61..62
-            INT_LITERAL@61..62 "4"
-          COMMA@62..63 ","
-          LITERAL@63..64
-            INT_LITERAL@63..64 "5"
-          R_PAREN@64..65 ")"
-      NEWLINE@65..66 "\n"
-      PIPE_EXPR@66..113
-        PIPE_EXPR@66..93
-          NAME_REF@66..70
-            IDENT@66..70 "nums"
-          PIPE@70..72 "|>"
-          CALL_EXPR@72..93
-            NAME_REF@72..78
-              IDENT@72..78 "filter"
-            ARG_LIST@78..93
-              L_PAREN@78..79 "("
-              CLOSURE_EXPR@79..92
-                FN_KW@79..81 "fn"
-                PARAM_LIST@81..84
-                  L_PAREN@81..82 "("
-                  PARAM@82..83
-                    IDENT@82..83 "x"
-                  R_PAREN@83..84 ")"
-                ARROW@84..86 "->"
-                BLOCK@86..89
-                  BINARY_EXPR@86..89
-                    NAME_REF@86..87
-                      IDENT@86..87 "x"
-                    GT@87..88 ">"
-                    LITERAL@88..89
-                      INT_LITERAL@88..89 "2"
-                END_KW@89..92 "end"
-              R_PAREN@92..93 ")"
-        PIPE@93..95 "|>"
-        CALL_EXPR@95..113
-          NAME_REF@95..98
-            IDENT@95..98 "map"
-          ARG_LIST@98..113
-            L_PAREN@98..99 "("
-            CLOSURE_EXPR@99..112
-              FN_KW@99..101 "fn"
-              PARAM_LIST@101..104
-                L_PAREN@101..102 "("
-                PARAM@102..103
-                  IDENT@102..103 "x"
-                R_PAREN@103..104 ")"
-              ARROW@104..106 "->"
-              BLOCK@106..109
-                BINARY_EXPR@106..109
-                  NAME_REF@106..107
-                    IDENT@106..107 "x"
-                  STAR@107..108 "*"
-                  LITERAL@108..109
-                    INT_LITERAL@108..109 "2"
-              END_KW@109..112 "end"
-            R_PAREN@112..113 ")"
-      NEWLINE@113..114 "\n"
-    END_KW@114..117 "end"
-  EOF@117..117 ""
+    WHITESPACE@6..7 " "
+    PATH@7..9
+      IDENT@7..9 "IO"
+  NEWLINE@9..10 "\n"
+  FROM_IMPORT_DECL@10..38
+    IDENT@10..14 "from"
+    WHITESPACE@14..15 " "
+    PATH@15..19
+      IDENT@15..19 "List"
+    WHITESPACE@19..20 " "
+    IMPORT_KW@20..26 "import"
+    WHITESPACE@26..27 " "
+    IMPORT_LIST@27..38
+      NAME@27..30
+        IDENT@27..30 "map"
+      COMMA@30..31 ","
+      WHITESPACE@31..32 " "
+      NAME@32..38
+        IDENT@32..38 "filter"
+  NEWLINE@38..39 "\n"
+  NEWLINE@39..40 "\n"
+  FN_DEF@40..151
+    FN_KW@40..42 "fn"
+    WHITESPACE@42..43 " "
+    NAME@43..47
+      IDENT@43..47 "main"
+    PARAM_LIST@47..49
+      L_PAREN@47..48 "("
+      R_PAREN@48..49 ")"
+    WHITESPACE@49..50 " "
+    DO_KW@50..52 "do"
+    BLOCK@52..148
+      NEWLINE@52..53 "\n"
+      WHITESPACE@53..55 "  "
+      LET_BINDING@55..81
+        LET_KW@55..58 "let"
+        WHITESPACE@58..59 " "
+        NAME@59..63
+          IDENT@59..63 "nums"
+        WHITESPACE@63..64 " "
+        EQ@64..65 "="
+        WHITESPACE@65..66 " "
+        TUPLE_EXPR@66..81
+          L_PAREN@66..67 "("
+          LITERAL@67..68
+            INT_LITERAL@67..68 "1"
+          COMMA@68..69 ","
+          WHITESPACE@69..70 " "
+          LITERAL@70..71
+            INT_LITERAL@70..71 "2"
+          COMMA@71..72 ","
+          WHITESPACE@72..73 " "
+          LITERAL@73..74
+            INT_LITERAL@73..74 "3"
+          COMMA@74..75 ","
+          WHITESPACE@75..76 " "
+          LITERAL@76..77
+            INT_LITERAL@76..77 "4"
+          COMMA@77..78 ","
+          WHITESPACE@78..79 " "
+          LITERAL@79..80
+            INT_LITERAL@79..80 "5"
+          R_PAREN@80..81 ")"
+      NEWLINE@81..82 "\n"
+      WHITESPACE@82..84 "  "
+      PIPE_EXPR@84..147
+        PIPE_EXPR@84..119
+          NAME_REF@84..88
+            IDENT@84..88 "nums"
+          WHITESPACE@88..89 " "
+          PIPE@89..91 "|>"
+          WHITESPACE@91..92 " "
+          CALL_EXPR@92..119
+            NAME_REF@92..98
+              IDENT@92..98 "filter"
+            ARG_LIST@98..119
+              L_PAREN@98..99 "("
+              CLOSURE_EXPR@99..118
+                FN_KW@99..101 "fn"
+                WHITESPACE@101..102 " "
+                PARAM_LIST@102..105
+                  L_PAREN@102..103 "("
+                  PARAM@103..104
+                    IDENT@103..104 "x"
+                  R_PAREN@104..105 ")"
+                WHITESPACE@105..106 " "
+                ARROW@106..108 "->"
+                WHITESPACE@108..109 " "
+                BLOCK@109..114
+                  BINARY_EXPR@109..114
+                    NAME_REF@109..110
+                      IDENT@109..110 "x"
+                    WHITESPACE@110..111 " "
+                    GT@111..112 ">"
+                    WHITESPACE@112..113 " "
+                    LITERAL@113..114
+                      INT_LITERAL@113..114 "2"
+                WHITESPACE@114..115 " "
+                END_KW@115..118 "end"
+              R_PAREN@118..119 ")"
+        WHITESPACE@119..120 " "
+        PIPE@120..122 "|>"
+        WHITESPACE@122..123 " "
+        CALL_EXPR@123..147
+          NAME_REF@123..126
+            IDENT@123..126 "map"
+          ARG_LIST@126..147
+            L_PAREN@126..127 "("
+            CLOSURE_EXPR@127..146
+              FN_KW@127..129 "fn"
+              WHITESPACE@129..130 " "
+              PARAM_LIST@130..133
+                L_PAREN@130..131 "("
+                PARAM@131..132
+                  IDENT@131..132 "x"
+                R_PAREN@132..133 ")"
+              WHITESPACE@133..134 " "
+              ARROW@134..136 "->"
+              WHITESPACE@136..137 " "
+              BLOCK@137..142
+                BINARY_EXPR@137..142
+                  NAME_REF@137..138
+                    IDENT@137..138 "x"
+                  WHITESPACE@138..139 " "
+                  STAR@139..140 "*"
+                  WHITESPACE@140..141 " "
+                  LITERAL@141..142
+                    INT_LITERAL@141..142 "2"
+              WHITESPACE@142..143 " "
+              END_KW@143..146 "end"
+            R_PAREN@146..147 ")"
+      NEWLINE@147..148 "\n"
+    END_KW@148..151 "end"
+  EOF@151..151 ""

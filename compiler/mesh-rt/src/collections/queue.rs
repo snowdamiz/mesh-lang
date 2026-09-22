@@ -86,10 +86,13 @@ pub extern "C" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
         let (nf, nb) = normalize(new_front, back);
         let new_queue = alloc_queue(nf, nb);
 
-        // Return a pair: { element, new_queue_ptr }.
-        let result = mesh_gc_alloc_actor(16, 8);
-        *(result as *mut u64) = element;
-        *((result as *mut u64).add(1)) = new_queue as u64;
+        // Return the tuple `(element, new_queue)` in the runtime tuple layout
+        // `{ u64 len, u64[len] }`, so `Tuple.first`, `Tuple.second` and
+        // `let (front, rest) = ...` read it like any other tuple.
+        let result = mesh_gc_alloc_actor(24, 8);
+        *(result as *mut u64) = 2;
+        *((result as *mut u64).add(1)) = element;
+        *((result as *mut u64).add(2)) = new_queue as u64;
         result
     }
 }
@@ -152,16 +155,18 @@ mod tests {
         let q = mesh_queue_push(q, 30);
         assert_eq!(mesh_queue_size(q), 3);
 
-        // Pop should return elements in FIFO order.
+        // Pop should return elements in FIFO order, as the tuple
+        // `{ len: 2, element, queue }`.
         let result = mesh_queue_pop(q);
         unsafe {
-            let elem = *(result as *const u64);
-            let new_q = *((result as *const u64).add(1)) as *mut u8;
+            assert_eq!(*(result as *const u64), 2);
+            let elem = *((result as *const u64).add(1));
+            let new_q = *((result as *const u64).add(2)) as *mut u8;
             assert_eq!(elem, 10);
             assert_eq!(mesh_queue_size(new_q), 2);
 
             let result2 = mesh_queue_pop(new_q);
-            let elem2 = *(result2 as *const u64);
+            let elem2 = *((result2 as *const u64).add(1));
             assert_eq!(elem2, 20);
         }
     }
@@ -193,7 +198,7 @@ mod tests {
         let q = mesh_queue_push(q, 1);
         let result = mesh_queue_pop(q);
         unsafe {
-            let new_q = *((result as *const u64).add(1)) as *mut u8;
+            let new_q = *((result as *const u64).add(2)) as *mut u8;
             assert_eq!(mesh_queue_is_empty(new_q), 1);
         }
     }

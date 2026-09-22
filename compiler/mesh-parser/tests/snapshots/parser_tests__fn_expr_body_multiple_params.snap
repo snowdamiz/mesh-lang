@@ -1,23 +1,27 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..12
-  FN_DEF@0..12
+SOURCE_FILE@0..16
+  FN_DEF@0..16
     FN_KW@0..2 "fn"
-    NAME@2..5
-      IDENT@2..5 "add"
-    PARAM_LIST@5..10
-      L_PAREN@5..6 "("
-      PARAM@6..7
-        LITERAL_PAT@6..7
-          INT_LITERAL@6..7 "0"
-      COMMA@7..8 ","
-      PARAM@8..9
-        IDENT@8..9 "y"
-      R_PAREN@9..10 ")"
-    EQ@10..11 "="
-    FN_EXPR_BODY@11..12
-      NAME_REF@11..12
-        IDENT@11..12 "y"
-  EOF@12..12 ""
+    WHITESPACE@2..3 " "
+    NAME@3..6
+      IDENT@3..6 "add"
+    PARAM_LIST@6..12
+      L_PAREN@6..7 "("
+      PARAM@7..8
+        LITERAL_PAT@7..8
+          INT_LITERAL@7..8 "0"
+      COMMA@8..9 ","
+      WHITESPACE@9..10 " "
+      PARAM@10..11
+        IDENT@10..11 "y"
+      R_PAREN@11..12 ")"
+    WHITESPACE@12..13 " "
+    EQ@13..14 "="
+    WHITESPACE@14..15 " "
+    FN_EXPR_BODY@15..16
+      NAME_REF@15..16
+        IDENT@15..16 "y"
+  EOF@16..16 ""

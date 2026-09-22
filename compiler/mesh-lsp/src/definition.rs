@@ -9,10 +9,8 @@
 //!
 //! ## Coordinate system
 //!
-//! The Mesh lexer skips whitespace, so the rowan CST does not contain whitespace
-//! tokens. This means rowan `TextRange` offsets are NOT the same as source byte
-//! offsets. We re-lex the source to build a mapping from source byte offsets to
-//! rowan tree offsets.
+//! The CST keeps whitespace as WHITESPACE tokens, so rowan `TextRange` offsets
+//! are source byte offsets. The two conversion functions below only bounds-check.
 
 use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
@@ -26,51 +24,17 @@ const BUILTIN_MODULES: &[&str] = &[
 
 /// Convert a source byte offset to a rowan tree offset.
 ///
-/// Since the lexer skips whitespace, rowan tree offsets differ from source
-/// offsets. This function re-lexes the source to build the mapping.
+/// The CST is lossless (whitespace is kept as WHITESPACE tokens), so tree
+/// offsets are source offsets. This only rejects offsets past the end.
 pub fn source_to_tree_offset(source: &str, source_offset: usize) -> Option<usize> {
-    let tokens = mesh_lexer::Lexer::tokenize(source);
-    let mut tree_offset: usize = 0;
-
-    for token in &tokens {
-        let tok_start = token.span.start as usize;
-        let tok_end = token.span.end as usize;
-        let tok_len = tok_end - tok_start;
-
-        if source_offset >= tok_start && source_offset < tok_end {
-            // The source offset falls within this token.
-            let offset_within_token = source_offset - tok_start;
-            return Some(tree_offset + offset_within_token);
-        }
-
-        tree_offset += tok_len;
-    }
-
-    // Offset is at or past the end.
-    None
+    (source_offset < source.len()).then_some(source_offset)
 }
 
 /// Convert a rowan tree offset to a source byte offset.
 ///
-/// Inverse of `source_to_tree_offset`.
+/// Identity for the same reason as [`source_to_tree_offset`].
 pub fn tree_to_source_offset(source: &str, tree_offset: usize) -> Option<usize> {
-    let tokens = mesh_lexer::Lexer::tokenize(source);
-    let mut cumulative_tree: usize = 0;
-
-    for token in &tokens {
-        let tok_start = token.span.start as usize;
-        let tok_end = token.span.end as usize;
-        let tok_len = tok_end - tok_start;
-
-        if tree_offset >= cumulative_tree && tree_offset < cumulative_tree + tok_len {
-            let offset_within_token = tree_offset - cumulative_tree;
-            return Some(tok_start + offset_within_token);
-        }
-
-        cumulative_tree += tok_len;
-    }
-
-    None
+    (tree_offset <= source.len()).then_some(tree_offset)
 }
 
 /// Find the definition site of the identifier at the given source byte offset.
@@ -362,23 +326,18 @@ mod tests {
     }
 
     #[test]
-    fn source_to_tree_offset_basic() {
-        // "let x = 42" -- source offsets: l=0 e=1 t=2 ' '=3 x=4 ' '=5 '='=6 ' '=7 '4'=8 '2'=9
-        // Tree: "letx=42" -- tree offsets:  l=0 e=1 t=2        x=3        =  4        4  =5 2=6
+    fn tree_offsets_are_source_offsets() {
         let source = "let x = 42";
-        assert_eq!(source_to_tree_offset(source, 0), Some(0)); // 'l' in 'let'
-        assert_eq!(source_to_tree_offset(source, 4), Some(3)); // 'x'
-        assert_eq!(source_to_tree_offset(source, 6), Some(4)); // '='
-        assert_eq!(source_to_tree_offset(source, 8), Some(5)); // '4'
-    }
-
-    #[test]
-    fn tree_to_source_offset_basic() {
-        let source = "let x = 42";
-        assert_eq!(tree_to_source_offset(source, 0), Some(0)); // 'l' in 'let'
-        assert_eq!(tree_to_source_offset(source, 3), Some(4)); // 'x'
-        assert_eq!(tree_to_source_offset(source, 4), Some(6)); // '='
-        assert_eq!(tree_to_source_offset(source, 5), Some(8)); // '4'
+        let parse = mesh_parser::parse(source);
+        assert_eq!(parse.syntax().text().to_string(), source);
+        assert_eq!(source_to_tree_offset(source, 4), Some(4)); // 'x'
+        assert_eq!(source_to_tree_offset(source, source.len()), None);
+        assert_eq!(tree_to_source_offset(source, 8), Some(8)); // '4'
+        assert_eq!(
+            tree_to_source_offset(source, source.len()),
+            Some(source.len())
+        );
+        assert_eq!(tree_to_source_offset(source, source.len() + 1), None);
     }
 
     #[test]

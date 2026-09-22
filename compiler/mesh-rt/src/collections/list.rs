@@ -3,6 +3,16 @@
 //! A MeshList stores elements as uniform 8-byte (`u64`) values in a contiguous
 //! GC-allocated buffer. Layout: `{ len: u64, cap: u64, data: [u64; cap] }`.
 //!
+//! A *view* shares another list's buffer instead of holding its own:
+//! `{ len: u64, VIEW: u64, parent: ptr, offset: u64 }`, where `parent` is an
+//! owned list (never another view) and the view's elements are
+//! `parent.data[offset..offset + len]`. `tail` and `drop` return views, which
+//! is what makes `head :: tail` recursion linear instead of quadratic. Lists
+//! are immutable, so sharing is invisible; the parent stays alive through the
+//! view's pointer to it. Everything that reads list memory goes through
+//! [`list_slots`], and every other layout reader (message capture, the wire
+//! format) resolves views the same way.
+//!
 //! All mutation operations (append, tail, concat, etc.) return a NEW list,
 //! preserving immutability semantics.
 
@@ -16,6 +26,12 @@ const HEADER_SIZE: usize = 16;
 /// Byte size of one element.
 const ELEM_SIZE: usize = 8;
 
+/// Capacity word of a view; no owned list has this capacity.
+pub(crate) const VIEW: u64 = u64::MAX;
+
+/// Byte size of a view header.
+const VIEW_SIZE: usize = 32;
+
 // ── Internal helpers ──────────────────────────────────────────────────
 
 /// Read the length field from a list pointer.
@@ -23,19 +39,54 @@ unsafe fn list_len(list: *const u8) -> u64 {
     *(list as *const u64)
 }
 
-/// Read the capacity field from a list pointer.
+/// Read the capacity field from a list pointer (`VIEW` for a view).
 unsafe fn list_cap(list: *const u8) -> u64 {
     *((list as *const u64).add(1))
 }
 
-/// Get a pointer to the data region (past the header).
+/// Get a pointer to the data region, following a view to its parent.
 unsafe fn list_data(list: *const u8) -> *const u64 {
-    (list as *const u64).add(2)
+    if list_cap(list) == VIEW {
+        let parent = *((list as *const u64).add(2)) as *const u8;
+        let offset = *((list as *const u64).add(3)) as usize;
+        (parent as *const u64).add(2).add(offset)
+    } else {
+        (list as *const u64).add(2)
+    }
 }
 
-/// Get a mutable pointer to the data region.
+/// The elements of any list, view or not: `(len, first element)`.
+///
+/// # Safety
+///
+/// `list` must point to a live list.
+pub(crate) unsafe fn list_slots(list: *const u8) -> (usize, *const u64) {
+    (list_len(list) as usize, list_data(list))
+}
+
+/// Get a mutable pointer to the data region of an OWNED list.
 unsafe fn list_data_mut(list: *mut u8) -> *mut u64 {
+    debug_assert_ne!(list_cap(list), VIEW, "a view is never written");
     (list as *mut u64).add(2)
+}
+
+/// A view of `len` elements of `list` starting `skip` elements in. A view of
+/// a view shares the same parent, so views never chain.
+unsafe fn alloc_view(list: *const u8, skip: u64, len: u64) -> *mut u8 {
+    let (parent, offset) = if list_cap(list) == VIEW {
+        (
+            *((list as *const u64).add(2)) as *const u8,
+            *((list as *const u64).add(3)),
+        )
+    } else {
+        (list, 0)
+    };
+    let p = mesh_gc_alloc_actor(VIEW_SIZE as u64, 8);
+    *(p as *mut u64) = len;
+    *((p as *mut u64).add(1)) = VIEW;
+    *((p as *mut u64).add(2)) = parent as u64;
+    *((p as *mut u64).add(3)) = offset + skip;
+    p
 }
 
 /// Allocate a new list with the given capacity, length set to 0.
@@ -111,7 +162,7 @@ pub extern "C" fn mesh_list_head(list: *mut u8) -> u64 {
     }
 }
 
-/// Return a NEW list without the first element. Panics if empty.
+/// Return the list without its first element, as a view. Panics if empty.
 #[no_mangle]
 pub extern "C" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
     unsafe {
@@ -119,8 +170,7 @@ pub extern "C" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
         if len == 0 {
             panic!("mesh_list_tail: empty list");
         }
-        let new_len = len - 1;
-        alloc_list_from(list_data(list).add(1), new_len, new_len)
+        alloc_view(list, 1, len - 1)
     }
 }
 
@@ -298,7 +348,8 @@ pub extern "C" fn mesh_list_builder_new(capacity: i64) -> *mut u8 {
 pub extern "C" fn mesh_list_builder_push(list: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         let len = list_len(list);
-        let list = if len < list_cap(list) {
+        let cap = list_cap(list);
+        let list = if cap != VIEW && len < cap {
             list
         } else {
             alloc_list_from(list_data(list), len, (len * 2).max(4))
@@ -730,15 +781,14 @@ pub extern "C" fn mesh_list_take(list: *mut u8, n: i64) -> *mut u8 {
     }
 }
 
-/// Return a new list with the first `n` elements removed.
+/// Return the list without its first `n` elements, as a view.
 /// Clamps `n` to [0, len].
 #[no_mangle]
 pub extern "C" fn mesh_list_drop(list: *mut u8, n: i64) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         let actual_n = (n.max(0) as u64).min(len);
-        let remaining = len - actual_n;
-        alloc_list_from(list_data(list).add(actual_n as usize), remaining, remaining)
+        alloc_view(list, actual_n, len - actual_n)
     }
 }
 
@@ -846,6 +896,47 @@ mod tests {
         let tail = mesh_list_tail(list);
         assert_eq!(mesh_list_length(tail), 2);
         assert_eq!(mesh_list_head(tail), 2);
+    }
+
+    #[test]
+    fn views_share_the_parent_buffer_and_behave_like_lists() {
+        mesh_rt_init();
+        let list = mesh_list_from_array([1u64, 2, 3, 4, 5].as_ptr(), 5);
+        let tail = mesh_list_tail(list);
+        let tail2 = mesh_list_tail(tail);
+        unsafe {
+            assert_eq!(list_cap(tail), VIEW);
+            assert_eq!(list_cap(tail2), VIEW);
+            // A view of a view points at the owned list, never at the view.
+            assert_eq!(*((tail2 as *const u64).add(2)), list as u64);
+            assert_eq!(*((tail2 as *const u64).add(3)), 2);
+        }
+        assert_eq!(mesh_list_length(tail2), 3);
+        assert_eq!(mesh_list_get(tail2, 0), 3);
+        assert_eq!(mesh_list_last(tail2), 5);
+        // Views feed every other operation as plain lists do.
+        let appended = mesh_list_append(tail2, 6);
+        assert_eq!(mesh_list_length(appended), 4);
+        assert_eq!(mesh_list_get(appended, 3), 6);
+        let joined = mesh_list_concat(tail2, tail);
+        assert_eq!(mesh_list_length(joined), 7);
+        assert_eq!(mesh_list_get(joined, 3), 2);
+        let dropped = mesh_list_drop(tail, 2);
+        assert_eq!(mesh_list_length(dropped), 2);
+        assert_eq!(mesh_list_get(dropped, 0), 4);
+        let empty = mesh_list_tail(mesh_list_tail(dropped));
+        assert_eq!(mesh_list_length(empty), 0);
+        // Pushing to a view builds a fresh list instead of writing the parent.
+        let pushed = mesh_list_builder_push(tail2, 9);
+        assert_ne!(pushed, tail2);
+        assert_eq!(mesh_list_length(pushed), 4);
+        assert_eq!(mesh_list_get(pushed, 3), 9);
+        assert_eq!(mesh_list_length(list), 5);
+        assert_eq!(mesh_list_get(list, 4), 5);
+        // The parent is untouched by everything above.
+        for (i, expected) in [1u64, 2, 3, 4, 5].into_iter().enumerate() {
+            assert_eq!(mesh_list_get(list, i as i64), expected);
+        }
     }
 
     #[test]

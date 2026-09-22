@@ -1,42 +1,53 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"service Counter do\\n  call GetCount() :: Int do |state|\\n    (state, state)\\n  end\\nend\")"
 ---
-SOURCE_FILE@0..67
-  SERVICE_DEF@0..67
+SOURCE_FILE@0..83
+  SERVICE_DEF@0..83
     SERVICE_KW@0..7 "service"
-    NAME@7..14
-      IDENT@7..14 "Counter"
-    DO_KW@14..16 "do"
-    BLOCK@16..64
-      NEWLINE@16..17 "\n"
-      CALL_HANDLER@17..63
-        CALL_KW@17..21 "call"
-        NAME@21..29
-          IDENT@21..29 "GetCount"
-        PARAM_LIST@29..31
-          L_PAREN@29..30 "("
-          R_PAREN@30..31 ")"
-        TYPE_ANNOTATION@31..36
-          COLON_COLON@31..33 "::"
-          IDENT@33..36 "Int"
-        DO_KW@36..38 "do"
-        BAR@38..39 "|"
-        NAME@39..44
-          IDENT@39..44 "state"
-        BAR@44..45 "|"
-        BLOCK@45..60
-          NEWLINE@45..46 "\n"
-          TUPLE_EXPR@46..59
-            L_PAREN@46..47 "("
-            NAME_REF@47..52
-              IDENT@47..52 "state"
-            COMMA@52..53 ","
-            NAME_REF@53..58
-              IDENT@53..58 "state"
-            R_PAREN@58..59 ")"
-          NEWLINE@59..60 "\n"
-        END_KW@60..63 "end"
-      NEWLINE@63..64 "\n"
-    END_KW@64..67 "end"
-  EOF@67..67 ""
+    WHITESPACE@7..8 " "
+    NAME@8..15
+      IDENT@8..15 "Counter"
+    WHITESPACE@15..16 " "
+    DO_KW@16..18 "do"
+    BLOCK@18..80
+      NEWLINE@18..19 "\n"
+      WHITESPACE@19..21 "  "
+      CALL_HANDLER@21..79
+        CALL_KW@21..25 "call"
+        WHITESPACE@25..26 " "
+        NAME@26..34
+          IDENT@26..34 "GetCount"
+        PARAM_LIST@34..36
+          L_PAREN@34..35 "("
+          R_PAREN@35..36 ")"
+        WHITESPACE@36..37 " "
+        TYPE_ANNOTATION@37..43
+          COLON_COLON@37..39 "::"
+          WHITESPACE@39..40 " "
+          IDENT@40..43 "Int"
+        WHITESPACE@43..44 " "
+        DO_KW@44..46 "do"
+        WHITESPACE@46..47 " "
+        BAR@47..48 "|"
+        NAME@48..53
+          IDENT@48..53 "state"
+        BAR@53..54 "|"
+        BLOCK@54..74
+          NEWLINE@54..55 "\n"
+          WHITESPACE@55..59 "    "
+          TUPLE_EXPR@59..73
+            L_PAREN@59..60 "("
+            NAME_REF@60..65
+              IDENT@60..65 "state"
+            COMMA@65..66 ","
+            WHITESPACE@66..67 " "
+            NAME_REF@67..72
+              IDENT@67..72 "state"
+            R_PAREN@72..73 ")"
+          NEWLINE@73..74 "\n"
+        WHITESPACE@74..76 "  "
+        END_KW@76..79 "end"
+      NEWLINE@79..80 "\n"
+    END_KW@80..83 "end"
+  EOF@83..83 ""

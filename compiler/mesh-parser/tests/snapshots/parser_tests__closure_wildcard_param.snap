@@ -1,17 +1,21 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn _ -> 42 end\")"
 ---
-SOURCE_FILE@0..10
-  CLOSURE_EXPR@0..10
+SOURCE_FILE@0..14
+  CLOSURE_EXPR@0..14
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..3
-      PARAM@2..3
-        WILDCARD_PAT@2..3
-          IDENT@2..3 "_"
-    ARROW@3..5 "->"
-    BLOCK@5..7
-      LITERAL@5..7
-        INT_LITERAL@5..7 "42"
-    END_KW@7..10 "end"
-  EOF@10..10 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..4
+      PARAM@3..4
+        WILDCARD_PAT@3..4
+          IDENT@3..4 "_"
+    WHITESPACE@4..5 " "
+    ARROW@5..7 "->"
+    WHITESPACE@7..8 " "
+    BLOCK@8..10
+      LITERAL@8..10
+        INT_LITERAL@8..10 "42"
+    WHITESPACE@10..11 " "
+    END_KW@11..14 "end"
+  EOF@14..14 ""

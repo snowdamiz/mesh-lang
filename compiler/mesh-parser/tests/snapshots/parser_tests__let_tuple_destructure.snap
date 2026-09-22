@@ -1,19 +1,23 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"let (a, b) = pair\")"
 ---
-SOURCE_FILE@0..13
-  LET_BINDING@0..13
+SOURCE_FILE@0..17
+  LET_BINDING@0..17
     LET_KW@0..3 "let"
-    TUPLE_PAT@3..8
-      L_PAREN@3..4 "("
-      IDENT_PAT@4..5
-        IDENT@4..5 "a"
-      COMMA@5..6 ","
-      IDENT_PAT@6..7
-        IDENT@6..7 "b"
-      R_PAREN@7..8 ")"
-    EQ@8..9 "="
-    NAME_REF@9..13
-      IDENT@9..13 "pair"
-  EOF@13..13 ""
+    WHITESPACE@3..4 " "
+    TUPLE_PAT@4..10
+      L_PAREN@4..5 "("
+      IDENT_PAT@5..6
+        IDENT@5..6 "a"
+      COMMA@6..7 ","
+      WHITESPACE@7..8 " "
+      IDENT_PAT@8..9
+        IDENT@8..9 "b"
+      R_PAREN@9..10 ")"
+    WHITESPACE@10..11 " "
+    EQ@11..12 "="
+    WHITESPACE@12..13 " "
+    NAME_REF@13..17
+      IDENT@13..17 "pair"
+  EOF@17..17 ""

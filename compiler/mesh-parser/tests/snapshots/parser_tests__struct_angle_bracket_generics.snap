@@ -1,24 +1,29 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"struct Foo<T> do\\n  x :: T\\nend\")"
 ---
-SOURCE_FILE@0..23
-  STRUCT_DEF@0..23
+SOURCE_FILE@0..29
+  STRUCT_DEF@0..29
     STRUCT_KW@0..6 "struct"
-    NAME@6..9
-      IDENT@6..9 "Foo"
-    GENERIC_PARAM_LIST@9..12
-      LT@9..10 "<"
-      IDENT@10..11 "T"
-      GT@11..12 ">"
-    DO_KW@12..14 "do"
-    NEWLINE@14..15 "\n"
-    STRUCT_FIELD@15..19
-      NAME@15..16
-        IDENT@15..16 "x"
-      TYPE_ANNOTATION@16..19
-        COLON_COLON@16..18 "::"
-        IDENT@18..19 "T"
-    NEWLINE@19..20 "\n"
-    END_KW@20..23 "end"
-  EOF@23..23 ""
+    WHITESPACE@6..7 " "
+    NAME@7..10
+      IDENT@7..10 "Foo"
+    GENERIC_PARAM_LIST@10..13
+      LT@10..11 "<"
+      IDENT@11..12 "T"
+      GT@12..13 ">"
+    WHITESPACE@13..14 " "
+    DO_KW@14..16 "do"
+    NEWLINE@16..17 "\n"
+    WHITESPACE@17..19 "  "
+    STRUCT_FIELD@19..25
+      NAME@19..20
+        IDENT@19..20 "x"
+      WHITESPACE@20..21 " "
+      TYPE_ANNOTATION@21..25
+        COLON_COLON@21..23 "::"
+        WHITESPACE@23..24 " "
+        IDENT@24..25 "T"
+    NEWLINE@25..26 "\n"
+    END_KW@26..29 "end"
+  EOF@29..29 ""

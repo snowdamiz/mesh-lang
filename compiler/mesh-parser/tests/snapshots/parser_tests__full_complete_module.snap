@@ -1,83 +1,110 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..125
-  MODULE_DEF@0..125
+SOURCE_FILE@0..167
+  MODULE_DEF@0..167
     MODULE_KW@0..6 "module"
-    NAME@6..17
-      IDENT@6..17 "StringUtils"
-    DO_KW@17..19 "do"
-    BLOCK@19..122
-      NEWLINE@19..20 "\n"
-      FN_DEF@20..58
-        VISIBILITY@20..23
-          PUB_KW@20..23 "pub"
-        FN_KW@23..25 "fn"
-        NAME@25..31
-          IDENT@25..31 "upcase"
-        PARAM_LIST@31..42
-          L_PAREN@31..32 "("
-          PARAM@32..41
-            IDENT@32..33 "s"
-            TYPE_ANNOTATION@33..41
-              COLON_COLON@33..35 "::"
-              IDENT@35..41 "String"
-          R_PAREN@41..42 ")"
-        TYPE_ANNOTATION@42..50
-          ARROW@42..44 "->"
-          IDENT@44..50 "String"
-        DO_KW@50..52 "do"
-        BLOCK@52..55
-          NEWLINE@52..53 "\n"
-          NAME_REF@53..54
-            IDENT@53..54 "s"
-          NEWLINE@54..55 "\n"
-        END_KW@55..58 "end"
-      NEWLINE@58..59 "\n"
-      NEWLINE@59..60 "\n"
-      FN_DEF@60..100
-        VISIBILITY@60..63
-          PUB_KW@60..63 "pub"
-        FN_KW@63..65 "fn"
-        NAME@65..73
-          IDENT@65..73 "downcase"
-        PARAM_LIST@73..84
-          L_PAREN@73..74 "("
-          PARAM@74..83
-            IDENT@74..75 "s"
-            TYPE_ANNOTATION@75..83
-              COLON_COLON@75..77 "::"
-              IDENT@77..83 "String"
-          R_PAREN@83..84 ")"
-        TYPE_ANNOTATION@84..92
-          ARROW@84..86 "->"
-          IDENT@86..92 "String"
-        DO_KW@92..94 "do"
-        BLOCK@94..97
-          NEWLINE@94..95 "\n"
-          NAME_REF@95..96
+    WHITESPACE@6..7 " "
+    NAME@7..18
+      IDENT@7..18 "StringUtils"
+    WHITESPACE@18..19 " "
+    DO_KW@19..21 "do"
+    BLOCK@21..164
+      NEWLINE@21..22 "\n"
+      WHITESPACE@22..24 "  "
+      FN_DEF@24..75
+        VISIBILITY@24..27
+          PUB_KW@24..27 "pub"
+        WHITESPACE@27..28 " "
+        FN_KW@28..30 "fn"
+        WHITESPACE@30..31 " "
+        NAME@31..37
+          IDENT@31..37 "upcase"
+        PARAM_LIST@37..50
+          L_PAREN@37..38 "("
+          PARAM@38..49
+            IDENT@38..39 "s"
+            WHITESPACE@39..40 " "
+            TYPE_ANNOTATION@40..49
+              COLON_COLON@40..42 "::"
+              WHITESPACE@42..43 " "
+              IDENT@43..49 "String"
+          R_PAREN@49..50 ")"
+        WHITESPACE@50..51 " "
+        TYPE_ANNOTATION@51..60
+          ARROW@51..53 "->"
+          WHITESPACE@53..54 " "
+          IDENT@54..60 "String"
+        WHITESPACE@60..61 " "
+        DO_KW@61..63 "do"
+        BLOCK@63..70
+          NEWLINE@63..64 "\n"
+          WHITESPACE@64..68 "    "
+          NAME_REF@68..69
+            IDENT@68..69 "s"
+          NEWLINE@69..70 "\n"
+        WHITESPACE@70..72 "  "
+        END_KW@72..75 "end"
+      NEWLINE@75..76 "\n"
+      NEWLINE@76..77 "\n"
+      WHITESPACE@77..79 "  "
+      FN_DEF@79..132
+        VISIBILITY@79..82
+          PUB_KW@79..82 "pub"
+        WHITESPACE@82..83 " "
+        FN_KW@83..85 "fn"
+        WHITESPACE@85..86 " "
+        NAME@86..94
+          IDENT@86..94 "downcase"
+        PARAM_LIST@94..107
+          L_PAREN@94..95 "("
+          PARAM@95..106
             IDENT@95..96 "s"
-          NEWLINE@96..97 "\n"
-        END_KW@97..100 "end"
-      NEWLINE@100..101 "\n"
-      NEWLINE@101..102 "\n"
-      FN_DEF@102..121
-        FN_KW@102..104 "fn"
-        NAME@104..110
-          IDENT@104..110 "helper"
-        PARAM_LIST@110..113
-          L_PAREN@110..111 "("
-          PARAM@111..112
-            IDENT@111..112 "x"
-          R_PAREN@112..113 ")"
-        DO_KW@113..115 "do"
-        BLOCK@115..118
-          NEWLINE@115..116 "\n"
-          NAME_REF@116..117
-            IDENT@116..117 "x"
-          NEWLINE@117..118 "\n"
-        END_KW@118..121 "end"
-      NEWLINE@121..122 "\n"
-    END_KW@122..125 "end"
-  EOF@125..125 ""
+            WHITESPACE@96..97 " "
+            TYPE_ANNOTATION@97..106
+              COLON_COLON@97..99 "::"
+              WHITESPACE@99..100 " "
+              IDENT@100..106 "String"
+          R_PAREN@106..107 ")"
+        WHITESPACE@107..108 " "
+        TYPE_ANNOTATION@108..117
+          ARROW@108..110 "->"
+          WHITESPACE@110..111 " "
+          IDENT@111..117 "String"
+        WHITESPACE@117..118 " "
+        DO_KW@118..120 "do"
+        BLOCK@120..127
+          NEWLINE@120..121 "\n"
+          WHITESPACE@121..125 "    "
+          NAME_REF@125..126
+            IDENT@125..126 "s"
+          NEWLINE@126..127 "\n"
+        WHITESPACE@127..129 "  "
+        END_KW@129..132 "end"
+      NEWLINE@132..133 "\n"
+      NEWLINE@133..134 "\n"
+      WHITESPACE@134..136 "  "
+      FN_DEF@136..163
+        FN_KW@136..138 "fn"
+        WHITESPACE@138..139 " "
+        NAME@139..145
+          IDENT@139..145 "helper"
+        PARAM_LIST@145..148
+          L_PAREN@145..146 "("
+          PARAM@146..147
+            IDENT@146..147 "x"
+          R_PAREN@147..148 ")"
+        WHITESPACE@148..149 " "
+        DO_KW@149..151 "do"
+        BLOCK@151..158
+          NEWLINE@151..152 "\n"
+          WHITESPACE@152..156 "    "
+          NAME_REF@156..157
+            IDENT@156..157 "x"
+          NEWLINE@157..158 "\n"
+        WHITESPACE@158..160 "  "
+        END_KW@160..163 "end"
+      NEWLINE@163..164 "\n"
+    END_KW@164..167 "end"
+  EOF@167..167 ""

@@ -58,6 +58,8 @@ enum HeadCtor {
     },
     /// A list cons pattern (head :: tail).
     ListCons { elem_ty: MirType },
+    /// The empty list pattern (`[]`).
+    ListNil,
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -148,11 +150,29 @@ fn expand_pattern(
 
 /// Compile a pattern matrix into a decision tree (Maranget's algorithm).
 fn compile_matrix(
-    matrix: PatMatrix,
+    mut matrix: PatMatrix,
     file: &str,
     line: u32,
     sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> DecisionTree {
+    // `inner as name` binds the column's value and then matches like `inner`.
+    // Peeling it here, where every column's path and type are known, keeps
+    // the rest of the algorithm free of the variant.
+    for row in &mut matrix.rows {
+        for col in 0..row.patterns.len() {
+            while let MirPattern::As { name, ty, inner } = &row.patterns[col] {
+                let bind_ty = if *ty == MirType::Unit {
+                    matrix.column_types[col].clone()
+                } else {
+                    ty.clone()
+                };
+                row.bindings
+                    .push((name.clone(), bind_ty, matrix.column_paths[col].clone()));
+                row.patterns[col] = (**inner).clone();
+            }
+        }
+    }
+
     // Base case 1: No rows -- match failure.
     if matrix.rows.is_empty() {
         return DecisionTree::Fail {
@@ -199,7 +219,7 @@ fn compile_matrix(
     // Step 3: Determine if we need a Switch (constructors), ListDecons, or Tests (literals).
     let has_list_cons = head_ctors
         .iter()
-        .any(|c| matches!(c, HeadCtor::ListCons { .. }));
+        .any(|c| matches!(c, HeadCtor::ListCons { .. } | HeadCtor::ListNil));
     let has_constructors = head_ctors
         .iter()
         .any(|c| matches!(c, HeadCtor::Constructor { .. }));
@@ -327,6 +347,8 @@ fn head_ctor_key(p: &MirPattern) -> Option<String> {
         MirPattern::Constructor { variant, .. } => Some(format!("ctor:{}", variant)),
         MirPattern::Tuple(elems) => Some(format!("tuple:{}", elems.len())),
         MirPattern::ListCons { .. } => Some("list_cons".to_string()),
+        MirPattern::ListNil => Some("list_nil".to_string()),
+        MirPattern::As { inner, .. } => head_ctor_key(inner),
         MirPattern::Or(_) => None, // Should be expanded already
         MirPattern::Wildcard | MirPattern::Var(..) => None,
     }
@@ -415,6 +437,13 @@ fn collect_head_constructors(
                     result.push(HeadCtor::ListCons {
                         elem_ty: elem_ty.clone(),
                     });
+                }
+            }
+            MirPattern::ListNil => {
+                let key = "list_nil".to_string();
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    result.push(HeadCtor::ListNil);
                 }
             }
             _ => {} // Wildcards/variables don't contribute head constructors.
@@ -667,12 +696,13 @@ fn compile_list_cons(
         })
         .unwrap_or(MirType::Int);
 
-    // Specialize: rows with ListCons get head/tail expanded as new columns.
+    // Specialize: rows with ListCons get head/tail expanded as new columns;
+    // `[]` rows cannot match a non-empty list and drop out.
     let specialized = specialize_for_list_cons(matrix, col, &elem_ty);
     let non_empty = compile_matrix(specialized, file, line, sum_type_defs);
 
-    // Default: rows with wildcard/variable (matches empty list too).
-    let default_mat = default_matrix(matrix, col);
+    // Empty: rows with `[]` or a wildcard/variable, the column consumed.
+    let default_mat = default_matrix_with(matrix, col, |p| matches!(p, MirPattern::ListNil));
     let empty = compile_matrix(default_mat, file, line, sum_type_defs);
 
     DecisionTree::ListDecons {
@@ -752,7 +782,10 @@ fn specialize_for_list_cons(matrix: &PatMatrix, col: usize, elem_ty: &MirType) -
     let mut new_types = Vec::new();
 
     // Head element path: special ListHead access from parent.
-    new_paths.push(AccessPath::ListHead(Box::new(parent_path.clone())));
+    new_paths.push(AccessPath::ListHead(
+        Box::new(parent_path.clone()),
+        elem_ty.clone(),
+    ));
     new_types.push(elem_ty.clone());
 
     // Tail list path: special ListTail access from parent.
@@ -900,11 +933,22 @@ fn literals_equal(a: &MirLiteral, b: &MirLiteral) -> bool {
 /// Build the default matrix: rows with wildcard/variable in the given column,
 /// with that column removed.
 fn default_matrix(matrix: &PatMatrix, col: usize) -> PatMatrix {
+    default_matrix_with(matrix, col, |_| false)
+}
+
+/// The default matrix, also keeping rows whose pattern in `col` satisfies
+/// `also` (a pattern the taken branch is known to match, like `[]` on the
+/// empty branch).
+fn default_matrix_with(
+    matrix: &PatMatrix,
+    col: usize,
+    also: impl Fn(&MirPattern) -> bool,
+) -> PatMatrix {
     let mut new_rows = Vec::new();
 
     for row in &matrix.rows {
         let pat = &row.patterns[col];
-        if is_wildcard_like(pat) {
+        if is_wildcard_like(pat) || also(pat) {
             let mut new_pats = Vec::new();
             let mut new_bindings = row.bindings.clone();
 
@@ -1010,8 +1054,11 @@ fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
         MirPattern::Literal(MirLiteral::String(_)) => Some(MirType::String),
         MirPattern::Constructor { type_name, .. } => Some(MirType::SumType(type_name.clone())),
         // Tuple values use the heap-backed runtime representation.
-        MirPattern::Tuple(_) | MirPattern::ListCons { .. } => Some(MirType::Ptr),
+        MirPattern::Tuple(_) | MirPattern::ListCons { .. } | MirPattern::ListNil => {
+            Some(MirType::Ptr)
+        }
         MirPattern::Or(alternatives) => alternatives.iter().find_map(pattern_type_hint),
+        MirPattern::As { inner, .. } => pattern_type_hint(inner),
         MirPattern::Wildcard => None,
     }
 }
@@ -1517,6 +1564,46 @@ mod tests {
                         ));
                     }
                     other => panic!("Expected nested Test, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Test, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_as_pattern_binds_the_whole_value() {
+        // match x { 1 as whole -> whole, _ -> 0 }
+        // Expected: Test(Root, 1, Leaf(0, [whole @ Root]), Leaf(1))
+        let arms = vec![
+            make_arm(
+                MirPattern::As {
+                    name: "whole".to_string(),
+                    ty: MirType::Unit,
+                    inner: Box::new(MirPattern::Literal(MirLiteral::Int(1))),
+                },
+                None,
+                var_expr("whole", MirType::Int),
+            ),
+            make_arm(MirPattern::Wildcard, None, int_body(0)),
+        ];
+
+        let tree = compile_match(&MirType::Int, &arms, "test.mpl", 1, &FxHashMap::default());
+
+        match &tree {
+            DecisionTree::Test { value, success, .. } => {
+                assert!(matches!(value, MirLiteral::Int(1)));
+                match success.as_ref() {
+                    DecisionTree::Leaf {
+                        arm_index: 0,
+                        bindings,
+                    } => {
+                        // An unresolved (Unit) binding type falls back to the column type.
+                        assert_eq!(
+                            bindings,
+                            &vec![("whole".to_string(), MirType::Int, AccessPath::Root)]
+                        );
+                    }
+                    other => panic!("Expected Leaf for arm 0, got {:?}", other),
                 }
             }
             other => panic!("Expected Test, got {:?}", other),

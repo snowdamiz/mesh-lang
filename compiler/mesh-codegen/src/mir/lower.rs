@@ -172,6 +172,66 @@ fn mangle_trait_method(
 ///
 /// Replaces `Ty::Con("T")` with the corresponding concrete type from the map.
 /// Recursively handles `Ty::App`, `Ty::Fun`, and `Ty::Tuple`.
+/// The base name of a sum type, with any instantiation suffix (`Tree_Int`
+/// is `Tree`) removed: the layout code keys generic instances by base name.
+fn sum_type_base(name: &str) -> &str {
+    name.split('_').next().unwrap_or(name)
+}
+
+/// For every sum type, the sum types it reaches through payloads held by
+/// value (directly, or through such payloads of those types). A payload
+/// whose type reaches back to the owner would need the owner's layout inside
+/// its own; it is stored boxed instead, which is what makes a self- or
+/// mutually-recursive type finite.
+fn sum_type_reach(registry: &mesh_typeck::TypeRegistry) -> HashMap<String, HashSet<String>> {
+    let direct = |ty: &Ty| -> Option<String> {
+        let name = match ty {
+            Ty::Con(tc) => &tc.name,
+            Ty::App(con, _) => match con.as_ref() {
+                Ty::Con(tc) => &tc.name,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        registry
+            .sum_type_defs
+            .contains_key(name)
+            .then(|| name.clone())
+    };
+    let mut reach: HashMap<String, HashSet<String>> = registry
+        .sum_type_defs
+        .iter()
+        .map(|(name, info)| {
+            let targets = info
+                .variants
+                .iter()
+                .flat_map(|v| v.fields.iter())
+                .filter_map(|f| match f {
+                    mesh_typeck::VariantFieldInfo::Positional(ty)
+                    | mesh_typeck::VariantFieldInfo::Named(_, ty) => direct(ty),
+                })
+                .collect();
+            (name.clone(), targets)
+        })
+        .collect();
+    loop {
+        let mut grew = false;
+        for name in registry.sum_type_defs.keys() {
+            let closure: HashSet<String> = reach[name]
+                .iter()
+                .flat_map(|target| reach.get(target).into_iter().flatten().cloned())
+                .collect();
+            let set = reach.get_mut(name).unwrap();
+            for target in closure {
+                grew |= set.insert(target);
+            }
+        }
+        if !grew {
+            return reach;
+        }
+    }
+}
+
 fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
     match ty {
         Ty::Con(con) => {
@@ -261,6 +321,9 @@ struct Lowerer<'a> {
     spec_types: FxHashMap<TextRange, Ty>,
     /// Type registry for struct/sum type lookups.
     registry: &'a mesh_typeck::TypeRegistry,
+    /// Which sum types each sum type reaches through by-value payloads; a
+    /// payload naming a type on a cycle with its owner is stored boxed.
+    sum_reach: HashMap<String, HashSet<String>>,
     /// Trait registry for trait method dispatch resolution.
     trait_registry: &'a TraitRegistry,
     /// Default method body text ranges from interface definitions.
@@ -298,6 +361,9 @@ struct Lowerer<'a> {
     /// Prevents duplicate generation when the same generic struct is instantiated
     /// multiple times (e.g., Box<Int> used in multiple places).
     monomorphized_trait_fns: HashSet<String>,
+    /// Let-bound polymorphic closures: for each name, the compiled copies
+    /// keyed by the use type they were specialized for (`poly_closure_specs`).
+    poly_closure_specs: HashMap<String, Vec<(Ty, String)>>,
     /// User-defined module namespaces for qualified access (Phase 39).
     /// Maps module namespace name (e.g., "Math") to list of exported function names.
     user_modules: HashMap<String, Vec<String>>,
@@ -584,6 +650,7 @@ impl<'a> Lowerer<'a> {
             types: &typeck.types,
             spec_types: FxHashMap::default(),
             registry: &typeck.type_registry,
+            sum_reach: sum_type_reach(&typeck.type_registry),
             trait_registry: &typeck.trait_registry,
             default_method_bodies: &typeck.default_method_bodies,
             parse,
@@ -604,6 +671,7 @@ impl<'a> Lowerer<'a> {
             mono_depth: 0,
             max_mono_depth: 64,
             monomorphized_trait_fns: HashSet::new(),
+            poly_closure_specs: HashMap::new(),
             user_modules: typeck
                 .qualified_modules
                 .iter()
@@ -1794,46 +1862,45 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn mir_type_specialization_component(ty: &MirType) -> String {
+    /// A name component for a concrete source type. Distinct source types must
+    /// give distinct components: `List<Int>` and `List<String>` share the MIR
+    /// type `Ptr`, yet each specialization dispatches its own methods.
+    fn ty_specialization_component(ty: &Ty) -> String {
+        let sanitize = |name: &str| {
+            name.chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect::<String>()
+        };
         match ty {
-            MirType::Int => "Int".to_string(),
-            MirType::Float => "Float".to_string(),
-            MirType::Bool => "Bool".to_string(),
-            MirType::String => "String".to_string(),
-            MirType::Unit => "Unit".to_string(),
-            MirType::Ptr => "Ptr".to_string(),
-            MirType::Never => "Never".to_string(),
-            MirType::Struct(name) | MirType::SumType(name) => name.clone(),
-            MirType::Tuple(elems) => format!(
-                "Tuple_{}",
-                elems
-                    .iter()
-                    .map(Self::mir_type_specialization_component)
+            Ty::Con(tc) => sanitize(&tc.name),
+            Ty::App(con, args) => format!(
+                "{}_of_{}_end",
+                Self::ty_specialization_component(con),
+                args.iter()
+                    .map(Self::ty_specialization_component)
                     .collect::<Vec<_>>()
                     .join("_")
             ),
-            MirType::FnPtr(params, ret) => format!(
-                "Fn_{}_to_{}",
+            Ty::Tuple(elems) => format!(
+                "Tuple{}_{}_end",
+                elems.len(),
+                elems
+                    .iter()
+                    .map(Self::ty_specialization_component)
+                    .collect::<Vec<_>>()
+                    .join("_")
+            ),
+            Ty::Fun(params, ret) => format!(
+                "Fun_{}_to_{}_end",
                 params
                     .iter()
-                    .map(Self::mir_type_specialization_component)
+                    .map(Self::ty_specialization_component)
                     .collect::<Vec<_>>()
                     .join("_"),
-                Self::mir_type_specialization_component(ret)
+                Self::ty_specialization_component(ret)
             ),
-            MirType::Closure(params, ret) => format!(
-                "Closure_{}_to_{}",
-                params
-                    .iter()
-                    .map(Self::mir_type_specialization_component)
-                    .collect::<Vec<_>>()
-                    .join("_"),
-                Self::mir_type_specialization_component(ret)
-            ),
-            MirType::Pid(None) => "Pid".to_string(),
-            MirType::Pid(Some(msg_ty)) => {
-                format!("Pid_{}", Self::mir_type_specialization_component(msg_ty))
-            }
+            Ty::Var(v) => format!("Var{}", v.0),
+            Ty::Never => "Never".to_string(),
         }
     }
 
@@ -1844,14 +1911,10 @@ impl<'a> Lowerer<'a> {
 
         let mut parts: Vec<String> = params
             .iter()
-            .map(|param_ty| {
-                let mir_ty = resolve_type(param_ty, self.registry);
-                Self::mir_type_specialization_component(&mir_ty)
-            })
+            .map(Self::ty_specialization_component)
             .collect();
-        let ret_mir_ty = resolve_type(ret, self.registry);
         parts.push("ret".to_string());
-        parts.push(Self::mir_type_specialization_component(&ret_mir_ty));
+        parts.push(Self::ty_specialization_component(ret));
         format!("{}__spec__{}", base_name, parts.join("__"))
     }
 
@@ -5360,6 +5423,24 @@ impl<'a> Lowerer<'a> {
 
         let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
 
+        // The body was type-checked once with `self :: Self`; every type
+        // recorded inside it is re-read with `Self` as this implementing type,
+        // the way a generic function's body is specialized per instantiation.
+        let self_ty = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
+        let substitutions: HashMap<String, &Ty> = [("Self".to_string(), &self_ty)].into();
+        let method_range = interface_method.syntax().text_range();
+        let specialized: FxHashMap<TextRange, Ty> = self
+            .types
+            .iter()
+            .filter(|(range, _)| method_range.contains_range(**range))
+            .map(|(range, ty)| (*range, substitute_type_params(ty, &substitutions)))
+            .collect();
+        let outer_spec_types = std::mem::replace(&mut self.spec_types, specialized);
+        let (checked_params, checked_return) = match self.get_ty(method_range).cloned() {
+            Some(Ty::Fun(params, ret)) => (params, Some(*ret)),
+            _ => (Vec::new(), None),
+        };
+
         // Build parameters: detect self via SELF_KW, bind to concrete type.
         let mut params = Vec::new();
         self.push_scope();
@@ -5387,7 +5468,11 @@ impl<'a> Lowerer<'a> {
                         self.registry,
                     )
                 } else {
-                    self.resolve_range(param.syntax().text_range())
+                    // The checked signature (with `Self` already this type).
+                    checked_params
+                        .get(params.len())
+                        .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
+                        .unwrap_or_else(|| self.resolve_range(param.syntax().text_range()))
                 };
 
                 self.insert_var(param_name.clone(), mir_ty.clone());
@@ -5395,12 +5480,9 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Return type: use range-based lookup or fall back to Unit.
-        let return_type = if let Some(ann) = interface_method.return_type() {
-            self.resolve_range(ann.syntax().text_range())
-        } else {
-            MirType::Unit
-        };
+        let return_type = checked_return
+            .map(|ty| runtime_value_type(resolve_type(&ty, self.registry)))
+            .unwrap_or(MirType::Unit);
 
         // Lower the default body.
         self.mono_depth += 1;
@@ -5419,6 +5501,7 @@ impl<'a> Lowerer<'a> {
         self.mono_depth -= 1;
 
         self.pop_scope();
+        self.spec_types = outer_spec_types;
 
         // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
         let has_tail_calls = rewrite_tail_calls(&mut body, &mangled);
@@ -5910,7 +5993,13 @@ impl<'a> Lowerer<'a> {
                 self.generate_debug_inspect_struct(&name, &fields);
             }
             if derive_all || derive_list.iter().any(|t| t == "Eq") {
-                self.generate_eq_struct(&name, &fields);
+                let typed_fields = self
+                    .registry
+                    .struct_defs
+                    .get(&name)
+                    .map(|info| info.fields.clone())
+                    .unwrap_or_default();
+                self.generate_eq_struct_typed(&name, &typed_fields);
             }
             if derive_all || derive_list.iter().any(|t| t == "Ord") {
                 self.generate_ord_struct(&name, &fields);
@@ -6027,13 +6116,14 @@ impl<'a> Lowerer<'a> {
             .collect();
 
         // Substitute generic params with concrete types in the field list.
-        let fields: Vec<(String, MirType)> = struct_info
+        let typed_fields: Vec<(String, Ty)> = struct_info
             .fields
             .iter()
-            .map(|(fname, fty)| {
-                let concrete_ty = substitute_type_params(fty, &subst);
-                (fname.clone(), resolve_type(&concrete_ty, self.registry))
-            })
+            .map(|(fname, fty)| (fname.clone(), substitute_type_params(fty, &subst)))
+            .collect();
+        let fields: Vec<(String, MirType)> = typed_fields
+            .iter()
+            .map(|(fname, fty)| (fname.clone(), resolve_type(fty, self.registry)))
             .collect();
 
         // Check which traits are registered via the trait registry.
@@ -6051,7 +6141,7 @@ impl<'a> Lowerer<'a> {
             self.generate_debug_inspect_struct_with_display_name(&mangled, base_name, &fields);
         }
         if has_eq {
-            self.generate_eq_struct(&mangled, &fields);
+            self.generate_eq_struct_typed(&mangled, &typed_fields);
         }
         if has_ord {
             self.generate_ord_struct(&mangled, &fields);
@@ -6084,7 +6174,10 @@ impl<'a> Lowerer<'a> {
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<unnamed>".to_string());
 
-        // Look up from type registry for accurate variant info.
+        // Look up from type registry for accurate variant info. The derived
+        // methods see every field's own type; the layout stores a recursive
+        // payload (a variant holding its own type) as a pointer, as it stores
+        // a generic payload, and pattern access reads it back through the box.
         let variants: Vec<MirVariantDef> =
             if let Some(info) = self.registry.sum_type_defs.get(&name) {
                 info.variants
@@ -6112,6 +6205,22 @@ impl<'a> Lowerer<'a> {
             } else {
                 Vec::new()
             };
+        let storage_variants: Vec<MirVariantDef> = variants
+            .iter()
+            .map(|v| MirVariantDef {
+                name: v.name.clone(),
+                fields: v
+                    .fields
+                    .iter()
+                    .map(|field| match field {
+                        MirType::SumType(inner) if self.boxed_payload(&name, inner) => MirType::Ptr,
+                        MirType::Tuple(_) => MirType::Ptr,
+                        other => other.clone(),
+                    })
+                    .collect(),
+                tag: v.tag,
+            })
+            .collect();
 
         // Conditional MIR generation based on deriving clause.
         // No deriving clause = backward compat (generate all default trait functions).
@@ -6119,11 +6228,35 @@ impl<'a> Lowerer<'a> {
         let derive_list = sum_def.deriving_traits();
         let derive_all = !has_deriving;
 
+        // The source field types: Eq and Display compare and print each
+        // payload by its own type.
+        let typed_variants: Vec<(String, Vec<Ty>)> = self
+            .registry
+            .sum_type_defs
+            .get(&name)
+            .map(|info| {
+                info.variants
+                    .iter()
+                    .map(|v| {
+                        let fields = v
+                            .fields
+                            .iter()
+                            .map(|f| match f {
+                                mesh_typeck::VariantFieldInfo::Positional(ty)
+                                | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty.clone(),
+                            })
+                            .collect();
+                        (v.name.clone(), fields)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         if derive_all || derive_list.iter().any(|t| t == "Debug") {
             self.generate_debug_inspect_sum_type(&name, &variants);
         }
         if derive_all || derive_list.iter().any(|t| t == "Eq") {
-            self.generate_eq_sum(&name, &variants);
+            self.generate_eq_sum_typed(&name, &typed_variants);
         }
         if derive_all || derive_list.iter().any(|t| t == "Ord") {
             self.generate_ord_sum(&name, &variants);
@@ -6131,7 +6264,7 @@ impl<'a> Lowerer<'a> {
         }
         // Display: only via explicit deriving(Display), never auto-derived
         if derive_list.iter().any(|t| t == "Display") {
-            self.generate_display_sum_type(&name, &variants);
+            self.generate_display_sum_typed(&name, &name, &typed_variants, false);
         }
         // Hash: only via explicit deriving(Hash) for sum types
         if has_deriving && derive_list.iter().any(|t| t == "Hash") {
@@ -6144,7 +6277,10 @@ impl<'a> Lowerer<'a> {
             self.generate_from_json_string_wrapper(&name);
         }
 
-        self.sum_types.push(MirSumTypeDef { name, variants });
+        self.sum_types.push(MirSumTypeDef {
+            name,
+            variants: storage_variants,
+        });
     }
 
     // ── Debug inspect generation ────────────────────────────────────
@@ -6265,11 +6401,10 @@ impl<'a> Lowerer<'a> {
         let mangled = format!("Debug__inspect__{}", name);
         let sum_ty = MirType::SumType(name.to_string());
 
-        // For sum types, generate a match on the tag to return the variant name.
-        // This produces a MIR Match expression over integer tag values.
+        // For sum types, match each variant (a constructor pattern, as the
+        // other derived methods do) and return its name.
         let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
 
-        // Build match arms: each variant tag -> string with variant name.
         let arms: Vec<MirMatchArm> = variants
             .iter()
             .map(|v| {
@@ -6279,7 +6414,12 @@ impl<'a> Lowerer<'a> {
                     format!("{}(...)", v.name)
                 };
                 MirMatchArm {
-                    pattern: MirPattern::Literal(MirLiteral::Int(v.tag as i64)),
+                    pattern: MirPattern::Constructor {
+                        type_name: name.to_string(),
+                        variant: v.name.clone(),
+                        fields: vec![MirPattern::Wildcard; v.fields.len()],
+                        bindings: vec![],
+                    },
                     body: MirExpr::StringLit(label, MirType::String),
                     guard: None,
                 }
@@ -6314,93 +6454,6 @@ impl<'a> Lowerer<'a> {
     }
 
     // ── Eq/Ord generation for structs ────────────────────────────────
-
-    /// Generate a synthetic `Eq__eq__StructName` MIR function.
-    /// Performs field-by-field equality: all fields must be equal.
-    /// Empty structs always return true.
-    fn generate_eq_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
-        let mangled = format!("Eq__eq__{}", name);
-        let struct_ty = MirType::Struct(name.to_string());
-        let self_var = MirExpr::Var("self".to_string(), struct_ty.clone());
-        let other_var = MirExpr::Var("other".to_string(), struct_ty.clone());
-
-        let body = if fields.is_empty() {
-            // Empty structs are always equal.
-            MirExpr::BoolLit(true, MirType::Bool)
-        } else {
-            // Build: self.f1 == other.f1 && self.f2 == other.f2 && ...
-            let mut comparisons: Vec<MirExpr> = Vec::new();
-            for (field_name, field_ty) in fields {
-                let self_field = MirExpr::FieldAccess {
-                    object: Box::new(self_var.clone()),
-                    field: field_name.clone(),
-                    ty: field_ty.clone(),
-                };
-                let other_field = MirExpr::FieldAccess {
-                    object: Box::new(other_var.clone()),
-                    field: field_name.clone(),
-                    ty: field_ty.clone(),
-                };
-
-                let cmp = match field_ty {
-                    MirType::Struct(inner_name) => {
-                        // Recursive: call Eq__eq__InnerStruct
-                        let inner_mangled = format!("Eq__eq__{}", inner_name);
-                        let fn_ty = MirType::FnPtr(
-                            vec![field_ty.clone(), field_ty.clone()],
-                            Box::new(MirType::Bool),
-                        );
-                        MirExpr::Call {
-                            func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
-                            args: vec![self_field, other_field],
-                            ty: MirType::Bool,
-                        }
-                    }
-                    _ => {
-                        // Primitive/string: use BinOp::Eq directly
-                        MirExpr::BinOp {
-                            op: BinOp::Eq,
-                            lhs: Box::new(self_field),
-                            rhs: Box::new(other_field),
-                            ty: MirType::Bool,
-                        }
-                    }
-                };
-                comparisons.push(cmp);
-            }
-
-            // Chain with AND: c1 && c2 && c3 ...
-            let mut result = comparisons.remove(0);
-            for cmp in comparisons {
-                result = MirExpr::BinOp {
-                    op: BinOp::And,
-                    lhs: Box::new(result),
-                    rhs: Box::new(cmp),
-                    ty: MirType::Bool,
-                };
-            }
-            result
-        };
-
-        let func = MirFunction {
-            name: mangled.clone(),
-            params: vec![
-                ("self".to_string(), struct_ty.clone()),
-                ("other".to_string(), struct_ty.clone()),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        };
-
-        self.functions.push(func);
-        self.known_functions.insert(
-            mangled,
-            MirType::FnPtr(vec![struct_ty.clone(), struct_ty], Box::new(MirType::Bool)),
-        );
-    }
 
     /// Generate a synthetic `Ord__lt__StructName` MIR function.
     /// Performs lexicographic less-than comparison over fields.
@@ -6537,160 +6590,6 @@ impl<'a> Lowerer<'a> {
     }
 
     // ── Eq/Ord generation for sum types ─────────────────────────────
-
-    /// Generate a synthetic `Eq__eq__SumTypeName` MIR function.
-    /// Compares variant tags first; if same variant, compares payload fields.
-    /// Sum types with no variants always return true.
-    fn generate_eq_sum(&mut self, name: &str, variants: &[MirVariantDef]) {
-        let mangled = format!("Eq__eq__{}", name);
-        let sum_ty = MirType::SumType(name.to_string());
-        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
-        let other_var = MirExpr::Var("other".to_string(), sum_ty.clone());
-
-        let body = if variants.is_empty() {
-            // No variants: always equal.
-            MirExpr::BoolLit(true, MirType::Bool)
-        } else {
-            // Build outer Match on self, inner Match on other per variant.
-            let outer_arms: Vec<MirMatchArm> = variants
-                .iter()
-                .map(|v| {
-                    // Bindings for self's fields: self_0, self_1, ...
-                    let self_fields: Vec<MirPattern> = v
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ft)| MirPattern::Var(format!("self_{}", i), ft.clone()))
-                        .collect();
-                    let self_bindings: Vec<(String, MirType)> = v
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ft)| (format!("self_{}", i), ft.clone()))
-                        .collect();
-
-                    // Inner match on other for same variant
-                    let other_fields: Vec<MirPattern> = v
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ft)| MirPattern::Var(format!("other_{}", i), ft.clone()))
-                        .collect();
-                    let other_bindings: Vec<(String, MirType)> = v
-                        .fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ft)| (format!("other_{}", i), ft.clone()))
-                        .collect();
-
-                    // Build field-by-field equality for this variant's payload
-                    let fields_eq = if v.fields.is_empty() {
-                        // No payload: same variant = equal
-                        MirExpr::BoolLit(true, MirType::Bool)
-                    } else {
-                        let mut comparisons: Vec<MirExpr> = Vec::new();
-                        for (i, ft) in v.fields.iter().enumerate() {
-                            let self_f = MirExpr::Var(format!("self_{}", i), ft.clone());
-                            let other_f = MirExpr::Var(format!("other_{}", i), ft.clone());
-
-                            let cmp = match ft {
-                                MirType::Struct(inner_name) | MirType::SumType(inner_name) => {
-                                    let inner_mangled = format!("Eq__eq__{}", inner_name);
-                                    let fn_ty = MirType::FnPtr(
-                                        vec![ft.clone(), ft.clone()],
-                                        Box::new(MirType::Bool),
-                                    );
-                                    MirExpr::Call {
-                                        func: Box::new(MirExpr::Var(inner_mangled, fn_ty)),
-                                        args: vec![self_f, other_f],
-                                        ty: MirType::Bool,
-                                    }
-                                }
-                                _ => MirExpr::BinOp {
-                                    op: BinOp::Eq,
-                                    lhs: Box::new(self_f),
-                                    rhs: Box::new(other_f),
-                                    ty: MirType::Bool,
-                                },
-                            };
-                            comparisons.push(cmp);
-                        }
-
-                        // Chain with AND
-                        let mut result = comparisons.remove(0);
-                        for cmp in comparisons {
-                            result = MirExpr::BinOp {
-                                op: BinOp::And,
-                                lhs: Box::new(result),
-                                rhs: Box::new(cmp),
-                                ty: MirType::Bool,
-                            };
-                        }
-                        result
-                    };
-
-                    // Inner match: same variant -> compare fields, any other -> false
-                    let inner_match = MirExpr::Match {
-                        scrutinee: Box::new(other_var.clone()),
-                        arms: vec![
-                            MirMatchArm {
-                                pattern: MirPattern::Constructor {
-                                    type_name: name.to_string(),
-                                    variant: v.name.clone(),
-                                    fields: other_fields,
-                                    bindings: other_bindings,
-                                },
-                                body: fields_eq,
-                                guard: None,
-                            },
-                            MirMatchArm {
-                                pattern: MirPattern::Wildcard,
-                                body: MirExpr::BoolLit(false, MirType::Bool),
-                                guard: None,
-                            },
-                        ],
-                        ty: MirType::Bool,
-                    };
-
-                    MirMatchArm {
-                        pattern: MirPattern::Constructor {
-                            type_name: name.to_string(),
-                            variant: v.name.clone(),
-                            fields: self_fields,
-                            bindings: self_bindings,
-                        },
-                        body: inner_match,
-                        guard: None,
-                    }
-                })
-                .collect();
-
-            MirExpr::Match {
-                scrutinee: Box::new(self_var),
-                arms: outer_arms,
-                ty: MirType::Bool,
-            }
-        };
-
-        let func = MirFunction {
-            name: mangled.clone(),
-            params: vec![
-                ("self".to_string(), sum_ty.clone()),
-                ("other".to_string(), sum_ty.clone()),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        };
-
-        self.functions.push(func);
-        self.known_functions.insert(
-            mangled,
-            MirType::FnPtr(vec![sum_ty.clone(), sum_ty], Box::new(MirType::Bool)),
-        );
-    }
 
     /// Generate a synthetic `Ord__lt__SumTypeName` MIR function.
     /// Compares variant tags first (earlier variants are "less than" later ones).
@@ -9355,138 +9254,6 @@ impl<'a> Lowerer<'a> {
         );
     }
 
-    /// Generate a synthetic `Display__to_string__SumTypeName` MIR function.
-    /// Uses Match on self with Constructor patterns to produce variant-aware output.
-    /// Nullary variants: just the variant name (e.g. "Dot").
-    /// Variants with fields: "VariantName(val0, val1)" style.
-    fn generate_display_sum_type(&mut self, name: &str, variants: &[MirVariantDef]) {
-        let mangled = format!("Display__to_string__{}", name);
-        let sum_ty = MirType::SumType(name.to_string());
-        let self_var = MirExpr::Var("self".to_string(), sum_ty.clone());
-        let concat_ty = MirType::FnPtr(
-            vec![MirType::String, MirType::String],
-            Box::new(MirType::String),
-        );
-
-        let body = if variants.is_empty() {
-            MirExpr::StringLit(format!("<{}>", name), MirType::String)
-        } else {
-            let arms: Vec<MirMatchArm> = variants
-                .iter()
-                .map(|v| {
-                    if v.fields.is_empty() {
-                        // Nullary variant: just return variant name
-                        MirMatchArm {
-                            pattern: MirPattern::Constructor {
-                                type_name: name.to_string(),
-                                variant: v.name.clone(),
-                                fields: vec![],
-                                bindings: vec![],
-                            },
-                            body: MirExpr::StringLit(v.name.clone(), MirType::String),
-                            guard: None,
-                        }
-                    } else {
-                        // Variant with fields: bind as field_0, field_1, ...
-                        let field_pats: Vec<MirPattern> = v
-                            .fields
-                            .iter()
-                            .enumerate()
-                            .map(|(i, ft)| MirPattern::Var(format!("field_{}", i), ft.clone()))
-                            .collect();
-                        let bindings: Vec<(String, MirType)> = v
-                            .fields
-                            .iter()
-                            .enumerate()
-                            .map(|(i, ft)| (format!("field_{}", i), ft.clone()))
-                            .collect();
-
-                        // Build "VariantName(val0, val1)"
-                        let mut result =
-                            MirExpr::StringLit(format!("{}(", v.name), MirType::String);
-
-                        for (i, ft) in v.fields.iter().enumerate() {
-                            let is_last = i == v.fields.len() - 1;
-                            let field_var = MirExpr::Var(format!("field_{}", i), ft.clone());
-                            let field_str = self.wrap_to_string(field_var, None);
-
-                            // Append field value
-                            result = MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_string_concat".to_string(),
-                                    concat_ty.clone(),
-                                )),
-                                args: vec![result, field_str],
-                                ty: MirType::String,
-                            };
-
-                            // Append separator for non-last fields
-                            if !is_last {
-                                result = MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_string_concat".to_string(),
-                                        concat_ty.clone(),
-                                    )),
-                                    args: vec![
-                                        result,
-                                        MirExpr::StringLit(", ".to_string(), MirType::String),
-                                    ],
-                                    ty: MirType::String,
-                                };
-                            }
-                        }
-
-                        // Append closing ")"
-                        result = MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                "mesh_string_concat".to_string(),
-                                concat_ty.clone(),
-                            )),
-                            args: vec![
-                                result,
-                                MirExpr::StringLit(")".to_string(), MirType::String),
-                            ],
-                            ty: MirType::String,
-                        };
-
-                        MirMatchArm {
-                            pattern: MirPattern::Constructor {
-                                type_name: name.to_string(),
-                                variant: v.name.clone(),
-                                fields: field_pats,
-                                bindings,
-                            },
-                            body: result,
-                            guard: None,
-                        }
-                    }
-                })
-                .collect();
-
-            MirExpr::Match {
-                scrutinee: Box::new(self_var),
-                arms,
-                ty: MirType::String,
-            }
-        };
-
-        let func = MirFunction {
-            name: mangled.clone(),
-            params: vec![("self".to_string(), sum_ty.clone())],
-            return_type: MirType::String,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        };
-
-        self.functions.push(func);
-        self.known_functions.insert(
-            mangled,
-            MirType::FnPtr(vec![sum_ty], Box::new(MirType::String)),
-        );
-    }
-
     /// Emit a hash call for a value of the given MIR type.
     /// Returns a MirExpr that evaluates to i64 hash.
     fn emit_hash_for_type(&self, expr: MirExpr, ty: &MirType) -> MirExpr {
@@ -9673,6 +9440,35 @@ impl<'a> Lowerer<'a> {
                             .as_ref()
                             .and_then(|init| self.get_ty(init.syntax().text_range()))
                             .cloned();
+                        // A polymorphic closure gets one compiled copy per
+                        // concrete type it is used at, bound here so its
+                        // captures are the values in scope at the `let`.
+                        if let (Some(Expr::ClosureExpr(closure)), Some(generic), Some(name)) = (
+                            initializer.as_ref(),
+                            initializer_ty.as_ref(),
+                            let_.name().and_then(|name| name.text()),
+                        ) {
+                            if Self::ty_contains_var(generic) {
+                                for (use_ty, spec_name) in
+                                    self.poly_closure_uses(block, let_, &name)
+                                {
+                                    let value =
+                                        self.lower_closure_specialized(closure, generic, &use_ty);
+                                    let ty = value.ty().clone();
+                                    self.insert_var(spec_name.clone(), ty.clone());
+                                    self.poly_closure_specs
+                                        .entry(name.clone())
+                                        .or_default()
+                                        .push((use_ty, spec_name.clone()));
+                                    parts.push(Part::Binding {
+                                        name: spec_name,
+                                        ty,
+                                        value,
+                                        resource_ty: None,
+                                    });
+                                }
+                            }
+                        }
                         let value = initializer
                             .map(|init| self.lower_expr(&init))
                             .unwrap_or(MirExpr::Unit);
@@ -9840,7 +9636,8 @@ impl<'a> Lowerer<'a> {
         let MirExpr::Var(name, _) = func.as_ref() else {
             return MirExpr::Call { func, args, ty };
         };
-        let Some(callback_index) = uniform_callback_index(name) else {
+        let name = name.clone();
+        let Some(callback_index) = uniform_callback_index(&name) else {
             return MirExpr::Call { func, args, ty };
         };
         let Some(callback) = args.get(callback_index).cloned() else {
@@ -9922,14 +9719,35 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Int),
             ),
         };
-        args[callback_index] = match self.job_result_shape(name, &return_type, range) {
+        args[callback_index] = match self.job_result_shape(&name, &return_type, range) {
             Some(shape) => MirExpr::Shaped {
                 value: Box::new(adapter),
                 shape,
             },
             None => adapter,
         };
-        MirExpr::Call { func, args, ty }
+        let call = MirExpr::Call {
+            func,
+            args,
+            ty: ty.clone(),
+        };
+        // `List.find` hands back the element word as the `Some` payload; a
+        // scalar payload is read through a pointer, so it is boxed here.
+        let scalar_element = matches!(
+            param_types.first(),
+            Some(MirType::Int | MirType::Float | MirType::Bool)
+        );
+        if matches!(name.as_str(), "mesh_list_find" | "mesh_iter_find") && scalar_element {
+            return MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "mesh_option_box_scalar".to_string(),
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
+                )),
+                args: vec![call],
+                ty,
+            };
+        }
+        call
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> MirExpr {
@@ -10048,6 +9866,77 @@ impl<'a> Lowerer<'a> {
 
     // ── Name reference lowering ──────────────────────────────────────
 
+    /// The concrete function types the let-bound closure `name` is used at
+    /// within `block` after its `let`, each with the variable name that will
+    /// hold that specialization.
+    fn poly_closure_uses(&self, block: &Block, let_: &LetBinding, name: &str) -> Vec<(Ty, String)> {
+        let after = let_.syntax().text_range().end();
+        let mut uses: Vec<(Ty, String)> = Vec::new();
+        for node in block.syntax().descendants() {
+            let Some(name_ref) = NameRef::cast(node) else {
+                continue;
+            };
+            if name_ref.text().as_deref() != Some(name)
+                || name_ref.syntax().text_range().start() < after
+            {
+                continue;
+            }
+            let Some(use_ty) = self.get_ty(name_ref.syntax().text_range()) else {
+                continue;
+            };
+            if !matches!(use_ty, Ty::Fun(..)) || Self::ty_contains_var(use_ty) {
+                continue;
+            }
+            if uses.iter().any(|(ty, _)| ty == use_ty) {
+                continue;
+            }
+            let spec_name = format!("{name}__spec_{}", Self::ty_specialization_component(use_ty));
+            uses.push((use_ty.clone(), spec_name));
+        }
+        uses
+    }
+
+    /// Lower `closure` with the type variables of its `generic` type bound
+    /// as in `concrete`, the type it is used at.
+    fn lower_closure_specialized(
+        &mut self,
+        closure: &ClosureExpr,
+        generic: &Ty,
+        concrete: &Ty,
+    ) -> MirExpr {
+        let mut bindings = Vec::new();
+        bind_type_vars(generic, concrete, &mut bindings);
+        let closure_range = closure.syntax().text_range();
+        let overlay: Vec<(TextRange, Ty)> = self
+            .types
+            .keys()
+            .filter(|range| closure_range.contains_range(**range))
+            .filter_map(|range| {
+                let effective = self.get_ty(*range)?;
+                Self::ty_contains_var(effective)
+                    .then(|| (*range, apply_type_vars(effective, &bindings)))
+            })
+            .collect();
+        let saved = self.spec_types.clone();
+        self.spec_types.extend(overlay);
+        let value = self.lower_closure_expr(closure);
+        self.spec_types = saved;
+        value
+    }
+
+    /// The specialization of the let-bound closure `name` for the type it
+    /// is used at in `range`, when one was compiled and is in scope.
+    fn poly_closure_spec_for(&self, name: &str, range: TextRange) -> Option<MirExpr> {
+        let use_ty = self.get_ty(range)?;
+        let (_, spec_name) = self
+            .poly_closure_specs
+            .get(name)?
+            .iter()
+            .find(|(ty, _)| ty == use_ty)?;
+        let ty = self.lookup_non_global_var(spec_name)?;
+        Some(MirExpr::Var(spec_name.clone(), ty))
+    }
+
     fn lower_local_ref(&self, name: String, ty: MirType, range: TextRange) -> MirExpr {
         let value = MirExpr::Var(name, ty.clone());
         if self
@@ -10095,6 +9984,9 @@ impl<'a> Lowerer<'a> {
         // `node_name`) shadow top-level function names without breaking normal
         // function references registered in the root scope.
         if let Some(scope_ty) = self.lookup_non_global_var(&name) {
+            if let Some(spec) = self.poly_closure_spec_for(&name, range) {
+                return spec;
+            }
             return self.lower_local_ref(name, scope_ty, range);
         }
 
@@ -10170,147 +10062,84 @@ impl<'a> Lowerer<'a> {
 
         let ty = self.resolve_range(bin.syntax().text_range());
 
-        // Operator dispatch for user types: if the lhs is a struct or sum type
-        // with a trait impl for this operator, emit a trait method call instead
-        // of a hardware BinOp.
-        let lhs_ty = lhs.ty().clone();
-        let is_user_type = matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_));
-        if is_user_type {
-            // (trait_name, method_name, negate_result, swap_args)
-            let dispatch = match op {
-                BinOp::Add => Some(("Add", "add", false, false)),
-                BinOp::Sub => Some(("Sub", "sub", false, false)),
-                BinOp::Mul => Some(("Mul", "mul", false, false)),
-                BinOp::Div => Some(("Div", "div", false, false)),
-                BinOp::Mod => Some(("Mod", "mod", false, false)),
-                BinOp::Eq => Some(("Eq", "eq", false, false)),
-                BinOp::NotEq => Some(("Eq", "eq", true, false)), // negate eq
-                BinOp::Lt => Some(("Ord", "lt", false, false)),
-                BinOp::Gt => Some(("Ord", "lt", false, true)), // swap: b < a
-                BinOp::LtEq => Some(("Ord", "lt", true, true)), // negate(b < a)
-                BinOp::GtEq => Some(("Ord", "lt", true, false)), // negate(a < b)
-                _ => None,
-            };
-            if let Some((trait_name, method_name, negate, swap_args)) = dispatch {
-                let ty_for_lookup = mir_type_to_ty(&lhs_ty);
-                let type_name = mir_type_to_impl_name(&lhs_ty);
-                let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+        // `start..end` outside a `for` header is a Range value.
+        if bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT) {
+            return Self::call_named(
+                "mesh_range_new",
+                vec![MirType::Int, MirType::Int],
+                vec![lhs, rhs],
+                MirType::Ptr,
+            );
+        }
 
-                // Check trait registry first, then fall back to known_functions
-                // (for monomorphized generic struct trait functions like Eq__eq__Box_Int).
-                let has_impl = self.trait_registry.has_impl(trait_name, &ty_for_lookup)
-                    || self.known_functions.contains_key(&mangled);
-
-                if has_impl {
-                    let rhs_ty = rhs.ty().clone();
-                    // Comparison operators (Eq/Ord) return Bool; arithmetic
-                    // operators return the Output type from typeck (ty from
-                    // resolve_range).
-                    let result_ty = match op {
-                        BinOp::Eq
-                        | BinOp::NotEq
-                        | BinOp::Lt
-                        | BinOp::Gt
-                        | BinOp::LtEq
-                        | BinOp::GtEq => MirType::Bool,
-                        _ => ty.clone(),
-                    };
-                    let fn_ty =
-                        MirType::FnPtr(vec![lhs_ty.clone(), rhs_ty], Box::new(result_ty.clone()));
-                    let (call_lhs, call_rhs) = if swap_args { (rhs, lhs) } else { (lhs, rhs) };
-                    let call = MirExpr::Call {
-                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                        args: vec![call_lhs, call_rhs],
-                        ty: result_ty,
-                    };
-                    if negate {
-                        return MirExpr::BinOp {
+        // Comparison is decided by the operand's source type: primitives by
+        // the hardware (and the string runtime), everything else by
+        // structure or by the type's own Eq/Ord (`eq_expr`, `cmp_fn`).
+        let lhs_source = bin
+            .lhs()
+            .and_then(|e| self.get_ty(e.syntax().text_range()).cloned());
+        let primitive = |ty: &Ty| matches!(ty, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Float" | "Bool" | "String"));
+        if let Some(source) = lhs_source.filter(|t| !matches!(t, Ty::Var(_)) && !primitive(t)) {
+            match op {
+                BinOp::Eq | BinOp::NotEq => {
+                    let equal = self.eq_expr(lhs, rhs, &source);
+                    return if op == BinOp::NotEq {
+                        MirExpr::BinOp {
                             op: BinOp::Eq,
-                            lhs: Box::new(call),
+                            lhs: Box::new(equal),
                             rhs: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
                             ty,
-                        };
+                        }
                     } else {
-                        return call;
-                    }
+                        equal
+                    };
                 }
+                BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                    let cmp = self.cmp_fn(&source);
+                    let param = self.binding_type(&source);
+                    let ordering = Self::call_named(
+                        &cmp,
+                        vec![param.clone(), param],
+                        vec![lhs, rhs],
+                        MirType::Int,
+                    );
+                    return MirExpr::BinOp {
+                        op,
+                        lhs: Box::new(ordering),
+                        rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
+                        ty,
+                    };
+                }
+                _ => {}
             }
         }
 
-        // List Eq/Ord dispatch: if lhs is Ptr and typeck type is List<T>,
-        // emit mesh_list_eq / mesh_list_compare with element callback.
-        if matches!(lhs_ty, MirType::Ptr) {
-            if let Some(lhs_ast) = bin.lhs() {
-                if let Some(lhs_typeck) = self.get_ty(lhs_ast.syntax().text_range()).cloned() {
-                    if let Some(elem_ty) = extract_list_elem_type(&lhs_typeck) {
-                        match op {
-                            BinOp::Eq | BinOp::NotEq => {
-                                let eq_callback = self.resolve_eq_callback(&elem_ty);
-                                let eq_callback_expr = MirExpr::Var(
-                                    eq_callback,
-                                    MirType::FnPtr(
-                                        vec![MirType::Int, MirType::Int],
-                                        Box::new(MirType::Bool),
-                                    ),
-                                );
-                                let call = MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_list_eq".to_string(),
-                                        MirType::FnPtr(
-                                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                                            Box::new(MirType::Bool),
-                                        ),
-                                    )),
-                                    args: vec![lhs, rhs, eq_callback_expr],
-                                    ty: MirType::Bool,
-                                };
-                                if op == BinOp::NotEq {
-                                    return MirExpr::BinOp {
-                                        op: BinOp::Eq,
-                                        lhs: Box::new(call),
-                                        rhs: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
-                                        ty,
-                                    };
-                                }
-                                return call;
-                            }
-                            BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
-                                let cmp_callback = self.resolve_compare_callback(&elem_ty);
-                                let cmp_callback_expr = MirExpr::Var(
-                                    cmp_callback,
-                                    MirType::FnPtr(
-                                        vec![MirType::Int, MirType::Int],
-                                        Box::new(MirType::Int),
-                                    ),
-                                );
-                                let compare_call = MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_list_compare".to_string(),
-                                        MirType::FnPtr(
-                                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                                            Box::new(MirType::Int),
-                                        ),
-                                    )),
-                                    args: vec![lhs, rhs, cmp_callback_expr],
-                                    ty: MirType::Int,
-                                };
-                                let compare_op = match op {
-                                    BinOp::Lt => BinOp::Lt,
-                                    BinOp::Gt => BinOp::Gt,
-                                    BinOp::LtEq => BinOp::LtEq,
-                                    BinOp::GtEq => BinOp::GtEq,
-                                    _ => unreachable!(),
-                                };
-                                return MirExpr::BinOp {
-                                    op: compare_op,
-                                    lhs: Box::new(compare_call),
-                                    rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
-                                    ty,
-                                };
-                            }
-                            _ => {}
-                        }
-                    }
+        // Arithmetic on user types dispatches to the type's operator impl.
+        let lhs_ty = lhs.ty().clone();
+        let is_user_type = matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_));
+        if is_user_type {
+            let dispatch = match op {
+                BinOp::Add => Some(("Add", "add")),
+                BinOp::Sub => Some(("Sub", "sub")),
+                BinOp::Mul => Some(("Mul", "mul")),
+                BinOp::Div => Some(("Div", "div")),
+                BinOp::Mod => Some(("Mod", "mod")),
+                _ => None,
+            };
+            if let Some((trait_name, method_name)) = dispatch {
+                let ty_for_lookup = mir_type_to_ty(&lhs_ty);
+                let type_name = mir_type_to_impl_name(&lhs_ty);
+                let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+                let has_impl = self.trait_registry.has_impl(trait_name, &ty_for_lookup)
+                    || self.known_functions.contains_key(&mangled);
+                if has_impl {
+                    let rhs_ty = rhs.ty().clone();
+                    let fn_ty = MirType::FnPtr(vec![lhs_ty.clone(), rhs_ty], Box::new(ty.clone()));
+                    return MirExpr::Call {
+                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                        args: vec![lhs, rhs],
+                        ty,
+                    };
                 }
             }
         }
@@ -10488,12 +10317,15 @@ impl<'a> Lowerer<'a> {
 
             // Defense-in-depth warning -- skip module-scoped helpers (Module__func),
             // compiler-generated service stubs (__service_*), and runtime intrinsics (mesh_*).
+            let type_name = mir_type_to_impl_name(first_arg_ty);
+            // A generic function's unspecialized body has no receiver type
+            // yet; only its specializations are called, so it is not a bug.
             if self.lookup_var(name).is_none()
                 && !self.known_functions.contains_key(name)
                 && !name.contains("__")
                 && !name.starts_with("mesh_")
+                && type_name != "Unknown"
             {
-                let type_name = mir_type_to_impl_name(first_arg_ty);
                 eprintln!(
                     "[mesh-codegen] warning: call to '{}' could not be resolved \
                      as a trait method for type '{}'. This may indicate a type checker bug.",
@@ -10588,6 +10420,39 @@ impl<'a> Lowerer<'a> {
                 if !is_module_or_special {
                     let method_name = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
 
+                    // `record.field(args)` where the field holds a function
+                    // value calls that value; no receiver is passed.
+                    let field_holds_function = fa
+                        .base()
+                        .and_then(|base| self.get_ty(base.syntax().text_range()))
+                        .and_then(|ty| match ty {
+                            Ty::App(con, _) => match con.as_ref() {
+                                Ty::Con(tc) => Some(tc.name.clone()),
+                                _ => None,
+                            },
+                            Ty::Con(tc) => Some(tc.name.clone()),
+                            _ => None,
+                        })
+                        .and_then(|name| self.registry.struct_defs.get(&name))
+                        .is_some_and(|info| {
+                            info.fields.iter().any(|(field, ty)| {
+                                *field == method_name && matches!(ty, Ty::Fun(..))
+                            })
+                        });
+                    if field_holds_function {
+                        let func = self.lower_field_access(fa);
+                        let args = call
+                            .arg_list()
+                            .map(|list| list.args().map(|arg| self.lower_expr(&arg)).collect())
+                            .unwrap_or_default();
+                        let ty = self.resolve_range(call.syntax().text_range());
+                        return MirExpr::Call {
+                            func: Box::new(func),
+                            args,
+                            ty,
+                        };
+                    }
+
                     // Lower the receiver expression
                     let receiver = fa
                         .base()
@@ -10603,6 +10468,15 @@ impl<'a> Lowerer<'a> {
                     }
 
                     let ty = self.resolve_range(call.syntax().text_range());
+
+                    // An instantiated generic sum type (`Option<Int>`) gets
+                    // its trait functions on first use.
+                    let receiver_source = fa
+                        .base()
+                        .and_then(|base| self.get_ty(base.syntax().text_range()).cloned());
+                    if let Some(source) = &receiver_source {
+                        self.ensure_sum_instantiation_traits(source);
+                    }
 
                     // Route through the shared trait dispatch helper
                     let first_arg_ty = args[0].ty().clone();
@@ -10646,22 +10520,16 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
-                    // Collection Display dispatch for method calls
+                    // `to_string` / `inspect` on a value whose type, not a
+                    // nominal impl, decides how it prints.
                     if let MirExpr::Var(ref name, _) = callee {
                         if (name == "to_string" || name == "debug" || name == "inspect")
                             && args.len() == 1
-                            && matches!(args[0].ty(), MirType::Ptr)
                         {
-                            if let Some(base_expr) = fa.base() {
-                                if let Some(typeck_ty) =
-                                    self.get_ty(base_expr.syntax().text_range()).cloned()
-                                {
-                                    if let Some(collection_call) =
-                                        self.wrap_collection_to_string(&args[0], &typeck_ty)
-                                    {
-                                        return collection_call;
-                                    }
-                                }
+                            if let Some(shown) = receiver_source.as_ref().and_then(|ty| {
+                                self.display_by_type(&args[0], ty, name == "inspect")
+                            }) {
+                                return shown;
                             }
                         }
                     }
@@ -10732,10 +10600,9 @@ impl<'a> Lowerer<'a> {
                     "assert_eq" => {
                         let mut raw_args: Vec<MirExpr> = call
                             .arg_list()
-                            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+                            .map(|al| al.args().map(|a| self.lower_shown(&a)).collect())
                             .unwrap_or_default();
-                        // Both args must be strings (MirType::String or MirType::Ptr).
-                        // If they're non-string, try to convert.
+                        // Both sides are compared as `"#{value}"` would show them.
                         let lhs = if raw_args.is_empty() {
                             MirExpr::StringLit(String::new(), MirType::String)
                         } else {
@@ -10746,8 +10613,8 @@ impl<'a> Lowerer<'a> {
                         } else {
                             raw_args.remove(0)
                         };
-                        let lhs_str = self.coerce_to_string(lhs);
-                        let rhs_str = self.coerce_to_string(rhs);
+                        let lhs_str = lhs;
+                        let rhs_str = rhs;
                         let src_lit = MirExpr::StringLit("assert_eq".to_string(), MirType::String);
                         let empty_str = MirExpr::StringLit(String::new(), MirType::String);
                         let fn_ty = MirType::FnPtr(
@@ -10777,7 +10644,7 @@ impl<'a> Lowerer<'a> {
                     "assert_ne" => {
                         let mut raw_args: Vec<MirExpr> = call
                             .arg_list()
-                            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+                            .map(|al| al.args().map(|a| self.lower_shown(&a)).collect())
                             .unwrap_or_default();
                         let lhs = if raw_args.is_empty() {
                             MirExpr::StringLit(String::new(), MirType::String)
@@ -10789,8 +10656,8 @@ impl<'a> Lowerer<'a> {
                         } else {
                             raw_args.remove(0)
                         };
-                        let lhs_str = self.coerce_to_string(lhs);
-                        let rhs_str = self.coerce_to_string(rhs);
+                        let lhs_str = lhs;
+                        let rhs_str = rhs;
                         let src_lit = MirExpr::StringLit("assert_ne".to_string(), MirType::String);
                         let empty_str = MirExpr::StringLit(String::new(), MirType::String);
                         let fn_ty = MirType::FnPtr(
@@ -11505,6 +11372,26 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
+                    // Any other static interface method: `Type.method(...)` is the
+                    // impl's `Trait__method__Type` function.
+                    if self.registry.struct_defs.contains_key(&base_name)
+                        || self.registry.sum_type_defs.contains_key(&base_name)
+                    {
+                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                        let suffix = format!("__{}__{}", field, base_name);
+                        let found = self
+                            .known_functions
+                            .iter()
+                            .filter(|(fn_name, _)| {
+                                fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
+                            })
+                            .min_by(|a, b| a.0.cmp(b.0))
+                            .map(|(fn_name, fn_ty)| (fn_name.clone(), fn_ty.clone()));
+                        if let Some((fn_name, fn_ty)) = found {
+                            return MirExpr::Var(fn_name, fn_ty);
+                        }
+                    }
+
                     // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
                     // __field_types__ or __*_col__ (Schema metadata functions from deriving(Schema)).
                     // Mangled name: {Name}____{method} e.g. User____table__
@@ -11717,11 +11604,67 @@ impl<'a> Lowerer<'a> {
         self.lower_for_in_list(for_in, &Ty::int())
     }
 
+    /// The loop variable of a `for`: its name, or for a pattern binding a
+    /// synthetic name whose value the body destructures.
+    fn loop_var_name(&self, for_in: &ForInExpr) -> String {
+        if for_in.pattern().is_some() {
+            format!(
+                "__for_elem_{}",
+                u32::from(for_in.syntax().text_range().start())
+            )
+        } else {
+            for_in
+                .binding_name()
+                .and_then(|n| n.text())
+                .unwrap_or_else(|| "_".to_string())
+        }
+    }
+
+    /// Lower a loop's filter and body with the loop variable(s) in scope.
+    /// A pattern binding wraps both in a match on `elem` (the loop element,
+    /// of source type `elem_src`) that binds the pattern's names.
+    fn lower_loop_parts(
+        &mut self,
+        for_in: &ForInExpr,
+        elem: MirExpr,
+        elem_src: Option<&Ty>,
+    ) -> (Option<Box<MirExpr>>, MirExpr) {
+        let Some(pattern) = for_in.pattern() else {
+            let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
+            let body = for_in
+                .body()
+                .map(|b| self.lower_block(&b))
+                .unwrap_or(MirExpr::Unit);
+            return (filter, body);
+        };
+        let destructure = |lowerer: &mut Self, inner: MirExpr| {
+            let ty = inner.ty().clone();
+            MirExpr::Match {
+                scrutinee: Box::new(elem.clone()),
+                arms: vec![MirMatchArm {
+                    pattern: lowerer.lower_pattern_with_expected(&pattern, elem_src),
+                    guard: None,
+                    body: inner,
+                }],
+                ty,
+            }
+        };
+        self.push_scope();
+        let filter = for_in.filter().map(|f| {
+            let filter = self.lower_expr(&f);
+            Box::new(destructure(self, filter))
+        });
+        let body = for_in
+            .body()
+            .map(|b| self.lower_block(&b))
+            .unwrap_or(MirExpr::Unit);
+        let body = destructure(self, body);
+        self.pop_scope();
+        (filter, body)
+    }
+
     fn lower_for_in_iterator(&mut self, for_in: &ForInExpr, ty: &Ty, is_iterable: bool) -> MirExpr {
-        let var_name = for_in
-            .binding_name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
+        let var_name = self.loop_var_name(for_in);
 
         // Resolve the MIR type to get the impl name for mangling.
         let mir_ty = resolve_type(ty, self.registry);
@@ -11777,15 +11720,12 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(&elem_ty, self.registry);
+        let elem_mir_ty = runtime_value_type(resolve_type(&elem_ty, self.registry));
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
-        let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
-        let body = for_in
-            .body()
-            .map(|b| self.lower_block(&b))
-            .unwrap_or(MirExpr::Unit);
+        let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
+        let (filter, body) = self.lower_loop_parts(for_in, elem, Some(&elem_ty));
         let body_ty = body.ty().clone();
         self.pop_scope();
 
@@ -11803,10 +11743,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_for_in_range(&mut self, for_in: &ForInExpr, bin: &BinaryExpr) -> MirExpr {
-        let var_name = for_in
-            .binding_name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
+        let var_name = self.loop_var_name(for_in);
 
         let start = bin
             .lhs()
@@ -11819,11 +11756,8 @@ impl<'a> Lowerer<'a> {
 
         self.push_scope();
         self.insert_var(var_name.clone(), MirType::Int);
-        let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
-        let body = for_in
-            .body()
-            .map(|b| self.lower_block(&b))
-            .unwrap_or(MirExpr::Unit);
+        let elem = MirExpr::Var(var_name.clone(), MirType::Int);
+        let (filter, body) = self.lower_loop_parts(for_in, elem, Some(&Ty::int()));
         self.pop_scope();
 
         MirExpr::ForInRange {
@@ -11837,25 +11771,20 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_for_in_list(&mut self, for_in: &ForInExpr, elem_ty_src: &Ty) -> MirExpr {
-        let var_name = for_in
-            .binding_name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
+        let var_name = self.loop_var_name(for_in);
 
         let collection = for_in
             .iterable()
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(elem_ty_src, self.registry);
+        // A tuple element is a heap pointer, as every tuple value is.
+        let elem_mir_ty = runtime_value_type(resolve_type(elem_ty_src, self.registry));
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
-        let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
-        let body = for_in
-            .body()
-            .map(|b| self.lower_block(&b))
-            .unwrap_or(MirExpr::Unit);
+        let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
+        let (filter, body) = self.lower_loop_parts(for_in, elem, Some(elem_ty_src));
         let body_ty = body.ty().clone();
         self.pop_scope();
 
@@ -11887,6 +11816,9 @@ impl<'a> Lowerer<'a> {
                 .and_then(|n| n.text())
                 .unwrap_or_else(|| "_".to_string());
             (k, v)
+        } else if for_in.pattern().is_some() {
+            let base = self.loop_var_name(for_in);
+            (format!("{base}_key"), format!("{base}_val"))
         } else {
             let var_name = for_in
                 .binding_name()
@@ -11906,11 +11838,20 @@ impl<'a> Lowerer<'a> {
         self.push_scope();
         self.insert_var(key_var.clone(), key_mir_ty.clone());
         self.insert_var(val_var.clone(), val_mir_ty.clone());
-        let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
-        let body = for_in
-            .body()
-            .map(|b| self.lower_block(&b))
-            .unwrap_or(MirExpr::Unit);
+        // A pattern destructures the `(key, value)` pair.
+        let pair = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "__mesh_make_tuple".to_string(),
+                MirType::FnPtr(vec![MirType::Int; 2], Box::new(MirType::Ptr)),
+            )),
+            args: vec![
+                MirExpr::Var(key_var.clone(), key_mir_ty.clone()),
+                MirExpr::Var(val_var.clone(), val_mir_ty.clone()),
+            ],
+            ty: MirType::Ptr,
+        };
+        let pair_src = Ty::Tuple(vec![key_ty_src.clone(), val_ty_src.clone()]);
+        let (filter, body) = self.lower_loop_parts(for_in, pair, Some(&pair_src));
         let body_ty = body.ty().clone();
         self.pop_scope();
 
@@ -11928,25 +11869,19 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_for_in_set(&mut self, for_in: &ForInExpr, elem_ty_src: &Ty) -> MirExpr {
-        let var_name = for_in
-            .binding_name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
+        let var_name = self.loop_var_name(for_in);
 
         let collection = for_in
             .iterable()
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let elem_mir_ty = resolve_type(elem_ty_src, self.registry);
+        let elem_mir_ty = runtime_value_type(resolve_type(elem_ty_src, self.registry));
 
         self.push_scope();
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
-        let filter = for_in.filter().map(|f| Box::new(self.lower_expr(&f)));
-        let body = for_in
-            .body()
-            .map(|b| self.lower_block(&b))
-            .unwrap_or(MirExpr::Unit);
+        let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
+        let (filter, body) = self.lower_loop_parts(for_in, elem, Some(elem_ty_src));
         let body_ty = body.ty().clone();
         self.pop_scope();
 
@@ -12223,19 +12158,25 @@ impl<'a> Lowerer<'a> {
 
             Pattern::As(as_pat) => {
                 // Layered pattern: bind name AND match inner pattern.
-                // For MIR, we lower the inner pattern and add the name as a Var binding.
                 let binding_name = as_pat
                     .binding_name()
                     .map(|t| t.text().to_string())
                     .unwrap_or_else(|| "_".to_string());
-                let ty = self.resolve_range(as_pat.syntax().text_range());
+                // Tuples live on the heap: a binding to one is a pointer, as
+                // for a plain variable pattern.
+                let ty = match self.resolve_range(as_pat.syntax().text_range()) {
+                    MirType::Tuple(_) => MirType::Ptr,
+                    ty => ty,
+                };
                 self.insert_var(binding_name.clone(), ty.clone());
 
-                // Lower inner pattern -- the binding is separate.
-                if let Some(inner) = as_pat.pattern() {
-                    self.lower_pattern(&inner)
-                } else {
-                    MirPattern::Var(binding_name, ty)
+                match as_pat.pattern() {
+                    Some(inner) => MirPattern::As {
+                        name: binding_name,
+                        ty,
+                        inner: Box::new(self.lower_pattern_with_expected(&inner, expected)),
+                    },
+                    None => MirPattern::Var(binding_name, ty),
                 }
             }
 
@@ -12246,7 +12187,8 @@ impl<'a> Lowerer<'a> {
                 let elem_mir_ty =
                     if let Some(typeck_ty) = self.get_ty(cons_pat.syntax().text_range()).cloned() {
                         if let Some(elem_ty) = extract_list_elem_type(&typeck_ty) {
-                            resolve_type(&elem_ty, self.registry)
+                            // A tuple element is a heap pointer, as everywhere.
+                            runtime_value_type(resolve_type(&elem_ty, self.registry))
                         } else {
                             // Fallback: if the list type is not properly resolved,
                             // use Int as a default element type.
@@ -12270,6 +12212,28 @@ impl<'a> Lowerer<'a> {
                     tail: Box::new(tail_pat),
                     elem_ty: elem_mir_ty,
                 }
+            }
+
+            Pattern::List(list_pat) => {
+                // `[a, b]` is `a :: b :: []`: cons cells ending in the empty list.
+                let elem_src = self
+                    .get_ty(list_pat.syntax().text_range())
+                    .cloned()
+                    .and_then(|ty| extract_list_elem_type(&ty));
+                let elem_mir_ty = elem_src
+                    .as_ref()
+                    .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
+                    .unwrap_or(MirType::Int);
+                list_pat
+                    .patterns()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .fold(MirPattern::ListNil, |tail, elem| MirPattern::ListCons {
+                        head: Box::new(self.lower_pattern_with_expected(&elem, elem_src.as_ref())),
+                        tail: Box::new(tail),
+                        elem_ty: elem_mir_ty.clone(),
+                    })
             }
         }
     }
@@ -12863,8 +12827,12 @@ impl<'a> Lowerer<'a> {
         let mut segments: Vec<MirExpr> = Vec::new();
         // Track whether the next STRING_CONTENT is the first one (for leading newline stripping)
         let mut is_first_content = is_triple;
+        let children: Vec<_> = str_expr.syntax().children_with_tokens().collect();
+        let last_content = children
+            .iter()
+            .rposition(|child| child.kind() == SyntaxKind::STRING_CONTENT);
 
-        for child in str_expr.syntax().children_with_tokens() {
+        for (index, child) in children.iter().enumerate() {
             match child.kind() {
                 SyntaxKind::STRING_CONTENT => {
                     let raw_text = child
@@ -12873,7 +12841,12 @@ impl<'a> Lowerer<'a> {
                         .unwrap_or_default();
 
                     let text = if is_triple {
-                        apply_heredoc_content(raw_text, is_first_content, trim_level)
+                        apply_heredoc_content(
+                            raw_text,
+                            is_first_content,
+                            Some(index) == last_content,
+                            trim_level,
+                        )
                     } else {
                         raw_text
                     };
@@ -12940,8 +12913,15 @@ impl<'a> Lowerer<'a> {
     /// `typeck_ty` is the optional original typeck `Ty` for the expression,
     /// used to resolve collection element types for Display dispatch.
     fn wrap_to_string(&mut self, expr: MirExpr, typeck_ty: Option<&Ty>) -> MirExpr {
+        if let Some(shown) = typeck_ty.and_then(|ty| self.display_by_type(&expr, ty, false)) {
+            return shown;
+        }
         match expr.ty() {
             MirType::String => expr, // already a string
+            MirType::Unit => MirExpr::Block(
+                vec![expr, MirExpr::StringLit("()".to_string(), MirType::String)],
+                MirType::String,
+            ),
             MirType::Int => MirExpr::Call {
                 func: Box::new(MirExpr::Var(
                     "mesh_int_to_string".to_string(),
@@ -13026,25 +13006,6 @@ impl<'a> Lowerer<'a> {
                             }
                         }
                     }
-                }
-            }
-            MirType::Ptr => {
-                // Check if the typeck type is a collection (List, Map, Set).
-                // If so, emit a runtime collection-to-string call with element
-                // conversion callback function pointers.
-                if let Some(ty) = typeck_ty {
-                    if let Some(collection_call) = self.wrap_collection_to_string(&expr, ty) {
-                        return collection_call;
-                    }
-                }
-                // Fallback: generic to_string call.
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "to_string".to_string(),
-                        MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
-                    )),
-                    args: vec![expr],
-                    ty: MirType::String,
                 }
             }
             _ => {
@@ -13145,109 +13106,37 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Resolve the to_string callback function name for an element type.
-    ///
-    /// For primitive types, returns the runtime to_string function name.
-    /// For user-defined types with Display impl, returns the mangled name.
-    /// For nested collections/sum types, generates synthetic MIR wrapper
-    /// functions and returns the wrapper name. Recurses for arbitrary depth.
+    /// The callback a collection runtime function calls per element:
+    /// `fn(slot) -> String` for the raw slot word of an element of type
+    /// `elem_ty`. Scalars and strings have runtime functions; everything
+    /// else decodes the slot and displays the value by its type.
     fn resolve_to_string_callback(&mut self, elem_ty: &Ty) -> String {
         match elem_ty {
-            Ty::Con(con) => match con.name.as_str() {
-                "Int" => "mesh_int_to_string".to_string(),
-                "Float" => "mesh_float_to_string".to_string(),
-                "Bool" => "mesh_bool_to_string".to_string(),
-                "String" => "mesh_string_to_string".to_string(),
-                // Bare collection type without type args -- default to Int callback
-                "List" => self.generate_display_collection_wrapper(
-                    "list",
-                    "mesh_list_to_string",
-                    &Ty::int(),
-                    None,
-                ),
-                "Set" => self.generate_display_collection_wrapper(
-                    "set",
-                    "mesh_set_to_string",
-                    &Ty::int(),
-                    None,
-                ),
-                "Map" => self.generate_display_map_wrapper(&Ty::int(), &Ty::int()),
-                name => {
-                    // Check if this user type has a Display impl
-                    let ty_for_lookup = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                    let matching = self
-                        .trait_registry
-                        .find_method_traits("to_string", &ty_for_lookup);
-                    if !matching.is_empty() {
-                        format!("{}__to_string__{}", matching[0], name)
-                    } else {
-                        // Check for Debug inspect as fallback
-                        let inspect_name = format!("Debug__inspect__{}", name);
-                        if self.known_functions.contains_key(&inspect_name) {
-                            inspect_name
-                        } else {
-                            // No Display or Debug impl -- fallback
-                            "mesh_int_to_string".to_string()
-                        }
-                    }
+            Ty::Con(con) if con.name == "Int" => "mesh_int_to_string".to_string(),
+            Ty::Con(con) if con.name == "Bool" => "mesh_bool_to_string".to_string(),
+            Ty::Con(con) if con.name == "String" => "mesh_string_to_string".to_string(),
+            _ => {
+                let name = format!(
+                    "__display_slot_{}",
+                    Self::ty_specialization_component(elem_ty)
+                );
+                if self.known_functions.contains_key(&name) {
+                    return name;
                 }
-            },
-            Ty::App(con_ty, args) => {
-                if let Ty::Con(con) = con_ty.as_ref() {
-                    match con.name.as_str() {
-                        "List" => {
-                            let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                            self.generate_display_collection_wrapper(
-                                "list",
-                                "mesh_list_to_string",
-                                &inner_ty,
-                                None,
-                            )
-                        }
-                        "Set" => {
-                            let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                            self.generate_display_collection_wrapper(
-                                "set",
-                                "mesh_set_to_string",
-                                &inner_ty,
-                                None,
-                            )
-                        }
-                        "Map" => {
-                            let key_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                            let val_ty = args.get(1).cloned().unwrap_or_else(Ty::int);
-                            self.generate_display_map_wrapper(&key_ty, &val_ty)
-                        }
-                        name => {
-                            // Monomorphized sum type or struct: e.g., Option<Int> -> Option_Int
-                            let mangled = self.mangle_ty_for_display(elem_ty);
-                            // Check Display__to_string__{mangled}
-                            let display_name = format!("Display__to_string__{}", mangled);
-                            if self.known_functions.contains_key(&display_name) {
-                                return display_name;
-                            }
-                            // Check Debug__inspect__{mangled}
-                            let inspect_name = format!("Debug__inspect__{}", mangled);
-                            if self.known_functions.contains_key(&inspect_name) {
-                                return inspect_name;
-                            }
-                            // Check trait registry for Display impl
-                            let ty_for_lookup = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                            let matching = self
-                                .trait_registry
-                                .find_method_traits("to_string", &ty_for_lookup);
-                            if !matching.is_empty() {
-                                format!("{}__to_string__{}", matching[0], mangled)
-                            } else {
-                                "mesh_int_to_string".to_string()
-                            }
-                        }
-                    }
-                } else {
-                    "mesh_int_to_string".to_string()
-                }
+                self.known_functions.insert(
+                    name.clone(),
+                    MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)),
+                );
+                let value = self.decode_slot("__slot", elem_ty);
+                let body = self.wrap_to_string(value, Some(elem_ty));
+                self.push_helper_fn(
+                    &name,
+                    vec![("__slot".to_string(), MirType::Int)],
+                    MirType::String,
+                    body,
+                );
+                name
             }
-            _ => "mesh_int_to_string".to_string(),
         }
     }
 
@@ -13283,521 +13172,993 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Generate a synthetic MIR wrapper function for displaying a List or Set
-    /// element that is itself a collection or complex type.
-    ///
-    /// The wrapper bridges the `fn(u64) -> *mut u8` callback signature expected
-    /// by the runtime. It takes a single Ptr parameter and calls the appropriate
-    /// runtime to_string function with the recursively resolved inner callback.
-    ///
-    /// Returns the name of the wrapper function.
-    fn generate_display_collection_wrapper(
+    // ── Equality, ordering and display decided by type ───────────────
+    //
+    // Lists, maps, sets, tuples, unit and instantiated generic sum types
+    // (`Option<Int>`) have no nominal impl to call: their functions are
+    // generated here, once per type, and compare or print by contents.
+
+    fn push_helper_fn(
         &mut self,
-        collection_kind: &str, // "list" or "set"
-        runtime_fn: &str,      // "mesh_list_to_string" or "mesh_set_to_string"
-        inner_ty: &Ty,
-        _extra: Option<&str>,
-    ) -> String {
-        let inner_mangled = self.mangle_ty_for_display(inner_ty);
-        let wrapper_name = format!("__display_{}_{}_to_str", collection_kind, inner_mangled);
-
-        // Dedup: if already generated, return existing name
-        if self.known_functions.contains_key(&wrapper_name) {
-            return wrapper_name;
-        }
-
-        // Recursively resolve the inner element's callback
-        let inner_callback = self.resolve_to_string_callback(inner_ty);
-
-        // Register the wrapper before generating body (prevents infinite recursion)
-        let wrapper_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-        self.known_functions
-            .insert(wrapper_name.clone(), wrapper_ty);
-
-        // Build the wrapper function MIR:
-        //   fn __display_list_Int_to_str(__elem: Ptr) -> Ptr {
-        //       mesh_list_to_string(__elem, mesh_int_to_string)
-        //   }
-        let param_name = "__elem".to_string();
-        let fn_ptr_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
-        let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var(runtime_fn.to_string(), fn_ptr_ty)),
-            args: vec![
-                MirExpr::Var(param_name.clone(), MirType::Ptr),
-                MirExpr::Var(
-                    inner_callback,
-                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
-                ),
-            ],
-            ty: MirType::Ptr,
-        };
-
+        name: &str,
+        params: Vec<(String, MirType)>,
+        return_type: MirType,
+        body: MirExpr,
+    ) {
         self.functions.push(MirFunction {
-            name: wrapper_name.clone(),
-            params: vec![(param_name, MirType::Ptr)],
-            return_type: MirType::Ptr,
+            name: name.to_string(),
+            params,
+            return_type,
             body,
             is_closure_fn: false,
             captures: vec![],
             has_tail_calls: false,
         });
-
-        wrapper_name
     }
 
-    /// Generate a synthetic MIR wrapper function for displaying a Map element.
-    ///
-    /// The wrapper calls `mesh_map_to_string` with recursively resolved key and
-    /// value callbacks.
-    fn generate_display_map_wrapper(&mut self, key_ty: &Ty, val_ty: &Ty) -> String {
-        let key_mangled = self.mangle_ty_for_display(key_ty);
-        let val_mangled = self.mangle_ty_for_display(val_ty);
-        let wrapper_name = format!("__display_map_{}_{}_to_str", key_mangled, val_mangled);
-
-        // Dedup check
-        if self.known_functions.contains_key(&wrapper_name) {
-            return wrapper_name;
+    fn call_named(name: &str, params: Vec<MirType>, args: Vec<MirExpr>, ret: MirType) -> MirExpr {
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                name.to_string(),
+                MirType::FnPtr(params, Box::new(ret.clone())),
+            )),
+            args,
+            ty: ret,
         }
+    }
 
-        // Recursively resolve key and value callbacks
-        let key_callback = self.resolve_to_string_callback(key_ty);
-        let val_callback = self.resolve_to_string_callback(val_ty);
+    fn and_all(terms: Vec<MirExpr>) -> MirExpr {
+        terms
+            .into_iter()
+            .reduce(|acc, term| MirExpr::BinOp {
+                op: BinOp::And,
+                lhs: Box::new(acc),
+                rhs: Box::new(term),
+                ty: MirType::Bool,
+            })
+            .unwrap_or(MirExpr::BoolLit(true, MirType::Bool))
+    }
 
-        // Register the wrapper
-        let wrapper_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-        self.known_functions
-            .insert(wrapper_name.clone(), wrapper_ty);
+    fn concat_all(parts: Vec<MirExpr>) -> MirExpr {
+        parts
+            .into_iter()
+            .reduce(|acc, part| {
+                Self::call_named(
+                    "mesh_string_concat",
+                    vec![MirType::String, MirType::String],
+                    vec![acc, part],
+                    MirType::String,
+                )
+            })
+            .unwrap_or(MirExpr::StringLit(String::new(), MirType::String))
+    }
 
-        // Build the wrapper function MIR:
-        //   fn __display_map_Int_String_to_str(__elem: Ptr) -> Ptr {
-        //       mesh_map_to_string(__elem, mesh_int_to_string, mesh_string_to_string)
-        //   }
-        let param_name = "__elem".to_string();
-        let fn_ptr_ty = MirType::FnPtr(
-            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-            Box::new(MirType::Ptr),
+    /// Whether a payload of sum type `inner` inside sum type `owner` is
+    /// stored boxed: the two are the same type, or each reaches the other.
+    fn boxed_payload(&self, owner: &str, inner: &str) -> bool {
+        let (owner, inner) = (sum_type_base(owner), sum_type_base(inner));
+        owner == inner
+            || (self
+                .sum_reach
+                .get(owner)
+                .is_some_and(|set| set.contains(inner))
+                && self
+                    .sum_reach
+                    .get(inner)
+                    .is_some_and(|set| set.contains(owner)))
+    }
+
+    /// The MIR type a value of `ty` has once bound by a pattern or held in
+    /// a variable: tuples are heap pointers.
+    fn binding_type(&self, ty: &Ty) -> MirType {
+        runtime_value_type(resolve_type(ty, self.registry))
+    }
+
+    /// The raw slot word in `var` decoded to a value of type `ty`.
+    fn decode_slot(&self, var: &str, ty: &Ty) -> MirExpr {
+        let slot = MirExpr::Var(var.to_string(), MirType::Int);
+        match self.binding_type(ty) {
+            MirType::Int | MirType::Unit | MirType::Never => slot,
+            mir => Self::call_named("__mesh_uniform_decode", vec![MirType::Int], vec![slot], mir),
+        }
+    }
+
+    /// The registry's sum type `base` instantiated at `args`: its mangled
+    /// name and each variant's field types.
+    fn sum_instantiation(
+        &self,
+        base: &str,
+        args: &[Ty],
+    ) -> Option<(String, Vec<(String, Vec<Ty>)>)> {
+        let info = self.registry.sum_type_defs.get(base)?;
+        let subst: HashMap<String, &Ty> = info
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(args.iter())
+            .collect();
+        let variants = info
+            .variants
+            .iter()
+            .map(|v| {
+                let fields = v
+                    .fields
+                    .iter()
+                    .map(|f| match f {
+                        mesh_typeck::VariantFieldInfo::Positional(ty)
+                        | mesh_typeck::VariantFieldInfo::Named(_, ty) => {
+                            substitute_type_params(ty, &subst)
+                        }
+                    })
+                    .collect();
+                (v.name.clone(), fields)
+            })
+            .collect();
+        Some((mangle_type_name(base, args, self.registry), variants))
+    }
+
+    fn mir_variants(&self, variants: &[(String, Vec<Ty>)]) -> Vec<MirVariantDef> {
+        variants
+            .iter()
+            .enumerate()
+            .map(|(i, (name, fields))| MirVariantDef {
+                name: name.clone(),
+                fields: fields
+                    .iter()
+                    .map(|f| resolve_type(f, self.registry))
+                    .collect(),
+                tag: i as u8,
+            })
+            .collect()
+    }
+
+    /// Generate the trait functions the type checker grants an instantiated
+    /// generic sum type (`Option<Int>`: Eq, Ord, Display, Debug), once, on
+    /// first use.
+    fn ensure_sum_instantiation_traits(&mut self, ty: &Ty) {
+        let Ty::App(con, args) = ty else { return };
+        let Ty::Con(tc) = con.as_ref() else { return };
+        let Some((mangled, variants)) = self.sum_instantiation(&tc.name, args) else {
+            return;
+        };
+        let known = |lowerer: &Self, prefix: &str| {
+            lowerer
+                .known_functions
+                .contains_key(&format!("{prefix}{mangled}"))
+        };
+        if self.trait_registry.has_impl("Eq", ty) && !known(self, "Eq__eq__") {
+            self.generate_eq_sum_typed(&mangled, &variants);
+        }
+        if self.trait_registry.has_impl("Ord", ty) && !known(self, "Ord__lt__") {
+            let mir_variants = self.mir_variants(&variants);
+            self.generate_ord_sum(&mangled, &mir_variants);
+            self.generate_compare_sum(&mangled, &mir_variants);
+        }
+        if self.trait_registry.has_impl("Display", ty) && !known(self, "Display__to_string__") {
+            self.generate_display_sum_typed(&mangled, &tc.name, &variants, false);
+        }
+        if self.trait_registry.has_impl("Debug", ty) && !known(self, "Debug__inspect__") {
+            self.generate_display_sum_typed(&mangled, &tc.name, &variants, true);
+        }
+    }
+
+    /// `lhs == rhs` for values of type `ty`, compared by structure:
+    /// collections, tuples and sum types by contents, nominal types by
+    /// their `Eq`, primitives by the hardware. Each operand is evaluated once.
+    fn eq_expr(&mut self, lhs: MirExpr, rhs: MirExpr, ty: &Ty) -> MirExpr {
+        let hardware = |lhs, rhs| MirExpr::BinOp {
+            op: BinOp::Eq,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            ty: MirType::Bool,
+        };
+        let always = |lhs, rhs| {
+            MirExpr::Block(
+                vec![lhs, rhs, MirExpr::BoolLit(true, MirType::Bool)],
+                MirType::Bool,
+            )
+        };
+        let ptr3 = vec![MirType::Ptr, MirType::Ptr, MirType::Ptr];
+        match ty {
+            Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
+            Ty::Tuple(elems) => {
+                let f = self.tuple_eq_fn(elems);
+                Self::call_named(
+                    &f,
+                    vec![MirType::Ptr, MirType::Ptr],
+                    vec![lhs, rhs],
+                    MirType::Bool,
+                )
+            }
+            Ty::App(con, args) => {
+                let Ty::Con(tc) = con.as_ref() else {
+                    return hardware(lhs, rhs);
+                };
+                match tc.name.as_str() {
+                    "List" => {
+                        let elem_eq = self.resolve_eq_callback(args.first().unwrap_or(&Ty::int()));
+                        let callback = MirExpr::Var(
+                            elem_eq,
+                            MirType::FnPtr(
+                                vec![MirType::Int, MirType::Int],
+                                Box::new(MirType::Bool),
+                            ),
+                        );
+                        Self::call_named(
+                            "mesh_list_eq",
+                            ptr3,
+                            vec![lhs, rhs, callback],
+                            MirType::Bool,
+                        )
+                    }
+                    "Map" => {
+                        let val_eq = self.resolve_eq_callback(args.get(1).unwrap_or(&Ty::int()));
+                        let callback = MirExpr::Var(
+                            val_eq,
+                            MirType::FnPtr(
+                                vec![MirType::Int, MirType::Int],
+                                Box::new(MirType::Bool),
+                            ),
+                        );
+                        Self::call_named(
+                            "mesh_map_eq",
+                            ptr3,
+                            vec![lhs, rhs, callback],
+                            MirType::Bool,
+                        )
+                    }
+                    "Set" => Self::call_named(
+                        "mesh_set_eq",
+                        vec![MirType::Ptr, MirType::Ptr],
+                        vec![lhs, rhs],
+                        MirType::Bool,
+                    ),
+                    _ => {
+                        self.ensure_sum_instantiation_traits(ty);
+                        let f = format!(
+                            "Eq__eq__{}",
+                            mangle_type_name(&tc.name, args, self.registry)
+                        );
+                        if self.known_functions.contains_key(&f) {
+                            let params = vec![lhs.ty().clone(), rhs.ty().clone()];
+                            Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
+                        } else {
+                            hardware(lhs, rhs)
+                        }
+                    }
+                }
+            }
+            Ty::Con(tc) => match tc.name.as_str() {
+                "Int" | "Float" | "Bool" | "String" => hardware(lhs, rhs),
+                "Unit" => always(lhs, rhs),
+                "List" => {
+                    let callback = MirExpr::Var(
+                        self.resolve_eq_callback(&Ty::int()),
+                        MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+                    );
+                    Self::call_named(
+                        "mesh_list_eq",
+                        ptr3,
+                        vec![lhs, rhs, callback],
+                        MirType::Bool,
+                    )
+                }
+                "Map" => {
+                    let callback = MirExpr::Var(
+                        self.resolve_eq_callback(&Ty::int()),
+                        MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+                    );
+                    Self::call_named("mesh_map_eq", ptr3, vec![lhs, rhs, callback], MirType::Bool)
+                }
+                "Set" => Self::call_named(
+                    "mesh_set_eq",
+                    vec![MirType::Ptr, MirType::Ptr],
+                    vec![lhs, rhs],
+                    MirType::Bool,
+                ),
+                name => {
+                    let f = format!("Eq__eq__{name}");
+                    if self.known_functions.contains_key(&f)
+                        || self.trait_registry.has_impl("Eq", ty)
+                    {
+                        let params = vec![lhs.ty().clone(), rhs.ty().clone()];
+                        Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
+                    } else {
+                        hardware(lhs, rhs)
+                    }
+                }
+            },
+            _ => hardware(lhs, rhs),
+        }
+    }
+
+    /// `fn(a: Ptr, b: Ptr) -> Bool` comparing two tuples of `elems` element-wise.
+    fn tuple_eq_fn(&mut self, elems: &[Ty]) -> String {
+        let name = format!(
+            "__eq_tuple_{}",
+            Self::ty_specialization_component(&Ty::Tuple(elems.to_vec()))
         );
-        let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var("mesh_map_to_string".to_string(), fn_ptr_ty)),
-            args: vec![
-                MirExpr::Var(param_name.clone(), MirType::Ptr),
-                MirExpr::Var(
-                    key_callback,
-                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
-                ),
-                MirExpr::Var(
-                    val_callback,
-                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
-                ),
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool)),
+        );
+        let (a_pats, b_pats, terms) =
+            self.tuple_elementwise(elems, |lowerer, a, b, ty| lowerer.eq_expr(a, b, ty));
+        let body = Self::destructure_both(a_pats, b_pats, Self::and_all(terms), MirType::Bool);
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__a".to_string(), MirType::Ptr),
+                ("__b".to_string(), MirType::Ptr),
             ],
-            ty: MirType::Ptr,
-        };
-
-        self.functions.push(MirFunction {
-            name: wrapper_name.clone(),
-            params: vec![(param_name, MirType::Ptr)],
-            return_type: MirType::Ptr,
+            MirType::Bool,
             body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-
-        wrapper_name
+        );
+        name
     }
 
-    // ── List Eq/Ord callback resolution (Phase 27 Plan 01) ──────────
+    /// Tuple patterns binding `__a_i` / `__b_i` for two tuples of `elems`,
+    /// and `combine` applied to each pair of bound elements.
+    fn tuple_elementwise(
+        &mut self,
+        elems: &[Ty],
+        combine: impl Fn(&mut Self, MirExpr, MirExpr, &Ty) -> MirExpr,
+    ) -> (Vec<MirPattern>, Vec<MirPattern>, Vec<MirExpr>) {
+        let tys: Vec<MirType> = elems.iter().map(|e| self.binding_type(e)).collect();
+        let a_pats = tys
+            .iter()
+            .enumerate()
+            .map(|(i, t)| MirPattern::Var(format!("__a_{i}"), t.clone()))
+            .collect();
+        let b_pats = tys
+            .iter()
+            .enumerate()
+            .map(|(i, t)| MirPattern::Var(format!("__b_{i}"), t.clone()))
+            .collect();
+        let terms = elems
+            .iter()
+            .zip(&tys)
+            .enumerate()
+            .map(|(i, (elem, t))| {
+                combine(
+                    self,
+                    MirExpr::Var(format!("__a_{i}"), t.clone()),
+                    MirExpr::Var(format!("__b_{i}"), t.clone()),
+                    elem,
+                )
+            })
+            .collect();
+        (a_pats, b_pats, terms)
+    }
 
-    /// Resolve the eq callback function name for an element type.
-    ///
-    /// Returns the name of a function with signature `fn(u64, u64) -> i8`
-    /// that compares two elements for equality.
+    /// `case __a do (a..) -> case __b do (b..) -> body end end`.
+    fn destructure_both(
+        a_pats: Vec<MirPattern>,
+        b_pats: Vec<MirPattern>,
+        body: MirExpr,
+        ty: MirType,
+    ) -> MirExpr {
+        let inner = MirExpr::Match {
+            scrutinee: Box::new(MirExpr::Var("__b".to_string(), MirType::Ptr)),
+            arms: vec![MirMatchArm {
+                pattern: MirPattern::Tuple(b_pats),
+                guard: None,
+                body,
+            }],
+            ty: ty.clone(),
+        };
+        MirExpr::Match {
+            scrutinee: Box::new(MirExpr::Var("__a".to_string(), MirType::Ptr)),
+            arms: vec![MirMatchArm {
+                pattern: MirPattern::Tuple(a_pats),
+                guard: None,
+                body: inner,
+            }],
+            ty,
+        }
+    }
+
+    /// `Eq__eq__{name}` for a sum type whose variants carry the given field
+    /// types: the same variant with every field equal, each field compared
+    /// by its own type (a `List<Int>` payload by contents, not by pointer).
+    fn generate_eq_sum_typed(&mut self, name: &str, variants: &[(String, Vec<Ty>)]) {
+        let mangled = format!("Eq__eq__{name}");
+        let sum_ty = MirType::SumType(name.to_string());
+        self.known_functions.insert(
+            mangled.clone(),
+            MirType::FnPtr(
+                vec![sum_ty.clone(), sum_ty.clone()],
+                Box::new(MirType::Bool),
+            ),
+        );
+        let arms: Vec<MirMatchArm> = variants
+            .iter()
+            .map(|(variant, fields)| {
+                let tys: Vec<MirType> = fields.iter().map(|f| self.binding_type(f)).collect();
+                let vars = |prefix: &str| -> Vec<(String, MirType)> {
+                    tys.iter()
+                        .enumerate()
+                        .map(|(i, t)| (format!("{prefix}_{i}"), t.clone()))
+                        .collect()
+                };
+                let pattern = |bindings: &[(String, MirType)]| MirPattern::Constructor {
+                    type_name: name.to_string(),
+                    variant: variant.clone(),
+                    fields: bindings
+                        .iter()
+                        .map(|(n, t)| MirPattern::Var(n.clone(), t.clone()))
+                        .collect(),
+                    bindings: bindings.to_vec(),
+                };
+                let (self_vars, other_vars) = (vars("self"), vars("other"));
+                let terms = fields
+                    .iter()
+                    .zip(self_vars.iter().zip(&other_vars))
+                    .map(|(field, ((a, t), (b, _)))| {
+                        self.eq_expr(
+                            MirExpr::Var(a.clone(), t.clone()),
+                            MirExpr::Var(b.clone(), t.clone()),
+                            field,
+                        )
+                    })
+                    .collect();
+                let same_variant = MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::Var("other".to_string(), sum_ty.clone())),
+                    arms: vec![
+                        MirMatchArm {
+                            pattern: pattern(&other_vars),
+                            guard: None,
+                            body: Self::and_all(terms),
+                        },
+                        MirMatchArm {
+                            pattern: MirPattern::Wildcard,
+                            guard: None,
+                            body: MirExpr::BoolLit(false, MirType::Bool),
+                        },
+                    ],
+                    ty: MirType::Bool,
+                };
+                MirMatchArm {
+                    pattern: pattern(&self_vars),
+                    guard: None,
+                    body: same_variant,
+                }
+            })
+            .collect();
+        let body = if arms.is_empty() {
+            MirExpr::BoolLit(true, MirType::Bool)
+        } else {
+            MirExpr::Match {
+                scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
+                arms,
+                ty: MirType::Bool,
+            }
+        };
+        self.push_helper_fn(
+            &mangled,
+            vec![
+                ("self".to_string(), sum_ty.clone()),
+                ("other".to_string(), sum_ty),
+            ],
+            MirType::Bool,
+            body,
+        );
+    }
+
+    /// `Eq__eq__{name}` for a struct: every field equal, by its own type.
+    fn generate_eq_struct_typed(&mut self, name: &str, fields: &[(String, Ty)]) {
+        let mangled = format!("Eq__eq__{name}");
+        let struct_ty = MirType::Struct(name.to_string());
+        self.known_functions.insert(
+            mangled.clone(),
+            MirType::FnPtr(
+                vec![struct_ty.clone(), struct_ty.clone()],
+                Box::new(MirType::Bool),
+            ),
+        );
+        let terms = fields
+            .iter()
+            .map(|(field, ty)| {
+                let mir = resolve_type(ty, self.registry);
+                let access = |object: &str| MirExpr::FieldAccess {
+                    object: Box::new(MirExpr::Var(object.to_string(), struct_ty.clone())),
+                    field: field.clone(),
+                    ty: mir.clone(),
+                };
+                self.eq_expr(access("self"), access("other"), ty)
+            })
+            .collect();
+        let body = Self::and_all(terms);
+        self.push_helper_fn(
+            &mangled,
+            vec![
+                ("self".to_string(), struct_ty.clone()),
+                ("other".to_string(), struct_ty),
+            ],
+            MirType::Bool,
+            body,
+        );
+    }
+
+    /// `compare(lhs, rhs)` as an Int (negative, zero, positive) for values
+    /// of type `ty`. The operands must be variables: they are read twice.
+    fn cmp_expr(&mut self, lhs: MirExpr, rhs: MirExpr, ty: &Ty) -> MirExpr {
+        let int = |n: i64| MirExpr::IntLit(n, MirType::Int);
+        let three_way = |lt: MirExpr, gt: MirExpr| MirExpr::If {
+            cond: Box::new(lt),
+            then_body: Box::new(int(-1)),
+            else_body: Box::new(MirExpr::If {
+                cond: Box::new(gt),
+                then_body: Box::new(int(1)),
+                else_body: Box::new(int(0)),
+                ty: MirType::Int,
+            }),
+            ty: MirType::Int,
+        };
+        let binop = |op, lhs: &MirExpr, rhs: &MirExpr| MirExpr::BinOp {
+            op,
+            lhs: Box::new(lhs.clone()),
+            rhs: Box::new(rhs.clone()),
+            ty: MirType::Bool,
+        };
+        let by_lt = |lowerer: &Self, f: String, lhs: MirExpr, rhs: MirExpr| {
+            let params = vec![lhs.ty().clone(), rhs.ty().clone()];
+            let ty = lowerer
+                .known_functions
+                .get(&f)
+                .cloned()
+                .unwrap_or(MirType::FnPtr(params, Box::new(MirType::Bool)));
+            let lt = |a: &MirExpr, b: &MirExpr| MirExpr::Call {
+                func: Box::new(MirExpr::Var(f.clone(), ty.clone())),
+                args: vec![a.clone(), b.clone()],
+                ty: MirType::Bool,
+            };
+            three_way(lt(&lhs, &rhs), lt(&rhs, &lhs))
+        };
+        match ty {
+            Ty::Tuple(elems) if elems.is_empty() => int(0),
+            Ty::Tuple(elems) => {
+                let f = self.tuple_cmp_fn(elems);
+                Self::call_named(
+                    &f,
+                    vec![MirType::Ptr, MirType::Ptr],
+                    vec![lhs, rhs],
+                    MirType::Int,
+                )
+            }
+            Ty::App(con, args) => {
+                let Ty::Con(tc) = con.as_ref() else {
+                    return three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs));
+                };
+                if tc.name == "List" {
+                    let elem_cmp =
+                        self.resolve_compare_callback(args.first().unwrap_or(&Ty::int()));
+                    let callback = MirExpr::Var(
+                        elem_cmp,
+                        MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+                    );
+                    return Self::call_named(
+                        "mesh_list_compare",
+                        vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
+                        vec![lhs, rhs, callback],
+                        MirType::Int,
+                    );
+                }
+                self.ensure_sum_instantiation_traits(ty);
+                let f = format!(
+                    "Ord__lt__{}",
+                    mangle_type_name(&tc.name, args, self.registry)
+                );
+                if self.known_functions.contains_key(&f) {
+                    by_lt(self, f, lhs, rhs)
+                } else {
+                    three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
+                }
+            }
+            Ty::Con(tc) => match tc.name.as_str() {
+                "Int" | "Float" => {
+                    three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
+                }
+                "String" => Self::call_named(
+                    "mesh_string_compare",
+                    vec![MirType::String, MirType::String],
+                    vec![lhs, rhs],
+                    MirType::Int,
+                ),
+                "Bool" => {
+                    let not = |e: &MirExpr| MirExpr::UnaryOp {
+                        op: UnaryOp::Not,
+                        operand: Box::new(e.clone()),
+                        ty: MirType::Bool,
+                    };
+                    let and = |a: MirExpr, b: MirExpr| MirExpr::BinOp {
+                        op: BinOp::And,
+                        lhs: Box::new(a),
+                        rhs: Box::new(b),
+                        ty: MirType::Bool,
+                    };
+                    three_way(and(not(&lhs), rhs.clone()), and(lhs.clone(), not(&rhs)))
+                }
+                "Unit" => int(0),
+                name => {
+                    let f = format!("Ord__lt__{name}");
+                    if self.known_functions.contains_key(&f)
+                        || self.trait_registry.has_impl("Ord", ty)
+                    {
+                        by_lt(self, f, lhs, rhs)
+                    } else {
+                        three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
+                    }
+                }
+            },
+            _ => three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs)),
+        }
+    }
+
+    /// `fn(a, b) -> Int` comparing two values of type `ty`; what a
+    /// comparison operator on a non-primitive type calls.
+    fn cmp_fn(&mut self, ty: &Ty) -> String {
+        let name = format!("__cmp_{}", Self::ty_specialization_component(ty));
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let param_ty = self.binding_type(ty);
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(
+                vec![param_ty.clone(), param_ty.clone()],
+                Box::new(MirType::Int),
+            ),
+        );
+        let body = self.cmp_expr(
+            MirExpr::Var("__a".to_string(), param_ty.clone()),
+            MirExpr::Var("__b".to_string(), param_ty.clone()),
+            ty,
+        );
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__a".to_string(), param_ty.clone()),
+                ("__b".to_string(), param_ty),
+            ],
+            MirType::Int,
+            body,
+        );
+        name
+    }
+
+    /// `fn(a: Ptr, b: Ptr) -> Int` comparing two tuples lexicographically.
+    fn tuple_cmp_fn(&mut self, elems: &[Ty]) -> String {
+        let name = format!(
+            "__cmp_tuple_{}",
+            Self::ty_specialization_component(&Ty::Tuple(elems.to_vec()))
+        );
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)),
+        );
+        let (a_pats, b_pats, terms) =
+            self.tuple_elementwise(elems, |lowerer, a, b, ty| lowerer.cmp_expr(a, b, ty));
+        // c0 != 0 ? c0 : (c1 != 0 ? c1 : ... : c_last)
+        let body = terms
+            .into_iter()
+            .enumerate()
+            .rev()
+            .fold(None, |rest: Option<MirExpr>, (i, term)| {
+                Some(match rest {
+                    None => term,
+                    Some(rest) => {
+                        let var = format!("__c_{i}");
+                        MirExpr::Let {
+                            name: var.clone(),
+                            ty: MirType::Int,
+                            value: Box::new(term),
+                            body: Box::new(MirExpr::If {
+                                cond: Box::new(MirExpr::BinOp {
+                                    op: BinOp::NotEq,
+                                    lhs: Box::new(MirExpr::Var(var.clone(), MirType::Int)),
+                                    rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
+                                    ty: MirType::Bool,
+                                }),
+                                then_body: Box::new(MirExpr::Var(var, MirType::Int)),
+                                else_body: Box::new(rest),
+                                ty: MirType::Int,
+                            }),
+                        }
+                    }
+                })
+            })
+            .unwrap_or(MirExpr::IntLit(0, MirType::Int));
+        let body = Self::destructure_both(a_pats, b_pats, body, MirType::Int);
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__a".to_string(), MirType::Ptr),
+                ("__b".to_string(), MirType::Ptr),
+            ],
+            MirType::Int,
+            body,
+        );
+        name
+    }
+
+    /// The `fn(slot, slot) -> Bool` callback `mesh_list_eq` and friends call
+    /// per element: decodes both raw slots as `elem_ty` and compares them.
     fn resolve_eq_callback(&mut self, elem_ty: &Ty) -> String {
-        match elem_ty {
-            Ty::Con(con) => match con.name.as_str() {
-                "Int" => self.generate_int_eq_callback(),
-                "Float" => self.generate_float_eq_callback(),
-                "Bool" => self.generate_bool_eq_callback(),
-                "String" => self.generate_string_eq_callback(),
-                _ => {
-                    // Fallback to int eq for unknown types
-                    self.generate_int_eq_callback()
-                }
-            },
-            Ty::App(con_ty, args) => {
-                if let Ty::Con(con) = con_ty.as_ref() {
-                    if con.name == "List" {
-                        let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                        return self.generate_list_eq_wrapper(&inner_ty);
-                    }
-                }
-                self.generate_int_eq_callback()
-            }
-            _ => self.generate_int_eq_callback(),
+        let name = format!("__eq_slot_{}", Self::ty_specialization_component(elem_ty));
+        if self.known_functions.contains_key(&name) {
+            return name;
         }
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+        );
+        let (a, b) = (
+            self.decode_slot("__a", elem_ty),
+            self.decode_slot("__b", elem_ty),
+        );
+        let body = self.eq_expr(a, b, elem_ty);
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__a".to_string(), MirType::Int),
+                ("__b".to_string(), MirType::Int),
+            ],
+            MirType::Bool,
+            body,
+        );
+        name
     }
 
-    /// Resolve the compare callback function name for an element type.
-    ///
-    /// Returns the name of a function with signature `fn(u64, u64) -> i64`
-    /// that returns negative/0/positive for element ordering.
+    /// The `fn(slot, slot) -> Int` callback `mesh_list_compare` calls per
+    /// element.
     fn resolve_compare_callback(&mut self, elem_ty: &Ty) -> String {
-        match elem_ty {
-            Ty::Con(con) => match con.name.as_str() {
-                "Int" => self.generate_int_cmp_callback(),
-                "String" => self.generate_string_cmp_callback(),
-                _ => self.generate_int_cmp_callback(),
-            },
-            Ty::App(con_ty, args) => {
-                if let Ty::Con(con) = con_ty.as_ref() {
-                    if con.name == "List" {
-                        let inner_ty = args.first().cloned().unwrap_or_else(Ty::int);
-                        return self.generate_list_cmp_wrapper(&inner_ty);
-                    }
-                }
-                self.generate_int_cmp_callback()
+        let name = format!("__cmp_slot_{}", Self::ty_specialization_component(elem_ty));
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
+        );
+        let (a, b) = (
+            self.decode_slot("__a", elem_ty),
+            self.decode_slot("__b", elem_ty),
+        );
+        let body = self.cmp_expr(a, b, elem_ty);
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__a".to_string(), MirType::Int),
+                ("__b".to_string(), MirType::Int),
+            ],
+            MirType::Int,
+            body,
+        );
+        name
+    }
+
+    /// `expr` (of type `ty`) as a String when the type, not a nominal impl,
+    /// decides how it prints: collections, tuples, unit and instantiated
+    /// generic sum types. `debug` prefers the type's `inspect`.
+    fn display_by_type(&mut self, expr: &MirExpr, ty: &Ty, debug: bool) -> Option<MirExpr> {
+        let unit = |expr: &MirExpr| {
+            MirExpr::Block(
+                vec![
+                    expr.clone(),
+                    MirExpr::StringLit("()".to_string(), MirType::String),
+                ],
+                MirType::String,
+            )
+        };
+        match ty {
+            Ty::Tuple(elems) if elems.is_empty() => Some(unit(expr)),
+            Ty::Tuple(elems) => {
+                let f = self.tuple_display_fn(elems, debug);
+                Some(Self::call_named(
+                    &f,
+                    vec![MirType::Ptr],
+                    vec![expr.clone()],
+                    MirType::String,
+                ))
             }
-            _ => self.generate_int_cmp_callback(),
+            Ty::App(con, args) => {
+                let Ty::Con(tc) = con.as_ref() else {
+                    return None;
+                };
+                if matches!(tc.name.as_str(), "List" | "Map" | "Set") {
+                    return self.wrap_collection_to_string(expr, ty);
+                }
+                self.ensure_sum_instantiation_traits(ty);
+                let mangled = mangle_type_name(&tc.name, args, self.registry);
+                let candidates = if debug {
+                    [
+                        format!("Debug__inspect__{mangled}"),
+                        format!("Display__to_string__{mangled}"),
+                    ]
+                } else {
+                    [
+                        format!("Display__to_string__{mangled}"),
+                        format!("Debug__inspect__{mangled}"),
+                    ]
+                };
+                candidates
+                    .into_iter()
+                    .find(|f| self.known_functions.contains_key(f))
+                    .map(|f| {
+                        Self::call_named(
+                            &f,
+                            vec![expr.ty().clone()],
+                            vec![expr.clone()],
+                            MirType::String,
+                        )
+                    })
+            }
+            Ty::Con(tc) if matches!(tc.name.as_str(), "List" | "Map" | "Set") => {
+                self.wrap_collection_to_string(expr, ty)
+            }
+            Ty::Con(tc) if tc.name == "Unit" => Some(unit(expr)),
+            _ => None,
         }
     }
 
-    /// Generate `__eq_int_callback(a: Int, b: Int) -> Bool { a == b }`
-    fn generate_int_eq_callback(&mut self) -> String {
-        let name = "__eq_int_callback".to_string();
-        if self.known_functions.contains_key(&name) {
-            return name;
+    /// `expr` as `inspect` would show it: strings quoted, otherwise the
+    /// type's `Debug` when it has one, else its display.
+    fn debug_string(&mut self, expr: MirExpr, ty: &Ty) -> MirExpr {
+        if matches!(ty, Ty::Con(tc) if tc.name == "String") {
+            let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
+            return Self::concat_all(vec![quote.clone(), expr, quote]);
         }
-        let fn_ty = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool));
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        let body = MirExpr::BinOp {
-            op: BinOp::Eq,
-            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Int)),
-            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Int)),
-            ty: MirType::Bool,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Int),
-                ("__b".to_string(), MirType::Int),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        name
+        if let Some(shown) = self.display_by_type(&expr, ty, true) {
+            return shown;
+        }
+        let inspect = format!("Debug__inspect__{}", mir_type_to_impl_name(expr.ty()));
+        if self.known_functions.contains_key(&inspect) {
+            return Self::call_named(
+                &inspect,
+                vec![expr.ty().clone()],
+                vec![expr],
+                MirType::String,
+            );
+        }
+        self.wrap_to_string(expr, Some(ty))
     }
 
-    /// Generate `__eq_float_callback(a: Float, b: Float) -> Bool { a == b }`
-    fn generate_float_eq_callback(&mut self) -> String {
-        let name = "__eq_float_callback".to_string();
-        if self.known_functions.contains_key(&name) {
-            return name;
-        }
-        let fn_ty = MirType::FnPtr(
-            vec![MirType::Float, MirType::Float],
-            Box::new(MirType::Bool),
+    /// `fn(t: Ptr) -> String` printing a tuple of `elems` as `(a, b)`.
+    fn tuple_display_fn(&mut self, elems: &[Ty], debug: bool) -> String {
+        let name = format!(
+            "__{}_tuple_{}",
+            if debug { "inspect" } else { "display" },
+            Self::ty_specialization_component(&Ty::Tuple(elems.to_vec()))
         );
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        let body = MirExpr::BinOp {
-            op: BinOp::Eq,
-            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Float)),
-            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Float)),
-            ty: MirType::Bool,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Float),
-                ("__b".to_string(), MirType::Float),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        name
-    }
-
-    /// Generate `__eq_bool_callback(a: Bool, b: Bool) -> Bool { a == b }`
-    fn generate_bool_eq_callback(&mut self) -> String {
-        let name = "__eq_bool_callback".to_string();
         if self.known_functions.contains_key(&name) {
             return name;
         }
-        let fn_ty = MirType::FnPtr(vec![MirType::Bool, MirType::Bool], Box::new(MirType::Bool));
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        let body = MirExpr::BinOp {
-            op: BinOp::Eq,
-            lhs: Box::new(MirExpr::Var("__a".to_string(), MirType::Bool)),
-            rhs: Box::new(MirExpr::Var("__b".to_string(), MirType::Bool)),
-            ty: MirType::Bool,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Bool),
-                ("__b".to_string(), MirType::Bool),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        name
-    }
-
-    /// Generate `__eq_string_callback(a: Ptr, b: Ptr) -> Bool { mesh_string_eq(a, b) }`
-    fn generate_string_eq_callback(&mut self) -> String {
-        let name = "__eq_string_callback".to_string();
-        if self.known_functions.contains_key(&name) {
-            return name;
-        }
-        let fn_ty = MirType::FnPtr(
-            vec![MirType::String, MirType::String],
-            Box::new(MirType::Bool),
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
         );
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_string_eq".to_string(),
-                MirType::FnPtr(
-                    vec![MirType::String, MirType::String],
-                    Box::new(MirType::Bool),
-                ),
-            )),
-            args: vec![
-                MirExpr::Var("__a".to_string(), MirType::String),
-                MirExpr::Var("__b".to_string(), MirType::String),
-            ],
-            ty: MirType::Bool,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::String),
-                ("__b".to_string(), MirType::String),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        name
-    }
-
-    /// Generate `__cmp_int_callback(a: Int, b: Int) -> Int { if a < b { -1 } else if a > b { 1 } else { 0 } }`
-    fn generate_int_cmp_callback(&mut self) -> String {
-        let name = "__cmp_int_callback".to_string();
-        if self.known_functions.contains_key(&name) {
-            return name;
+        let tys: Vec<MirType> = elems.iter().map(|e| self.binding_type(e)).collect();
+        let pats = tys
+            .iter()
+            .enumerate()
+            .map(|(i, t)| MirPattern::Var(format!("__e_{i}"), t.clone()))
+            .collect();
+        let mut parts = vec![MirExpr::StringLit("(".to_string(), MirType::String)];
+        for (i, (elem, t)) in elems.iter().zip(&tys).enumerate() {
+            if i > 0 {
+                parts.push(MirExpr::StringLit(", ".to_string(), MirType::String));
+            }
+            let value = MirExpr::Var(format!("__e_{i}"), t.clone());
+            parts.push(if debug {
+                self.debug_string(value, elem)
+            } else {
+                self.wrap_to_string(value, Some(elem))
+            });
         }
-        let fn_ty = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int));
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        // if a < b { -1 } else if a > b { 1 } else { 0 }
-        let a = MirExpr::Var("__a".to_string(), MirType::Int);
-        let b = MirExpr::Var("__b".to_string(), MirType::Int);
-        let lt_cond = MirExpr::BinOp {
-            op: BinOp::Lt,
-            lhs: Box::new(a.clone()),
-            rhs: Box::new(b.clone()),
-            ty: MirType::Bool,
+        parts.push(MirExpr::StringLit(")".to_string(), MirType::String));
+        let body = MirExpr::Match {
+            scrutinee: Box::new(MirExpr::Var("__t".to_string(), MirType::Ptr)),
+            arms: vec![MirMatchArm {
+                pattern: MirPattern::Tuple(pats),
+                guard: None,
+                body: Self::concat_all(parts),
+            }],
+            ty: MirType::String,
         };
-        let gt_cond = MirExpr::BinOp {
-            op: BinOp::Gt,
-            lhs: Box::new(a),
-            rhs: Box::new(b),
-            ty: MirType::Bool,
-        };
-        let inner_if = MirExpr::If {
-            cond: Box::new(gt_cond),
-            then_body: Box::new(MirExpr::IntLit(1, MirType::Int)),
-            else_body: Box::new(MirExpr::IntLit(0, MirType::Int)),
-            ty: MirType::Int,
-        };
-        let body = MirExpr::If {
-            cond: Box::new(lt_cond),
-            then_body: Box::new(MirExpr::IntLit(-1, MirType::Int)),
-            else_body: Box::new(inner_if),
-            ty: MirType::Int,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Int),
-                ("__b".to_string(), MirType::Int),
-            ],
-            return_type: MirType::Int,
+        self.push_helper_fn(
+            &name,
+            vec![("__t".to_string(), MirType::Ptr)],
+            MirType::String,
             body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        name
-    }
-
-    /// Generate `__cmp_string_callback(a: Ptr, b: Ptr) -> Int` that compares strings lexicographically.
-    ///
-    /// Since there's no mesh_string_compare runtime function, we use mesh_string_eq
-    /// and a length-based fallback: if eq, return 0; otherwise use a < b heuristic.
-    /// For simplicity, we generate: if mesh_string_eq(a, b) { 0 } else { -1 }
-    /// This gives correct equality semantics but simplified ordering.
-    /// TODO: Add proper mesh_string_compare in a future phase.
-    fn generate_string_cmp_callback(&mut self) -> String {
-        let name = "__cmp_string_callback".to_string();
-        if self.known_functions.contains_key(&name) {
-            return name;
-        }
-        let fn_ty = MirType::FnPtr(
-            vec![MirType::String, MirType::String],
-            Box::new(MirType::Int),
         );
-        self.known_functions.insert(name.clone(), fn_ty);
-
-        // if mesh_string_eq(a, b) { 0 } else { -1 }
-        let eq_call = MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_string_eq".to_string(),
-                MirType::FnPtr(
-                    vec![MirType::String, MirType::String],
-                    Box::new(MirType::Bool),
-                ),
-            )),
-            args: vec![
-                MirExpr::Var("__a".to_string(), MirType::String),
-                MirExpr::Var("__b".to_string(), MirType::String),
-            ],
-            ty: MirType::Bool,
-        };
-        let body = MirExpr::If {
-            cond: Box::new(eq_call),
-            then_body: Box::new(MirExpr::IntLit(0, MirType::Int)),
-            else_body: Box::new(MirExpr::IntLit(-1, MirType::Int)),
-            ty: MirType::Int,
-        };
-
-        self.functions.push(MirFunction {
-            name: name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::String),
-                ("__b".to_string(), MirType::String),
-            ],
-            return_type: MirType::Int,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
         name
     }
 
-    /// Generate a wrapper for nested list equality: `__eq_list_{inner}_callback`
-    fn generate_list_eq_wrapper(&mut self, inner_ty: &Ty) -> String {
-        let inner_mangled = self.mangle_ty_for_display(inner_ty);
-        let wrapper_name = format!("__eq_list_{}_callback", inner_mangled);
-        if self.known_functions.contains_key(&wrapper_name) {
-            return wrapper_name;
-        }
-
-        let inner_callback = self.resolve_eq_callback(inner_ty);
-
-        let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Bool));
-        self.known_functions.insert(wrapper_name.clone(), fn_ty);
-
-        let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_list_eq".to_string(),
-                MirType::FnPtr(
-                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                    Box::new(MirType::Bool),
-                ),
-            )),
-            args: vec![
-                MirExpr::Var("__a".to_string(), MirType::Ptr),
-                MirExpr::Var("__b".to_string(), MirType::Ptr),
-                MirExpr::Var(
-                    inner_callback,
-                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
-                ),
-            ],
-            ty: MirType::Bool,
+    /// `Display__to_string__{name}` (or, with `debug`, `Debug__inspect__{name}`)
+    /// for a sum type whose variants carry the given field types:
+    /// `Variant` or `Variant(field, ...)`, each field shown by its own type.
+    fn generate_display_sum_typed(
+        &mut self,
+        name: &str,
+        display_name: &str,
+        variants: &[(String, Vec<Ty>)],
+        debug: bool,
+    ) {
+        let mangled = if debug {
+            format!("Debug__inspect__{name}")
+        } else {
+            format!("Display__to_string__{name}")
         };
-
-        self.functions.push(MirFunction {
-            name: wrapper_name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Ptr),
-                ("__b".to_string(), MirType::Ptr),
-            ],
-            return_type: MirType::Bool,
-            body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        wrapper_name
-    }
-
-    /// Generate a wrapper for nested list comparison: `__cmp_list_{inner}_callback`
-    fn generate_list_cmp_wrapper(&mut self, inner_ty: &Ty) -> String {
-        let inner_mangled = self.mangle_ty_for_display(inner_ty);
-        let wrapper_name = format!("__cmp_list_{}_callback", inner_mangled);
-        if self.known_functions.contains_key(&wrapper_name) {
-            return wrapper_name;
-        }
-
-        let inner_callback = self.resolve_compare_callback(inner_ty);
-
-        let fn_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int));
-        self.known_functions.insert(wrapper_name.clone(), fn_ty);
-
-        let body = MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_list_compare".to_string(),
-                MirType::FnPtr(
-                    vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                    Box::new(MirType::Int),
-                ),
-            )),
-            args: vec![
-                MirExpr::Var("__a".to_string(), MirType::Ptr),
-                MirExpr::Var("__b".to_string(), MirType::Ptr),
-                MirExpr::Var(
-                    inner_callback,
-                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Int)),
-                ),
-            ],
-            ty: MirType::Int,
+        let sum_ty = MirType::SumType(name.to_string());
+        self.known_functions.insert(
+            mangled.clone(),
+            MirType::FnPtr(vec![sum_ty.clone()], Box::new(MirType::String)),
+        );
+        let arms: Vec<MirMatchArm> = variants
+            .iter()
+            .map(|(variant, fields)| {
+                let tys: Vec<MirType> = fields.iter().map(|f| self.binding_type(f)).collect();
+                let bindings: Vec<(String, MirType)> = tys
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| (format!("field_{i}"), t.clone()))
+                    .collect();
+                let body = if fields.is_empty() {
+                    MirExpr::StringLit(variant.clone(), MirType::String)
+                } else {
+                    let mut parts =
+                        vec![MirExpr::StringLit(format!("{variant}("), MirType::String)];
+                    for (i, (field, (var, t))) in fields.iter().zip(&bindings).enumerate() {
+                        if i > 0 {
+                            parts.push(MirExpr::StringLit(", ".to_string(), MirType::String));
+                        }
+                        let value = MirExpr::Var(var.clone(), t.clone());
+                        parts.push(if debug {
+                            self.debug_string(value, field)
+                        } else {
+                            self.wrap_to_string(value, Some(field))
+                        });
+                    }
+                    parts.push(MirExpr::StringLit(")".to_string(), MirType::String));
+                    Self::concat_all(parts)
+                };
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: name.to_string(),
+                        variant: variant.clone(),
+                        fields: bindings
+                            .iter()
+                            .map(|(n, t)| MirPattern::Var(n.clone(), t.clone()))
+                            .collect(),
+                        bindings,
+                    },
+                    guard: None,
+                    body,
+                }
+            })
+            .collect();
+        let body = if arms.is_empty() {
+            MirExpr::StringLit(format!("<{display_name}>"), MirType::String)
+        } else {
+            MirExpr::Match {
+                scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
+                arms,
+                ty: MirType::String,
+            }
         };
-
-        self.functions.push(MirFunction {
-            name: wrapper_name.clone(),
-            params: vec![
-                ("__a".to_string(), MirType::Ptr),
-                ("__b".to_string(), MirType::Ptr),
-            ],
-            return_type: MirType::Int,
+        self.push_helper_fn(
+            &mangled,
+            vec![("self".to_string(), sum_ty)],
+            MirType::String,
             body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        });
-        wrapper_name
+        );
     }
 
     // ── Return expression lowering ───────────────────────────────────
@@ -14640,6 +15001,7 @@ impl<'a> Lowerer<'a> {
                 let tokens: Vec<_> = block
                     .descendants_with_tokens()
                     .filter_map(|c| c.into_token())
+                    .filter(|t| t.kind() != SyntaxKind::WHITESPACE)
                     .collect();
                 let mut i = 0;
                 while i < tokens.len() {
@@ -15707,43 +16069,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Coerce a MIR expression to a String (MirType::String) for test assertions.
-    ///
-    /// Handles Int → string, Float → string, Bool → string, and passes through
-    /// String/Ptr values unchanged.
-    ///
-    /// Used by the test DSL lowering for `assert_eq(a, b)` and `assert_ne(a, b)`.
-    fn coerce_to_string(&mut self, expr: MirExpr) -> MirExpr {
-        let ty = expr.ty().clone();
-        match &ty {
-            MirType::String => expr,
-            MirType::Int => {
-                let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String));
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var("mesh_int_to_string".to_string(), fn_ty)),
-                    args: vec![expr],
-                    ty: MirType::String,
-                }
-            }
-            MirType::Float => {
-                let fn_ty = MirType::FnPtr(vec![MirType::Float], Box::new(MirType::String));
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var("mesh_float_to_string".to_string(), fn_ty)),
-                    args: vec![expr],
-                    ty: MirType::String,
-                }
-            }
-            MirType::Bool => {
-                let fn_ty = MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String));
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var("mesh_bool_to_string".to_string(), fn_ty)),
-                    args: vec![expr],
-                    ty: MirType::String,
-                }
-            }
-            // The runtime mesh_test_assert_eq accepts both String and Ptr
-            _ => expr,
-        }
+    /// Lower an expression and show it as a String, exactly as `"#{expr}"` would.
+    fn lower_shown(&mut self, expr: &Expr) -> MirExpr {
+        let typeck_ty = self.get_ty(expr.syntax().text_range()).cloned();
+        let lowered = self.lower_expr(expr);
+        self.wrap_to_string(lowered, typeck_ty.as_ref())
     }
 }
 
@@ -16550,7 +16880,7 @@ fn to_snake_case(name: &str) -> String {
 /// - For the last segment, the last line contains only the closing indent — it is dropped.
 ///   Detection: if the last line is all-whitespace (pure spaces/tabs), it is the closing
 ///   indent line and must be stripped.
-fn apply_heredoc_content(text: String, is_first: bool, trim_level: usize) -> String {
+fn apply_heredoc_content(text: String, is_first: bool, is_last: bool, trim_level: usize) -> String {
     // Strip leading newline from first segment
     let s: String = if is_first {
         if text.starts_with("\r\n") {
@@ -16567,33 +16897,29 @@ fn apply_heredoc_content(text: String, is_first: bool, trim_level: usize) -> Str
     // Split into lines to process each one
     let mut lines: Vec<&str> = s.split('\n').collect();
 
-    // Drop last line if it's purely whitespace (closing indent line before closing """)
-    if lines
-        .last()
-        .map(|l| l.chars().all(|c| c == ' ' || c == '\t'))
-        .unwrap_or(false)
+    // The closing segment ends with the indent line before `"""`: drop it.
+    // An earlier segment's whitespace-only last line is the indent before an
+    // interpolation that starts a line; it is dedented like any other line.
+    if is_last
+        && lines
+            .last()
+            .map(|l| l.chars().all(|c| c == ' ' || c == '\t'))
+            .unwrap_or(false)
     {
         lines.pop();
     }
 
     let stripped_lines: Vec<String> = lines
         .iter()
-        .map(|line| {
-            // Count actual leading whitespace on this line
-            let leading_ws: usize = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-            // Only strip up to trim_level if the line actually starts with whitespace.
-            // If a line has no leading whitespace (e.g. a middle-of-line segment after
-            // an interpolation), leave it untouched.
-            if leading_ws >= trim_level {
-                line[trim_level..].to_string()
-            } else if leading_ws > 0 {
-                // Partially indented line — strip what we can (no negative indent)
-                line[leading_ws..].to_string()
-            } else {
-                // No leading whitespace — this is mid-line content after an interpolation;
-                // leave it as-is.
-                line.to_string()
+        .enumerate()
+        .map(|(i, line)| {
+            if i == 0 && !is_first {
+                // Text right after an interpolation continues that line.
+                return line.to_string();
             }
+            // Strip the common indentation, or as much of it as the line has.
+            let leading_ws: usize = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            line[leading_ws.min(trim_level)..].to_string()
         })
         .collect();
 
@@ -16725,7 +17051,11 @@ fn collect_bindings_recursive(pat: &MirPattern, bindings: &mut Vec<(String, MirT
             collect_bindings_recursive(head, bindings);
             collect_bindings_recursive(tail, bindings);
         }
-        MirPattern::Wildcard | MirPattern::Literal(_) => {}
+        MirPattern::As { name, ty, inner } => {
+            bindings.push((name.clone(), ty.clone()));
+            collect_bindings_recursive(inner, bindings);
+        }
+        MirPattern::Wildcard | MirPattern::Literal(_) | MirPattern::ListNil => {}
     }
 }
 
@@ -17127,7 +17457,15 @@ pub fn lower_to_mir(
                                 return MirType::Ptr;
                             }
                         }
-                        resolve_type(ty, &typeck.type_registry)
+                        match resolve_type(ty, &typeck.type_registry) {
+                            // A recursive payload is boxed like a generic one;
+                            // a tuple is a pointer already.
+                            MirType::SumType(inner) if lowerer.boxed_payload(name, &inner) => {
+                                MirType::Ptr
+                            }
+                            MirType::Tuple(_) => MirType::Ptr,
+                            other => other,
+                        }
                     })
                     .collect();
                 MirVariantDef {
@@ -17142,6 +17480,22 @@ pub fn lower_to_mir(
             name: name.clone(),
             variants,
         });
+    }
+
+    // `Ordering` is a built-in sum type with no source definition to derive
+    // from; it compares, orders and prints like a derived one.
+    if let Some(info) = typeck.type_registry.sum_type_defs.get("Ordering") {
+        let typed: Vec<(String, Vec<Ty>)> = info
+            .variants
+            .iter()
+            .map(|v| (v.name.clone(), vec![]))
+            .collect();
+        let variants = lowerer.mir_variants(&typed);
+        lowerer.generate_eq_sum_typed("Ordering", &typed);
+        lowerer.generate_ord_sum("Ordering", &variants);
+        lowerer.generate_compare_sum("Ordering", &variants);
+        lowerer.generate_display_sum_typed("Ordering", "Ordering", &typed, false);
+        lowerer.generate_debug_inspect_sum_type("Ordering", &variants);
     }
 
     // Crypto V2 value/keypair structs are registry-backed builtins rather than
@@ -20296,7 +20650,19 @@ end
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
         let check_fn = check_fn.unwrap();
-        let body_str = format!("{:?}", check_fn.body);
+        // `<` compares through the type's generated three-way `__cmp_Point`,
+        // which is what calls the Ord impl.
+        assert!(
+            find_call_to(&check_fn.body, "__cmp_Point"),
+            "{:?}",
+            check_fn.body
+        );
+        let cmp_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "__cmp_Point")
+            .unwrap();
+        let body_str = format!("{:?}", cmp_fn.body);
         assert!(
             body_str.contains("Ord__lt__Point"),
             "Expected Ord__lt__Point call in check body for <, got: {}",
@@ -20477,7 +20843,17 @@ end
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
         let check_fn = check_fn.unwrap();
-        let body_str = format!("{:?}", check_fn.body);
+        assert!(
+            find_call_to(&check_fn.body, "__cmp_Color"),
+            "{:?}",
+            check_fn.body
+        );
+        let cmp_fn = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "__cmp_Color")
+            .unwrap();
+        let body_str = format!("{:?}", cmp_fn.body);
         assert!(
             body_str.contains("Ord__lt__Color"),
             "Expected Ord__lt__Color call in check body for <, got: {}",

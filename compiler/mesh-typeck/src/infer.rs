@@ -1722,7 +1722,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
     );
     queue_mod.insert(
         "pop".to_string(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::Con(TyCon::new("Tuple")))),
+        Scheme::mono(Ty::fun(
+            vec![queue_t.clone()],
+            Ty::Tuple(vec![Ty::int(), queue_t.clone()]),
+        )),
     );
     queue_mod.insert(
         "peek".to_string(),
@@ -2977,7 +2980,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                 },
             );
         }
-        // Iter.find: fn(Ptr, fn(T) -> Bool) -> Ptr (MeshOption at runtime)
+        // Iter.find: fn(Ptr, fn(T) -> Bool) -> Option<T>
         {
             let t = TyVar(91206);
             iter_mod.insert(
@@ -2989,7 +2992,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                             Ty::Con(TyCon::new("Ptr")),
                             Ty::fun(vec![Ty::Var(t)], Ty::bool()),
                         ],
-                        Ty::Con(TyCon::new("Ptr")),
+                        Ty::option(Ty::Var(t)),
                     ),
                 },
             );
@@ -4125,6 +4128,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 if struct_def.is_declared_resource() {
                     type_registry.register_resource_type(name.clone());
                 }
+                trait_registry.register_nominal(&name);
                 type_registry.register_struct(StructDefInfo {
                     name,
                     generic_params: vec![],
@@ -4137,6 +4141,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "<unnamed>".to_string());
+                trait_registry.register_nominal(&name);
                 type_registry.register_sum_type(SumTypeDefInfo {
                     name,
                     generic_params: vec![],
@@ -4185,6 +4190,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 (field_name, field_ty)
             })
             .collect();
+        trait_registry.register_nominal(&name);
         type_registry.register_struct(StructDefInfo {
             name,
             generic_params,
@@ -5041,6 +5047,7 @@ fn infer_multi_clause_fn(
         }
         // Use full annotation resolution for generic/sugar types.
         resolve_type_annotation(ctx, &ann, type_registry)
+            .map(|ty| with_declared_type_params(&ty, &type_params))
             .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
     });
 
@@ -5225,9 +5232,13 @@ fn infer_multi_clause_fn(
         ctx.warnings.push(err);
     }
 
-    // Redundancy checking.
-    let redundant_indices =
-        exhaustiveness::check_redundancy(&arm_patterns, &scrutinee_type_info, &abs_registry);
+    // Redundancy checking; guarded clauses cover nothing for later ones.
+    let redundant_indices = exhaustiveness::check_redundancy(
+        &arm_patterns,
+        &arm_has_guard,
+        &scrutinee_type_info,
+        &abs_registry,
+    );
     for idx in redundant_indices {
         let warn = TypeError::RedundantArm {
             arm_index: idx,
@@ -5304,7 +5315,16 @@ fn infer_item(
             None
         }
         Item::InterfaceDef(iface) => {
-            infer_interface_def(ctx, env, iface, trait_registry, default_method_bodies);
+            infer_interface_def(
+                ctx,
+                env,
+                iface,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+                default_method_bodies,
+            );
             None
         }
         Item::ImplDef(impl_) => {
@@ -5744,6 +5764,7 @@ fn register_struct_def(
                 span: struct_def.syntax().text_range(),
             });
         }
+        trait_registry.register_nominal(&name);
         type_registry.register_struct(StructDefInfo {
             name,
             generic_params,
@@ -5764,6 +5785,7 @@ fn register_struct_def(
         });
         // Register the struct type info so the rest of compilation doesn't crash,
         // but skip trait impl registration to avoid generating broken MIR.
+        trait_registry.register_nominal(&name);
         type_registry.register_struct(StructDefInfo {
             name,
             generic_params,
@@ -6373,6 +6395,7 @@ fn register_sum_type_def(
     let generic_params = sum_info.generic_params.clone();
     let variants = sum_info.variants.clone();
     type_registry.register_sum_type(sum_info);
+    trait_registry.register_nominal(&name);
     type_registry.propagate_resource_containment();
     let is_affine_resource = type_registry.is_resource_name(&name);
 
@@ -6621,10 +6644,13 @@ fn register_sum_type_def(
 /// Process an interface definition: register the trait in the registry.
 /// Also stores default method body syntax nodes for later MIR lowering.
 fn infer_interface_def(
-    _ctx: &mut InferCtx,
-    _env: &mut TypeEnv,
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
     iface: &InterfaceDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
     trait_registry: &mut TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
     default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
 ) {
     let trait_name = iface
@@ -6687,10 +6713,79 @@ fn infer_interface_def(
     }
 
     trait_registry.register_trait(TraitDef {
-        name: trait_name,
+        name: trait_name.clone(),
         methods,
         associated_types,
     });
+
+    // Check each default method body once, with `self :: Self`, so its
+    // expressions have types for codegen to specialize per implementing type
+    // and so errors in it are reported. The trait is registered first, which
+    // is what lets `self.other_method()` resolve through the interface.
+    let previous_interface = ctx.current_interface.replace(trait_name);
+    for method in iface.methods() {
+        let Some(body) = method.body() else {
+            continue;
+        };
+        env.push_scope();
+        let mut param_tys = Vec::new();
+        if let Some(param_list) = method.param_list() {
+            for param in param_list.params() {
+                let is_self = param.syntax().children_with_tokens().any(|tok| {
+                    tok.as_token()
+                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
+                        .unwrap_or(false)
+                });
+                let param_ty = if is_self {
+                    Ty::Con(TyCon::new("Self"))
+                } else {
+                    param
+                        .type_annotation()
+                        .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
+                        .unwrap_or_else(|| ctx.fresh_var())
+                };
+                let name = if is_self {
+                    "self".to_string()
+                } else {
+                    param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string())
+                };
+                env.insert(name, Scheme::mono(param_ty.clone()));
+                param_tys.push(param_ty);
+            }
+        }
+        let declared_ret = method
+            .return_type()
+            .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry));
+        ctx.push_fn_return_type(declared_ret.clone());
+        let body_ty = infer_block(
+            ctx,
+            env,
+            &body,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
+        ctx.pop_fn_return_type();
+        env.pop_scope();
+        let ret = match (body_ty, declared_ret) {
+            (Ok(body_ty), Some(declared)) => {
+                let _ = ctx.unify(body_ty, declared.clone(), ConstraintOrigin::Builtin);
+                declared
+            }
+            (Ok(body_ty), None) => body_ty,
+            (Err(_), Some(declared)) => declared,
+            (Err(_), None) => Ty::Tuple(vec![]),
+        };
+        types.insert(
+            method.syntax().text_range(),
+            Ty::Fun(param_tys, Box::new(ret)),
+        );
+    }
+    ctx.current_interface = previous_interface;
 }
 
 /// Extract the concrete type from an associated type binding node.
@@ -6890,15 +6985,6 @@ fn infer_impl_def(
                 .or_else(|| resolve_type_name(&ann))
         });
 
-        impl_methods.insert(
-            method_name.clone(),
-            ImplMethodSig {
-                has_self,
-                param_count,
-                return_type: return_type.clone(),
-            },
-        );
-
         // Also infer the method body to check it type-checks.
         env.push_scope();
         env.insert("self".into(), Scheme::mono(impl_type.clone()));
@@ -6937,6 +7023,9 @@ fn infer_impl_def(
             }
         }
 
+        // The method returns what its annotation says, else what its body
+        // is inferred to produce.
+        let mut return_type = return_type;
         if let Some(body) = method.body() {
             match infer_block(
                 ctx,
@@ -6947,16 +7036,29 @@ fn infer_impl_def(
                 &*trait_registry,
                 fn_constraints,
             ) {
-                Ok(body_ty) => {
-                    if let Some(ref ret_ty) = return_type {
+                Ok(body_ty) => match return_type {
+                    Some(ref ret_ty) => {
                         let _ = ctx.unify(body_ty, ret_ty.clone(), ConstraintOrigin::Builtin);
                     }
-                }
+                    None => return_type = Some(ctx.resolve(body_ty)),
+                },
                 Err(_) => { /* error already recorded */ }
             }
         }
 
         env.pop_scope();
+
+        // The registry answers method lookups from other inference contexts,
+        // so a return type still holding this context's type variables stays
+        // unknown there (the trait's declared type stands in).
+        impl_methods.insert(
+            method_name.clone(),
+            ImplMethodSig {
+                has_self,
+                param_count,
+                return_type: return_type.clone().filter(|ty| !ty.has_type_vars()),
+            },
+        );
 
         // Register the method as a callable function so `to_string(42)` works.
         // Include all params (self + non-self) so the MIR lowerer can bind them.
@@ -7215,7 +7317,7 @@ fn infer_fn_def(
                         // like List<String>, Map<String, String>, Result<T, E>).
                         // Fall back to simple name_to_type if that fails.
                         if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
-                            (full_ty, None)
+                            (with_declared_type_params(&full_ty, &type_params), None)
                         } else {
                             (name_to_type(&type_name), None)
                         }
@@ -7223,7 +7325,7 @@ fn infer_fn_def(
                 } else {
                     // No simple type name -- try full annotation resolution.
                     if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
-                        (full_ty, None)
+                        (with_declared_type_params(&full_ty, &type_params), None)
                     } else {
                         (ctx.fresh_var(), None)
                     }
@@ -7264,6 +7366,7 @@ fn infer_fn_def(
         }
         // Use full annotation resolution for generic/sugar types.
         resolve_type_annotation(ctx, &ann, type_registry)
+            .map(|ty| with_declared_type_params(&ty, &type_params))
             .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
     });
     if is_native {
@@ -7935,6 +8038,13 @@ fn infer_binary(
             Ok(lhs_ty)
         }
 
+        // `start..end` is a Range of Int, wherever it appears.
+        Some(SyntaxKind::DOT_DOT) => {
+            ctx.unify(lhs_ty, Ty::int(), origin.clone())?;
+            ctx.unify(rhs_ty, Ty::int(), origin)?;
+            Ok(Ty::range())
+        }
+
         // Unknown op: return a fresh variable
         _ => {
             let result = ctx.fresh_var();
@@ -8048,7 +8158,13 @@ fn infer_unary(
             }
         }
         Some(SyntaxKind::BANG | SyntaxKind::NOT_KW) => {
-            ctx.unify(operand_ty, Ty::bool(), ConstraintOrigin::Builtin)?;
+            let origin = un
+                .op()
+                .map(|op| ConstraintOrigin::BinOp {
+                    op_span: op.text_range(),
+                })
+                .unwrap_or(ConstraintOrigin::Builtin);
+            ctx.unify(Ty::bool(), operand_ty, origin)?;
             Ok(Ty::bool())
         }
         _ => Ok(operand_ty),
@@ -9761,22 +9877,49 @@ fn infer_for_in(
     // Push a new scope for the loop variable(s).
     env.push_scope();
 
-    if is_range {
-        // Range iteration: bind loop variable as Int.
-        let var_name = for_in
-            .binding_name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
-        env.insert(var_name, Scheme::mono(Ty::int()));
-    } else {
-        // Collection iteration: detect type and bind accordingly.
-        match extract_collection_elem_type(&iter_ty) {
-            CollectionType::List(elem_ty) => {
+    // A pattern binding (`for (a, b) in pairs`) is checked like a `let`
+    // pattern against the element type; a map yields `(key, value)`.
+    let pattern = for_in.pattern();
+    if let Some(pat) = &pattern {
+        if let Err(error) = validate_let_destructuring_pattern(pat) {
+            ctx.errors.push(error.clone());
+            return Err(error);
+        }
+    }
+    let mut bind = |ctx: &mut InferCtx, env: &mut TypeEnv, elem_ty: Ty| -> Result<(), TypeError> {
+        match &pattern {
+            Some(pat) => {
+                let pat_ty = infer_pattern(ctx, env, pat, types, type_registry)?;
+                ctx.unify(
+                    pat_ty,
+                    elem_ty,
+                    ConstraintOrigin::LetBinding {
+                        binding_span: pat.syntax().text_range(),
+                    },
+                )?;
+            }
+            None => {
                 let var_name = for_in
                     .binding_name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "_".to_string());
                 env.insert(var_name, Scheme::mono(elem_ty));
+            }
+        }
+        Ok(())
+    };
+
+    if is_range {
+        // Range iteration: bind loop variable as Int.
+        bind(ctx, env, Ty::int())?;
+    } else {
+        // Collection iteration: detect type and bind accordingly.
+        match extract_collection_elem_type(&iter_ty) {
+            CollectionType::List(elem_ty) => {
+                bind(ctx, env, elem_ty)?;
+            }
+            CollectionType::Map(key_ty, val_ty) if pattern.is_some() => {
+                bind(ctx, env, Ty::Tuple(vec![key_ty, val_ty]))?;
             }
             CollectionType::Map(key_ty, val_ty) => {
                 // Expect destructuring binding {k, v}.
@@ -9800,43 +9943,21 @@ fn infer_for_in(
                 }
             }
             CollectionType::Set(elem_ty) => {
-                let var_name = for_in
-                    .binding_name()
-                    .and_then(|n| n.text())
-                    .unwrap_or_else(|| "_".to_string());
-                env.insert(var_name, Scheme::mono(elem_ty));
+                bind(ctx, env, elem_ty)?;
             }
             CollectionType::Unknown => {
-                let var_name = for_in
-                    .binding_name()
-                    .and_then(|n| n.text())
-                    .unwrap_or_else(|| "_".to_string());
-
-                // Check if the type implements Iterable (collection -> iterator).
-                if trait_registry.has_impl("Iterable", &iter_ty) {
-                    if let Some(item_ty) =
-                        trait_registry.resolve_associated_type("Iterable", "Item", &iter_ty)
-                    {
-                        env.insert(var_name, Scheme::mono(item_ty));
-                    } else {
-                        // Iterable impl exists but no Item type resolved -- fallback to Int
-                        env.insert(var_name, Scheme::mono(Ty::int()));
-                    }
-                }
-                // Check if the type directly implements Iterator (type IS an iterator).
-                else if trait_registry.has_impl("Iterator", &iter_ty) {
-                    if let Some(item_ty) =
-                        trait_registry.resolve_associated_type("Iterator", "Item", &iter_ty)
-                    {
-                        env.insert(var_name, Scheme::mono(item_ty));
-                    } else {
-                        env.insert(var_name, Scheme::mono(Ty::int()));
-                    }
-                }
-                // True fallback: bind as Int (existing behavior).
-                else {
-                    env.insert(var_name, Scheme::mono(Ty::int()));
-                }
+                // An Iterable (collection -> iterator) or an Iterator yields
+                // its Item; anything else falls back to Int.
+                let item_ty = ["Iterable", "Iterator"]
+                    .iter()
+                    .find(|trait_name| trait_registry.has_impl(trait_name, &iter_ty))
+                    .map(|trait_name| {
+                        trait_registry
+                            .resolve_associated_type(trait_name, "Item", &iter_ty)
+                            .unwrap_or_else(Ty::int)
+                    })
+                    .unwrap_or_else(Ty::int);
+                bind(ctx, env, item_ty)?;
             }
         }
     }
@@ -9967,11 +10088,10 @@ fn infer_closure(
                 .and_then(|types| types.get(param_idx))
                 .cloned();
             let param_ty = if let Some(ann) = param.type_annotation() {
-                let annotated_ty = if let Some(type_name) = resolve_type_name_str(&ann) {
-                    name_to_type(&type_name)
-                } else {
-                    ctx.fresh_var()
-                };
+                // Full resolution keeps generic arguments (`List<Int>`) and aliases.
+                let annotated_ty = resolve_type_annotation(ctx, &ann, type_registry)
+                    .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
+                    .unwrap_or_else(|| ctx.fresh_var());
                 if let Some(expected_param_ty) = expected_param_ty {
                     ctx.unify(
                         annotated_ty.clone(),
@@ -10291,8 +10411,11 @@ fn infer_block(
                     match &grouped[gi] {
                         GroupedItem::Single(item) => {
                             match item {
+                                // Declarations are statements: a block that
+                                // ends in one has the unit type, which is
+                                // also what codegen produces for it.
                                 Item::LetBinding(let_) => {
-                                    if let Ok(ty) = infer_let_binding(
+                                    let _ = infer_let_binding(
                                         ctx,
                                         env,
                                         let_,
@@ -10300,12 +10423,11 @@ fn infer_block(
                                         type_registry,
                                         trait_registry,
                                         &mut local_fn_constraints,
-                                    ) {
-                                        last_ty = ty;
-                                    }
+                                    );
+                                    last_ty = Ty::Tuple(vec![]);
                                 }
                                 Item::FnDef(fn_) => {
-                                    if let Ok(ty) = infer_fn_def(
+                                    let _ = infer_fn_def(
                                         ctx,
                                         env,
                                         fn_,
@@ -10313,9 +10435,8 @@ fn infer_block(
                                         type_registry,
                                         trait_registry,
                                         &mut local_fn_constraints,
-                                    ) {
-                                        last_ty = ty;
-                                    }
+                                    );
+                                    last_ty = Ty::Tuple(vec![]);
                                 }
                                 _ => {
                                     // Other items (interface, impl, struct, etc.)
@@ -10323,7 +10444,7 @@ fn infer_block(
                             }
                         }
                         GroupedItem::MultiClause { clauses } => {
-                            if let Ok(ty) = infer_multi_clause_fn(
+                            let _ = infer_multi_clause_fn(
                                 ctx,
                                 env,
                                 clauses,
@@ -10332,9 +10453,8 @@ fn infer_block(
                                 trait_registry,
                                 &mut local_fn_constraints,
                                 &ImportContext::empty(),
-                            ) {
-                                last_ty = ty;
-                            }
+                            );
+                            last_ty = Ty::Tuple(vec![]);
                         }
                     }
                 }
@@ -10500,8 +10620,8 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                 .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
                 .collect();
             AbsPat::Constructor {
-                name: "Tuple".to_string(),
-                type_name: "Tuple".to_string(),
+                name: exhaustiveness::TUPLE.to_string(),
+                type_name: exhaustiveness::TUPLE.to_string(),
                 args,
             }
         }
@@ -10551,17 +10671,49 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                 AbsPat::Wildcard
             }
         }
-        Pattern::Cons(_) => {
-            // Cons patterns match non-empty lists. For exhaustiveness checking,
-            // treat as a wildcard (conservative: won't incorrectly claim exhaustive).
-            // Lists are infinite types so cons alone is never exhaustive anyway.
-            AbsPat::Wildcard
+        Pattern::Cons(cons_pat) => {
+            // `head :: tail` is the non-empty constructor of the list type.
+            let lower = |sub: Option<Pattern>| {
+                sub.map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                    .unwrap_or(AbsPat::Wildcard)
+            };
+            AbsPat::Constructor {
+                name: exhaustiveness::CONS.to_string(),
+                type_name: exhaustiveness::LIST.to_string(),
+                args: vec![lower(cons_pat.head()), lower(cons_pat.tail())],
+            }
+        }
+        Pattern::List(list_pat) => {
+            // `[a, b]` is `a :: b :: []`.
+            let nil = AbsPat::Constructor {
+                name: exhaustiveness::NIL.to_string(),
+                type_name: exhaustiveness::LIST.to_string(),
+                args: vec![],
+            };
+            list_pat
+                .patterns()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .fold(nil, |tail, elem| AbsPat::Constructor {
+                    name: exhaustiveness::CONS.to_string(),
+                    type_name: exhaustiveness::LIST.to_string(),
+                    args: vec![ast_pattern_to_abstract(&elem, env, type_registry), tail],
+                })
         }
     }
 }
 
 /// Convert a resolved scrutinee type to the abstract `TypeInfo` used by exhaustiveness.
 fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
+    if let Ty::Tuple(elems) = ty {
+        return exhaustiveness::tuple_type_info(elems.len());
+    }
+    if let Ty::App(con, _) = ty {
+        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == exhaustiveness::LIST) {
+            return exhaustiveness::list_type_info();
+        }
+    }
     let resolved = match ty {
         Ty::App(con, _) => {
             if let Ty::Con(tc) = con.as_ref() {
@@ -10617,8 +10769,9 @@ fn build_abs_type_registry(type_registry: &TypeRegistry) -> AbsTypeRegistry {
         abs_reg.register(name.clone(), AbsTypeInfo::SumType { variants });
     }
 
-    // Also register Bool for nested bool patterns.
+    // Also register Bool for nested bool patterns, and lists for `::` patterns.
     abs_reg.register("Bool", AbsTypeInfo::Bool);
+    abs_reg.register(exhaustiveness::LIST, exhaustiveness::list_type_info());
 
     // Register Option and Result as sum types if they exist.
     // These are built-in but not in our type_registry, so add them.
@@ -10665,10 +10818,14 @@ fn format_abstract_pat(pat: &AbsPat) -> String {
     match pat {
         AbsPat::Wildcard => "_".to_string(),
         AbsPat::Constructor { name, args, .. } => {
-            if args.is_empty() {
+            let args_str: Vec<String> = args.iter().map(format_abstract_pat).collect();
+            if name == exhaustiveness::TUPLE {
+                format!("({})", args_str.join(", "))
+            } else if name == exhaustiveness::CONS {
+                format!("{} :: {}", args_str[0], args_str[1])
+            } else if args.is_empty() {
                 name.clone()
             } else {
-                let args_str: Vec<String> = args.iter().map(format_abstract_pat).collect();
                 format!("{}({})", name, args_str.join(", "))
             }
         }
@@ -10875,9 +11032,13 @@ fn infer_case(
         ctx.errors.push(err);
     }
 
-    // For redundancy: check all arms (including guarded ones).
-    let redundant_indices =
-        exhaustiveness::check_redundancy(&arm_patterns, &scrutinee_type_info, &abs_registry);
+    // For redundancy: check all arms; guarded arms cover nothing for later ones.
+    let redundant_indices = exhaustiveness::check_redundancy(
+        &arm_patterns,
+        &arm_has_guard,
+        &scrutinee_type_info,
+        &abs_registry,
+    );
     for idx in redundant_indices {
         let warn = TypeError::RedundantArm {
             arm_index: idx,
@@ -11112,6 +11273,26 @@ fn infer_field_access(
         fn_constraints,
     )?;
     let resolved_base = ctx.resolve(base_ty);
+
+    // Inside an interface's default method `self` has the type `Self`: its
+    // methods are the interface's own signatures (implemented later, per type).
+    if is_method_call {
+        if let (Ty::Con(tc), Some(iface)) = (&resolved_base, ctx.current_interface.clone()) {
+            if tc.name == "Self" {
+                if let Some(sig) = trait_registry
+                    .get_trait(&iface)
+                    .and_then(|def| def.methods.iter().find(|m| m.name == field_name))
+                {
+                    let ret = sig.return_type.clone().unwrap_or_else(|| ctx.fresh_var());
+                    let mut params = vec![resolved_base.clone()];
+                    for _ in 0..sig.param_count {
+                        params.push(ctx.fresh_var());
+                    }
+                    return Ok(Ty::Fun(params, Box::new(ret)));
+                }
+            }
+        }
+    }
 
     let struct_name = match &resolved_base {
         Ty::App(con, _) => {
@@ -11742,6 +11923,17 @@ fn infer_pattern(
         Pattern::Cons(cons_pat) => {
             infer_cons_pattern(ctx, env, cons_pat, pat, types, type_registry)
         }
+        Pattern::List(list_pat) => {
+            // `[p1, p2]` is a List<T> whose every element pattern is a T.
+            let elem_ty = ctx.fresh_var();
+            for sub_pat in list_pat.patterns() {
+                let sub_ty = infer_pattern(ctx, env, &sub_pat, types, type_registry)?;
+                ctx.unify(sub_ty, elem_ty.clone(), ConstraintOrigin::Builtin)?;
+            }
+            let ty = Ty::list(elem_ty);
+            types.insert(pat.syntax().text_range(), ty.clone());
+            Ok(ty)
+        }
     }
 }
 
@@ -11963,6 +12155,11 @@ fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: 
             }
             if let Some(tail) = cons_pat.tail() {
                 collect_binding_names_recursive(&tail, names, env);
+            }
+        }
+        Pattern::List(list_pat) => {
+            for sub in list_pat.patterns() {
+                collect_binding_names_recursive(&sub, names, env);
             }
         }
     }
@@ -12210,6 +12407,7 @@ fn infer_supervisor_def(
             let tokens: Vec<_> = block
                 .descendants_with_tokens()
                 .filter_map(|c| c.into_token())
+                .filter(|t| t.kind() != SyntaxKind::WHITESPACE)
                 .collect();
 
             let mut i = 0;
@@ -12832,12 +13030,15 @@ fn infer_send(
         // Typed Pid<M>: validate message type matches M.
         Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Pid") => {
             if let Some(expected_msg) = args.first() {
+                let errors_before = ctx.errors.len();
                 let result = ctx.unify(
                     msg_ty.clone(),
                     expected_msg.clone(),
                     ConstraintOrigin::Builtin,
                 );
                 if result.is_err() {
+                    // Report the send, not also the spanless mismatch `unify` recorded.
+                    ctx.errors.truncate(errors_before);
                     let resolved_expected = ctx.resolve(expected_msg.clone());
                     let resolved_found = ctx.resolve(msg_ty);
                     let err = TypeError::SendTypeMismatch {
@@ -13485,6 +13686,18 @@ fn resolve_alias(ty: Ty, type_registry: &TypeRegistry) -> Ty {
 }
 
 /// Substitute named type parameters with concrete types.
+/// Replace the function's declared type parameters, which an annotation such
+/// as `List<T>` resolves to plain constructors named `T`, with the inference
+/// variables that stand for them in the body.
+fn with_declared_type_params(ty: &Ty, type_params: &FxHashMap<String, Ty>) -> Ty {
+    if type_params.is_empty() {
+        return ty.clone();
+    }
+    let names: Vec<String> = type_params.keys().cloned().collect();
+    let values: Vec<Ty> = names.iter().map(|name| type_params[name].clone()).collect();
+    substitute_type_params(ty, &names, &values)
+}
+
 fn substitute_type_params(ty: &Ty, param_names: &[String], param_values: &[Ty]) -> Ty {
     match ty {
         Ty::Con(tc) => {

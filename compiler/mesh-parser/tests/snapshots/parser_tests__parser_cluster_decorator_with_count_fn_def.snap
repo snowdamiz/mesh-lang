@@ -1,29 +1,32 @@
 ---
 source: compiler/mesh-parser/tests/parser_tests.rs
-assertion_line: 2203
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..36
-  FN_DEF@0..36
+SOURCE_FILE@0..41
+  FN_DEF@0..41
     CLUSTER_DECORATOR_DECL@0..11
       AT@0..1 "@"
       IDENT@1..8 "cluster"
       L_PAREN@8..9 "("
       INT_LITERAL@9..10 "3"
       R_PAREN@10..11 ")"
-    DEF_KW@11..14 "def"
-    NAME@14..21
-      IDENT@14..21 "enqueue"
-    PARAM_LIST@21..26
-      L_PAREN@21..22 "("
-      PARAM@22..25
-        IDENT@22..25 "job"
-      R_PAREN@25..26 ")"
-    DO_KW@26..28 "do"
-    BLOCK@28..33
-      NEWLINE@28..29 "\n"
-      NAME_REF@29..32
-        IDENT@29..32 "job"
-      NEWLINE@32..33 "\n"
-    END_KW@33..36 "end"
-  EOF@36..36 ""
+    WHITESPACE@11..12 " "
+    DEF_KW@12..15 "def"
+    WHITESPACE@15..16 " "
+    NAME@16..23
+      IDENT@16..23 "enqueue"
+    PARAM_LIST@23..28
+      L_PAREN@23..24 "("
+      PARAM@24..27
+        IDENT@24..27 "job"
+      R_PAREN@27..28 ")"
+    WHITESPACE@28..29 " "
+    DO_KW@29..31 "do"
+    BLOCK@31..38
+      NEWLINE@31..32 "\n"
+      WHITESPACE@32..34 "  "
+      NAME_REF@34..37
+        IDENT@34..37 "job"
+      NEWLINE@37..38 "\n"
+    END_KW@38..41 "end"
+  EOF@41..41 ""

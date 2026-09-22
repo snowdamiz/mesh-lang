@@ -1,5 +1,6 @@
 import { defineConfig, type HeadConfig, type PageData } from 'vitepress'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
 import path from 'node:path'
 import meshGrammar from '../../../tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
 import meshLight from './theme/shiki/mesh-light.json'
@@ -12,7 +13,11 @@ const SOCIAL_IMAGE_PATH = '/og-image-v2.png'
 const SOCIAL_IMAGE_URL = `${SITE_URL}${SOCIAL_IMAGE_PATH}`
 const SOCIAL_IMAGE_ALT = 'Mesh social preview card reading “Typed systems. Native speed.” with current @cluster and Job examples.'
 const SITE_LOGO_URL = `${SITE_URL}/logo-icon-black.svg`
-const INDEX_ROBOTS = 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
+// The language version is the compiler's; the release workflow bumps it before deploying the site.
+const MESH_VERSION = fs
+  .readFileSync(path.resolve(__dirname, '../../../compiler/meshc/Cargo.toml'), 'utf8')
+  .match(/^version\s*=\s*"([^"]+)"/m)![1]
+const INDEX_ROBOTS ='index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
 const NOINDEX_ROBOTS = 'noindex,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
 
 function toCanonicalUrl(relativePath: string): string {
@@ -156,9 +161,7 @@ export default defineConfig({
 
   // Site-wide SEO defaults
   head: [
-    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
-    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap' }],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-black.svg', media: '(prefers-color-scheme: light)' }],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-white.svg', media: '(prefers-color-scheme: dark)' }],
     ['link', { rel: 'image_src', href: SOCIAL_IMAGE_URL }],
@@ -227,7 +230,7 @@ export default defineConfig({
       pattern: 'https://github.com/hyperpush-org/mesh-lang/edit/main/website/docs/:path',
       text: 'Edit this page on GitHub',
     },
-    meshVersion: '14.0',
+    meshVersion: MESH_VERSION,
     sidebar: {
       '/docs/': [
         {

@@ -1,16 +1,19 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"from Math import *\")"
 ---
-SOURCE_FILE@0..15
-  FROM_IMPORT_DECL@0..14
+SOURCE_FILE@0..18
+  FROM_IMPORT_DECL@0..17
     IDENT@0..4 "from"
-    PATH@4..8
-      IDENT@4..8 "Math"
-    IMPORT_KW@8..14 "import"
-    IMPORT_LIST@14..14
-  STAR@14..15 "*"
-  EOF@15..15 ""
+    WHITESPACE@4..5 " "
+    PATH@5..9
+      IDENT@5..9 "Math"
+    WHITESPACE@9..10 " "
+    IMPORT_KW@10..16 "import"
+    WHITESPACE@16..17 " "
+    IMPORT_LIST@17..17
+  STAR@17..18 "*"
+  EOF@18..18 ""
 
 errors:
   - glob imports are not allowed; import names explicitly @17..18

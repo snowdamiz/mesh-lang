@@ -1,31 +1,39 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"case x do\\n  1 -> \\\"one\\\"\\n  2 -> \\\"two\\\"\\nend\")"
 ---
-SOURCE_FILE@0..29
-  CASE_EXPR@0..29
+SOURCE_FILE@0..39
+  CASE_EXPR@0..39
     CASE_KW@0..4 "case"
-    NAME_REF@4..5
-      IDENT@4..5 "x"
-    DO_KW@5..7 "do"
-    NEWLINE@7..8 "\n"
-    MATCH_ARM@8..16
-      LITERAL_PAT@8..9
-        INT_LITERAL@8..9 "1"
-      ARROW@9..11 "->"
-      STRING_EXPR@11..16
-        STRING_START@11..12 "\""
-        STRING_CONTENT@12..15 "one"
-        STRING_END@15..16 "\""
-    NEWLINE@16..17 "\n"
-    MATCH_ARM@17..25
-      LITERAL_PAT@17..18
-        INT_LITERAL@17..18 "2"
-      ARROW@18..20 "->"
-      STRING_EXPR@20..25
-        STRING_START@20..21 "\""
-        STRING_CONTENT@21..24 "two"
-        STRING_END@24..25 "\""
-    NEWLINE@25..26 "\n"
-    END_KW@26..29 "end"
-  EOF@29..29 ""
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "x"
+    WHITESPACE@6..7 " "
+    DO_KW@7..9 "do"
+    NEWLINE@9..10 "\n"
+    WHITESPACE@10..12 "  "
+    MATCH_ARM@12..22
+      LITERAL_PAT@12..13
+        INT_LITERAL@12..13 "1"
+      WHITESPACE@13..14 " "
+      ARROW@14..16 "->"
+      WHITESPACE@16..17 " "
+      STRING_EXPR@17..22
+        STRING_START@17..18 "\""
+        STRING_CONTENT@18..21 "one"
+        STRING_END@21..22 "\""
+    NEWLINE@22..23 "\n"
+    WHITESPACE@23..25 "  "
+    MATCH_ARM@25..35
+      LITERAL_PAT@25..26
+        INT_LITERAL@25..26 "2"
+      WHITESPACE@26..27 " "
+      ARROW@27..29 "->"
+      WHITESPACE@29..30 " "
+      STRING_EXPR@30..35
+        STRING_START@30..31 "\""
+        STRING_CONTENT@31..34 "two"
+        STRING_END@34..35 "\""
+    NEWLINE@35..36 "\n"
+    END_KW@36..39 "end"
+  EOF@39..39 ""

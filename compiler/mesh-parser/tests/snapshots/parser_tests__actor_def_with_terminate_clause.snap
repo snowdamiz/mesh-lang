@@ -1,32 +1,39 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..52
-  ACTOR_DEF@0..52
+SOURCE_FILE@0..65
+  ACTOR_DEF@0..65
     ACTOR_KW@0..5 "actor"
-    NAME@5..11
-      IDENT@5..11 "Worker"
-    PARAM_LIST@11..18
-      L_PAREN@11..12 "("
-      PARAM@12..17
-        IDENT@12..17 "state"
-      R_PAREN@17..18 ")"
-    DO_KW@18..20 "do"
-    BLOCK@20..49
-      NEWLINE@20..21 "\n"
-      NAME_REF@21..26
-        IDENT@21..26 "state"
-      NEWLINE@26..27 "\n"
-      TERMINATE_CLAUSE@27..48
-        TERMINATE_KW@27..36 "terminate"
-        DO_KW@36..38 "do"
-        BLOCK@38..45
-          NEWLINE@38..39 "\n"
-          NAME_REF@39..44
-            IDENT@39..44 "state"
-          NEWLINE@44..45 "\n"
-        END_KW@45..48 "end"
-      NEWLINE@48..49 "\n"
-    END_KW@49..52 "end"
-  EOF@52..52 ""
+    WHITESPACE@5..6 " "
+    NAME@6..12
+      IDENT@6..12 "Worker"
+    PARAM_LIST@12..19
+      L_PAREN@12..13 "("
+      PARAM@13..18
+        IDENT@13..18 "state"
+      R_PAREN@18..19 ")"
+    WHITESPACE@19..20 " "
+    DO_KW@20..22 "do"
+    BLOCK@22..62
+      NEWLINE@22..23 "\n"
+      WHITESPACE@23..25 "  "
+      NAME_REF@25..30
+        IDENT@25..30 "state"
+      NEWLINE@30..31 "\n"
+      WHITESPACE@31..33 "  "
+      TERMINATE_CLAUSE@33..61
+        TERMINATE_KW@33..42 "terminate"
+        WHITESPACE@42..43 " "
+        DO_KW@43..45 "do"
+        BLOCK@45..56
+          NEWLINE@45..46 "\n"
+          WHITESPACE@46..50 "    "
+          NAME_REF@50..55
+            IDENT@50..55 "state"
+          NEWLINE@55..56 "\n"
+        WHITESPACE@56..58 "  "
+        END_KW@58..61 "end"
+      NEWLINE@61..62 "\n"
+    END_KW@62..65 "end"
+  EOF@65..65 ""

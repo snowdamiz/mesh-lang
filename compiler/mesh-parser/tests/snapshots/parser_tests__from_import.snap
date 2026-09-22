@@ -1,17 +1,21 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "source_and_debug(\"from Math import sqrt, pow\")"
 ---
-SOURCE_FILE@0..22
-  FROM_IMPORT_DECL@0..22
+SOURCE_FILE@0..26
+  FROM_IMPORT_DECL@0..26
     IDENT@0..4 "from"
-    PATH@4..8
-      IDENT@4..8 "Math"
-    IMPORT_KW@8..14 "import"
-    IMPORT_LIST@14..22
-      NAME@14..18
-        IDENT@14..18 "sqrt"
-      COMMA@18..19 ","
-      NAME@19..22
-        IDENT@19..22 "pow"
-  EOF@22..22 ""
+    WHITESPACE@4..5 " "
+    PATH@5..9
+      IDENT@5..9 "Math"
+    WHITESPACE@9..10 " "
+    IMPORT_KW@10..16 "import"
+    WHITESPACE@16..17 " "
+    IMPORT_LIST@17..26
+      NAME@17..21
+        IDENT@17..21 "sqrt"
+      COMMA@21..22 ","
+      WHITESPACE@22..23 " "
+      NAME@23..26
+        IDENT@23..26 "pow"
+  EOF@26..26 ""

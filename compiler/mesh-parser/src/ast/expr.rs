@@ -326,25 +326,12 @@ impl FieldAccess {
 
     /// The field name token.
     pub fn field(&self) -> Option<SyntaxToken> {
-        // The field is after the DOT token; find the last IDENT or keyword-as-field.
-        // Keywords like `self` and `monitor` are valid as field names in
-        // module-qualified access (e.g., Node.self, Process.monitor).
+        // The field is after the DOT token: the last identifier or keyword-as-field
+        // (module-qualified access such as Node.self or Http.json).
         self.syntax
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .filter(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::IDENT
-                        | SyntaxKind::SELF_KW
-                        | SyntaxKind::MONITOR_KW
-                        | SyntaxKind::SPAWN_KW
-                        | SyntaxKind::LINK_KW
-                        | SyntaxKind::SEND_KW
-                        | SyntaxKind::WHERE_KW
-                        | SyntaxKind::CAST_KW
-                )
-            })
+            .filter(|t| t.kind().is_field_name())
             .last()
     }
 }
@@ -694,6 +681,11 @@ impl ForInExpr {
     /// The destructuring binding ({k, v}) for map iteration.
     pub fn destructure_binding(&self) -> Option<DestructureBinding> {
         child_node(&self.syntax)
+    }
+
+    /// The loop pattern (`for (a, b) in ...`), when the binding is one.
+    pub fn pattern(&self) -> Option<super::pat::Pattern> {
+        self.syntax.children().find_map(super::pat::Pattern::cast)
     }
 
     /// The iterable expression (e.g., 0..10).

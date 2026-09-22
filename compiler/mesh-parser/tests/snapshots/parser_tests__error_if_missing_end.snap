@@ -1,19 +1,22 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"if x do\\n  1\\n\")"
 ---
-SOURCE_FILE@0..8
-  IF_EXPR@0..8
+SOURCE_FILE@0..12
+  IF_EXPR@0..12
     IF_KW@0..2 "if"
-    NAME_REF@2..3
-      IDENT@2..3 "x"
-    DO_KW@3..5 "do"
-    BLOCK@5..8
-      NEWLINE@5..6 "\n"
-      LITERAL@6..7
-        INT_LITERAL@6..7 "1"
+    WHITESPACE@2..3 " "
+    NAME_REF@3..4
+      IDENT@3..4 "x"
+    WHITESPACE@4..5 " "
+    DO_KW@5..7 "do"
+    BLOCK@7..12
       NEWLINE@7..8 "\n"
-  EOF@8..8 ""
+      WHITESPACE@8..10 "  "
+      LITERAL@10..11
+        INT_LITERAL@10..11 "1"
+      NEWLINE@11..12 "\n"
+  EOF@12..12 ""
 
 errors:
   - expected `end` to close `do` block @12..12

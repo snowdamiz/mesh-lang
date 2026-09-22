@@ -188,13 +188,12 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
         // ── Container types ────────────────────────────────────────
         StfType::List(elem_type) => {
             buf.push(TAG_LIST);
-            let ptr = value as *const u8;
-            let len = unsafe { *(ptr as *const u64) } as u32;
+            let (len, data) = unsafe { crate::collections::list::list_slots(value as *const u8) };
+            let len = len as u32;
             if len > MAX_COLLECTION_LEN {
                 return Err(StfError::PayloadTooLarge(len));
             }
             buf.extend_from_slice(&len.to_le_bytes());
-            let data = unsafe { (ptr as *const u64).add(2) };
             for i in 0..len as usize {
                 let elem = unsafe { *data.add(i) };
                 stf_encode(elem, elem_type, buf)?;

@@ -1,15 +1,18 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "block_and_debug(\"return x + 1\")"
 ---
-SOURCE_FILE@0..9
-  BLOCK@0..9
-    RETURN_EXPR@0..9
+SOURCE_FILE@0..12
+  BLOCK@0..12
+    RETURN_EXPR@0..12
       RETURN_KW@0..6 "return"
-      BINARY_EXPR@6..9
-        NAME_REF@6..7
-          IDENT@6..7 "x"
-        PLUS@7..8 "+"
-        LITERAL@8..9
-          INT_LITERAL@8..9 "1"
-  EOF@9..9 ""
+      WHITESPACE@6..7 " "
+      BINARY_EXPR@7..12
+        NAME_REF@7..8
+          IDENT@7..8 "x"
+        WHITESPACE@8..9 " "
+        PLUS@9..10 "+"
+        WHITESPACE@10..11 " "
+        LITERAL@11..12
+          INT_LITERAL@11..12 "1"
+  EOF@12..12 ""

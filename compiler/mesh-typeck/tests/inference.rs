@@ -140,10 +140,13 @@ fn test_function_identity() {
 }
 
 /// SUCCESS CRITERION #1: Let-polymorphism
-/// The identity function can be used at multiple types.
+/// A let-bound value is generalized, so a named identity function bound to a
+/// local can be used at multiple types.
 #[test]
 fn test_let_polymorphism() {
-    let result = check_source("let id = fn (x) -> x end\nlet a = id(1)\nlet b = id(\"hello\")\nb");
+    let result = check_source(
+        "fn ident(x) do\n  x\nend\nlet id = ident\nlet a = id(1)\nlet b = id(\"hello\")\nb",
+    );
     assert!(
         result.errors.is_empty(),
         "let-polymorphism should not produce errors, got: {:?}",

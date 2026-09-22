@@ -1,17 +1,19 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"a[i + 1]\")"
 ---
-SOURCE_FILE@0..6
-  INDEX_EXPR@0..6
+SOURCE_FILE@0..8
+  INDEX_EXPR@0..8
     NAME_REF@0..1
       IDENT@0..1 "a"
     L_BRACKET@1..2 "["
-    BINARY_EXPR@2..5
+    BINARY_EXPR@2..7
       NAME_REF@2..3
         IDENT@2..3 "i"
-      PLUS@3..4 "+"
-      LITERAL@4..5
-        INT_LITERAL@4..5 "1"
-    R_BRACKET@5..6 "]"
-  EOF@6..6 ""
+      WHITESPACE@3..4 " "
+      PLUS@4..5 "+"
+      WHITESPACE@5..6 " "
+      LITERAL@6..7
+        INT_LITERAL@6..7 "1"
+    R_BRACKET@7..8 "]"
+  EOF@8..8 ""

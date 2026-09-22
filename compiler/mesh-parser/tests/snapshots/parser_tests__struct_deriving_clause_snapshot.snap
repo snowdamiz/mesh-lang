@@ -1,27 +1,34 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..44
-  STRUCT_DEF@0..44
+SOURCE_FILE@0..52
+  STRUCT_DEF@0..52
     STRUCT_KW@0..6 "struct"
-    NAME@6..11
-      IDENT@6..11 "Point"
-    DO_KW@11..13 "do"
-    NEWLINE@13..14 "\n"
-    STRUCT_FIELD@14..20
-      NAME@14..15
-        IDENT@14..15 "x"
-      TYPE_ANNOTATION@15..20
-        COLON_COLON@15..17 "::"
-        IDENT@17..20 "Int"
-    NEWLINE@20..21 "\n"
-    END_KW@21..24 "end"
-    DERIVING_CLAUSE@24..44
-      IDENT@24..32 "deriving"
-      L_PAREN@32..33 "("
-      IDENT@33..35 "Eq"
-      COMMA@35..36 ","
-      IDENT@36..43 "Display"
-      R_PAREN@43..44 ")"
-  EOF@44..44 ""
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "Point"
+    WHITESPACE@12..13 " "
+    DO_KW@13..15 "do"
+    NEWLINE@15..16 "\n"
+    WHITESPACE@16..18 "  "
+    STRUCT_FIELD@18..26
+      NAME@18..19
+        IDENT@18..19 "x"
+      WHITESPACE@19..20 " "
+      TYPE_ANNOTATION@20..26
+        COLON_COLON@20..22 "::"
+        WHITESPACE@22..23 " "
+        IDENT@23..26 "Int"
+    NEWLINE@26..27 "\n"
+    END_KW@27..30 "end"
+    WHITESPACE@30..31 " "
+    DERIVING_CLAUSE@31..52
+      IDENT@31..39 "deriving"
+      L_PAREN@39..40 "("
+      IDENT@40..42 "Eq"
+      COMMA@42..43 ","
+      WHITESPACE@43..44 " "
+      IDENT@44..51 "Display"
+      R_PAREN@51..52 ")"
+  EOF@52..52 ""

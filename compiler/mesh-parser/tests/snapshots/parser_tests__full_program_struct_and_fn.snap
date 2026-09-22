@@ -1,61 +1,78 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..78
-  STRUCT_DEF@0..35
+SOURCE_FILE@0..98
+  STRUCT_DEF@0..45
     STRUCT_KW@0..6 "struct"
-    NAME@6..11
-      IDENT@6..11 "Point"
-    DO_KW@11..13 "do"
-    NEWLINE@13..14 "\n"
-    STRUCT_FIELD@14..22
-      NAME@14..15
-        IDENT@14..15 "x"
-      TYPE_ANNOTATION@15..22
-        COLON_COLON@15..17 "::"
-        IDENT@17..22 "Float"
-    NEWLINE@22..23 "\n"
-    STRUCT_FIELD@23..31
-      NAME@23..24
-        IDENT@23..24 "y"
-      TYPE_ANNOTATION@24..31
-        COLON_COLON@24..26 "::"
-        IDENT@26..31 "Float"
-    NEWLINE@31..32 "\n"
-    END_KW@32..35 "end"
-  NEWLINE@35..36 "\n"
-  NEWLINE@36..37 "\n"
-  FN_DEF@37..78
-    FN_KW@37..39 "fn"
-    NAME@39..47
-      IDENT@39..47 "distance"
-    PARAM_LIST@47..57
-      L_PAREN@47..48 "("
-      PARAM@48..56
-        IDENT@48..49 "p"
-        TYPE_ANNOTATION@49..56
-          COLON_COLON@49..51 "::"
-          IDENT@51..56 "Point"
-      R_PAREN@56..57 ")"
-    TYPE_ANNOTATION@57..64
-      ARROW@57..59 "->"
-      IDENT@59..64 "Float"
-    DO_KW@64..66 "do"
-    BLOCK@66..75
-      NEWLINE@66..67 "\n"
-      BINARY_EXPR@67..74
-        FIELD_ACCESS@67..70
-          NAME_REF@67..68
-            IDENT@67..68 "p"
-          DOT@68..69 "."
-          IDENT@69..70 "x"
-        PLUS@70..71 "+"
-        FIELD_ACCESS@71..74
-          NAME_REF@71..72
-            IDENT@71..72 "p"
-          DOT@72..73 "."
-          IDENT@73..74 "y"
-      NEWLINE@74..75 "\n"
-    END_KW@75..78 "end"
-  EOF@78..78 ""
+    WHITESPACE@6..7 " "
+    NAME@7..12
+      IDENT@7..12 "Point"
+    WHITESPACE@12..13 " "
+    DO_KW@13..15 "do"
+    NEWLINE@15..16 "\n"
+    WHITESPACE@16..18 "  "
+    STRUCT_FIELD@18..28
+      NAME@18..19
+        IDENT@18..19 "x"
+      WHITESPACE@19..20 " "
+      TYPE_ANNOTATION@20..28
+        COLON_COLON@20..22 "::"
+        WHITESPACE@22..23 " "
+        IDENT@23..28 "Float"
+    NEWLINE@28..29 "\n"
+    WHITESPACE@29..31 "  "
+    STRUCT_FIELD@31..41
+      NAME@31..32
+        IDENT@31..32 "y"
+      WHITESPACE@32..33 " "
+      TYPE_ANNOTATION@33..41
+        COLON_COLON@33..35 "::"
+        WHITESPACE@35..36 " "
+        IDENT@36..41 "Float"
+    NEWLINE@41..42 "\n"
+    END_KW@42..45 "end"
+  NEWLINE@45..46 "\n"
+  NEWLINE@46..47 "\n"
+  FN_DEF@47..98
+    FN_KW@47..49 "fn"
+    WHITESPACE@49..50 " "
+    NAME@50..58
+      IDENT@50..58 "distance"
+    PARAM_LIST@58..70
+      L_PAREN@58..59 "("
+      PARAM@59..69
+        IDENT@59..60 "p"
+        WHITESPACE@60..61 " "
+        TYPE_ANNOTATION@61..69
+          COLON_COLON@61..63 "::"
+          WHITESPACE@63..64 " "
+          IDENT@64..69 "Point"
+      R_PAREN@69..70 ")"
+    WHITESPACE@70..71 " "
+    TYPE_ANNOTATION@71..79
+      ARROW@71..73 "->"
+      WHITESPACE@73..74 " "
+      IDENT@74..79 "Float"
+    WHITESPACE@79..80 " "
+    DO_KW@80..82 "do"
+    BLOCK@82..95
+      NEWLINE@82..83 "\n"
+      WHITESPACE@83..85 "  "
+      BINARY_EXPR@85..94
+        FIELD_ACCESS@85..88
+          NAME_REF@85..86
+            IDENT@85..86 "p"
+          DOT@86..87 "."
+          IDENT@87..88 "x"
+        WHITESPACE@88..89 " "
+        PLUS@89..90 "+"
+        WHITESPACE@90..91 " "
+        FIELD_ACCESS@91..94
+          NAME_REF@91..92
+            IDENT@91..92 "p"
+          DOT@92..93 "."
+          IDENT@93..94 "y"
+      NEWLINE@94..95 "\n"
+    END_KW@95..98 "end"
+  EOF@98..98 ""

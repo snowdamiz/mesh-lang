@@ -1,35 +1,45 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"case x do\\n  Circle(_) | Point -> 1\\n  _ -> 0\\nend\")"
 ---
-SOURCE_FILE@0..35
-  CASE_EXPR@0..35
+SOURCE_FILE@0..47
+  CASE_EXPR@0..47
     CASE_KW@0..4 "case"
-    NAME_REF@4..5
-      IDENT@4..5 "x"
-    DO_KW@5..7 "do"
-    NEWLINE@7..8 "\n"
-    MATCH_ARM@8..26
-      OR_PAT@8..23
-        CONSTRUCTOR_PAT@8..17
-          IDENT@8..14 "Circle"
-          L_PAREN@14..15 "("
-          WILDCARD_PAT@15..16
-            IDENT@15..16 "_"
-          R_PAREN@16..17 ")"
-        BAR@17..18 "|"
-        IDENT_PAT@18..23
-          IDENT@18..23 "Point"
-      ARROW@23..25 "->"
-      LITERAL@25..26
-        INT_LITERAL@25..26 "1"
-    NEWLINE@26..27 "\n"
-    MATCH_ARM@27..31
-      WILDCARD_PAT@27..28
-        IDENT@27..28 "_"
-      ARROW@28..30 "->"
-      LITERAL@30..31
-        INT_LITERAL@30..31 "0"
-    NEWLINE@31..32 "\n"
-    END_KW@32..35 "end"
-  EOF@35..35 ""
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "x"
+    WHITESPACE@6..7 " "
+    DO_KW@7..9 "do"
+    NEWLINE@9..10 "\n"
+    WHITESPACE@10..12 "  "
+    MATCH_ARM@12..34
+      OR_PAT@12..29
+        CONSTRUCTOR_PAT@12..21
+          IDENT@12..18 "Circle"
+          L_PAREN@18..19 "("
+          WILDCARD_PAT@19..20
+            IDENT@19..20 "_"
+          R_PAREN@20..21 ")"
+        WHITESPACE@21..22 " "
+        BAR@22..23 "|"
+        WHITESPACE@23..24 " "
+        IDENT_PAT@24..29
+          IDENT@24..29 "Point"
+      WHITESPACE@29..30 " "
+      ARROW@30..32 "->"
+      WHITESPACE@32..33 " "
+      LITERAL@33..34
+        INT_LITERAL@33..34 "1"
+    NEWLINE@34..35 "\n"
+    WHITESPACE@35..37 "  "
+    MATCH_ARM@37..43
+      WILDCARD_PAT@37..38
+        IDENT@37..38 "_"
+      WHITESPACE@38..39 " "
+      ARROW@39..41 "->"
+      WHITESPACE@41..42 " "
+      LITERAL@42..43
+        INT_LITERAL@42..43 "0"
+    NEWLINE@43..44 "\n"
+    END_KW@44..47 "end"
+  EOF@47..47 ""

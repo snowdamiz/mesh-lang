@@ -141,8 +141,9 @@ pub enum SyntaxKind {
     ERROR,
 
     // ── Whitespace (parser-only, not from TokenKind) ───────────────────
-    /// Whitespace trivia. The lexer skips whitespace, but this kind
-    /// exists for potential future use in lossless CST reconstruction.
+    /// Whitespace trivia. The lexer skips spaces and tabs; the tree builder
+    /// re-inserts them as WHITESPACE tokens so the CST text equals the source
+    /// and tree offsets are source offsets.
     WHITESPACE,
 
     // ── Composite node kinds (~43) ─────────────────────────────────────
@@ -288,6 +289,8 @@ pub enum SyntaxKind {
     AS_PAT,
     /// Cons pattern: `head :: tail` for list destructuring
     CONS_PAT,
+    /// List pattern: `[]`, `[a, b]` (a fixed-length list)
+    LIST_PAT,
     /// Guard clause: `when r > 0.0`
     GUARD_CLAUSE,
     /// Narrow source decorator declaration: `@cluster` or `@cluster(N)` before `fn|def`.
@@ -385,6 +388,24 @@ impl SyntaxKind {
                 | SyntaxKind::COMMENT
                 | SyntaxKind::DOC_COMMENT
                 | SyntaxKind::MODULE_DOC_COMMENT
+        )
+    }
+
+    /// Whether this token may name the field in `base.field`: an identifier,
+    /// or a keyword that stdlib modules use as a function name (`Node.self`,
+    /// `Process.monitor`, `Ws.send`, `Changeset.cast`, `Http.json`, ...).
+    pub fn is_field_name(self) -> bool {
+        matches!(
+            self,
+            SyntaxKind::IDENT
+                | SyntaxKind::SELF_KW
+                | SyntaxKind::MONITOR_KW
+                | SyntaxKind::SPAWN_KW
+                | SyntaxKind::LINK_KW
+                | SyntaxKind::SEND_KW
+                | SyntaxKind::WHERE_KW
+                | SyntaxKind::CAST_KW
+                | SyntaxKind::JSON_KW
         )
     }
 }
@@ -724,6 +745,7 @@ mod tests {
             SyntaxKind::OR_PAT,
             SyntaxKind::AS_PAT,
             SyntaxKind::CONS_PAT,
+            SyntaxKind::LIST_PAT,
             SyntaxKind::GUARD_CLAUSE,
             SyntaxKind::CLUSTER_DECORATOR_DECL,
             SyntaxKind::NATIVE_DECORATOR_DECL,

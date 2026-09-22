@@ -1,29 +1,36 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: source_and_debug(source)
 ---
-SOURCE_FILE@0..18
-  FN_DEF@0..18
+SOURCE_FILE@0..25
+  FN_DEF@0..25
     FN_KW@0..2 "fn"
-    NAME@2..5
-      IDENT@2..5 "abs"
-    PARAM_LIST@5..8
-      L_PAREN@5..6 "("
-      PARAM@6..7
-        IDENT@6..7 "n"
-      R_PAREN@7..8 ")"
-    GUARD_CLAUSE@8..15
-      WHEN_KW@8..12 "when"
-      BINARY_EXPR@12..15
-        NAME_REF@12..13
-          IDENT@12..13 "n"
-        LT@13..14 "<"
-        LITERAL@14..15
-          INT_LITERAL@14..15 "0"
-    EQ@15..16 "="
-    FN_EXPR_BODY@16..18
-      UNARY_EXPR@16..18
-        MINUS@16..17 "-"
-        NAME_REF@17..18
-          IDENT@17..18 "n"
-  EOF@18..18 ""
+    WHITESPACE@2..3 " "
+    NAME@3..6
+      IDENT@3..6 "abs"
+    PARAM_LIST@6..9
+      L_PAREN@6..7 "("
+      PARAM@7..8
+        IDENT@7..8 "n"
+      R_PAREN@8..9 ")"
+    WHITESPACE@9..10 " "
+    GUARD_CLAUSE@10..20
+      WHEN_KW@10..14 "when"
+      WHITESPACE@14..15 " "
+      BINARY_EXPR@15..20
+        NAME_REF@15..16
+          IDENT@15..16 "n"
+        WHITESPACE@16..17 " "
+        LT@17..18 "<"
+        WHITESPACE@18..19 " "
+        LITERAL@19..20
+          INT_LITERAL@19..20 "0"
+    WHITESPACE@20..21 " "
+    EQ@21..22 "="
+    WHITESPACE@22..23 " "
+    FN_EXPR_BODY@23..25
+      UNARY_EXPR@23..25
+        MINUS@23..24 "-"
+        NAME_REF@24..25
+          IDENT@24..25 "n"
+  EOF@25..25 ""

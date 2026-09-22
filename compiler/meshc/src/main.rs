@@ -750,7 +750,10 @@ pub(crate) fn build(
         }
     }
 
-    eprintln!("  Compiled: {}", output_path.display());
+    // `meshc test` builds each file to a throwaway temp binary; its path is noise there.
+    if !test_builtins {
+        eprintln!("  Compiled: {}", output_path.display());
+    }
 
     Ok(())
 }
@@ -1579,14 +1582,8 @@ fn fmt_command(
         let source = std::fs::read_to_string(file)
             .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
 
-        if !mesh_parser::parse(&source).errors().is_empty() {
-            return Err(format!(
-                "Cannot format '{}': source contains parse errors",
-                file.display()
-            ));
-        }
-
-        let formatted = mesh_fmt::format_source(&source, config);
+        let formatted = mesh_fmt::try_format(&source, config)
+            .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))?;
         total += 1;
 
         if formatted != source {

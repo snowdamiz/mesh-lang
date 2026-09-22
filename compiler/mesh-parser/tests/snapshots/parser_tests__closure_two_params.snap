@@ -1,25 +1,32 @@
 ---
-source: crates/mesh-parser/tests/parser_tests.rs
+source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"fn (x, y) -> x + y end\")"
 ---
-SOURCE_FILE@0..15
-  CLOSURE_EXPR@0..15
+SOURCE_FILE@0..22
+  CLOSURE_EXPR@0..22
     FN_KW@0..2 "fn"
-    PARAM_LIST@2..7
-      L_PAREN@2..3 "("
-      PARAM@3..4
-        IDENT@3..4 "x"
-      COMMA@4..5 ","
-      PARAM@5..6
-        IDENT@5..6 "y"
-      R_PAREN@6..7 ")"
-    ARROW@7..9 "->"
-    BLOCK@9..12
-      BINARY_EXPR@9..12
-        NAME_REF@9..10
-          IDENT@9..10 "x"
-        PLUS@10..11 "+"
-        NAME_REF@11..12
-          IDENT@11..12 "y"
-    END_KW@12..15 "end"
-  EOF@15..15 ""
+    WHITESPACE@2..3 " "
+    PARAM_LIST@3..9
+      L_PAREN@3..4 "("
+      PARAM@4..5
+        IDENT@4..5 "x"
+      COMMA@5..6 ","
+      WHITESPACE@6..7 " "
+      PARAM@7..8
+        IDENT@7..8 "y"
+      R_PAREN@8..9 ")"
+    WHITESPACE@9..10 " "
+    ARROW@10..12 "->"
+    WHITESPACE@12..13 " "
+    BLOCK@13..18
+      BINARY_EXPR@13..18
+        NAME_REF@13..14
+          IDENT@13..14 "x"
+        WHITESPACE@14..15 " "
+        PLUS@15..16 "+"
+        WHITESPACE@16..17 " "
+        NAME_REF@17..18
+          IDENT@17..18 "y"
+    WHITESPACE@18..19 " "
+    END_KW@19..22 "end"
+  EOF@22..22 ""
