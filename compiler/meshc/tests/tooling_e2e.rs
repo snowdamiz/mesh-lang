@@ -678,7 +678,10 @@ fn test_assert_eq_and_assert_ne_compare_values_of_any_shown_type() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(!output.status.success(), "{all}");
-    assert!(all.contains("left:  2") && all.contains("right: 3"), "{all}");
+    assert!(
+        all.contains("left:  2") && all.contains("right: 3"),
+        "{all}"
+    );
 }
 
 #[test]

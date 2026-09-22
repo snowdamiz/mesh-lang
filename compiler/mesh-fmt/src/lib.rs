@@ -49,7 +49,8 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
     // (a line comment swallowing the code after it, a dropped comment) is a
     // formatter bug, and writing it would change the program.
     let reparsed = mesh_parser::parse(&formatted);
-    if !reparsed.errors().is_empty() || significant_tokens(&parse) != significant_tokens(&reparsed) {
+    if !reparsed.errors().is_empty() || significant_tokens(&parse) != significant_tokens(&reparsed)
+    {
         return Err("the formatter could not preserve it exactly (a formatter bug), so it was left unchanged".to_owned());
     }
     Ok(formatted)
@@ -63,10 +64,20 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
         .syntax()
         .descendants_with_tokens()
         .filter_map(|element| element.into_token())
-        .filter(|token| !matches!(token.kind(), SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::EOF))
+        .filter(|token| {
+            !matches!(
+                token.kind(),
+                SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::EOF
+            )
+        })
         .map(|token| (token.kind(), token.text().trim_end().to_owned()))
         .collect();
-    let closes = |kind| matches!(kind, SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE);
+    let closes = |kind| {
+        matches!(
+            kind,
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE
+        )
+    };
     tokens
         .iter()
         .enumerate()

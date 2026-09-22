@@ -2164,7 +2164,9 @@ fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
                     inner.push(ir::text(","));
                 }
             }
-            NodeOrToken::Token(tok) if tok.kind().is_trivia() && tok.kind() != SyntaxKind::NEWLINE => {
+            NodeOrToken::Token(tok)
+                if tok.kind().is_trivia() && tok.kind() != SyntaxKind::NEWLINE =>
+            {
                 inner.push(sp());
                 inner.push(inline_comment(&tok));
             }

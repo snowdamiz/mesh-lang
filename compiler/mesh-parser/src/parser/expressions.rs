@@ -121,6 +121,7 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
         if current == SyntaxKind::DOT && POSTFIX_BP >= min_bp {
             let m = p.open_before(lhs);
             p.advance(); // .
+
             // An identifier, or a keyword stdlib modules use as a name (Node.self, Http.json).
             if p.current().is_field_name() {
                 p.advance();
