@@ -376,6 +376,64 @@ pub enum SyntaxKind {
 }
 
 impl SyntaxKind {
+    /// How a parse error names this token: `` `)` `` or `` `do` ``, not
+    /// `R_PAREN` or `DO_KW`.
+    pub fn describe(self) -> String {
+        let text = match self {
+            SyntaxKind::IDENT => return "a name".to_string(),
+            SyntaxKind::INT_LITERAL => return "an integer".to_string(),
+            SyntaxKind::FLOAT_LITERAL => return "a float".to_string(),
+            SyntaxKind::STRING_START => return "a string".to_string(),
+            SyntaxKind::STRING_END => return "the closing `\"` of the string".to_string(),
+            SyntaxKind::INTERPOLATION_END => return "`}` to close the interpolation".to_string(),
+            SyntaxKind::NEWLINE => return "a new line".to_string(),
+            SyntaxKind::EOF => return "the end of the file".to_string(),
+            SyntaxKind::PLUS => "+",
+            SyntaxKind::MINUS => "-",
+            SyntaxKind::STAR => "*",
+            SyntaxKind::SLASH => "/",
+            SyntaxKind::PERCENT => "%",
+            SyntaxKind::EQ_EQ => "==",
+            SyntaxKind::NOT_EQ => "!=",
+            SyntaxKind::LT => "<",
+            SyntaxKind::GT => ">",
+            SyntaxKind::LT_EQ => "<=",
+            SyntaxKind::GT_EQ => ">=",
+            SyntaxKind::AMP_AMP => "&&",
+            SyntaxKind::PIPE_PIPE => "||",
+            SyntaxKind::BANG => "!",
+            SyntaxKind::PIPE => "|>",
+            SyntaxKind::DOT_DOT => "..",
+            SyntaxKind::DIAMOND => "<>",
+            SyntaxKind::PLUS_PLUS => "++",
+            SyntaxKind::EQ => "=",
+            SyntaxKind::ARROW => "->",
+            SyntaxKind::FAT_ARROW => "=>",
+            SyntaxKind::COLON_COLON => "::",
+            SyntaxKind::QUESTION => "?",
+            SyntaxKind::BAR => "|",
+            SyntaxKind::L_PAREN => "(",
+            SyntaxKind::R_PAREN => ")",
+            SyntaxKind::L_BRACKET => "[",
+            SyntaxKind::R_BRACKET => "]",
+            SyntaxKind::L_BRACE => "{",
+            SyntaxKind::R_BRACE => "}",
+            SyntaxKind::COMMA => ",",
+            SyntaxKind::DOT => ".",
+            SyntaxKind::COLON => ":",
+            SyntaxKind::SEMICOLON => ";",
+            SyntaxKind::AT => "@",
+            other => {
+                let name = format!("{other:?}");
+                return match name.strip_suffix("_KW") {
+                    Some(keyword) => format!("`{}`", keyword.to_lowercase()),
+                    None => name.to_lowercase().replace('_', " "),
+                };
+            }
+        };
+        format!("`{text}`")
+    }
+
     /// Whether this kind represents trivia (tokens that don't affect parsing).
     ///
     /// Trivia tokens are whitespace, newlines, and comments. They are preserved

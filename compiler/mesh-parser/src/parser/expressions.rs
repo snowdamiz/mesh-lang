@@ -126,7 +126,7 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             if p.current().is_field_name() {
                 p.advance();
             } else {
-                p.error("expected IDENT");
+                p.error("expected a name");
             }
             lhs = p.close(m, SyntaxKind::FIELD_ACCESS);
             continue;

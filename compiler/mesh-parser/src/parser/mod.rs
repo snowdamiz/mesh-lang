@@ -307,7 +307,7 @@ impl<'src> Parser<'src> {
             self.advance();
             true
         } else {
-            self.error(&format!("expected {:?}", kind));
+            self.error(&format!("expected {}", kind.describe()));
             false
         }
     }

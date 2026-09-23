@@ -3983,3 +3983,11 @@ fn an_unterminated_string_is_one_error_at_its_opening_quote() {
     );
     assert!(err.contains("main.mpl:2:11"), "{err}");
 }
+
+#[test]
+fn parse_errors_name_tokens_as_written() {
+    // "expected R_PAREN", "expected DO_KW", "expected IDENT".
+    let err = build_error("fn main() do\n  println(1\nend\n");
+    assert!(err.contains("expected `)`"), "{err}");
+    assert!(!err.contains("R_PAREN"), "{err}");
+}
