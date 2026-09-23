@@ -2249,6 +2249,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "to_int".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::float()], Ty::int())),
     );
+    float_mod.insert(
+        "to_string".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::float()], Ty::string())),
+    );
     // Phase 77: Float.from(Int) -> Float
     float_mod.insert(
         "from".to_string(),

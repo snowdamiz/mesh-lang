@@ -4047,3 +4047,12 @@ fn a_function_a_module_lacks_is_reported_as_such() {
     );
     assert!(!err.contains("undefined variable"), "{err}");
 }
+
+#[test]
+fn float_has_to_string_like_int() {
+    // It was "expected 1 argument(s), found 2".
+    assert_eq!(
+        run("fn main() do\n  println(Float.to_string(1.5) <> \" \" <> Int.to_string(2))\nend\n"),
+        "1.5 2\n"
+    );
+}

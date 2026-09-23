@@ -265,6 +265,7 @@ end
 | `Int.to_float(value)` | `Float` | Convert an integer |
 | `Int.to_string(value)` | `String` | Decimal formatting |
 | `Float.to_int(value)` | `Int` | Convert a float to an integer |
+| `Float.to_string(value)` | `String` | Decimal formatting (`1.5`, `2.0`) |
 | `Float.from(value)` | `Float` | Convert an integer to a float |
 
 ## Crypto
