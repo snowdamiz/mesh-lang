@@ -317,7 +317,11 @@ fn test_build_without_main_names_the_entrypoint() {
     let dir = tempfile::tempdir().unwrap();
     let project = dir.path().join("proj");
     std::fs::create_dir_all(&project).unwrap();
-    std::fs::write(project.join("main.mpl"), "fn helper() -> Int do\n  1\nend\n").unwrap();
+    std::fs::write(
+        project.join("main.mpl"),
+        "fn helper() -> Int do\n  1\nend\n",
+    )
+    .unwrap();
 
     let output = Command::new(meshc_bin())
         .args(["build", project.to_str().unwrap()])
