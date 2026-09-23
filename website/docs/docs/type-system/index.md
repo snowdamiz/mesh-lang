@@ -208,7 +208,7 @@ let pair :: Pair<Int, String> = (1, "one")
 let result :: StringResult<Int> = Ok(42)
 ```
 
-Generic arguments are substituted into the target type, and the alias remains transparent.
+Generic arguments are substituted into the target type, and the alias remains transparent. An alias may name another alias (`type Twin<T> = Pair<T, T>`), and a struct literal may be written through an alias of a struct (`IntBox { value: 5 }` with `type IntBox = Box<Int>`). An alias cannot refer to itself; a recursive type needs a struct or sum type.
 
 ## Structs
 
