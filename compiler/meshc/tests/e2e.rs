@@ -367,10 +367,11 @@ fn e2e_target_flag() {
     std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
 
     // Use host triple
-    let triple = if cfg!(target_arch = "aarch64") {
-        "aarch64-apple-darwin"
-    } else {
-        "x86_64-unknown-linux-gnu"
+    let triple = match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("aarch64", "macos") => "aarch64-apple-darwin",
+        ("x86_64", "macos") => "x86_64-apple-darwin",
+        ("aarch64", "linux") => "aarch64-unknown-linux-gnu",
+        _ => "x86_64-unknown-linux-gnu",
     };
 
     let meshc = find_meshc();
