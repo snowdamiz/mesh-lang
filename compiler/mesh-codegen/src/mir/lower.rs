@@ -16750,17 +16750,37 @@ fn unescape_string(raw: &str) -> String {
 }
 
 /// Extract simple string content from a LITERAL or STRING_EXPR syntax node.
-/// Walks children looking for STRING_CONTENT tokens and concatenates them.
+/// Walks children looking for STRING_CONTENT tokens and concatenates them;
+/// a heredoc is dedented as in an expression, so a heredoc pattern matches
+/// the same heredoc as a value.
 fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String {
-    let mut content = String::new();
-    for child in node.children_with_tokens() {
-        if child.kind() == SyntaxKind::STRING_CONTENT {
-            if let Some(token) = child.as_token() {
-                content.push_str(&unescape_string(token.text()));
-            }
-        }
+    let is_triple = node
+        .children_with_tokens()
+        .filter_map(|c| c.into_token())
+        .find(|t| t.kind() == SyntaxKind::STRING_START)
+        .is_some_and(|t| t.text().starts_with("\"\"\""));
+    let contents: Vec<String> = node
+        .children_with_tokens()
+        .filter_map(|c| c.into_token())
+        .filter(|t| t.kind() == SyntaxKind::STRING_CONTENT)
+        .map(|t| t.text().to_string())
+        .collect();
+    if !is_triple {
+        return contents.iter().map(|c| unescape_string(c)).collect();
     }
-    content
+    let trim_level = contents
+        .last()
+        .and_then(|last| last.split('\n').last())
+        .map(|line| line.chars().take_while(|c| *c == ' ' || *c == '\t').count())
+        .unwrap_or(0);
+    let count = contents.len();
+    contents
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            apply_heredoc_content(unescape_string(text), i == 0, i + 1 == count, trim_level)
+        })
+        .collect()
 }
 
 /// The value a literal pattern matches, sign included: `-1` is a MINUS and

@@ -3910,3 +3910,26 @@ end
 "##;
     assert_eq!(run(source), "2.0 4.0\n[1.0, 2.0] 9\n[1, 2] [1, 2]\n");
 }
+
+#[test]
+fn a_heredoc_pattern_matches_the_same_heredoc_value() {
+    // The pattern kept its raw text: newline, indentation and all.
+    let source = r##"
+fn classify(s :: String) -> String do
+  case s do
+    """
+    a
+    """ -> "heredoc pattern"
+    _ -> "other"
+  end
+end
+
+fn main() do
+  let h = """
+    a
+    """
+  println("#{classify(h)} #{classify("\n    a\n    ")}")
+end
+"##;
+    assert_eq!(run(source), "heredoc pattern other\n");
+}
