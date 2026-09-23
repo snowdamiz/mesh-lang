@@ -360,7 +360,7 @@ metadata. See [Type System](/docs/type-system/#deriving) for field rules.
 ## Errors and propagation
 
 ```mesh
-fn load() -> Account ! AppError do
+fn load() -> Account!AppError do
   let raw = File.read("account.json")?
   let value = Json.parse(raw)?
   decode_account(value)

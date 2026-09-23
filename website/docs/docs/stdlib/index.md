@@ -290,9 +290,9 @@ end
 ### Secrets and authenticated cryptography
 
 ```mesh
-fn authenticate() -> Int ! CryptoError do
-  let key = Secret.random(32) ?
-  let tag = Crypto.hmac_sha256(key, Bytes.from_utf8("message")) ?
+fn authenticate() -> Int!CryptoError do
+  let key = Secret.random(32)?
+  let tag = Crypto.hmac_sha256(key, Bytes.from_utf8("message"))?
   Secret.destroy(tag)
   Secret.destroy(key)
   Ok(0)

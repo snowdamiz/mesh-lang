@@ -4,16 +4,16 @@
     {
       "id": "todo-postgres-bootstrap-log",
       "path": "examples/todo-postgres/main.mpl",
-      "startLine": 8,
-      "endLine": 8,
+      "startLine": 7,
+      "endLine": 7,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },
     {
       "id": "todo-postgres-http-port-log",
       "path": "examples/todo-postgres/main.mpl",
-      "startLine": 39,
-      "endLine": 39,
+      "startLine": 35,
+      "endLine": 35,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },
