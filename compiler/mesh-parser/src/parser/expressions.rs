@@ -954,7 +954,8 @@ fn parse_case_expr(p: &mut Parser) -> MarkClosed {
     p.close(m, SyntaxKind::CASE_EXPR)
 }
 
-/// Parse a single match arm: `pattern [when guard] -> body`
+/// Parse a single match arm: `pattern [when guard] -> body`, or a pattern
+/// alone, which stands for its own value: `Ok(value)` is `Ok(value) -> Ok(value)`.
 fn parse_match_arm(p: &mut Parser) {
     let m = p.open();
 
@@ -965,6 +966,11 @@ fn parse_match_arm(p: &mut Parser) {
     if p.at(SyntaxKind::WHEN_KW) {
         p.advance(); // WHEN_KW
         expr(p);
+    }
+
+    if !p.has_error() && p.at_line_end() {
+        p.close(m, SyntaxKind::MATCH_ARM);
+        return;
     }
 
     // Expect `->`.

@@ -429,6 +429,15 @@ impl MatchArm {
         }
     }
 
+    /// Whether the arm is its pattern alone, standing for its own value:
+    /// `Ok(value)` means `Ok(value) -> Ok(value)`.
+    pub fn is_pass_through(&self) -> bool {
+        !self
+            .syntax
+            .children_with_tokens()
+            .any(|it| it.kind() == SyntaxKind::ARROW)
+    }
+
     /// The body expression (after `->`).
     pub fn body(&self) -> Option<Expr> {
         let has_when = self

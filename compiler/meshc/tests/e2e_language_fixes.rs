@@ -230,6 +230,123 @@ fn cons_pattern_alone_is_not_exhaustive() {
 }
 
 #[test]
+fn a_pattern_alone_is_an_arm_that_rebuilds_its_value() {
+    let source = r##"
+type Step<T> do
+  Done(T)
+  Failed(String)
+end
+
+fn check(n :: Int) -> Result<Int, String> do
+  if n > 0 do
+    Ok(n)
+  else
+    Err("not positive")
+  end
+end
+
+fn measured(n :: Int) -> Result<Int, Int> do
+  case check(n) do
+    Ok(value)
+    Err(message) -> Err(String.length(message))
+  end
+end
+
+fn widen<T>(r :: Result<T, String>) -> Result<T, Int> do
+  case r do
+    Ok(value)
+    Err(message) -> Err(String.length(message))
+  end
+end
+
+fn nested(o :: Option<Result<Int, String>>) -> Option<Result<Int, Int>> do
+  case o do
+    Some(Ok(value))
+    Some(Err(message)) -> Some(Err(String.length(message)))
+    None
+  end
+end
+
+fn label(s :: Step<Int>) -> Step<String> do
+  case s do
+    Done(n) -> Done("step #{n}")
+    Failed(reason)
+  end
+end
+
+fn positive(r :: Result<Int, String>) -> Result<Int, String> do
+  case r do
+    Ok(v) when v > 0
+    Ok(v) -> Err("#{v} is not positive")
+    Err(e)
+  end
+end
+
+fn show(r :: Result<Int, Int>) -> String do
+  case r do
+    Ok(v) -> "ok #{v}"
+    Err(e) -> "err #{e}"
+  end
+end
+
+fn main() do
+  println(show(measured(5)) <> "," <> show(measured(-1)))
+  let widened = case widen(Ok("text")) do
+    Ok(s) -> s
+    Err(e) -> "err #{e}"
+  end
+  println(widened <> "," <> show(widen(Err("four"))))
+  let inner = case nested(Some(Err("four"))) do
+    Some(Ok(v)) -> "ok #{v}"
+    Some(Err(e)) -> "err #{e}"
+    None -> "none"
+  end
+  let outer = case nested(Some(Ok(7))) do
+    Some(Ok(v)) -> "ok #{v}"
+    Some(Err(e)) -> "err #{e}"
+    None -> "none"
+  end
+  let missing = case nested(None) do
+    Some(_) -> "some"
+    None -> "none"
+  end
+  println(inner <> "," <> outer <> "," <> missing)
+  let steps = [label(Done(3)), label(Failed("boom"))]
+  println(String.join(List.map(steps, fn s -> case s do
+    Done(text) -> text
+    Failed(reason) -> "failed #{reason}"
+  end end), ","))
+  let checked = case positive(Ok(0)) do
+    Ok(v) -> "ok #{v}"
+    Err(e) -> e
+  end
+  let kept = case positive(Ok(2)) do
+    Ok(v) -> "ok #{v}"
+    Err(e) -> e
+  end
+  println(checked <> "," <> kept)
+end
+"##;
+    assert_eq!(
+        run(source),
+        "ok 5,err 12\ntext,err 4\nerr 4,ok 7,none\nstep 3,failed boom\n0 is not positive,ok 2\n"
+    );
+
+    for (arm, reason) in [
+        ("_", "`_` names no value"),
+        ("Ok", "`Ok` alone leaves its payload unnamed"),
+    ] {
+        let err = build_error(&format!(
+            "fn f(r :: Result<Int, String>) -> Result<Int, String> do\n  case r do\n    Err(e) -> Err(e)\n    {arm}\n  end\nend\nfn main() do\n  println(\"x\")\nend\n"
+        ));
+        assert!(
+            err.contains("E0056") && err.contains(reason),
+            "{arm}:\n{err}"
+        );
+    }
+}
+
+#[test]
 fn as_pattern_binds_the_matched_value() {
     let source = r##"
 fn aspat(t :: (Int, Int)) -> String do

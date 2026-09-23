@@ -319,6 +319,21 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Whether the line ends here (a newline follows, significant or not) or
+    /// the enclosing block does.
+    pub(crate) fn at_line_end(&self) -> bool {
+        let next = self.tokens[self.pos..].iter().find(|token| {
+            !matches!(
+                token.kind,
+                TokenKind::Comment | TokenKind::DocComment | TokenKind::ModuleDocComment
+            )
+        });
+        matches!(
+            next.map(|token| &token.kind),
+            Some(TokenKind::Newline) | None
+        ) || matches!(self.current(), SyntaxKind::END_KW | SyntaxKind::EOF)
+    }
+
     /// Consume any significant newlines (used as statement separators).
     /// Only consumes newlines that are significant (at zero delimiter depth).
     pub(crate) fn eat_newlines(&mut self) {

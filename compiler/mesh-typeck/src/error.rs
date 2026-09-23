@@ -356,6 +356,8 @@ pub enum TypeError {
     ExportDeclarationInvalid { reason: String, span: TextRange },
     /// A destructuring `let` used a refutable or otherwise unsupported pattern.
     InvalidLetPattern { reason: String, span: TextRange },
+    /// A match arm with no `->` has a pattern that cannot stand for a value.
+    InvalidPassThroughArm { reason: String, span: TextRange },
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
@@ -824,6 +826,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidLetPattern { reason, .. } => {
                 write!(f, "invalid let destructuring pattern: {reason}")
+            }
+            TypeError::InvalidPassThroughArm { reason, .. } => {
+                write!(
+                    f,
+                    "this arm has no `->` and its pattern is not a value: {reason}"
+                )
             }
             TypeError::ResourceViolation { reason, .. } => {
                 write!(f, "resource ownership violation: {reason}")

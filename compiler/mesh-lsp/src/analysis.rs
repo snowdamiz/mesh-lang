@@ -233,6 +233,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::NativeDeclarationInvalid { span, .. }
         | TypeError::ExportDeclarationInvalid { span, .. }
         | TypeError::InvalidLetPattern { span, .. }
+        | TypeError::InvalidPassThroughArm { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

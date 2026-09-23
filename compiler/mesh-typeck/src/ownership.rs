@@ -1342,6 +1342,17 @@ impl Checker<'_> {
             }
             if let Some(body) = arm.body() {
                 self.check_expr(&body, Usage::Move);
+            } else if arm.is_pass_through() {
+                // The arm's value is rebuilt from everything its pattern bound.
+                for binding in self
+                    .scopes
+                    .last_mut()
+                    .into_iter()
+                    .flat_map(|s| s.values_mut())
+                {
+                    binding.moved = true;
+                    binding.definitely_moved = true;
+                }
             }
             if !has_guard {
                 if let Some(pattern) = &pattern {

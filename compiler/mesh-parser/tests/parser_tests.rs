@@ -4,7 +4,7 @@
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, ForInExpr, IfExpr, Literal};
+use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, ForInExpr, IfExpr, Literal, MatchArm};
 use mesh_parser::ast::item::{
     ClusteredDeclKind, ClusteredDeclSyntax, FnDef, LetBinding, Param, ParamOwnership, SourceFile,
     StructDef, SumTypeDef,
@@ -3370,6 +3370,39 @@ fn match_arm_body_on_following_lines() {
   None -> 0
 end"
     ));
+}
+
+#[test]
+fn a_pattern_alone_is_a_pass_through_arm() {
+    for (source, expected) in [
+        (
+            "case r do\n  Ok(value)\n  Err(e) -> Err(wrap(e))\nend",
+            vec![true, false],
+        ),
+        // Newlines inside parentheses still end the arm.
+        (
+            "f(case r do\n  Ok(value) # kept\n  Err(e) -> Err(e)\nend)",
+            vec![true, false],
+        ),
+        (
+            "case o do\n  Some(v) when v > 0\n  _ -> None end",
+            vec![true, false],
+        ),
+        ("case o do None end", vec![true]),
+    ] {
+        let parse = parse(source);
+        assert!(parse.ok(), "{source}: {:?}", parse.errors());
+        let arms: Vec<bool> = parse
+            .syntax()
+            .descendants()
+            .filter_map(MatchArm::cast)
+            .map(|arm| arm.is_pass_through())
+            .collect();
+        assert_eq!(arms, expected, "{source}");
+    }
+
+    // A missing `->` mid-line is still an error, not a pass-through.
+    assert!(!parse("case r do\n  Ok(value) value\nend").ok());
 }
 
 #[test]

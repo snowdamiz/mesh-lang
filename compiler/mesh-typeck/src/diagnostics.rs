@@ -146,6 +146,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ExportDeclarationInvalid { .. } => "E0055",
         TypeError::ResourceViolation { .. } => "E0053",
         TypeError::InvalidLetPattern { .. } => "E0054",
+        TypeError::InvalidPassThroughArm { .. } => "E0056",
     }
 }
 
@@ -516,6 +517,7 @@ pub fn render_json_diagnostic(
                 | TypeError::NativeDeclarationInvalid { span, .. }
                 | TypeError::ExportDeclarationInvalid { span, .. }
                 | TypeError::InvalidLetPattern { span, .. }
+                | TypeError::InvalidPassThroughArm { span, .. }
                 | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
@@ -1990,6 +1992,20 @@ pub fn render_diagnostic(
                 .with_help(
                     "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
                 )
+                .finish()
+        }
+        TypeError::InvalidPassThroughArm { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("this arm has no `->`, so its pattern must also be its value")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(reason)
+                        .with_color(Color::Red),
+                )
+                .with_help("write the value after `->`: `pattern -> value`")
                 .finish()
         }
         TypeError::ResourceViolation { reason, span } => {

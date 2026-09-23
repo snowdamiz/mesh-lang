@@ -11023,8 +11023,8 @@ fn infer_case(
             let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
         }
 
-        if let Some(body) = arm.body() {
-            let body_ty = infer_expr(
+        let body_ty = match (arm.body(), arm.pattern()) {
+            (Some(body), _) => Some(infer_expr(
                 ctx,
                 env,
                 &body,
@@ -11032,9 +11032,15 @@ fn infer_case(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?;
+            )?),
+            (None, Some(pat)) if arm.is_pass_through() => {
+                Some(infer_rebuilt_pattern(ctx, env, &pat)?)
+            }
+            _ => None,
+        };
+        if let Some(body_ty) = body_ty {
             if let Some(ref prev_ty) = result_ty {
-                ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
+                ctx.unify(prev_ty.clone(), body_ty, ConstraintOrigin::Builtin)?;
             } else {
                 result_ty = Some(body_ty);
             }
@@ -11989,21 +11995,7 @@ fn infer_constructor_pattern(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
-    let variant_name = ctor_pat
-        .variant_name()
-        .map(|t| t.text().to_string())
-        .unwrap_or_else(|| "<unknown>".to_string());
-
-    // Build the lookup name -- qualified or unqualified.
-    let lookup_name = if ctor_pat.is_qualified() {
-        let type_name = ctor_pat
-            .type_name()
-            .map(|t| t.text().to_string())
-            .unwrap_or_else(|| "<unknown>".to_string());
-        format!("{}.{}", type_name, variant_name)
-    } else {
-        variant_name.clone()
-    };
+    let lookup_name = constructor_lookup_name(ctor_pat);
 
     // Look up the constructor in the environment.
     let ctor_scheme = match env.lookup(&lookup_name) {
@@ -12060,6 +12052,83 @@ fn infer_constructor_pattern(
             types.insert(pat.syntax().text_range(), ctor_ty.clone());
             Ok(ctor_ty)
         }
+    }
+}
+
+/// The environment name of a constructor pattern's variant: `Circle` or
+/// `Shape.Circle`.
+fn constructor_lookup_name(ctor_pat: &mesh_parser::ast::pat::ConstructorPat) -> String {
+    let name = |token: Option<mesh_parser::SyntaxToken>| {
+        token
+            .map(|t| t.text().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string())
+    };
+    let variant_name = name(ctor_pat.variant_name());
+    if ctor_pat.is_qualified() {
+        format!("{}.{}", name(ctor_pat.type_name()), variant_name)
+    } else {
+        variant_name
+    }
+}
+
+/// The type of a pass-through arm's value: its pattern read back as an
+/// expression, so `Ok(value)` alone means `Ok(value) -> Ok(value)`. The
+/// constructors are instantiated afresh, which lets the other arms decide the
+/// rest of the type, as when `Err(e) -> Err(wrap(e))` changes the error.
+fn infer_rebuilt_pattern(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    pat: &Pattern,
+) -> Result<Ty, TypeError> {
+    let not_a_value = |ctx: &mut InferCtx, reason: String| {
+        ctx.errors.push(TypeError::InvalidPassThroughArm {
+            reason,
+            span: pat.syntax().text_range(),
+        });
+        ctx.fresh_var()
+    };
+    match pat {
+        // A name the pattern bound, or a nullary constructor.
+        Pattern::Ident(ident) => {
+            let name = ident
+                .name()
+                .map(|t| t.text().to_string())
+                .unwrap_or_default();
+            let Some(scheme) = env.lookup(&name) else {
+                return Ok(ctx.fresh_var());
+            };
+            let ty = ctx.instantiate(scheme);
+            if matches!(ctx.resolve(ty.clone()), Ty::Fun(..))
+                && name.starts_with(|c: char| c.is_uppercase())
+            {
+                return Ok(not_a_value(
+                    ctx,
+                    format!("`{name}` alone leaves its payload unnamed"),
+                ));
+            }
+            Ok(ty)
+        }
+        Pattern::Constructor(ctor_pat) => {
+            let Some(scheme) = env.lookup(&constructor_lookup_name(ctor_pat)) else {
+                return Ok(ctx.fresh_var());
+            };
+            match ctx.instantiate(scheme) {
+                Ty::Fun(param_types, ret) => {
+                    for (field, param_ty) in ctor_pat.fields().zip(param_types) {
+                        let field_ty = infer_rebuilt_pattern(ctx, env, &field)?;
+                        ctx.unify(field_ty, param_ty, ConstraintOrigin::Builtin)?;
+                    }
+                    Ok(*ret)
+                }
+                ty => Ok(ty),
+            }
+        }
+        Pattern::Wildcard(_) => Ok(not_a_value(ctx, "`_` names no value".to_string())),
+        _ => Ok(not_a_value(
+            ctx,
+            "only constructors and the names a pattern binds can stand for the arm's value"
+                .to_string(),
+        )),
     }
 }
 

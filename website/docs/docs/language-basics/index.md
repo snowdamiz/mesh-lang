@@ -947,6 +947,19 @@ fn main() do
 end
 ```
 
+An arm that is only a pattern passes the value it matched through: `Ok(value)` on its own means `Ok(value) -> Ok(value)`. Use it when another arm changes the rest of the type, as mapping the error does here, so the matched value cannot be returned as it is:
+
+```mesh
+fn error_length(r :: Int!String) -> Int!Int do
+  case r do
+    Ok(value)
+    Err(message) -> Err(String.length(message))
+  end
+end
+```
+
+The pattern may bind names, nest constructors (`Some(Ok(value))`), be a nullary constructor such as `None`, and take a `when` guard. A pattern that does not name a whole value, such as `_` or a bare `Ok`, needs an explicit `->`.
+
 ## Modules
 
 Mesh organizes code into modules. The standard library provides built-in modules like `String`, `List`, and `Map`, accessed with dot notation:

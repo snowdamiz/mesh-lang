@@ -205,13 +205,20 @@ Supported patterns are:
 - qualified and unqualified constructors;
 - constructor payload destructuring;
 - cons patterns such as `head :: tail`;
+- list patterns such as `[]` and `[a, b]`, which match exactly that length;
 - or-patterns such as `one | two`;
 - alias patterns such as `pattern as whole`;
 - optional `when` guards on function, closure, receive, and match arms.
 
-Both sides of an or-pattern must bind the same names. List-literal patterns
-such as `[a, b]` and struct-field patterns are not currently supported; use
-cons and constructor patterns.
+Both sides of an or-pattern must bind the same names. Struct-field patterns are
+not currently supported; use tuple and constructor patterns.
+
+A `case` or `match` arm with no `->` is its pattern alone and passes the
+matched value through, rebuilt: `Ok(value)` means `Ok(value) -> Ok(value)`.
+The rebuilt value takes the type of the whole `case`, so another arm may change
+the rest of it, as `Err(e) -> Err(wrap(e))` changes the error type. The pattern
+must name a whole value: names, constructors, and nullary constructors such as
+`None`; `_` and a bare `Ok` are rejected (E0056).
 
 ## Control flow
 

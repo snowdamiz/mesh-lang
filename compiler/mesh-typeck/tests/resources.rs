@@ -666,6 +666,15 @@ fn case_resource_bindings_must_be_consumed() {
 }
 
 #[test]
+fn a_pass_through_arm_moves_what_its_pattern_binds() {
+    let result = check_source(
+        "fn keep(result :: Result<SecretBytes, CryptoError>) -> Result<SecretBytes, Int> do\n  case result do\n    Ok(secret)\n    Err(_) -> Err(0)\n  end\nend",
+    );
+
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
 fn case_resource_bindings_must_be_consumed_on_every_exit() {
     let result = check_source(
         "fn discard_on_one_path(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) -> if consume do Secret.destroy(secret) else nil end\n    Err(_) -> nil\n  end\nend",

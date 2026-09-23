@@ -11981,9 +11981,10 @@ impl<'a> Lowerer<'a> {
             .map(|expr| self.lower_expr(&expr))
             .unwrap_or(MirExpr::Unit);
 
+        let case_typeck = self.get_ty(case.syntax().text_range()).cloned();
         let arms: Vec<MirMatchArm> = case
             .arms()
-            .map(|arm| self.lower_match_arm(&arm, scrutinee_typeck.as_ref()))
+            .map(|arm| self.lower_match_arm(&arm, scrutinee_typeck.as_ref(), case_typeck.as_ref()))
             .collect();
 
         let ty = self.resolve_range(case.syntax().text_range());
@@ -11995,7 +11996,12 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_match_arm(&mut self, arm: &MatchArm, expected: Option<&Ty>) -> MirMatchArm {
+    fn lower_match_arm(
+        &mut self,
+        arm: &MatchArm,
+        expected: Option<&Ty>,
+        result: Option<&Ty>,
+    ) -> MirMatchArm {
         self.push_scope();
 
         let pattern = arm
@@ -12005,10 +12011,13 @@ impl<'a> Lowerer<'a> {
 
         let guard = arm.guard().map(|e| self.lower_expr(&e));
 
-        let body = arm
-            .body()
-            .map(|e| self.lower_expr(&e))
-            .unwrap_or(MirExpr::Unit);
+        let body = match (arm.body(), arm.pattern()) {
+            (Some(body), _) => self.lower_expr(&body),
+            (None, Some(pattern)) if arm.is_pass_through() => {
+                self.lower_rebuilt_pattern(&pattern, result)
+            }
+            _ => MirExpr::Unit,
+        };
 
         self.pop_scope();
 
@@ -12017,6 +12026,120 @@ impl<'a> Lowerer<'a> {
             guard,
             body,
         }
+    }
+
+    /// A pass-through arm's value: its pattern rebuilt as `expected`, the type
+    /// of the whole `case` (the checker rejected patterns that are not values).
+    fn lower_rebuilt_pattern(&mut self, pat: &Pattern, expected: Option<&Ty>) -> MirExpr {
+        let ty = expected.map_or(MirType::Unit, |ty| resolve_type(ty, self.registry));
+        let (variant, fields) = match pat {
+            Pattern::Ident(ident) => {
+                let name = ident
+                    .name()
+                    .map(|t| t.text().to_string())
+                    .unwrap_or_default();
+                if !name.starts_with(|c: char| c.is_uppercase()) {
+                    let scope_ty = self.lookup_var(&name).unwrap_or(ty);
+                    return self.lower_local_ref(name, scope_ty, ident.syntax().text_range());
+                }
+                (name, Vec::new())
+            }
+            Pattern::Constructor(ctor) => {
+                let variant = ctor
+                    .variant_name()
+                    .map(|t| t.text().to_string())
+                    .unwrap_or_default();
+                let type_name = self.constructor_type_name(ctor, &variant, expected);
+                let field_types = self.variant_field_types(&type_name, &variant, expected);
+                let fields = ctor
+                    .fields()
+                    .enumerate()
+                    .map(|(index, field)| {
+                        self.lower_rebuilt_pattern(&field, field_types.get(index))
+                    })
+                    .collect();
+                (variant, fields)
+            }
+            _ => return MirExpr::Unit,
+        };
+        let base_name =
+            find_type_for_variant(&variant, Some(&ty), self.registry, Some(fields.len()))
+                .unwrap_or_default();
+        let type_name = match ty {
+            MirType::SumType(name)
+                if name == base_name || name.starts_with(&format!("{base_name}_")) =>
+            {
+                name
+            }
+            _ => base_name,
+        };
+        MirExpr::ConstructVariant {
+            type_name: type_name.clone(),
+            variant,
+            fields,
+            ty: MirType::SumType(type_name),
+        }
+    }
+
+    /// The sum type a constructor pattern names: `Shape` in `Shape.Circle(r)`,
+    /// otherwise the one `expected` or the registry says has the variant.
+    fn constructor_type_name(
+        &self,
+        ctor: &mesh_parser::ast::pat::ConstructorPat,
+        variant: &str,
+        expected: Option<&Ty>,
+    ) -> String {
+        if let Some(type_name) = ctor.type_name() {
+            return type_name.text().to_string();
+        }
+        let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
+        find_type_for_variant(variant, expected_mir.as_ref(), self.registry, None)
+            .unwrap_or_default()
+    }
+
+    /// The field types of `variant_name` in the sum type `type_name`, with the
+    /// type arguments of `expected` substituted.
+    fn variant_field_types(
+        &self,
+        type_name: &str,
+        variant_name: &str,
+        expected: Option<&Ty>,
+    ) -> Vec<Ty> {
+        self.registry
+            .sum_type_defs
+            .get(type_name)
+            .and_then(|info| {
+                let variant = info
+                    .variants
+                    .iter()
+                    .find(|variant| variant.name == variant_name)?;
+                let substitutions = match expected {
+                    Some(Ty::App(con, args))
+                        if matches!(con.as_ref(), Ty::Con(name) if name.name == type_name) =>
+                    {
+                        info.generic_params
+                            .iter()
+                            .cloned()
+                            .zip(args.iter())
+                            .collect()
+                    }
+                    _ => HashMap::new(),
+                };
+                Some(
+                    variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            let ty = match field {
+                                mesh_typeck::VariantFieldInfo::Positional(ty)
+                                | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
+                            };
+                            substitute_type_params(ty, &substitutions)
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_default()
     }
 
     // ── Pattern lowering ─────────────────────────────────────────────
@@ -12133,51 +12256,8 @@ impl<'a> Lowerer<'a> {
                     .map(|t| t.text().to_string())
                     .unwrap_or_default();
 
-                let type_name = if let Some(tn) = ctor.type_name() {
-                    tn.text().to_string()
-                } else {
-                    // Find the type name from the registry for unqualified constructors.
-                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
-                    find_type_for_variant(&variant_name, expected_mir.as_ref(), self.registry, None)
-                        .unwrap_or_default()
-                };
-
-                let expected_fields = self
-                    .registry
-                    .sum_type_defs
-                    .get(&type_name)
-                    .and_then(|info| {
-                        let variant = info
-                            .variants
-                            .iter()
-                            .find(|variant| variant.name == variant_name)?;
-                        let substitutions = match expected {
-                            Some(Ty::App(con, args))
-                                if matches!(con.as_ref(), Ty::Con(name) if name.name == type_name) =>
-                            {
-                                info.generic_params
-                                    .iter()
-                                    .cloned()
-                                    .zip(args.iter())
-                                    .collect()
-                            }
-                            _ => HashMap::new(),
-                        };
-                        Some(
-                            variant
-                                .fields
-                                .iter()
-                                .map(|field| {
-                                    let ty = match field {
-                                        mesh_typeck::VariantFieldInfo::Positional(ty)
-                                        | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
-                                    };
-                                    substitute_type_params(ty, &substitutions)
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    })
-                    .unwrap_or_default();
+                let type_name = self.constructor_type_name(ctor, &variant_name, expected);
+                let expected_fields = self.variant_field_types(&type_name, &variant_name, expected);
                 let fields: Vec<MirPattern> = ctor
                     .fields()
                     .enumerate()

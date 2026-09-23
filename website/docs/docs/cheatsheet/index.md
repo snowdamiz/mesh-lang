@@ -216,6 +216,12 @@ match x do
   _ -> "positive"
 end
 
+# An arm that is only a pattern passes what it matched through
+case r do
+  Ok(value) # same as Ok(value) -> Ok(value)
+  Err(message) -> Err(String.length(message))
+end
+
 # For loop (list comprehension)
 let doubled = for x in [1, 2, 3] do
   x * 2
