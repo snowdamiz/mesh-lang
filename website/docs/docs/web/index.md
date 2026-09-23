@@ -319,12 +319,12 @@ Mesh includes a built-in WebSocket server for real-time bidirectional communicat
 ```mesh
 fn on_connect(conn, path, headers) do
   println("connected on #{path}")
-  let _ = Ws.send(conn, "Welcome!")
+  Ws.send(conn, "Welcome!")
   1
 end
 
 fn on_message(conn, msg) do
-  let _ = Ws.send(conn, msg)
+  Ws.send(conn, msg)
 end
 
 fn on_close(conn, code, reason) do
@@ -341,8 +341,8 @@ end
 | Callback | Arguments | Purpose |
 |----------|-----------|---------|
 | `on_connect` | `(conn, path, headers)` | Called after the upgrade with the request path and `Map<String, String>` headers; return nonzero to accept or `0` to reject with close code 1008 |
-| `on_message` | `(conn, msg)` | Called for each message from the client. |
-| `on_close` | `(conn, code, reason)` | Called with the close code and reason. Cleanup is automatic. |
+| `on_message` | `(conn, msg)` | Called for each message from the client. Its return value is discarded. |
+| `on_close` | `(conn, code, reason)` | Called with the close code and reason. Cleanup is automatic, and the return value is discarded. |
 
 Each WebSocket connection runs as an isolated actor. If a handler crashes, only that connection is affected -- the server continues accepting new connections.
 
@@ -367,14 +367,14 @@ Rooms provide pub/sub messaging. Connections can join named rooms and broadcast 
 
 ```mesh
 fn on_connect(conn, path, headers) do
-  let _ = Ws.join(conn, "lobby")
-  let _ = Ws.send(conn, "Welcome to the lobby!")
+  Ws.join(conn, "lobby")
+  Ws.send(conn, "Welcome to the lobby!")
   1
 end
 
 fn on_message(conn, msg) do
   # Broadcast to all connections in the room
-  let _ = Ws.broadcast("lobby", msg)
+  Ws.broadcast("lobby", msg)
 end
 
 fn on_close(conn, code, reason) do

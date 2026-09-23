@@ -72,7 +72,7 @@ Once a node is started, it can connect to other nodes with `Node.connect`:
 
 ```mesh
 fn main() do
-  let _ = Node.start("app@localhost:4000", "my_cookie")
+  Node.start("app@localhost:4000", "my_cookie")
   let status = Node.connect("worker@localhost:4001")
   if status == 0 do
     println("connected to worker")

@@ -318,8 +318,8 @@ end
 
 fn main() do
   let pid = Accumulator.start()
-  let _ = Accumulator.add(pid, 1)
-  let _ = Accumulator.add(pid, 2)
+  Accumulator.add(pid, 1)
+  Accumulator.add(pid, 2)
   let result = Accumulator.add(pid, 3)
   println("${result}")
 end
@@ -405,7 +405,7 @@ The function runs in its own actor, which is not linked to the caller: a failing
 fn main() do
   case Channel.bounded_bytes(128, 1_024, :reject_newest) do
     Ok(channel) ->
-      let _ = Channel.try_send(channel, 42)
+      Channel.try_send(channel, 42)
       case Duration.millis(10) do
         Ok(timeout) -> case Channel.recv(channel, timeout) do
           Ok(value) -> println("#{value}")

@@ -68,16 +68,16 @@
     {
       "id": "docs-language-basics-preferred-hash",
       "path": "website/docs/docs/language-basics/index.md",
-      "startLine": 188,
-      "endLine": 188,
+      "startLine": 193,
+      "endLine": 193,
       "expectedForms": ["hash"],
       "expectedStringKind": "double"
     },
     {
       "id": "docs-language-basics-heredoc-hash",
       "path": "website/docs/docs/language-basics/index.md",
-      "startLine": 204,
-      "endLine": 206,
+      "startLine": 209,
+      "endLine": 211,
       "expectedForms": ["hash"],
       "expectedStringKind": "triple"
     },

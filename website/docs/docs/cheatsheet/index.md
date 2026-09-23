@@ -20,7 +20,7 @@ A quick reference for Mesh syntax. For details, see the full guides linked in ea
 | Module doc | `##! documents this module` |
 | Nested block comment | `#= outer #= inner =# =#` |
 | Tuple binding | `let (name, age) = ("Ada", 36)` |
-| Ignore a value | `let _ = do_work()` |
+| Ignore a result | `do_work()` on its own line |
 | Multiple statements | `let x = 1; let y = 2` |
 | Print | `println("hello")` |
 

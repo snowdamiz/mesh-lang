@@ -21,12 +21,12 @@ Both drivers accept parameterized SQL and return errors through `Result`. The hi
 ```mesh
 fn run() -> Int!String do
   let db = Sqlite.open(":memory:")?
-  let _ = Sqlite.execute(
+  Sqlite.execute(
     db,
     "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
     []
   )?
-  let _ = Sqlite.execute(
+  Sqlite.execute(
     db,
     "INSERT INTO notes (id, body) VALUES (?, ?)",
     ["1", "hello"]

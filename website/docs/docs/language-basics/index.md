@@ -52,10 +52,15 @@ fn main() do
 end
 ```
 
-Bindings can use `_` when a value is intentionally unused:
+A call on a line of its own runs for its effects and its result is dropped, so
+ignoring a value needs no binding. In a pattern, `_` skips the part you do not
+need:
 
 ```mesh
-let _ = do_work()
+fn main() do
+  let (_, age) = ("Ada", 36)
+  println("#{age}")
+end
 ```
 
 ### Identifiers
@@ -448,6 +453,21 @@ end
 
 let result = with_value(10) do |value|
   value * 2
+end
+```
+
+A parameter typed to return `()` runs its function only for its effects, so it
+accepts a function that returns anything and drops the result:
+
+```mesh
+fn each_twice(f :: Fun(Int) -> ()) do
+  f(1)
+  f(2)
+end
+
+fn main() do
+  each_twice(fn n -> println("#{n}") end)
+  each_twice(fn n -> n * 2 end)
 end
 ```
 

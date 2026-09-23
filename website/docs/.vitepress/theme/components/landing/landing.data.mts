@@ -67,13 +67,12 @@ end`,
     file: 'api/live.mpl',
     href: '/docs/web/#websocket',
     code: `fn on_connect(conn, _path, _headers) -> Int do
-  let _ = Ws.join(conn, "updates")
+  Ws.join(conn, "updates")
   1
 end
 
 fn on_message(_conn, msg :: String) do
-  let _ = Ws.broadcast("updates", msg)
-  nil
+  Ws.broadcast("updates", msg)
 end`,
   },
   {
@@ -112,10 +111,7 @@ end`,
     href: '/docs/concurrency/#jobs',
     code: `fn load_report() -> String ! String do
   let job = Job.async(fn -> build_report() end)
-  case Job.await_timeout(job, 1000) do
-    Ok(report) -> Ok(report)
-    Err(reason) -> Err(reason)
-  end
+  Job.await_timeout(job, 1000)
 end`,
   },
   {
