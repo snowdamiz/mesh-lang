@@ -408,7 +408,7 @@ Mesh provides these compiler-known traits:
 | `Add`, `Sub`, `Mul`, `Div`, `Mod` | Binary numeric operators with associated `Output` |
 | `Neg` | Unary `-` with associated `Output` |
 | `Eq` | `==` and `!=` |
-| `Ord` | `<`, `>`, `<=`, `>=`, plus `compare` returning `Ordering` |
+| `Ord` | `<`, `>`, `<=`, `>=`, plus `compare` returning `Ordering`; an impl defines `lt(self, other) -> Bool`, and `compare` follows from it |
 | `Not` | Boolean negation |
 | `Display` | `to_string()` and interpolation |
 | `Debug` | `inspect()` |
