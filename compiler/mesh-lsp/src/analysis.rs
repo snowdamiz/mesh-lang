@@ -236,6 +236,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::InvalidLetPattern { span, .. }
         | TypeError::InvalidPassThroughArm { span, .. }
         | TypeError::DuplicateBinding { span, .. }
+        | TypeError::NotAStruct { span, .. }
         | TypeError::CyclicAlias { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }

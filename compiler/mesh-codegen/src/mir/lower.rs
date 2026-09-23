@@ -13993,10 +13993,22 @@ impl<'a> Lowerer<'a> {
     // ── Struct literal lowering ──────────────────────────────────────
 
     fn lower_struct_literal(&mut self, sl: &StructLiteral) -> MirExpr {
-        let base_name = sl
-            .name_ref()
-            .and_then(|nr| nr.text())
-            .unwrap_or_else(|| "<unnamed>".to_string());
+        // The struct the literal builds: its type's, which differs from the
+        // written name for a literal through an alias (`IntBox { .. }`).
+        let base_name = match self.get_ty(sl.syntax().text_range()) {
+            Some(Ty::App(con, _)) => match con.as_ref() {
+                Ty::Con(tc) if self.registry.struct_defs.contains_key(&tc.name) => {
+                    Some(tc.name.clone())
+                }
+                _ => None,
+            },
+            Some(Ty::Con(tc)) if self.registry.struct_defs.contains_key(&tc.name) => {
+                Some(tc.name.clone())
+            }
+            _ => None,
+        }
+        .or_else(|| sl.name_ref().and_then(|nr| nr.text()))
+        .unwrap_or_else(|| "<unnamed>".to_string());
 
         let fields: Vec<(String, MirExpr)> = sl
             .fields()

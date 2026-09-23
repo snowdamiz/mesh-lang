@@ -2565,6 +2565,34 @@ end
 }
 
 #[test]
+fn struct_literals_through_aliases() {
+    let source = r##"
+struct Point do
+  x :: Int
+end
+
+struct Box<T> do
+  value :: T
+end
+
+type P = Point
+type IntBox = Box<Int>
+
+fn main() do
+  let q = P { x: 4 }
+  let b = IntBox { value: 5 }
+  println("#{q.x} #{b.value + 1}")
+end
+"##;
+    assert_eq!(run(source), "4 6\n");
+}
+
+#[test]
+fn a_struct_literal_must_name_a_struct() {
+    let err = build_error("fn main() do\n  let q = Nope { x: 4 }\n  println(\"x\")\nend\n");
+    assert!(err.contains("E0059") && err.contains(":2:11"), "{err}");
+}
+#[test]
 fn an_alias_that_refers_to_itself_is_reported() {
     let err = build_error(
         "type A = B\ntype B = A\ntype L<T> = List<L<T>>\n\nfn main() do\n  println(\"x\")\nend\n",

@@ -380,6 +380,10 @@ pub enum TypeError {
     DuplicateBinding { name: String, span: TextRange },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
+    /// A struct literal names, or a struct update is applied to, something
+    /// that is not a struct (`ty` is the value's type; a variable when it
+    /// is not known there).
+    NotAStruct { ty: Ty, span: TextRange },
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
@@ -867,6 +871,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")
+            }
+            TypeError::NotAStruct { ty, .. } => {
+                write!(f, "`{ty}` is not a struct")
             }
             TypeError::DuplicateBinding { name, .. } => {
                 write!(f, "`{name}` is bound twice in one pattern")

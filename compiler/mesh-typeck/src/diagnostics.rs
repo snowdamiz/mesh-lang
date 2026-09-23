@@ -149,6 +149,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidLetPattern { .. } => "E0054",
         TypeError::InvalidPassThroughArm { .. } => "E0056",
         TypeError::DuplicateBinding { .. } => "E0057",
+        TypeError::NotAStruct { .. } => "E0059",
         TypeError::CyclicAlias { .. } => "E0062",
     }
 }
@@ -530,6 +531,7 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::InvalidPassThroughArm { span, .. }
                 | TypeError::DuplicateBinding { span, .. }
+                | TypeError::NotAStruct { span, .. }
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
@@ -2056,6 +2058,31 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("an alias names an existing type; use a struct or sum type for a recursive type")
+                .finish()
+        }
+        TypeError::NotAStruct { ty, span } => {
+            let range = clamp(text_range_to_range(*span));
+            let (message, label) = if matches!(ty, Ty::Var(_)) {
+                (
+                    "a struct update needs a struct value".to_string(),
+                    "the type of this value is not known here".to_string(),
+                )
+            } else {
+                (
+                    format!("`{ty}` is not a struct"),
+                    "not a struct".to_string(),
+                )
+            };
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(message)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(label)
+                        .with_color(Color::Red),
+                )
+                .with_help("`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one")
                 .finish()
         }
         TypeError::DuplicateBinding { name, span } => {

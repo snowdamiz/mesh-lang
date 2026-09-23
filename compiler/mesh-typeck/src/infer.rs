@@ -11847,10 +11847,40 @@ fn infer_struct_literal(
         .and_then(|nr| nr.text())
         .unwrap_or_else(|| "<unknown>".to_string());
 
+    // A literal written through an alias (`P { x: 4 }` with `type P = Point`)
+    // builds the aliased struct, with the arguments the alias gives it.
+    let (struct_name, alias_args) = match type_registry.lookup_struct(&struct_name) {
+        Some(_) => (struct_name, None),
+        None => match type_registry.lookup_alias(&struct_name).map(|alias| {
+            let fresh: Vec<Ty> = alias
+                .generic_params
+                .iter()
+                .map(|_| ctx.fresh_var())
+                .collect();
+            substitute_type_params(&alias.aliased_type, &alias.generic_params, &fresh)
+        }) {
+            Some(Ty::Con(tc)) if type_registry.lookup_struct(&tc.name).is_some() => (tc.name, None),
+            Some(Ty::App(con, args)) => match *con {
+                Ty::Con(tc) if type_registry.lookup_struct(&tc.name).is_some() => {
+                    (tc.name, Some(args))
+                }
+                _ => (struct_name, None),
+            },
+            _ => (struct_name, None),
+        },
+    };
+
     let struct_def = match type_registry.lookup_struct(&struct_name) {
         Some(def) => def.clone(),
         None => {
-            // Unknown struct -- infer field values anyway, return a basic type.
+            ctx.errors.push(TypeError::NotAStruct {
+                ty: Ty::Con(TyCon::new(&struct_name)),
+                span: sl
+                    .name_ref()
+                    .map(|nr| nr.syntax().text_range())
+                    .unwrap_or_else(|| sl.syntax().text_range()),
+            });
+            // Infer the field values anyway, for their own errors.
             for field in sl.fields() {
                 if let Some(value) = field.value() {
                     let _ = infer_expr(
@@ -11869,11 +11899,14 @@ fn infer_struct_literal(
     };
 
     // Create fresh type variables for generic params.
-    let generic_vars: Vec<Ty> = struct_def
-        .generic_params
-        .iter()
-        .map(|_| ctx.fresh_var())
-        .collect();
+    let generic_vars: Vec<Ty> = match alias_args {
+        Some(args) if args.len() == struct_def.generic_params.len() => args,
+        _ => struct_def
+            .generic_params
+            .iter()
+            .map(|_| ctx.fresh_var())
+            .collect(),
+    };
 
     // Track provided fields.
     let mut provided_fields: Vec<String> = Vec::new();
