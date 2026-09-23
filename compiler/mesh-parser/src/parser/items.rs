@@ -894,6 +894,7 @@ pub(crate) fn parse_type(p: &mut Parser) {
             }
         }
         p.expect(SyntaxKind::R_PAREN);
+        parse_type_sugar(p);
         return;
     }
 
@@ -953,6 +954,11 @@ pub(crate) fn parse_type(p: &mut Parser) {
         p.close(args, SyntaxKind::GENERIC_ARG_LIST);
     }
 
+    parse_type_sugar(p);
+}
+
+/// The `?` (Option) or `!Error` (Result) suffix of a type.
+fn parse_type_sugar(p: &mut Parser) {
     // Option sugar: Type? => OPTION_TYPE wrapping the base type
     if p.at(SyntaxKind::QUESTION) {
         p.advance(); // ?

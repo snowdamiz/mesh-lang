@@ -3385,3 +3385,32 @@ end
 "##;
     assert_eq!(run(source), "1 two\n5 0\nx 1\n");
 }
+
+#[test]
+fn tuple_types_take_option_and_result_sugar() {
+    let source = r##"
+fn h(x :: Int) -> (Int, String)? do
+  if x > 0 do
+    Some((x, "a"))
+  else
+    None
+  end
+end
+
+fn k(x :: (Int, Int)!String) -> Int do
+  case x do
+    Ok((a, b)) -> a + b
+    Err(_) -> 0
+  end
+end
+
+fn main() do
+  case h(1) do
+    Some((a, b)) -> println("#{a} #{b}")
+    None -> println("none")
+  end
+  println("#{k(Ok((1, 2)))} #{k(Err("e"))}")
+end
+"##;
+    assert_eq!(run(source), "1 a\n3 0\n");
+}
