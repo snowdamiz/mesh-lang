@@ -389,7 +389,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
     // Phase 79: String.collect(iter) -> String
     string_mod.insert(
         "collect".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], Ty::string())),
+        Scheme::mono(Ty::fun(vec![Ty::iter(Ty::string())], Ty::string())),
     );
     modules.insert("String".to_string(), string_mod);
 
@@ -1504,7 +1504,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "collect".to_string(),
         Scheme {
             vars: vec![t_var],
-            ty: Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], list_t.clone()),
+            ty: Ty::fun(vec![Ty::iter(t.clone())], list_t.clone()),
         },
     );
     modules.insert("List".to_string(), list_mod);
@@ -1606,7 +1606,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "collect".to_string(),
         Scheme {
             vars: vec![k_var, v_var],
-            ty: Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], map_kv.clone()),
+            ty: Ty::fun(
+                vec![Ty::iter(Ty::Tuple(vec![k.clone(), v.clone()]))],
+                map_kv.clone(),
+            ),
         },
     );
     modules.insert("Map".to_string(), map_mod);
@@ -1657,7 +1660,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
     // Phase 79: Set.collect(iter) -> Set
     set_mod.insert(
         "collect".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], set_t.clone())),
+        Scheme::mono(Ty::fun(vec![Ty::iter(Ty::int())], set_t.clone())),
     );
     modules.insert("Set".to_string(), set_mod);
 
@@ -2857,166 +2860,103 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
 
     // ── Iter module (Phase 76 + Phase 78) ──────────────────────────
     {
-        let iter_t_var = TyVar(91200);
-        let iter_t = Ty::Var(iter_t_var);
         let mut iter_mod = HashMap::new();
-        // Iter.from: fn(List<T>) -> ListIterator (polymorphic over element type)
-        iter_mod.insert(
-            "from".to_string(),
-            Scheme {
-                vars: vec![iter_t_var],
-                ty: Ty::fun(vec![Ty::list(iter_t)], Ty::Con(TyCon::new("ListIterator"))),
-            },
-        );
-
-        // ── Phase 78: Lazy Combinators ──────────────────────────────
-        // Iter.map: fn(Ptr, fn(T) -> U) -> Ptr
-        {
-            let t = TyVar(91201);
-            let u = TyVar(91202);
-            iter_mod.insert(
-                "map".to_string(),
-                Scheme {
-                    vars: vec![t, u],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::fun(vec![Ty::Var(t)], Ty::Var(u)),
-                        ],
-                        Ty::Con(TyCon::new("Ptr")),
-                    ),
-                },
-            );
-        }
-        // Iter.filter: fn(Ptr, fn(T) -> Bool) -> Ptr
-        {
-            let t = TyVar(91203);
-            iter_mod.insert(
-                "filter".to_string(),
-                Scheme {
-                    vars: vec![t],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::fun(vec![Ty::Var(t)], Ty::bool()),
-                        ],
-                        Ty::Con(TyCon::new("Ptr")),
-                    ),
-                },
-            );
-        }
-        // Iter.take: fn(Ptr, Int) -> Ptr
-        iter_mod.insert(
-            "take".to_string(),
-            Scheme::mono(Ty::fun(
-                vec![Ty::Con(TyCon::new("Ptr")), Ty::int()],
-                Ty::Con(TyCon::new("Ptr")),
-            )),
-        );
-        // Iter.skip: fn(Ptr, Int) -> Ptr
-        iter_mod.insert(
-            "skip".to_string(),
-            Scheme::mono(Ty::fun(
-                vec![Ty::Con(TyCon::new("Ptr")), Ty::int()],
-                Ty::Con(TyCon::new("Ptr")),
-            )),
-        );
-        // Iter.enumerate: fn(Ptr) -> Ptr
-        iter_mod.insert(
-            "enumerate".to_string(),
-            Scheme::mono(Ty::fun(
-                vec![Ty::Con(TyCon::new("Ptr"))],
-                Ty::Con(TyCon::new("Ptr")),
-            )),
-        );
-        // Iter.zip: fn(Ptr, Ptr) -> Ptr
-        iter_mod.insert(
-            "zip".to_string(),
-            Scheme::mono(Ty::fun(
-                vec![Ty::Con(TyCon::new("Ptr")), Ty::Con(TyCon::new("Ptr"))],
-                Ty::Con(TyCon::new("Ptr")),
-            )),
-        );
-
-        // ── Phase 78: Terminals ─────────────────────────────────────
-        // Iter.count: fn(Ptr) -> Int
-        iter_mod.insert(
-            "count".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], Ty::int())),
-        );
-        // Iter.sum: fn(Ptr) -> Int
-        iter_mod.insert(
-            "sum".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::Con(TyCon::new("Ptr"))], Ty::int())),
-        );
-        // Iter.any: fn(Ptr, fn(T) -> Bool) -> Bool
-        {
-            let t = TyVar(91204);
-            iter_mod.insert(
-                "any".to_string(),
-                Scheme {
-                    vars: vec![t],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::fun(vec![Ty::Var(t)], Ty::bool()),
-                        ],
-                        Ty::bool(),
-                    ),
-                },
-            );
-        }
-        // Iter.all: fn(Ptr, fn(T) -> Bool) -> Bool
-        {
-            let t = TyVar(91205);
-            iter_mod.insert(
-                "all".to_string(),
-                Scheme {
-                    vars: vec![t],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::fun(vec![Ty::Var(t)], Ty::bool()),
-                        ],
-                        Ty::bool(),
-                    ),
-                },
-            );
-        }
-        // Iter.find: fn(Ptr, fn(T) -> Bool) -> Option<T>
-        {
-            let t = TyVar(91206);
-            iter_mod.insert(
-                "find".to_string(),
-                Scheme {
-                    vars: vec![t],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::fun(vec![Ty::Var(t)], Ty::bool()),
-                        ],
-                        Ty::option(Ty::Var(t)),
-                    ),
-                },
-            );
-        }
-        // Iter.reduce: fn(Ptr, T, fn(T, T) -> T) -> T
-        {
-            let t = TyVar(91207);
-            iter_mod.insert(
-                "reduce".to_string(),
-                Scheme {
-                    vars: vec![t],
-                    ty: Ty::fun(
-                        vec![
-                            Ty::Con(TyCon::new("Ptr")),
-                            Ty::Var(t),
-                            Ty::fun(vec![Ty::Var(t), Ty::Var(t)], Ty::Var(t)),
-                        ],
-                        Ty::Var(t),
-                    ),
-                },
-            );
+        // `Iter<T>` carries its element type, so closures and collectors see
+        // it. (The iterator handle types `ListIterator` and friends stay
+        // compatible with it, without an element type.)
+        let iter = |elem: Ty| Ty::App(Box::new(Ty::Con(TyCon::new("Iter"))), vec![elem]);
+        let (t, u) = (TyVar(91210), TyVar(91211));
+        let (tv, uv) = (Ty::Var(t), Ty::Var(u));
+        let scheme = |vars: Vec<TyVar>, params: Vec<Ty>, ret: Ty| Scheme {
+            vars,
+            ty: Ty::fun(params, ret),
+        };
+        let predicate = Ty::fun(vec![tv.clone()], Ty::bool());
+        for (name, scheme) in [
+            (
+                "from",
+                scheme(vec![t], vec![Ty::list(tv.clone())], iter(tv.clone())),
+            ),
+            (
+                "map",
+                scheme(
+                    vec![t, u],
+                    vec![iter(tv.clone()), Ty::fun(vec![tv.clone()], uv.clone())],
+                    iter(uv.clone()),
+                ),
+            ),
+            (
+                "filter",
+                scheme(
+                    vec![t],
+                    vec![iter(tv.clone()), predicate.clone()],
+                    iter(tv.clone()),
+                ),
+            ),
+            (
+                "take",
+                scheme(vec![t], vec![iter(tv.clone()), Ty::int()], iter(tv.clone())),
+            ),
+            (
+                "skip",
+                scheme(vec![t], vec![iter(tv.clone()), Ty::int()], iter(tv.clone())),
+            ),
+            (
+                "enumerate",
+                scheme(
+                    vec![t],
+                    vec![iter(tv.clone())],
+                    iter(Ty::Tuple(vec![Ty::int(), tv.clone()])),
+                ),
+            ),
+            (
+                "zip",
+                scheme(
+                    vec![t, u],
+                    vec![iter(tv.clone()), iter(uv.clone())],
+                    iter(Ty::Tuple(vec![tv.clone(), uv.clone()])),
+                ),
+            ),
+            ("count", scheme(vec![t], vec![iter(tv.clone())], Ty::int())),
+            ("sum", scheme(vec![], vec![iter(Ty::int())], Ty::int())),
+            (
+                "any",
+                scheme(
+                    vec![t],
+                    vec![iter(tv.clone()), predicate.clone()],
+                    Ty::bool(),
+                ),
+            ),
+            (
+                "all",
+                scheme(
+                    vec![t],
+                    vec![iter(tv.clone()), predicate.clone()],
+                    Ty::bool(),
+                ),
+            ),
+            (
+                "find",
+                scheme(
+                    vec![t],
+                    vec![iter(tv.clone()), predicate],
+                    Ty::option(tv.clone()),
+                ),
+            ),
+            (
+                "reduce",
+                scheme(
+                    vec![t],
+                    vec![
+                        iter(tv.clone()),
+                        tv.clone(),
+                        Ty::fun(vec![tv.clone(), tv.clone()], tv.clone()),
+                    ],
+                    tv.clone(),
+                ),
+            ),
+        ] {
+            iter_mod.insert(name.to_string(), scheme);
         }
 
         modules.insert("Iter".to_string(), iter_mod);

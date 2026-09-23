@@ -301,6 +301,11 @@ impl Ty {
     }
 
     /// Create a `List<T>` type.
+    /// `Iter<T>`: a lazy iterator over `T`s (`Iter.from`, `Iter.map`, ...).
+    pub fn iter(elem: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("Iter"))), vec![elem])
+    }
+
     pub fn list(inner: Ty) -> Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new("List"))), vec![inner])
     }

@@ -98,7 +98,7 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         | "BytesError" | "SecretBytes" | "SecretMap"
         | "U64" | "U128" | "I128"
         | "Router" | "Request" | "Response"
-        | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
+        | "Iter" | "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
         // Phase 78: Adapter iterator types
         | "MapAdapterIterator" | "FilterAdapterIterator" | "TakeAdapterIterator"
         | "SkipAdapterIterator" | "EnumerateAdapterIterator" | "ZipAdapterIterator"
@@ -136,7 +136,7 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
     // pointer whatever it holds.
     if matches!(
         base_name.as_str(),
-        "List" | "Map" | "Set" | "Range" | "Queue" | mesh_typeck::ty::TUPLE_ROW
+        "List" | "Map" | "Set" | "Range" | "Queue" | "Iter" | mesh_typeck::ty::TUPLE_ROW
     ) {
         return MirType::Ptr;
     }

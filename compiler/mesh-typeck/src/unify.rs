@@ -453,6 +453,15 @@ impl InferCtx {
                 Ok(())
             }
 
+            // Iterator handles (`ListIterator`, the untyped `Ptr`, ...) carry no
+            // element type; they are compatible with any `Iter<T>`.
+            (Ty::Con(ref c), Ty::App(ref con, _)) | (Ty::App(ref con, _), Ty::Con(ref c))
+                if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Iter")
+                    && Self::iterator_ptr_compatible(c, &TyCon::new("Ptr")) =>
+            {
+                Ok(())
+            }
+
             // Non-generic type identity: Con("Point") == App(Con("Point"), [])
             // This arises because infer_struct_literal returns App(Con(name), []) for
             // non-generic structs, while name_to_type returns Con(name). Both represent

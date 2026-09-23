@@ -1936,6 +1936,39 @@ fn a_closed_stdout_ends_the_program_quietly() {
     assert_eq!(status.signal(), Some(13), "{status:?}");
 }
 
+// ── Collections compare by Eq ──────────────────────────────────────────
+
+#[test]
+fn iterators_carry_their_element_types() {
+    let source = r##"
+struct P do
+  x :: Int
+end
+
+fn main() do
+  let words = Iter.from(["a", "bb", "ccc"]) |> Iter.map(fn w -> String.length(w) end) |> List.collect()
+  let floats = Iter.from([1.5, 2.5]) |> Iter.map(fn f -> f * 2.0 end) |> List.collect()
+  let xs = Iter.from([P { x: 1 }, P { x: 2 }]) |> Iter.filter(fn p -> p.x > 1 end) |> List.collect()
+  let pairs = Iter.from(["a", "b"]) |> Iter.enumerate() |> List.collect()
+  let found = Iter.from(["x", "yy"]) |> Iter.find(fn s -> String.length(s) == 2 end)
+  println("#{words} #{floats} #{List.length(xs)} #{pairs} #{found}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "[1, 2, 3] [3.0, 5.0] 1 [(0, a), (1, b)] Some(yy)\n"
+    );
+    for bad in [
+        "fn main() do\n  let bad = Iter.from([\"a\"]) |> Iter.map(fn x -> x + 1 end) |> List.collect()\n  println(\"#{bad}\")\nend\n",
+        "fn main() do\n  println(\"#{Iter.from([\"x\"]) |> Iter.sum()}\")\nend\n",
+        "fn main() do\n  let r :: List<String> = Iter.from([1, 2]) |> List.collect()\n  println(\"#{r}\")\nend\n",
+    ] {
+        let err = build_error(bad);
+        assert!(err.contains("E0001"), "{bad}\n{err}");
+        assert!(!err.contains("E0004"), "no cascade:\n{err}");
+    }
+}
+
 // ── Type-checker soundness ─────────────────────────────────────────────
 
 #[test]
