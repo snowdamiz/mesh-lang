@@ -2483,6 +2483,13 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
         node.kind(),
         SyntaxKind::GENERIC_ARG_LIST | SyntaxKind::GENERIC_PARAM_LIST
     );
+    // In a type, `(` opens a tuple type (`:: (Int, Int)`, `Map<K, (A, B)>`)
+    // and is spaced like a name, except as `Fun(`'s parameter list.
+    let in_type = matches!(
+        node.kind(),
+        SyntaxKind::TYPE_ANNOTATION | SyntaxKind::GENERIC_ARG_LIST | SyntaxKind::FUN_TYPE
+    );
+    let mut prev_kind = None;
 
     for child in node.elements() {
         match child {
@@ -2505,11 +2512,15 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                 // `head :: tail`; elsewhere `::` belongs to a type annotation,
                 // whose caller spaces it.
                 let spaced = needs_space_before(kind)
-                    || (kind == SyntaxKind::COLON_COLON && node.kind() == SyntaxKind::CONS_PAT);
+                    || (kind == SyntaxKind::COLON_COLON && node.kind() == SyntaxKind::CONS_PAT)
+                    || (in_type
+                        && kind == SyntaxKind::L_PAREN
+                        && prev_kind != Some(SyntaxKind::IDENT));
                 if !parts.is_empty() && !after_open && !closes_angles && spaced {
                     parts.push(sp());
                 }
                 parts.push(ir::text(tok.text()));
+                prev_kind = Some(kind);
                 // `!` here is only ever the result sugar, `Int!String`.
                 after_open = matches!(
                     kind,
@@ -2522,6 +2533,7 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                 }
                 parts.push(walk_node(&n));
                 after_open = false;
+                prev_kind = None;
             }
         }
     }
@@ -3317,6 +3329,18 @@ mod tests {
         formats_to(
             "service S do\nfn init() -> Int do\n0\nend\ncall Get() :: Int do|s|\n(s, s)\nend\ncast Reset() do|_s|\n0\nend\nend",
             "service S do\n  fn init() -> Int do\n    0\n  end\n\n  call Get() :: Int do |s|\n    (s, s)\n  end\n\n  cast Reset() do |_s|\n    0\n  end\nend\n",
+        );
+    }
+
+    #[test]
+    fn tuple_types_are_spaced_like_other_types() {
+        formats_to(
+            "fn f(x :: (Int, Int), m :: Map<String, (Int, Int)>, cb :: Fun((Int, Int)) -> (Int, Int)) -> (Int, String)? do\nx\nend",
+            "fn f(x :: (Int, Int), m :: Map<String, (Int, Int)>, cb :: Fun((Int, Int)) -> (Int, Int)) -> (Int, String)? do\n  x\nend\n",
+        );
+        formats_to(
+            "let p :: (Int, (Int, Int))!String = x",
+            "let p :: (Int, (Int, Int))!String = x\n",
         );
     }
 

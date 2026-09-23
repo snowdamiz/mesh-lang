@@ -4,7 +4,7 @@ struct RateLimiterState do
   max_requests :: Int
 end
 
-fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
+fn check_limit_impl(state :: RateLimiterState, key :: String) -> (RateLimiterState, Bool) do
   let count = Map.get(state.counts, key)
   let allowed = count < state.max_requests
   let next_counts = if allowed do
