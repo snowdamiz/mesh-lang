@@ -397,9 +397,17 @@ pub extern "C" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
         let j = json as *mut MeshJson;
         match (*j).tag {
             JSON_INT => alloc_result(0, (*j).value as i64 as *mut u8) as *mut u8,
+            // A number written with a fraction or exponent is an Int only when
+            // it is a whole number an Int can hold (not 1.9, not 1e30).
             JSON_FLOAT => {
                 let f = f64::from_bits((*j).value);
-                alloc_result(0, f as i64 as *mut u8) as *mut u8
+                if f.fract() == 0.0
+                    && (-9.223_372_036_854_775_808e18..9.223_372_036_854_775_808e18).contains(&f)
+                {
+                    alloc_result(0, f as i64 as *mut u8) as *mut u8
+                } else {
+                    err_result("expected Int") as *mut u8
+                }
             }
             _ => err_result("expected Int") as *mut u8,
         }
@@ -969,12 +977,18 @@ mod tests {
     #[test]
     fn test_json_as_int_from_float() {
         mesh_rt_init();
-        let json = mesh_json_from_float(3.7);
-        let result = mesh_json_as_int(json);
+        // A whole number is an Int; a fraction or an out-of-range number is not.
+        let result = mesh_json_as_int(mesh_json_from_float(3.0));
         unsafe {
             let res = result as *mut MeshResult;
             assert_eq!((*res).tag, 0);
-            assert_eq!((*res).value as i64, 3); // truncated
+            assert_eq!((*res).value as i64, 3);
+        }
+        for f in [3.7, 1e30, -1e30, f64::NAN] {
+            let result = mesh_json_as_int(mesh_json_from_float(f));
+            unsafe {
+                assert_eq!((*(result as *mut MeshResult)).tag, 1, "{f}");
+            }
         }
     }
 
