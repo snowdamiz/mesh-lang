@@ -528,9 +528,7 @@ language features. Use:
 - Index expressions are parser placeholders and are not an executable
   source-level collection API; use module functions such as `List.get`,
   `Map.get`, and `Json.array_get`.
-- List-literal and struct-field patterns are not implemented.
-- Native `receive` currently dispatches only its first arm; branch on the
-  received value with `case`.
+- Struct-field patterns are not implemented.
 - Wide integers use checked module functions instead of ordinary literal
   operators.
 - `Channel` payloads are currently `Int`.
