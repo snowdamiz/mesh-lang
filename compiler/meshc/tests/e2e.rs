@@ -7753,3 +7753,41 @@ end
          true true\n"
     );
 }
+
+/// A module's own variant shadows an imported variant of the same name
+/// (whatsdown's `GroupError.InvalidMember` beside the imported
+/// `GroupTreeError.InvalidMember`), wherever the import sits.
+#[test]
+fn e2e_local_variant_shadows_an_imported_one() {
+    let tree = r##"pub type TreeError do
+  InvalidMember
+end
+
+pub fn tree_error() -> TreeError do
+  InvalidMember
+end
+"##;
+    let main = r##"from Tree import TreeError, tree_error
+
+type GroupError do
+  InvalidMember
+  Other
+end
+
+fn group_error() -> GroupError do
+  InvalidMember
+end
+
+fn main() do
+  case group_error() do
+    InvalidMember -> println("group")
+    Other -> println("other")
+  end
+  case tree_error() do
+    TreeError.InvalidMember -> println("tree")
+  end
+end
+"##;
+    let output = compile_multifile_and_run(&[("tree.mpl", tree), ("main.mpl", main)]);
+    assert_eq!(output, "group\ntree\n");
+}

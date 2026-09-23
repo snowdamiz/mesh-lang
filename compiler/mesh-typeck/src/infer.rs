@@ -4260,12 +4260,33 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // Register every type definition, then every interface, then every impl,
     // before any body is checked: a function can call a method whose impl
     // comes later in the file, and an impl's methods can call each other.
+    // Imports go first, so the module's own names (a variant with the name
+    // of an imported one) shadow the imported ones, as in source order.
     let singles = || {
         grouped.iter().filter_map(|gi| match gi {
             GroupedItem::Single(item) => Some(item),
             GroupedItem::MultiClause { .. } => None,
         })
     };
+    for item in singles() {
+        let range = match item {
+            Item::ImportDecl(import) => import.syntax().text_range(),
+            Item::FromImportDecl(import) => import.syntax().text_range(),
+            _ => continue,
+        };
+        infer_item(
+            &mut ctx,
+            &mut env,
+            item,
+            &mut types,
+            &mut type_registry,
+            &mut trait_registry,
+            &mut fn_constraints,
+            &mut default_method_bodies,
+            import_ctx,
+        );
+        ctx.registered_items.insert(range);
+    }
     for item in singles() {
         match item {
             Item::StructDef(def) => {
@@ -5370,6 +5391,12 @@ fn infer_item(
         // Module declarations -- skip module def, handle imports.
         Item::ModuleDef(_) => None,
         Item::ImportDecl(ref import_decl) => {
+            if ctx
+                .registered_items
+                .contains(&import_decl.syntax().text_range())
+            {
+                return None;
+            }
             // Resolve import: check user modules first, then stdlib.
             if let Some(path) = import_decl.module_path() {
                 let segments = path.segments();
@@ -5442,6 +5469,12 @@ fn infer_item(
             None
         }
         Item::FromImportDecl(ref from_import) => {
+            if ctx
+                .registered_items
+                .contains(&from_import.syntax().text_range())
+            {
+                return None;
+            }
             if let Some(path) = from_import.module_path() {
                 let segments = path.segments();
                 let full_name = segments.join(".");
