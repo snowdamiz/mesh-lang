@@ -11,6 +11,7 @@ members = [
     "compiler/mesh-pkg",
     "compiler/mesh-lsp",
     "compiler/mesh-fmt",
+    "compiler/mesh-lint",
     "compiler/mesh-repl",
     "compiler/meshpkg",
 ]

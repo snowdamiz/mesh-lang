@@ -590,6 +590,30 @@ end
 
 Mesh only publishes repo-owned format-on-save guidance for the first-class editors in the [support tiers](#support-tiers) below. In VS Code, the Mesh extension routes document formatting through `meshc lsp`. In Neovim, the repo-owned pack attaches the native `meshc lsp` client, so save-time formatting should use your normal Neovim LSP formatting hook. Best-effort editors should invoke `meshc fmt <file>` directly and treat that integration as user-maintained.
 
+## Linter
+
+`meshc lint` reports code that compiles but is harder to follow than it needs to be:
+
+```bash
+meshc lint .
+```
+
+The path may be one `.mpl` file or a directory, walked recursively, and defaults to the current directory. Each finding is printed as `path:line:column: rule: message`, and the command exits with status 1 when it reports anything, so it can gate CI next to `meshc fmt --check`. A file that does not parse is reported as a `parse-error`.
+
+```text
+api/users.mpl:14:9: deep-nesting: `case` is nested 5 levels deep (at most 4); extract a function, return early, or use `?`
+api/users.mpl:31:3: collapsible-else-if: this `else` holds only an `if`; write `else if`
+```
+
+| Rule | Reports | Write instead |
+|------|---------|---------------|
+| `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
+| `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
+| `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
+| `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` | The value itself, or `not` it |
+
+Nesting is counted from each named function, service handler, actor body, and top-level `test`, `describe`, `setup`, or `teardown` block. An `else if` chain stays at the level of its first `if`.
+
 ## REPL
 
 The Mesh REPL provides JIT-compiled interactive exploration for expressions and
@@ -1027,6 +1051,7 @@ The verifier persists the candidate and hosted-run evidence under:
 | Registry dependencies | `meshpkg install [name]` | Install all declared exact registry dependencies or one latest named package |
 | Migrations | `meshc migrate [dir] [up \| down \| status \| generate]` | Generate and run PostgreSQL migrations |
 | Formatter | `meshc fmt <path>` | Recursively format Mesh source or use `--check` in CI |
+| Linter | `meshc lint [path]` | Report deep nesting and other code that reads worse than it needs to; fails when it finds anything |
 | Test Runner | `meshc test [path]` | Run `*.test.mpl` files from a project root, tests directory, or specific test file |
 | REPL | `meshc repl` | Interactive LLVM JIT evaluation |
 | Language Server | `meshc lsp` | Diagnostics, hover, navigation, completion, symbols, formatting, and signature help over stdio JSON-RPC |

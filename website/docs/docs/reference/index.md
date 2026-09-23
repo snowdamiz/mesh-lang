@@ -489,6 +489,7 @@ provenance, and explicit non-goals.
 | `meshc init` | Generate hello, clustered, or Todo API starters |
 | `meshc deps` | Resolve source git/path dependencies |
 | `meshc fmt` | Format or check `.mpl` files |
+| `meshc lint` | Report deep nesting and other lint findings in `.mpl` files |
 | `meshc test` | Run `.test.mpl` tests |
 | `meshc repl` | Start the LLVM-backed REPL |
 | `meshc lsp` | Run the language server over stdio |

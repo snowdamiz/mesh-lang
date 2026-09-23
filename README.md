@@ -148,6 +148,7 @@ Useful development commands:
 ```bash
 meshc fmt .
 meshc fmt . --check
+meshc lint .
 meshc test .
 meshc deps .
 meshc repl

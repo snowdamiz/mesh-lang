@@ -12,6 +12,7 @@ mesh-typeck = { path = "../mesh-typeck" }
 mesh-codegen = { path = "../mesh-codegen" }
 mesh-lsp = { path = "../mesh-lsp" }
 mesh-fmt = { path = "../mesh-fmt" }
+mesh-lint = { path = "../mesh-lint" }
 mesh-pkg = { path = "../mesh-pkg" }
 mesh-repl = { path = "../mesh-repl" }
 mesh-rt = { path = "../mesh-rt" }

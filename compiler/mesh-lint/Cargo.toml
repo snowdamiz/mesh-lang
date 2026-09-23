@@ -1,0 +1,7 @@
+[package]
+name = "mesh-lint"
+version = "0.1.3"
+edition = "2021"
+
+[dependencies]
+mesh-parser = { path = "../mesh-parser" }

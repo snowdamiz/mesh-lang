@@ -8,6 +8,7 @@
 //! - `meshc deps [dir]` - Resolve and fetch dependencies
 //! - `meshc update` - Refresh installed `meshc` and `meshpkg` through the canonical installer path
 //! - `meshc fmt <path>` - Format Mesh source files in-place
+//! - `meshc lint [path]` - Report code that compiles but should be written differently
 //! - `meshc test [path]` - Run *.test.mpl files from a project root, tests directory, or specific test file
 //! - `meshc migrate [up|down|status|generate]` - Database migration management
 //! - `meshc repl` - Start an interactive REPL with LLVM JIT
@@ -144,6 +145,12 @@ enum Commands {
         /// Indent size in spaces (default: 2)
         #[arg(long = "indent-size", default_value = "2")]
         indent_size: usize,
+    },
+    /// Lint Mesh source files (exit 1 if anything is reported)
+    Lint {
+        /// Path to a Mesh source file or directory (default: current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
     },
     /// Start an interactive REPL with LLVM JIT compilation
     Repl,
@@ -394,6 +401,17 @@ fn main() {
                 }
             }
         }
+        Commands::Lint { path } => match lint_command(&path) {
+            Ok(0) => {}
+            Ok(problems) => {
+                eprintln!("{} problem(s) found", problems);
+                process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            }
+        },
         Commands::Repl => {
             if let Err(e) = mesh_repl::run_repl(&mesh_repl::ReplConfig::default()) {
                 eprintln!("REPL error: {}", e);
@@ -1545,6 +1563,35 @@ fn fmt_command(
     }
 
     Ok(FmtStats { total, unformatted })
+}
+
+/// Execute the `lint` subcommand: print each finding (and each file that does
+/// not parse) as `path:line:column: rule: message` and return how many there were.
+fn lint_command(path: &Path) -> Result<usize, String> {
+    let files = collect_mesh_files(path)?;
+    if files.is_empty() {
+        return Err(format!("No .mpl files found at '{}'", path.display()));
+    }
+
+    let mut problems = 0;
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
+        let findings = match mesh_lint::lint(&source) {
+            Ok(lints) => lints
+                .into_iter()
+                .map(|lint| (lint.offset, lint.rule, lint.message))
+                .collect(),
+            Err(error) => vec![(error.span.start, "parse-error", error.message)],
+        };
+        let lines = mesh_common::span::LineIndex::new(&source);
+        for (offset, rule, message) in findings {
+            let (line, column) = lines.line_col(offset);
+            println!("{}:{line}:{column}: {rule}: {message}", file.display());
+            problems += 1;
+        }
+    }
+    Ok(problems)
 }
 
 /// Collect `.mpl` files from a path. If the path is a file, return it directly.

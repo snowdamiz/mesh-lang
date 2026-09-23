@@ -453,6 +453,61 @@ fn test_fmt_idempotent() {
     );
 }
 
+// ── Linter ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_lint_reports_findings_with_locations_and_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    write_file(
+        &dir.path().join("src/deep.mpl"),
+        "fn f(a) do\n  if a do\n    1\n  else\n    if not a do\n      2\n    else\n      3\n    end\n  end\nend\n",
+    );
+    write_file(&dir.path().join("clean.mpl"), "fn g(a) do\n  a\nend\n");
+    write_file(
+        &dir.path().join("broken.mpl"),
+        "fn h() do\n  let = 1\nend\n",
+    );
+
+    let output = Command::new(meshc_bin())
+        .args(["lint", dir.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let broken = dir.path().join("broken.mpl");
+    let deep = dir.path().join("src/deep.mpl");
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        vec![
+            format!(
+                "{}:2:7: parse-error: expected identifier or pattern after `let`",
+                broken.display()
+            ),
+            format!(
+                "{}:4:3: collapsible-else-if: this `else` holds only an `if`; write `else if`",
+                deep.display()
+            ),
+        ]
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("2 problem(s) found"));
+}
+
+#[test]
+fn test_lint_clean_file_succeeds_silently() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("clean.mpl");
+    std::fs::write(&file, "fn g(a) do\n  a\nend\n").unwrap();
+
+    let output = Command::new(meshc_bin())
+        .args(["lint", file.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+}
+
 #[test]
 fn test_build_parse_error_names_the_file() {
     let dir = tempfile::tempdir().unwrap();
