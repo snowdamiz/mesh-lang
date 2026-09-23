@@ -3749,3 +3749,25 @@ end
     );
     assert!(err.contains("[E0069] Error: unknown type `Nope`"), "{err}");
 }
+
+#[test]
+fn a_pipe_can_feed_send() {
+    // `5 |2> send(p)` was "expected (), found (Int) -> ?14" over the whole
+    // file: `send` is not a function value.
+    let source = r##"
+actor sink() do
+  receive do
+    m -> println("got #{m}")
+  end
+  sink()
+end
+
+fn main() do
+  let p = spawn(sink)
+  5 |2> send(p)
+  p |> send(6)
+  Timer.sleep(100)
+end
+"##;
+    assert_eq!(run(source), "got 5\ngot 6\n");
+}

@@ -10194,6 +10194,9 @@ impl<'a> Lowerer<'a> {
 
         let rhs = pipe.rhs();
         let ty = self.resolve_range(pipe.syntax().text_range());
+        if let Some(Expr::SendExpr(send)) = &rhs {
+            return self.lower_piped_send(send, lhs, pipe.lhs(), 0);
+        }
 
         let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
@@ -10261,6 +10264,9 @@ impl<'a> Lowerer<'a> {
         let slot = pipe.slot().unwrap_or(2) as usize; // 1-indexed
         let insert_idx = slot - 1; // 0-indexed position to insert lhs
         let ty = self.resolve_range(pipe.syntax().text_range());
+        if let Some(Expr::SendExpr(send)) = pipe.rhs() {
+            return self.lower_piped_send(&send, lhs, pipe.lhs(), insert_idx);
+        }
 
         match pipe.rhs() {
             Some(Expr::CallExpr(call)) => {
@@ -15665,6 +15671,43 @@ impl<'a> Lowerer<'a> {
             priority: 1, // Normal priority
             terminate_callback,
             ty,
+        }
+    }
+
+    /// `send` on the right of a pipe: the piped value (`lhs`, written as
+    /// `lhs_expr`) is the argument at `insert_idx`.
+    fn lower_piped_send(
+        &mut self,
+        send: &SendExpr,
+        lhs: MirExpr,
+        lhs_expr: Option<Expr>,
+        insert_idx: usize,
+    ) -> MirExpr {
+        let explicit: Vec<Expr> = send
+            .arg_list()
+            .map(|list| list.args().collect())
+            .unwrap_or_default();
+        let mut args: Vec<(MirExpr, Option<TextRange>)> = explicit
+            .iter()
+            .map(|arg| (self.lower_expr(arg), Some(arg.syntax().text_range())))
+            .collect();
+        let at = insert_idx.min(args.len());
+        args.insert(at, (lhs, lhs_expr.map(|e| e.syntax().text_range())));
+        let mut args = args.into_iter();
+        let target = args
+            .next()
+            .map(|(target, _)| target)
+            .unwrap_or(MirExpr::Unit);
+        // The message crosses to another actor.
+        let message = match args.next() {
+            Some((message, Some(range))) => self.shaped(message, range),
+            Some((message, None)) => message,
+            None => MirExpr::Unit,
+        };
+        MirExpr::ActorSend {
+            target: Box::new(target),
+            message: Box::new(message),
+            ty: MirType::Int,
         }
     }
 

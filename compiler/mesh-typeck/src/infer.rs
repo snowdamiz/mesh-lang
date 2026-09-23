@@ -10133,6 +10133,21 @@ fn infer_pipe(
 
     let ret_var = ctx.fresh_var();
 
+    if let Expr::SendExpr(send) = &rhs {
+        return infer_piped_send(
+            ctx,
+            env,
+            send,
+            lhs_ty,
+            0,
+            pipe.syntax().text_range(),
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
+    }
+
     match &rhs {
         Expr::CallExpr(call) => {
             // Pipe-aware call inference: `x |> f(a, b)` desugars to `f(x, a, b)`.
@@ -10432,6 +10447,21 @@ fn infer_slot_pipe(
         fn_constraints,
     )?;
     let ret_var = ctx.fresh_var();
+
+    if let Expr::SendExpr(send) = &rhs {
+        return infer_piped_send(
+            ctx,
+            env,
+            send,
+            lhs_ty,
+            insert_idx,
+            pipe.syntax().text_range(),
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
+    }
 
     match &rhs {
         Expr::CallExpr(call) => {
@@ -14511,6 +14541,65 @@ fn infer_send(
         fn_constraints,
     )?;
 
+    check_send(ctx, pid_ty, msg_ty, send.syntax().text_range())
+}
+
+/// `send` on the right of a pipe: the piped value is the argument at
+/// `insert_idx` (`m |2> send(p)` is `send(p, m)`).
+#[allow(clippy::too_many_arguments)]
+fn infer_piped_send(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    send: &SendExpr,
+    piped: Ty,
+    insert_idx: usize,
+    span: TextRange,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let explicit: Vec<Expr> = send
+        .arg_list()
+        .map(|list| list.args().collect())
+        .unwrap_or_default();
+    let mut arg_tys = Vec::new();
+    for arg in &explicit {
+        arg_tys.push(infer_expr(
+            ctx,
+            env,
+            arg,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?);
+    }
+    arg_tys.insert(insert_idx.min(arg_tys.len()), piped);
+    if arg_tys.len() != 2 {
+        let err = TypeError::ArityMismatch {
+            expected: 2,
+            found: arg_tys.len(),
+            origin: ConstraintOrigin::Expr { span },
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
+    let msg_ty = arg_tys.pop().unwrap_or(Ty::Never);
+    let pid_ty = arg_tys.pop().unwrap_or(Ty::Never);
+    let ty = check_send(ctx, pid_ty, msg_ty, span)?;
+    types.insert(send.syntax().text_range(), ty.clone());
+    Ok(ty)
+}
+
+/// A message of type `msg_ty` sent to a pid of type `pid_ty`, at `span`:
+/// `send(p, m)`, or `m |2> send(p)`.
+fn check_send(
+    ctx: &mut InferCtx,
+    pid_ty: Ty,
+    msg_ty: Ty,
+    span: TextRange,
+) -> Result<Ty, TypeError> {
     let resolved_pid = ctx.resolve(pid_ty);
 
     match &resolved_pid {
@@ -14531,7 +14620,7 @@ fn infer_send(
                     let err = TypeError::SendTypeMismatch {
                         expected: resolved_expected,
                         found: resolved_found,
-                        span: send.syntax().text_range(),
+                        span,
                     };
                     ctx.errors.push(err.clone());
                     return Err(err);
