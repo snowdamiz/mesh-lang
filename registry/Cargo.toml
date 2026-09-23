@@ -17,7 +17,7 @@ aws-config = "1"
 aws-sdk-s3 = { version = "1", default-features = false, features = ["sigv4a", "default-https-client", "rt-tokio"] }
 aws-credential-types = "1"
 oauth2 = "5"
-tower-sessions = "0.14"
+tower-sessions = { version = "0.14", features = ["signed"] }
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 argon2 = "0.5"
 uuid = { version = "1", features = ["v4"] }

@@ -5,9 +5,10 @@ mod routes;
 mod state;
 mod storage;
 
+use sha2::{Digest, Sha512};
 use std::sync::Arc;
 use time::Duration;
-use tower_sessions::{Expiry, SessionManagerLayer};
+use tower_sessions::{cookie::Key, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -37,8 +38,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("Failed to create sessions table");
 
+    // The cookie is signed with a key stretched from SESSION_SECRET, so a
+    // session id the registry did not issue is rejected before the store.
+    if config.session_secret.len() < 32 {
+        tracing::warn!(
+            "SESSION_SECRET is shorter than 32 bytes; set one with `openssl rand -hex 32`"
+        );
+    }
+    let session_key = Key::from(&Sha512::digest(config.session_secret.as_bytes()));
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(true)
+        .with_signed(session_key)
         .with_expiry(Expiry::OnInactivity(Duration::days(30)));
 
     let s3 = storage::r2::build_r2_client(&config);
