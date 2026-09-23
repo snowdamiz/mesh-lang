@@ -1,6 +1,6 @@
 [package]
 name = "mesh-lexer"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Tokenizer for the Mesh programming language"
 
