@@ -545,6 +545,159 @@ pub enum MirExpr {
 }
 
 impl MirExpr {
+    /// The expressions directly inside this one, for passes that rewrite
+    /// every sub-expression (match arm guards and bodies included).
+    pub fn children_mut(&mut self) -> Vec<&mut MirExpr> {
+        let mut children: Vec<&mut MirExpr> = Vec::new();
+        match self {
+            MirExpr::IntLit(..)
+            | MirExpr::FloatLit(..)
+            | MirExpr::BoolLit(..)
+            | MirExpr::StringLit(..)
+            | MirExpr::Var(..)
+            | MirExpr::Panic { .. }
+            | MirExpr::Unit
+            | MirExpr::ActorSelf { .. }
+            | MirExpr::Break
+            | MirExpr::Continue
+            | MirExpr::SupervisorStart { .. } => {}
+            MirExpr::BinOp { lhs, rhs, .. } => {
+                children.push(lhs);
+                children.push(rhs);
+            }
+            MirExpr::UnaryOp { operand, .. } => children.push(operand),
+            MirExpr::Call { func, args, .. } => {
+                children.push(func);
+                children.extend(args.iter_mut());
+            }
+            MirExpr::ClosureCall { closure, args, .. } => {
+                children.push(closure);
+                children.extend(args.iter_mut());
+            }
+            MirExpr::If {
+                cond,
+                then_body,
+                else_body,
+                ..
+            } => {
+                children.push(cond);
+                children.push(then_body);
+                children.push(else_body);
+            }
+            MirExpr::Let { value, body, .. } => {
+                children.push(value);
+                children.push(body);
+            }
+            MirExpr::Block(exprs, _)
+            | MirExpr::ListLit {
+                elements: exprs, ..
+            } => children.extend(exprs.iter_mut()),
+            MirExpr::Match {
+                scrutinee, arms, ..
+            } => {
+                children.push(scrutinee);
+                for arm in arms {
+                    children.extend(arm.guard.as_mut());
+                    children.push(&mut arm.body);
+                }
+            }
+            MirExpr::StructLit { fields, .. } => {
+                children.extend(fields.iter_mut().map(|(_, value)| value))
+            }
+            MirExpr::StructUpdate {
+                base, overrides, ..
+            } => {
+                children.push(base);
+                children.extend(overrides.iter_mut().map(|(_, value)| value));
+            }
+            MirExpr::FieldAccess { object, .. } => children.push(object),
+            MirExpr::ConstructVariant { fields, .. } => children.extend(fields.iter_mut()),
+            MirExpr::MakeClosure { captures, .. } => children.extend(captures.iter_mut()),
+            MirExpr::ResourceMove { value, .. }
+            | MirExpr::ResourceBorrow { value, .. }
+            | MirExpr::ResourceDrop { value, .. }
+            | MirExpr::ResourceDestroy { value, .. }
+            | MirExpr::Shaped { value, .. }
+            | MirExpr::Return(value) => children.push(value),
+            MirExpr::ActorSpawn {
+                func,
+                args,
+                terminate_callback,
+                ..
+            } => {
+                children.push(func);
+                children.extend(args.iter_mut());
+                children.extend(terminate_callback.as_deref_mut());
+            }
+            MirExpr::ActorSend {
+                target, message, ..
+            } => {
+                children.push(target);
+                children.push(message);
+            }
+            MirExpr::ActorReceive {
+                arms,
+                timeout_ms,
+                timeout_body,
+                ..
+            } => {
+                for arm in arms {
+                    children.extend(arm.guard.as_mut());
+                    children.push(&mut arm.body);
+                }
+                children.extend(timeout_ms.as_deref_mut());
+                children.extend(timeout_body.as_deref_mut());
+            }
+            MirExpr::ActorLink { target, .. } => children.push(target),
+            MirExpr::While { cond, body, .. } => {
+                children.push(cond);
+                children.push(body);
+            }
+            MirExpr::TailCall { args, .. } => children.extend(args.iter_mut()),
+            MirExpr::ForInRange {
+                start,
+                end,
+                filter,
+                body,
+                ..
+            } => {
+                children.push(start);
+                children.push(end);
+                children.extend(filter.as_deref_mut());
+                children.push(body);
+            }
+            MirExpr::ForInList {
+                collection,
+                filter,
+                body,
+                ..
+            }
+            | MirExpr::ForInMap {
+                collection,
+                filter,
+                body,
+                ..
+            }
+            | MirExpr::ForInSet {
+                collection,
+                filter,
+                body,
+                ..
+            }
+            | MirExpr::ForInIterator {
+                iterator: collection,
+                filter,
+                body,
+                ..
+            } => {
+                children.push(collection);
+                children.extend(filter.as_deref_mut());
+                children.push(body);
+            }
+        }
+        children
+    }
+
     /// Get the type of this expression.
     pub fn ty(&self) -> &MirType {
         match self {

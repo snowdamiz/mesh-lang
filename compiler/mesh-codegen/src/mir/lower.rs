@@ -17204,6 +17204,171 @@ fn rewrite_tail_calls(expr: &mut MirExpr, current_fn_name: &str) -> bool {
     }
 }
 
+/// Builtins with no function of their own: codegen expands a call of one
+/// where it is (`String.from` is chosen by its argument's type in lowering).
+const INLINE_BUILTINS: &[&str] = &[
+    "mesh_float_to_int",
+    "mesh_int_to_float",
+    "mesh_math_abs",
+    "mesh_math_ceil",
+    "mesh_math_floor",
+    "mesh_math_max",
+    "mesh_math_min",
+    "mesh_math_pow",
+    "mesh_math_round",
+    "mesh_math_sqrt",
+    "mesh_string_from",
+];
+
+/// A builtin used as a value (`List.map(xs, Int.to_float)`, `let f =
+/// Math.sqrt`) refers to a wrapper function that calls it: many builtins
+/// are expanded inline where they are called and have no function of their
+/// own to point at ("Undefined variable 'mesh_math_sqrt'").
+fn wrap_builtin_values(functions: &mut Vec<MirFunction>) {
+    let defined: HashSet<String> = functions.iter().map(|f| f.name.clone()).collect();
+    let mut wrappers: Vec<MirFunction> = Vec::new();
+    for function in functions.iter_mut() {
+        let mut bound: HashSet<String> = function.params.iter().map(|(n, _)| n.clone()).collect();
+        bound.extend(function.captures.iter().map(|(n, _)| n.clone()));
+        collect_bound_names(&function.body, &mut bound);
+        wrap_builtin_values_in(&mut function.body, &defined, &bound, &mut wrappers);
+    }
+    functions.extend(wrappers);
+}
+
+fn wrap_builtin_values_in(
+    expr: &mut MirExpr,
+    defined: &HashSet<String>,
+    bound: &HashSet<String>,
+    wrappers: &mut Vec<MirFunction>,
+) {
+    match expr {
+        // A builtin called directly is expanded where it is.
+        MirExpr::Call { func, args, .. } => {
+            if !matches!(func.as_ref(), MirExpr::Var(..)) {
+                wrap_builtin_values_in(func, defined, bound, wrappers);
+            }
+            for arg in args {
+                wrap_builtin_values_in(arg, defined, bound, wrappers);
+            }
+        }
+        MirExpr::Var(name, ty)
+            if INLINE_BUILTINS.contains(&name.as_str())
+                && !defined.contains(name)
+                && !bound.contains(name) =>
+        {
+            let (MirType::FnPtr(params, ret) | MirType::Closure(params, ret)) = ty.clone() else {
+                return;
+            };
+            let signature: String = format!("{params:?}{ret:?}")
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let wrapper = format!("__mesh_value_{name}__{signature}");
+            if !wrappers.iter().any(|w| w.name == wrapper) {
+                let args: Vec<MirExpr> = params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, ty)| MirExpr::Var(format!("__arg{i}"), ty.clone()))
+                    .collect();
+                wrappers.push(MirFunction {
+                    name: wrapper.clone(),
+                    params: params
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ty)| (format!("__arg{i}"), ty.clone()))
+                        .collect(),
+                    return_type: (*ret).clone(),
+                    body: builtin_call(name, &params, &ret, args),
+                    is_closure_fn: false,
+                    captures: Vec::new(),
+                    has_tail_calls: false,
+                });
+            }
+            *name = wrapper;
+        }
+        other => {
+            for child in other.children_mut() {
+                wrap_builtin_values_in(child, defined, bound, wrappers);
+            }
+        }
+    }
+}
+
+/// A direct call of the builtin `name`. `String.from` is chosen by its
+/// argument's type where it is called; here the type is the parameter's.
+fn builtin_call(name: &str, params: &[MirType], ret: &MirType, args: Vec<MirExpr>) -> MirExpr {
+    let name = match (name, params) {
+        ("mesh_string_from", [MirType::String]) => {
+            return args.into_iter().next().unwrap_or(MirExpr::Unit)
+        }
+        ("mesh_string_from", [MirType::Int]) => "mesh_int_to_string",
+        ("mesh_string_from", [MirType::Float]) => "mesh_float_to_string",
+        ("mesh_string_from", [MirType::Bool]) => "mesh_bool_to_string",
+        (name, _) => name,
+    };
+    MirExpr::Call {
+        func: Box::new(MirExpr::Var(
+            name.to_string(),
+            MirType::FnPtr(params.to_vec(), Box::new(ret.clone())),
+        )),
+        args,
+        ty: ret.clone(),
+    }
+}
+
+/// Every name `expr` binds: `let`s, loop variables and pattern variables.
+fn collect_bound_names(expr: &MirExpr, bound: &mut HashSet<String>) {
+    fn pattern_names(pattern: &MirPattern, bound: &mut HashSet<String>) {
+        match pattern {
+            MirPattern::Var(name, _) => {
+                bound.insert(name.clone());
+            }
+            MirPattern::As { inner, name, .. } => {
+                bound.insert(name.clone());
+                pattern_names(inner, bound);
+            }
+            MirPattern::Constructor { fields, .. } => {
+                fields.iter().for_each(|f| pattern_names(f, bound))
+            }
+            MirPattern::Tuple(items) | MirPattern::Or(items) => {
+                items.iter().for_each(|p| pattern_names(p, bound))
+            }
+            MirPattern::ListCons { head, tail, .. } => {
+                pattern_names(head, bound);
+                pattern_names(tail, bound);
+            }
+            _ => {}
+        }
+    }
+    let mut expr = expr.clone();
+    let mut stack = vec![&mut expr];
+    while let Some(node) = stack.pop() {
+        match &*node {
+            MirExpr::Let { name, .. } => {
+                bound.insert(name.clone());
+            }
+            MirExpr::ForInRange { var, .. }
+            | MirExpr::ForInList { var, .. }
+            | MirExpr::ForInSet { var, .. }
+            | MirExpr::ForInIterator { var, .. } => {
+                bound.insert(var.clone());
+            }
+            MirExpr::ForInMap {
+                key_var, val_var, ..
+            } => {
+                bound.insert(key_var.clone());
+                bound.insert(val_var.clone());
+            }
+            MirExpr::Match { arms, .. } | MirExpr::ActorReceive { arms, .. } => arms
+                .iter()
+                .for_each(|arm| pattern_names(&arm.pattern, bound)),
+            _ => {}
+        }
+        stack.extend(node.children_mut());
+    }
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 /// Lower a parsed and type-checked Mesh program to MIR.
@@ -17663,6 +17828,8 @@ pub fn lower_module_to_mir<'a>(
             service_dispatch.insert(func.name.clone(), (call_handlers, cast_handlers));
         }
     }
+
+    wrap_builtin_values(&mut lowerer.functions);
 
     Ok(MirModule {
         functions: lowerer.functions,

@@ -3891,3 +3891,22 @@ end
     );
     assert!(err.contains("Main.Q does not implement Display"), "{err}");
 }
+
+#[test]
+fn builtins_expanded_inline_can_be_used_as_values() {
+    // "Undefined variable 'mesh_math_sqrt'": these have no function of
+    // their own to point at.
+    let source = r##"
+fn apply(f :: Fun(Float) -> Float, x :: Float) -> Float do
+  f(x)
+end
+
+fn main() do
+  let f = Math.sqrt
+  println("#{f(4.0)} #{apply(Math.sqrt, 16.0)}")
+  println("#{[1, 2] |> List.map(Int.to_float)} #{List.reduce([3, 9, 2], 0, Math.max)}")
+  println("#{List.map([1.5, 2.5], Float.to_int)} #{List.map([1, 2], String.from)}")
+end
+"##;
+    assert_eq!(run(source), "2.0 4.0\n[1.0, 2.0] 9\n[1, 2] [1, 2]\n");
+}
