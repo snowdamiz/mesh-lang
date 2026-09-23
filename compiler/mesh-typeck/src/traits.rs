@@ -144,6 +144,36 @@ impl TraitRegistry {
     ///
     /// Validates that all required methods are present and have compatible
     /// signatures. Returns errors for missing or mismatched methods.
+    /// Fill in what an impl method's body showed about its types (a return
+    /// or parameter type left unannotated) once the impl, registered from
+    /// its signatures, has been checked.
+    pub fn update_impl_method(
+        &mut self,
+        trait_name: &str,
+        trait_type_args: &[Ty],
+        impl_type_name: &str,
+        method: &str,
+        return_type: Option<Ty>,
+        param_types: Option<Vec<Ty>>,
+    ) {
+        let Some(sig) = self.impls.get_mut(trait_name).and_then(|impls| {
+            impls
+                .iter_mut()
+                .find(|i| {
+                    i.impl_type_name == impl_type_name && i.trait_type_args == trait_type_args
+                })
+                .and_then(|i| i.methods.get_mut(method))
+        }) else {
+            return;
+        };
+        if sig.return_type.is_none() {
+            sig.return_type = return_type;
+        }
+        if sig.param_types.is_none() {
+            sig.param_types = param_types;
+        }
+    }
+
     pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<TypeError> {
         let mut impl_def = impl_def;
         let mut errors = Vec::new();

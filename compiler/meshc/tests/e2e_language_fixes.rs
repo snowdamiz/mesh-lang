@@ -2655,3 +2655,35 @@ fn an_alias_that_refers_to_itself_is_reported() {
         );
     }
 }
+
+#[test]
+fn methods_are_callable_before_their_impl_and_from_sibling_methods() {
+    let source = r##"
+struct Dog do
+  n :: Int
+end
+
+fn main() do
+  let d = Dog { n: 1 }
+  println("#{d.name()} #{d.label()} #{d.tag()}")
+end
+
+interface Named do
+  fn name(self) -> Int
+  fn label(self) -> Int
+  fn tag(self) -> String do
+    "t#{self.name()}"
+  end
+end
+
+impl Named for Dog do
+  fn name(self) -> Int do
+    self.n
+  end
+  fn label(self) -> Int do
+    self.name() + 1
+  end
+end
+"##;
+    assert_eq!(run(source), "1 2 t1\n");
+}

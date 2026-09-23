@@ -4257,6 +4257,53 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
+    // Register every type definition, then every interface, then every impl,
+    // before any body is checked: a function can call a method whose impl
+    // comes later in the file, and an impl's methods can call each other.
+    let singles = || {
+        grouped.iter().filter_map(|gi| match gi {
+            GroupedItem::Single(item) => Some(item),
+            GroupedItem::MultiClause { .. } => None,
+        })
+    };
+    for item in singles() {
+        match item {
+            Item::StructDef(def) => {
+                register_struct_def(
+                    &mut ctx,
+                    &mut env,
+                    def,
+                    &mut type_registry,
+                    &mut trait_registry,
+                );
+                ctx.registered_items.insert(def.syntax().text_range());
+            }
+            Item::SumTypeDef(def) => {
+                register_sum_type_def(
+                    &mut ctx,
+                    &mut env,
+                    def,
+                    &mut type_registry,
+                    &mut trait_registry,
+                );
+                ctx.registered_items.insert(def.syntax().text_range());
+            }
+            _ => {}
+        }
+    }
+    for item in singles() {
+        if let Item::InterfaceDef(iface) = item {
+            let trait_def =
+                interface_trait_def(&mut ctx, iface, &type_registry, &mut default_method_bodies);
+            trait_registry.register_trait(trait_def);
+        }
+    }
+    for item in singles() {
+        if let Item::ImplDef(impl_) = item {
+            register_impl_signature(&mut ctx, impl_, &type_registry, &mut trait_registry);
+        }
+    }
+
     // Process in source order, but skip duplicate grouped item references.
     let mut processed_grouped: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
 
@@ -5283,7 +5330,12 @@ fn infer_item(
         )
         .ok(),
         Item::StructDef(struct_def) => {
-            register_struct_def(ctx, env, struct_def, type_registry, trait_registry);
+            if !ctx
+                .registered_items
+                .contains(&struct_def.syntax().text_range())
+            {
+                register_struct_def(ctx, env, struct_def, type_registry, trait_registry);
+            }
             None
         }
         Item::TypeAliasDef(alias_def) => {
@@ -5605,7 +5657,12 @@ fn infer_item(
             None
         }
         Item::SumTypeDef(sum_def) => {
-            register_sum_type_def(ctx, env, sum_def, type_registry, trait_registry);
+            if !ctx
+                .registered_items
+                .contains(&sum_def.syntax().text_range())
+            {
+                register_sum_type_def(ctx, env, sum_def, type_registry, trait_registry);
+            }
             None
         }
         Item::ActorDef(actor_def) => infer_actor_def(
@@ -6828,16 +6885,14 @@ fn method_param_types(
 
 /// Process an interface definition: register the trait in the registry.
 /// Also stores default method body syntax nodes for later MIR lowering.
-fn infer_interface_def(
+/// The trait an interface declares, from its signatures alone (its default
+/// bodies are checked by `infer_interface_def`).
+fn interface_trait_def(
     ctx: &mut InferCtx,
-    env: &mut TypeEnv,
     iface: &InterfaceDef,
-    types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
-    trait_registry: &mut TraitRegistry,
-    fn_constraints: &FxHashMap<String, FnConstraints>,
     default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
-) {
+) -> TraitDef {
     let trait_name = iface
         .name()
         .and_then(|n| n.text())
@@ -6910,11 +6965,26 @@ fn infer_interface_def(
         }
     }
 
-    trait_registry.register_trait(TraitDef {
-        name: trait_name.clone(),
+    TraitDef {
+        name: trait_name,
         methods,
         associated_types,
-    });
+    }
+}
+
+fn infer_interface_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    iface: &InterfaceDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &mut TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+    default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
+) {
+    let trait_def = interface_trait_def(ctx, iface, type_registry, default_method_bodies);
+    let trait_name = trait_def.name.clone();
+    trait_registry.register_trait(trait_def);
 
     // Check each default method body once, with `self :: Self`, so its
     // expressions have types for codegen to specialize per implementing type
@@ -7082,16 +7152,14 @@ fn resolve_self_assoc_type(
     None
 }
 
-/// Process an impl definition: register the impl and type-check methods.
-fn infer_impl_def(
+/// An impl's registry entry from its signatures alone. A method without a
+/// return annotation has no return type here; `infer_impl_def` fills it in
+/// from the body.
+fn impl_signature(
     ctx: &mut InferCtx,
-    env: &mut TypeEnv,
     impl_: &AstImplDef,
-    types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
-    trait_registry: &mut TraitRegistry,
-    fn_constraints: &mut FxHashMap<String, FnConstraints>,
-) {
+) -> TraitImplDef {
     // Extract trait name from the first PATH child.
     let paths: Vec<_> = impl_
         .syntax()
@@ -7147,8 +7215,130 @@ fn infer_impl_def(
         }
     }
 
-    // Collect methods from the impl block.
-    let mut impl_methods = FxHashMap::default();
+    let mut methods = FxHashMap::default();
+    for method in impl_.methods() {
+        let method_name = method
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<unnamed>".to_string());
+        let mut has_self = false;
+        let mut param_types = Some(Vec::new());
+        if let Some(param_list) = method.param_list() {
+            for param in param_list.params() {
+                let is_self = param.syntax().children_with_tokens().any(|tok| {
+                    tok.as_token()
+                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
+                        .unwrap_or(false)
+                });
+                if is_self {
+                    has_self = true;
+                    continue;
+                }
+                let declared = param.type_annotation().and_then(|ann| {
+                    resolve_self_assoc_type(&ann, &assoc_types)
+                        .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                        .or_else(|| resolve_type_name(&ann))
+                });
+                match (&mut param_types, declared) {
+                    (Some(tys), Some(ty)) if !ty.has_type_vars() => tys.push(ty),
+                    _ => param_types = None,
+                }
+            }
+        }
+        let param_count = method
+            .param_list()
+            .map(|list| list.params().count())
+            .unwrap_or(0)
+            - usize::from(has_self);
+        let return_type = method
+            .return_type()
+            .and_then(|ann| {
+                resolve_self_assoc_type(&ann, &assoc_types)
+                    .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                    .or_else(|| resolve_type_name(&ann))
+            })
+            .filter(|ty| !ty.has_type_vars());
+        methods.insert(
+            method_name,
+            ImplMethodSig {
+                has_self,
+                param_count,
+                return_type,
+                param_types: param_types.filter(|tys| tys.len() == param_count),
+            },
+        );
+    }
+    TraitImplDef {
+        trait_name,
+        trait_type_args,
+        impl_type,
+        impl_type_name,
+        methods,
+        associated_types: assoc_types,
+    }
+}
+
+/// Register the impl `impl_` from its signatures, reporting where it does
+/// not match its interface at the impl. Every impl of a module is
+/// registered before any body is checked, so its methods can be called from
+/// anywhere in the module, the impl's own methods included.
+fn register_impl_signature(
+    ctx: &mut InferCtx,
+    impl_: &AstImplDef,
+    type_registry: &TypeRegistry,
+    trait_registry: &mut TraitRegistry,
+) {
+    let signature = impl_signature(ctx, impl_, type_registry);
+    let errors = trait_registry.register_impl(signature);
+    let header = impl_
+        .syntax()
+        .children_with_tokens()
+        .find(|element| element.kind() == SyntaxKind::DO_KW)
+        .map(|do_kw| {
+            TextRange::new(
+                impl_.syntax().text_range().start(),
+                do_kw.text_range().end(),
+            )
+        })
+        .unwrap_or_else(|| impl_.syntax().text_range());
+    ctx.errors.extend(errors.into_iter().map(|mut error| {
+        match &mut error {
+            TypeError::MissingTraitMethod { span, .. } => *span = Some(header),
+            TypeError::TraitMethodSignatureMismatch {
+                method_name, span, ..
+            } => {
+                *span = impl_
+                    .methods()
+                    .find(|m| m.name().and_then(|n| n.text()).as_deref() == Some(method_name))
+                    .map(|m| m.syntax().text_range())
+                    .or(Some(header));
+            }
+            _ => {}
+        }
+        error
+    }));
+}
+
+/// Type-check an impl's method bodies (the impl itself was registered by
+/// `register_impl_signature`), filling in the return types of methods that
+/// declare none from their bodies.
+fn infer_impl_def(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    impl_: &AstImplDef,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &mut TraitRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+) {
+    let TraitImplDef {
+        trait_name,
+        trait_type_args,
+        impl_type,
+        impl_type_name,
+        associated_types: assoc_types,
+        ..
+    } = impl_signature(ctx, impl_, type_registry);
 
     for method in impl_.methods() {
         let method_name = method
@@ -7255,15 +7445,14 @@ fn infer_impl_def(
             .skip(usize::from(has_self))
             .map(|ty| ctx.resolve(ty.clone()))
             .collect();
-        impl_methods.insert(
-            method_name.clone(),
-            ImplMethodSig {
-                has_self,
-                param_count,
-                return_type: return_type.clone().filter(|ty| !ty.has_type_vars()),
-                param_types: (!declared_params.iter().any(|ty| ty.has_type_vars()))
-                    .then_some(declared_params),
-            },
+        let _ = param_count;
+        trait_registry.update_impl_method(
+            &trait_name,
+            &trait_type_args,
+            &impl_type_name,
+            &method_name,
+            return_type.clone().filter(|ty| !ty.has_type_vars()),
+            (!declared_params.iter().any(|ty| ty.has_type_vars())).then_some(declared_params),
         );
 
         // Register the method as a callable function so `to_string(42)` works.
@@ -7278,43 +7467,6 @@ fn infer_impl_def(
             env.insert(method_name.clone(), Scheme::mono(fn_ty));
         }
     }
-
-    // Register the impl and collect validation errors, located at the impl.
-    let errors = trait_registry.register_impl(TraitImplDef {
-        trait_name,
-        trait_type_args,
-        impl_type,
-        impl_type_name,
-        methods: impl_methods,
-        associated_types: assoc_types,
-    });
-    let header = impl_
-        .syntax()
-        .children_with_tokens()
-        .find(|element| element.kind() == SyntaxKind::DO_KW)
-        .map(|do_kw| {
-            TextRange::new(
-                impl_.syntax().text_range().start(),
-                do_kw.text_range().end(),
-            )
-        })
-        .unwrap_or_else(|| impl_.syntax().text_range());
-    ctx.errors.extend(errors.into_iter().map(|mut error| {
-        match &mut error {
-            TypeError::MissingTraitMethod { span, .. } => *span = Some(header),
-            TypeError::TraitMethodSignatureMismatch {
-                method_name, span, ..
-            } => {
-                *span = impl_
-                    .methods()
-                    .find(|m| m.name().and_then(|n| n.text()).as_deref() == Some(method_name))
-                    .map(|m| m.syntax().text_range())
-                    .or(Some(header));
-            }
-            _ => {}
-        }
-        error
-    }));
 }
 
 /// Infer a let binding: `let x = expr`

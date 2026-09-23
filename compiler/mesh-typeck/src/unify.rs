@@ -100,6 +100,8 @@ pub struct InferCtx {
     /// The variants of this module's sum types, by name, with the type that
     /// declares each: one name may belong to only one of them.
     pub local_variants: FxHashMap<String, String>,
+    /// Type definitions registered before the main pass, which skips them.
+    pub registered_items: FxHashSet<TextRange>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -144,6 +146,7 @@ impl InferCtx {
             projection_requirements: Vec::new(),
             json_types: Default::default(),
             local_variants: Default::default(),
+            registered_items: Default::default(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),
