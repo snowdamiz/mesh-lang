@@ -1,6 +1,6 @@
 [package]
 name = "mesh-rt"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Mesh language runtime library (GC, strings, panic handler, actor scheduler)"
 
