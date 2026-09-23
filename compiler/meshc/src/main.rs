@@ -1365,6 +1365,11 @@ fn build_import_context(
                         type_aliases: exports.type_aliases.clone(),
                         resource_types: exports.resource_types.clone(),
                         function_ownership: exports.function_ownership.clone(),
+                        interfaces: exports
+                            .trait_defs
+                            .iter()
+                            .map(|interface| interface.name.clone())
+                            .collect(),
                     };
                     ctx.module_exports.insert(last_segment, mod_exports);
                 }

@@ -5809,6 +5809,11 @@ fn infer_item(
                                 else if mod_exports.type_aliases.contains_key(&name) {
                                     // Type alias already pre-registered in type_registry;
                                     // silently accept the import name.
+                                }
+                                // A public interface is visible in every module
+                                // checked after its own; importing it by name is
+                                // allowed (and orders the modules).
+                                else if mod_exports.interfaces.contains(&name) {
                                 } else {
                                     // Check if item exists but is private (VIS-03)
                                     if mod_exports.private_names.contains(&name) {
@@ -5827,6 +5832,7 @@ fn infer_item(
                                             .chain(mod_exports.service_defs.keys())
                                             .chain(mod_exports.actor_defs.keys())
                                             .chain(mod_exports.type_aliases.keys())
+                                            .chain(mod_exports.interfaces.iter())
                                             .cloned()
                                             .collect();
                                         ctx.errors.push(TypeError::ImportNameNotFound {

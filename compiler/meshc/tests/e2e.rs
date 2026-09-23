@@ -7855,3 +7855,33 @@ end
     let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
     assert_eq!(output, "p 3\n");
 }
+
+#[test]
+fn e2e_interfaces_of_other_modules_without_an_import() {
+    // With no import, `main` was checked before `shapes` and its interface
+    // was unknown; importing the interface by name was "not exported".
+    let shapes = "pub interface Shape do\n  fn area(self) -> Int\nend\n";
+    let main = r##"struct Sq do
+  s :: Int
+end
+
+impl Shape for Sq do
+  fn area(self) -> Int do
+    self.s * self.s
+  end
+end
+
+fn total<T>(x :: T) -> Int where T: Shape do
+  x.area()
+end
+
+fn main() do
+  println("#{total(Sq { s: 3 })}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("shapes.mpl", shapes), ("main.mpl", main)]);
+    assert_eq!(output, "9\n");
+    let main = format!("from Shapes import Shape\n\n{main}");
+    let output = compile_multifile_and_run(&[("shapes.mpl", shapes), ("main.mpl", &main)]);
+    assert_eq!(output, "9\n");
+}

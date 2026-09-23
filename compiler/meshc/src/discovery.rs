@@ -9,6 +9,7 @@ use std::path::{Component, Path, PathBuf};
 
 use mesh_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
 use mesh_parser::ast::item::{Item, SourceFile};
+use mesh_parser::syntax_kind::SyntaxKind;
 use mesh_pkg::manifest::{Dependency, Manifest, DEFAULT_ENTRYPOINT};
 
 /// Convert a snake_case string to PascalCase.
@@ -255,6 +256,21 @@ fn discover_installed_package_roots_recursive(
 /// Walks the top-level items and collects module paths from both
 /// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
 /// Returns PascalCase dot-separated module names.
+/// Whether module `from` depends on `to`, directly or through others.
+fn module_reaches(graph: &ModuleGraph, from: ModuleId, to: ModuleId) -> bool {
+    let mut stack = vec![from];
+    let mut seen = std::collections::HashSet::new();
+    while let Some(module) = stack.pop() {
+        if module == to {
+            return true;
+        }
+        if seen.insert(module) {
+            stack.extend(graph.get(module).dependencies.iter().copied());
+        }
+    }
+    false
+}
+
 pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
     let mut imports = Vec::new();
     for item in source_file.items() {
@@ -470,6 +486,55 @@ fn build_project_with_entrypoint_and_sources_in_scope(
                 Some(dep_id) => {
                     graph.add_dependency(id, dep_id);
                 }
+            }
+        }
+    }
+
+    // Phase 2b: interfaces are visible in the modules checked after the
+    // module declaring them, so one that implements another module's
+    // `pub interface` (or bounds or calls through it) without importing
+    // that module depends on it too. An edge that would close a cycle is
+    // left out.
+    let mut interface_homes: std::collections::HashMap<String, Vec<ModuleId>> =
+        std::collections::HashMap::new();
+    for id_val in 0..graph.module_count() {
+        for item in module_parses[id_val].tree().items() {
+            if let Item::InterfaceDef(interface) = item {
+                if interface.visibility().is_some() {
+                    if let Some(name) = interface.name().and_then(|name| name.text()) {
+                        interface_homes
+                            .entry(name)
+                            .or_default()
+                            .push(ModuleId(id_val as u32));
+                    }
+                }
+            }
+        }
+    }
+    for id_val in 0..graph.module_count() {
+        let id = ModuleId(id_val as u32);
+        let root = module_parses[id_val].syntax();
+        let used = root.descendants_with_tokens().filter_map(|element| {
+            let token = element.into_token()?;
+            let in_use = token.parent_ancestors().any(|node| {
+                matches!(
+                    node.kind(),
+                    SyntaxKind::PATH | SyntaxKind::WHERE_CLAUSE | SyntaxKind::NAME_REF
+                )
+            });
+            (token.kind() == SyntaxKind::IDENT && in_use).then(|| token.text().to_string())
+        });
+        let mut homes: Vec<ModuleId> = Vec::new();
+        for name in used {
+            if let Some([home]) = interface_homes.get(&name).map(|homes| homes.as_slice()) {
+                if *home != id && !homes.contains(home) {
+                    homes.push(*home);
+                }
+            }
+        }
+        for home in homes {
+            if !module_reaches(&graph, home, id) {
+                graph.add_dependency(id, home);
             }
         }
     }

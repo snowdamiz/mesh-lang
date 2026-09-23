@@ -114,6 +114,9 @@ pub struct ModuleExports {
 
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+
+    /// Names of the public interfaces this module declares.
+    pub interfaces: FxHashSet<String>,
 }
 
 /// Symbols exported by a module after type checking.

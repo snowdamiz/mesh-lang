@@ -48,6 +48,7 @@ fn check_with_module(module_name: &str, module_source: &str, source: &str) -> Ty
     module.type_aliases = exports.type_aliases;
     module.resource_types = exports.resource_types;
     module.function_ownership = exports.function_ownership;
+    module.interfaces = exports.trait_defs.iter().map(|t| t.name.clone()).collect();
 
     let mut imports = ImportContext::empty();
     imports
