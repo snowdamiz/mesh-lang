@@ -5128,16 +5128,13 @@ fn infer_multi_clause_fn(
     // Use resolve_type_annotation which handles generic args and sugar types
     // (e.g., Result<Int, String>, Int!String, Int?) correctly.
     let return_type_annotation = first.return_type().and_then(|ann| {
-        // First check if it's a type parameter name.
-        if let Some(type_name) = resolve_type_name_str(&ann) {
-            if let Some(tp_ty) = type_params.get(&type_name) {
-                return Some(tp_ty.clone());
-            }
+        // A declared type parameter shadows an alias of the same name.
+        if let Some(name) = annotation_type_param(&ann, &type_params) {
+            return Some(type_params[&name].clone());
         }
         // Use full annotation resolution for generic/sugar types.
         resolve_type_annotation(ctx, &ann, type_registry)
             .map(|ty| with_declared_type_params(&ty, &type_params))
-            .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
     });
 
     // Store fn constraints if any.
@@ -7813,26 +7810,12 @@ fn infer_fn_def(
         }
         for param in param_list.params() {
             let (param_ty, tp_name) = if let Some(ann) = param.type_annotation() {
-                if let Some(type_name) = resolve_type_name_str(&ann) {
-                    if let Some(tp_ty) = type_params.get(&type_name) {
-                        (tp_ty.clone(), Some(type_name))
-                    } else {
-                        // Try full annotation resolution first (handles generic args
-                        // like List<String>, Map<String, String>, Result<T, E>).
-                        // Fall back to simple name_to_type if that fails.
-                        if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
-                            (with_declared_type_params(&full_ty, &type_params), None)
-                        } else {
-                            (name_to_type(&type_name), None)
-                        }
-                    }
+                if let Some(name) = annotation_type_param(&ann, &type_params) {
+                    (type_params[&name].clone(), Some(name))
+                } else if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
+                    (with_declared_type_params(&full_ty, &type_params), None)
                 } else {
-                    // No simple type name -- try full annotation resolution.
-                    if let Some(full_ty) = resolve_type_annotation(ctx, &ann, type_registry) {
-                        (with_declared_type_params(&full_ty, &type_params), None)
-                    } else {
-                        (ctx.fresh_var(), None)
-                    }
+                    (ctx.fresh_var(), None)
                 }
             } else {
                 (ctx.fresh_var(), None)
@@ -7862,16 +7845,13 @@ fn infer_fn_def(
     // Use resolve_type_annotation which handles generic args and sugar types
     // (e.g., Result<Int, String>, Int!String, Int?) correctly.
     let return_type_annotation = fn_.return_type().and_then(|ann| {
-        // First check if it's a type parameter name.
-        if let Some(type_name) = resolve_type_name_str(&ann) {
-            if let Some(tp_ty) = type_params.get(&type_name) {
-                return Some(tp_ty.clone());
-            }
+        // A declared type parameter shadows an alias of the same name.
+        if let Some(name) = annotation_type_param(&ann, &type_params) {
+            return Some(type_params[&name].clone());
         }
         // Use full annotation resolution for generic/sugar types.
         resolve_type_annotation(ctx, &ann, type_registry)
             .map(|ty| with_declared_type_params(&ty, &type_params))
-            .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
     });
     if is_native {
         validate_native_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
@@ -15007,6 +14987,24 @@ fn resolve_param_annotation(
 fn resolve_type_name(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<Ty> {
     let name = resolve_type_name_str(ann)?;
     Some(name_to_type(&name))
+}
+
+/// The declared type parameter an annotation consists of, if it is exactly
+/// one: `x :: T`, but not `x :: T?` or `-> (T, U)`, which only start with it.
+fn annotation_type_param(
+    ann: &mesh_parser::ast::item::TypeAnnotation,
+    type_params: &FxHashMap<String, Ty>,
+) -> Option<String> {
+    let mut tokens = Vec::new();
+    collect_annotation_tokens(ann.syntax(), &mut tokens);
+    match tokens.as_slice() {
+        [(SyntaxKind::IDENT, name)] | [(SyntaxKind::ARROW, _), (SyntaxKind::IDENT, name)]
+            if type_params.contains_key(name) =>
+        {
+            Some(name.clone())
+        }
+        _ => None,
+    }
 }
 
 /// Extract the type name string from a type annotation.

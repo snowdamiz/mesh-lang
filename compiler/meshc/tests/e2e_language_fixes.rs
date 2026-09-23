@@ -3346,3 +3346,42 @@ end
         ]
     );
 }
+
+#[test]
+fn annotations_that_start_with_a_type_parameter_keep_the_rest() {
+    // `-> (A, B)` was read as `-> A` and `:: T?` as `:: T`.
+    let source = r##"
+fn pair<A, B>(a :: A, b :: B) -> (A, B) do
+  (a, b)
+end
+
+fn maybe<T>(x :: T, keep :: Bool) -> T? do
+  if keep do
+    Some(x)
+  else
+    None
+  end
+end
+
+fn unwrap_or<T>(x :: T?, d :: T) -> T do
+  case x do
+    Some(v) -> v
+    None -> d
+  end
+end
+
+fn swap<A, B>(p :: (A, B)) -> (B, A) do
+  let (a, b) = p
+  (b, a)
+end
+
+fn main() do
+  let (a, b) = pair(1, "two")
+  println("#{a} #{b}")
+  println("#{unwrap_or(maybe(5, true), 0)} #{unwrap_or(maybe(5, false), 0)}")
+  let (c, d) = swap((1, "x"))
+  println("#{c} #{d}")
+end
+"##;
+    assert_eq!(run(source), "1 two\n5 0\nx 1\n");
+}
