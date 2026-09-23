@@ -3534,3 +3534,23 @@ fn a_value_from_a_function_defined_later_has_one_type() {
     let source = "fn main() do\n  let r = make(5)\n  println(\"#{r + 1} #{fact(5)}\")\nend\n\nfn make(n) do\n  n * 2\nend\n\nfn fact(0) = 1\nfn fact(n) = n * fact(n - 1)\n";
     assert_eq!(run(source), "11 120\n");
 }
+
+#[test]
+fn a_call_before_an_annotated_definition_has_its_declared_types() {
+    // The call saw only a placeholder, which `?` took for a Result.
+    let source = r##"
+fn first() -> Int? do
+  let v = maybe_later(3)?
+  Some(v + 1)
+end
+
+fn maybe_later(n :: Int) -> Int? do
+  Some(n)
+end
+
+fn main() do
+  println("#{first()}")
+end
+"##;
+    assert_eq!(run(source), "Some(4)\n");
+}

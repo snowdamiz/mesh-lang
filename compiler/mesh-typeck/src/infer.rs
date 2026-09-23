@@ -4235,7 +4235,15 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             _ => (None, 0),
         };
         if let Some(name) = fn_name_opt {
-            let pre_var = ctx.fresh_var();
+            // A fully annotated signature is known before any body is checked,
+            // so a call earlier in the file gets its types (`f(x)?.field`).
+            let declared = match gi {
+                GroupedItem::Single(Item::FnDef(fn_)) => {
+                    declared_signature(&mut ctx, fn_, &type_registry)
+                }
+                _ => None,
+            };
+            let pre_var = declared.unwrap_or_else(|| ctx.fresh_var());
             if ctx.overloaded_pub_fn_names.contains(&name) {
                 let mangled = format!("{}__{}", name, arity);
                 env.insert(mangled, Scheme::mono(pre_var));
@@ -12513,6 +12521,27 @@ fn infer_field_access(
     }
 
     Ok(ctx.fresh_var())
+}
+
+/// The type a non-generic function declares with every parameter and its
+/// result annotated, or `None` when inference has to find part of it.
+fn declared_signature(ctx: &mut InferCtx, fn_: &FnDef, type_registry: &TypeRegistry) -> Option<Ty> {
+    let generic = fn_
+        .syntax()
+        .children()
+        .any(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST);
+    if generic {
+        return None;
+    }
+    let mut params = Vec::new();
+    if let Some(list) = fn_.param_list() {
+        for param in list.params() {
+            let ann = param.type_annotation()?;
+            params.push(resolve_type_annotation(ctx, &ann, type_registry)?);
+        }
+    }
+    let ret = resolve_type_annotation(ctx, &fn_.return_type()?, type_registry)?;
+    Some(Ty::Fun(params, Box::new(ret)))
 }
 
 /// Infer the type of a struct literal: `StructName { field1: expr1, ... }`
