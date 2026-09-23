@@ -3077,3 +3077,12 @@ end
 "##
     .to_string()
 }
+
+#[test]
+fn non_ascii_text_does_not_move_later_diagnostics() {
+    // Spans are byte offsets; ariadne counted them as characters, so every
+    // multi-byte character before an error moved it further right.
+    let source = "# コメント コメント コメント\nfn main() do\n  let n = 1 + \"x\"\n  println(\"#{n}\")\nend\n";
+    let err = build_error(source);
+    assert!(err.contains("main.mpl:3:11"), "{err}");
+}

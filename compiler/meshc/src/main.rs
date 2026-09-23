@@ -910,7 +910,8 @@ pub(crate) fn prepare_project_build(
                     Config::default()
                 } else {
                     Config::default().with_color(false)
-                };
+                }
+                .with_index_type(ariadne::IndexType::Byte);
                 let start = error.span.start as usize;
                 let end = (error.span.end as usize).max(start + 1);
                 let span = (file_name.clone(), start..end);
@@ -1457,7 +1458,8 @@ fn emit_clustered_declaration_diagnostics(
                 Config::default()
             } else {
                 Config::default().with_color(false)
-            };
+            }
+            .with_index_type(ariadne::IndexType::Byte);
             let (line, col) = offset_to_line_col(source, span.start);
             eprintln!("error: {}", issue);
             eprintln!("  --> {}:{}:{}", file_name, line, col);

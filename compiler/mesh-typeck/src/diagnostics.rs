@@ -607,11 +607,14 @@ pub fn render_diagnostic(
         return line;
     }
 
+    // Spans are byte offsets into the source (ariadne's default is chars,
+    // which moves every report after a non-ASCII character).
     let config = if options.color {
         Config::default()
     } else {
         Config::default().with_color(false)
-    };
+    }
+    .with_index_type(ariadne::IndexType::Byte);
     let source_len = source.len();
 
     let clamp = |r: Range<usize>| -> Range<usize> {
