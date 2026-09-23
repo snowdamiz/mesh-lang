@@ -14439,7 +14439,22 @@ fn infer_bare_method_call(
         .map(|list| list.args().collect())
         .unwrap_or_default();
     let is_method_name = env.lookup(&name).is_none() || ctx.trait_method_fns.contains(&name);
-    if args.is_empty() || env.is_local(&name) || !is_method_name {
+    if env.is_local(&name) || !is_method_name {
+        return Ok(None);
+    }
+    if args.is_empty() {
+        // A static method (`fn version() -> Int`) called bare names one
+        // impl only when a single type provides it.
+        let impls = trait_registry.impls_with_static_method(&name);
+        if impls.len() > 1 {
+            let err = TypeError::AmbiguousStaticMethod {
+                method: name,
+                types: impls.iter().map(|imp| imp.impl_type_name.clone()).collect(),
+                span: name_ref.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
         return Ok(None);
     }
     let receiver = infer_expr(

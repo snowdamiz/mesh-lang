@@ -2959,3 +2959,121 @@ end
         "{err}"
     );
 }
+
+#[test]
+fn static_interface_methods_are_called_on_types_and_type_parameters() {
+    let source = r##"
+interface Versioned do
+  fn version() -> Int
+end
+
+struct A do
+  n :: Int
+end
+
+struct B do
+  n :: Int
+end
+
+impl Versioned for A do
+  fn version() -> Int do
+    1
+  end
+end
+
+impl Versioned for B do
+  fn version() -> Int do
+    2
+  end
+end
+
+fn ver_of<T>(x :: T) -> Int where T: Versioned do
+  T.version()
+end
+
+fn main() do
+  println("#{A.version()} #{B.version()} #{ver_of(A { n: 0 })} #{ver_of(B { n: 0 })}")
+end
+"##;
+    assert_eq!(run(source), "1 2 1 2\n");
+    // A stdlib module name as the type: the impl's method, not a module function.
+    let source = r##"
+interface Named do
+  fn tag() -> String
+end
+
+impl Named for Int do
+  fn tag() -> String do
+    "int"
+  end
+end
+
+fn main() do
+  println(Int.tag())
+end
+"##;
+    assert_eq!(run(source), "int\n");
+    // Bare: fine with one impl, ambiguous with several.
+    let source = r##"
+interface Versioned do
+  fn version() -> Int
+end
+
+struct A do
+  n :: Int
+end
+
+impl Versioned for A do
+  fn version() -> Int do
+    1
+  end
+end
+
+fn main() do
+  println("#{version()}")
+end
+"##;
+    assert_eq!(run(source), "1\n");
+    let err = build_error(&open_s02());
+    assert!(
+        err.contains("E0066") && err.contains("A.version()"),
+        "{err}"
+    );
+}
+
+fn open_s02() -> String {
+    r##"
+interface Versioned do
+  fn version() -> Int
+end
+
+struct A do
+  n :: Int
+end
+
+struct B do
+  n :: Int
+end
+
+impl Versioned for A do
+  fn version() -> Int do
+    1
+  end
+end
+
+impl Versioned for B do
+  fn version() -> Int do
+    2
+  end
+end
+
+fn ver_of<T>(x :: T) -> Int where T: Versioned do
+  T.version()
+end
+
+fn main() do
+  println("#{version()}")
+end
+"##
+    .to_string()
+}

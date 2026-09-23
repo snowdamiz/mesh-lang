@@ -157,6 +157,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnboundedTypeParam { .. } => "E0063",
         TypeError::AmbiguousDefault { .. } => "E0064",
         TypeError::AmbiguousImplMethod { .. } => "E0065",
+        TypeError::AmbiguousStaticMethod { .. } => "E0066",
     }
 }
 
@@ -545,6 +546,7 @@ pub fn render_json_diagnostic(
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::AmbiguousDefault { span }
                 | TypeError::AmbiguousImplMethod { span, .. }
+                | TypeError::AmbiguousStaticMethod { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2171,6 +2173,28 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give the result a type: `let x :: Int = value.convert()`")
+                .finish()
+        }
+        TypeError::AmbiguousStaticMethod {
+            method,
+            types,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let example = types.first().cloned().unwrap_or_else(|| "Type".to_string());
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!(
+                    "`{method}` is a static method of several types: {}",
+                    types.join(", ")
+                ))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("which type's is meant?")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("call it on the type: `{example}.{method}()`"))
                 .finish()
         }
         TypeError::AmbiguousDefault { span } => {

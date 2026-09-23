@@ -8963,6 +8963,76 @@ impl<'a> Lowerer<'a> {
             .map(|f| MirExpr::Var(f, var_ty.clone()))
     }
 
+    /// The mangled name of the impl method `method` that type `ty` provides
+    /// as a static method (no `self`), if exactly one impl does. Conversions
+    /// (`From`, `TryFrom`, derived Json and Row decoding) have their own
+    /// lowering, which picks by argument and wraps the decoders.
+    fn static_impl_method(&self, method: &str, ty: &Ty) -> Option<String> {
+        let name_of = |ty: &Ty| match ty {
+            Ty::Con(tc) => tc.name.clone(),
+            other => format!("{other}"),
+        };
+        let impls: Vec<_> = self
+            .trait_registry
+            .impls_providing(method, ty)
+            .into_iter()
+            .filter(|(imp, _)| imp.methods.get(method).is_some_and(|sig| !sig.has_self))
+            .collect();
+        if impls.len() != 1
+            || impls.iter().any(|(imp, _)| {
+                matches!(
+                    imp.trait_name.as_str(),
+                    "From" | "TryFrom" | "FromJson" | "FromRow"
+                )
+            })
+        {
+            return None;
+        }
+        impls.into_iter().next().map(|(imp, _)| {
+            let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
+            mangle_trait_method(&imp.trait_name, &args, method, &imp.impl_type_name)
+        })
+    }
+
+    /// `Type.method(...)` for a static interface method of the type the base
+    /// names: a type (`Int.tag()`, `Config.default()`) or, in a generic
+    /// body, a type parameter (`T.version()`, bound per specialization).
+    fn lower_static_method_call(&mut self, call: &CallExpr, fa: &FieldAccess) -> Option<MirExpr> {
+        let Some(Expr::NameRef(base)) = fa.base() else {
+            return None;
+        };
+        let base_name = base.text()?;
+        if self.lookup_non_global_var(&base_name).is_some() {
+            return None;
+        }
+        let method = fa.field()?.text().to_string();
+        let ty = match base_name.as_str() {
+            "Int" | "Float" | "String" | "Bool" => Ty::Con(mesh_typeck::ty::TyCon::new(&base_name)),
+            _ if self.is_struct_type_name(&base_name) || self.is_sum_type_name(&base_name) => {
+                Ty::Con(mesh_typeck::ty::TyCon::new(&base_name))
+            }
+            _ => self
+                .get_ty(base.syntax().text_range())
+                .filter(|ty| !Self::ty_contains_var(ty))?
+                .clone(),
+        };
+        let callee = self.static_impl_method(&method, &ty)?;
+        let args: Vec<MirExpr> = call
+            .arg_list()
+            .map(|list| list.args().map(|arg| self.lower_expr(&arg)).collect())
+            .unwrap_or_default();
+        let ret = self.resolve_range(call.syntax().text_range());
+        let var_ty = MirType::FnPtr(
+            args.iter().map(|arg| arg.ty().clone()).collect(),
+            Box::new(ret.clone()),
+        );
+        Some(MirExpr::Call {
+            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
+            args,
+            ty: ret,
+        })
+    }
+
     /// `Iface.method(value, ...)`: the call of interface `Iface`'s impl of
     /// `method` for the first argument's type; `None` when the callee does
     /// not name an interface.
@@ -9233,9 +9303,13 @@ impl<'a> Lowerer<'a> {
         }
 
         // `Iface.method(value, ...)` calls the interface's impl for the
-        // value's type.
+        // value's type; `Type.method(...)` a static method of the type's
+        // (`Int.tag()`, `T.version()` in a generic body).
         if let Some(Expr::FieldAccess(fa)) = call.callee() {
             if let Some(lowered) = self.lower_interface_qualified_call(call, &fa) {
+                return lowered;
+            }
+            if let Some(lowered) = self.lower_static_method_call(call, &fa) {
                 return lowered;
             }
         }
@@ -9874,6 +9948,39 @@ impl<'a> Lowerer<'a> {
                 || self.is_inferred_specialization_name(name)
         } else {
             false
+        };
+        // A bare call of a static interface method (`version()`) goes to the
+        // one impl that provides it (the type checker rejects several).
+        let callee = match callee {
+            MirExpr::Var(ref name, ref var_ty)
+                if args.is_empty()
+                    && !is_user_module_fn
+                    && !self.known_functions.contains_key(name)
+                    && self.lookup_var(name).is_none() =>
+            {
+                let impls = self.trait_registry.impls_with_static_method(name);
+                match impls.as_slice() {
+                    [imp] => {
+                        let trait_args: Vec<String> = imp
+                            .trait_type_args
+                            .iter()
+                            .map(|ty| match ty {
+                                Ty::Con(tc) => tc.name.clone(),
+                                other => format!("{other}"),
+                            })
+                            .collect();
+                        let mangled = mangle_trait_method(
+                            &imp.trait_name,
+                            &trait_args,
+                            name,
+                            &imp.impl_type_name,
+                        );
+                        MirExpr::Var(builtin_trait_redirect(mangled), var_ty.clone())
+                    }
+                    _ => callee,
+                }
+            }
+            _ => callee,
         };
         let callee = if let MirExpr::Var(ref name, ref var_ty) = callee {
             if !args.is_empty() && !is_user_module_fn {

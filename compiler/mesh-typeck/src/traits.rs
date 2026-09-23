@@ -594,6 +594,20 @@ impl TraitRegistry {
         found
     }
 
+    /// The impls that provide `method_name` as a static method (without
+    /// `self`), for whatever types.
+    pub fn impls_with_static_method(&self, method_name: &str) -> Vec<&ImplDef> {
+        self.impls
+            .values()
+            .flatten()
+            .filter(|imp| {
+                imp.methods
+                    .get(method_name)
+                    .is_some_and(|sig| !sig.has_self)
+            })
+            .collect()
+    }
+
     pub fn resolve_trait_method(&self, method_name: &str, arg_ty: &Ty) -> Option<Ty> {
         for impl_list in self.impls.values() {
             for impl_def in impl_list {

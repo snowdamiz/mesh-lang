@@ -395,6 +395,13 @@ pub enum TypeError {
         found: Option<Ty>,
         span: TextRange,
     },
+    /// A static interface method (no `self`) called bare, which several
+    /// types provide.
+    AmbiguousStaticMethod {
+        method: String,
+        types: Vec<String>,
+        span: TextRange,
+    },
     /// Nothing tells which type a `default()` call builds.
     AmbiguousDefault { span: TextRange },
     /// A type alias expands into itself.
@@ -919,6 +926,13 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "cannot tell which impl's `{method}` to call on `{receiver}`"
+                )
+            }
+            TypeError::AmbiguousStaticMethod { method, types, .. } => {
+                write!(
+                    f,
+                    "`{method}` is a static method of several types ({}); call it on one",
+                    types.join(", ")
                 )
             }
             TypeError::AmbiguousDefault { .. } => {
