@@ -452,6 +452,8 @@ fn run_update_command() -> Result<(), String> {
 
 pub(crate) struct PreparedBuild {
     pub(crate) merged_mir: mesh_codegen::mir::MirModule,
+    /// The entrypoint, relative to the project root, as resolved from the manifest.
+    pub(crate) entry_relative_path: PathBuf,
     pub(crate) library_exports: Vec<mesh_codegen::LibraryExport>,
     pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
     pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
@@ -642,6 +644,14 @@ pub(crate) fn build(
     diag_opts: &DiagnosticOptions,
 ) -> Result<(), String> {
     let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
+    // Without an entry function codegen emits no C `main`, and the linker's
+    // "_main not found" is all the user would see.
+    if artifact == BuildArtifact::Executable && prepared.merged_mir.entry_function.is_none() {
+        return Err(format!(
+            "{} has no `fn main()`: an executable starts there",
+            prepared.entry_relative_path.display()
+        ));
+    }
     let declared_handler_plan = prepare_declared_handler_plan(
         &prepared.clustered_execution_plan,
         &prepared.clustered_route_handler_plan,
@@ -1074,6 +1084,7 @@ pub(crate) fn prepare_project_build(
 
     Ok(PreparedBuild {
         merged_mir,
+        entry_relative_path,
         library_exports,
         clustered_execution_plan,
         clustered_route_handler_plan,

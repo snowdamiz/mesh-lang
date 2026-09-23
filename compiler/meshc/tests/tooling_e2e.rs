@@ -310,6 +310,29 @@ fn test_build_json_output() {
     );
 }
 
+#[test]
+fn test_build_without_main_names_the_entrypoint() {
+    // Codegen emits no C `main` without an entry function, which used to
+    // surface only as the system linker's "_main not found".
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("proj");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("main.mpl"), "fn helper() -> Int do\n  1\nend\n").unwrap();
+
+    let output = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc build");
+
+    assert!(!output.status.success(), "build without main must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("main.mpl has no `fn main()`"),
+        "stderr: {stderr}"
+    );
+    assert!(!stderr.contains("Linking failed"), "stderr: {stderr}");
+}
+
 // ── Formatter ────────────────────────────────────────────────────────
 
 #[test]
