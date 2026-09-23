@@ -293,7 +293,23 @@ fn run_init_command(
     }
 }
 
+/// The compiler recurses over expression trees (a string with hundreds of
+/// interpolations, a long `a <> b <> ...` chain), deeper than a main
+/// thread's default stack allows; it runs on a thread with room for them.
+const COMPILER_STACK_BYTES: usize = 512 * 1024 * 1024;
+
 fn main() {
+    let compiler = std::thread::Builder::new()
+        .name("meshc".to_string())
+        .stack_size(COMPILER_STACK_BYTES)
+        .spawn(run)
+        .expect("failed to start the compiler thread");
+    if let Err(panic) = compiler.join() {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+fn run() {
     let cli = Cli::parse();
 
     match cli.command {

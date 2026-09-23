@@ -3940,3 +3940,16 @@ fn heredocs_in_crlf_files_end_their_lines_with_newlines() {
     let source = "fn main() do\r\n  let h = \"\"\"\r\n    a\r\n    b\r\n    \"\"\"\r\n  println(\"#{String.length(h)} #{h == \"a\\nb\"}\")\r\nend\r\n";
     assert_eq!(run(source), "3 true\n");
 }
+
+#[test]
+fn long_expressions_do_not_overflow_the_compilers_stack() {
+    // 200 interpolations or 500 chained `<>`/`+` crashed the compiler with
+    // a stack overflow.
+    let interpolations = "#{x},".repeat(1000);
+    let joined = vec!["\"a\""; 800].join(" <> ");
+    let sum = vec!["1"; 800].join(" + ");
+    let source = format!(
+        "fn main() do\n  let x = 7\n  let s = \"{interpolations}\"\n  println(\"#{{String.length(s)}} #{{String.length({joined})}} #{{{sum}}}\")\nend\n"
+    );
+    assert_eq!(run(&source), "2000 800 800\n");
+}
