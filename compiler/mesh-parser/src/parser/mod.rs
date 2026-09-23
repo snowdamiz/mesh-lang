@@ -491,6 +491,11 @@ impl<'src> Parser<'src> {
         // stays outside the node it precedes.
         let mut last_end: usize = 0;
         let mut forward_parents: Vec<(usize, SyntaxKind)> = Vec::new();
+        // The root must hold the whole text: a gap placed before it, from a
+        // source that starts with a space or tab, would be a second top-level
+        // element, which rowan rejects with a panic. The next event places it
+        // inside the root instead.
+        let mut root_open = false;
 
         let mut i = 0;
         while i < self.events.len() {
@@ -499,13 +504,16 @@ impl<'src> Parser<'src> {
                     kind,
                     forward_parent,
                 } => {
-                    emit_gap(
-                        &mut builder,
-                        self.source,
-                        &self.tokens,
-                        token_pos,
-                        &mut last_end,
-                    );
+                    if root_open {
+                        emit_gap(
+                            &mut builder,
+                            self.source,
+                            &self.tokens,
+                            token_pos,
+                            &mut last_end,
+                        );
+                    }
+                    root_open |= kind != SyntaxKind::TOMBSTONE || forward_parent.is_some();
                     if forward_parent.is_some() {
                         // Follow the forward_parent chain, collecting (index, kind) pairs.
                         forward_parents.clear();

@@ -1496,6 +1496,18 @@ fn lossless_fn_def() {
     assert_lossless_roundtrip("fn add(x, y) do\n  x + y\nend");
 }
 
+/// A source that starts with a space or tab: the gap before the first token
+/// has to land inside the root, or rowan panics on a second top-level element.
+/// The release fuzzer found it with a single space.
+#[test]
+fn lossless_leading_whitespace() {
+    for source in [" ", "\t", " x", "  fn main() do\nend\n", "\tlet x = 1"] {
+        assert_lossless_roundtrip(source);
+        let _ = mesh_parser::parse_expr(source).syntax();
+        let _ = mesh_parser::parse_block(source).syntax();
+    }
+}
+
 #[test]
 fn lossless_if_else() {
     assert_lossless_roundtrip("if true do\n  1\nelse\n  2\nend");
