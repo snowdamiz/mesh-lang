@@ -7464,6 +7464,7 @@ fn infer_impl_def(
         // Store the function type in the types map so the MIR lowerer can look it up.
         types.insert(method.syntax().text_range(), fn_ty.clone());
         if env.lookup(&method_name).is_none() {
+            ctx.trait_method_fns.insert(method_name.clone());
             env.insert(method_name.clone(), Scheme::mono(fn_ty));
         }
     }
@@ -7807,7 +7808,13 @@ fn infer_fn_def(
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
-    check_type_param_bounds(ctx, &type_params, &where_constraints, operand_traits);
+    check_type_param_bounds(
+        ctx,
+        &type_params,
+        &where_constraints,
+        trait_registry,
+        operand_traits,
+    );
     check_default_calls(ctx, &type_params, trait_registry, default_calls);
     check_impl_choices(ctx, impl_choices);
 
@@ -9293,6 +9300,17 @@ fn infer_call_inner(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    if let Some(ty) = infer_bare_method_call(
+        ctx,
+        env,
+        call,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )? {
+        return Ok(ty);
+    }
     let callee_expr = call.callee().ok_or_else(|| {
         let err = TypeError::Mismatch {
             expected: Ty::Never,
@@ -11863,6 +11881,30 @@ fn infer_field_access(
 
             // Check if base is a struct type name with a static trait method.
             // e.g. User.from_json -- User is a struct type, from_json is a FromJson method.
+            // `Iface.method(value, ...)`: the interface's method, for a
+            // receiver that must implement it (checked when the function is
+            // done), which names the method when several interfaces share it.
+            if !env.is_local(&base_name) {
+                if let Some(sig) = trait_registry.get_trait(&base_name).and_then(|trait_def| {
+                    trait_def
+                        .methods
+                        .iter()
+                        .find(|m| m.name == field_name && m.has_self)
+                        .cloned()
+                }) {
+                    let receiver = ctx.fresh_var();
+                    let method_ty = trait_method_type(ctx, &base_name, &sig, &receiver);
+                    ctx.operand_traits.push((
+                        receiver,
+                        base_name.clone(),
+                        ConstraintOrigin::Expr {
+                            span: fa.syntax().text_range(),
+                        },
+                    ));
+                    return Ok(method_ty);
+                }
+            }
+
             if field_name == "from_json" {
                 // from_json :: String -> Result<T, String>, where a generic
                 // T is instantiated afresh (`Box.from_json` gives `Box<_>`).
@@ -14339,6 +14381,90 @@ fn infer_try_expr(
 
 /// Extract where-clause constraints from a function definition.
 /// A function's `where` bounds as (type parameter variable, trait) pairs.
+/// A bare call of a trait method (`hello(dog)`) is that method called on its
+/// first argument: it dispatches by the argument's type, and a name two of
+/// the type's interfaces provide is ambiguous (E0027), as in `dog.hello()`.
+/// `None` when the call is not one (a local, a function, or a receiver
+/// whose type is not known yet).
+fn infer_bare_method_call(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    call: &CallExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Option<Ty>, TypeError> {
+    let Some(Expr::NameRef(name_ref)) = call.callee() else {
+        return Ok(None);
+    };
+    let Some(name) = name_ref.text() else {
+        return Ok(None);
+    };
+    let args: Vec<Expr> = call
+        .arg_list()
+        .map(|list| list.args().collect())
+        .unwrap_or_default();
+    let is_method_name = env.lookup(&name).is_none() || ctx.trait_method_fns.contains(&name);
+    if args.is_empty() || env.is_local(&name) || !is_method_name {
+        return Ok(None);
+    }
+    let receiver = infer_expr(
+        ctx,
+        env,
+        &args[0],
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )?;
+    let resolved = ctx.resolve(receiver.clone());
+    if is_type_var(&resolved) {
+        return Ok(None);
+    }
+    let span = name_ref.syntax().text_range();
+    let traits = trait_registry.find_method_traits(&name, &resolved);
+    if traits.len() > 1 {
+        let err = TypeError::AmbiguousMethod {
+            method_name: name,
+            candidate_traits: traits,
+            ty: resolved,
+            span,
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
+    if traits.is_empty() {
+        return Ok(None);
+    }
+    let Some(ret) = method_return_type(ctx, trait_registry, &name, &resolved, span) else {
+        return Ok(None);
+    };
+    let method_ty = build_method_fn_type(trait_registry, &name, &resolved, &ret, ctx);
+    let mut arg_tys = vec![receiver];
+    for arg in &args[1..] {
+        arg_tys.push(infer_expr(
+            ctx,
+            env,
+            arg,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?);
+    }
+    let result = ctx.fresh_var();
+    ctx.unify(
+        method_ty.clone(),
+        Ty::Fun(arg_tys, Box::new(result.clone())),
+        ConstraintOrigin::Expr {
+            span: call.syntax().text_range(),
+        },
+    )?;
+    types.insert(span, method_ty);
+    Ok(Some(ctx.resolve(result)))
+}
+
 /// What the trait method `method` returns for a receiver of type `ty`. When
 /// several impls provide it with different return types (`Convert<Int>` and
 /// `Convert<String>` for one type, or `.into()`), the call's context picks
@@ -14428,11 +14554,23 @@ fn check_type_param_bounds(
     ctx: &mut InferCtx,
     type_params: &FxHashMap<String, Ty>,
     constraints: &[(String, String)],
+    trait_registry: &TraitRegistry,
     uses: Vec<(Ty, String, ConstraintOrigin)>,
 ) {
     let mut reported = FxHashSet::default();
     for (ty, trait_name, origin) in uses {
         let used = ctx.resolve(ty);
+        // A type fixed only later must still implement the trait.
+        if !used.has_type_vars() {
+            if !trait_registry.has_impl(&trait_name, &used) {
+                ctx.errors.push(TypeError::TraitNotSatisfied {
+                    ty: used,
+                    trait_name,
+                    origin,
+                });
+            }
+            continue;
+        }
         let Some(param) = type_params
             .iter()
             .find(|(_, param_ty)| ctx.resolve((*param_ty).clone()) == used)
@@ -14518,8 +14656,17 @@ fn trait_method_type(
         None => ctx.fresh_var(),
     };
     let mut params = vec![receiver.clone()];
-    for _ in 0..sig.param_count {
-        params.push(ctx.fresh_var());
+    match &sig.param_types {
+        Some(declared) => {
+            for param in declared {
+                params.push(subst(ctx, trait_name, param, receiver));
+            }
+        }
+        None => {
+            for _ in 0..sig.param_count {
+                params.push(ctx.fresh_var());
+            }
+        }
     }
     Ty::Fun(params, Box::new(ret))
 }

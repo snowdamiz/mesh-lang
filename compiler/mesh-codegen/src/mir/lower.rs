@@ -8963,6 +8963,68 @@ impl<'a> Lowerer<'a> {
             .map(|f| MirExpr::Var(f, var_ty.clone()))
     }
 
+    /// `Iface.method(value, ...)`: the call of interface `Iface`'s impl of
+    /// `method` for the first argument's type; `None` when the callee does
+    /// not name an interface.
+    fn lower_interface_qualified_call(
+        &mut self,
+        call: &CallExpr,
+        fa: &FieldAccess,
+    ) -> Option<MirExpr> {
+        let Some(Expr::NameRef(base)) = fa.base() else {
+            return None;
+        };
+        let trait_name = base.text()?;
+        if self.lookup_non_global_var(&trait_name).is_some()
+            || STDLIB_MODULES.contains(&trait_name.as_str())
+            || self.user_modules.contains_key(&trait_name)
+            || self.service_modules.contains_key(&trait_name)
+            || self.is_sum_type_name(&trait_name)
+            || self.is_struct_type_name(&trait_name)
+        {
+            return None;
+        }
+        let method = fa.field()?.text().to_string();
+        let trait_def = self.trait_registry.get_trait(&trait_name)?;
+        if !trait_def
+            .methods
+            .iter()
+            .any(|m| m.name == method && m.has_self)
+        {
+            return None;
+        }
+        let args: Vec<Expr> = call.arg_list()?.args().collect();
+        let receiver = self.get_ty(args.first()?.syntax().text_range())?.clone();
+        let lowered: Vec<MirExpr> = args.iter().map(|arg| self.lower_expr(arg)).collect();
+        let ty = self.resolve_range(call.syntax().text_range());
+        let var_ty = MirType::FnPtr(
+            lowered.iter().map(|arg| arg.ty().clone()).collect(),
+            Box::new(ty.clone()),
+        );
+        let name_of = |ty: &Ty| match ty {
+            Ty::Con(tc) => tc.name.clone(),
+            other => format!("{other}"),
+        };
+        let callee = self
+            .trait_registry
+            .impls_providing(&method, &receiver)
+            .into_iter()
+            .find(|(imp, _)| imp.trait_name == trait_name)
+            .map(|(imp, _)| {
+                let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
+                mangle_trait_method(&trait_name, &args, &method, &imp.impl_type_name)
+            })
+            .unwrap_or_else(|| {
+                let type_name = mir_type_to_impl_name(lowered[0].ty());
+                format!("{trait_name}__{method}__{type_name}")
+            });
+        Some(MirExpr::Call {
+            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
+            args: lowered,
+            ty,
+        })
+    }
+
     /// The impl method a call of `method` on a `receiver` goes to when its
     /// impl belongs to a generic interface (named with the interface's type
     /// arguments: `Convert_Int__convert__Meters`), picked among several by
@@ -9168,6 +9230,14 @@ impl<'a> Lowerer<'a> {
                     MirExpr::Unit
                 }
             };
+        }
+
+        // `Iface.method(value, ...)` calls the interface's impl for the
+        // value's type.
+        if let Some(Expr::FieldAccess(fa)) = call.callee() {
+            if let Some(lowered) = self.lower_interface_qualified_call(call, &fa) {
+                return lowered;
+            }
         }
 
         // A stdlib function called as a method (`m.get(k)`, `xs.contains(x)`)

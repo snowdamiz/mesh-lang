@@ -2904,3 +2904,58 @@ end
     let err = build_error("fn main() do\n  let x = 5.into()\n  println(\"#{x}\")\nend\n");
     assert!(err.contains("E0065") && err.contains(":2:11"), "{err}");
 }
+
+#[test]
+fn interface_methods_are_called_by_argument_type_or_by_interface() {
+    // `A.hello(x)` names the interface; a bare `hello(dog)` dispatches by
+    // its argument like `dog.hello()`.
+    let source = r##"
+interface A do
+  fn hello(self) -> String
+end
+
+interface B do
+  fn hello(self) -> String
+end
+
+struct Cat do
+  n :: Int
+end
+
+struct Dog do
+  n :: Int
+end
+
+impl A for Cat do
+  fn hello(self) -> String do
+    "A"
+  end
+end
+
+impl B for Cat do
+  fn hello(self) -> String do
+    "B"
+  end
+end
+
+impl A for Dog do
+  fn hello(self) -> String do
+    "dog"
+  end
+end
+
+fn main() do
+  println(A.hello(Cat { n: 1 }))
+  println(B.hello(Cat { n: 1 }))
+  println(hello(Dog { n: 5 }))
+  println(Dog { n: 5 }.hello())
+end
+"##;
+    assert_eq!(run(source), "A\nB\ndog\ndog\n");
+    // Two interfaces giving Cat a `hello`: a bare call is ambiguous.
+    let err = build_error(&source.replace("A.hello(Cat", "hello(Cat"));
+    assert!(
+        err.contains("E0027") && err.contains("A.hello(value)"),
+        "{err}"
+    );
+}

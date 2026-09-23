@@ -200,10 +200,16 @@ fn test_ord_trait() {
 /// 13. Call trait method on concrete type with registered impl.
 #[test]
 fn test_trait_method_call() {
-    let result = check_source(
-        "interface Printable do\n  fn to_string(self) -> String\nend\n\
-         impl Printable for Int do\n  fn to_string(self) -> String do\n    \"int\"\n  end\nend\n\
-         to_string(42)",
+    let interface = "interface Printable do\n  fn to_string(self) -> String\nend\n\
+         impl Printable for Int do\n  fn to_string(self) -> String do\n    \"int\"\n  end\nend\n";
+    // Display and Printable both give Int a `to_string`: a bare call, like
+    // `42.to_string()`, is ambiguous, and naming the interface resolves it.
+    let result = check_source(&format!("{interface}to_string(42)"));
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::AmbiguousMethod { .. }),
+        "AmbiguousMethod",
     );
+    let result = check_source(&format!("{interface}Printable.to_string(42)"));
     assert_result_type(&result, Ty::string());
 }

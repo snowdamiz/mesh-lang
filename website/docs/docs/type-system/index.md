@@ -397,7 +397,7 @@ A method without a `self` parameter is static. User-defined conversion methods c
 let value :: Int = default()
 ```
 
-An `impl` must provide every required method and associated type with a matching signature. Overlapping implementations for the same trait and type are rejected. If multiple in-scope interfaces provide an equally valid method name, the compiler reports the candidates instead of choosing one arbitrarily.
+An `impl` must provide every required method and associated type with a matching signature. Overlapping implementations for the same trait and type are rejected. If multiple in-scope interfaces provide an equally valid method name, the compiler reports the candidates instead of choosing one arbitrarily; name the interface to pick one: `Named.hello(value)`. A method can also be called as a function of its receiver, `hello(value)`, which dispatches by the value's type like `value.hello()`.
 
 ### Built-in Traits
 

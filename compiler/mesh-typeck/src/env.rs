@@ -63,6 +63,14 @@ impl TypeEnv {
         None
     }
 
+    /// Whether `name` is bound in a scope inside the global one (a local
+    /// variable or parameter).
+    pub fn is_local(&self, name: &str) -> bool {
+        self.scopes[1..]
+            .iter()
+            .any(|scope| scope.contains_key(name))
+    }
+
     /// Number of scopes on the stack.
     pub fn depth(&self) -> usize {
         self.scopes.len()
