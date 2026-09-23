@@ -5224,7 +5224,13 @@ fn infer_multi_clause_fn(
                     trait_registry,
                     fn_constraints,
                 )?;
-                let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+                let _ = ctx.unify(
+                    Ty::bool(),
+                    guard_ty,
+                    ConstraintOrigin::Expr {
+                        span: guard_expr.syntax().text_range(),
+                    },
+                );
             }
         }
 
@@ -5260,7 +5266,7 @@ fn infer_multi_clause_fn(
 
         // Unify with return type annotation if present.
         if let Some(ref ret_ann) = return_type_annotation {
-            ctx.unify(body_ty, ret_ann.clone(), ConstraintOrigin::Builtin)?;
+            ctx.unify(ret_ann.clone(), body_ty, ConstraintOrigin::Builtin)?;
         }
 
         env.pop_scope();
@@ -7074,7 +7080,7 @@ fn infer_interface_def(
         env.pop_scope();
         let ret = match (body_ty, declared_ret) {
             (Ok(body_ty), Some(declared)) => {
-                let _ = ctx.unify(body_ty, declared.clone(), ConstraintOrigin::Builtin);
+                let _ = ctx.unify(declared.clone(), body_ty, body_origin(Some(body.clone())));
                 declared
             }
             (Ok(body_ty), None) => body_ty,
@@ -7460,7 +7466,7 @@ fn infer_impl_def(
             ) {
                 Ok(body_ty) => match return_type {
                     Some(ref ret_ty) => {
-                        let _ = ctx.unify(body_ty, ret_ty.clone(), ConstraintOrigin::Builtin);
+                        let _ = ctx.unify(ret_ty.clone(), body_ty, ConstraintOrigin::Builtin);
                     }
                     None => return_type = Some(ctx.resolve(body_ty)),
                 },
@@ -8523,8 +8529,8 @@ fn infer_binary(
         Some(
             SyntaxKind::AND_KW | SyntaxKind::OR_KW | SyntaxKind::AMP_AMP | SyntaxKind::PIPE_PIPE,
         ) => {
-            ctx.unify(lhs_ty, Ty::bool(), origin.clone())?;
-            ctx.unify(rhs_ty, Ty::bool(), origin)?;
+            ctx.unify(Ty::bool(), lhs_ty, origin.clone())?;
+            ctx.unify(Ty::bool(), rhs_ty, origin)?;
             Ok(Ty::bool())
         }
 
@@ -8536,8 +8542,8 @@ fn infer_binary(
 
         // `start..end` is a Range of Int, wherever it appears.
         Some(SyntaxKind::DOT_DOT) => {
-            ctx.unify(lhs_ty, Ty::int(), origin.clone())?;
-            ctx.unify(rhs_ty, Ty::int(), origin)?;
+            ctx.unify(Ty::int(), lhs_ty, origin.clone())?;
+            ctx.unify(Ty::int(), rhs_ty, origin)?;
             Ok(Ty::range())
         }
 
@@ -8558,6 +8564,18 @@ fn infer_trait_binary_op(
     trait_registry: &TraitRegistry,
     origin: &ConstraintOrigin,
 ) -> Result<Ty, TypeError> {
+    // A left operand without the operator is the problem to report, not
+    // that the right one differs (`maybe + 1` on an `Int?`).
+    let lhs = ctx.resolve(lhs_ty.clone());
+    if !lhs.has_type_vars() && !trait_registry.has_impl(trait_name, &lhs) {
+        let err = TypeError::TraitNotSatisfied {
+            ty: lhs,
+            trait_name: trait_name.to_string(),
+            origin: origin.clone(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
     ctx.unify(lhs_ty.clone(), rhs_ty.clone(), origin.clone())?;
 
     let resolved = ctx.resolve(lhs_ty.clone());
@@ -9546,7 +9564,7 @@ fn infer_call_inner(
         // unknown type to the untyped `Tuple`. Only `nth`'s index stays declared.
         if accessor.is_some() {
             if let Some(index_ty) = param_types.get(1) {
-                ctx.unify(index_ty.clone(), Ty::int(), origin.clone())?;
+                ctx.unify(Ty::int(), index_ty.clone(), origin.clone())?;
             }
         }
         let expected_fn_ty = match accessor {
@@ -9810,7 +9828,7 @@ fn infer_pipe(
                 let param_types: Vec<Ty> = (0..=args.len()).map(|_| ctx.fresh_var()).collect();
                 if accessor.is_some() {
                     if let Some(index_ty) = param_types.get(1) {
-                        ctx.unify(index_ty.clone(), Ty::int(), origin.clone())?;
+                        ctx.unify(Ty::int(), index_ty.clone(), origin.clone())?;
                     }
                 }
                 let expected_fn_ty = match accessor {
@@ -10266,7 +10284,13 @@ fn infer_if(
             trait_registry,
             fn_constraints,
         )?;
-        ctx.unify(cond_ty, Ty::bool(), ConstraintOrigin::Builtin)?;
+        ctx.unify(
+            Ty::bool(),
+            cond_ty,
+            ConstraintOrigin::Expr {
+                span: cond.syntax().text_range(),
+            },
+        )?;
     }
 
     let then_ty = if let Some(then_block) = if_.then_branch() {
@@ -10368,7 +10392,13 @@ fn infer_while(
             trait_registry,
             fn_constraints,
         )?;
-        ctx.unify(cond_ty, Ty::bool(), ConstraintOrigin::Builtin)?;
+        ctx.unify(
+            Ty::bool(),
+            cond_ty,
+            ConstraintOrigin::Expr {
+                span: cond.syntax().text_range(),
+            },
+        )?;
     }
 
     // Infer body with incremented loop_depth.
@@ -10454,12 +10484,12 @@ fn infer_for_in(
                 };
                 if let Some(lhs) = bin.lhs() {
                     if let Some(lhs_ty) = types.get(&lhs.syntax().text_range()) {
-                        ctx.unify(lhs_ty.clone(), Ty::int(), origin.clone())?;
+                        ctx.unify(Ty::int(), lhs_ty.clone(), origin.clone())?;
                     }
                 }
                 if let Some(rhs) = bin.rhs() {
                     if let Some(rhs_ty) = types.get(&rhs.syntax().text_range()) {
-                        ctx.unify(rhs_ty.clone(), Ty::int(), origin)?;
+                        ctx.unify(Ty::int(), rhs_ty.clone(), origin)?;
                     }
                 }
             }
@@ -10601,7 +10631,7 @@ fn infer_for_in(
         let origin = ConstraintOrigin::BinOp {
             op_span: filter_expr.syntax().text_range(),
         };
-        ctx.unify(filter_ty, Ty::bool(), origin)?;
+        ctx.unify(Ty::bool(), filter_ty, origin)?;
     }
 
     // Infer body -- its type becomes the List element type.
@@ -10756,9 +10786,9 @@ fn infer_closure(
 
     if let Some(expected_return_ty) = expected_return_ty {
         ctx.unify(
-            body_ty.clone(),
             expected_return_ty,
-            ConstraintOrigin::Builtin,
+            body_ty.clone(),
+            body_origin(closure.body()),
         )?;
     }
 
@@ -10894,12 +10924,19 @@ fn infer_multi_clause_closure(
                 trait_registry,
                 fn_constraints,
             )?;
-            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+            let _ = ctx.unify(
+                Ty::bool(),
+                guard_ty,
+                ConstraintOrigin::Expr {
+                    span: guard_expr.syntax().text_range(),
+                },
+            );
         }
 
         // Infer the body (reset loop_depth inside closure -- BRKC-05).
         let saved_loop_depth = ctx.enter_closure();
         ctx.push_fn_return_type(expected_return_ty.clone());
+        let origin = body_origin(body.clone());
         let body_ty = if let Some(body) = body {
             infer_block(
                 ctx,
@@ -10918,11 +10955,7 @@ fn infer_multi_clause_closure(
         let body_ty = join_returns(ctx, body_ty, returns)?;
 
         if let Some(ref expected_return_ty) = expected_return_ty {
-            ctx.unify(
-                body_ty.clone(),
-                expected_return_ty.clone(),
-                ConstraintOrigin::Builtin,
-            )?;
+            ctx.unify(expected_return_ty.clone(), body_ty.clone(), origin)?;
         }
 
         // Unify body type with previous clauses.
@@ -11094,7 +11127,11 @@ fn infer_block(
                         Ok(ty) => {
                             last_ty = ty;
                         }
-                        Err(_) => {}
+                        // Reported already; its value's type is unknown, not
+                        // the previous statement's (nor unit).
+                        Err(_) => {
+                            last_ty = ctx.fresh_var();
+                        }
                     }
                 }
             }
@@ -11120,7 +11157,9 @@ fn infer_block(
                 Ok(ty) => {
                     last_ty = ty;
                 }
-                Err(_) => {}
+                Err(_) => {
+                    last_ty = ctx.fresh_var();
+                }
             }
         }
     }
@@ -11604,7 +11643,13 @@ fn infer_case(
                 trait_registry,
                 fn_constraints,
             )?;
-            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+            let _ = ctx.unify(
+                Ty::bool(),
+                guard_ty,
+                ConstraintOrigin::Expr {
+                    span: guard_expr.syntax().text_range(),
+                },
+            );
         }
 
         let body_ty = match (arm.body(), arm.pattern()) {
@@ -12353,8 +12398,8 @@ fn infer_struct_literal(
                 fn_constraints,
             )?;
             ctx.unify(
-                value_ty,
                 expected_ty,
+                value_ty,
                 ConstraintOrigin::Annotation {
                     annotation_span: field.syntax().text_range(),
                 },
@@ -12508,8 +12553,8 @@ fn infer_struct_update(
                 fn_constraints,
             )?;
             ctx.unify(
-                value_ty,
                 expected_ty,
+                value_ty,
                 ConstraintOrigin::Annotation {
                     annotation_span: field.syntax().text_range(),
                 },
@@ -12784,7 +12829,7 @@ fn infer_constructor_pattern(
 
             for (sub_pat, expected_ty) in sub_patterns.iter().zip(param_types.iter()) {
                 let sub_ty = infer_pattern(ctx, env, sub_pat, types, type_registry)?;
-                ctx.unify(sub_ty, expected_ty.clone(), ConstraintOrigin::Builtin)?;
+                ctx.unify(expected_ty.clone(), sub_ty, ConstraintOrigin::Builtin)?;
             }
 
             types.insert(pat.syntax().text_range(), (*ret).clone());
@@ -12869,7 +12914,7 @@ fn infer_rebuilt_pattern(
                 Ty::Fun(param_types, ret) => {
                     for (field, param_ty) in ctor_pat.fields().zip(param_types) {
                         let field_ty = infer_rebuilt_pattern(ctx, env, &field)?;
-                        ctx.unify(field_ty, param_ty, ConstraintOrigin::Builtin)?;
+                        ctx.unify(param_ty, field_ty, ConstraintOrigin::Builtin)?;
                     }
                     Ok(*ret)
                 }
@@ -14073,7 +14118,13 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
+            let _ = ctx.unify(
+                Ty::bool(),
+                guard_ty,
+                ConstraintOrigin::Expr {
+                    span: guard_expr.syntax().text_range(),
+                },
+            );
         }
 
         if let Some(body) = arm.body() {
@@ -14134,7 +14185,7 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            let _ = ctx.unify(timeout_ty, Ty::int(), ConstraintOrigin::Builtin);
+            let _ = ctx.unify(Ty::int(), timeout_ty, ConstraintOrigin::Builtin);
         }
         if let Some(body) = after.body() {
             let body_ty = infer_expr(

@@ -2025,13 +2025,13 @@ end
         run(source),
         "[1, 2, 3] [3.0, 5.0] 1 [(0, a), (1, b)] Some(yy)\n"
     );
-    for bad in [
-        "fn main() do\n  let bad = Iter.from([\"a\"]) |> Iter.map(fn x -> x + 1 end) |> List.collect()\n  println(\"#{bad}\")\nend\n",
-        "fn main() do\n  println(\"#{Iter.from([\"x\"]) |> Iter.sum()}\")\nend\n",
-        "fn main() do\n  let r :: List<String> = Iter.from([1, 2]) |> List.collect()\n  println(\"#{r}\")\nend\n",
+    for (bad, code) in [
+        ("fn main() do\n  let bad = Iter.from([\"a\"]) |> Iter.map(fn x -> x + 1 end) |> List.collect()\n  println(\"#{bad}\")\nend\n", "E0006"),
+        ("fn main() do\n  println(\"#{Iter.from([\"x\"]) |> Iter.sum()}\")\nend\n", "E0001"),
+        ("fn main() do\n  let r :: List<String> = Iter.from([1, 2]) |> List.collect()\n  println(\"#{r}\")\nend\n", "E0001"),
     ] {
         let err = build_error(bad);
-        assert!(err.contains("E0001"), "{bad}\n{err}");
+        assert!(err.contains(code), "{bad}\n{err}");
         assert!(!err.contains("E0004"), "no cascade:\n{err}");
     }
 }
@@ -3085,4 +3085,75 @@ fn non_ascii_text_does_not_move_later_diagnostics() {
     let source = "# コメント コメント コメント\nfn main() do\n  let n = 1 + \"x\"\n  println(\"#{n}\")\nend\n";
     let err = build_error(source);
     assert!(err.contains("main.mpl:3:11"), "{err}");
+}
+
+fn mismatches(source: &str) -> Vec<(String, usize)> {
+    json_diagnostics(source)
+        .iter()
+        .filter(|d| d["code"] == "E0001")
+        .map(|d| {
+            (
+                d["spans"][0]["label"].as_str().unwrap_or("").to_string(),
+                d["spans"][0]["start"].as_u64().unwrap_or(0) as usize,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn mismatches_name_the_expected_type_first_at_the_offending_expression() {
+    let source = r##"
+fn g() -> Int do
+  "str"
+end
+
+fn check(f :: Fun(Int) -> Bool) -> Bool do
+  f(1)
+end
+
+fn main() do
+  while 1 do
+    println("loop")
+  end
+  println("#{check(fn (x :: Int) -> x + 1 end)}")
+end
+"##;
+    let found = mismatches(source);
+    assert_eq!(
+        found,
+        [
+            (
+                "expected Int, found String".to_string(),
+                source.find("\"str\"").unwrap()
+            ),
+            (
+                "expected Bool, found Int".to_string(),
+                source.find("while 1").unwrap() + 6
+            ),
+            (
+                "expected Bool, found Int".to_string(),
+                source.find("x + 1").unwrap()
+            ),
+        ]
+    );
+    let err = build_error("fn main() do\n  let y :: String = 5\nend\n");
+    assert!(err.contains("expected String, found Int"), "{err}");
+}
+
+#[test]
+fn a_failed_tail_expression_is_reported_once() {
+    // The body's type is unknown after its tail fails; it used to become
+    // `()` and add "expected Int, found ()" over the whole file.
+    let source = "fn g() -> Int do\n  1 + \"y\"\nend\n\nfn main() do\n  println(\"x\")\nend\n";
+    let found = mismatches(source);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].1, source.find("1 + ").unwrap());
+}
+
+#[test]
+fn an_operator_on_a_type_without_it_names_the_left_operand() {
+    // It said "expected Option<Int>, found Int", blaming the `1`.
+    let err =
+        build_error("fn main() do\n  let v :: Int? = Some(3)\n  println(\"#{v + 1}\")\nend\n");
+    assert!(err.contains("Option<Int> does not implement Add"), "{err}");
 }
