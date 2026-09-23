@@ -480,7 +480,7 @@ end
 actor worker() do
   receive do
     msg -> println("got: #{msg}")
-  after 1000 -> println("idle")
+    after 1000 -> println("idle")
   end
 
   terminate do
@@ -611,11 +611,11 @@ test("basic assertions") do
 end
 
 describe("grouped tests") do
-  setup do
+  setup() do
     assert(true)   # runs before each test
   end
 
-  teardown do
+  teardown() do
     assert(true)   # runs after each test
   end
 
@@ -700,8 +700,8 @@ case DateTime.from_iso8601("2024-01-15T10:30:00Z") do
   Ok(dt2) ->
     let next = DateTime.add(dt2, 7, :day)
     let diff = DateTime.diff(next, dt2, :day)   # Float
-    let before = DateTime.is_before(dt2, next)  # Bool
-    let after = DateTime.is_after(next, dt2)    # Bool
+    let earlier = DateTime.is_before(dt2, next)  # Bool
+    let later = DateTime.is_after(next, dt2)     # Bool
   Err(e) -> println(e)
 end
 ```

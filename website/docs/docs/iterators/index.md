@@ -23,8 +23,8 @@ fn main() do
   let list = [1, 2, 3, 4, 5]
   let iter = Iter.from(list)
 
-  # Count elements to consume the iterator
-  let n = Iter.from(list) |> Iter.count()
+  # Counting consumes the iterator
+  let n = Iter.count(iter)
   println(n.to_string())
 end
 ```
@@ -123,8 +123,8 @@ Combinators transform an iterator into a new iterator without consuming it. Beca
 fn main() do
   let list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-  # Double each element, then sum
-  let sum = Iter.from(list) |> Iter.map(fn x -> x * 3 end) |> Iter.sum()
+  # Double each element, then sum: 110
+  let sum = Iter.from(list) |> Iter.map(fn x -> x * 2 end) |> Iter.sum()
   println(sum.to_string())
 end
 ```

@@ -27,7 +27,7 @@ Define an actor with the `actor` keyword and start it with `spawn`:
 ```mesh
 actor greeter() do
   receive do
-    msg -> println("actor received")
+    _ -> println("actor received")
   end
 end
 
@@ -62,7 +62,7 @@ Actors communicate by sending and receiving messages. Use `send` to deliver a me
 ```mesh
 actor worker() do
   receive do
-    msg -> println("worker done")
+    _ -> println("worker done")
   end
 end
 
@@ -91,7 +91,9 @@ A receive can provide a timeout in milliseconds. The receive expression returns 
 actor worker() do
   let result = receive do
     value -> value
-  after 1_000 -> 0 end
+    after 1_000 -> 0
+  end
+
   println("#{result}")
 end
 ```
@@ -109,7 +111,7 @@ end
 
 actor worker() do
   receive do
-    msg -> println("${count_loop(0, 100)}")
+    _ -> println("${count_loop(0, 100)}")
   end
 end
 
@@ -157,9 +159,10 @@ actor worker() do
   receive do
     _ -> println("work complete")
   end
-terminate do
-  println("cleaning up")
-end
+
+  terminate do
+    println("cleaning up")
+  end
 end
 ```
 
@@ -170,7 +173,7 @@ Supervisors are special actors that monitor and restart child actors when they f
 ```mesh
 actor worker() do
   receive do
-    msg -> println("worker got message")
+    _ -> println("worker got message")
   end
 end
 
@@ -364,7 +367,8 @@ Timers use monotonic deadlines. Sleeping an actor yields its scheduler worker so
 actor reminder() do
   receive do
     message -> println(message)
-  after 5_000 -> println("no reminder received") end
+    after 5_000 -> println("no reminder received")
+  end
 end
 
 fn main() do
@@ -402,17 +406,16 @@ The function runs in its own actor, which is not linked to the caller: a failing
 `Channel` provides bounded, in-process queues for `Int` values. Creation and queue operations return `Result`; producers use `try_send` and never wait for space.
 
 ```mesh
+fn round_trip(value :: Int) -> Int!String do
+  let channel = Channel.bounded_bytes(128, 1_024, :reject_newest)?
+  Channel.try_send(channel, value)?
+  let timeout = Duration.millis(10)?
+  Channel.recv(channel, timeout)
+end
+
 fn main() do
-  case Channel.bounded_bytes(128, 1_024, :reject_newest) do
-    Ok(channel) ->
-      Channel.try_send(channel, 42)
-      case Duration.millis(10) do
-        Ok(timeout) -> case Channel.recv(channel, timeout) do
-          Ok(value) -> println("#{value}")
-          Err(error) -> println(error)
-        end
-        Err(error) -> println(error)
-      end
+  case round_trip(42) do
+    Ok(value) -> println("#{value}")
     Err(error) -> println(error)
   end
 end

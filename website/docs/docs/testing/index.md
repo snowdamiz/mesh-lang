@@ -106,19 +106,19 @@ the project tree.
 
 | Assertion | Description |
 |-----------|-------------|
-| `assert expr` | Passes if `expr` is true; prints expression source and value on failure |
-| `assert_eq a, b` | Passes if `a == b`; prints expected and actual on failure |
-| `assert_ne a, b` | Passes if `a != b`; prints both values on failure |
-| `assert_raises fn` | Passes if calling `fn` raises a runtime error |
+| `assert(expr)` | Passes if `expr` is true; prints expression source and value on failure |
+| `assert_eq(a, b)` | Passes if `a == b`; prints expected and actual on failure |
+| `assert_ne(a, b)` | Passes if `a != b`; prints both values on failure |
+| `assert_raises(fn)` | Passes if calling `fn` raises a runtime error |
 
 ```mesh
 test("assertions") do
   assert(true)
   assert_eq(42, 40 + 2)
   assert_ne("hello", "world")
-  assert_raises fn() do
+  assert_raises(fn() do
     assert(false)
-  end
+  end)
 end
 ```
 
@@ -146,11 +146,11 @@ Failed test output shows: `string operations/length ... FAIL`
 
 ```mesh
 describe("counter") do
-  setup do
+  setup() do
     assert(true)   # runs before each test in this describe
   end
 
-  teardown do
+  teardown() do
     assert(true)   # runs after each test in this describe
   end
 

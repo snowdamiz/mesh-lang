@@ -228,28 +228,21 @@ let outer = json { result: inner, ok: true }
 
 ### Json Module
 
-`Json.parse` creates a structured `Json` value. Navigation and scalar conversion are checked, so a missing field, out-of-range array index, or unexpected type returns `Err`:
+`Json.parse` creates a structured `Json` value. Navigation and scalar conversion are checked, so a missing field, out-of-range array index, or unexpected type returns `Err`. Every step returns a `Result`, so `?` chains them:
 
 ```mesh
+fn first_user_name(body :: String) -> String!String do
+  let root = Json.parse(body)?
+  let users = Json.object_get(root, "users")?
+  let user = Json.array_get(users, 0)?
+  let name = Json.object_get(user, "name")?
+  Json.as_string(name)
+end
+
 fn main() do
-  case Json.parse("{\"users\":[{\"name\":\"Ada\"}],\"cursor\":null}") do
-    Ok(root) ->
-      case Json.object_get(root, "users") do
-        Ok(users) ->
-          case Json.array_get(users, 0) do
-            Ok(user) ->
-              case Json.object_get(user, "name") do
-                Ok(name) -> case Json.as_string(name) do
-                  Ok(text) -> println(text)
-                  Err(error) -> println(error)
-                end
-                Err(error) -> println(error)
-              end
-            Err(error) -> println(error)
-          end
-        Err(error) -> println(error)
-      end
-    Err(error) -> println("invalid JSON: #{error}")
+  case first_user_name("{\"users\":[{\"name\":\"Ada\"}],\"cursor\":null}") do
+    Ok(name) -> println(name)
+    Err(error) -> println(error)
   end
 end
 ```
@@ -408,9 +401,11 @@ In a distributed cluster, `Ws.broadcast` automatically forwards messages to room
 `WsClient` is the outbound client surface. It accepts `ws://` and certificate-validated `wss://` URLs, yields while connecting or waiting for a message, and bounds both message size and the inbound queue.
 
 ```mesh
-fn exchange(connection :: Int) -> Int!String do
+fn exchange(url :: String, options :: Int) -> Int!String do
+  let connection = WsClient.connect(url, options)?
   WsClient.send_text(connection, "subscribe")?
-  (("0102" |> Bytes.from_hex())? |2> WsClient.send_bytes(connection))?
+  let frame = Bytes.from_hex("0102")?
+  WsClient.send_bytes(connection, frame)?
 
   let message = WsClient.recv(connection, 5_000)?
   if message.kind == "text" do
@@ -435,11 +430,8 @@ fn main() do
     |> WsClient.max_message_bytes(1_048_576)
     |> WsClient.queue_capacity(256)
 
-  case WsClient.connect("wss://example.com/feed", options) do
-    Ok(connection) -> case exchange(connection) do
-      Ok(_) -> println("done")
-      Err(error) -> println(error)
-    end
+  case exchange("wss://example.com/feed", options) do
+    Ok(_) -> println("done")
     Err(error) -> println(error)
   end
 end

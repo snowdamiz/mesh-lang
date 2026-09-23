@@ -116,8 +116,7 @@ fn identity<T>(value :: T) -> T do
   value
 end
 
-fn join_display<A, B>(left :: A, right :: B) -> String
-where A: Display, B: Display do
+fn join_display<A, B>(left :: A, right :: B) -> String where A: Display, B: Display do
   left.to_string() <> right.to_string()
 end
 ```

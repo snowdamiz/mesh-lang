@@ -136,7 +136,7 @@ Use `Node.spawn_link` to spawn a remote actor and establish a bidirectional link
 ```mesh
 actor task() do
   receive do
-    msg -> println("task completed")
+    _ -> println("task completed")
   end
 end
 

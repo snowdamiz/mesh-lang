@@ -691,21 +691,15 @@ end
 
 #### Map Iteration
 
-Iterate over map entries with destructuring:
+Iterate over map entries with destructuring. Like any `for`, it returns a list of the body's results:
 
 ```mesh
 fn main() do
-  let m = Map.new()
-  let m = Map.put(m, 1, 10)
-  let m = Map.put(m, 2, 20)
-  let m = Map.put(m, 3, 30)
-
-  let vals = for {k, v} in m do
-    v
+  let stock = %{"apples" => 10, "pears" => 20}
+  let labels = for {fruit, count} in stock do
+    "#{count} #{fruit}"
   end
-
-  let total = List.length(vals)
-  println("${total}")
+  println("#{labels}")   # [10 apples, 20 pears]
 end
 ```
 

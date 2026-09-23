@@ -125,13 +125,14 @@ The feature gates support a reversible rollout. `horizontal_observe_only = true`
 Replica counts include the owner:
 
 ```mesh
+# Three copies: one owner executes, two other nodes retain the continuity record
 @cluster(3)
 pub fn recompute_account(account_id :: String) -> Result<Account, String> do
-  # one owner executes; two other nodes retain the continuity record
+  Accounts.recompute(account_id)
 end
 
-let router =
-  HTTP.router()
+# Two copies of each request's record
+let router = HTTP.router()
   |> HTTP.on_get("/accounts/:id", HTTP.clustered(2, handle_get_account))
 ```
 

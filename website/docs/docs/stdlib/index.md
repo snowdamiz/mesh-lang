@@ -193,15 +193,18 @@ do not fit Mesh `Int`. Construction and arithmetic are checked. Convert to
 `Int` only when the value is known to fit.
 
 ```mesh
-case U64.parse("18446744073709551615") do
-  Ok(value) -> do
-    value |> U64.to_string() |> println()
-    case value |> U64.to_int() do
-      Ok(number) -> println("#{number}")
-      Err(error) -> println(error)
-    end
+fn parse_count(text :: String) -> Int!String do
+  let value = U64.parse(text)?
+  println(U64.to_string(value))
+  U64.to_int(value)
+end
+
+fn main() do
+  # Prints the value, then "u64 does not fit Int"
+  case parse_count("18446744073709551615") do
+    Ok(count) -> println("#{count}")
+    Err(error) -> println(error)
   end
-  Err(error) -> println(error)
 end
 ```
 
