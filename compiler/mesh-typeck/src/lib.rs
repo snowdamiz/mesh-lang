@@ -514,15 +514,26 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
     //    These don't have explicit ImplDef AST nodes but are registered in
     //    the trait registry during struct/sum type processing.
     for item in tree.items() {
+        // Without a deriving clause a type gets the default derives (the
+        // loop below exports only those the registry actually holds).
+        let defaults = |traits: &[&str]| traits.iter().map(|t| t.to_string()).collect();
         let (type_name, derive_traits) = match &item {
             Item::StructDef(struct_def) => {
                 let name = struct_def.name().and_then(|n| n.text());
-                let traits = struct_def.deriving_traits();
+                let traits = if struct_def.has_deriving_clause() {
+                    struct_def.deriving_traits()
+                } else {
+                    defaults(&["Debug", "Eq", "Ord", "Hash"])
+                };
                 (name, traits)
             }
             Item::SumTypeDef(sum_def) => {
                 let name = sum_def.name().and_then(|n| n.text());
-                let traits = sum_def.deriving_traits();
+                let traits = if sum_def.has_deriving_clause() {
+                    sum_def.deriving_traits()
+                } else {
+                    defaults(&["Debug", "Eq", "Ord"])
+                };
                 (name, traits)
             }
             _ => (None, vec![]),

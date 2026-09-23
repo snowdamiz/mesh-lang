@@ -7705,3 +7705,51 @@ end
         .expect("failed to run compiled binary");
     assert_eq!(output.status.code(), Some(7));
 }
+
+/// Derived and default traits of imported types work in the importer:
+/// operators, `inspect`, `hash`, `Json.encode`, and qualified constructors.
+#[test]
+fn e2e_imported_types_keep_their_derived_traits() {
+    let geometry = r##"pub struct Point do
+  x :: Float
+  tags :: List<String>
+end deriving(Eq, Ord, Display, Debug, Hash)
+
+pub struct Plain do
+  n :: Int
+end
+
+pub type Color do
+  Red
+  Rgb(n :: Int)
+end
+
+pub type Shape do
+  Circle(r :: Float)
+  Dot
+end deriving(Json, Eq)
+
+pub fn enc(s :: Shape) -> String do
+  Json.encode(s)
+end
+"##;
+    let main = r##"from Geometry import Point, Plain, Color, Shape, enc
+
+fn main() do
+  let p = Point { x: 1.0, tags: ["a"] }
+  println("#{p == p} #{p < Point { x: 2.0, tags: [] }} #{p} #{p.inspect()}")
+  let a = Plain { n: 1 }
+  println("#{a == Plain { n: 1 }} #{a < Plain { n: 2 }} #{a.inspect()} #{a.hash() == Plain { n: 1 }.hash()}")
+  println("#{Rgb(1) == Rgb(1)} #{Red < Rgb(0)} #{Color.Rgb(2).inspect()}")
+  println("#{Json.encode(Circle(1.5)) == enc(Circle(1.5))} #{Shape.Dot == Dot}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("geometry.mpl", geometry), ("main.mpl", main)]);
+    assert_eq!(
+        output,
+        "true true Point(1.0, [a]) Point { x: 1.0, tags: [\"a\"] }\n\
+         true true Plain { n: 1 } true\n\
+         true true Rgb(2)\n\
+         true true\n"
+    );
+}

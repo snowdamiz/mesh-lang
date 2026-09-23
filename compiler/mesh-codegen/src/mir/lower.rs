@@ -12234,7 +12234,11 @@ impl<'a> Lowerer<'a> {
                         self.ensure_instantiation_traits(ty);
                         let f =
                             format!("Eq__eq__{}", self.instantiation_helper_name(&tc.name, args));
-                        if self.known_functions.contains_key(&f) {
+                        // An imported type (`App(Point, [])`) has its helpers
+                        // in its own module.
+                        if self.known_functions.contains_key(&f)
+                            || (args.is_empty() && self.trait_registry.has_impl("Eq", ty))
+                        {
                             let params = vec![lhs.ty().clone(), rhs.ty().clone()];
                             Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
                         } else {
@@ -12584,7 +12588,9 @@ impl<'a> Lowerer<'a> {
                     "Ord__lt__{}",
                     self.instantiation_helper_name(&tc.name, args)
                 );
-                if self.known_functions.contains_key(&f) {
+                if self.known_functions.contains_key(&f)
+                    || (args.is_empty() && self.trait_registry.has_impl("Ord", ty))
+                {
                     by_lt(self, f, lhs, rhs)
                 } else {
                     three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
@@ -13262,9 +13268,16 @@ impl<'a> Lowerer<'a> {
                         format!("Debug__inspect__{mangled}"),
                     ]
                 };
+                let imported = |trait_name: &str| {
+                    args.is_empty() && self.trait_registry.has_impl(trait_name, ty)
+                };
                 candidates
                     .into_iter()
-                    .find(|f| self.known_functions.contains_key(f))
+                    .find(|f| {
+                        self.known_functions.contains_key(f)
+                            || (f.starts_with("Display__") && imported("Display"))
+                            || (f.starts_with("Debug__") && imported("Debug"))
+                    })
                     .map(|f| {
                         Self::call_named(
                             &f,
