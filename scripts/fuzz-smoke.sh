@@ -56,7 +56,9 @@ for target in "${TARGETS[@]}"; do
     -rss_limit_mb=4096 \
     -print_final_stats=1 \
     >"${OUTPUT_DIR}/${target}.log" 2>&1 || {
-      sed -n '1,240p' "${OUTPUT_DIR}/${target}.log" >&2
+      # libFuzzer reports the panic, the crashing input and its path last;
+      # the head of the log is nightly's compiler warnings.
+      tail -n 120 "${OUTPUT_DIR}/${target}.log" >&2
       fail "target failed: ${target}"
     }
 done
