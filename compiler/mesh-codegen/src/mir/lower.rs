@@ -8048,15 +8048,17 @@ impl<'a> Lowerer<'a> {
                         // A polymorphic closure gets one compiled copy per
                         // concrete type it is used at, bound here so its
                         // captures are the values in scope at the `let`.
+                        let mut specialized_everywhere = false;
                         if let (Some(Expr::ClosureExpr(closure)), Some(generic), Some(name)) = (
                             initializer.as_ref(),
                             initializer_ty.as_ref(),
                             let_.name().and_then(|name| name.text()),
                         ) {
                             if Self::ty_contains_var(generic) {
-                                for (use_ty, spec_name) in
-                                    self.poly_closure_uses(block, let_, &name)
-                                {
+                                let (uses, all_concrete) =
+                                    self.poly_closure_uses(block, let_, &name);
+                                specialized_everywhere = all_concrete;
+                                for (use_ty, spec_name) in uses {
                                     let value =
                                         self.lower_closure_specialized(closure, generic, &use_ty);
                                     let ty = value.ty().clone();
@@ -8074,9 +8076,13 @@ impl<'a> Lowerer<'a> {
                                 }
                             }
                         }
-                        let value = initializer
-                            .map(|init| self.lower_expr(&init))
-                            .unwrap_or(MirExpr::Unit);
+                        // Every use has its own copy: the generic one (whose
+                        // operators may not know their operand types) is unused.
+                        let value = match initializer {
+                            Some(_) if specialized_everywhere => MirExpr::Unit,
+                            Some(init) => self.lower_expr(&init),
+                            None => MirExpr::Unit,
+                        };
 
                         if let Some(pattern) = let_.pattern() {
                             let resources = self.resource_pattern_bindings(&pattern);
@@ -8544,9 +8550,18 @@ impl<'a> Lowerer<'a> {
     /// The concrete function types the let-bound closure `name` is used at
     /// within `block` after its `let`, each with the variable name that will
     /// hold that specialization.
-    fn poly_closure_uses(&self, block: &Block, let_: &LetBinding, name: &str) -> Vec<(Ty, String)> {
+    /// The concrete types the closure bound to `name` by `let_` is used at
+    /// in `block`, each with the name of its specialized copy, and whether
+    /// every use is at a concrete type (so the generic copy is never used).
+    fn poly_closure_uses(
+        &self,
+        block: &Block,
+        let_: &LetBinding,
+        name: &str,
+    ) -> (Vec<(Ty, String)>, bool) {
         let after = let_.syntax().text_range().end();
         let mut uses: Vec<(Ty, String)> = Vec::new();
+        let mut all_concrete = true;
         for node in block.syntax().descendants() {
             let Some(name_ref) = NameRef::cast(node) else {
                 continue;
@@ -8557,9 +8572,11 @@ impl<'a> Lowerer<'a> {
                 continue;
             }
             let Some(use_ty) = self.get_ty(name_ref.syntax().text_range()) else {
+                all_concrete = false;
                 continue;
             };
             if !matches!(use_ty, Ty::Fun(..)) || Self::ty_contains_var(use_ty) {
+                all_concrete = false;
                 continue;
             }
             if uses.iter().any(|(ty, _)| ty == use_ty) {
@@ -8568,7 +8585,7 @@ impl<'a> Lowerer<'a> {
             let spec_name = format!("{name}__spec_{}", Self::ty_specialization_component(use_ty));
             uses.push((use_ty.clone(), spec_name));
         }
-        uses
+        (uses, all_concrete)
     }
 
     /// Lower `closure` with the type variables of its `generic` type bound

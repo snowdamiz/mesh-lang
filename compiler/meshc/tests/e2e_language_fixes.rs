@@ -2687,3 +2687,18 @@ end
 "##;
     assert_eq!(run(source), "1 2 t1\n");
 }
+
+#[test]
+fn let_bound_closures_with_operators_work_at_each_type() {
+    let source = r##"
+fn main() do
+  let dbl = fn x -> x * x end
+  let add = fn a, b -> a + b end
+  let eq = fn a, b -> a == b end
+  let lt = fn a, b -> a < b end
+  println("#{dbl(3)} #{dbl(1.5)} #{add(1, 2)} #{eq(1, 1)} #{lt(1, 2)} #{lt("b", "a")}")
+  println("#{List.map([1, 2], dbl)}")
+end
+"##;
+    assert_eq!(run(source), "9 2.25 3 true true false\n[1, 4]\n");
+}
