@@ -87,6 +87,9 @@ jobs:
           python3 scripts/bump-language-version.py set "${{ steps.version.outputs.version }}"
           cargo update --workspace
           cargo metadata --locked --format-version 1 >/dev/null
+          # The fuzz crate is its own workspace; resolving it moves its lock to
+          # the new compiler versions, or every fuzz run rewrites the file.
+          cargo metadata --format-version 1 --manifest-path fuzz/Cargo.toml >/dev/null
 
       - name: Commit, tag and push
         shell: bash
@@ -95,7 +98,7 @@ jobs:
           tag="${{ steps.version.outputs.tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add compiler/*/Cargo.toml Cargo.lock
+          git add compiler/*/Cargo.toml Cargo.lock fuzz/Cargo.lock
           git commit -m "Release ${tag}"
           git tag -a "${tag}" -m "${tag}"
           git push origin HEAD:release
