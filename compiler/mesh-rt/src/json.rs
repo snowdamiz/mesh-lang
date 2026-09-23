@@ -644,7 +644,8 @@ pub extern "C" fn mesh_json_to_map(
         let keys_list = map::mesh_map_keys(inner_map);
         let vals_list = map::mesh_map_values(inner_map);
         let len = list::mesh_list_length(keys_list);
-        let mut result_map = map::mesh_map_new();
+        // JSON object keys are strings: compare them by content.
+        let mut result_map = map::mesh_map_new_typed(1);
         for i in 0..len {
             let key = list::mesh_list_get(keys_list, i);
             let val = list::mesh_list_get(vals_list, i);

@@ -4072,6 +4072,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     type_registry.register_resource_type(name.clone());
                 }
                 trait_registry.register_nominal(&name);
+                if struct_def.deriving_traits().iter().any(|t| t == "Json") {
+                    ctx.json_types.insert(name.clone());
+                }
                 type_registry.register_struct(StructDefInfo {
                     name,
                     generic_params: vec![],
@@ -4085,6 +4088,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "<unnamed>".to_string());
                 trait_registry.register_nominal(&name);
+                if sum_def.deriving_traits().iter().any(|t| t == "Json") {
+                    ctx.json_types.insert(name.clone());
+                }
                 type_registry.register_sum_type(SumTypeDefInfo {
                     name,
                     generic_params: vec![],
@@ -5764,14 +5770,16 @@ fn register_struct_def(
         return;
     }
 
-    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.
+    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App
+    // over sigil parameters (`'Item`), which the registry always treats as
+    // parameters, whatever their names.
     let impl_ty = if generic_params.is_empty() {
         Ty::Con(TyCon::new(&name))
     } else {
         let base_ty = Ty::Con(TyCon::new(&name));
         let param_tys: Vec<Ty> = generic_params
             .iter()
-            .map(|p| Ty::Con(TyCon::new(p)))
+            .map(|p| Ty::Con(TyCon::new(&format!("'{p}"))))
             .collect();
         Ty::App(Box::new(base_ty), param_tys)
     };
@@ -5956,7 +5964,7 @@ fn register_struct_def(
         // Validate all fields are JSON-serializable BEFORE registering impls.
         let mut json_valid = true;
         for (field_name, field_ty) in &fields {
-            if !is_json_serializable(field_ty, type_registry, trait_registry) {
+            if !is_json_serializable(field_ty, &generic_params, &ctx.json_types, trait_registry) {
                 ctx.errors.push(TypeError::NonSerializableField {
                     struct_name: name.clone(),
                     field_name: field_name.clone(),
@@ -6050,60 +6058,38 @@ fn register_struct_def(
     });
 }
 
-/// Check if a type is JSON-serializable for deriving(Json) validation.
-/// Serializable types: Int, Float, Bool, String, structs with ToJson impl,
-/// Option<T> where T is serializable, List<T> where T is serializable,
-/// Map<String, V> where V is serializable.
+/// Whether a field of type `ty` can be converted to and from JSON: a
+/// scalar, one of `params` (checked where the type is used), a tuple, an
+/// `Option`, `List` or `Map<String, _>` of such, or a type deriving Json
+/// (`json_types` holds this module's, declared anywhere in it).
 fn is_json_serializable(
     ty: &Ty,
-    _type_registry: &TypeRegistry,
+    params: &[String],
+    json_types: &rustc_hash::FxHashSet<String>,
     trait_registry: &TraitRegistry,
 ) -> bool {
+    let ok = |t: &Ty| is_json_serializable(t, params, json_types, trait_registry);
+    let derives_json = |name: &str| {
+        json_types.contains(name) || trait_registry.has_impl("ToJson", &Ty::Con(TyCon::new(name)))
+    };
     match ty {
         Ty::Con(con) => match con.name.as_str() {
             "Int" | "Float" | "Bool" | "String" => true,
-            name => {
-                // Generic type params (single uppercase letter like T, U, V, K, A, B)
-                // are treated as serializable at definition time. Invalid instantiations
-                // will fail at link time with missing ToJson__to_json__<Type> errors.
-                if name.len() == 1
-                    && name
-                        .chars()
-                        .next()
-                        .map_or(false, |c| c.is_ascii_uppercase())
-                {
-                    return true;
-                }
-                // Check if this type has a ToJson impl registered
-                let ty_for_lookup = Ty::Con(TyCon::new(name));
-                trait_registry.has_impl("ToJson", &ty_for_lookup)
-            }
+            name => params.iter().any(|p| p == name) || derives_json(name),
         },
-        Ty::App(base, args) => {
-            if let Ty::Con(con) = base.as_ref() {
-                match con.name.as_str() {
-                    "Option" => args.first().map_or(false, |t| {
-                        is_json_serializable(t, _type_registry, trait_registry)
-                    }),
-                    "List" => args.first().map_or(false, |t| {
-                        is_json_serializable(t, _type_registry, trait_registry)
-                    }),
-                    "Map" => {
-                        // Map key must be String for JSON objects
-                        let key_ok = args
-                            .first()
-                            .map_or(false, |t| matches!(t, Ty::Con(c) if c.name == "String"));
-                        let val_ok = args.get(1).map_or(false, |t| {
-                            is_json_serializable(t, _type_registry, trait_registry)
-                        });
-                        key_ok && val_ok
-                    }
-                    _ => false,
+        Ty::Tuple(elems) => !elems.is_empty() && elems.iter().all(ok),
+        Ty::App(base, args) => match base.as_ref() {
+            Ty::Con(con) => match con.name.as_str() {
+                "Option" | "List" => args.first().is_some_and(ok),
+                // JSON object keys are strings.
+                "Map" => {
+                    matches!(args.first(), Some(Ty::Con(c)) if c.name == "String")
+                        && args.get(1).is_some_and(ok)
                 }
-            } else {
-                false
-            }
-        }
+                name => derives_json(name) && args.iter().all(ok),
+            },
+            _ => false,
+        },
         _ => false, // Type variables, functions, etc. are not serializable
     }
 }
@@ -6433,14 +6419,16 @@ fn register_sum_type_def(
         return;
     }
 
-    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App.
+    // Build the impl type: non-generic uses Ty::Con, generic uses Ty::App
+    // over sigil parameters (`'Item`), which the registry always treats as
+    // parameters, whatever their names.
     let impl_ty = if generic_params.is_empty() {
         Ty::Con(TyCon::new(&name))
     } else {
         let base_ty = Ty::Con(TyCon::new(&name));
         let param_tys: Vec<Ty> = generic_params
             .iter()
-            .map(|p| Ty::Con(TyCon::new(p)))
+            .map(|p| Ty::Con(TyCon::new(&format!("'{p}"))))
             .collect();
         Ty::App(Box::new(base_ty), param_tys)
     };
@@ -6565,7 +6553,8 @@ fn register_sum_type_def(
                     VariantFieldInfo::Positional(ty) => ty,
                     VariantFieldInfo::Named(_, ty) => ty,
                 };
-                if !is_json_serializable(field_ty, type_registry, trait_registry) {
+                if !is_json_serializable(field_ty, &generic_params, &ctx.json_types, trait_registry)
+                {
                     let field_ident = match field {
                         VariantFieldInfo::Positional(_) => {
                             format!("{}::{}", variant.name, field_idx)
@@ -11483,21 +11472,30 @@ fn infer_field_access(
             // Check if base is a struct type name with a static trait method.
             // e.g. User.from_json -- User is a struct type, from_json is a FromJson method.
             if field_name == "from_json" {
-                if let Some(_struct_info) = type_registry.lookup_struct(&base_name) {
-                    // Check if this struct has FromJson impl
-                    let struct_ty = Ty::Con(TyCon::new(&base_name));
-                    if trait_registry.has_impl("FromJson", &struct_ty) {
-                        // from_json :: String -> Result<StructName, String>
-                        let result_ty = Ty::result(struct_ty, Ty::string());
-                        return Ok(Ty::fun(vec![Ty::string()], result_ty));
-                    }
-                }
-                // Also check sum types: Shape.from_json
-                if let Some(_sum_info) = type_registry.lookup_sum_type(&base_name) {
-                    let sum_ty = Ty::Con(TyCon::new(&base_name));
-                    if trait_registry.has_impl("FromJson", &sum_ty) {
-                        // from_json :: String -> Result<SumTypeName, String>
-                        let result_ty = Ty::result(sum_ty, Ty::string());
+                // from_json :: String -> Result<T, String>, where a generic
+                // T is instantiated afresh (`Box.from_json` gives `Box<_>`).
+                let params = type_registry
+                    .lookup_struct(&base_name)
+                    .map(|info| info.generic_params.len())
+                    .or_else(|| {
+                        type_registry
+                            .lookup_sum_type(&base_name)
+                            .map(|info| info.generic_params.len())
+                    });
+                let con = Ty::Con(TyCon::new(&base_name));
+                if let Some(params) = params {
+                    let decoded = if params == 0 {
+                        con.clone()
+                    } else {
+                        Ty::App(
+                            Box::new(con.clone()),
+                            (0..params).map(|_| ctx.fresh_var()).collect(),
+                        )
+                    };
+                    if trait_registry.has_impl("FromJson", &con)
+                        || trait_registry.has_impl("FromJson", &decoded)
+                    {
+                        let result_ty = Ty::result(decoded, Ty::string());
                         return Ok(Ty::fun(vec![Ty::string()], result_ty));
                     }
                 }

@@ -2394,3 +2394,82 @@ end
 "##;
     assert_eq!(run(source), "true false Greater true\ntrue true\n");
 }
+
+#[test]
+fn derived_json_handles_every_serializable_field_type() {
+    let source = r##"
+struct A do
+  s :: Option<String>
+  i :: Option<Int>
+  f :: Option<Float>
+end deriving(Json)
+
+struct Outer do
+  inner :: Inner
+  kids :: List<Node>
+end deriving(Json)
+
+struct Inner do
+  n :: List<List<Int>>
+  o :: Option<List<Int>>
+  m :: Map<String, List<Int>>
+  p :: (Int, String)
+end deriving(Json)
+
+struct Node do
+  kids :: List<Node>
+end deriving(Json)
+
+type T do
+  V(xs :: List<Int>)
+  W(m :: Map<String, Int>)
+end deriving(Json)
+
+struct Box<Item> do
+  value :: Item
+end deriving(Json)
+
+fn show(r :: Result<A, String>) -> String do
+  case r do
+    Ok(a) -> Json.encode(a)
+    Err(e) -> "err #{e}"
+  end
+end
+
+fn main() do
+  println(show(A.from_json("{\"s\":\"x\",\"i\":7,\"f\":1.5}")))
+  println(show(A.from_json("{\"s\":null,\"i\":null,\"f\":null}")))
+  println(show(A.from_json("{\"s\":null,\"i\":1.9,\"f\":null}")))
+  let inner = Inner { n: [[1, 2], []], o: Some([3]), m: %{"a" => [1]}, p: (1, "z") }
+  let enc = Json.encode(Outer { inner: inner, kids: [Node { kids: [] }] })
+  println(enc)
+  case Outer.from_json(enc) do
+    Ok(o) -> println("#{Json.encode(o) == enc} #{Map.get(o.inner.m, "a")}")
+    Err(e) -> println("err #{e}")
+  end
+  println("#{Json.encode(W(%{"a" => 1}))} #{Json.encode(V([10, 20]))}")
+  case T.from_json("{\"tag\":\"V\",\"fields\":[[1,2]]}") do
+    Ok(v) -> println(Json.encode(v))
+    Err(e) -> println("err #{e}")
+  end
+  let r :: Result<Box<Int>, String> = Box.from_json("{\"value\":2}")
+  case r do
+    Ok(b) -> println("#{b.value + 1}")
+    Err(e) -> println("err #{e}")
+  end
+  println("#{Json.encode(Box { value: ["x"] })} #{Json.encode(Box { value: %{"a" => 1} })}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "{\"f\":1.5,\"i\":7,\"s\":\"x\"}\n\
+         {\"f\":null,\"i\":null,\"s\":null}\n\
+         err expected Int\n\
+         {\"inner\":{\"m\":{\"a\":[1]},\"n\":[[1,2],[]],\"o\":[3],\"p\":[1,\"z\"]},\"kids\":[{\"kids\":[]}]}\n\
+         true [1]\n\
+         {\"fields\":[{\"a\":1}],\"tag\":\"W\"} {\"fields\":[[10,20]],\"tag\":\"V\"}\n\
+         {\"fields\":[[1,2]],\"tag\":\"V\"}\n\
+         3\n\
+         {\"value\":[\"x\"]} {\"value\":{\"a\":1}}\n"
+    );
+}

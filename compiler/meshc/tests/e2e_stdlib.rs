@@ -526,23 +526,22 @@ fn e2e_deriving_json_nested() {
     assert_eq!(lines[3], "10001");
 }
 
-// NOTE: Option<T> fields in structs have a known codegen bug where pattern
-// matching on the Option variant from a struct field causes a segfault.
-// This is a pre-existing issue (not JSON-specific). The encode test is
-// restricted to verify None encoding (which works) while Some encoding
-// has incorrect field extraction due to the same underlying bug.
-// Full Option round-trip tests are deferred until the Option-in-struct
-// codegen is fixed.
 #[test]
-#[ignore] // blocked on Option-in-struct codegen bug
 fn e2e_deriving_json_option() {
     let source = read_fixture("deriving_json_option.mpl");
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.len(), 2, "expected 2 lines, got: {}", output);
+    assert_eq!(lines.len(), 5, "expected 5 lines, got: {}", output);
+    let json1: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON line 1");
+    assert_eq!(json1["bio"], "Hello!");
+    assert_eq!(json1["age"], 30);
     let json2: serde_json::Value = serde_json::from_str(lines[1]).expect("valid JSON line 2");
     assert_eq!(json2["name"], "Bob");
     assert!(json2["bio"].is_null());
+    // Decoding round-trips both, and a wrong payload type is an error.
+    assert_eq!(lines[2], lines[0]);
+    assert_eq!(lines[3], lines[1]);
+    assert_eq!(lines[4], "err expected String");
 }
 
 #[test]

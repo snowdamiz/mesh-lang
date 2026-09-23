@@ -1792,7 +1792,7 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!(
-                    "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, Option<T>, List<T>, Map<String, V>)",
+                    "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)",
                     field_type
                 ))
                 .finish()
