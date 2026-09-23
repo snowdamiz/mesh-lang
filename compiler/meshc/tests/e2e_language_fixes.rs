@@ -3414,3 +3414,101 @@ end
 "##;
     assert_eq!(run(source), "1 a\n3 0\n");
 }
+
+#[test]
+fn unknown_type_names_are_rejected_where_they_are_written() {
+    let source = r##"
+fn f(x :: Strng) -> Int do
+  1
+end
+
+struct S do
+  field :: Nonexistent
+end
+
+type Shape do
+  Circle(Flot)
+  Box(w :: Int, h :: Integer)
+end
+
+fn g(xs :: List<Foo>, cb :: Fun(Intt) -> Bool) -> (Int, Strin)? do
+  None
+end
+
+fn main() do
+  let c = fn (q :: Quux) -> 1 end
+  println("x")
+end
+"##;
+    let diags = json_diagnostics(source);
+    let unknown: Vec<(&str, usize)> = diags
+        .iter()
+        .filter(|d| d["code"] == "E0069")
+        .map(|d| {
+            (
+                d["message"].as_str().unwrap(),
+                d["spans"][0]["start"].as_u64().unwrap() as usize,
+            )
+        })
+        .collect();
+    let at = |name: &str| source.find(name).unwrap();
+    assert_eq!(
+        unknown,
+        [
+            ("unknown type `Strng`", at("Strng")),
+            ("unknown type `Nonexistent`", at("Nonexistent")),
+            ("unknown type `Flot`", at("Flot")),
+            ("unknown type `Integer`", at("Integer")),
+            ("unknown type `Foo`", at("Foo")),
+            ("unknown type `Intt`", at("Intt")),
+            ("unknown type `Strin`", at("Strin")),
+            ("unknown type `Quux`", at("Quux")),
+        ]
+    );
+}
+
+#[test]
+fn known_type_names_in_annotations_are_accepted() {
+    let source = r##"
+type Pair<A, B> = (A, B)
+type Id = Int
+
+struct Box<T> do
+  value :: T
+  items :: List<T>
+end
+
+type Tree<T> do
+  Leaf
+  Node(Tree<T>, T, Tree<T>)
+end
+
+interface Container<T> do
+  type Item
+  fn first(self) -> Self.Item
+  fn wrap(self, x :: T) -> Self
+end
+
+fn swap<A, B>(p :: Pair<A, B>) -> Pair<B, A> do
+  let (a, b) = p
+  (b, a)
+end
+
+fn apply(f :: Fun(Int) -> Int, x :: Id) -> Int do
+  f(x)
+end
+
+fn main() do
+  let b :: Box<Int> = Box { value: 1, items: [2] }
+  let t :: Tree<Int> = Leaf
+  let m :: Map<String, Set<Int>> = Map.new()
+  let o :: Option<Json>? = None
+  let p :: Pid<Int>? = None
+  let r :: Result<Bytes, CryptoError>? = None
+  println("#{apply(fn (n :: Int) -> n + 1 end, 2)} #{b.value}")
+  let (x, y) = swap((1, "a"))
+  println("#{x} #{y}")
+end
+"##;
+    assert_eq!(run(source), "3 1\na 1\n");
+}

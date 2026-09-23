@@ -401,6 +401,8 @@ pub enum TypeError {
         name: String,
         span: TextRange,
     },
+    /// An annotation names a type that does not exist.
+    UnknownType { name: String, span: TextRange },
     /// A generic function's body fixes one of its type parameters (to a
     /// type, or to another parameter).
     RigidTypeParam {
@@ -944,6 +946,7 @@ impl fmt::Display for TypeError {
             TypeError::DuplicateDefinition { kind, name, .. } => {
                 write!(f, "{kind} `{name}` is defined twice")
             }
+            TypeError::UnknownType { name, .. } => write!(f, "unknown type `{name}`"),
             TypeError::RigidTypeParam { param, found, .. } => {
                 write!(
                     f,

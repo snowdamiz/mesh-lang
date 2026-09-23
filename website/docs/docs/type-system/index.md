@@ -80,6 +80,8 @@ Type annotations are optional in many places, but recommended for:
 - **Complex generic functions** -- helps the compiler and your teammates
 - **Public interfaces** -- documents the contract
 
+An annotation must name a type that exists: a built-in type, one defined or imported in the module, or a type parameter in scope. A misspelled name such as `Strng` is an error (E0069), not a new type.
+
 ## Generics and Trait Bounds
 
 Generic functions and types let you write code that works with any type. Declare type parameters in angle brackets:

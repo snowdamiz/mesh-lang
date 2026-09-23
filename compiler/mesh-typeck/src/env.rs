@@ -71,6 +71,11 @@ impl TypeEnv {
             .any(|scope| scope.contains_key(name))
     }
 
+    /// Every binding in every scope.
+    pub fn schemes(&self) -> impl Iterator<Item = &Scheme> {
+        self.scopes.iter().flat_map(|scope| scope.values())
+    }
+
     /// Number of scopes on the stack.
     pub fn depth(&self) -> usize {
         self.scopes.len()

@@ -125,6 +125,22 @@ impl TraitRegistry {
         Self::default()
     }
 
+    /// Every type the registered impls name: implementing types, trait
+    /// arguments, associated types and method signatures.
+    pub fn impl_types(&self) -> Vec<&Ty> {
+        let mut types = Vec::new();
+        for imp in self.impls.values().flatten() {
+            types.push(&imp.impl_type);
+            types.extend(&imp.trait_type_args);
+            types.extend(imp.associated_types.values());
+            for method in imp.methods.values() {
+                types.extend(&method.return_type);
+                types.extend(method.param_types.iter().flatten());
+            }
+        }
+        types
+    }
+
     /// Record a declared struct or sum type name.
     pub fn register_nominal(&mut self, name: &str) {
         self.nominal.insert(name.to_string());

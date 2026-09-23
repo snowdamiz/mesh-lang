@@ -160,6 +160,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::AmbiguousStaticMethod { .. } => "E0066",
         TypeError::RigidTypeParam { .. } => "E0067",
         TypeError::DuplicateDefinition { .. } => "E0068",
+        TypeError::UnknownType { .. } => "E0069",
     }
 }
 
@@ -551,6 +552,7 @@ pub fn render_json_diagnostic(
                 | TypeError::AmbiguousStaticMethod { span, .. }
                 | TypeError::RigidTypeParam { span, .. }
                 | TypeError::DuplicateDefinition { span, .. }
+                | TypeError::UnknownType { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2194,6 +2196,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!("rename or remove one of the two `{name}`s"))
+                .finish()
+        }
+        TypeError::UnknownType { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("unknown type `{name}`"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("no type has this name")
+                        .with_color(Color::Red),
+                )
+                .with_help("check the spelling, or define or import the type")
                 .finish()
         }
         TypeError::RigidTypeParam { param, found, span } => {

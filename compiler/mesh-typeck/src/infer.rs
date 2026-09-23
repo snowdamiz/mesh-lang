@@ -3957,6 +3957,8 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         ],
     });
 
+    let builtin_types = builtin_type_names(&env, &type_registry, &trait_registry);
+
     // Pre-seed with imported trait defs (XMOD-05: globally visible)
     for trait_def in &import_ctx.all_trait_defs {
         trait_registry.register_trait(trait_def.clone());
@@ -4157,6 +4159,13 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     // Validate that all type aliases reference known types (ALIAS-04).
     validate_type_aliases(&type_registry, &alias_defs_for_validation, &mut ctx.errors);
+    check_annotation_types(
+        &mut ctx,
+        tree.syntax(),
+        &type_registry,
+        &builtin_types,
+        import_ctx,
+    );
 
     // Group consecutive same-name, same-arity FnDef items.
     let grouped = group_multi_clause_fns(items_for_grouping);
@@ -6430,6 +6439,128 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
         || type_registry.resource_types.contains(name)
 }
 
+/// The name of every type constructor in `ty`.
+fn type_constructors(ty: &Ty, out: &mut Vec<String>) {
+    match ty {
+        Ty::Con(tc) => out.push(tc.name.clone()),
+        Ty::App(con, args) => {
+            type_constructors(con, out);
+            args.iter().for_each(|arg| type_constructors(arg, out));
+        }
+        Ty::Fun(params, ret) => {
+            params.iter().for_each(|p| type_constructors(p, out));
+            type_constructors(ret, out);
+        }
+        Ty::Tuple(elems) => elems.iter().for_each(|e| type_constructors(e, out)),
+        _ => {}
+    }
+}
+
+/// Every type the builtins name: their signatures, their impls (the
+/// iterator types), and the fields of the runtime's structs and sum types.
+fn builtin_type_names(
+    env: &TypeEnv,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+) -> FxHashSet<String> {
+    let mut names = Vec::new();
+    for scheme in env.schemes() {
+        type_constructors(&scheme.ty, &mut names);
+    }
+    for ty in trait_registry.impl_types() {
+        type_constructors(ty, &mut names);
+    }
+    for info in type_registry.struct_defs.values() {
+        names.push(info.name.clone());
+        info.fields
+            .iter()
+            .for_each(|(_, ty)| type_constructors(ty, &mut names));
+    }
+    for info in type_registry.sum_type_defs.values() {
+        names.push(info.name.clone());
+        for variant in &info.variants {
+            for field in &variant.fields {
+                match field {
+                    VariantFieldInfo::Positional(ty) | VariantFieldInfo::Named(_, ty) => {
+                        type_constructors(ty, &mut names)
+                    }
+                }
+            }
+        }
+    }
+    names.into_iter().collect()
+}
+
+/// Report each type name an annotation uses that names no type: a
+/// misspelled `Strng` would otherwise become a new, empty type.
+fn check_annotation_types(
+    ctx: &mut InferCtx,
+    root: &mesh_parser::SyntaxNode,
+    type_registry: &TypeRegistry,
+    builtin_types: &FxHashSet<String>,
+    import_ctx: &ImportContext,
+) {
+    let is_known = |name: &str, node: &mesh_parser::SyntaxNode| {
+        if name == "Self" || name.starts_with("Self.") || name == "Fun" {
+            return true;
+        }
+        if builtin_types.contains(name) || is_known_type(name, type_registry) {
+            return true;
+        }
+        if let Some((module, short)) = name.rsplit_once('.') {
+            return import_ctx.module_exports.contains_key(module)
+                && is_known_type(short, type_registry);
+        }
+        // The type parameters of the enclosing items.
+        node.ancestors().any(|item| {
+            item.children()
+                .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+                .flat_map(|list| list.children_with_tokens())
+                .any(|t| {
+                    t.kind() == SyntaxKind::IDENT && t.as_token().is_some_and(|t| t.text() == name)
+                })
+        })
+    };
+    let annotations = root.descendants().filter(|n| {
+        n.kind() == SyntaxKind::TYPE_ANNOTATION
+            && !n
+                .ancestors()
+                .skip(1)
+                .any(|a| a.kind() == SyntaxKind::TYPE_ANNOTATION)
+    });
+    for ann in annotations {
+        // A name is an IDENT, with `.IDENT` segments for a qualified one.
+        let mut names: Vec<(String, TextRange)> = Vec::new();
+        let mut after_dot = false;
+        for token in ann.descendants_with_tokens().filter_map(|e| e.into_token()) {
+            if token
+                .parent_ancestors()
+                .any(|n| n.kind() == SyntaxKind::OWNERSHIP_MODIFIER)
+            {
+                continue;
+            }
+            match token.kind() {
+                SyntaxKind::IDENT if after_dot => {
+                    if let Some((name, range)) = names.last_mut() {
+                        name.push('.');
+                        name.push_str(token.text());
+                        *range = range.cover(token.text_range());
+                    }
+                    after_dot = false;
+                }
+                SyntaxKind::IDENT => names.push((token.text().to_string(), token.text_range())),
+                SyntaxKind::DOT => after_dot = true,
+                _ => after_dot = false,
+            }
+        }
+        for (name, span) in names {
+            if !is_known(&name, &ann) {
+                ctx.errors.push(TypeError::UnknownType { name, span });
+            }
+        }
+    }
+}
+
 /// Validate all registered type aliases have resolvable target types.
 ///
 /// Called after all type pre-registrations are complete (structs, sum types,
@@ -6492,21 +6623,7 @@ fn validate_type_aliases(
 /// definition names (`type A = B` with `type B = A`, or
 /// `type L<T> = List<L<T>>`), so it could never be expanded.
 fn alias_is_cyclic(name: &str, type_registry: &TypeRegistry) -> bool {
-    fn constructors(ty: &Ty, out: &mut Vec<String>) {
-        match ty {
-            Ty::Con(tc) => out.push(tc.name.clone()),
-            Ty::App(con, args) => {
-                constructors(con, out);
-                args.iter().for_each(|arg| constructors(arg, out));
-            }
-            Ty::Fun(params, ret) => {
-                params.iter().for_each(|p| constructors(p, out));
-                constructors(ret, out);
-            }
-            Ty::Tuple(elems) => elems.iter().for_each(|e| constructors(e, out)),
-            _ => {}
-        }
-    }
+    let constructors = type_constructors;
     let mut stack = vec![name.to_string()];
     let mut seen = FxHashSet::default();
     while let Some(current) = stack.pop() {
