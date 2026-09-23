@@ -12,11 +12,6 @@ use crate::error::{ConstraintOrigin, TypeError};
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::{ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata};
 
-/// The inference context -- owns the unification table, level state, and errors.
-///
-/// All type inference happens through this context. It creates fresh type
-/// variables, unifies types, tracks levels for generalization, and collects
-/// errors.
 /// A method call that several impls could answer (`Meters.convert()` with
 /// `Convert<Int>` and `Convert<String>`): its open result type, and the
 /// return types of the impls.
@@ -29,6 +24,21 @@ pub struct ImplChoice {
     pub span: TextRange,
 }
 
+/// A value a function returns before its end: `return value`, or the
+/// early exit of `?`.
+#[derive(Clone, Debug)]
+pub struct EarlyReturn {
+    pub ty: Ty,
+    pub span: TextRange,
+    /// For `?`: the type of its operand.
+    pub try_operand: Option<Ty>,
+}
+
+/// The inference context -- owns the unification table, level state, and errors.
+///
+/// All type inference happens through this context. It creates fresh type
+/// variables, unifies types, tracks levels for generalization, and collects
+/// errors.
 pub struct InferCtx {
     /// The union-find unification table (ena).
     table: InPlaceUnificationTable<TyVar>,
@@ -90,9 +100,9 @@ pub struct InferCtx {
     /// Pushed when entering a function/closure body, popped when leaving.
     /// `None` means the return type is not yet known (will be inferred).
     pub fn_return_type_stack: Vec<Option<Ty>>,
-    /// Per entry of `fn_return_type_stack`: the types of `return` values in
-    /// a function whose return type is not declared.
-    pub fn_returned_types: Vec<Vec<Ty>>,
+    /// Per entry of `fn_return_type_stack`: the early returns (`return`,
+    /// `?`) in a function whose return type is not declared.
+    pub fn_returned_types: Vec<Vec<EarlyReturn>>,
     /// The `where` bounds of the function whose body is being checked: each
     /// type parameter's variable with a trait it must implement.
     pub where_bounds: Vec<(Ty, String)>,
@@ -217,18 +227,17 @@ impl InferCtx {
     }
 
     /// Pop a function return type from the stack (call when leaving a function
-    /// body). Returns the types of the `return` values seen while the return
-    /// type was not declared, for the caller to join with the body's type.
-    pub fn pop_fn_return_type(&mut self) -> Vec<Ty> {
+    /// body). Returns the early returns seen while the return type was not
+    /// declared, for the caller to join with the body's type.
+    pub fn pop_fn_return_type(&mut self) -> Vec<EarlyReturn> {
         self.fn_return_type_stack.pop();
         self.fn_returned_types.pop().unwrap_or_default()
     }
 
-    /// Record the type of a `return` value in a function without a declared
-    /// return type.
-    pub fn record_return(&mut self, ty: Ty) {
+    /// Record an early return in a function without a declared return type.
+    pub fn record_return(&mut self, early: EarlyReturn) {
         if let Some(returns) = self.fn_returned_types.last_mut() {
-            returns.push(ty);
+            returns.push(early);
         }
     }
 

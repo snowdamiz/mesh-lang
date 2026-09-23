@@ -38,7 +38,7 @@ use crate::traits::{
     TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
-use crate::unify::{ImplChoice, InferCtx};
+use crate::unify::{EarlyReturn, ImplChoice, InferCtx};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
@@ -5273,8 +5273,8 @@ fn infer_multi_clause_fn(
     }
 
     ctx.where_bounds = saved_bounds;
-    for returned in ctx.pop_fn_return_type() {
-        join_branch_ty(ctx, &mut result_ty, returned)?;
+    for early in ctx.pop_fn_return_type() {
+        join_early_return(ctx, &mut result_ty, early)?;
     }
 
     // ── Step 4: Exhaustiveness and redundancy checking ─────────────────
@@ -7076,14 +7076,16 @@ fn infer_interface_def(
             trait_registry,
             fn_constraints,
         );
-        ctx.pop_fn_return_type();
+        let returns = ctx.pop_fn_return_type();
         env.pop_scope();
         let ret = match (body_ty, declared_ret) {
             (Ok(body_ty), Some(declared)) => {
                 let _ = ctx.unify(declared.clone(), body_ty, body_origin(Some(body.clone())));
                 declared
             }
-            (Ok(body_ty), None) => body_ty,
+            (Ok(body_ty), None) => {
+                join_returns(ctx, body_ty, returns).unwrap_or_else(|_| Ty::Tuple(vec![]))
+            }
             (Err(_), Some(declared)) => declared,
             (Err(_), None) => Ty::Tuple(vec![]),
         };
@@ -7820,7 +7822,13 @@ fn infer_fn_def(
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     let saved_default_calls = std::mem::take(&mut ctx.default_calls);
     let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
-    ctx.push_fn_return_type(return_type_annotation.clone());
+    // `main` without a declared return type returns nothing: a `?` in it
+    // has nowhere to send its error.
+    let returns_to = match &return_type_annotation {
+        None if fn_name == "main" => Some(Ty::Tuple(vec![])),
+        declared => declared.clone(),
+    };
+    ctx.push_fn_return_type(returns_to);
     let body_ty = if is_native {
         return_type_annotation
             .clone()
@@ -11805,19 +11813,64 @@ fn infer_return(
             };
             let _ = ctx.unify(declared, value_ty, origin);
         }
-        None => ctx.record_return(value_ty),
+        None => ctx.record_return(EarlyReturn {
+            ty: value_ty,
+            span: ret.syntax().text_range(),
+            try_operand: None,
+        }),
     }
     Ok(Ty::Never)
 }
 
 /// The type a function body produces, given the types of its `return`
 /// values when no return type was declared: all must agree.
-fn join_returns(ctx: &mut InferCtx, body_ty: Ty, returns: Vec<Ty>) -> Result<Ty, TypeError> {
+fn join_returns(
+    ctx: &mut InferCtx,
+    body_ty: Ty,
+    returns: Vec<EarlyReturn>,
+) -> Result<Ty, TypeError> {
     let mut joined = Some(body_ty);
-    for returned in returns {
-        join_branch_ty(ctx, &mut joined, returned)?;
+    for early in returns {
+        join_early_return(ctx, &mut joined, early)?;
     }
     Ok(joined.unwrap())
+}
+
+/// Join an early return with the other results of its function, reporting
+/// a conflict where the return is.
+fn join_early_return(
+    ctx: &mut InferCtx,
+    joined: &mut Option<Ty>,
+    early: EarlyReturn,
+) -> Result<(), TypeError> {
+    let Some(prev) = joined.clone() else {
+        *joined = Some(early.ty);
+        return Ok(());
+    };
+    let errors = ctx.errors.len();
+    let origin = ConstraintOrigin::Expr { span: early.span };
+    match (
+        ctx.unify(prev.clone(), early.ty.clone(), origin),
+        early.try_operand,
+    ) {
+        (Ok(()), _) => {
+            if matches!(ctx.resolve(prev), Ty::Never) {
+                *joined = Some(early.ty);
+            }
+            Ok(())
+        }
+        (Err(_), Some(operand_ty)) => {
+            ctx.errors.truncate(errors);
+            let err = TypeError::TryIncompatibleReturn {
+                operand_ty,
+                fn_return_ty: ctx.resolve(prev),
+                span: early.span,
+            };
+            ctx.errors.push(err.clone());
+            Err(err)
+        }
+        (Err(err), None) => Err(err),
+    }
 }
 
 // ── Method Resolution (30-01) ──────────────────────────────────────────
@@ -14424,9 +14477,16 @@ fn infer_try_expr(
                         });
                     }
                 }
+            } else {
+                // No declared return type: the early `Err` is one of the
+                // function's returns, joined with its body's type.
+                let fresh_ok = ctx.fresh_var();
+                ctx.record_return(EarlyReturn {
+                    ty: Ty::result(fresh_ok, err_ty.clone()),
+                    span,
+                    try_operand: Some(resolved.clone()),
+                });
             }
-            // else: no fn return type on stack (top-level expression) -- allow for now,
-            // future plan can enforce ? only inside functions.
 
             Ok(ok_ty.clone())
         }
@@ -14454,6 +14514,15 @@ fn infer_try_expr(
                         });
                     }
                 }
+            } else {
+                // No declared return type: the early `None` is one of the
+                // function's returns.
+                let fresh_inner = ctx.fresh_var();
+                ctx.record_return(EarlyReturn {
+                    ty: Ty::option(fresh_inner),
+                    span,
+                    try_operand: Some(resolved.clone()),
+                });
             }
 
             Ok(inner_ty.clone())

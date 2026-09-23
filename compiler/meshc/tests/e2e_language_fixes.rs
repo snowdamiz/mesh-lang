@@ -3157,3 +3157,70 @@ fn an_operator_on_a_type_without_it_names_the_left_operand() {
         build_error("fn main() do\n  let v :: Int? = Some(3)\n  println(\"#{v + 1}\")\nend\n");
     assert!(err.contains("Option<Int> does not implement Add"), "{err}");
 }
+
+#[test]
+fn question_mark_needs_a_function_that_can_return_its_error() {
+    // `main` returns `()`: an `Err` cannot leave it (this failed the LLVM
+    // verifier before).
+    let helper = "fn helper(n :: Int) -> Int!String do\n  if n > 0 do\n    Ok(n)\n  else\n    Err(\"neg\")\n  end\nend\n\n";
+    let err = build_error(&format!(
+        "{helper}fn main() do\n  let v = helper(1)?\n  println(\"#{{v}}\")\nend\n"
+    ));
+    assert!(err.contains("E0036"), "{err}");
+    // A function without a declared return type returns the `Err` early,
+    // so its other results must be Results too.
+    let source = format!(
+        "{helper}fn go(n :: Int) do\n  let v = helper(n)?\n  v + 1\nend\n\nfn main() do\n  println(\"#{{go(1)}}\")\nend\n"
+    );
+    let diags = json_diagnostics(&source);
+    let try_err = diags.iter().find(|d| d["code"] == "E0036").expect("E0036");
+    assert_eq!(
+        try_err["spans"][0]["start"].as_u64().unwrap() as usize,
+        source.find("helper(n)?").unwrap()
+    );
+}
+
+#[test]
+fn question_mark_in_unannotated_functions_and_closures_returns_early() {
+    let source = r##"
+fn helper(n :: Int) -> Int!String do
+  if n > 0 do
+    Ok(n)
+  else
+    Err("neg")
+  end
+end
+
+fn double(n :: Int) do
+  let v = helper(n)?
+  Ok(v * 2)
+end
+
+fn main() do
+  let triple = fn (n :: Int) do
+    let v = helper(n)?
+    Ok(v * 3)
+  end
+  case double(3) do
+    Ok(v) -> println("ok #{v}")
+    Err(e) -> println("err #{e}")
+  end
+  case triple(-1) do
+    Ok(v) -> println("ok #{v}")
+    Err(e) -> println("err #{e}")
+  end
+end
+"##;
+    assert_eq!(run(source), "ok 6\nerr neg\n");
+}
+
+#[test]
+fn a_conflicting_early_return_is_reported_where_it_is() {
+    let source = "fn pick(n :: Int) do\n  if n > 0 do\n    return \"pos\"\n  end\n  n\nend\n\nfn main() do\n  println(\"#{pick(1)}\")\nend\n";
+    let diags = json_diagnostics(source);
+    let mismatch = diags.iter().find(|d| d["code"] == "E0001").expect("E0001");
+    assert_eq!(
+        mismatch["spans"][0]["start"].as_u64().unwrap() as usize,
+        source.find("return").unwrap()
+    );
+}

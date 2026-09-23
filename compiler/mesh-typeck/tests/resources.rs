@@ -891,7 +891,7 @@ fn storage_wrapping_borrows_capabilities_and_restores_typed_resources() {
            let restored_local = StorageKey.unseal_bytes(local_blob, wrapping_key, context)?\n\
            Secret.destroy(restored_secret)\n\
            Secret.destroy(secret)\n\
-           (restored_private, private_key, restored_signing, signing_key, restored_skipped, skipped, restored_local, wrapping_key)\n\
+           Ok((restored_private, private_key, restored_signing, signing_key, restored_skipped, skipped, restored_local, wrapping_key))\n\
          end",
     );
 

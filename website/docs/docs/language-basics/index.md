@@ -909,6 +909,8 @@ end
 
 The `?` after `step1(x)` means: if `step1` returns `Ok(value)`, bind `value` to `a` and continue; if it returns `Err(e)`, immediately return `Err(e)` from the current function. This keeps error handling concise without deeply nested pattern matches.
 
+The enclosing function must be able to return that early value: it returns a `Result` (for an `Option` operand, an `Option`). `main` returns nothing, so `?` cannot be used there; handle the `Result` with `case` instead. A function or closure without a declared return type returns a `Result` when it uses `?` on one, so its other results must be `Ok(...)` or `Err(...)` too.
+
 When the enclosing `Result` uses a different error type, Mesh looks for a matching `From<SourceError>` implementation and converts the error during propagation. See [From/Into Conversion](/docs/type-system/#from-into-conversion).
 
 For `Option`, the enclosing function must return `Option`:
