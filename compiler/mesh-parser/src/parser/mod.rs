@@ -628,7 +628,11 @@ impl<'src> Parser<'src> {
             i += 1;
         }
 
-        (builder.finish(), self.errors)
+        // Recovery after an error can trip over the same token again; the
+        // first error at a position is the one that says what is wrong.
+        let mut errors = self.errors;
+        errors.dedup_by_key(|error| error.span.start);
+        (builder.finish(), errors)
     }
 }
 

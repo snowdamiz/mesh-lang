@@ -122,7 +122,8 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
     if p.eat(SyntaxKind::L_PAREN) {
         if p.at(SyntaxKind::INT_LITERAL) {
             p.advance();
-            if !p.at(SyntaxKind::R_PAREN) {
+            // A second argument; anything else is a missing `)`, below.
+            if p.at(SyntaxKind::COMMA) || p.at(SyntaxKind::INT_LITERAL) {
                 p.error("expected exactly one replication count in `@cluster(N)`");
                 recover_cluster_decorator_args(p);
                 valid = false;

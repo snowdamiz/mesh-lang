@@ -3991,3 +3991,14 @@ fn parse_errors_name_tokens_as_written() {
     assert!(err.contains("expected `)`"), "{err}");
     assert!(!err.contains("R_PAREN"), "{err}");
 }
+
+#[test]
+fn a_parse_error_is_not_repeated_at_the_same_place() {
+    // An unclosed interpolation gave four errors on one column.
+    let err = build_error("fn main() do\n  let x = 1\n  println(\"a#{x\")\nend\n");
+    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert!(
+        err.contains("expected `}` to close the interpolation"),
+        "{err}"
+    );
+}

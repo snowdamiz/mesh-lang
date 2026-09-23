@@ -2535,19 +2535,14 @@ fn clustered_work_does_not_expose_generic_accessor() {
 
 #[test]
 fn parser_cluster_decorator_rejects_missing_count_and_close() {
+    // Both are missing at the end of the file; the first error there is
+    // the one reported.
     let p = parse("@cluster(");
     assert!(!p.ok(), "unterminated decorator should fail closed");
     assert!(
         p.errors().iter().any(|err| err
             .message
             .contains("expected integer replication count inside `@cluster(...)`")),
-        "unexpected errors: {:?}",
-        p.errors()
-    );
-    assert!(
-        p.errors().iter().any(|err| err
-            .message
-            .contains("expected `)` to close `@cluster(...)`")),
         "unexpected errors: {:?}",
         p.errors()
     );
