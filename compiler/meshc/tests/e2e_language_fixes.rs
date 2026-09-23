@@ -3691,3 +3691,29 @@ end
         "{output}"
     );
 }
+
+#[test]
+fn a_let_naming_a_generic_function_is_generic() {
+    // `let id = ident` used at two types compiled one copy of `ident` for
+    // both, and the LLVM verifier rejected the call.
+    let source = r##"
+fn ident(x) do
+  x
+end
+
+fn pair(a, b) do
+  (a, b)
+end
+
+fn main() do
+  let id = ident
+  let again = id
+  println("#{id(1)} #{id("two")} #{again(3.5)}")
+  let p = pair
+  let (a, b) = p(1, "x")
+  let (c, d) = p("y", 2)
+  println("#{a} #{b} #{c} #{d}")
+end
+"##;
+    assert_eq!(run(source), "1 two 3.5\n1 x y 2\n");
+}

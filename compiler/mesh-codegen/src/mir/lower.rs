@@ -1876,12 +1876,48 @@ impl<'a> Lowerer<'a> {
                                     map.entry(name.to_string()).or_default().push(ty.clone());
                                 }
                             }
+                            // `let g = f`: `g`'s uses are uses of `f`.
+                            let uses = self.alias_use_types(&name_ref);
+                            map.entry(name.to_string()).or_default().extend(uses);
                         }
                     }
                 }
             }
         }
         map
+    }
+
+    /// When `name_ref` is the whole initializer of `let g = name_ref`, the
+    /// types `g` is used at after it (through further aliases too).
+    fn alias_use_types(&self, name_ref: &NameRef) -> Vec<Ty> {
+        let Some(alias) = name_ref.syntax().parent().and_then(LetBinding::cast) else {
+            return Vec::new();
+        };
+        let is_initializer = alias.initializer().map(|init| init.syntax().text_range())
+            == Some(name_ref.syntax().text_range());
+        let (Some(alias_name), Some(scope)) = (
+            alias.name().and_then(|name| name.text()),
+            alias.syntax().parent(),
+        ) else {
+            return Vec::new();
+        };
+        if !is_initializer {
+            return Vec::new();
+        }
+        let after = alias.syntax().text_range().end();
+        let mut types = Vec::new();
+        for use_ref in scope.descendants().filter_map(NameRef::cast) {
+            if use_ref.text().as_deref() != Some(alias_name.as_str())
+                || use_ref.syntax().text_range().start() < after
+            {
+                continue;
+            }
+            if let Some(ty @ Ty::Fun(..)) = self.types.get(&use_ref.syntax().text_range()) {
+                types.push(ty.clone());
+            }
+            types.extend(self.alias_use_types(&use_ref));
+        }
+        types
     }
 
     /// Try to recover a concrete MIR type for the parameter at position `param_idx`
@@ -8078,12 +8114,18 @@ impl<'a> Lowerer<'a> {
                             .as_ref()
                             .and_then(|init| self.get_ty(init.syntax().text_range()))
                             .cloned();
-                        // A polymorphic closure gets one compiled copy per
-                        // concrete type it is used at, bound here so its
-                        // captures are the values in scope at the `let`.
+                        // A polymorphic closure, or a generic function named
+                        // by the `let` (`let id = identity`), gets one
+                        // compiled copy per concrete type it is used at, bound
+                        // here so its captures are the values in scope at the
+                        // `let`.
                         let mut specialized_everywhere = false;
-                        if let (Some(Expr::ClosureExpr(closure)), Some(generic), Some(name)) = (
-                            initializer.as_ref(),
+                        let poly_value = match initializer.as_ref() {
+                            Some(expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_))) => Some(expr),
+                            _ => None,
+                        };
+                        if let (Some(poly_value), Some(generic), Some(name)) = (
+                            poly_value,
                             initializer_ty.as_ref(),
                             let_.name().and_then(|name| name.text()),
                         ) {
@@ -8092,8 +8134,8 @@ impl<'a> Lowerer<'a> {
                                     self.poly_closure_uses(block, let_, &name);
                                 specialized_everywhere = all_concrete;
                                 for (use_ty, spec_name) in uses {
-                                    let value =
-                                        self.lower_closure_specialized(closure, generic, &use_ty);
+                                    let value = self
+                                        .lower_closure_specialized(poly_value, generic, &use_ty);
                                     let ty = value.ty().clone();
                                     self.insert_var(spec_name.clone(), ty.clone());
                                     self.poly_closure_specs
@@ -8604,6 +8646,32 @@ impl<'a> Lowerer<'a> {
             {
                 continue;
             }
+            // `let g = name`: the uses of `g` are uses of this value.
+            let alias = name_ref
+                .syntax()
+                .parent()
+                .and_then(LetBinding::cast)
+                .filter(|alias| {
+                    alias.initializer().map(|init| init.syntax().text_range())
+                        == Some(name_ref.syntax().text_range())
+                });
+            if let Some((alias, alias_name)) =
+                alias.and_then(|alias| Some((alias.clone(), alias.name()?.text()?)))
+            {
+                let (alias_uses, alias_concrete) =
+                    self.poly_closure_uses(block, &alias, &alias_name);
+                all_concrete &= alias_concrete;
+                for (use_ty, _) in alias_uses {
+                    if !uses.iter().any(|(ty, _)| *ty == use_ty) {
+                        let spec_name = format!(
+                            "{name}__spec_{}",
+                            Self::ty_specialization_component(&use_ty)
+                        );
+                        uses.push((use_ty, spec_name));
+                    }
+                }
+                continue;
+            }
             let Some(use_ty) = self.get_ty(name_ref.syntax().text_range()) else {
                 all_concrete = false;
                 continue;
@@ -8621,11 +8689,12 @@ impl<'a> Lowerer<'a> {
         (uses, all_concrete)
     }
 
-    /// Lower `closure` with the type variables of its `generic` type bound
-    /// as in `concrete`, the type it is used at.
+    /// Lower `closure` (a closure, or a name of a generic function) with the
+    /// type variables of its `generic` type bound as in `concrete`, the type
+    /// it is used at.
     fn lower_closure_specialized(
         &mut self,
-        closure: &ClosureExpr,
+        closure: &Expr,
         generic: &Ty,
         concrete: &Ty,
     ) -> MirExpr {
@@ -8644,7 +8713,10 @@ impl<'a> Lowerer<'a> {
             .collect();
         let saved = self.spec_types.clone();
         self.spec_types.extend(overlay);
-        let value = self.lower_closure_expr(closure);
+        let value = match closure {
+            Expr::ClosureExpr(closure) => self.lower_closure_expr(closure),
+            other => self.lower_expr(other),
+        };
         self.spec_types = saved;
         value
     }
