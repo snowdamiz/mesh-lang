@@ -43,9 +43,34 @@ pub extern "C-unwind" fn mesh_panic(
 /// A Mesh panic there ends the process with status 101 once the panic hook
 /// has printed it. Without a handler to catch it the unwinder cannot start,
 /// and the process aborted with "failed to initiate panic" instead.
+///
+/// Only executables come through here, so this is also where SIGPIPE is
+/// ignored: a library must not change its host's signal handling.
 #[no_mangle]
 pub extern "C" fn mesh_run_main(entry: extern "C-unwind" fn()) {
+    ignore_sigpipe();
     if std::panic::catch_unwind(|| entry()).is_err() {
         std::process::exit(101);
     }
+}
+
+/// Ignore SIGPIPE, as Rust programs do: a write to a peer that hung up then
+/// fails with EPIPE instead of killing the process. A Mesh executable's `main`
+/// is not Rust's, so the runtime has to do it; an HTTP server died with the
+/// first client that closed its connection early.
+fn ignore_sigpipe() {
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+    }
+}
+
+/// End the process as an unhandled SIGPIPE would, once stdout is gone.
+pub(crate) fn die_of_sigpipe() -> ! {
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        libc::raise(libc::SIGPIPE);
+    }
+    std::process::exit(141)
 }

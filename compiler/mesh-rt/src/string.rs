@@ -152,20 +152,29 @@ pub extern "C" fn mesh_string_to_string(val: u64) -> *mut MeshString {
 /// Print a Mesh string to stdout (no trailing newline).
 #[no_mangle]
 pub extern "C" fn mesh_print(s: *const MeshString) {
-    unsafe {
-        let text = (*s).as_str();
-        print!("{}", text);
-        let _ = std::io::stdout().flush();
-    }
+    unsafe { write_stdout((*s).as_str(), "") }
 }
 
 /// Print a Mesh string to stdout with a trailing newline.
 #[no_mangle]
 pub extern "C" fn mesh_println(s: *const MeshString) {
-    unsafe {
-        let text = (*s).as_str();
-        println!("{}", text);
-        let _ = std::io::stdout().flush();
+    unsafe { write_stdout((*s).as_str(), "\n") }
+}
+
+/// Write to stdout and flush. The runtime ignores SIGPIPE (a server must
+/// outlive a client that hung up), so a closed stdout shows up here as an
+/// error: the program then ends as SIGPIPE would have ended it (`prog | head`
+/// stays quiet). `print!` would panic, and these functions cannot unwind.
+fn write_stdout(text: &str, end: &str) {
+    let mut out = std::io::stdout().lock();
+    let written = out
+        .write_all(text.as_bytes())
+        .and_then(|()| out.write_all(end.as_bytes()))
+        .and_then(|()| out.flush());
+    if let Err(error) = written {
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            crate::panic::die_of_sigpipe();
+        }
     }
 }
 

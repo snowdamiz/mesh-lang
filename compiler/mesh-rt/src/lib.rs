@@ -20,6 +20,26 @@
 //! function signatures must remain stable across Mesh compiler versions
 //! (or at least across a single phase).
 
+/// `eprintln!` for the runtime: a failed write to stderr is ignored. Stderr
+/// may be a pipe whose reader has gone, and `std`'s `eprintln!` panics then,
+/// which aborts inside a runtime function that cannot unwind. Defined before
+/// the modules, it shadows `std`'s macro throughout the crate.
+macro_rules! eprintln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), $($arg)*);
+    }};
+}
+
+/// `eprint!` that ignores a failed write, like the runtime's `eprintln!`.
+#[allow(unused_macros)]
+macro_rules! eprint {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = write!(std::io::stderr(), $($arg)*);
+    }};
+}
+
 pub mod actor;
 pub mod bytes;
 pub mod channel;

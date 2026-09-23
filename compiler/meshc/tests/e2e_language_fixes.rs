@@ -1911,3 +1911,27 @@ end
 "##;
     assert_eq!(run(source), "0 0 20000\n");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_closed_stdout_ends_the_program_quietly() {
+    // The runtime ignores SIGPIPE so a server outlives a client that hung up
+    // (e2e_http_crash_isolation covers a closed stderr); `println` to a
+    // closed stdout still ends the program the way SIGPIPE would.
+    let built = build(
+        "fn main() do\n  for i in 0..100000 do\n    println(\"line #{i}\")\n  end\nend\n",
+        false,
+    );
+    assert!(built.ok, "{}", built.stderr);
+    let mut child = Command::new(built.dir.path().join("project/project"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("run binary");
+    let mut first = [0u8; 6];
+    std::io::Read::read_exact(child.stdout.as_mut().unwrap(), &mut first).unwrap();
+    drop(child.stdout.take());
+    let status = child.wait().unwrap();
+    // It ends quietly, as SIGPIPE ends a C program (`prog | head`).
+    use std::os::unix::process::ExitStatusExt;
+    assert_eq!(status.signal(), Some(13), "{status:?}");
+}
