@@ -499,12 +499,20 @@ mod tests {
     }
 
     /// Send `data` from one heap to another and return the receiver's bytes.
-    fn transfer(sender: &ActorHeap, data: &[u8], shape: &[u32]) -> (ActorHeap, Vec<u8>, Captured) {
+    ///
+    /// The receiver is leaked: the bytes point into it, and a caller that
+    /// ignored it with `_` would otherwise read the copies after their pages
+    /// were freed.
+    fn transfer(
+        sender: &ActorHeap,
+        data: &[u8],
+        shape: &[u32],
+    ) -> (&'static ActorHeap, Vec<u8>, Captured) {
         assert_eq!(shape[0] as usize, shape.len(), "table length word");
         let captured = unsafe { capture(sender, data, 0, shape.as_ptr()) };
-        let mut receiver = ActorHeap::new();
+        let receiver = Box::leak(Box::new(ActorHeap::new()));
         let mut received = data.to_vec();
-        unsafe { captured.materialize(&mut receiver, received.as_mut_ptr()) };
+        unsafe { captured.materialize(receiver, received.as_mut_ptr()) };
         (receiver, received, captured)
     }
 
