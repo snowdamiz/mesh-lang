@@ -395,6 +395,13 @@ pub enum TypeError {
         found: Option<Ty>,
         span: TextRange,
     },
+    /// A generic function's body fixes one of its type parameters (to a
+    /// type, or to another parameter).
+    RigidTypeParam {
+        param: String,
+        found: Ty,
+        span: TextRange,
+    },
     /// A static interface method (no `self`) called bare, which several
     /// types provide.
     AmbiguousStaticMethod {
@@ -926,6 +933,12 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "cannot tell which impl's `{method}` to call on `{receiver}`"
+                )
+            }
+            TypeError::RigidTypeParam { param, found, .. } => {
+                write!(
+                    f,
+                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
                 )
             }
             TypeError::AmbiguousStaticMethod { method, types, .. } => {

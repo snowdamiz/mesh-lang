@@ -158,6 +158,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::AmbiguousDefault { .. } => "E0064",
         TypeError::AmbiguousImplMethod { .. } => "E0065",
         TypeError::AmbiguousStaticMethod { .. } => "E0066",
+        TypeError::RigidTypeParam { .. } => "E0067",
     }
 }
 
@@ -547,6 +548,7 @@ pub fn render_json_diagnostic(
                 | TypeError::AmbiguousDefault { span }
                 | TypeError::AmbiguousImplMethod { span, .. }
                 | TypeError::AmbiguousStaticMethod { span, .. }
+                | TypeError::RigidTypeParam { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2176,6 +2178,24 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give the result a type: `let x :: Int = value.convert()`")
+                .finish()
+        }
+        TypeError::RigidTypeParam { param, found, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!(
+                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
+                ))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("`{param}` is declared here"))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "a generic function must work for every `{param}`: use `{found}` in its signature instead, or keep `{param}` values as they are"
+                ))
                 .finish()
         }
         TypeError::AmbiguousStaticMethod {

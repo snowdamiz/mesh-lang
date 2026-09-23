@@ -106,6 +106,9 @@ pub struct InferCtx {
     /// The `where` bounds of the function whose body is being checked: each
     /// type parameter's variable with a trait it must implement.
     pub where_bounds: Vec<(Ty, String)>,
+    /// The declared type parameters of the function whose body is being
+    /// checked: the variable standing for each, and its name.
+    pub rigid_params: Vec<(Ty, String)>,
     /// Associated types used through a type parameter (`c.first()` with
     /// `first(self) -> Self.Item` under `where T: Container`): the variable
     /// standing for it, the trait, the associated type's name and the
@@ -177,6 +180,7 @@ impl InferCtx {
             fn_return_type_stack: Vec::new(),
             fn_returned_types: Vec::new(),
             where_bounds: Vec::new(),
+            rigid_params: Vec::new(),
             assoc_projections: Vec::new(),
             projection_requirements: Vec::new(),
             json_types: Default::default(),
@@ -442,6 +446,78 @@ impl InferCtx {
         Some(self.unify(tail, rest, origin.clone()))
     }
 
+    /// Bind `v` to `ty`, unless `v` occurs in it. `var_expected` says
+    /// whether `v` was the expected side of the unification.
+    fn bind_var(
+        &mut self,
+        v: TyVar,
+        ty: Ty,
+        origin: ConstraintOrigin,
+        var_expected: bool,
+    ) -> Result<(), TypeError> {
+        if !self.occurs_in(v, &ty) {
+            self.table
+                .unify_var_value(v, Some(ty))
+                .expect("binding a var to a concrete type after occurs check should not fail");
+            return Ok(());
+        }
+        // A declared type parameter is a type of its own: `T` where
+        // `Option<T>` is expected is a plain mismatch, not an infinite type.
+        let err = if self.rigid_param_name(v).is_some() {
+            let (var, ty) = (self.with_param_names(Ty::Var(v)), self.with_param_names(ty));
+            let (expected, found) = if var_expected { (var, ty) } else { (ty, var) };
+            TypeError::Mismatch {
+                expected,
+                found,
+                origin,
+            }
+        } else {
+            TypeError::InfiniteType { var: v, ty, origin }
+        };
+        self.errors.push(err.clone());
+        Err(err)
+    }
+
+    /// The declared type parameter in scope that `v` stands for.
+    fn rigid_param_name(&mut self, v: TyVar) -> Option<String> {
+        let params = self.rigid_params.clone();
+        params
+            .into_iter()
+            .find(|(param, _)| self.resolve(param.clone()) == Ty::Var(v))
+            .map(|(_, name)| name)
+    }
+
+    /// `ty` with the variables of the declared type parameters in scope
+    /// shown by their names.
+    fn with_param_names(&mut self, ty: Ty) -> Ty {
+        match self.resolve(ty) {
+            Ty::Var(v) => self
+                .rigid_param_name(v)
+                .map(|name| Ty::Con(TyCon::new(name)))
+                .unwrap_or(Ty::Var(v)),
+            Ty::App(con, args) => Ty::App(
+                Box::new(self.with_param_names(*con)),
+                args.into_iter()
+                    .map(|arg| self.with_param_names(arg))
+                    .collect(),
+            ),
+            Ty::Fun(params, ret) => Ty::Fun(
+                params
+                    .into_iter()
+                    .map(|p| self.with_param_names(p))
+                    .collect(),
+                Box::new(self.with_param_names(*ret)),
+            ),
+            Ty::Tuple(elems) => Ty::Tuple(
+                elems
+                    .into_iter()
+                    .map(|e| self.with_param_names(e))
+                    .collect(),
+            ),
+            other => other,
+        }
+    }
+
     // ── Unification ─────────────────────────────────────────────────────
 
     /// Unify two types, making them equal.
@@ -474,18 +550,8 @@ impl InferCtx {
             }
 
             // Variable meets concrete type -- bind the variable (with occurs check).
-            (Ty::Var(v), ty) | (ty, Ty::Var(v)) => {
-                if self.occurs_in(v, &ty) {
-                    let err = TypeError::InfiniteType { var: v, ty, origin };
-                    self.errors.push(err.clone());
-                    Err(err)
-                } else {
-                    self.table.unify_var_value(v, Some(ty)).expect(
-                        "binding a var to a concrete type after occurs check should not fail",
-                    );
-                    Ok(())
-                }
-            }
+            (Ty::Var(v), ty) => self.bind_var(v, ty, origin, true),
+            (ty, Ty::Var(v)) => self.bind_var(v, ty, origin, false),
 
             // Concrete constructor meets concrete constructor -- names must match.
             (Ty::Con(c1), Ty::Con(c2)) => {

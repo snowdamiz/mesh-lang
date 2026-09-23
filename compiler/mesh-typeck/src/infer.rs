@@ -5140,6 +5140,12 @@ fn infer_multi_clause_fn(
         &mut ctx.where_bounds,
         where_bounds(&where_constraints, &type_params),
     );
+    let saved_rigid = ctx.rigid_params.clone();
+    ctx.rigid_params.extend(
+        type_params
+            .iter()
+            .map(|(name, ty)| (ty.clone(), name.clone())),
+    );
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5273,6 +5279,7 @@ fn infer_multi_clause_fn(
     }
 
     ctx.where_bounds = saved_bounds;
+    ctx.rigid_params = saved_rigid;
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }
@@ -7819,6 +7826,12 @@ fn infer_fn_def(
         &mut ctx.where_bounds,
         where_bounds(&where_constraints, &type_params),
     );
+    let saved_rigid = ctx.rigid_params.clone();
+    ctx.rigid_params.extend(
+        type_params
+            .iter()
+            .map(|(name, ty)| (ty.clone(), name.clone())),
+    );
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     let saved_default_calls = std::mem::take(&mut ctx.default_calls);
     let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
@@ -7862,8 +7875,10 @@ fn infer_fn_def(
         trait_registry,
         operand_traits,
     );
+    check_rigid_type_params(ctx, fn_, &type_params);
     check_default_calls(ctx, &type_params, trait_registry, default_calls);
     check_impl_choices(ctx, impl_choices);
+    ctx.rigid_params = saved_rigid;
 
     env.pop_scope();
 
@@ -14700,6 +14715,39 @@ fn check_impl_choices(ctx: &mut InferCtx, choices: Vec<ImplChoice>) {
                 found,
                 span: choice.span,
             });
+        }
+    }
+}
+
+/// A declared type parameter stands for every type: the function's body may
+/// not fix it (`fn bad<T>(x :: T) -> T do 5 end`) nor make two parameters
+/// one type. Checked before the function's callers' uses are unified in.
+fn check_rigid_type_params(ctx: &mut InferCtx, fn_: &FnDef, type_params: &FxHashMap<String, Ty>) {
+    let span = fn_
+        .syntax()
+        .children()
+        .find(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+        .map(|n| n.text_range())
+        .unwrap_or_else(|| fn_.syntax().text_range());
+    let mut names: Vec<&String> = type_params.keys().collect();
+    names.sort();
+    let mut seen: Vec<(Ty, String)> = Vec::new();
+    for name in names {
+        let resolved = ctx.resolve(type_params[name].clone());
+        let found = if !is_type_var(&resolved) {
+            Some(resolved.clone())
+        } else {
+            seen.iter()
+                .find(|(ty, _)| *ty == resolved)
+                .map(|(_, other)| Ty::Con(TyCon::new(other)))
+        };
+        match found {
+            Some(found) => ctx.errors.push(TypeError::RigidTypeParam {
+                param: name.clone(),
+                found,
+                span,
+            }),
+            None => seen.push((resolved, name.clone())),
         }
     }
 }

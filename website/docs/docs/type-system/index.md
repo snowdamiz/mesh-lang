@@ -111,6 +111,8 @@ fn main() do
 end
 ```
 
+A type parameter stands for whatever type each caller picks, so the body has to treat its values as values of an unknown type. `fn bad<T>(x :: T) -> T do 5 end` is an error (E0067): it would only work when `T` is `Int`.
+
 Add a `where` clause when the function body needs a trait operation:
 
 ```mesh

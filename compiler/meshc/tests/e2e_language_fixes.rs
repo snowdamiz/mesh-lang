@@ -3261,3 +3261,31 @@ end
 "##;
     assert_eq!(run(source), "int\np 2\n");
 }
+
+#[test]
+fn a_generic_function_must_keep_its_type_parameters_generic() {
+    let err =
+        build_error("fn bad<T>(x :: T) -> T do\n  5\nend\n\nfn main() do\n  println(\"x\")\nend\n");
+    assert!(
+        err.contains("E0067")
+            && err.contains(
+                "type parameter `T` stands for any type, but this function makes it `Int`"
+            ),
+        "{err}"
+    );
+    let err = build_error(
+        "fn pair<A, B>(a :: A, b :: B) -> A do\n  b\nend\n\nfn main() do\n  println(\"x\")\nend\n",
+    );
+    assert!(
+        err.contains("makes it `B`") || err.contains("makes it `A`"),
+        "{err}"
+    );
+    // A parameter against a type built from it is a plain mismatch, named
+    // by the parameter, not an "infinite type".
+    let err = build_error(
+        "fn first<T>(xs :: List<T>) -> Option<T> do\n  List.head(xs)\nend\n\nfn unwrap<T>(xs :: List<T>) -> T do\n  xs\nend\n\nfn main() do\n  println(\"x\")\nend\n",
+    );
+    assert!(err.contains("expected Option<T>, found T"), "{err}");
+    assert!(err.contains("expected T, found List<T>"), "{err}");
+    assert!(!err.contains("infinite type"), "{err}");
+}
