@@ -3224,3 +3224,40 @@ fn a_conflicting_early_return_is_reported_where_it_is() {
         source.find("return").unwrap()
     );
 }
+
+#[test]
+fn bare_method_call_on_a_bounded_type_parameter_works_for_every_impl() {
+    // `show_me(x)` fixed `T` to the first type with an impl (Int), so
+    // `show(P { .. })` was rejected.
+    let source = r##"
+interface Printable do
+  fn show_me(self) -> String
+end
+
+impl Printable for Int do
+  fn show_me(self) -> String do
+    "int"
+  end
+end
+
+struct P do
+  n :: Int
+end
+
+impl Printable for P do
+  fn show_me(self) -> String do
+    "p #{self.n}"
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Printable do
+  show_me(x)
+end
+
+fn main() do
+  println(show(1))
+  println(show(P { n: 2 }))
+end
+"##;
+    assert_eq!(run(source), "int\np 2\n");
+}

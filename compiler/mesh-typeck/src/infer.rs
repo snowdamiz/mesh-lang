@@ -14587,28 +14587,47 @@ fn infer_bare_method_call(
         fn_constraints,
     )?;
     let resolved = ctx.resolve(receiver.clone());
-    if is_type_var(&resolved) {
-        return Ok(None);
-    }
     let span = name_ref.syntax().text_range();
-    let traits = trait_registry.find_method_traits(&name, &resolved);
-    if traits.len() > 1 {
-        let err = TypeError::AmbiguousMethod {
-            method_name: name,
-            candidate_traits: traits,
-            ty: resolved,
-            span,
+    let method_ty = if is_type_var(&resolved) {
+        // A method of a type parameter's `where` bound: `show(x)` under
+        // `where T: Show` works for every `T`, not only the types with impls.
+        let mut bound = None;
+        for (param, trait_name) in ctx.where_bounds.clone() {
+            if ctx.resolve(param) != resolved {
+                continue;
+            }
+            if let Some(sig) = trait_registry
+                .get_trait(&trait_name)
+                .and_then(|def| def.methods.iter().find(|m| m.name == name))
+            {
+                bound = Some((trait_name, sig.clone()));
+                break;
+            }
+        }
+        let Some((trait_name, sig)) = bound else {
+            return Ok(None);
         };
-        ctx.errors.push(err.clone());
-        return Err(err);
-    }
-    if traits.is_empty() {
-        return Ok(None);
-    }
-    let Some(ret) = method_return_type(ctx, trait_registry, &name, &resolved, span) else {
-        return Ok(None);
+        trait_method_type(ctx, &trait_name, &sig, &resolved)
+    } else {
+        let traits = trait_registry.find_method_traits(&name, &resolved);
+        if traits.len() > 1 {
+            let err = TypeError::AmbiguousMethod {
+                method_name: name,
+                candidate_traits: traits,
+                ty: resolved,
+                span,
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+        if traits.is_empty() {
+            return Ok(None);
+        }
+        let Some(ret) = method_return_type(ctx, trait_registry, &name, &resolved, span) else {
+            return Ok(None);
+        };
+        build_method_fn_type(trait_registry, &name, &resolved, &ret, ctx)
     };
-    let method_ty = build_method_fn_type(trait_registry, &name, &resolved, &ret, ctx);
     let mut arg_tys = vec![receiver];
     for arg in &args[1..] {
         arg_tys.push(infer_expr(
