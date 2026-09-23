@@ -239,6 +239,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::DuplicateField { span, .. }
         | TypeError::NotAStruct { span, .. }
         | TypeError::UnderivableField { span, .. }
+        | TypeError::DuplicateVariant { span, .. }
         | TypeError::CyclicAlias { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }

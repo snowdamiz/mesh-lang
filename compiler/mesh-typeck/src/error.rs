@@ -380,6 +380,13 @@ pub enum TypeError {
     DuplicateBinding { name: String, span: TextRange },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
+    /// Two sum types of one module declare a variant of the same name.
+    DuplicateVariant {
+        variant: String,
+        first_type: String,
+        second_type: String,
+        span: TextRange,
+    },
     /// A derived trait needs to compare, hash or show a field that holds a
     /// function.
     UnderivableField {
@@ -881,6 +888,17 @@ impl fmt::Display for TypeError {
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")
+            }
+            TypeError::DuplicateVariant {
+                variant,
+                first_type,
+                second_type,
+                ..
+            } => {
+                write!(
+                    f,
+                    "variant `{variant}` of `{second_type}` is already a variant of `{first_type}`"
+                )
             }
             TypeError::UnderivableField {
                 trait_name,

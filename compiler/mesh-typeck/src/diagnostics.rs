@@ -152,6 +152,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DuplicateField { .. } => "E0058",
         TypeError::NotAStruct { .. } => "E0059",
         TypeError::UnderivableField { .. } => "E0060",
+        TypeError::DuplicateVariant { .. } => "E0061",
         TypeError::CyclicAlias { .. } => "E0062",
     }
 }
@@ -536,6 +537,7 @@ pub fn render_json_diagnostic(
                 | TypeError::DuplicateField { span, .. }
                 | TypeError::NotAStruct { span, .. }
                 | TypeError::UnderivableField { span, .. }
+                | TypeError::DuplicateVariant { span, .. }
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
@@ -2083,6 +2085,27 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!("remove `{trait_name}` from the deriving list"))
+                .finish()
+        }
+        TypeError::DuplicateVariant {
+            variant,
+            first_type,
+            second_type,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!(
+                    "variant `{variant}` of `{second_type}` is already a variant of `{first_type}`"
+                ))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("`{variant}` would name either type's variant"))
+                        .with_color(Color::Red),
+                )
+                .with_help("give one of the variants another name")
                 .finish()
         }
         TypeError::CyclicAlias { alias_name, span } => {

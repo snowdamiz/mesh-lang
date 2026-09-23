@@ -6488,8 +6488,39 @@ fn register_sum_type_def(
     type_registry.propagate_resource_containment();
     let is_affine_resource = type_registry.is_resource_name(&name);
 
+    // An unqualified variant name names one variant of this module (one
+    // of an imported type it shadows); two here would be ambiguous. The
+    // first keeps the unqualified name; the second is still `B.Same`.
+    let mut kept = Vec::new();
+    for variant in &variants {
+        match ctx.local_variants.get(&variant.name) {
+            Some(first) if *first != name => {
+                if let Some(scheme) = env.lookup(&variant.name) {
+                    kept.push((variant.name.clone(), scheme.clone()));
+                }
+                ctx.errors.push(TypeError::DuplicateVariant {
+                    variant: variant.name.clone(),
+                    first_type: first.clone(),
+                    second_type: name.clone(),
+                    span: sum_def
+                        .variants()
+                        .find(|v| v.name().is_some_and(|n| n.text() == variant.name))
+                        .map(|v| v.syntax().text_range())
+                        .unwrap_or_else(|| sum_def.syntax().text_range()),
+                });
+            }
+            _ => {
+                ctx.local_variants
+                    .insert(variant.name.clone(), name.clone());
+            }
+        }
+    }
+
     // Register each variant constructor using the shared mechanism.
     register_variant_constructors(ctx, env, &name, &generic_params, &variants);
+    for (variant, scheme) in kept {
+        env.insert(variant, scheme);
+    }
 
     // Conditional auto-registration of trait impls based on deriving clause.
     // No deriving clause = backward compat (derive all default traits).

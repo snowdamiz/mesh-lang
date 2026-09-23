@@ -283,7 +283,7 @@ fn is_complete<T>(outcome :: Outcome<T>) -> Bool do
 end
 ```
 
-Variant constructors are available unqualified (`Complete(value)`) and qualified (`Outcome.Complete(value)`). Patterns destructure both positional and named variant fields by position.
+Variant constructors are available unqualified (`Complete(value)`) and qualified (`Outcome.Complete(value)`). Patterns destructure both positional and named variant fields by position. Within a module, a variant name belongs to one sum type; a module's own variant shadows an imported variant of the same name, which stays reachable qualified (`GroupTreeError.InvalidMember`).
 
 Variants are used directly by name. Pattern match on them with `case`:
 

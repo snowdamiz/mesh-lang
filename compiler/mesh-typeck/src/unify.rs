@@ -97,6 +97,9 @@ pub struct InferCtx {
     /// The module's types that derive Json, known before any is checked, so
     /// `deriving(Json)` accepts fields of types declared later or recursively.
     pub json_types: rustc_hash::FxHashSet<String>,
+    /// The variants of this module's sum types, by name, with the type that
+    /// declares each: one name may belong to only one of them.
+    pub local_variants: FxHashMap<String, String>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -140,6 +143,7 @@ impl InferCtx {
             assoc_projections: Vec::new(),
             projection_requirements: Vec::new(),
             json_types: Default::default(),
+            local_variants: Default::default(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),

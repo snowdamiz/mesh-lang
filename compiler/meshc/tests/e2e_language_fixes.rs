@@ -2634,6 +2634,16 @@ fn a_function_field_takes_no_value_derives() {
 }
 
 #[test]
+fn a_variant_name_belongs_to_one_type_per_module() {
+    let err = build_error(
+        "type A do\n  Same(n :: Int)\nend\n\ntype B do\n  Same(s :: String)\nend\n\nfn main() do\n  println(\"x\")\nend\n",
+    );
+    assert!(err.contains("E0061") && err.contains(":6:3"), "{err}");
+    // Only the one error: `Same` stays A's.
+    assert_eq!(err.matches("Error:").count(), 1, "{err}");
+}
+
+#[test]
 fn an_alias_that_refers_to_itself_is_reported() {
     let err = build_error(
         "type A = B\ntype B = A\ntype L<T> = List<L<T>>\n\nfn main() do\n  println(\"x\")\nend\n",
