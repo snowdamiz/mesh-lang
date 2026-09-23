@@ -421,7 +421,9 @@ Mesh provides these compiler-known traits:
 
 `Option`, `Result`, and `Ordering` are built-in sum types. `Ordering` has `Less`, `Equal`, and `Greater` constructors.
 
-Tuples, unit, `Option`, `Result`, `Ordering`, lists, maps and sets compare with `==` by their contents (a list of tuples of options works too), and tuples, `Option`, `Result` and `Ordering` also order with `<` and print with `to_string()`, `inspect()` and interpolation: `(1, "a")` prints as `(1, a)`, `Some(2.5)` as `Some(2.5)`, and `inspect()` quotes strings inside. A `Float` always prints with a decimal point (`42.0`, never `42`).
+Tuples, unit, `Option`, `Result`, `Ordering`, lists, maps and sets compare with `==` by their contents (a list of tuples of options works too), and tuples, lists, `Option`, `Result` and `Ordering` also order with `<` (element by element) and print with `to_string()`, `inspect()` and interpolation: `(1, "a")` prints as `(1, a)`, `Some(2.5)` as `Some(2.5)`, and `inspect()` quotes and escapes strings at every level (a list holding the string `a"b` inspects as `["a\"b"]`). `Bool` orders `false < true`. `compare(a, b)` works on any ordered value. A `Float` always prints with a decimal point (`42.0`, never `42`).
+
+Derived traits treat each field by its own type: a `List<String>` field prints as a list of strings, compares element by element, and hashes consistently with `==` (so equal values always have equal `hash()`), in generic types too (`Box<List<Int>>` and `Box<List<String>>` each get their own).
 
 A struct field of function type is called directly: for `struct Op do run :: Fun(Int) -> Int end`, `op.run(10)` calls the function stored in the field.
 
@@ -532,7 +534,7 @@ struct Coordinate do
 end deriving(Eq, Ord)
 ```
 
-`deriving(Json)` validates every stored field. Directly supported values include `Int`, `Float`, `Bool`, `String`, generic parameters, `Option`, `List`, `Map<String, V>`, and nested values that implement `ToJson`.
+`deriving(Json)` validates every stored field. Directly supported values include `Int`, `Float`, `Bool`, `String`, generic parameters, tuples (as JSON arrays), `Option` (`None` is `null`), `List`, `Map<String, V>`, and values of types that derive `Json` — including the type itself and types declared later in the module. A generic type decodes at the instantiation the context asks for: `let r :: Result<Box<Int>, String> = Box.from_json(text)`. Decoding an `Int` field accepts only a whole number in `Int` range.
 
 `deriving(Row)` accepts `Int`, `Float`, `Bool`, `String`, and `Option` of those types. `deriving(Schema)` is for structs and emits metadata used by the database/query APIs, including table, fields, primary key, relationships, field types, and column accessors.
 
