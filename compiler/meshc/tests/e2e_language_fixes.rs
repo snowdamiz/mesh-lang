@@ -2125,3 +2125,36 @@ end
 "##;
     assert_eq!(run(source), "4 -1 pos non-pos 3\n");
 }
+
+// ── Generics and interfaces ────────────────────────────────────────────
+
+#[test]
+fn generic_functions_calling_generic_functions_are_specialized_for_each_use() {
+    let source = r##"
+fn ident(a) do
+  a
+end
+
+fn wrap(a) do
+  ident(a)
+end
+
+fn show(a) do
+  "<${a}>"
+end
+
+fn relay(a) do
+  show(a)
+end
+
+fn size(xs) do
+  List.length(xs)
+end
+
+fn main() do
+  println("#{wrap(5)} #{wrap("five")} #{show(7)} #{relay("hello")} #{relay(2.5)}")
+  println("#{size([1])} #{size(["a"])} #{size([])}")
+end
+"##;
+    assert_eq!(run(source), "5 five <7> <hello> <2.5>\n1 1 0\n");
+}

@@ -451,6 +451,23 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+/// `ty` with every type variable left open taken as Unit.
+fn apply_default_unit(ty: &Ty) -> Ty {
+    match ty {
+        Ty::Var(_) => Ty::Tuple(vec![]),
+        Ty::Con(_) | Ty::Never => ty.clone(),
+        Ty::Fun(params, ret) => Ty::Fun(
+            params.iter().map(apply_default_unit).collect(),
+            Box::new(apply_default_unit(ret)),
+        ),
+        Ty::App(con, args) => Ty::App(
+            Box::new(apply_default_unit(con)),
+            args.iter().map(apply_default_unit).collect(),
+        ),
+        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(apply_default_unit).collect()),
+    }
+}
+
 /// Read off which type each variable of `generic` stands for in `concrete`.
 fn bind_type_vars(generic: &Ty, concrete: &Ty, bindings: &mut Vec<(mesh_typeck::ty::TyVar, Ty)>) {
     let bind_all = |generic: &[Ty], concrete: &[Ty], bindings: &mut Vec<_>| {
@@ -1840,6 +1857,96 @@ impl<'a> Lowerer<'a> {
         None
     }
 
+    /// Add the specializations generic functions need because other code
+    /// calls them: a call inside generic `g` has, in each of `g`'s
+    /// specializations, the concrete type `g`'s bindings give it, and a call
+    /// whose type is still open (`size([])`) is taken with Unit for what
+    /// nothing fixed. Without this, `fn wrap(a) = ident(a)` called with a
+    /// String ran `ident`'s Int version, and `size([])` beside two other
+    /// uses called a function that was never emitted.
+    fn close_specializations(&mut self, sf: &SourceFile) {
+        // Each top-level function: its checked type and the calls it makes
+        // to generic functions of this module (every clause of a group).
+        let mut fns: Vec<(String, Ty, Vec<(String, TextRange)>)> = Vec::new();
+        let mut bodies: Vec<(usize, mesh_parser::SyntaxNode)> = Vec::new();
+        for item in sf.items() {
+            let Item::FnDef(fn_def) = item else { continue };
+            let Some(name) = fn_def.name().and_then(|n| n.text()) else {
+                continue;
+            };
+            let index = match fns.iter().position(|(fn_name, _, _)| *fn_name == name) {
+                Some(index) => index,
+                None => {
+                    let Some(ty) = self.get_ty(fn_def.syntax().text_range()).cloned() else {
+                        continue;
+                    };
+                    fns.push((name, ty, Vec::new()));
+                    fns.len() - 1
+                }
+            };
+            bodies.push((index, fn_def.syntax().clone()));
+        }
+        for (index, body) in bodies {
+            let calls: Vec<(String, TextRange)> = body
+                .descendants()
+                .filter_map(NameRef::cast)
+                .filter_map(|name_ref| {
+                    let callee = name_ref.text()?;
+                    fns.iter()
+                        .any(|(name, ty, _)| *name == callee && Self::ty_contains_var(ty))
+                        .then(|| (callee, name_ref.syntax().text_range()))
+                })
+                .collect();
+            fns[index].2.extend(calls);
+        }
+
+        let mut worklist: Vec<(usize, Option<Ty>)> = Vec::new();
+        for (index, (name, ty, _)) in fns.iter().enumerate() {
+            if Self::ty_contains_var(ty) {
+                for spec in self
+                    .inferred_fn_specializations
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default()
+                {
+                    worklist.push((index, Some(spec)));
+                }
+            } else {
+                worklist.push((index, None));
+            }
+        }
+        while let Some((index, spec)) = worklist.pop() {
+            let (_, generic_ty, calls) = &fns[index];
+            let mut bindings = Vec::new();
+            if let Some(spec) = &spec {
+                bind_type_vars(generic_ty, spec, &mut bindings);
+            }
+            let mut found = Vec::new();
+            for (callee, range) in calls {
+                let Some(call_ty) = self.types.get(range) else {
+                    continue;
+                };
+                if !matches!(call_ty, Ty::Fun(..)) {
+                    continue;
+                }
+                let concrete = apply_default_unit(&apply_type_vars(call_ty, &bindings));
+                let known = self
+                    .inferred_fn_specializations
+                    .get(callee)
+                    .is_some_and(|specs| specs.contains(&concrete));
+                if !known {
+                    found.push((callee.clone(), concrete));
+                }
+            }
+            for (callee, concrete) in found {
+                Self::push_usage_type(&mut self.inferred_fn_specializations, &callee, &concrete);
+                if let Some(callee_index) = fns.iter().position(|(name, _, _)| *name == callee) {
+                    worklist.push((callee_index, Some(concrete)));
+                }
+            }
+        }
+    }
+
     fn ty_contains_var(ty: &Ty) -> bool {
         match ty {
             Ty::Var(_) => true,
@@ -1940,7 +2047,8 @@ impl<'a> Lowerer<'a> {
         if variants.len() == 1 {
             return variants.first().cloned();
         }
-        let ty = self.get_ty(range)?.clone();
+        // What nothing fixed is Unit, as `close_specializations` took it.
+        let ty = apply_default_unit(self.get_ty(range)?);
         if Self::is_concrete_fun_ty(&ty) && variants.contains(&ty) {
             Some(ty)
         } else {
@@ -4957,6 +5065,8 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+
+        self.close_specializations(&sf);
 
         // Second pass: lower all items. Consecutive FnDefs with one name and
         // arity are the clauses of one function, as the type checker groups
