@@ -958,7 +958,7 @@ fn error_length(r :: Int!String) -> Int!Int do
 end
 ```
 
-The pattern may bind names, nest constructors (`Some(Ok(value))`), be a nullary constructor such as `None`, and take a `when` guard. A pattern that does not name a whole value, such as `_` or a bare `Ok`, needs an explicit `->`.
+The pattern may bind names, nest constructors (`Some(Ok(value))`), contain literals (`Ok(true)`), be a nullary constructor such as `None`, and take a `when` guard. A pattern that does not name a whole value, such as `_` or a bare `Ok`, needs an explicit `->`.
 
 ## Modules
 

@@ -217,8 +217,8 @@ A `case` or `match` arm with no `->` is its pattern alone and passes the
 matched value through, rebuilt: `Ok(value)` means `Ok(value) -> Ok(value)`.
 The rebuilt value takes the type of the whole `case`, so another arm may change
 the rest of it, as `Err(e) -> Err(wrap(e))` changes the error type. The pattern
-must name a whole value: names, constructors, and nullary constructors such as
-`None`; `_` and a bare `Ok` are rejected (E0056).
+must name a whole value: names, literals, constructors, and nullary
+constructors such as `None`; `_` and a bare `Ok` are rejected (E0056).
 
 ## Control flow
 

@@ -5859,34 +5859,18 @@ impl<'a> Lowerer<'a> {
             Pattern::Wildcard(_) | Pattern::Ident(_) => None,
             Pattern::Literal(lit) => {
                 let param_var = MirExpr::Var(param.0.clone(), param.1.clone());
-                if let Some(tok) = lit.token() {
-                    let text = tok.text().to_string();
-                    let lit_expr = match tok.kind() {
-                        SyntaxKind::INT_LITERAL => {
-                            MirExpr::IntLit(parse_int_literal(&text).unwrap_or(0), param.1.clone())
-                        }
-                        SyntaxKind::FLOAT_LITERAL => MirExpr::FloatLit(
-                            parse_float_literal(&text).unwrap_or(0.0),
-                            param.1.clone(),
-                        ),
-                        SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
-                        SyntaxKind::FALSE_KW => MirExpr::BoolLit(false, MirType::Bool),
-                        SyntaxKind::MINUS => {
-                            // Negative literal: look for the next sibling INT_LITERAL.
-                            let neg_val = extract_negative_literal(lit.syntax());
-                            MirExpr::IntLit(neg_val, param.1.clone())
-                        }
-                        _ => return None,
-                    };
-                    Some(MirExpr::BinOp {
-                        op: BinOp::Eq,
-                        lhs: Box::new(param_var),
-                        rhs: Box::new(lit_expr),
-                        ty: MirType::Bool,
-                    })
-                } else {
-                    None
-                }
+                let lit_expr = match literal_pattern_value(lit)? {
+                    MirLiteral::Int(value) => MirExpr::IntLit(value, param.1.clone()),
+                    MirLiteral::Float(value) => MirExpr::FloatLit(value, param.1.clone()),
+                    MirLiteral::Bool(value) => MirExpr::BoolLit(value, MirType::Bool),
+                    MirLiteral::String(value) => MirExpr::StringLit(value, MirType::String),
+                };
+                Some(MirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(param_var),
+                    rhs: Box::new(lit_expr),
+                    ty: MirType::Bool,
+                })
             }
             _ => None, // Constructor/Tuple/Or/As patterns in multi-param: skip (match-all)
         }
@@ -12044,6 +12028,15 @@ impl<'a> Lowerer<'a> {
                 }
                 (name, Vec::new())
             }
+            Pattern::Literal(lit) => {
+                return match literal_pattern_value(lit) {
+                    Some(MirLiteral::Int(value)) => MirExpr::IntLit(value, MirType::Int),
+                    Some(MirLiteral::Float(value)) => MirExpr::FloatLit(value, MirType::Float),
+                    Some(MirLiteral::Bool(value)) => MirExpr::BoolLit(value, MirType::Bool),
+                    Some(MirLiteral::String(value)) => MirExpr::StringLit(value, MirType::String),
+                    None => MirExpr::Unit,
+                };
+            }
             Pattern::Constructor(ctor) => {
                 let variant = ctor
                     .variant_name()
@@ -12224,31 +12217,9 @@ impl<'a> Lowerer<'a> {
                 MirPattern::Var(name, ty)
             }
 
-            Pattern::Literal(lit) => {
-                let token = lit.token();
-                match token {
-                    Some(t) => {
-                        let text = t.text().to_string();
-                        match t.kind() {
-                            SyntaxKind::INT_LITERAL => MirPattern::Literal(MirLiteral::Int(
-                                parse_int_literal(&text).unwrap_or(0),
-                            )),
-                            SyntaxKind::FLOAT_LITERAL => MirPattern::Literal(MirLiteral::Float(
-                                parse_float_literal(&text).unwrap_or(0.0),
-                            )),
-                            SyntaxKind::TRUE_KW => MirPattern::Literal(MirLiteral::Bool(true)),
-                            SyntaxKind::FALSE_KW => MirPattern::Literal(MirLiteral::Bool(false)),
-                            SyntaxKind::STRING_START => {
-                                // Extract string content from the literal pattern node.
-                                let content = extract_simple_string_content(lit.syntax());
-                                MirPattern::Literal(MirLiteral::String(content))
-                            }
-                            _ => MirPattern::Wildcard,
-                        }
-                    }
-                    None => MirPattern::Wildcard,
-                }
-            }
+            Pattern::Literal(lit) => literal_pattern_value(lit)
+                .map(MirPattern::Literal)
+                .unwrap_or(MirPattern::Wildcard),
 
             Pattern::Constructor(ctor) => {
                 let variant_name = ctor
@@ -17118,21 +17089,30 @@ fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String 
     content
 }
 
-/// Extract a negative integer literal value from a LITERAL_PAT node.
-/// Looks for MINUS token followed by INT_LITERAL.
-fn extract_negative_literal(node: &mesh_parser::cst::SyntaxNode) -> i64 {
-    let mut found_minus = false;
-    for child in node.children_with_tokens() {
-        if let Some(token) = child.as_token() {
-            if token.kind() == SyntaxKind::MINUS {
-                found_minus = true;
-            } else if found_minus && token.kind() == SyntaxKind::INT_LITERAL {
-                let val = parse_int_literal(token.text()).unwrap_or(0);
-                return -val;
-            }
+/// The value a literal pattern matches, sign included: `-1` is a MINUS and
+/// then the `1` that `LiteralPat::token` returns. `None` for `nil`.
+fn literal_pattern_value(lit: &mesh_parser::ast::pat::LiteralPat) -> Option<MirLiteral> {
+    let token = lit.token()?;
+    let text = token.text();
+    let negative = lit.is_negative();
+    Some(match token.kind() {
+        SyntaxKind::INT_LITERAL => {
+            let value = parse_int_literal(text).unwrap_or(0);
+            MirLiteral::Int(if negative {
+                value.wrapping_neg()
+            } else {
+                value
+            })
         }
-    }
-    0
+        SyntaxKind::FLOAT_LITERAL => {
+            let value = parse_float_literal(text).unwrap_or(0.0);
+            MirLiteral::Float(if negative { -value } else { value })
+        }
+        SyntaxKind::TRUE_KW => MirLiteral::Bool(true),
+        SyntaxKind::FALSE_KW => MirLiteral::Bool(false),
+        SyntaxKind::STRING_START => MirLiteral::String(extract_simple_string_content(lit.syntax())),
+        _ => return None,
+    })
 }
 
 /// Find the type name that contains a variant, preferring the type inferred at

@@ -10614,13 +10614,14 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
         }
         Pattern::Literal(lit) => {
             if let Some(token) = lit.token() {
+                let sign = if lit.is_negative() { "-" } else { "" };
                 match token.kind() {
                     SyntaxKind::INT_LITERAL => AbsPat::Literal {
-                        value: token.text().to_string(),
+                        value: format!("{sign}{}", token.text()),
                         ty: AbsLitKind::Int,
                     },
                     SyntaxKind::FLOAT_LITERAL => AbsPat::Literal {
-                        value: token.text().to_string(),
+                        value: format!("{sign}{}", token.text()),
                         ty: AbsLitKind::Float,
                     },
                     SyntaxKind::TRUE_KW => AbsPat::Literal {
@@ -12123,10 +12124,17 @@ fn infer_rebuilt_pattern(
                 ty => Ok(ty),
             }
         }
+        Pattern::Literal(lit) => Ok(match lit.token().map(|t| t.kind()) {
+            Some(SyntaxKind::INT_LITERAL) => Ty::int(),
+            Some(SyntaxKind::FLOAT_LITERAL) => Ty::float(),
+            Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => Ty::bool(),
+            Some(SyntaxKind::STRING_START) => Ty::string(),
+            _ => Ty::Tuple(vec![]),
+        }),
         Pattern::Wildcard(_) => Ok(not_a_value(ctx, "`_` names no value".to_string())),
         _ => Ok(not_a_value(
             ctx,
-            "only constructors and the names a pattern binds can stand for the arm's value"
+            "only constructors, literals and the names a pattern binds can stand for the arm's value"
                 .to_string(),
         )),
     }

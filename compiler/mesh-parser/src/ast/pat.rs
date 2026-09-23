@@ -104,6 +104,14 @@ impl LiteralPat {
                 )
             })
     }
+
+    /// Whether the literal is negated: `-1` is a MINUS and then the `1`
+    /// that [`token`](Self::token) returns.
+    pub fn is_negative(&self) -> bool {
+        self.syntax
+            .children_with_tokens()
+            .any(|it| it.kind() == SyntaxKind::MINUS)
+    }
 }
 
 // ── Tuple Pattern ────────────────────────────────────────────────────────

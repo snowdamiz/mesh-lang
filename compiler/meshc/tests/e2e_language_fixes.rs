@@ -347,6 +347,58 @@ end
 }
 
 #[test]
+fn negative_and_string_literal_patterns_match_their_own_value() {
+    let source = r##"
+fn describe(x :: Int) -> String do
+  case x do
+    -1 -> "minus one"
+    1 -> "one"
+    _ -> "other"
+  end
+end
+
+fn half(x :: Float) -> String do
+  case x do
+    -0.5 -> "minus half"
+    _ -> "other"
+  end
+end
+
+fn pair(-1, "x") = "minus one and x"
+fn pair(n, "x") = "#{n} and x"
+fn pair(_, _) = "neither"
+
+fn checked(r :: Result<Bool, String>) -> Result<Bool, Int> do
+  case r do
+    Ok(true)
+    Ok(false) -> Err(0)
+    Err(e) -> Err(String.length(e))
+  end
+end
+
+fn main() do
+  println(describe(-1) <> "," <> describe(1) <> "," <> describe(5))
+  println(half(-0.5) <> "," <> half(0.5))
+  println(pair(-1, "x") <> "," <> pair(1, "x") <> "," <> pair(-1, "y"))
+  let kept = case checked(Ok(true)) do
+    Ok(b) -> "ok #{b}"
+    Err(e) -> "err #{e}"
+  end
+  println(kept)
+end
+"##;
+    let (warnings, out) = run_with_build_stderr(source);
+    assert_eq!(
+        out,
+        "minus one,one,other\nminus half,other\nminus one and x,1 and x,neither\nok true\n"
+    );
+    assert!(
+        !warnings.contains("redundant"),
+        "`1` is not `-1`:\n{warnings}"
+    );
+}
+
+#[test]
 fn as_pattern_binds_the_matched_value() {
     let source = r##"
 fn aspat(t :: (Int, Int)) -> String do
