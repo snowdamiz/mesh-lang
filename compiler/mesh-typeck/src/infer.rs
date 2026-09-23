@@ -12026,55 +12026,24 @@ fn infer_struct_update(
     )?;
     let resolved_base = ctx.resolve(base_ty.clone());
 
-    // Extract the struct name from the resolved type.
-    let struct_name = match &resolved_base {
-        Ty::Con(tc) => tc.name.clone(),
-        Ty::App(inner, _) => {
-            if let Ty::Con(tc) = inner.as_ref() {
-                tc.name.clone()
-            } else {
-                // Not a struct type -- emit a "no such field" error as a proxy.
-                let err = TypeError::NoSuchField {
-                    ty: resolved_base.clone(),
-                    field_name: "<struct update>".to_string(),
-                    span: base_expr.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-        }
-        _ => {
-            let err = TypeError::NoSuchField {
-                ty: resolved_base.clone(),
-                field_name: "<struct update>".to_string(),
-                span: base_expr.syntax().text_range(),
-            };
-            ctx.errors.push(err.clone());
-            return Err(err);
-        }
+    // The base must be a struct value.
+    let struct_def = match &resolved_base {
+        Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
+        Ty::App(inner, _) => match inner.as_ref() {
+            Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
+            _ => None,
+        },
+        _ => None,
     };
-
-    // Look up the struct definition.
-    let struct_def = match type_registry.lookup_struct(&struct_name) {
-        Some(def) => def.clone(),
-        None => {
-            // Infer override values anyway.
-            for field in update.override_fields() {
-                if let Some(value) = field.value() {
-                    let _ = infer_expr(
-                        ctx,
-                        env,
-                        &value,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    );
-                }
-            }
-            return Ok(resolved_base);
-        }
+    let Some(struct_def) = struct_def.cloned() else {
+        let err = TypeError::NotAStruct {
+            ty: resolved_base.clone(),
+            span: base_expr.syntax().text_range(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
     };
+    let struct_name = struct_def.name.clone();
 
     // Create fresh type variables for generic params (matching base type args).
     let generic_vars: Vec<Ty> = match &resolved_base {

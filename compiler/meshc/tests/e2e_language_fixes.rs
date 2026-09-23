@@ -2592,6 +2592,23 @@ fn a_struct_literal_must_name_a_struct() {
     let err = build_error("fn main() do\n  let q = Nope { x: 4 }\n  println(\"x\")\nend\n");
     assert!(err.contains("E0059") && err.contains(":2:11"), "{err}");
 }
+
+#[test]
+fn a_struct_update_needs_a_struct_value() {
+    let err = build_error(
+        "fn main() do\n  let m = %{\"a\" => 1}\n  let t = %{m | a: 3}\n  println(\"#{t}\")\nend\n",
+    );
+    assert!(
+        err.contains("E0059") && err.contains("`Map<String, Int>` is not a struct"),
+        "{err}"
+    );
+    let err = build_error("fn main() do\n  let t = %{(1, 2) | a: 3}\n  println(\"#{t}\")\nend\n");
+    assert!(
+        err.contains("E0059") && !err.contains("<struct update>"),
+        "{err}"
+    );
+}
+
 #[test]
 fn an_alias_that_refers_to_itself_is_reported() {
     let err = build_error(
