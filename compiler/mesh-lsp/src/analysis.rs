@@ -248,6 +248,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::RigidTypeParam { span, .. }
         | TypeError::DuplicateDefinition { span, .. }
         | TypeError::UnknownType { span, .. }
+        | TypeError::UnknownFieldOwner { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

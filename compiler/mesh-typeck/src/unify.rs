@@ -24,6 +24,16 @@ pub struct ImplChoice {
     pub span: TextRange,
 }
 
+/// A field read from a value whose type was not known yet (`p.x` with an
+/// unannotated `p`): resolved when the enclosing function is done.
+#[derive(Clone, Debug)]
+pub struct PendingField {
+    pub base: Ty,
+    pub field: String,
+    pub result: Ty,
+    pub span: TextRange,
+}
+
 /// A value a function returns before its end: `return value`, or the
 /// early exit of `?`.
 #[derive(Clone, Debug)]
@@ -134,6 +144,9 @@ pub struct InferCtx {
     /// each needs: a generic function's own type parameter must be bounded
     /// by it (`where T: Ord`), checked when the function's body is done.
     pub operand_traits: Vec<(Ty, String, ConstraintOrigin)>,
+    /// Field reads from values of a type not known yet, resolved when the
+    /// enclosing function (or the module, outside functions) is done.
+    pub pending_fields: Vec<PendingField>,
     /// The builtin `default()` calls of the function being inferred, with
     /// the type each builds (checked when the function is done).
     pub default_calls: Vec<(Ty, TextRange)>,
@@ -191,6 +204,7 @@ impl InferCtx {
             local_variants: Default::default(),
             registered_items: Default::default(),
             operand_traits: Vec::new(),
+            pending_fields: Vec::new(),
             default_calls: Vec::new(),
             impl_choices: Vec::new(),
             trait_method_fns: FxHashSet::default(),

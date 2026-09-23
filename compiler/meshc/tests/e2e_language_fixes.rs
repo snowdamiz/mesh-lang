@@ -3554,3 +3554,43 @@ end
 "##;
     assert_eq!(run(source), "Some(4)\n");
 }
+
+#[test]
+fn fields_of_values_typed_later_in_the_function() {
+    // A closure's parameter is typed by the call after it, and a value by
+    // a function defined later: codegen saw `Unit` ("Field access on
+    // non-struct type").
+    let source = r##"
+struct A do
+  x :: Int
+  tags :: List<String>
+end
+
+fn from_later() -> Int!String do
+  let a = later(4)?
+  Ok(a.x + List.length(a.tags))
+end
+
+fn later(n) do
+  Ok(A { x: n, tags: ["t"] })
+end
+
+fn main() do
+  let f = fn p -> p.x end
+  let a = A { x: 5, tags: ["t"] }
+  let g = fn p -> List.length(p.tags) + p.x end
+  println("#{f(a)} #{g(a)} #{List.map([a], fn p -> p.x * 2 end)}")
+  case from_later() do
+    Ok(n) -> println("#{n}")
+    Err(e) -> println(e)
+  end
+end
+"##;
+    assert_eq!(run(source), "5 6 [10]\n5\n");
+    // Nothing fixes the type of `p`: its layout is unknown.
+    let err = build_error("fn get_x(p) do\n  p.x\nend\n\nfn main() do\n  println(\"x\")\nend\n");
+    assert!(
+        err.contains("E0070") && err.contains("cannot tell which type has the field `x`"),
+        "{err}"
+    );
+}

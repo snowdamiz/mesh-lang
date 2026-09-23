@@ -38,7 +38,7 @@ use crate::traits::{
     TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
-use crate::unify::{EarlyReturn, ImplChoice, InferCtx};
+use crate::unify::{EarlyReturn, ImplChoice, InferCtx, PendingField};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
@@ -4452,6 +4452,11 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
+    // Field reads whose value's type was still unknown when their function
+    // was done, and those outside any function (top-level code, actors).
+    let pending_fields = std::mem::take(&mut ctx.pending_fields);
+    resolve_pending_fields(&mut ctx, &type_registry, pending_fields, true);
+
     // Associated types reached through a type parameter are known wherever
     // the receiver ended up concrete (a call of a generic function).
     for (var, trait_name, assoc, receiver) in ctx.assoc_projections.clone() {
@@ -5185,6 +5190,7 @@ fn infer_multi_clause_fn(
             .iter()
             .map(|(name, ty)| (ty.clone(), name.clone())),
     );
+    let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5319,6 +5325,9 @@ fn infer_multi_clause_fn(
 
     ctx.where_bounds = saved_bounds;
     ctx.rigid_params = saved_rigid;
+    let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
+    let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
+    ctx.pending_fields.extend(unresolved);
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }
@@ -7718,6 +7727,7 @@ fn infer_let_binding(
     }
 
     ctx.enter_level();
+    let pending_before = ctx.pending_fields.len();
 
     let init_expr = let_.initializer().ok_or_else(|| {
         let err = TypeError::Mismatch {
@@ -7771,7 +7781,20 @@ fn infer_let_binding(
     };
 
     ctx.leave_level();
-    let scheme = ctx.generalize(binding_ty);
+    // A field read from a value of a type not known yet (`fn p -> p.x end`)
+    // is settled by the binding's uses, so the binding stays monomorphic.
+    let bases: Vec<Ty> = ctx.pending_fields[pending_before..]
+        .iter()
+        .map(|pending| pending.base.clone())
+        .collect();
+    let reads_unknown_field = bases
+        .into_iter()
+        .any(|base| is_type_var(&ctx.resolve(base)));
+    let scheme = if reads_unknown_field {
+        Scheme::mono(binding_ty)
+    } else {
+        ctx.generalize(binding_ty)
+    };
 
     if let Some(name) = let_.name() {
         if let Some(name_text) = name.text() {
@@ -8012,6 +8035,7 @@ fn infer_fn_def(
             .map(|(name, ty)| (ty.clone(), name.clone())),
     );
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
+    let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
     let saved_default_calls = std::mem::take(&mut ctx.default_calls);
     let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
     // `main` without a declared return type returns nothing: a `?` in it
@@ -8047,6 +8071,9 @@ fn infer_fn_def(
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
+    let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
+    let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
+    ctx.pending_fields.extend(unresolved);
     check_type_param_bounds(
         ctx,
         &type_params,
@@ -12520,7 +12547,18 @@ fn infer_field_access(
         _ => {} // Ty::Var, Ty::Fun, etc. -- leave as fresh_var for unresolved types
     }
 
-    Ok(ctx.fresh_var())
+    // The value's type may be fixed later in the function (a closure's
+    // parameter by its call); the field is looked up then.
+    let result = ctx.fresh_var();
+    if is_type_var(&resolved_base) && !is_method_call {
+        ctx.pending_fields.push(PendingField {
+            base: resolved_base,
+            field: field_name,
+            result: result.clone(),
+            span: fa.syntax().text_range(),
+        });
+    }
+    Ok(result)
 }
 
 /// The type a non-generic function declares with every parameter and its
@@ -12542,6 +12580,68 @@ fn declared_signature(ctx: &mut InferCtx, fn_: &FnDef, type_registry: &TypeRegis
     }
     let ret = resolve_type_annotation(ctx, &fn_.return_type()?, type_registry)?;
     Some(Ty::Fun(params, Box::new(ret)))
+}
+
+/// Resolve the field reads `pending` from values whose type was unknown
+/// when they were checked, and return those whose type is still unknown:
+/// a function called before its definition fixes it only later. At the
+/// module's end (`last`), a value whose type is still unknown cannot be
+/// compiled (its layout is not known): the program must annotate it.
+fn resolve_pending_fields(
+    ctx: &mut InferCtx,
+    type_registry: &TypeRegistry,
+    pending: Vec<PendingField>,
+    last: bool,
+) -> Vec<PendingField> {
+    let mut unresolved = Vec::new();
+    for PendingField {
+        base,
+        field,
+        result,
+        span,
+    } in pending
+    {
+        let base = ctx.resolve(base);
+        let (name, args) = match &base {
+            Ty::Var(_) if !last => {
+                unresolved.push(PendingField {
+                    base,
+                    field,
+                    result,
+                    span,
+                });
+                continue;
+            }
+            Ty::Var(_) => {
+                ctx.errors
+                    .push(TypeError::UnknownFieldOwner { field, span });
+                continue;
+            }
+            Ty::App(con, args) => match con.as_ref() {
+                Ty::Con(tc) => (tc.name.clone(), args.clone()),
+                _ => continue,
+            },
+            Ty::Con(tc) => (tc.name.clone(), vec![]),
+            _ => continue,
+        };
+        let field_ty = type_registry.lookup_struct(&name).and_then(|info| {
+            info.fields
+                .iter()
+                .find(|(name, _)| *name == field)
+                .map(|(_, ty)| substitute_type_params(ty, &info.generic_params, &args))
+        });
+        match field_ty {
+            Some(field_ty) => {
+                let _ = ctx.unify(field_ty, result, ConstraintOrigin::Expr { span });
+            }
+            None => ctx.errors.push(TypeError::NoSuchField {
+                ty: base,
+                field_name: field,
+                span,
+            }),
+        }
+    }
+    unresolved
 }
 
 /// Infer the type of a struct literal: `StructName { field1: expr1, ... }`
