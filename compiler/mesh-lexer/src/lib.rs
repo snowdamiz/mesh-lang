@@ -672,23 +672,32 @@ impl<'src> Lexer<'src> {
                 Some('"') if triple => {
                     // Check for closing """
                     if self.cursor.peek_next() == Some('"') {
-                        let saved_pos = self.cursor.pos();
                         self.cursor.advance(); // first '"'
                         self.cursor.advance(); // second '"'
                         if self.cursor.peek() == Some('"') {
-                            // Found closing """
+                            // Found closing """. In a longer run of quotes the
+                            // last three close the heredoc and the ones before
+                            // them are its text, so it can end with a quote:
+                            // `"""say "hi""""`.
                             self.cursor.advance(); // third '"'
+                            while self.cursor.peek() == Some('"') {
+                                self.cursor.advance();
+                            }
                             let str_end = self.cursor.pos();
+                            let content_end = str_end - 3;
 
                             // Pop InString state
                             self.state_stack.pop();
 
                             // Queue StringEnd
-                            self.pending
-                                .push(Token::new(TokenKind::StringEnd, saved_pos, str_end));
+                            self.pending.push(Token::new(
+                                TokenKind::StringEnd,
+                                content_end,
+                                str_end,
+                            ));
 
-                            if saved_pos > start {
-                                return Token::new(TokenKind::StringContent, start, saved_pos);
+                            if content_end > start {
+                                return Token::new(TokenKind::StringContent, start, content_end);
                             } else {
                                 return self.pending.remove(0);
                             }

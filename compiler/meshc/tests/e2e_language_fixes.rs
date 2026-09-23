@@ -4085,3 +4085,11 @@ end
         "{err}"
     );
 }
+
+#[test]
+fn a_heredoc_can_end_with_a_quote() {
+    // `""""` closed the heredoc at the first three quotes and left a
+    // stray `"`, a parse error.
+    let source = "fn main() do\n  println(\"\"\"ends with quote\"\"\"\")\n  println(\"\"\"say \"hi\" twice\"\"\"\"\"\")\nend\n";
+    assert_eq!(run(source), "ends with quote\"\nsay \"hi\" twice\"\"\"\n");
+}
