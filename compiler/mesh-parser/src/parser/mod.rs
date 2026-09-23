@@ -378,6 +378,14 @@ impl<'src> Parser<'src> {
         self.has_error = true;
     }
 
+    /// Record an error in a token's text (an unknown escape) at `span`: the
+    /// syntax around it is sound, so parsing goes on as if there were none.
+    pub(crate) fn token_error_at(&mut self, message: &str, span: Span) {
+        if !self.input_swallowed {
+            self.errors.push(ParseError::new(message, span));
+        }
+    }
+
     /// An unclosed string ran to the end of the file: report nothing more.
     pub(crate) fn input_swallowed(&mut self) {
         self.input_swallowed = true;

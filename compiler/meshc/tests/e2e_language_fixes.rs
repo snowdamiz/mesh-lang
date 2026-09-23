@@ -4063,3 +4063,25 @@ fn an_error_is_reported_once() {
     let err = build_error("fn main() do\n  println(Foo.bar(1))\nend\n");
     assert_eq!(err.matches("undefined variable: Foo").count(), 1, "{err}");
 }
+
+#[test]
+fn string_escapes_are_checked_and_unicode_escapes_work() {
+    // An unknown escape `\q` became `q`, and `\u{e9}` printed `u{e9}`.
+    let source = r##"
+fn main() do
+  let x = 1
+  println("a\u{e9}b \u{1F389} [\t] [\"] [\\] [\${x}] [\#{x}]")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "a\u{e9}b \u{1F389} [\t] [\"] [\\] [${x}] [#{x}]\n"
+    );
+    let err = build_error("fn main() do\n  println(\"a\\qb\")\n  println(\"c\\u{zz}d\")\nend\n");
+    assert!(err.contains("unknown escape `\\q`"), "{err}");
+    assert!(err.contains("invalid unicode escape"), "{err}");
+    assert!(
+        err.contains("main.mpl:2:13") && err.contains("main.mpl:3:13"),
+        "{err}"
+    );
+}

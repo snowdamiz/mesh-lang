@@ -51,7 +51,7 @@ supported.
 | Float | Decimal and scientific notation |
 | Boolean | `true`, `false` |
 | Unit | `nil` or `()` |
-| String | `"text"`, with escapes and interpolation |
+| String | `"text"`, with interpolation and the escapes `\n` `\t` `\r` `\0` `\\` `\"`, `\$` and `\#` (a literal `${` or `#{`), and `\u{1F389}`; any other escape is an error |
 | Heredoc | `"""multiline text"""` |
 | Atom | `:name`, using lowercase letters, digits, and underscores |
 | Regex | `~r/pattern/ims`; the pattern may span physical source lines until an unescaped `/`; supported flags are `i`, `m`, and `s` |

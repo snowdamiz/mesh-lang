@@ -702,6 +702,57 @@ fn parse_keyword_entry(p: &mut Parser) {
 
 // ── String Expression ──────────────────────────────────────────────────
 
+/// The first invalid escape in a string's text: its byte offset and
+/// length, and what is wrong. Strings know `\n`, `\t`, `\r`, `\0`,
+/// `\\`, `\"`, `\$` and `\#` (to write `${` and `#{`), and `\u{1F389}`.
+fn invalid_escape(text: &str) -> Option<(usize, usize, String)> {
+    let mut chars = text.char_indices().peekable();
+    while let Some((at, c)) = chars.next() {
+        if c != '\\' {
+            continue;
+        }
+        let Some((_, escaped)) = chars.next() else {
+            return None;
+        };
+        match escaped {
+            'n' | 't' | 'r' | '0' | '\\' | '"' | '$' | '#' => {}
+            'u' => {
+                let rest = &text[at + 2..];
+                let digits = rest
+                    .strip_prefix('{')
+                    .and_then(|r| r.split_once('}'))
+                    .map(|(digits, _)| digits);
+                let valid = digits.is_some_and(|d| {
+                    (1..=6).contains(&d.len())
+                        && u32::from_str_radix(d, 16)
+                            .ok()
+                            .and_then(char::from_u32)
+                            .is_some()
+                });
+                let len = digits.map_or(2, |d| d.len() + 4);
+                if !valid {
+                    return Some((
+                        at,
+                        len.min(text.len() - at),
+                        "invalid unicode escape: write `\\u{...}` with 1 to 6 hex digits of a character".to_string(),
+                    ));
+                }
+                for _ in 0..len - 2 {
+                    chars.next();
+                }
+            }
+            other => {
+                return Some((
+                    at,
+                    1 + other.len_utf8(),
+                    format!("unknown escape `\\{other}`: write `\\\\` for a backslash"),
+                ))
+            }
+        }
+    }
+    None
+}
+
 /// Parse a string expression, which may contain interpolation segments.
 ///
 /// String tokens from the lexer look like:
@@ -714,6 +765,10 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
     loop {
         match p.current() {
             SyntaxKind::STRING_CONTENT => {
+                if let Some((offset, len, message)) = invalid_escape(p.current_text()) {
+                    let start = p.current_span().start + offset as u32;
+                    p.token_error_at(&message, Span::new(start, start + len as u32));
+                }
                 p.advance();
             }
             SyntaxKind::INTERPOLATION_START => {

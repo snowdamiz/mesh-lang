@@ -16748,6 +16748,28 @@ fn unescape_string(raw: &str) -> String {
                 Some('0') => result.push('\0'),
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
+                // `\u{1F389}`; the parser rejects a malformed one.
+                Some('u') => {
+                    let rest: String = chars.clone().collect();
+                    let code = rest
+                        .strip_prefix('{')
+                        .and_then(|r| r.split_once('}'))
+                        .and_then(|(digits, _)| {
+                            let c = u32::from_str_radix(digits, 16)
+                                .ok()
+                                .and_then(char::from_u32)?;
+                            Some((c, digits.len() + 2))
+                        });
+                    match code {
+                        Some((c, consumed)) => {
+                            result.push(c);
+                            for _ in 0..consumed {
+                                chars.next();
+                            }
+                        }
+                        None => result.push('u'),
+                    }
+                }
                 Some(other) => result.push(other),
                 None => result.push('\\'),
             }
