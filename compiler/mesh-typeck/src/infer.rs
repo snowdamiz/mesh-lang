@@ -7778,6 +7778,7 @@ fn infer_fn_def(
         where_bounds(&where_constraints, &type_params),
     );
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
+    let saved_default_calls = std::mem::take(&mut ctx.default_calls);
     ctx.push_fn_return_type(return_type_annotation.clone());
     let body_ty = if is_native {
         return_type_annotation
@@ -7799,11 +7800,13 @@ fn infer_fn_def(
     let returns = ctx.pop_fn_return_type();
     ctx.where_bounds = saved_bounds;
     let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
+    let default_calls = std::mem::replace(&mut ctx.default_calls, saved_default_calls);
 
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
     check_type_param_bounds(ctx, &type_params, &where_constraints, operand_traits);
+    check_default_calls(ctx, &type_params, trait_registry, default_calls);
 
     env.pop_scope();
 
@@ -9244,6 +9247,41 @@ fn tuple_element_type(
 
 /// Infer the type of a function call expression with where-clause enforcement.
 fn infer_call(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    call: &CallExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // The builtin `default()` builds a value of whatever type its context
+    // gives it; which type, and that it has a Default, is checked once the
+    // enclosing function is inferred.
+    let builtin_default = matches!(call.callee(), Some(Expr::NameRef(ref name)) if name.text().as_deref() == Some("default"))
+        && call
+            .arg_list()
+            .map_or(true, |list| list.args().next().is_none())
+        && env
+            .lookup("default")
+            .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
+    let ty = infer_call_inner(
+        ctx,
+        env,
+        call,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )?;
+    if builtin_default {
+        ctx.default_calls
+            .push((ty.clone(), call.syntax().text_range()));
+    }
+    Ok(ty)
+}
+
+fn infer_call_inner(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
     call: &CallExpr,
@@ -14288,6 +14326,34 @@ fn infer_try_expr(
 
 /// Extract where-clause constraints from a function definition.
 /// A function's `where` bounds as (type parameter variable, trait) pairs.
+/// Each builtin `default()` call must have been given a type by its context
+/// (a declared type parameter counts: its callers fix it), and that type
+/// must implement Default.
+fn check_default_calls(
+    ctx: &mut InferCtx,
+    type_params: &FxHashMap<String, Ty>,
+    trait_registry: &TraitRegistry,
+    calls: Vec<(Ty, TextRange)>,
+) {
+    for (ty, span) in calls {
+        let built = ctx.resolve(ty);
+        let is_param = type_params
+            .values()
+            .any(|param| ctx.resolve(param.clone()) == built);
+        if is_param {
+            continue;
+        }
+        if built.has_type_vars() {
+            ctx.errors.push(TypeError::AmbiguousDefault { span });
+        } else if !trait_registry.has_impl("Default", &built) {
+            ctx.errors.push(TypeError::TraitNotSatisfied {
+                ty: built,
+                trait_name: "Default".to_string(),
+                origin: ConstraintOrigin::Expr { span },
+            });
+        }
+    }
+}
 
 /// A generic function's body applies an operator to a value of its type
 /// parameter `T`: the parameter needs the operator's trait as a bound
@@ -14322,6 +14388,7 @@ fn check_type_param_bounds(
         }
     }
 }
+
 fn where_bounds(
     constraints: &[(String, String)],
     type_params: &FxHashMap<String, Ty>,

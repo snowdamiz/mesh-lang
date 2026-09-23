@@ -155,6 +155,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DuplicateVariant { .. } => "E0061",
         TypeError::CyclicAlias { .. } => "E0062",
         TypeError::UnboundedTypeParam { .. } => "E0063",
+        TypeError::AmbiguousDefault { .. } => "E0064",
     }
 }
 
@@ -541,6 +542,7 @@ pub fn render_json_diagnostic(
                 | TypeError::UnderivableField { span, .. }
                 | TypeError::DuplicateVariant { span, .. }
                 | TypeError::CyclicAlias { span, .. }
+                | TypeError::AmbiguousDefault { span }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2132,6 +2134,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give one of the variants another name")
+                .finish()
+        }
+        TypeError::AmbiguousDefault { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("cannot tell which type `default()` builds here")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("nothing fixes this value's type")
+                        .with_color(Color::Red),
+                )
+                .with_help("annotate it: `let x :: Int = default()`")
                 .finish()
         }
         TypeError::CyclicAlias { alias_name, span } => {

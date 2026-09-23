@@ -2716,3 +2716,36 @@ fn an_operator_on_a_type_parameter_needs_its_bound() {
     let source = "fn less<T>(a :: T, b :: T) -> Bool where T: Ord do\n  a < b or a == b\nend\n\nfn main() do\n  println(\"#{less(1, 2)}\")\nend\n";
     assert_eq!(run(source), "true\n");
 }
+
+#[test]
+fn default_needs_a_known_type_with_a_default() {
+    let err = build_error("fn main() do\n  let x = default()\n  println(\"#{x}\")\nend\n");
+    assert!(err.contains("E0064") && err.contains(":2:11"), "{err}");
+    let err = build_error(
+        "struct NoDef do\n  n :: Int\nend\n\nfn main() do\n  let x :: NoDef = default()\n  println(\"#{x.n}\")\nend\n",
+    );
+    assert!(err.contains("NoDef does not implement Default"), "{err}");
+    let source = r##"
+struct Cfg do
+  n :: Int
+end
+
+impl Default for Cfg do
+  fn default() -> Cfg do
+    Cfg { n: 7 }
+  end
+end
+
+fn make<T>() -> T where T: Default do
+  default()
+end
+
+fn main() do
+  let a :: Int = default()
+  let c :: Cfg = default()
+  let d :: Cfg = make()
+  println("#{a} #{c.n} #{d.n}")
+end
+"##;
+    assert_eq!(run(source), "0 7 7\n");
+}

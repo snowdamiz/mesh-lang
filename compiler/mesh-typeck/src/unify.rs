@@ -106,6 +106,9 @@ pub struct InferCtx {
     /// each needs: a generic function's own type parameter must be bounded
     /// by it (`where T: Ord`), checked when the function's body is done.
     pub operand_traits: Vec<(Ty, String, ConstraintOrigin)>,
+    /// The builtin `default()` calls of the function being inferred, with
+    /// the type each builds (checked when the function is done).
+    pub default_calls: Vec<(Ty, TextRange)>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -152,6 +155,7 @@ impl InferCtx {
             local_variants: Default::default(),
             registered_items: Default::default(),
             operand_traits: Vec::new(),
+            default_calls: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),

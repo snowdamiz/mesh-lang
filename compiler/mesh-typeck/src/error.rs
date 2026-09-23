@@ -385,6 +385,8 @@ pub enum TypeError {
         trait_name: String,
         origin: ConstraintOrigin,
     },
+    /// Nothing tells which type a `default()` call builds.
+    AmbiguousDefault { span: TextRange },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
     /// Two sum types of one module declare a variant of the same name.
@@ -900,6 +902,9 @@ impl fmt::Display for TypeError {
                     f,
                     "`{param}` is not known to implement {trait_name}; add `where {param}: {trait_name}`"
                 )
+            }
+            TypeError::AmbiguousDefault { .. } => {
+                write!(f, "cannot tell which type `default()` builds here")
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")
