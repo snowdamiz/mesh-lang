@@ -23,5 +23,10 @@
   "dependencies": {
     "lucide-svelte": "^0.575.0",
     "marked": "^17.0.3"
+  },
+  "overrides": {
+    "@sveltejs/kit": {
+      "cookie": "^0.7.2"
+    }
   }
 }

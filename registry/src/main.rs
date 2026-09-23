@@ -57,13 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn build_oauth_client(config: &config::AppConfig) -> oauth2::basic::BasicClient {
+fn build_oauth_client(config: &config::AppConfig) -> state::GithubOAuthClient {
     use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
-    oauth2::basic::BasicClient::new(
-        ClientId::new(config.github_client_id.clone()),
-        Some(ClientSecret::new(config.github_client_secret.clone())),
-        AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-        Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-    )
-    .set_redirect_uri(RedirectUrl::new(config.callback_url.clone()).unwrap())
+    oauth2::basic::BasicClient::new(ClientId::new(config.github_client_id.clone()))
+        .set_client_secret(ClientSecret::new(config.github_client_secret.clone()))
+        .set_auth_uri(AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap())
+        .set_token_uri(
+            TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap(),
+        )
+        .set_redirect_uri(RedirectUrl::new(config.callback_url.clone()).unwrap())
 }

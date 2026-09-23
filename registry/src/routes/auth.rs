@@ -4,7 +4,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Json as AxumJson,
 };
-use oauth2::{reqwest::async_http_client, AuthorizationCode, CsrfToken, Scope, TokenResponse};
+use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_sessions::Session;
@@ -61,11 +61,16 @@ pub async fn github_callback(
         return Err(AppError::BadRequest("CSRF state mismatch".to_string()));
     }
 
-    // Exchange authorization code for access token
+    // Exchange authorization code for access token. The client follows no
+    // redirects, so the token endpoint cannot bounce the code elsewhere.
+    let http_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| AppError::Internal(format!("OAuth HTTP client failed: {}", e)))?;
     let token_result = state
         .oauth_client
         .exchange_code(AuthorizationCode::new(params.code))
-        .request_async(async_http_client)
+        .request_async(&http_client)
         .await
         .map_err(|e| AppError::Internal(format!("OAuth token exchange failed: {}", e)))?;
 
@@ -94,8 +99,10 @@ pub async fn github_callback(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    // In the fragment, not the query: a fragment never reaches a server, so the
+    // token stays out of request lines, access logs and Referer headers.
     let redirect = format!(
-        "{}/token?value={}&login={}",
+        "{}/token#value={}&login={}",
         state.config.frontend_url, raw_token, github_login
     );
     Ok(Redirect::to(&redirect))

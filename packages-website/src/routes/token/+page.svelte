@@ -8,9 +8,12 @@
   let cmdCopied = false;
 
   onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    token = params.get('value') || '';
-    login = params.get('login') || '';
+    // The registry puts the token in the fragment, which the browser never
+    // sends to a server. The query form still works for an older redirect.
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const query = new URLSearchParams(window.location.search);
+    token = fragment.get('value') || query.get('value') || '';
+    login = fragment.get('login') || query.get('login') || '';
     // Remove token from URL so it doesn't linger in browser history
     if (token) {
       history.replaceState({}, '', window.location.pathname);

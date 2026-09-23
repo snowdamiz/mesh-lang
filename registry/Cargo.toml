@@ -11,9 +11,12 @@ tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"]
 # Postgres this replaced was reached over a private network and needed none.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "migrate", "macros"] }
 aws-config = "1"
-aws-sdk-s3 = "1"
+# Without the SDK's legacy `rustls` feature: default-https-client already
+# provides TLS, and the legacy client drags in rustls 0.21 and a webpki with
+# open advisories.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["sigv4a", "default-https-client", "rt-tokio"] }
 aws-credential-types = "1"
-oauth2 = "4"
+oauth2 = "5"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 argon2 = "0.5"
@@ -29,7 +32,8 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 flate2 = "1"
 tar = "0.4"
-reqwest = { version = "0.11", features = ["json"] }
+# rustls, like everything else here: the default native-tls pulled in OpenSSL.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
 time = "0.3"
 
 [package]
