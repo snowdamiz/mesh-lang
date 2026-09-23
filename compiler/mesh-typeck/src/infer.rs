@@ -5184,11 +5184,7 @@ fn infer_multi_clause_fn(
         };
 
         // Unify body type with previous clause body types.
-        if let Some(ref prev_ty) = result_ty {
-            ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
-        } else {
-            result_ty = Some(body_ty.clone());
-        }
+        join_branch_ty(ctx, &mut result_ty, body_ty.clone())?;
 
         // Unify with return type annotation if present.
         if let Some(ref ret_ann) = return_type_annotation {
@@ -7645,15 +7641,24 @@ fn infer_expr(
             trait_registry,
             fn_constraints,
         )?,
-        Expr::CallExpr(call) => infer_call(
-            ctx,
-            env,
-            call,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )?,
+        Expr::CallExpr(call) => {
+            let ty = infer_call(
+                ctx,
+                env,
+                call,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?;
+            // An actor calling itself continues with new arguments; the call
+            // does not produce a value, so any arm may end in one.
+            if calls_enclosing_actor(env, call) {
+                Ty::Never
+            } else {
+                ty
+            }
+        }
         Expr::PipeExpr(pipe) => infer_pipe(
             ctx,
             env,
@@ -9771,15 +9776,22 @@ fn infer_if(
                 .unwrap_or_else(|| if_.syntax().text_range()),
             else_span: else_branch.syntax().text_range(),
         };
-        ctx.unify(then_ty.clone(), else_ty, origin)?;
+        ctx.unify(then_ty.clone(), else_ty.clone(), origin)?;
+        // A then branch that never returns (`return`, `panic`) leaves the
+        // else branch's type as the value of the whole `if`.
+        let if_ty = if matches!(ctx.resolve(then_ty.clone()), Ty::Never) {
+            else_ty
+        } else {
+            then_ty
+        };
 
         // Store the resolved type for this if-expression so that codegen can
         // look it up via `resolve_range`.  Without this, recursive `infer_if`
         // calls (for `else if` chains) bypass `infer_expr` and never populate
         // the `types` map, causing codegen to fall back to `MirType::Unit`.
-        types.insert(if_.syntax().text_range(), ctx.resolve(then_ty.clone()));
+        types.insert(if_.syntax().text_range(), ctx.resolve(if_ty.clone()));
 
-        Ok(then_ty)
+        Ok(if_ty)
     } else {
         // No else branch — store Unit for consistency.
         types.insert(if_.syntax().text_range(), ctx.resolve(then_ty.clone()));
@@ -10360,11 +10372,7 @@ fn infer_multi_clause_closure(
         }
 
         // Unify body type with previous clauses.
-        if let Some(ref prev_ty) = result_ty {
-            ctx.unify(prev_ty.clone(), body_ty, ConstraintOrigin::Builtin)?;
-        } else {
-            result_ty = Some(body_ty);
-        }
+        join_branch_ty(ctx, &mut result_ty, body_ty)?;
 
         env.pop_scope();
     }
@@ -11043,17 +11051,56 @@ fn infer_case(
             _ => None,
         };
         if let Some(body_ty) = body_ty {
-            if let Some(ref prev_ty) = result_ty {
-                ctx.unify(prev_ty.clone(), body_ty, ConstraintOrigin::Builtin)?;
-            } else {
-                result_ty = Some(body_ty);
-            }
+            join_branch_ty(ctx, &mut result_ty, body_ty)?;
         }
 
         env.pop_scope();
     }
 
-    // ── Exhaustiveness and redundancy checking ─────────────────────────
+    check_arm_coverage(
+        ctx,
+        &scrutinee_ty,
+        &arm_patterns,
+        &arm_has_guard,
+        &arm_spans,
+        case.syntax().text_range(),
+        type_registry,
+    );
+
+    Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
+}
+
+/// Merge one branch's type into the type of a multi-branch expression. A
+/// branch that never returns (`return`, `panic`) is `Never`, which unifies
+/// with anything but must not become the type of the whole expression.
+fn join_branch_ty(
+    ctx: &mut InferCtx,
+    joined: &mut Option<Ty>,
+    branch: Ty,
+) -> Result<(), TypeError> {
+    match joined {
+        Some(prev) => {
+            ctx.unify(prev.clone(), branch.clone(), ConstraintOrigin::Builtin)?;
+            if matches!(ctx.resolve(prev.clone()), Ty::Never) {
+                *prev = branch;
+            }
+        }
+        None => *joined = Some(branch),
+    }
+    Ok(())
+}
+
+/// Report a `case` or `receive` that misses values of the scrutinee type, and
+/// warn about arms that earlier arms already cover.
+fn check_arm_coverage(
+    ctx: &mut InferCtx,
+    scrutinee_ty: &Ty,
+    arm_patterns: &[AbsPat],
+    arm_has_guard: &[bool],
+    arm_spans: &[TextRange],
+    span: TextRange,
+    type_registry: &TypeRegistry,
+) {
     let resolved_scrutinee = ctx.resolve(scrutinee_ty.clone());
     let scrutinee_type_info = type_to_type_info(&resolved_scrutinee, type_registry);
     let abs_registry = build_abs_type_registry(type_registry);
@@ -11075,30 +11122,25 @@ fn infer_case(
         let err = TypeError::NonExhaustiveMatch {
             scrutinee_type: format!("{}", resolved_scrutinee),
             missing_patterns: missing,
-            span: case.syntax().text_range(),
+            span,
         };
         ctx.errors.push(err);
     }
 
     // For redundancy: check all arms; guarded arms cover nothing for later ones.
     let redundant_indices = exhaustiveness::check_redundancy(
-        &arm_patterns,
-        &arm_has_guard,
+        arm_patterns,
+        arm_has_guard,
         &scrutinee_type_info,
         &abs_registry,
     );
     for idx in redundant_indices {
         let warn = TypeError::RedundantArm {
             arm_index: idx,
-            span: arm_spans
-                .get(idx)
-                .copied()
-                .unwrap_or(case.syntax().text_range()),
+            span: arm_spans.get(idx).copied().unwrap_or(span),
         };
         ctx.warnings.push(warn);
     }
-
-    Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
 }
 
 /// Infer the type of a return expression.
@@ -12352,6 +12394,23 @@ fn infer_cons_pattern(
 /// the actor's message type. Used by `self()` and `receive` to know the
 /// current actor context.
 const ACTOR_MSG_TYPE_KEY: &str = "__actor_msg_type__";
+/// The catch-all arm name the test runner gives `assert_receive`'s receive.
+const ASSERT_RECEIVE_FALLBACK: &str = "__assert_receive_other";
+/// The type variable an actor's name is bound to inside its own body.
+const ACTOR_SELF_KEY: &str = "__actor_self__";
+
+/// Whether `call` calls the actor whose body is being checked, by its own
+/// (unshadowed) name.
+fn calls_enclosing_actor(env: &TypeEnv, call: &CallExpr) -> bool {
+    let Some(Expr::NameRef(callee)) = call.callee() else {
+        return false;
+    };
+    let (Some(name), Some(actor)) = (callee.text(), env.lookup(ACTOR_SELF_KEY)) else {
+        return false;
+    };
+    env.lookup(&name)
+        .is_some_and(|scheme| scheme.ty == actor.ty)
+}
 
 /// Infer an actor definition:
 ///
@@ -12379,7 +12438,9 @@ fn infer_actor_def(
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<unnamed_actor>".to_string());
 
-    ctx.enter_level();
+    // The actor compiles to one body, so its type is not generalized: the
+    // messages sent to it and the arguments it is spawned with, anywhere in
+    // the module, decide the types its body works with.
 
     // Create a fresh type variable for the message type M.
     let msg_ty = ctx.fresh_var();
@@ -12392,6 +12453,7 @@ fn infer_actor_def(
 
     // Bind the actor message type for self() and receive.
     env.insert(ACTOR_MSG_TYPE_KEY.into(), Scheme::mono(msg_ty.clone()));
+    env.insert(ACTOR_SELF_KEY.into(), Scheme::mono(self_var.clone()));
 
     // Infer parameter types.
     let mut param_types = Vec::new();
@@ -12433,9 +12495,7 @@ fn infer_actor_def(
     // Unify with the pre-bound self-recursive variable.
     ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
 
-    ctx.leave_level();
-    let scheme = ctx.generalize(fn_ty.clone());
-    env.insert(actor_name, scheme);
+    env.insert(actor_name, Scheme::mono(fn_ty.clone()));
 
     let resolved = ctx.resolve(fn_ty);
     types.insert(actor_def.syntax().text_range(), resolved.clone());
@@ -13215,6 +13275,9 @@ fn infer_receive(
         .unwrap_or_else(|| ctx.fresh_var());
 
     let mut result_ty: Option<Ty> = None;
+    let mut arm_patterns: Vec<AbsPat> = Vec::new();
+    let mut arm_has_guard: Vec<bool> = Vec::new();
+    let mut arm_spans: Vec<TextRange> = Vec::new();
 
     for arm in recv.arms() {
         env.push_scope();
@@ -13223,6 +13286,32 @@ fn infer_receive(
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             // Unify pattern type with actor message type.
             ctx.unify(pat_ty, actor_msg_ty.clone(), ConstraintOrigin::Builtin)?;
+            // Lowering reads the message type from the pattern's range.
+            types.insert(pat.syntax().text_range(), actor_msg_ty.clone());
+            arm_patterns.push(ast_pattern_to_abstract(&pat, env, type_registry));
+        } else {
+            arm_patterns.push(AbsPat::Wildcard);
+        }
+        arm_has_guard.push(arm.guard().is_some());
+        arm_spans.push(arm.syntax().text_range());
+
+        if let Some(guard_expr) = arm.guard() {
+            if let Err(reason) = validate_guard_expr(&guard_expr) {
+                ctx.errors.push(TypeError::InvalidGuardExpression {
+                    reason,
+                    span: guard_expr.syntax().text_range(),
+                });
+            }
+            let guard_ty = infer_expr(
+                ctx,
+                env,
+                &guard_expr,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?;
+            let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
         }
 
         if let Some(body) = arm.body() {
@@ -13235,14 +13324,39 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            if let Some(ref prev_ty) = result_ty {
-                ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
-            } else {
-                result_ty = Some(body_ty);
-            }
+            join_branch_ty(ctx, &mut result_ty, body_ty)?;
         }
 
         env.pop_scope();
+    }
+
+    // A receive takes whatever message arrives next, so its arms must cover
+    // the whole message type, as a case's arms cover its scrutinee.
+    if !arm_patterns.is_empty() {
+        check_arm_coverage(
+            ctx,
+            &actor_msg_ty,
+            &arm_patterns,
+            &arm_has_guard,
+            &arm_spans,
+            recv.syntax().text_range(),
+            type_registry,
+        );
+        // `assert_receive` adds a catch-all arm that fails the test; it is
+        // redundant whenever the asserted pattern matches everything.
+        if ctx.test_builtins {
+            let fallback: Vec<TextRange> = recv
+                .arms()
+                .filter(|arm| {
+                    matches!(arm.pattern(), Some(Pattern::Ident(ident))
+                        if ident.name().is_some_and(|name| name.text() == ASSERT_RECEIVE_FALLBACK))
+                })
+                .map(|arm| arm.syntax().text_range())
+                .collect();
+            ctx.warnings.retain(|warning| {
+                !matches!(warning, TypeError::RedundantArm { span, .. } if fallback.contains(span))
+            });
+        }
     }
 
     // Handle after (timeout) clause.
@@ -13269,11 +13383,7 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            if let Some(ref prev_ty) = result_ty {
-                ctx.unify(prev_ty.clone(), body_ty.clone(), ConstraintOrigin::Builtin)?;
-            } else {
-                result_ty = Some(body_ty);
-            }
+            join_branch_ty(ctx, &mut result_ty, body_ty)?;
         }
     }
 

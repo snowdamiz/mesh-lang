@@ -407,6 +407,9 @@ struct Lowerer<'a> {
     try_counter: u32,
     /// Counter for compiler-generated resource cleanup result temporaries.
     resource_temp_counter: u32,
+    /// While lowering an actor with parameters: its name, its body
+    /// function's name, and the parameter types, for self-calls.
+    actor_body_target: Option<(String, String, Vec<MirType>)>,
     /// Enables special lowering of test DSL constructs (assert, assert_eq, assert_ne,
     /// assert_raises). Detected in lower_source_file's pre-scan pass by looking
     /// for `fn __test_body_*` function definitions (injected by the preprocessor).
@@ -689,6 +692,7 @@ impl<'a> Lowerer<'a> {
             current_fn_return_typeck: None,
             try_counter: 0,
             resource_temp_counter: 0,
+            actor_body_target: None,
             is_test_mode: false,
             overloaded_call_targets: typeck
                 .overloaded_call_targets
@@ -10416,6 +10420,29 @@ impl<'a> Lowerer<'a> {
 
     fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
         let lowered = self.lower_call_expr_unshaped(call);
+        // Inside an actor with parameters, a call to the actor itself runs its
+        // body function; the actor's own name is the spawn entry, which takes
+        // an argument buffer. Tail calls become loops later.
+        if let (Some((actor, body_fn, param_tys)), Some(Expr::NameRef(callee))) =
+            (&self.actor_body_target, call.callee())
+        {
+            if callee.text().as_deref() == Some(actor.as_str())
+                && self.lookup_non_global_var(actor).is_none()
+            {
+                if let MirExpr::Call { func, args, .. } = &lowered {
+                    if matches!(func.as_ref(), MirExpr::Var(name, _) if name == actor) {
+                        return MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                body_fn.clone(),
+                                MirType::FnPtr(param_tys.clone(), Box::new(MirType::Unit)),
+                            )),
+                            args: args.clone(),
+                            ty: MirType::Unit,
+                        };
+                    }
+                }
+            }
+        }
         // Timer.send_after(pid, ms, message): the message crosses to another actor.
         let MirExpr::Call { func, mut args, ty } = lowered else {
             return lowered;
@@ -14924,12 +14951,20 @@ impl<'a> Lowerer<'a> {
         // a value to the caller. The spawn expression returns the Pid.
         let return_type = MirType::Unit;
 
+        let body_fn_name = format!("__actor_{}_body", name);
+        let saved_target = self.actor_body_target.take();
+        if !params.is_empty() {
+            let param_tys = params.iter().map(|(_, ty)| ty.clone()).collect();
+            self.actor_body_target = Some((name.clone(), body_fn_name.clone(), param_tys));
+        }
+
         // Lower the actor body. The body contains a receive block that loops.
         let mut body = if let Some(block) = actor_def.body() {
             self.lower_block(&block)
         } else {
             MirExpr::Unit
         };
+        self.actor_body_target = saved_target;
 
         // Handle terminate clause: lower to a separate callback function.
         let terminate_callback_name = if let Some(term_clause) = actor_def.terminate_clause() {
@@ -14976,12 +15011,9 @@ impl<'a> Lowerer<'a> {
         // a wrapper that accepts the raw pointer and deserializes args before calling the
         // actual actor body with typed values.
         if !params.is_empty() {
-            let body_fn_name = format!("__actor_{}_body", name);
-
             // TCE: Rewrite self-recursive tail calls to TailCall nodes (Phase 48).
-            // The recursive calls in the source use the original actor name (e.g., `counter(next)`),
-            // so we pass the original name to rewrite_tail_calls for matching.
-            let has_tail_calls = rewrite_tail_calls(&mut body, &name);
+            // Self-calls were lowered as calls to the body function.
+            let has_tail_calls = rewrite_tail_calls(&mut body, &body_fn_name);
 
             // 1. Push the body function with original typed params.
             self.functions.push(MirFunction {
@@ -16133,18 +16165,35 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// A receive binds the next message to a temporary and matches it against
+    /// the arms exactly as a `case` would, guards included.
     fn lower_receive_expr(&mut self, recv: &ReceiveExpr) -> MirExpr {
         let ty = self.resolve_range(recv.syntax().text_range());
+        let msg_typeck = recv
+            .arms()
+            .find_map(|arm| arm.pattern())
+            .and_then(|pat| self.get_ty(pat.syntax().text_range()).cloned());
+        let msg_ty = match msg_typeck.as_ref().map(|t| resolve_type(t, self.registry)) {
+            Some(MirType::Tuple(_)) => MirType::Ptr,
+            Some(t) => t,
+            None => MirType::Int,
+        };
+        let msg_var = format!(
+            "__recv_msg_{}",
+            u32::from(recv.syntax().text_range().start())
+        );
 
-        // Lower receive arms (reuse pattern matching infrastructure).
-        let arms: Vec<MirMatchArm> = recv
+        self.push_scope();
+        self.insert_var(msg_var.clone(), msg_ty.clone());
+        let match_arms: Vec<MirMatchArm> = recv
             .arms()
             .map(|arm| {
                 self.push_scope();
                 let pattern = arm
                     .pattern()
-                    .map(|p| self.lower_pattern(&p))
+                    .map(|p| self.lower_pattern_with_expected(&p, msg_typeck.as_ref()))
                     .unwrap_or(MirPattern::Wildcard);
+                let guard = arm.guard().map(|e| self.lower_expr(&e));
                 let body = arm
                     .body()
                     .map(|e| self.lower_expr(&e))
@@ -16152,11 +16201,26 @@ impl<'a> Lowerer<'a> {
                 self.pop_scope();
                 MirMatchArm {
                     pattern,
-                    guard: None, // Receive arms don't have guards (they use when clauses which are separate)
+                    guard,
                     body,
                 }
             })
             .collect();
+        self.pop_scope();
+
+        let arms = if match_arms.is_empty() {
+            Vec::new()
+        } else {
+            vec![MirMatchArm {
+                pattern: MirPattern::Var(msg_var.clone(), msg_ty.clone()),
+                guard: None,
+                body: MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::Var(msg_var, msg_ty)),
+                    arms: match_arms,
+                    ty: ty.clone(),
+                },
+            }]
+        };
 
         // Handle optional after (timeout) clause.
         let (timeout_ms, timeout_body) = if let Some(after) = recv.after_clause() {

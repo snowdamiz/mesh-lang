@@ -979,29 +979,34 @@ fn parse_match_arm(p: &mut Parser) {
     // Expect `->`.
     p.expect(SyntaxKind::ARROW);
 
-    // Parse arm body: a single expression, or a do...end block.
-    // The block form allows let bindings and multiple statements:
-    //   pattern -> do
-    //     let x = expr
-    //     x
-    //   end
     if !p.has_error() {
-        if p.at(SyntaxKind::DO_KW) {
-            p.advance(); // DO_KW
-            parse_block_body(p);
-            if p.at(SyntaxKind::END_KW) {
-                p.advance(); // END_KW
-            } else {
-                p.error("expected `end` to close case arm `do` block");
-            }
-        } else if p.at(SyntaxKind::NEWLINE) {
-            parse_arm_block_body(p);
-        } else {
-            expr(p);
-        }
+        parse_arm_body(p);
     }
 
     p.close(m, SyntaxKind::MATCH_ARM);
+}
+
+/// Parse the body after an arm's `->`: a single expression, a do...end
+/// block, or statements starting on the next line. The block forms allow let
+/// bindings and multiple statements:
+///   pattern -> do
+///     let x = expr
+///     x
+///   end
+fn parse_arm_body(p: &mut Parser) {
+    if p.at(SyntaxKind::DO_KW) {
+        p.advance(); // DO_KW
+        parse_block_body(p);
+        if p.at(SyntaxKind::END_KW) {
+            p.advance(); // END_KW
+        } else {
+            p.error("expected `end` to close arm `do` block");
+        }
+    } else if p.at(SyntaxKind::NEWLINE) {
+        parse_arm_block_body(p);
+    } else {
+        expr(p);
+    }
 }
 
 /// Parse the body of a match arm that starts on the line after `->`:
@@ -1010,7 +1015,8 @@ fn parse_match_arm(p: &mut Parser) {
 ///     let x = expr
 ///     x
 ///
-/// The statements run until the next arm head or the `end` of the case.
+/// The statements run until the next arm head, the `end` of the case, or a
+/// receive's `after` clause.
 fn parse_arm_block_body(p: &mut Parser) {
     let m = p.open();
     let mut statements = 0;
@@ -1021,7 +1027,11 @@ fn parse_arm_block_body(p: &mut Parser) {
             p.eat_newlines();
         }
 
-        if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) || at_match_arm_head(p) {
+        if p.at(SyntaxKind::END_KW)
+            || p.at(SyntaxKind::EOF)
+            || p.at(SyntaxKind::AFTER_KW)
+            || at_match_arm_head(p)
+        {
             break;
         }
 
@@ -1770,7 +1780,8 @@ fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
     p.close(m, SyntaxKind::RECEIVE_EXPR)
 }
 
-/// Parse a single receive arm: `pattern -> body`
+/// Parse a single receive arm: `pattern [when guard] -> body`, with the same
+/// body forms as a case arm.
 fn parse_receive_arm(p: &mut Parser) {
     let m = p.open();
 
@@ -1786,9 +1797,8 @@ fn parse_receive_arm(p: &mut Parser) {
     // Expect `->`.
     p.expect(SyntaxKind::ARROW);
 
-    // Parse arm body: a single expression.
     if !p.has_error() {
-        expr(p);
+        parse_arm_body(p);
     }
 
     p.close(m, SyntaxKind::RECEIVE_ARM);
@@ -1805,9 +1815,8 @@ fn parse_after_clause(p: &mut Parser) {
     // Expect `->`.
     p.expect(SyntaxKind::ARROW);
 
-    // Parse timeout body.
     if !p.has_error() {
-        expr(p);
+        parse_arm_body(p);
     }
 
     p.close(m, SyntaxKind::AFTER_CLAUSE);

@@ -775,6 +775,19 @@ impl ReceiveArm {
         self.syntax.children().find_map(super::pat::Pattern::cast)
     }
 
+    /// The guard expression (after `when`), if present.
+    pub fn guard(&self) -> Option<Expr> {
+        let has_when = self
+            .syntax
+            .children_with_tokens()
+            .any(|it| it.kind() == SyntaxKind::WHEN_KW);
+        if has_when {
+            self.syntax.children().filter_map(Expr::cast).next()
+        } else {
+            None
+        }
+    }
+
     /// The body expression (after `->`).
     pub fn body(&self) -> Option<Expr> {
         let has_when = self

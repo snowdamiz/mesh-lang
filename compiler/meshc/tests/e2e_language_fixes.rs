@@ -29,16 +29,21 @@ struct Build {
 }
 
 fn build(source: &str, json: bool) -> Build {
+    build_with_args(source, if json { &["--json"] } else { &[] })
+}
+
+fn build_with_args(source: &str, args: &[&str]) -> Build {
     let dir = tempfile::tempdir().expect("temp dir");
     let project = dir.path().join("project");
     std::fs::create_dir_all(&project).expect("project dir");
     std::fs::write(project.join("main.mpl"), source).expect("main.mpl");
-    let mut cmd = Command::new(find_meshc());
-    cmd.arg("build").arg(&project).arg("--no-color");
-    if json {
-        cmd.arg("--json");
-    }
-    let output = cmd.output().expect("meshc");
+    let output = Command::new(find_meshc())
+        .arg("build")
+        .arg(&project)
+        .arg("--no-color")
+        .args(args)
+        .output()
+        .expect("meshc");
     Build {
         dir,
         ok: output.status.success(),
@@ -48,7 +53,11 @@ fn build(source: &str, json: bool) -> Build {
 
 /// Build and run; the program must build, run, and exit 0. Returns stdout.
 fn run(source: &str) -> String {
-    let built = build(source, false);
+    run_built(&build(source, false))
+}
+
+/// Run a program built by `build_with_args`; it must exit 0. Returns stdout.
+fn run_built(built: &Build) -> String {
     assert!(built.ok, "build failed:\n{}", built.stderr);
     let output = Command::new(built.dir.path().join("project/project"))
         .output()
@@ -1151,4 +1160,278 @@ fn main() do
 end
 "##;
     assert_eq!(run(source), "7 0 3\n");
+}
+
+// ── Branches that never return ─────────────────────────────────────────
+
+#[test]
+fn a_returning_first_branch_does_not_type_the_whole_expression() {
+    let source = r##"
+fn f(x :: Int) -> Int do
+  let y = case x do
+    0 -> return 5
+    _ -> x * 3
+  end
+  let z = if x > 10 do
+    return 7
+  else
+    y + 1
+  end
+  z
+end
+
+fn main() do
+  println("#{f(0)} #{f(2)} #{f(20)}")
+end
+"##;
+    assert_eq!(run(source), "5 7 7\n");
+}
+
+// ── Actors ─────────────────────────────────────────────────────────────
+
+/// Lines of output, sorted: separate actors print in no fixed order.
+fn sorted_lines(output: &str) -> Vec<&str> {
+    let mut lines: Vec<&str> = output.lines().collect();
+    lines.sort_unstable();
+    lines
+}
+
+#[test]
+fn receive_matches_arms_by_pattern_and_guard() {
+    let source = r##"
+struct Job do
+  id :: Int
+  name :: String
+end
+
+fn is_stop(j :: Job) -> Bool do
+  j.id == 0
+end
+
+actor numbers() do
+  receive do
+    0 -> println("zero")
+    1 -> println("one")
+    n ->
+      println("other #{n}")
+      numbers()
+  end
+end
+
+actor tuples(seen :: Int) do
+  receive do
+    (0, label) -> println("zero-tagged #{label} seen=#{seen}")
+    (n, label) when n > 100 ->
+      let big = n * 2
+      println("big #{label} #{big}")
+      tuples(seen + 1)
+    (n, label) ->
+      println("tuple #{n} #{label}")
+      tuples(seen + 1)
+  after 500 ->
+    println("idle after #{seen}")
+  end
+end
+
+actor jobs() do
+  receive do
+    j when is_stop(j) -> println("stop job #{j.name}")
+    j ->
+      println("job #{j.id}: #{j.name}")
+      jobs()
+  end
+end
+
+actor strings() do
+  receive do
+    "quit" -> println("quit")
+    s ->
+      println("string #{s}")
+      strings()
+  end
+end
+
+actor floats(total :: Float) do
+  let next = receive do
+    x when x < 0.0 -> -1.0
+    x -> total + x
+  end
+  if next < 0.0 do
+    println("float total #{total}")
+  else
+    floats(next)
+  end
+end
+
+fn main() do
+  let n = spawn(numbers)
+  send(n, 7)
+  send(n, 1)
+  let t = spawn(tuples, 0)
+  send(t, (5, "five"))
+  send(t, (500, "huge"))
+  send(t, (0, "end"))
+  let j = spawn(jobs)
+  send(j, Job { id: 3, name: "build" })
+  send(j, Job { id: 0, name: "halt" })
+  let s = spawn(strings)
+  send(s, "héllo")
+  send(s, "quit")
+  let f = spawn(floats, 0.5)
+  send(f, 1.25)
+  send(f, 2.0)
+  send(f, -3.0)
+  let idle = spawn(tuples, 7)
+  Timer.sleep(800)
+end
+"##;
+    let expected = [
+        "big huge 1000",
+        "float total 3.75",
+        "idle after 7",
+        "job 3: build",
+        "one",
+        "other 7",
+        "quit",
+        "stop job halt",
+        "string héllo",
+        "tuple 5 five",
+        "zero-tagged end seen=2",
+    ];
+    for opt in ["0", "2"] {
+        let built = build_with_args(source, &["--opt-level", opt]);
+        assert_eq!(
+            sorted_lines(&run_built(&built)),
+            expected,
+            "--opt-level {opt}"
+        );
+    }
+}
+
+#[test]
+fn an_actor_arm_may_stop_instead_of_calling_the_actor_again() {
+    let source = r##"
+type Msg do
+  Add(n :: Int)
+  Print
+  Stop
+end
+
+actor acc(total :: Int) do
+  receive do
+    Add(n) -> acc(total + n)
+    Print ->
+      println("total=#{total}")
+      acc(total)
+    Stop -> println("stopping at #{total}")
+  end
+end
+
+actor looper(n :: Int) do
+  receive do
+    m ->
+      println("got #{m} at #{n}")
+      if m > 0 do
+        looper(n + 1)
+      else
+        println("done")
+      end
+  end
+end
+
+fn main() do
+  let pid = spawn(acc, 0)
+  send(pid, Add(5))
+  send(pid, Add(7))
+  send(pid, Print)
+  send(pid, Stop)
+  Timer.sleep(100)
+  let l = spawn(looper, 0)
+  send(l, 1)
+  send(l, 2)
+  send(l, 0)
+  Timer.sleep(100)
+end
+"##;
+    assert_eq!(
+        run(source),
+        "total=12\nstopping at 12\ngot 1 at 0\ngot 2 at 1\ngot 0 at 2\ndone\n"
+    );
+}
+
+#[test]
+fn an_actor_calling_itself_outside_tail_position_runs_its_body() {
+    let source = r##"
+actor nested(depth :: Int) do
+  receive do
+    m ->
+      println("got #{m} at #{depth}")
+      if m > 0 do
+        nested(depth + 1)
+        println("back at #{depth}")
+      end
+  end
+end
+
+fn main() do
+  let p = spawn(nested, 0)
+  send(p, 1)
+  send(p, 0)
+  Timer.sleep(100)
+end
+"##;
+    assert_eq!(run(source), "got 1 at 0\ngot 0 at 1\nback at 0\n");
+}
+
+#[test]
+fn an_actor_message_type_is_inferred_from_what_is_sent_to_it() {
+    let source = r##"
+actor echo() do
+  receive do
+    m -> println("echo got #{m}")
+  end
+end
+
+actor ring(n :: Int) do
+  if n > 0 do
+    let child = spawn(ring, n - 1)
+    send(child, n)
+  end
+  receive do
+    m -> println("ring got #{m}")
+  end
+end
+
+fn main() do
+  let p = spawn(echo)
+  send(p, 100)
+  let r = spawn(ring, 2)
+  send(r, 50)
+  Timer.sleep(100)
+end
+"##;
+    assert_eq!(
+        sorted_lines(&run(source)),
+        ["echo got 100", "ring got 1", "ring got 2", "ring got 50"]
+    );
+    let err = build_error(
+        "actor echo() do\n  receive do\n    m -> println(\"#{m}\")\n  end\nend\nfn main() do\n  let p = spawn(echo)\n  send(p, 1)\n  send(p, \"two\")\nend\n",
+    );
+    assert!(
+        err.contains("message type mismatch: expected Int, found String"),
+        "mixed message types:\n{err}"
+    );
+}
+
+#[test]
+fn receive_arms_must_cover_the_message_type() {
+    let err = build_error(
+        "actor num() do\n  receive do\n    0 -> println(\"zero\")\n    1 -> println(\"one\")\n  end\nend\nfn main() do\n  let pid = spawn(num)\n  send(pid, 1)\nend\n",
+    );
+    assert!(err.contains("non-exhaustive match on `Int`"), "{err}");
+    let (warnings, out) = run_with_build_stderr(
+        "actor num() do\n  receive do\n    n -> println(\"any #{n}\")\n    0 -> println(\"zero\")\n  end\nend\nfn main() do\n  let pid = spawn(num)\n  send(pid, 1)\n  Timer.sleep(50)\nend\n",
+    );
+    assert!(warnings.contains("redundant match arm"), "{warnings}");
+    assert_eq!(out, "any 1\n");
 }

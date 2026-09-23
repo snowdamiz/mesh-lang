@@ -82,8 +82,38 @@ Key points about message passing:
 - Messages are processed **one at a time** from the actor's mailbox
 - `send` returns `0` when enqueued or written, `1` when the target is missing, `2` when the mailbox is full, `3` when the message exceeds the mailbox byte limit, `4` when a remote node is unavailable, and `5` when a remote write fails
 - `receive` blocks until the next message arrives
-- The current compiler executes the first receive arm; use a single variable or wildcard arm and perform any branching in its body
+- `receive` arms match the message like `case` arms, with patterns and `when` guards, and together must cover the actor's message type
 - You can spawn multiple actors and send messages to each independently
+
+Receive arms can match on the message's shape. An arm that calls the actor again continues with new arguments; an arm that does not ends the actor:
+
+```mesh
+type Command do
+  Add(amount :: Int)
+  Report
+  Stop
+end
+
+actor tally(total :: Int) do
+  receive do
+    Add(amount) when amount > 0 -> tally(total + amount)
+    Add(_) -> tally(total)
+    Report ->
+      println("total: #{total}")
+      tally(total)
+    Stop -> println("stopped at #{total}")
+  end
+end
+
+fn main() do
+  let pid = spawn(tally, 0)
+  send(pid, Add(5))
+  send(pid, Add(-2))
+  send(pid, Report)
+  send(pid, Stop)
+  Timer.sleep(50)
+end
+```
 
 A receive can provide a timeout in milliseconds. The receive expression returns either the message arm's value or the timeout arm's value:
 

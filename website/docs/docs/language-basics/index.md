@@ -572,7 +572,7 @@ end
 
 ### Guards
 
-`case`, `match`, function clauses, and multi-clause closures can use a `when` guard. Guards must evaluate to `Bool` and are syntactically limited to literals and names, comparisons, boolean operators, grouping, and named function calls:
+`case`, `match`, `receive`, function clauses, and multi-clause closures can use a `when` guard. Guards must evaluate to `Bool` and are syntactically limited to literals and names, comparisons, boolean operators, grouping, and named function calls:
 
 ```mesh
 case score do

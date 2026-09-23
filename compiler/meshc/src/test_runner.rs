@@ -1065,11 +1065,15 @@ fn emit_non_test_items(source: &str, out: &mut String) {
 ///   assert_receive PATTERN, TIMEOUT_MS
 ///   assert_receive PATTERN              (default timeout: 100ms)
 ///
-/// Output (for each matching line):
+/// Output (for each matching line, all on that line):
 ///   receive
 ///     PATTERN -> ()
+///     __assert_receive_other -> test_fail_msg("assert_receive PATTERN received another message")
 ///     after TIMEOUT_MS -> test_fail_msg("assert_receive PATTERN timed out after TIMEOUT_MSms")
 ///   end
+///
+/// The catch-all arm fails the test on a message the pattern does not match
+/// (the type checker does not report it as redundant).
 ///
 /// LOCKED DECISION: The failure message includes BOTH the pattern and the elapsed time.
 /// Format: "assert_receive {pattern} timed out after {timeout_ms}ms"
@@ -1089,10 +1093,9 @@ fn transform_assert_receive(body: &str) -> String {
             let indent = &line[..line.len() - line.trim_start().len()];
             // Escape double quotes inside the pattern for embedding in the error message string.
             let escaped_pattern = pattern.replace('\\', "\\\\").replace('"', "\\\"");
-            // One line, so the test body keeps its line numbers:
-            // receive do PATTERN -> () after TIMEOUT -> test_fail_msg(...) end
+            // One line, so the test body keeps its line numbers.
             out.push_str(&format!(
-                "{indent}receive do {pattern} -> () after {timeout_ms} -> test_fail_msg(\"assert_receive {escaped_pattern} timed out after {timeout_ms}ms\") end\n"
+                "{indent}receive do {pattern} -> () __assert_receive_other -> test_fail_msg(\"assert_receive {escaped_pattern} received another message\") after {timeout_ms} -> test_fail_msg(\"assert_receive {escaped_pattern} timed out after {timeout_ms}ms\") end\n"
             ));
         } else {
             out.push_str(line);

@@ -392,10 +392,10 @@ end
 | `Timer` | Sleep and delayed message delivery |
 | `Channel` | Bounded, nonblocking integer delivery |
 
-Actor definitions accept arguments. Although the grammar accepts several
-receive arms with patterns and guards, current native code generation executes
-only the first arm. Use one variable or wildcard receive arm and dispatch with
-`case` inside it. See [Concurrency](/docs/concurrency/) for service syntax,
+Actor definitions accept arguments. Receive arms match the next message like
+`case` arms: patterns, guards, and multi-line bodies are allowed, and the arms
+must cover the whole message type. An actor that calls itself continues with
+new arguments; in tail position that call is a loop. See [Concurrency](/docs/concurrency/) for service syntax,
 supervisor strategies, channel policies, jobs, registries, and graceful
 shutdown.
 

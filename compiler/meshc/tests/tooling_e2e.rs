@@ -788,6 +788,60 @@ fn test_assert_eq_and_assert_ne_compare_values_of_any_shown_type() {
 }
 
 #[test]
+fn test_assert_receive_matches_the_message_against_its_pattern() {
+    // assert_receive used to pass on any message: receive ran its first arm
+    // whatever the message was.
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"receives\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &project.path().join("main.mpl"),
+        "fn main() do\n  println(\"ok\")\nend\n",
+    );
+    let test_file = project.path().join("tests/receives.test.mpl");
+    write_file(
+        &test_file,
+        "test(\"literal\") do\n  send(self(), 42)\n  assert_receive 42, 500\nend\n\ntest(\"binding\") do\n  send(self(), 7)\n  assert_receive n\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{all}");
+    assert!(all.contains("2 passed"), "{all}");
+    assert!(
+        !all.contains("redundant"),
+        "the catch-all arm is generated:\n{all}"
+    );
+
+    write_file(
+        &test_file,
+        "test(\"other\") do\n  send(self(), 7)\n  assert_receive 42, 500\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{all}");
+    assert!(
+        all.contains("assert_receive 42 received another message"),
+        "{all}"
+    );
+}
+
+#[test]
 fn test_push_token_fixture_is_isolated_and_composes_with_secure_store() {
     let project = tempfile::tempdir().unwrap();
     write_file(

@@ -4064,12 +4064,25 @@ impl<'ctx> CodeGen<'ctx> {
             .target_machine
             .get_target_data()
             .get_store_size(&llvm_ty);
-        if size <= 8 {
-            return Ok(msg_val);
-        }
-
         let i64_ty = self.context.i64_type();
         let i8_ty = self.context.i8_type();
+        if size <= 8 {
+            if msg_val.get_type() == llvm_ty {
+                return Ok(msg_val);
+            }
+            // `msg_val` was loaded for the receive's result type; read the
+            // word again as the message's own type.
+            let data_ptr = unsafe {
+                self.builder
+                    .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "msg_word")
+                    .map_err(|e| e.to_string())?
+            };
+            return self
+                .builder
+                .build_load(llvm_ty, data_ptr, "msg_value")
+                .map_err(|e| e.to_string());
+        }
+
         // Message layout: [u64 type_tag][u64 data_len][data...]
         let (len_ptr, data_ptr) = unsafe {
             (

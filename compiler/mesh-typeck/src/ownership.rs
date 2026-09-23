@@ -1378,12 +1378,7 @@ impl Checker<'_> {
             if let Some(pattern) = &pattern {
                 self.bind_pattern(pattern);
             }
-            let guard = arm
-                .syntax()
-                .children_with_tokens()
-                .any(|element| element.kind() == SyntaxKind::WHEN_KW)
-                .then(|| arm.syntax().children().find_map(Expr::cast))
-                .flatten();
+            let guard = arm.guard();
             let has_guard = guard.is_some();
             if has_guard {
                 if let Some(pattern) = &pattern {
