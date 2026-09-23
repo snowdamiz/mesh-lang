@@ -91,12 +91,15 @@ jobs:
 
       - name: Run core workspace tests
         shell: bash
-        timeout-minutes: 45
+        timeout-minutes: 60
         run: |
-          cargo test -p mesh-parser --lib --locked
-          cargo test -p mesh-typeck --lib --locked
-          cargo test -p mesh-codegen --lib --locked
+          # Whole crates, not only --lib: the parser, type checker and formatter
+          # keep their integration and snapshot tests beside the library, and
+          # the runtime's own suite covers the distribution transport.
+          cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt
+          cargo test --locked -p mesh-rt --lib
           cargo build --workspace --locked
+          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes
 
   docs-and-sites:
     name: Docs and sites build
