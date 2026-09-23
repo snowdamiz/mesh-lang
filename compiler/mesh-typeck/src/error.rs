@@ -380,6 +380,8 @@ pub enum TypeError {
     DuplicateBinding { name: String, span: TextRange },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
+    /// A struct literal or update gives the same field twice.
+    DuplicateField { field_name: String, span: TextRange },
     /// A struct literal names, or a struct update is applied to, something
     /// that is not a struct (`ty` is the value's type; a variable when it
     /// is not known there).
@@ -871,6 +873,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")
+            }
+            TypeError::DuplicateField { field_name, .. } => {
+                write!(f, "field `{field_name}` is given more than once")
             }
             TypeError::NotAStruct { ty, .. } => {
                 write!(f, "`{ty}` is not a struct")

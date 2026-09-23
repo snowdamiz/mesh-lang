@@ -11916,6 +11916,14 @@ fn infer_struct_literal(
             Some(n) => n,
             None => continue,
         };
+        if provided_fields.contains(&field_name) {
+            let err = TypeError::DuplicateField {
+                field_name,
+                span: field.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
 
         // Find expected field type.
         let expected_ty = struct_def
@@ -12056,11 +12064,21 @@ fn infer_struct_update(
     };
 
     // Validate and infer each override field.
+    let mut updated: Vec<String> = Vec::new();
     for field in update.override_fields() {
         let field_name = match field.name().and_then(|n| n.text()) {
             Some(n) => n,
             None => continue,
         };
+        if updated.contains(&field_name) {
+            let err = TypeError::DuplicateField {
+                field_name,
+                span: field.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+        updated.push(field_name.clone());
 
         // Verify the field exists in the struct.
         let expected_ty = struct_def

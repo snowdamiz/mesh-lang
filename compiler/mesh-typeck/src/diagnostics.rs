@@ -149,6 +149,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidLetPattern { .. } => "E0054",
         TypeError::InvalidPassThroughArm { .. } => "E0056",
         TypeError::DuplicateBinding { .. } => "E0057",
+        TypeError::DuplicateField { .. } => "E0058",
         TypeError::NotAStruct { .. } => "E0059",
         TypeError::CyclicAlias { .. } => "E0062",
     }
@@ -531,6 +532,7 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::InvalidPassThroughArm { span, .. }
                 | TypeError::DuplicateBinding { span, .. }
+                | TypeError::DuplicateField { span, .. }
                 | TypeError::NotAStruct { span, .. }
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
@@ -2044,6 +2046,20 @@ pub fn render_diagnostic(
                 .with_help(
                     "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
                 )
+                .finish()
+        }
+        TypeError::DuplicateField { field_name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("field `{field_name}` is given more than once"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("given again here")
+                        .with_color(Color::Red),
+                )
+                .with_help("give each field one value")
                 .finish()
         }
         TypeError::CyclicAlias { alias_name, span } => {

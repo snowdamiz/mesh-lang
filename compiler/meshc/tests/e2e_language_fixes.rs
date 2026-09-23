@@ -2610,6 +2610,18 @@ fn a_struct_update_needs_a_struct_value() {
 }
 
 #[test]
+fn a_field_is_given_once() {
+    let err = build_error(
+        "struct S do\n  a :: Int\n  b :: Int\nend\n\nfn main() do\n  let s = S { a: 1, a: 2, b: 3 }\n  println(\"#{s.a}\")\nend\n",
+    );
+    assert!(err.contains("E0058") && err.contains(":7:21"), "{err}");
+    let err = build_error(
+        "struct S do\n  a :: Int\nend\n\nfn main() do\n  let s = S { a: 1 }\n  let t = %{s | a: 2, a: 3}\n  println(\"#{t.a}\")\nend\n",
+    );
+    assert!(err.contains("E0058"), "{err}");
+}
+
+#[test]
 fn an_alias_that_refers_to_itself_is_reported() {
     let err = build_error(
         "type A = B\ntype B = A\ntype L<T> = List<L<T>>\n\nfn main() do\n  println(\"x\")\nend\n",
