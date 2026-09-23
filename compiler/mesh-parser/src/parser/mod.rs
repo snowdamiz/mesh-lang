@@ -109,6 +109,9 @@ pub(crate) struct Parser<'src> {
     /// `case`, `for`) around their condition/scrutinee/iterable expression
     /// so that `if fn_call() do ... end` parses `do` as the block opener.
     suppress_trailing_closure: bool,
+    /// Set once a string is left open: it runs to the end of the file, so
+    /// every later error would only be a consequence of it.
+    input_swallowed: bool,
 }
 
 impl<'src> Parser<'src> {
@@ -125,6 +128,7 @@ impl<'src> Parser<'src> {
             errors: Vec::new(),
             has_error: false,
             suppress_trailing_closure: false,
+            input_swallowed: false,
         }
     }
 
@@ -363,8 +367,20 @@ impl<'src> Parser<'src> {
     /// Record a parse error at the current position. Sets the error flag.
     pub(crate) fn error(&mut self, message: &str) {
         let span = self.current_span();
-        self.errors.push(ParseError::new(message, span));
+        self.error_at(message, span);
+    }
+
+    /// Record a parse error at `span` instead of the current token.
+    pub(crate) fn error_at(&mut self, message: &str, span: Span) {
+        if !self.input_swallowed {
+            self.errors.push(ParseError::new(message, span));
+        }
         self.has_error = true;
+    }
+
+    /// An unclosed string ran to the end of the file: report nothing more.
+    pub(crate) fn input_swallowed(&mut self) {
+        self.input_swallowed = true;
     }
 
     /// Record a parse error with a related span for additional context.
@@ -375,12 +391,14 @@ impl<'src> Parser<'src> {
         related_msg: &str,
     ) {
         let span = self.current_span();
-        self.errors.push(ParseError::with_related(
-            message,
-            span,
-            related_msg,
-            related_span,
-        ));
+        if !self.input_swallowed {
+            self.errors.push(ParseError::with_related(
+                message,
+                span,
+                related_msg,
+                related_span,
+            ));
+        }
         self.has_error = true;
     }
 

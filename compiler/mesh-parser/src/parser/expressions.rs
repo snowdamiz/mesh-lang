@@ -708,6 +708,7 @@ fn parse_keyword_entry(p: &mut Parser) {
 ///   STRING_START  STRING_CONTENT?  (INTERPOLATION_START expr INTERPOLATION_END STRING_CONTENT?)*  STRING_END
 fn parse_string_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
+    let opening = p.current_span();
     p.advance(); // STRING_START
 
     loop {
@@ -726,8 +727,13 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
                 p.advance();
                 break;
             }
-            SyntaxKind::EOF => {
-                p.error("unterminated string");
+            // The lexer ends a string that the file ends in with an error.
+            SyntaxKind::EOF | SyntaxKind::ERROR => {
+                p.error_at("unterminated string: no closing `\"`", opening);
+                p.input_swallowed();
+                if p.at(SyntaxKind::ERROR) {
+                    p.advance();
+                }
                 break;
             }
             _ => {

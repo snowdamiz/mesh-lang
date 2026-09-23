@@ -3970,3 +3970,16 @@ fn a_parse_error_at_the_end_of_the_file_is_reported() {
         );
     }
 }
+
+#[test]
+fn an_unterminated_string_is_one_error_at_its_opening_quote() {
+    // It was "Parse error" with an empty message at the end of the file,
+    // two or three times.
+    let err = build_error("fn main() do\n  let s = \"abc\n  println(s)\nend\n");
+    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert!(
+        err.contains("unterminated string: no closing `\"`"),
+        "{err}"
+    );
+    assert!(err.contains("main.mpl:2:11"), "{err}");
+}
