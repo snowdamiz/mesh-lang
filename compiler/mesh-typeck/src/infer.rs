@@ -5103,6 +5103,8 @@ fn infer_multi_clause_fn(
         // Process each parameter's pattern and unify with param type.
         let param_list = clause.param_list();
         let params: Vec<_> = param_list.iter().flat_map(|pl| pl.params()).collect();
+        let param_patterns: Vec<Pattern> = params.iter().filter_map(|p| p.pattern()).collect();
+        check_unique_binders(ctx, &param_patterns, env);
 
         let mut clause_abs_pats: Vec<AbsPat> = Vec::new();
 
@@ -5209,7 +5211,9 @@ fn infer_multi_clause_fn(
         env.pop_scope();
     }
 
-    ctx.pop_fn_return_type();
+    for returned in ctx.pop_fn_return_type() {
+        join_branch_ty(ctx, &mut result_ty, returned)?;
+    }
 
     // ── Step 4: Exhaustiveness and redundancy checking ─────────────────
 
@@ -7099,7 +7103,7 @@ fn infer_let_binding(
         err
     })?;
 
-    let init_ty = infer_expr(
+    let init_ty = match infer_expr(
         ctx,
         env,
         &init_expr,
@@ -7107,17 +7111,31 @@ fn infer_let_binding(
         type_registry,
         trait_registry,
         fn_constraints,
-    )?;
+    ) {
+        Ok(ty) => ty,
+        Err(error) => {
+            // The error is reported; the names are still defined (as whatever
+            // their uses need), so they do not add "undefined variable" errors.
+            ctx.leave_level();
+            if let Some(name) = let_.name().and_then(|name| name.text()) {
+                let ty = ctx.fresh_var();
+                env.insert(name, Scheme::mono(ty));
+            } else if let Some(pat) = let_.pattern() {
+                let _ = infer_pattern(ctx, env, &pat, types, type_registry);
+            }
+            return Err(error);
+        }
+    };
 
     // If there is a type annotation, resolve and unify with the inferred type.
-    // When annotation is present and unification succeeds, use the annotation
-    // type for the binding (the annotation declares the variable's type).
+    // The annotation declares the variable's type, also when the value does
+    // not match it (that is reported, and the binding keeps its declared type).
     let binding_ty = if let Some(annotation) = let_.type_annotation() {
         if let Some(ann_ty) = resolve_type_annotation(ctx, &annotation, type_registry) {
             let origin = ConstraintOrigin::Annotation {
                 annotation_span: annotation.syntax().text_range(),
             };
-            ctx.unify(init_ty.clone(), ann_ty.clone(), origin)?;
+            let _ = ctx.unify(ann_ty.clone(), init_ty.clone(), origin);
             ann_ty
         } else {
             init_ty.clone()
@@ -7378,15 +7396,18 @@ fn infer_fn_def(
     } else {
         Ty::Tuple(vec![])
     };
-    ctx.pop_fn_return_type();
+    let returns = ctx.pop_fn_return_type();
 
     if let Some(ref ret_ann) = return_type_annotation {
-        ctx.unify(body_ty.clone(), ret_ann.clone(), ConstraintOrigin::Builtin)?;
+        let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
 
     env.pop_scope();
 
-    let ret_ty = return_type_annotation.unwrap_or(body_ty);
+    let ret_ty = match return_type_annotation {
+        Some(ret_ann) => ret_ann,
+        None => join_returns(ctx, body_ty, returns)?,
+    };
     let fn_ty = Ty::Fun(param_types, Box::new(ret_ty));
 
     ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
@@ -9807,10 +9828,14 @@ fn infer_if(
 
         Ok(if_ty)
     } else {
-        // No else branch — store Unit for consistency.
-        types.insert(if_.syntax().text_range(), ctx.resolve(then_ty.clone()));
+        // No else branch: the `if` has no value (the docs make `else`
+        // optional only when the result is unused), whatever the then branch
+        // produces.
+        let _ = then_ty;
+        let unit = Ty::Tuple(vec![]);
+        types.insert(if_.syntax().text_range(), unit.clone());
 
-        Ok(then_ty)
+        Ok(unit)
     }
 }
 
@@ -10013,18 +10038,43 @@ fn infer_for_in(
                 bind(ctx, env, elem_ty)?;
             }
             CollectionType::Unknown => {
-                // An Iterable (collection -> iterator) or an Iterator yields
-                // its Item; anything else falls back to Int.
-                let item_ty = ["Iterable", "Iterator"]
-                    .iter()
-                    .find(|trait_name| trait_registry.has_impl(trait_name, &iter_ty))
-                    .map(|trait_name| {
-                        trait_registry
-                            .resolve_associated_type(trait_name, "Item", &iter_ty)
-                            .unwrap_or_else(Ty::int)
-                    })
-                    .unwrap_or_else(Ty::int);
-                bind(ctx, env, item_ty)?;
+                let resolved = ctx.resolve(iter_ty.clone());
+                if let Ty::Var(_) = resolved {
+                    // Nothing says what is iterated yet (an unannotated
+                    // parameter): a list, the common case.
+                    let elem_ty = ctx.fresh_var();
+                    ctx.unify(
+                        iter_ty.clone(),
+                        Ty::list(elem_ty.clone()),
+                        ConstraintOrigin::Builtin,
+                    )?;
+                    bind(ctx, env, elem_ty)?;
+                } else {
+                    // An Iterable (collection -> iterator) or an Iterator
+                    // yields its Item; nothing else can be iterated.
+                    let trait_name = ["Iterable", "Iterator"]
+                        .into_iter()
+                        .find(|trait_name| trait_registry.has_impl(trait_name, &resolved));
+                    let Some(trait_name) = trait_name else {
+                        let err = TypeError::TraitNotSatisfied {
+                            ty: resolved,
+                            trait_name: "Iterable".to_string(),
+                            origin: ConstraintOrigin::Expr {
+                                span: for_in
+                                    .iterable()
+                                    .map(|e| e.syntax().text_range())
+                                    .unwrap_or_else(|| for_in.syntax().text_range()),
+                            },
+                        };
+                        ctx.errors.push(err.clone());
+                        env.pop_scope();
+                        return Err(err);
+                    };
+                    let item_ty = trait_registry
+                        .resolve_associated_type(trait_name, "Item", &resolved)
+                        .unwrap_or_else(Ty::int);
+                    bind(ctx, env, item_ty)?;
+                }
             }
         }
     }
@@ -10195,8 +10245,9 @@ fn infer_closure(
     } else {
         Ty::Tuple(vec![])
     };
-    ctx.pop_fn_return_type();
+    let returns = ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
+    let body_ty = join_returns(ctx, body_ty, returns)?;
 
     if let Some(expected_return_ty) = expected_return_ty {
         ctx.unify(
@@ -10276,6 +10327,10 @@ fn infer_multi_clause_closure(
         env.push_scope();
 
         let mut clause_abs_pats = Vec::new();
+        if let Some(param_list) = &param_list {
+            let patterns: Vec<Pattern> = param_list.params().filter_map(|p| p.pattern()).collect();
+            check_unique_binders(ctx, &patterns, env);
+        }
         if let Some(param_list) = param_list {
             for (param_idx, param) in param_list.params().enumerate() {
                 if param_idx >= arity {
@@ -10353,8 +10408,9 @@ fn infer_multi_clause_closure(
         } else {
             Ty::Tuple(vec![])
         };
-        ctx.pop_fn_return_type();
+        let returns = ctx.pop_fn_return_type();
         ctx.exit_closure(saved_loop_depth);
+        let body_ty = join_returns(ctx, body_ty, returns)?;
 
         if let Some(ref expected_return_ty) = expected_return_ty {
             ctx.unify(
@@ -11006,6 +11062,7 @@ fn infer_case(
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
+            check_unique_binders(ctx, std::slice::from_ref(&pat), env);
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             ctx.unify(pat_ty, scrutinee_ty.clone(), ConstraintOrigin::Builtin)?;
 
@@ -11177,8 +11234,8 @@ fn infer_return(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    if let Some(value) = ret.value() {
-        let _ty = infer_expr(
+    let value_ty = match ret.value() {
+        Some(value) => infer_expr(
             ctx,
             env,
             &value,
@@ -11186,9 +11243,31 @@ fn infer_return(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?;
+        )?,
+        None => Ty::Tuple(vec![]),
+    };
+    // The value is what the function returns: checked against a declared
+    // return type now, or joined with the body's type when the function ends.
+    match ctx.current_fn_return_type().cloned() {
+        Some(declared) => {
+            let origin = ConstraintOrigin::Expr {
+                span: ret.syntax().text_range(),
+            };
+            let _ = ctx.unify(declared, value_ty, origin);
+        }
+        None => ctx.record_return(value_ty),
     }
     Ok(Ty::Never)
+}
+
+/// The type a function body produces, given the types of its `return`
+/// values when no return type was declared: all must agree.
+fn join_returns(ctx: &mut InferCtx, body_ty: Ty, returns: Vec<Ty>) -> Result<Ty, TypeError> {
+    let mut joined = Some(body_ty);
+    for returned in returns {
+        join_branch_ty(ctx, &mut joined, returned)?;
+    }
+    Ok(joined.unwrap())
 }
 
 // ── Method Resolution (30-01) ──────────────────────────────────────────
@@ -11967,7 +12046,10 @@ fn infer_pattern(
                 // position should resolve to constructors, not create fresh bindings.
                 // Bare payload-bearing constructors like `Ok` or `Err` (no parens) are
                 // treated as `Ok(_)` / `Err(_)` -- match the constructor, ignore payload.
-                if let Some(scheme) = env.lookup(&name_text) {
+                // A lowercase name is always a new binding, even when a
+                // variable of a sum type has that name (`case v do Some(v)`).
+                let constructor_like = name_text.starts_with(|c: char| c.is_uppercase());
+                if let Some(scheme) = env.lookup(&name_text).filter(|_| constructor_like) {
                     let candidate = ctx.instantiate(scheme);
                     let resolved = ctx.resolve(candidate.clone());
                     // If the name resolves to a sum type (nullary constructor), use it.
@@ -12255,6 +12337,15 @@ fn infer_or_pattern(
         env.push_scope();
         let alt_ty = infer_pattern(ctx, env, alt, types, type_registry)?;
         ctx.unify(first_ty.clone(), alt_ty, ConstraintOrigin::Builtin)?;
+        // A name means one value: each alternative must bind it at one type.
+        for (name, first_scheme) in &first_bindings {
+            if let Some(alt_scheme) = env.lookup(name).cloned() {
+                let origin = ConstraintOrigin::Expr {
+                    span: alt.syntax().text_range(),
+                };
+                ctx.unify(first_scheme.ty.clone(), alt_scheme.ty, origin)?;
+            }
+        }
         env.pop_scope();
 
         // Validate same variable names are bound.
@@ -12283,6 +12374,22 @@ fn infer_or_pattern(
     Ok(first_ty)
 }
 
+/// Report a name that `patterns` (one arm's, or one clause's parameters)
+/// bind twice: `(a, a)` bound the second value and dropped the first.
+fn check_unique_binders(ctx: &mut InferCtx, patterns: &[Pattern], env: &TypeEnv) {
+    let mut seen = FxHashSet::default();
+    for pattern in patterns {
+        for name in collect_pattern_binding_names(pattern, env) {
+            if name != "_" && !seen.insert(name.clone()) {
+                ctx.errors.push(TypeError::DuplicateBinding {
+                    name,
+                    span: pattern.syntax().text_range(),
+                });
+            }
+        }
+    }
+}
+
 /// Collect all variable names that would be *bound* by a pattern (recursively).
 ///
 /// This is semantically aware: ident patterns that resolve to known constructors
@@ -12302,7 +12409,10 @@ fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: 
                 // If the name already exists in the env, it may be a constructor.
                 // We use the same heuristic as infer_pattern: if it resolves to
                 // a sum type (App(Con(_), _)), it's a constructor, not a binding.
-                let is_constructor = env.lookup(&name_text).is_some();
+                // Only an uppercase name can be a constructor; a lowercase one
+                // binds even when an outer variable has that name.
+                let is_constructor = name_text.starts_with(|c: char| c.is_uppercase())
+                    && env.lookup(&name_text).is_some();
                 if !is_constructor {
                     names.push(name_text);
                 }
@@ -13333,6 +13443,7 @@ fn infer_receive(
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
+            check_unique_binders(ctx, std::slice::from_ref(&pat), env);
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             // Unify pattern type with actor message type.
             ctx.unify(pat_ty, actor_msg_ty.clone(), ConstraintOrigin::Builtin)?;

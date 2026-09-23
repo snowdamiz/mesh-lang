@@ -368,6 +368,8 @@ pub enum TypeError {
     InvalidLetPattern { reason: String, span: TextRange },
     /// A match arm with no `->` has a pattern that cannot stand for a value.
     InvalidPassThroughArm { reason: String, span: TextRange },
+    /// One pattern binds the same name twice (`(a, a)`).
+    DuplicateBinding { name: String, span: TextRange },
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
@@ -848,6 +850,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidLetPattern { reason, .. } => {
                 write!(f, "invalid let destructuring pattern: {reason}")
+            }
+            TypeError::DuplicateBinding { name, .. } => {
+                write!(f, "`{name}` is bound twice in one pattern")
             }
             TypeError::InvalidPassThroughArm { reason, .. } => {
                 write!(

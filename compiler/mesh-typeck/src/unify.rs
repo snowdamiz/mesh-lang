@@ -78,6 +78,9 @@ pub struct InferCtx {
     /// Pushed when entering a function/closure body, popped when leaving.
     /// `None` means the return type is not yet known (will be inferred).
     pub fn_return_type_stack: Vec<Option<Ty>>,
+    /// Per entry of `fn_return_type_stack`: the types of `return` values in
+    /// a function whose return type is not declared.
+    pub fn_returned_types: Vec<Vec<Ty>>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -116,6 +119,7 @@ impl InferCtx {
             current_module: None,
             test_builtins: false,
             fn_return_type_stack: Vec::new(),
+            fn_returned_types: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),
@@ -153,11 +157,23 @@ impl InferCtx {
     /// Push a function return type onto the stack (call when entering a function body).
     pub fn push_fn_return_type(&mut self, ty: Option<Ty>) {
         self.fn_return_type_stack.push(ty);
+        self.fn_returned_types.push(Vec::new());
     }
 
-    /// Pop a function return type from the stack (call when leaving a function body).
-    pub fn pop_fn_return_type(&mut self) {
+    /// Pop a function return type from the stack (call when leaving a function
+    /// body). Returns the types of the `return` values seen while the return
+    /// type was not declared, for the caller to join with the body's type.
+    pub fn pop_fn_return_type(&mut self) -> Vec<Ty> {
         self.fn_return_type_stack.pop();
+        self.fn_returned_types.pop().unwrap_or_default()
+    }
+
+    /// Record the type of a `return` value in a function without a declared
+    /// return type.
+    pub fn record_return(&mut self, ty: Ty) {
+        if let Some(returns) = self.fn_returned_types.last_mut() {
+            returns.push(ty);
+        }
     }
 
     /// Get the current enclosing function's return type (top of stack).

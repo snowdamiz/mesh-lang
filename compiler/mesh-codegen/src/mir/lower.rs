@@ -11362,6 +11362,15 @@ impl<'a> Lowerer<'a> {
         };
 
         let ty = self.resolve_range(if_.syntax().text_range());
+        // Without an `else`, the `if` has no value: the then branch's value
+        // is dropped rather than stored in a result of another type.
+        let then_body = if if_.else_branch().is_none()
+            && !matches!(then_body.ty(), MirType::Unit | MirType::Never)
+        {
+            MirExpr::Block(vec![then_body, MirExpr::Unit], MirType::Unit)
+        } else {
+            then_body
+        };
 
         MirExpr::If {
             cond: Box::new(cond),

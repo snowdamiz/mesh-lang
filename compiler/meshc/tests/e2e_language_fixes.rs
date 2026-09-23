@@ -1935,3 +1935,87 @@ fn a_closed_stdout_ends_the_program_quietly() {
     use std::os::unix::process::ExitStatusExt;
     assert_eq!(status.signal(), Some(13), "{status:?}");
 }
+
+// ── Type-checker soundness ─────────────────────────────────────────────
+
+#[test]
+fn a_failed_let_does_not_make_its_name_undefined() {
+    let diags = json_diagnostics(
+        "fn main() do\n  let v = \"a\" <> nope\n  let w :: Int = \"s\"\n  println(v)\n  println(\"#{w}\")\nend\n",
+    );
+    let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
+    assert_eq!(codes, ["E0004", "E0001", "C0001"], "{diags:?}");
+    // The annotation is what was expected.
+    assert_eq!(
+        diags[1]["message"],
+        "type mismatch: expected `Int`, found `String`"
+    );
+}
+
+#[test]
+fn ill_typed_programs_that_used_to_build_are_rejected() {
+    for (source, message) in [
+        (
+            "fn f(n :: Int) -> Int do\n  if n > 0 do\n    return \"x\"\n  end\n  0\nend\nfn main() do\n  println(\"#{f(1)}\")\nend\n",
+            "expected Int, found String",
+        ),
+        (
+            "fn f(n :: Int) -> Int do\n  if n > 0 do\n    return\n  end\n  0\nend\nfn main() do\n  println(\"#{f(1)}\")\nend\n",
+            "expected Int, found ()",
+        ),
+        (
+            "fn f(b :: Bool) -> Int do\n  if b do\n    1\n  end\nend\nfn main() do\n  println(\"#{f(false)}\")\nend\n",
+            "expected Int, found ()",
+        ),
+        (
+            "fn double(n :: Int) -> Int = n * 2\nfn main() do\n  case (5, \"hello\") do\n    (a, \"x\") | (5, a) -> println(\"#{double(a)}\")\n    _ -> println(\"y\")\n  end\nend\n",
+            "expected Int, found String",
+        ),
+        (
+            "fn main() do\n  case (1, 2) do\n    (a, a) -> println(\"#{a}\")\n  end\nend\n",
+            "`a` is bound twice in one pattern",
+        ),
+        (
+            "fn main() do\n  for x in \"hello\" do\n    println(x)\n  end\nend\n",
+            "String does not implement Iterable",
+        ),
+        (
+            "fn main() do\n  for x in 5 do\n    println(\"#{x}\")\n  end\nend\n",
+            "Int does not implement Iterable",
+        ),
+    ] {
+        let err = build_error(source);
+        assert!(err.contains(message), "{source}\n{err}");
+    }
+}
+
+#[test]
+fn returns_are_checked_and_joined_without_a_declared_type() {
+    let source = r##"
+fn first_even(xs) do
+  for x in xs do
+    if x % 2 == 0 do
+      return x
+    end
+  end
+  -1
+end
+
+fn classify(v :: Int?) -> Int do
+  case v do
+    Some(v) -> v
+    None -> 0
+  end
+end
+
+fn main() do
+  let f = fn n -> if n > 0 do
+    return "pos"
+  else
+    "non-pos"
+  end end
+  println("#{first_even([1, 3, 4, 5])} #{first_even([1])} #{f(1)} #{f(0)} #{classify(Some(3))}")
+end
+"##;
+    assert_eq!(run(source), "4 -1 pos non-pos 3\n");
+}

@@ -148,6 +148,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ResourceViolation { .. } => "E0053",
         TypeError::InvalidLetPattern { .. } => "E0054",
         TypeError::InvalidPassThroughArm { .. } => "E0056",
+        TypeError::DuplicateBinding { .. } => "E0057",
     }
 }
 
@@ -527,6 +528,7 @@ pub fn render_json_diagnostic(
                 | TypeError::ExportDeclarationInvalid { span, .. }
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::InvalidPassThroughArm { span, .. }
+                | TypeError::DuplicateBinding { span, .. }
                 | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
@@ -2022,6 +2024,20 @@ pub fn render_diagnostic(
                 .with_help(
                     "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
                 )
+                .finish()
+        }
+        TypeError::DuplicateBinding { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("`{name}` is bound twice in one pattern"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("each name in a pattern binds one value")
+                        .with_color(Color::Red),
+                )
+                .with_help("rename one of them, or compare the values in a `when` guard")
                 .finish()
         }
         TypeError::InvalidPassThroughArm { reason, span } => {
