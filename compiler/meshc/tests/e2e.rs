@@ -7791,3 +7791,24 @@ end
     let output = compile_multifile_and_run(&[("tree.mpl", tree), ("main.mpl", main)]);
     assert_eq!(output, "group\ntree\n");
 }
+
+#[test]
+fn e2e_module_qualified_struct_names() {
+    // `Geo.Point` in an annotation was a type of its own ("type Geo.Point
+    // has no field x"), and `Geo.Point { .. }` was "not a struct".
+    let geo = "pub struct Point do\n  x :: Int\n  y :: Int\nend\n";
+    let main = r##"import Geo
+
+fn norm1(p :: Geo.Point) -> Int do
+  p.x + p.y
+end
+
+fn main() do
+  let p :: Geo.Point = Geo.Point { x: 3, y: 4 }
+  let q = Point { x: 1, y: 2 }
+  println("#{norm1(p)} #{norm1(q)} #{p.y}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert_eq!(output, "7 3 4\n");
+}

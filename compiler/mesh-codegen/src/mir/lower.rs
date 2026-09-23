@@ -14267,7 +14267,7 @@ impl<'a> Lowerer<'a> {
             }
             _ => None,
         }
-        .or_else(|| sl.name_ref().and_then(|nr| nr.text()))
+        .or_else(|| sl.type_name())
         .unwrap_or_else(|| "<unnamed>".to_string());
 
         let fields: Vec<(String, MirExpr)> = sl

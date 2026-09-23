@@ -572,6 +572,16 @@ impl StructLiteral {
         child_node(&self.syntax)
     }
 
+    /// The name of the struct built: `Point` in `Point { .. }` and in the
+    /// module-qualified `Geo.Point { .. }`.
+    pub fn type_name(&self) -> Option<String> {
+        if let Some(name) = self.name_ref() {
+            return name.text();
+        }
+        let path: FieldAccess = child_node(&self.syntax)?;
+        path.field().map(|field| field.text().to_string())
+    }
+
     /// The struct literal fields.
     pub fn fields(&self) -> impl Iterator<Item = StructLiteralField> + '_ {
         child_nodes(&self.syntax)

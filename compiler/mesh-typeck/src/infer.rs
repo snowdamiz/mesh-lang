@@ -12506,10 +12506,7 @@ fn infer_struct_literal(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let struct_name = sl
-        .name_ref()
-        .and_then(|nr| nr.text())
-        .unwrap_or_else(|| "<unknown>".to_string());
+    let struct_name = sl.type_name().unwrap_or_else(|| "<unknown>".to_string());
 
     // A literal written through an alias (`P { x: 4 }` with `type P = Point`)
     // builds the aliased struct, with the arguments the alias gives it.
@@ -15307,10 +15304,22 @@ fn resolve_alias_within(ty: Ty, type_registry: &TypeRegistry, depth: usize) -> T
         return ty;
     }
     let again = |ty: Ty| resolve_alias_within(ty, type_registry, depth + 1);
+    // An imported struct or sum type named through its module (`Geo.Point`)
+    // is registered under its own name.
+    let unqualified = |tc: TyCon| match tc.name.rsplit_once('.') {
+        Some((_, short))
+            if type_registry.lookup_alias(&tc.name).is_none()
+                && (type_registry.lookup_struct(short).is_some()
+                    || type_registry.lookup_sum_type(short).is_some()) =>
+        {
+            TyCon::new(short)
+        }
+        _ => tc,
+    };
     match ty {
         Ty::App(con, args) => {
             let resolved_args: Vec<Ty> = args.into_iter().map(&again).collect();
-            if let Ty::Con(ref tc) = *con {
+            if let Ty::Con(tc) = *con {
                 if let Some(alias) = type_registry.lookup_alias(&tc.name) {
                     return again(substitute_type_params(
                         &alias.aliased_type,
@@ -15318,16 +15327,17 @@ fn resolve_alias_within(ty: Ty, type_registry: &TypeRegistry, depth: usize) -> T
                         &resolved_args,
                     ));
                 }
+                return Ty::App(Box::new(Ty::Con(unqualified(tc))), resolved_args);
             }
             Ty::App(con, resolved_args)
         }
-        Ty::Con(ref tc) => {
+        Ty::Con(tc) => {
             if let Some(alias) = type_registry.lookup_alias(&tc.name) {
                 if alias.generic_params.is_empty() {
                     return again(alias.aliased_type.clone());
                 }
             }
-            ty
+            Ty::Con(unqualified(tc))
         }
         Ty::Fun(params, ret) => {
             let p: Vec<Ty> = params.into_iter().map(&again).collect();
