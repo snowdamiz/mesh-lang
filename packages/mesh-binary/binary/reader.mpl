@@ -19,12 +19,10 @@ fn remaining(state :: BinaryReader) -> Int!BinaryError do
   let length = Bytes.length(state.input)
   if state.maximum < 0 || state.offset < 0 do
     Err(InvalidLength)
+  else if length > state.maximum || state.offset > length || state.offset > state.maximum do
+    Err(InvalidLength)
   else
-    if length > state.maximum || state.offset > length || state.offset > state.maximum do
-      Err(InvalidLength)
-    else
-      Ok(length - state.offset)
-    end
+    Ok(length - state.offset)
   end
 end
 
@@ -39,16 +37,14 @@ end
 pub fn reader(input :: Bytes, maximum :: Int) -> BinaryReader!BinaryError do
   if maximum < 0 do
     Err(InvalidLimit)
+  else if Bytes.length(input) > maximum do
+    Err(InputTooLarge)
   else
-    if Bytes.length(input) > maximum do
-      Err(InputTooLarge)
-    else
-      Ok(BinaryReader {
-        input: input,
-        offset: 0,
-        maximum: maximum
-      })
-    end
+    Ok(BinaryReader {
+      input: input,
+      offset: 0,
+      maximum: maximum
+    })
   end
 end
 
@@ -77,14 +73,12 @@ end
 pub fn read_fixed(state :: BinaryReader, length :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
   if length < 0 do
     Err(InvalidLength)
+  else if length > remaining(state)? do
+    Err(UnexpectedEnd)
   else
-    if length > remaining(state)? do
-      Err(UnexpectedEnd)
-    else
-      case Bytes.slice(state.input, state.offset, length) do
-        Err(_) -> Err(UnexpectedEnd)
-        Ok(value) -> Ok((advance(state, length), value))
-      end
+    case Bytes.slice(state.input, state.offset, length) do
+      Err(_) -> Err(UnexpectedEnd)
+      Ok(value) -> Ok((advance(state, length), value))
     end
   end
 end
@@ -94,19 +88,17 @@ end
 pub fn read_vector(state :: BinaryReader, maximum :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
   if maximum < 0 do
     Err(InvalidLimit)
+  else if remaining(state)? < 4 do
+    Err(UnexpectedEnd)
   else
-    if remaining(state)? < 4 do
-      Err(UnexpectedEnd)
-    else
-      case Bytes.read_u32_be(state.input, state.offset) do
-        Err(_) -> Err(UnexpectedEnd)
-        Ok(encoded_length) -> case U64.to_int(encoded_length) do
-          Err(_) -> Err(VectorTooLarge)
-          Ok(length) -> if length > maximum do
-            Err(VectorTooLarge)
-          else
-            read_fixed(advance(state, 4), length)
-          end
+    case Bytes.read_u32_be(state.input, state.offset) do
+      Err(_) -> Err(UnexpectedEnd)
+      Ok(encoded_length) -> case U64.to_int(encoded_length) do
+        Err(_) -> Err(VectorTooLarge)
+        Ok(length) -> if length > maximum do
+          Err(VectorTooLarge)
+        else
+          read_fixed(advance(state, 4), length)
         end
       end
     end

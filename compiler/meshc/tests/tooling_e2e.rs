@@ -179,10 +179,10 @@ fn assert_local_sqlite_todo_template(project_dir: &Path, starter_name: &str) {
     assert!(!todos.contains("Work.sync_todos"));
 
     let health = std::fs::read_to_string(&health_path).unwrap();
-    assert!(health.contains("mode : \"local\""));
-    assert!(health.contains("db_backend : \"sqlite\""));
-    assert!(health.contains("storage_mode : \"single-node\""));
-    assert!(health.contains("db_path : get_db_path()"));
+    assert!(health.contains("mode: \"local\""));
+    assert!(health.contains("db_backend: \"sqlite\""));
+    assert!(health.contains("storage_mode: \"single-node\""));
+    assert!(health.contains("db_path: get_db_path()"));
     assert!(!health.contains("clustered_handler"));
 
     let registry = std::fs::read_to_string(&registry_path).unwrap();
@@ -1413,8 +1413,8 @@ fn test_init_todo_template_postgres_omits_sqlite_contract_markers() {
     assert!(env_example.contains("TODO_RATE_LIMIT_MAX_REQUESTS=5"));
     assert!(!env_example.contains("TODO_DB_PATH"));
 
-    assert!(health.contains("db_backend : \"postgres\""));
-    assert!(health.contains("migration_strategy : \"meshc migrate\""));
+    assert!(health.contains("db_backend: \"postgres\""));
+    assert!(health.contains("migration_strategy: \"meshc migrate\""));
     assert!(!health.contains("DATABASE_URL"));
 }
 

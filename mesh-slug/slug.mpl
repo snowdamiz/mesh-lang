@@ -7,7 +7,6 @@
 #   Slug.is_valid(slug)        -> Bool    (true if already a valid slug)
 #
 # IMPLEMENTATION NOTES:
-# - Case arm bodies must appear on the same line as the -> arrow (Mesh parser limitation).
 # - Nested if...do...else...end expressions work inside function call arguments.
 # - Mutual recursion between top-level functions is not supported (single-pass typechecker).
 # - List.filter lambdas use fn(p) -> expr end syntax (no type annotation on lambda args).
@@ -22,7 +21,7 @@ fn slugify_core(str :: String, sep :: String) -> String do
   let lower = String.to_lower(str)
   let replaced = Regex.replace(~r/[^a-z0-9]+/, lower, sep)
   let parts = String.split(replaced, sep)
-  let non_empty = List.filter(parts, fn(p) -> String.length(p) > 0 end)
+  let non_empty = List.filter(parts, fn (p) -> String.length(p) > 0 end)
   String.join(non_empty, sep)
 end
 
@@ -48,12 +47,20 @@ pub fn slugify(str :: String, sep :: String) -> String do
 end
 
 # Private: recursively accumulate words into a slug up to max characters.
-# candidate = acc <> "-" <> word (or just word when acc is empty).
 # If adding the next word would exceed max characters, stop and return acc.
-# Case arm body must be on the same line as -> due to Mesh parser constraints.
 fn accumulate_words(parts :: List<String>, max :: Int, acc :: String) -> String do
   case parts do
-    word :: rest -> if String.length(if String.length(acc) == 0 do word else acc <> "-" <> word end) > max do acc else accumulate_words(rest, max, if String.length(acc) == 0 do word else acc <> "-" <> word end) end
+    word :: rest ->
+      let candidate = if String.length(acc) == 0 do
+        word
+      else
+        acc <> "-" <> word
+      end
+      if String.length(candidate) > max do
+        acc
+      else
+        accumulate_words(rest, max, candidate)
+      end
     _ -> acc
   end
 end

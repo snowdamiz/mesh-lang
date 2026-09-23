@@ -14,7 +14,7 @@ describe("SQLite todo storage") do
   test("local storage module compiles for the generated starter") do
     let todo = sample_todo()
     assert(todo.title == "compile")
-    assert(todo.completed == false)
+    assert(not todo.completed)
   end
   test("storage helper imports stay available to the generated project") do
     let todo = sample_todo()

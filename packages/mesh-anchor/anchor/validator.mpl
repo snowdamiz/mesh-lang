@@ -15,17 +15,13 @@ end
 fn validate_owner(actual :: Bytes, expected :: Bytes) -> Int!String do
   if Bytes.length(actual) != 32 do
     Err("ANCHOR_OWNER: actual owner must be 32 bytes")
+  else if Bytes.length(expected) != 32 do
+    Err("ANCHOR_OWNER: expected owner must be 32 bytes")
+  else if actual
+    |> Bytes.secure_equals(expected) do
+    Ok(0)
   else
-    if Bytes.length(expected) != 32 do
-      Err("ANCHOR_OWNER: expected owner must be 32 bytes")
-    else
-      if actual
-        |> Bytes.secure_equals(expected) do
-        Ok(0)
-      else
-        Err("ANCHOR_OWNER: account owner mismatch")
-      end
-    end
+    Err("ANCHOR_OWNER: account owner mismatch")
   end
 end
 
@@ -56,30 +52,24 @@ pub fn versioned_payload(data :: Bytes,
   layout :: AccountLayout) -> Bytes!String do
   if layout.minimum_payload_bytes < 0 do
     Err("ANCHOR_LAYOUT: minimum payload size must be non-negative")
+  else if layout.version_offset < 0 do
+    Err("ANCHOR_LAYOUT: version offset must be non-negative")
+  else if layout.version < 0 || layout.version > 255 do
+    Err("ANCHOR_LAYOUT: version must fit one byte")
   else
-    if layout.version_offset < 0 do
-      Err("ANCHOR_LAYOUT: version offset must be non-negative")
+    let payload = (data
+      |> account_payload(actual_owner, expected_owner, layout.account_name))?
+    if Bytes.length(payload) < layout.minimum_payload_bytes do
+      Err("ANCHOR_LAYOUT: payload is shorter than the versioned layout minimum")
+    else if layout.version_offset >= Bytes.length(payload) do
+      Err("ANCHOR_LAYOUT: version offset is outside the payload")
     else
-      if layout.version < 0 || layout.version > 255 do
-        Err("ANCHOR_LAYOUT: version must fit one byte")
+      let version = (payload
+        |> Bytes.get(layout.version_offset))?
+      if version == layout.version do
+        Ok(payload)
       else
-        let payload = (data
-          |> account_payload(actual_owner, expected_owner, layout.account_name))?
-        if Bytes.length(payload) < layout.minimum_payload_bytes do
-          Err("ANCHOR_LAYOUT: payload is shorter than the versioned layout minimum")
-        else
-          if layout.version_offset >= Bytes.length(payload) do
-            Err("ANCHOR_LAYOUT: version offset is outside the payload")
-          else
-            let version = (payload
-              |> Bytes.get(layout.version_offset))?
-            if version == layout.version do
-              Ok(payload)
-            else
-              Err("ANCHOR_VERSION: expected #{layout.version} at payload offset #{layout.version_offset}, got #{version}")
-            end
-          end
-        end
+        Err("ANCHOR_VERSION: expected #{layout.version} at payload offset #{layout.version_offset}, got #{version}")
       end
     end
   end

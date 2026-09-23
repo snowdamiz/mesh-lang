@@ -71,24 +71,24 @@ describe("Slug.is_valid") do
     assert(is_valid("123"))
   end
   test("uppercase letters return false") do
-    assert(is_valid("Hello-World") == false)
+    assert(not is_valid("Hello-World"))
   end
   test("spaces return false") do
-    assert(is_valid("hello world") == false)
+    assert(not is_valid("hello world"))
   end
   test("leading hyphen returns false") do
-    assert(is_valid("-hello") == false)
+    assert(not is_valid("-hello"))
   end
   test("trailing hyphen returns false") do
-    assert(is_valid("hello-") == false)
+    assert(not is_valid("hello-"))
   end
   test("consecutive hyphens return false") do
-    assert(is_valid("hello--world") == false)
+    assert(not is_valid("hello--world"))
   end
   test("empty string returns false") do
-    assert(is_valid("") == false)
+    assert(not is_valid(""))
   end
   test("special chars return false") do
-    assert(is_valid("hello!world") == false)
+    assert(not is_valid("hello!world"))
   end
 end

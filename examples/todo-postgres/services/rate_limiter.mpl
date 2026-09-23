@@ -37,11 +37,11 @@ service TodoWriteRateLimiter do
     }
   end
 
-  call Check(key :: String) :: Bool do|state|
+  call Check(key :: String) :: Bool do |state|
     check_limit_impl(state, key)
   end
 
-  cast Reset() do|state|
+  cast Reset() do |state|
     reset_window_impl(state)
   end
 end

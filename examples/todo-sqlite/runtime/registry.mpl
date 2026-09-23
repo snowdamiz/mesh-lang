@@ -15,19 +15,19 @@ service TodoRegistry do
     }
   end
 
-  call GetDbPath() :: String do|state|
+  call GetDbPath() :: String do |state|
     (state, state.db_path)
   end
 
-  call GetRateLimiter() :: Pid do|state|
+  call GetRateLimiter() :: Pid do |state|
     (state, state.rate_limiter_pid)
   end
 
-  call GetWindowSeconds() :: Int do|state|
+  call GetWindowSeconds() :: Int do |state|
     (state, state.window_seconds)
   end
 
-  call GetMaxRequests() :: Int do|state|
+  call GetMaxRequests() :: Int do |state|
     (state, state.max_requests)
   end
 end

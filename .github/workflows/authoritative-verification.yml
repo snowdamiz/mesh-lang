@@ -99,6 +99,10 @@ jobs:
           cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
           cargo test --locked -p mesh-rt --lib
           cargo build --workspace --locked
+          # The examples and official packages are what users copy from.
+          for path in examples packages mesh-slug; do
+            ./target/debug/meshc lint "$path"
+          done
           cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance
 
   docs-and-sites:

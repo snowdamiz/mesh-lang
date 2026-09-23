@@ -112,17 +112,11 @@ pub fn create_todo(pool :: PoolHandle, title :: String) -> Todo!String do
 end
 
 pub fn toggle_todo(pool :: PoolHandle, id :: String) -> Todo!String do
-  let current_result = get_todo(pool, id)
-  case current_result do
-    Ok(current) -> continue_toggle_todo(pool, id, current)
-    Err(reason) -> Err(reason)
-  end
+  let current = get_todo(pool, id)?
+  continue_toggle_todo(pool, id, current)
 end
 
 pub fn delete_todo(pool :: PoolHandle, id :: String) -> String!String do
-  let current_result = get_todo(pool, id)
-  case current_result do
-    Ok(current) -> delete_todo_with_current(pool, id, current)
-    Err(reason) -> Err(reason)
-  end
+  let current = get_todo(pool, id)?
+  delete_todo_with_current(pool, id, current)
 end

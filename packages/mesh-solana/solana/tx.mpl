@@ -267,12 +267,10 @@ fn key_category(meta :: KeyMeta) -> Int do
     else
       1
     end
+  else if meta.writable do
+    2
   else
-    if meta.writable do
-      2
-    else
-      3
-    end
+    3
   end
 end
 
@@ -336,12 +334,10 @@ end
 fn pubkey_index(values :: List<Pubkey>, key :: Pubkey, index :: Int) -> Int!String do
   if index >= List.length(values) do
     Err("SOLANA_TX: instruction references an uncompiled account")
+  else if pubkey_equal(List.get(values, index), key) do
+    Ok(index)
   else
-    if pubkey_equal(List.get(values, index), key) do
-      Ok(index)
-    else
-      pubkey_index(values, key, index + 1)
-    end
+    pubkey_index(values, key, index + 1)
   end
 end
 
@@ -416,17 +412,13 @@ end
 fn short_u16(value :: Int) -> Bytes!String do
   if value < 0 || value > 65_535 do
     Err("SOLANA_TX: compact-u16 value is out of range")
+  else if value < 128 do
+    uint8(value)
+  else if value < 16_384 do
+    append_uint8(uint8((value % 128) + 128)?, value / 128)
   else
-    if value < 128 do
-      uint8(value)
-    else
-      if value < 16_384 do
-        append_uint8(uint8((value % 128) + 128)?, value / 128)
-      else
-        let output = append_uint8(uint8((value % 128) + 128)?, ((value / 128) % 128) + 128)?
-        append_uint8(output, value / 16_384)
-      end
-    end
+    let output = append_uint8(uint8((value % 128) + 128)?, ((value / 128) % 128) + 128)?
+    append_uint8(output, value / 16_384)
   end
 end
 
@@ -491,24 +483,22 @@ fn append_compiled_instructions(output :: Bytes,
       |> List.get(index)
     if instruction.program_id_index < 0 || instruction.program_id_index >= program_count do
       Err("SOLANA_TX: instruction program index is out of range")
+    else if List.length(instruction.account_indexes) > 256 do
+      Err("SOLANA_TX: instruction exceeds 256 account indexes")
     else
-      if List.length(instruction.account_indexes) > 256 do
-        Err("SOLANA_TX: instruction exceeds 256 account indexes")
-      else
-        let with_program = append_uint8(output, instruction.program_id_index)?
-        let with_account_count = append_short_u16(with_program,
-          List.length(instruction.account_indexes))?
-        let with_accounts = append_account_indexes(with_account_count,
-          instruction.account_indexes,
-          0,
-          account_count)?
-        let with_data_count = append_short_u16(with_accounts, Bytes.length(instruction.data))?
-        append_compiled_instructions(append_bytes(with_data_count, instruction.data)?,
-          instructions,
-          index + 1,
-          program_count,
-          account_count)
-      end
+      let with_program = append_uint8(output, instruction.program_id_index)?
+      let with_account_count = append_short_u16(with_program,
+        List.length(instruction.account_indexes))?
+      let with_accounts = append_account_indexes(with_account_count,
+        instruction.account_indexes,
+        0,
+        account_count)?
+      let with_data_count = append_short_u16(with_accounts, Bytes.length(instruction.data))?
+      append_compiled_instructions(append_bytes(with_data_count, instruction.data)?,
+        instructions,
+        index + 1,
+        program_count,
+        account_count)
     end
   end
 end
@@ -516,12 +506,10 @@ end
 fn validate_header(header :: MessageHeader, account_count :: Int) -> Int!String do
   if account_count > 256 do
     Err("SOLANA_TX: message exceeds 256 static account keys")
+  else if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
+    Err("SOLANA_TX: invalid message header")
   else
-    if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
-      Err("SOLANA_TX: invalid message header")
-    else
-      Ok(account_count)
-    end
+    Ok(account_count)
   end
 end
 
@@ -531,12 +519,10 @@ fn legacy_account_count(message :: LegacyMessage) -> Int!String do
   validate_header(message.header, account_count)?
   if List.length(message.instructions) > 256 do
     Err("SOLANA_TX: legacy message exceeds 256 instructions")
+  else if Bytes.length(message.recent_blockhash.bytes) != 32 do
+    Err("SOLANA_TX: recent blockhash must be 32 bytes")
   else
-    if Bytes.length(message.recent_blockhash.bytes) != 32 do
-      Err("SOLANA_TX: recent blockhash must be 32 bytes")
-    else
-      Ok(account_count)
-    end
+    Ok(account_count)
   end
 end
 
@@ -629,12 +615,10 @@ end
 fn key_meta_index(values :: List<KeyMeta>, key :: Pubkey, index :: Int) -> Int do
   if index >= List.length(values) do
     -1
+  else if pubkey_equal(List.get(values, index).pubkey, key) do
+    index
   else
-    if pubkey_equal(List.get(values, index).pubkey, key) do
-      index
-    else
-      key_meta_index(values, key, index + 1)
-    end
+    key_meta_index(values, key, index + 1)
   end
 end
 
@@ -794,16 +778,14 @@ fn message_v0_account_count(message :: MessageV0) -> Int!String do
   validate_header(message.header, static_count)?
   if List.length(message.instructions) > 256 || List.length(message.address_table_lookups) > 256 do
     Err("SOLANA_TX: v0 message exceeds 256 instructions or lookups")
+  else if Bytes.length(message.recent_blockhash.bytes) != 32 do
+    Err("SOLANA_TX: recent blockhash must be 32 bytes")
   else
-    if Bytes.length(message.recent_blockhash.bytes) != 32 do
-      Err("SOLANA_TX: recent blockhash must be 32 bytes")
+    let account_count = static_count + (loaded_account_count(message.address_table_lookups, 0, 0)?)
+    if account_count > 256 do
+      Err("SOLANA_TX: v0 message exceeds 256 resolved accounts")
     else
-      let account_count = static_count + (loaded_account_count(message.address_table_lookups, 0, 0)?)
-      if account_count > 256 do
-        Err("SOLANA_TX: v0 message exceeds 256 resolved accounts")
-      else
-        Ok(account_count)
-      end
+      Ok(account_count)
     end
   end
 end
@@ -849,18 +831,16 @@ end
 fn serialize_unsigned_transaction(message :: Bytes, count :: Int) -> Bytes!String do
   if count < 0 || count > 256 do
     Err("SOLANA_TX: required signature count is out of range")
+  else if Bytes.length(message) == 0 do
+    Err("SOLANA_TX: transaction message must not be empty")
   else
-    if Bytes.length(message) == 0 do
-      Err("SOLANA_TX: transaction message must not be empty")
+    let with_count = append_short_u16(Bytes.empty(), count)?
+    let with_signatures = append_zero_bytes(with_count, count * 64)?
+    let bytes = append_bytes(with_signatures, message)?
+    if Bytes.length(bytes) > 1232 do
+      Err("SOLANA_TX: serialized transaction exceeds 1232 bytes")
     else
-      let with_count = append_short_u16(Bytes.empty(), count)?
-      let with_signatures = append_zero_bytes(with_count, count * 64)?
-      let bytes = append_bytes(with_signatures, message)?
-      if Bytes.length(bytes) > 1232 do
-        Err("SOLANA_TX: serialized transaction exceeds 1232 bytes")
-      else
-        Ok(bytes)
-      end
+      Ok(bytes)
     end
   end
 end
@@ -976,25 +956,21 @@ struct JupiterInstructionReport do
 end
 
 fn string_field(value :: Json, field :: String) -> String!String do
-  case value
-    |> Json.object_get(field) do
+  case Json.object_get(value, field) do
     Err(_) -> Err("SOLANA_TX: missing field #{field}")
-    Ok(member) -> case member
-      |> Json.as_string() do
+    Ok(member) -> case Json.as_string(member) do
       Err(_) -> Err("SOLANA_TX: field #{field} must be a string")
-      Ok(text) -> Ok(text)
+      Ok(text)
     end
   end
 end
 
 fn bool_field(value :: Json, field :: String) -> Bool!String do
-  case value
-    |> Json.object_get(field) do
+  case Json.object_get(value, field) do
     Err(_) -> Err("SOLANA_TX: missing field #{field}")
-    Ok(member) -> case member
-      |> Json.as_bool() do
+    Ok(member) -> case Json.as_bool(member) do
       Err(_) -> Err("SOLANA_TX: field #{field} must be a boolean")
-      Ok(flag) -> Ok(flag)
+      Ok(flag)
     end
   end
 end
@@ -1032,12 +1008,10 @@ fn instruction_data(encoded :: String) -> Bytes!String do
     Ok(data) -> if (data
       |> Bytes.to_base64()) != encoded do
       Err("SOLANA_TX: non-canonical base64 data")
+    else if Bytes.length(data) > 1232 do
+      Err("SOLANA_TX: instruction data exceeds 1232 bytes")
     else
-      if Bytes.length(data) > 1232 do
-        Err("SOLANA_TX: instruction data exceeds 1232 bytes")
-      else
-        Ok(data)
-      end
+      Ok(data)
     end
   end
 end

@@ -111,9 +111,7 @@ version = "0.1.0"
     write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
 
     let main_mesh = r#"fn log_bootstrap(status :: BootstrapStatus) do
-  println(
-    "[clustered-app] runtime bootstrap mode=#{status.mode} node=#{status.node_name} cluster_port=#{status.cluster_port} discovery_seed=#{status.discovery_seed}"
-  )
+  println("[clustered-app] runtime bootstrap mode=#{status.mode} node=#{status.node_name} cluster_port=#{status.cluster_port} discovery_seed=#{status.discovery_seed}")
 end
 
 fn log_bootstrap_failure(reason :: String) do
@@ -713,11 +711,13 @@ describe("Config helpers") do
     assert_eq(todo_rate_limit_window_seconds_key(), "TODO_RATE_LIMIT_WINDOW_SECONDS")
     assert_eq(todo_rate_limit_max_requests_key(), "TODO_RATE_LIMIT_MAX_REQUESTS")
   end
-
   test("formats missing-env and invalid-int messages") do
-    assert_eq(missing_required_env(database_url_key()), "Missing required environment variable DATABASE_URL")
-    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()), "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
-    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()), "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
+    assert_eq(missing_required_env(database_url_key()),
+      "Missing required environment variable DATABASE_URL")
+    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()),
+      "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
+    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()),
+      "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
   end
 end
 "#
@@ -1098,9 +1098,7 @@ from Runtime.Registry import start_registry
 from Services.RateLimiter import start_rate_limiter
 
 fn log_bootstrap(status :: BootstrapStatus) do
-  println(
-    "[todo-api] runtime bootstrap mode=#{status.mode} node=#{status.node_name} cluster_port=#{status.cluster_port} discovery_seed=#{status.discovery_seed}"
-  )
+  println("[todo-api] runtime bootstrap mode=#{status.mode} node=#{status.node_name} cluster_port=#{status.cluster_port} discovery_seed=#{status.discovery_seed}")
 end
 
 fn log_bootstrap_failure(reason :: String) do
@@ -1111,7 +1109,7 @@ fn log_config_error(message :: String) do
   println("[todo-api] Config error: #{message}")
 end
 
-fn optional_positive_env_int(name :: String, default_value :: Int) -> Int ! String do
+fn optional_positive_env_int(name :: String, default_value :: Int) -> Int!String do
   let raw = Env.get(name, "")
   if raw == "" do
     Ok(default_value)
@@ -1126,9 +1124,7 @@ fn optional_positive_env_int(name :: String, default_value :: Int) -> Int ! Stri
 end
 
 fn start_runtime(port :: Int, window_seconds :: Int, max_requests :: Int) do
-  println(
-    "[todo-api] Runtime ready port=#{port} db_backend=postgres write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}"
-  )
+  println("[todo-api] Runtime ready port=#{port} db_backend=postgres write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}")
   let router = build_router()
   println("[todo-api] HTTP server starting on :#{port}")
   HTTP.serve(router, port)
@@ -1144,47 +1140,48 @@ end
 
 fn maybe_boot_with_pool(port :: Int, window_seconds :: Int, max_requests :: Int, pool :: PoolHandle) do
   case Node.start_from_env() do
-    Ok( status) -> do
+    Ok(status) -> do
       log_bootstrap(status)
       on_pool_ready(port, window_seconds, max_requests, pool)
     end
-    Err( reason) -> log_bootstrap_failure(reason)
+    Err(reason) -> log_bootstrap_failure(reason)
   end
 end
 
-fn start_with_values(database_url :: String, port :: Int, window_seconds :: Int, max_requests :: Int) do
-  println(
-    "[todo-api] Config loaded port=#{port} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}"
-  )
+fn start_with_values(database_url :: String,
+  port :: Int,
+  window_seconds :: Int,
+  max_requests :: Int) do
+  println("[todo-api] Config loaded port=#{port} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}")
   println("[todo-api] Connecting to PostgreSQL pool...")
   let pool_result = Pool.open(database_url, 1, 4, 5000)
   case pool_result do
-    Ok( pool) -> maybe_boot_with_pool(port, window_seconds, max_requests, pool)
-    Err( e) -> println("[todo-api] PostgreSQL connect failed: #{e}")
+    Ok(pool) -> maybe_boot_with_pool(port, window_seconds, max_requests, pool)
+    Err(e) -> println("[todo-api] PostgreSQL connect failed: #{e}")
   end
 end
 
 fn maybe_start_with_max_requests(database_url :: String, port :: Int, window_seconds :: Int) do
   let max_requests_env = todo_rate_limit_max_requests_key()
   case optional_positive_env_int(max_requests_env, 5) do
-    Ok( max_requests) -> start_with_values(database_url, port, window_seconds, max_requests)
-    Err( message) -> log_config_error(message)
+    Ok(max_requests) -> start_with_values(database_url, port, window_seconds, max_requests)
+    Err(message) -> log_config_error(message)
   end
 end
 
 fn maybe_start_with_window_seconds(database_url :: String, port :: Int) do
   let window_seconds_env = todo_rate_limit_window_seconds_key()
   case optional_positive_env_int(window_seconds_env, 60) do
-    Ok( window_seconds) -> maybe_start_with_max_requests(database_url, port, window_seconds)
-    Err( message) -> log_config_error(message)
+    Ok(window_seconds) -> maybe_start_with_max_requests(database_url, port, window_seconds)
+    Err(message) -> log_config_error(message)
   end
 end
 
 fn maybe_start_with_port(database_url :: String) do
   let port_env = port_key()
   case optional_positive_env_int(port_env, 8080) do
-    Ok( port) -> maybe_start_with_window_seconds(database_url, port)
-    Err( message) -> log_config_error(message)
+    Ok(port) -> maybe_start_with_window_seconds(database_url, port)
+    Err(message) -> log_config_error(message)
   end
 end
 
@@ -1205,14 +1202,14 @@ fn postgres_todo_health_mesh() -> &'static str {
 
 pub fn handle_health(_request) do
   HTTP.response(200,
-  json {
-    status : "ok",
-    db_backend : "postgres",
-    migration_strategy : "meshc migrate",
-    clustered_handler : "Work.sync_todos",
-    rate_limit_window_seconds : get_window_seconds(),
-    rate_limit_max_requests : get_max_requests()
-  })
+    json {
+      status: "ok",
+      db_backend: "postgres",
+      migration_strategy: "meshc migrate",
+      clustered_handler: "Work.sync_todos",
+      rate_limit_window_seconds: get_window_seconds(),
+      rate_limit_max_requests: get_max_requests()
+    })
 end
 "#
 }
@@ -1230,7 +1227,7 @@ end
 fn require_param(request, name :: String) -> String do
   let value = Request.param(request, name)
   case value do
-    Some( param) -> param
+    Some(param) -> param
     None -> ""
   end
 end
@@ -1240,15 +1237,15 @@ fn title_from_body(body :: String) -> String do
 end
 
 fn not_found_response() do
-  HTTP.response(404, json { error : "todo not found" })
+  HTTP.response(404, json { error: "todo not found" })
 end
 
 fn rate_limited_response() do
-  HTTP.response(429, json { error : "rate limited" })
+  HTTP.response(429, json { error: "rate limited" })
 end
 
 fn internal_error_response(reason :: String) do
-  HTTP.response(500, json { error : reason })
+  HTTP.response(500, json { error: reason })
 end
 
 fn todo_error_response(reason :: String) do
@@ -1267,15 +1264,15 @@ end
 fn create_todo_with_title(pool :: PoolHandle, title :: String) do
   let result = create_todo(pool, title)
   case result do
-    Ok( todo) -> HTTP.response(201, todo_to_json(todo))
-    Err( reason) -> internal_error_response(reason)
+    Ok(todo) -> HTTP.response(201, todo_to_json(todo))
+    Err(reason) -> internal_error_response(reason)
   end
 end
 
 fn create_todo_with_body(pool :: PoolHandle, body :: String) do
   let title = title_from_body(body)
   if String.length(title) == 0 do
-    HTTP.response(400, json { error : "title is required" })
+    HTTP.response(400, json { error: "title is required" })
   else
     create_todo_with_title(pool, title)
   end
@@ -1284,24 +1281,24 @@ end
 fn get_todo_response(pool :: PoolHandle, id :: String) do
   let result = get_todo(pool, id)
   case result do
-    Ok( todo) -> HTTP.response(200, todo_to_json(todo))
-    Err( reason) -> todo_error_response(reason)
+    Ok(todo) -> HTTP.response(200, todo_to_json(todo))
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
 fn toggle_todo_response(pool :: PoolHandle, id :: String) do
   let result = toggle_todo(pool, id)
   case result do
-    Ok( todo) -> HTTP.response(200, todo_to_json(todo))
-    Err( reason) -> todo_error_response(reason)
+    Ok(todo) -> HTTP.response(200, todo_to_json(todo))
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
 fn delete_todo_response(pool :: PoolHandle, id :: String) do
   let result = delete_todo(pool, id)
   case result do
-    Ok( deleted_id) -> HTTP.response(200, json { status : "deleted", id : deleted_id })
-    Err( reason) -> todo_error_response(reason)
+    Ok(deleted_id) -> HTTP.response(200, json { status: "deleted", id: deleted_id })
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
@@ -1309,8 +1306,8 @@ pub fn handle_list_todos(_request :: Request) -> Response do
   let pool = get_pool()
   let result = list_todos(pool)
   case result do
-    Ok( todos_json) -> HTTP.response(200, todos_json)
-    Err( reason) -> internal_error_response(reason)
+    Ok(todos_json) -> HTTP.response(200, todos_json)
+    Err(reason) -> internal_error_response(reason)
   end
 end
 
@@ -1362,31 +1359,34 @@ end
 service TodoRegistry do
   fn init(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
     RegistryState {
-      pool : pool,
-      rate_limiter_pid : rate_limiter_pid,
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      pool: pool,
+      rate_limiter_pid: rate_limiter_pid,
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
-  call GetPool() :: PoolHandle do|state|
+  call GetPool() :: PoolHandle do |state|
     (state, state.pool)
   end
 
-  call GetRateLimiter() :: Pid do|state|
+  call GetRateLimiter() :: Pid do |state|
     (state, state.rate_limiter_pid)
   end
 
-  call GetWindowSeconds() :: Int do|state|
+  call GetWindowSeconds() :: Int do |state|
     (state, state.window_seconds)
   end
 
-  call GetMaxRequests() :: Int do|state|
+  call GetMaxRequests() :: Int do |state|
     (state, state.max_requests)
   end
 end
 
-pub fn start_registry(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) do
+pub fn start_registry(pool :: PoolHandle,
+  rate_limiter_pid :: Pid,
+  window_seconds :: Int,
+  max_requests :: Int) do
   let registry_pid = TodoRegistry.start(pool, rate_limiter_pid, window_seconds, max_requests)
   Process.register("todo_api_registry", registry_pid)
   registry_pid
@@ -1423,14 +1423,14 @@ end
 
 fn row_to_todo(row) -> Todo do
   Todo {
-    id : Map.get(row, "id"),
-    title : Map.get(row, "title"),
-    completed : Map.get(row, "completed") == "true",
-    created_at : Map.get(row, "created_at")
+    id: Map.get(row, "id"),
+    title: Map.get(row, "title"),
+    completed: Map.get(row, "completed") == "true",
+    created_at: Map.get(row, "created_at")
   }
 end
 
-fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List < String >) -> List < String > do
+fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List<String>) -> List<String> do
   if index >= total do
     acc
   else
@@ -1441,7 +1441,12 @@ end
 
 fn todo_select_query() do
   Query.from(todos_table())
-    |> Query.select_exprs([Expr.label(Pg.text(Expr.column("id")), "id"), Expr.label(Expr.column("title"), "title"), Expr.label(Pg.text(Expr.column("completed")), "completed"), Expr.label(Pg.text(Expr.column("created_at")), "created_at")])
+    |> Query.select_exprs([
+      Expr.label(Pg.text(Expr.column("id")), "id"),
+      Expr.label(Expr.column("title"), "title"),
+      Expr.label(Pg.text(Expr.column("completed")), "completed"),
+      Expr.label(Pg.text(Expr.column("created_at")), "created_at")
+    ])
 end
 
 fn todo_query_by_id(id :: String) do
@@ -1449,7 +1454,7 @@ fn todo_query_by_id(id :: String) do
     |> Query.where_expr(Expr.eq(Expr.column("id"), Pg.uuid(Expr.value(id))))
 end
 
-fn find_single_todo(rows, missing_message :: String) -> Todo ! String do
+fn find_single_todo(rows, missing_message :: String) -> Todo!String do
   if List.length(rows) > 0 do
     Ok(row_to_todo(List.head(rows)))
   else
@@ -1465,13 +1470,16 @@ fn bool_expr(value :: Bool) do
   end
 end
 
-fn update_completed_value(pool :: PoolHandle, id :: String, next_completed) -> Todo ! String do
+fn update_completed_value(pool :: PoolHandle, id :: String, next_completed) -> Todo!String do
   let q = Query.from(todos_table())
     |> Query.where_expr(Expr.eq(Expr.column("id"), Pg.uuid(Expr.value(id))))
-  let updated_result = Repo.update_where_expr(pool, todos_table(), %{"completed" => next_completed}, q)
+  let updated_result = Repo.update_where_expr(pool,
+    todos_table(),
+    %{"completed" => next_completed},
+    q)
   case updated_result do
-    Ok( _row) -> get_todo(pool, id)
-    Err( reason) -> if String.contains(reason, "no rows matched") do
+    Ok(_row) -> get_todo(pool, id)
+    Err(reason) -> if String.contains(reason, "no rows matched") do
       Err("todo not found")
     else
       Err(reason)
@@ -1479,7 +1487,7 @@ fn update_completed_value(pool :: PoolHandle, id :: String, next_completed) -> T
   end
 end
 
-fn continue_toggle_todo(pool :: PoolHandle, id :: String, current :: Todo) -> Todo ! String do
+fn continue_toggle_todo(pool :: PoolHandle, id :: String, current :: Todo) -> Todo!String do
   let next_completed = if current.completed do
     bool_expr(false)
   else
@@ -1488,10 +1496,10 @@ fn continue_toggle_todo(pool :: PoolHandle, id :: String, current :: Todo) -> To
   update_completed_value(pool, id, next_completed)
 end
 
-fn delete_todo_with_current(pool :: PoolHandle, id :: String, current :: Todo) -> String ! String do
+fn delete_todo_with_current(pool :: PoolHandle, id :: String, current :: Todo) -> String!String do
   let q = Query.from(todos_table())
     |> Query.where_expr(Expr.eq(Expr.column("id"), Pg.uuid(Expr.value(id))))
-  let deleted = Repo.delete_where(pool, todos_table(), q) ?
+  let deleted = Repo.delete_where(pool, todos_table(), q)?
   if deleted == 0 do
     Err("todo not found")
   else
@@ -1499,41 +1507,35 @@ fn delete_todo_with_current(pool :: PoolHandle, id :: String, current :: Todo) -
   end
 end
 
-pub fn list_todos(pool :: PoolHandle) -> String ! String do
+pub fn list_todos(pool :: PoolHandle) -> String!String do
   let q = todo_select_query()
     |> Query.order_by(:created_at, :desc)
-  let rows = Repo.all(pool, q) ?
+  let rows = Repo.all(pool, q)?
   let encoded = rows_to_json_loop(rows, 0, List.length(rows), List.new())
   Ok("[#{String.join(encoded, ",")}]")
 end
 
-pub fn get_todo(pool :: PoolHandle, id :: String) -> Todo ! String do
-  let rows = Repo.all(pool, todo_query_by_id(id)) ?
+pub fn get_todo(pool :: PoolHandle, id :: String) -> Todo!String do
+  let rows = Repo.all(pool, todo_query_by_id(id))?
   find_single_todo(rows, "todo not found")
 end
 
-pub fn create_todo(pool :: PoolHandle, title :: String) -> Todo ! String do
+pub fn create_todo(pool :: PoolHandle, title :: String) -> Todo!String do
   let row = Repo.insert_expr(pool,
-  todos_table(),
-  %{"title" => Expr.value(title), "completed" => bool_expr(false)}) ?
+    todos_table(),
+    %{"title" => Expr.value(title), "completed" => bool_expr(false)})?
   let todo_id = Map.get(row, "id")
   get_todo(pool, todo_id)
 end
 
-pub fn toggle_todo(pool :: PoolHandle, id :: String) -> Todo ! String do
-  let current_result = get_todo(pool, id)
-  case current_result do
-    Ok( current) -> continue_toggle_todo(pool, id, current)
-    Err( reason) -> Err(reason)
-  end
+pub fn toggle_todo(pool :: PoolHandle, id :: String) -> Todo!String do
+  let current = get_todo(pool, id)?
+  continue_toggle_todo(pool, id, current)
 end
 
-pub fn delete_todo(pool :: PoolHandle, id :: String) -> String ! String do
-  let current_result = get_todo(pool, id)
-  case current_result do
-    Ok( current) -> delete_todo_with_current(pool, id, current)
-    Err( reason) -> Err(reason)
-  end
+pub fn delete_todo(pool :: PoolHandle, id :: String) -> String!String do
+  let current = get_todo(pool, id)?
+  delete_todo_with_current(pool, id, current)
 end
 "#
 }
@@ -1542,17 +1544,22 @@ fn postgres_todo_migration_mesh() -> &'static str {
     r#"# Migration: create_todos
 # Initial todo schema for the Postgres todo-api starter.
 
-pub fn up(pool :: PoolHandle) -> Int ! String do
-  Pg.create_extension(pool, "pgcrypto") ?
+pub fn up(pool :: PoolHandle) -> Int!String do
+  Pg.create_extension(pool, "pgcrypto")?
   Migration.create_table(pool,
-  "todos",
-  ["id:UUID:PRIMARY KEY DEFAULT gen_random_uuid()", "title:TEXT:NOT NULL", "completed:BOOLEAN:NOT NULL DEFAULT false", "created_at:TIMESTAMPTZ:NOT NULL DEFAULT now()"]) ?
-  Migration.create_index(pool, "todos", ["created_at:DESC"], "name:idx_todos_created_at") ?
+    "todos",
+    [
+      "id:UUID:PRIMARY KEY DEFAULT gen_random_uuid()",
+      "title:TEXT:NOT NULL",
+      "completed:BOOLEAN:NOT NULL DEFAULT false",
+      "created_at:TIMESTAMPTZ:NOT NULL DEFAULT now()"
+    ])?
+  Migration.create_index(pool, "todos", ["created_at:DESC"], "name:idx_todos_created_at")?
   Ok(0)
 end
 
-pub fn down(pool :: PoolHandle) -> Int ! String do
-  Migration.drop_table(pool, "todos") ?
+pub fn down(pool :: PoolHandle) -> Int!String do
+  Migration.drop_table(pool, "todos")?
   Ok(0)
 end
 "#
@@ -1626,12 +1633,12 @@ end
     )?;
 
     let rate_limiter_mesh = r#"struct RateLimiterState do
-  counts :: Map < String, Int >
+  counts :: Map<String, Int>
   window_seconds :: Int
   max_requests :: Int
 end
 
-fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterState, Bool) do
+fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
   let count = Map.get(state.counts, key)
   let allowed = count < state.max_requests
   let next_counts = if allowed do
@@ -1640,42 +1647,44 @@ fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterSta
     state.counts
   end
   let next_state = RateLimiterState {
-    counts : next_counts,
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: next_counts,
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
   (next_state, allowed)
 end
 
 fn reset_window_impl(state :: RateLimiterState) -> RateLimiterState do
   RateLimiterState {
-    counts : Map.new(),
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: Map.new(),
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
 end
 
 service TodoWriteRateLimiter do
   fn init(window_seconds :: Int, max_requests :: Int) -> RateLimiterState do
     RateLimiterState {
-      counts : Map.new(),
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      counts: Map.new(),
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
-  call Check(key :: String) :: Bool do|state|
+  call Check(key :: String) :: Bool do |state|
     check_limit_impl(state, key)
   end
 
-  cast Reset() do|state|
+  cast Reset() do |state|
     reset_window_impl(state)
   end
 end
 
 actor rate_window_ticker(limiter_pid, interval_ms :: Int) do
   Timer.sleep(interval_ms)
+
   TodoWriteRateLimiter.reset(limiter_pid)
+
   rate_window_ticker(limiter_pid, interval_ms)
 end
 
@@ -1823,7 +1832,7 @@ fn log_config_error(message :: String) do
   println("[todo-api] Config error: #{message}")
 end
 
-fn optional_positive_env_int(name :: String, default_value :: Int) -> Int ! String do
+fn optional_positive_env_int(name :: String, default_value :: Int) -> Int!String do
   let raw = Env.get(name, "")
   if raw == "" do
     Ok(default_value)
@@ -1837,7 +1846,7 @@ fn optional_positive_env_int(name :: String, default_value :: Int) -> Int ! Stri
   end
 end
 
-fn resolve_db_path() -> String ! String do
+fn resolve_db_path() -> String!String do
   let key = todo_db_path_key()
   let raw = Env.get(key, default_todo_db_path())
   let trimmed = String.trim(raw)
@@ -1851,55 +1860,51 @@ end
 fn start_runtime(port :: Int, db_path :: String, window_seconds :: Int, max_requests :: Int) do
   let limiter_pid = start_rate_limiter(window_seconds, max_requests)
   start_registry(db_path, limiter_pid, window_seconds, max_requests)
-  println(
-    "[todo-api] local runtime ready port=#{port} db_backend=sqlite storage_mode=single-node db_path=#{db_path} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}"
-  )
+  println("[todo-api] local runtime ready port=#{port} db_backend=sqlite storage_mode=single-node db_path=#{db_path} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}")
   let router = build_router()
   println("[todo-api] HTTP server starting on :#{port}")
   HTTP.serve(router, port)
 end
 
 fn start_with_values(port :: Int, db_path :: String, window_seconds :: Int, max_requests :: Int) do
-  println(
-    "[todo-api] local config loaded port=#{port} db_path=#{db_path} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}"
-  )
+  println("[todo-api] local config loaded port=#{port} db_path=#{db_path} write_limit_window_seconds=#{window_seconds} write_limit_max=#{max_requests}")
   case ensure_schema(db_path) do
-    Ok( _) -> do
+    Ok(_) -> do
       println("[todo-api] SQLite schema ready path=#{db_path}")
       start_runtime(port, db_path, window_seconds, max_requests)
     end
-    Err( reason) -> println("[todo-api] Database init failed: #{reason}")
+    Err(reason) -> println("[todo-api] Database init failed: #{reason}")
   end
 end
 
 fn maybe_start_with_max_requests(port :: Int, db_path :: String, window_seconds :: Int) do
   let max_requests_env = todo_rate_limit_max_requests_key()
   case optional_positive_env_int(max_requests_env, 5) do
-    Ok( max_requests) -> start_with_values(port, db_path, window_seconds, max_requests)
-    Err( message) -> log_config_error(message)
+    Ok(max_requests) -> start_with_values(port, db_path, window_seconds, max_requests)
+    Err(message) -> log_config_error(message)
   end
 end
 
 fn maybe_start_with_window_seconds(port :: Int, db_path :: String) do
   let window_seconds_env = todo_rate_limit_window_seconds_key()
   case optional_positive_env_int(window_seconds_env, 60) do
-    Ok( window_seconds) -> maybe_start_with_max_requests(port, db_path, window_seconds)
-    Err( message) -> log_config_error(message)
+    Ok(window_seconds) -> maybe_start_with_max_requests(port, db_path, window_seconds)
+    Err(message) -> log_config_error(message)
   end
 end
 
 fn maybe_start_with_port(db_path :: String) do
   let port_env = port_key()
   case optional_positive_env_int(port_env, 8080) do
-    Ok( port) -> maybe_start_with_window_seconds(port, db_path)
-    Err( message) -> log_config_error(message)
+    Ok(port) -> maybe_start_with_window_seconds(port, db_path)
+    Err(message) -> log_config_error(message)
   end
 end
 
 fn main() do
   case resolve_db_path() do
-    Ok( db_path) -> maybe_start_with_port(db_path)
-    Err( message) -> log_config_error(message)
+    Ok(db_path) -> maybe_start_with_port(db_path)
+    Err(message) -> log_config_error(message)
   end
 end
 "#;
@@ -1909,15 +1914,15 @@ end
 
 pub fn handle_health(_request) do
   HTTP.response(200,
-  json {
-    status : "ok",
-    mode : "local",
-    db_backend : "sqlite",
-    db_path : get_db_path(),
-    storage_mode : "single-node",
-    rate_limit_window_seconds : get_window_seconds(),
-    rate_limit_max_requests : get_max_requests()
-  })
+    json {
+      status: "ok",
+      mode: "local",
+      db_backend: "sqlite",
+      db_path: get_db_path(),
+      storage_mode: "single-node",
+      rate_limit_window_seconds: get_window_seconds(),
+      rate_limit_max_requests: get_max_requests()
+    })
 end
 "#;
     write_project_file(&project_dir.join("api/health.mpl"), health_mesh)?;
@@ -1951,7 +1956,7 @@ end
 fn require_param(request, name :: String) -> String do
   let value = Request.param(request, name)
   case value do
-    Some( param) -> param
+    Some(param) -> param
     None -> ""
   end
 end
@@ -1961,19 +1966,19 @@ fn title_from_body(body :: String) -> String do
 end
 
 fn not_found_response() do
-  HTTP.response(404, json { error : todo_not_found_message() })
+  HTTP.response(404, json { error: todo_not_found_message() })
 end
 
 fn bad_request_response(message :: String) do
-  HTTP.response(400, json { error : message })
+  HTTP.response(400, json { error: message })
 end
 
 fn rate_limited_response() do
-  HTTP.response(429, json { error : "rate limited" })
+  HTTP.response(429, json { error: "rate limited" })
 end
 
 fn internal_error_response(reason :: String) do
-  HTTP.response(500, json { error : reason })
+  HTTP.response(500, json { error: reason })
 end
 
 fn todo_error_response(reason :: String) do
@@ -1996,8 +2001,8 @@ end
 fn create_todo_with_title(db_path :: String, title :: String) do
   let result = create_todo(db_path, title)
   case result do
-    Ok( todo) -> HTTP.response(201, todo_to_json(todo))
-    Err( reason) -> todo_error_response(reason)
+    Ok(todo) -> HTTP.response(201, todo_to_json(todo))
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
@@ -2009,31 +2014,31 @@ end
 fn get_todo_response(db_path :: String, id :: String) do
   let result = get_todo(db_path, id)
   case result do
-    Ok( todo) -> HTTP.response(200, todo_to_json(todo))
-    Err( reason) -> todo_error_response(reason)
+    Ok(todo) -> HTTP.response(200, todo_to_json(todo))
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
 fn toggle_todo_response(db_path :: String, id :: String) do
   let result = toggle_todo(db_path, id)
   case result do
-    Ok( todo) -> HTTP.response(200, todo_to_json(todo))
-    Err( reason) -> todo_error_response(reason)
+    Ok(todo) -> HTTP.response(200, todo_to_json(todo))
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
 fn delete_todo_response(db_path :: String, id :: String) do
   let result = delete_todo(db_path, id)
   case result do
-    Ok( deleted_id) -> HTTP.response(200, json { status : "deleted", id : deleted_id })
-    Err( reason) -> todo_error_response(reason)
+    Ok(deleted_id) -> HTTP.response(200, json { status: "deleted", id: deleted_id })
+    Err(reason) -> todo_error_response(reason)
   end
 end
 
 pub fn handle_list_todos(_request :: Request) -> Response do
   case list_todos(get_db_path()) do
-    Ok( todos_json) -> HTTP.response(200, todos_json)
-    Err( reason) -> internal_error_response(reason)
+    Ok(todos_json) -> HTTP.response(200, todos_json)
+    Err(reason) -> internal_error_response(reason)
   end
 end
 
@@ -2080,31 +2085,34 @@ end
 service TodoRegistry do
   fn init(db_path :: String, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
     RegistryState {
-      db_path : db_path,
-      rate_limiter_pid : rate_limiter_pid,
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      db_path: db_path,
+      rate_limiter_pid: rate_limiter_pid,
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
-  call GetDbPath() :: String do|state|
+  call GetDbPath() :: String do |state|
     (state, state.db_path)
   end
 
-  call GetRateLimiter() :: Pid do|state|
+  call GetRateLimiter() :: Pid do |state|
     (state, state.rate_limiter_pid)
   end
 
-  call GetWindowSeconds() :: Int do|state|
+  call GetWindowSeconds() :: Int do |state|
     (state, state.window_seconds)
   end
 
-  call GetMaxRequests() :: Int do|state|
+  call GetMaxRequests() :: Int do |state|
     (state, state.max_requests)
   end
 end
 
-pub fn start_registry(db_path :: String, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) do
+pub fn start_registry(db_path :: String,
+  rate_limiter_pid :: Pid,
+  window_seconds :: Int,
+  max_requests :: Int) do
   let registry_pid = TodoRegistry.start(db_path, rate_limiter_pid, window_seconds, max_requests)
   Process.register("todo_api_registry", registry_pid)
   registry_pid
@@ -2133,12 +2141,12 @@ end
     write_project_file(&project_dir.join("runtime/registry.mpl"), registry_mesh)?;
 
     let rate_limiter_mesh = r#"struct RateLimiterState do
-  counts :: Map < String, Int >
+  counts :: Map<String, Int>
   window_seconds :: Int
   max_requests :: Int
 end
 
-fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterState, Bool) do
+fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
   let count = Map.get(state.counts, key)
   let allowed = count < state.max_requests
   let next_counts = if allowed do
@@ -2147,42 +2155,44 @@ fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterSta
     state.counts
   end
   let next_state = RateLimiterState {
-    counts : next_counts,
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: next_counts,
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
   (next_state, allowed)
 end
 
 fn reset_window_impl(state :: RateLimiterState) -> RateLimiterState do
   RateLimiterState {
-    counts : Map.new(),
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: Map.new(),
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
 end
 
 service TodoWriteRateLimiter do
   fn init(window_seconds :: Int, max_requests :: Int) -> RateLimiterState do
     RateLimiterState {
-      counts : Map.new(),
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      counts: Map.new(),
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
-  call Check(key :: String) :: Bool do|state|
+  call Check(key :: String) :: Bool do |state|
     check_limit_impl(state, key)
   end
 
-  cast Reset() do|state|
+  cast Reset() do |state|
     reset_window_impl(state)
   end
 end
 
 actor rate_window_ticker(limiter_pid, interval_ms :: Int) do
   Timer.sleep(interval_ms)
+
   TodoWriteRateLimiter.reset(limiter_pid)
+
   rate_window_ticker(limiter_pid, interval_ms)
 end
 
@@ -2204,11 +2214,11 @@ end
     let storage_mesh = r#"from Config import invalid_todo_id_message, title_required_message, todo_not_found_message
 from Types.Todo import Todo
 
-fn todo_from_row(row) -> Todo ! String do
+fn todo_from_row(row) -> Todo!String do
   Todo.from_row(row)
 end
 
-fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List < String >) -> List < String > ! String do
+fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List<String>) -> List<String>!String do
   if index >= total do
     Ok(acc)
   else
@@ -2218,7 +2228,7 @@ fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List < String >) -
   end
 end
 
-fn normalized_title(title :: String) -> String ! String do
+fn normalized_title(title :: String) -> String!String do
   let trimmed = String.trim(title)
   if String.length(trimmed) == 0 do
     Err(title_required_message())
@@ -2227,10 +2237,10 @@ fn normalized_title(title :: String) -> String ! String do
   end
 end
 
-fn normalized_todo_id(id :: String) -> String ! String do
+fn normalized_todo_id(id :: String) -> String!String do
   let trimmed = String.trim(id)
   case String.to_int(trimmed) do
-    Some( value) -> if value > 0 do
+    Some(value) -> if value > 0 do
       Ok(String.from(value))
     else
       Err(invalid_todo_id_message())
@@ -2239,7 +2249,7 @@ fn normalized_todo_id(id :: String) -> String ! String do
   end
 end
 
-fn first_todo(rows) -> Todo ! String do
+fn first_todo(rows) -> Todo!String do
   if List.length(rows) == 0 do
     Err(todo_not_found_message())
   else
@@ -2247,18 +2257,16 @@ fn first_todo(rows) -> Todo ! String do
   end
 end
 
-pub fn ensure_schema(db_path :: String) -> Int ! String do
+pub fn ensure_schema(db_path :: String) -> Int!String do
   let db = Sqlite.open(db_path)?
-  let applied = Sqlite.execute(
-    db,
+  let applied = Sqlite.execute(db,
     "CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
-    []
-  )?
+    [])?
   Sqlite.close(db)
   Ok(applied)
 end
 
-pub fn list_todos(db_path :: String) -> String ! String do
+pub fn list_todos(db_path :: String) -> String!String do
   let db = Sqlite.open(db_path)?
   let rows = Sqlite.query(db, "SELECT id, title, completed, created_at FROM todos ORDER BY id", [])?
   Sqlite.close(db)
@@ -2266,20 +2274,26 @@ pub fn list_todos(db_path :: String) -> String ! String do
   Ok("[#{String.join(encoded, ",")}]")
 end
 
-pub fn get_todo(db_path :: String, id :: String) -> Todo ! String do
+pub fn get_todo(db_path :: String, id :: String) -> Todo!String do
   let todo_id = normalized_todo_id(id)?
   let db = Sqlite.open(db_path)?
-  let rows = Sqlite.query(db, "SELECT id, title, completed, created_at FROM todos WHERE id = ?", [todo_id])?
+  let rows = Sqlite.query(db,
+    "SELECT id, title, completed, created_at FROM todos WHERE id = ?",
+    [todo_id])?
   Sqlite.close(db)
   first_todo(rows)
 end
 
-pub fn create_todo(db_path :: String, title :: String) -> Todo ! String do
+pub fn create_todo(db_path :: String, title :: String) -> Todo!String do
   let normalized = normalized_title(title)?
   let db = Sqlite.open(db_path)?
   let created_at = DateTime.to_iso8601(DateTime.utc_now())
-  let _ = Sqlite.execute(db, "INSERT INTO todos (title, completed, created_at) VALUES (?, ?, ?)", [normalized, "0", created_at])?
-  let rows = Sqlite.query(db, "SELECT id, title, completed, created_at FROM todos WHERE id = last_insert_rowid()", [])?
+  let _ = Sqlite.execute(db,
+    "INSERT INTO todos (title, completed, created_at) VALUES (?, ?, ?)",
+    [normalized, "0", created_at])?
+  let rows = Sqlite.query(db,
+    "SELECT id, title, completed, created_at FROM todos WHERE id = last_insert_rowid()",
+    [])?
   Sqlite.close(db)
   if List.length(rows) == 0 do
     Err("todo insert did not return a row")
@@ -2288,7 +2302,7 @@ pub fn create_todo(db_path :: String, title :: String) -> Todo ! String do
   end
 end
 
-pub fn toggle_todo(db_path :: String, id :: String) -> Todo ! String do
+pub fn toggle_todo(db_path :: String, id :: String) -> Todo!String do
   let current = get_todo(db_path, id)?
   let db = Sqlite.open(db_path)?
   let next_completed = if current.completed do
@@ -2296,8 +2310,12 @@ pub fn toggle_todo(db_path :: String, id :: String) -> Todo ! String do
   else
     "1"
   end
-  let updated = Sqlite.execute(db, "UPDATE todos SET completed = ? WHERE id = ?", [next_completed, current.id])?
-  let rows = Sqlite.query(db, "SELECT id, title, completed, created_at FROM todos WHERE id = ?", [current.id])?
+  let updated = Sqlite.execute(db,
+    "UPDATE todos SET completed = ? WHERE id = ?",
+    [next_completed, current.id])?
+  let rows = Sqlite.query(db,
+    "SELECT id, title, completed, created_at FROM todos WHERE id = ?",
+    [current.id])?
   Sqlite.close(db)
   if updated == 0 do
     Err(todo_not_found_message())
@@ -2306,7 +2324,7 @@ pub fn toggle_todo(db_path :: String, id :: String) -> Todo ! String do
   end
 end
 
-pub fn delete_todo(db_path :: String, id :: String) -> String ! String do
+pub fn delete_todo(db_path :: String, id :: String) -> String!String do
   let current = get_todo(db_path, id)?
   let db = Sqlite.open(db_path)?
   let deleted = Sqlite.execute(db, "DELETE FROM todos WHERE id = ?", [current.id])?
@@ -2339,12 +2357,14 @@ describe("SQLite todo-api config") do
     assert_eq(todo_rate_limit_window_seconds_key(), "TODO_RATE_LIMIT_WINDOW_SECONDS")
     assert_eq(todo_rate_limit_max_requests_key(), "TODO_RATE_LIMIT_MAX_REQUESTS")
   end
-
   test("formats local validation messages") do
     assert_eq(invalid_positive_int(port_key()), "Invalid PORT: expected a positive integer")
-    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()), "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
-    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()), "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
-    assert_eq(invalid_db_path(todo_db_path_key()), "Invalid TODO_DB_PATH: expected a non-empty path")
+    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()),
+      "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
+    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()),
+      "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
+    assert_eq(invalid_db_path(todo_db_path_key()),
+      "Invalid TODO_DB_PATH: expected a non-empty path")
     assert_eq(invalid_todo_id_message(), "invalid todo id")
     assert_eq(title_required_message(), "title is required")
     assert_eq(todo_not_found_message(), "todo not found")
@@ -2358,10 +2378,10 @@ from Types.Todo import Todo
 
 fn sample_todo() -> Todo do
   Todo {
-    id : "1",
-    title : "compile",
-    completed : false,
-    created_at : "now"
+    id: "1",
+    title: "compile",
+    completed: false,
+    created_at: "now"
   }
 end
 
@@ -2369,9 +2389,8 @@ describe("SQLite todo storage") do
   test("local storage module compiles for the generated starter") do
     let todo = sample_todo()
     assert(todo.title == "compile")
-    assert(todo.completed == false)
+    assert(not todo.completed)
   end
-
   test("storage helper imports stay available to the generated project") do
     let todo = sample_todo()
     assert(todo.id == "1")
@@ -2628,10 +2647,10 @@ mod tests {
         assert!(!todos_api.contains("Work.sync_todos"));
 
         let health = std::fs::read_to_string(&health_path).unwrap();
-        assert!(health.contains("mode : \"local\""));
-        assert!(health.contains("db_backend : \"sqlite\""));
-        assert!(health.contains("storage_mode : \"single-node\""));
-        assert!(health.contains("db_path : get_db_path()"));
+        assert!(health.contains("mode: \"local\""));
+        assert!(health.contains("db_backend: \"sqlite\""));
+        assert!(health.contains("storage_mode: \"single-node\""));
+        assert!(health.contains("db_path: get_db_path()"));
         assert!(!health.contains("clustered_handler"));
 
         let registry = std::fs::read_to_string(&registry_path).unwrap();
@@ -2936,8 +2955,8 @@ mod tests {
         assert!(!env_example.contains("TODO_DB_PATH"));
         assert!(!env_example.contains("sqlite3"));
 
-        assert!(health.contains("db_backend : \"postgres\""));
-        assert!(health.contains("migration_strategy : \"meshc migrate\""));
+        assert!(health.contains("db_backend: \"postgres\""));
+        assert!(health.contains("migration_strategy: \"meshc migrate\""));
         assert!(!health.contains("DATABASE_URL"));
         assert!(!health.contains("todo.sqlite3"));
 

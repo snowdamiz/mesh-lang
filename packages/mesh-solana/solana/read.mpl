@@ -104,13 +104,11 @@ fn fixed_base58(value :: String, length :: Int, label :: String) -> Bytes!String
     Err(_) -> Err("SOLANA_#{label}: invalid base58")
     Ok(bytes) -> if Bytes.length(bytes) != length do
       Err("SOLANA_#{label}: expected #{length} bytes, got #{Bytes.length(bytes)}")
+    else if (bytes
+      |> Bytes.to_base58()) == value do
+      Ok(bytes)
     else
-      if (bytes
-        |> Bytes.to_base58()) == value do
-        Ok(bytes)
-      else
-        Err("SOLANA_#{label}: non-canonical base58")
-      end
+      Err("SOLANA_#{label}: non-canonical base58")
     end
   end
 end
@@ -189,9 +187,8 @@ pub fn jitosol_mint() -> Pubkey!String do
 end
 
 fn u64_text(value :: String, label :: String) -> U64!String do
-  case value
-    |> U64.parse() do
-    Ok(parsed) -> Ok(parsed)
+  case U64.parse(value) do
+    Ok(parsed)
     Err(_) -> Err("SOLANA_#{label}: expected an unsigned integer")
   end
 end
@@ -282,25 +279,18 @@ fn read_u64(data :: Bytes, offset :: Int, label :: String) -> U64!String do
 end
 
 fn read_byte(data :: Bytes, offset :: Int, label :: String) -> Int!String do
-  case data
-    |> Bytes.get(offset) do
-    Ok(value) -> Ok(value)
+  case Bytes.get(data, offset) do
+    Ok(value)
     Err(_) -> Err("SOLANA_#{label}: byte read is out of bounds")
   end
 end
 
 fn coption_pubkey(data :: Bytes, offset :: Int, label :: String) -> Option<Pubkey>!String do
-  case data
-    |> Bytes.read_uint_le(offset, 4) do
+  case Bytes.read_uint_le(data, offset, 4) do
     Ok("0") -> Ok(None)
-    Ok("1") -> case data
-      |> Bytes.slice(offset + 4, 32) do
+    Ok("1") -> case Bytes.slice(data, offset + 4, 32) do
       Err(_) -> Err("SOLANA_#{label}: COption read is out of bounds")
-      Ok(bytes) -> case bytes
-        |> pubkey_from_bytes() do
-        Err(error) -> Err(error)
-        Ok(key) -> Ok(Some(key))
-      end
+      Ok(bytes) -> Ok(Some(pubkey_from_bytes(bytes)?))
     end
     Ok(tag) -> Err("SOLANA_#{label}: invalid COption tag #{tag}")
     Err(_) -> Err("SOLANA_#{label}: COption read is out of bounds")
@@ -418,32 +408,20 @@ fn validate_jitosol(pool_address :: Pubkey,
   current_epoch :: U64) -> Int!String do
   if !pubkey_equal(pool_address, (jitosol_stake_pool())?) do
     Err("SOLANA_JITOSOL: unexpected stake-pool address")
+  else if !pubkey_equal(mint_address, (jitosol_mint())?) do
+    Err("SOLANA_JITOSOL: unexpected mint address")
+  else if U64.compare(pool.total_lamports, (U64.parse("0"))?) <= 0 do
+    Err("SOLANA_JITOSOL: total pool lamports must be positive")
+  else if U64.compare(pool.pool_token_supply, (U64.parse("0"))?) <= 0 do
+    Err("SOLANA_JITOSOL: pool token supply must be positive")
+  else if U64.compare(mint_state.supply, pool.pool_token_supply) > 0 do
+    Err("SOLANA_JITOSOL: mint supply exceeds stake pool accounting")
+  else if U64.compare(pool.last_update_epoch, current_epoch) != 0 do
+    Err("SOLANA_JITOSOL: stake pool is stale for the current epoch")
+  else if mint_state.decimals != 9 || !mint_state.initialized do
+    Err("SOLANA_JITOSOL: unexpected mint configuration")
   else
-    if !pubkey_equal(mint_address, (jitosol_mint())?) do
-      Err("SOLANA_JITOSOL: unexpected mint address")
-    else
-      if U64.compare(pool.total_lamports, (U64.parse("0"))?) <= 0 do
-        Err("SOLANA_JITOSOL: total pool lamports must be positive")
-      else
-        if U64.compare(pool.pool_token_supply, (U64.parse("0"))?) <= 0 do
-          Err("SOLANA_JITOSOL: pool token supply must be positive")
-        else
-          if U64.compare(mint_state.supply, pool.pool_token_supply) > 0 do
-            Err("SOLANA_JITOSOL: mint supply exceeds stake pool accounting")
-          else
-            if U64.compare(pool.last_update_epoch, current_epoch) != 0 do
-              Err("SOLANA_JITOSOL: stake pool is stale for the current epoch")
-            else
-              if mint_state.decimals != 9 || !mint_state.initialized do
-                Err("SOLANA_JITOSOL: unexpected mint configuration")
-              else
-                Ok(0)
-              end
-            end
-          end
-        end
-      end
-    end
+    Ok(0)
   end
 end
 
@@ -475,19 +453,17 @@ end
 pub fn rpc_request(id :: Int, method :: String, params_json :: String) -> RpcRequest!String do
   if id < 0 do
     Err("SOLANA_RPC: request id must be non-negative")
+  else if String.length(method) == 0 do
+    Err("SOLANA_RPC: method must not be empty")
   else
-    if String.length(method) == 0 do
-      Err("SOLANA_RPC: method must not be empty")
-    else
-      case params_json
-        |> Json.parse() do
-        Ok(_) -> Ok(RpcRequest {
-          id: id,
-          method: method,
-          params_json: params_json
-        })
-        Err(_) -> Err("SOLANA_RPC: params must be valid JSON")
-      end
+    case params_json
+      |> Json.parse() do
+      Ok(_) -> Ok(RpcRequest {
+        id: id,
+        method: method,
+        params_json: params_json
+      })
+      Err(_) -> Err("SOLANA_RPC: params must be valid JSON")
     end
   end
 end
@@ -699,17 +675,15 @@ pub fn rpc_response(raw :: String) -> RpcResponse!String do
         result_json: "",
         error_json: error
       })
+    else if result == "" do
+      Err("SOLANA_RPC: response has neither result nor error")
     else
-      if result == "" do
-        Err("SOLANA_RPC: response has neither result nor error")
-      else
-        Ok(RpcResponse {
-          id: id,
-          ok: true,
-          result_json: result,
-          error_json: ""
-        })
-      end
+      Ok(RpcResponse {
+        id: id,
+        ok: true,
+        result_json: result,
+        error_json: ""
+      })
     end
   end
 end
