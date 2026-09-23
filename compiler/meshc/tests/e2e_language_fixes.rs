@@ -2350,3 +2350,27 @@ end
         "Less Greater Less Equal\ntrue Greater Greater\n[\"x\", \"y\"] [(1, \"a\")]\n"
     );
 }
+
+#[test]
+fn stdlib_functions_called_as_methods_lower_like_module_calls() {
+    // `xs.contains(x)` compares by Eq like `List.contains(xs, x)`, and map
+    // methods reach the map functions.
+    let source = r##"
+struct K do
+  a :: Int
+  b :: String
+end deriving(Eq, Hash)
+
+fn main() do
+  let m = %{(1, "a") => 10}
+  println("#{m.get((1, "a"))} #{m.has_key((1, "a"))} #{Map.has_key(m, (1, "a"))}")
+  let m2 = m.put((1, "a"), 20)
+  println("#{m2.size()} #{m2.get((1, "a"))}")
+  let xs = [(1, "a")]
+  println("#{xs.contains((1, "a"))} #{[K { a: 1, b: "q" }].contains(K { a: 1, b: "q" })}")
+  let s = %{"k" => 1}
+  println("#{s.get("k")} #{s.has_key("k" <> "")}")
+end
+"##;
+    assert_eq!(run(source), "10 true true\n1 20\ntrue true\n1 true\n");
+}

@@ -9630,6 +9630,15 @@ impl<'a> Lowerer<'a> {
             };
         }
 
+        // A stdlib function called as a method (`m.get(k)`, `xs.contains(x)`)
+        // lowers like `Map.get(m, k)`, through the general call path below.
+        let stdlib_method = match call.callee() {
+            Some(Expr::FieldAccess(fa)) => {
+                self.stdlib_method_module(&fa).map(|module| (module, fa))
+            }
+            _ => None,
+        };
+
         // Method call interception: if callee is a FieldAccess (expr.method(...)),
         // extract receiver + method name, prepend receiver to args, and route
         // through trait dispatch. This MUST happen BEFORE lower_expr on the callee,
@@ -9659,7 +9668,7 @@ impl<'a> Lowerer<'a> {
                     false
                 };
 
-                if !is_module_or_special {
+                if !is_module_or_special && stdlib_method.is_none() {
                     let method_name = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
 
                     // `record.field(args)` where the field holds a function
@@ -9991,7 +10000,30 @@ impl<'a> Lowerer<'a> {
             .overloaded_call_targets
             .get(&call.syntax().text_range())
             .cloned();
-        let callee = if let Some(ref mangled_name) = overloaded_target {
+        let callee = if let Some((module, fa)) = &stdlib_method {
+            // The method's type: the receiver's, then the arguments', to
+            // the call's.
+            let method = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+            let args: Vec<Expr> = call
+                .arg_list()
+                .map(|al| al.args().collect())
+                .unwrap_or_default();
+            let params: Option<Vec<Ty>> = fa
+                .base()
+                .into_iter()
+                .chain(args)
+                .map(|e| self.get_ty(e.syntax().text_range()).cloned())
+                .collect();
+            let ret = self.get_ty(call.syntax().text_range()).cloned();
+            let fn_ty = params
+                .zip(ret)
+                .map(|(params, ret)| Ty::Fun(params, Box::new(ret)));
+            let fallback = fn_ty
+                .as_ref()
+                .map(|ty| resolve_type(ty, self.registry))
+                .unwrap_or(MirType::Unit);
+            Some(self.lower_stdlib_function(module, &method, fn_ty, fallback))
+        } else if let Some(ref mangled_name) = overloaded_target {
             let callee_ty = call
                 .callee()
                 .map(|e| self.resolve_range(e.syntax().text_range()))
@@ -10000,10 +10032,18 @@ impl<'a> Lowerer<'a> {
         } else {
             call.callee().map(|e| self.lower_callee(&e))
         };
-        let args: Vec<MirExpr> = call
+        let receiver = stdlib_method
+            .as_ref()
+            .and_then(|(_, fa)| fa.base())
+            .map(|base| self.lower_expr(&base));
+        let explicit: Vec<Expr> = call
             .arg_list()
-            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
+            .map(|al| al.args().collect())
             .unwrap_or_default();
+        let args: Vec<MirExpr> = receiver
+            .into_iter()
+            .chain(explicit.iter().map(|a| self.lower_expr(a)))
+            .collect();
 
         let ty = self.resolve_range(call.syntax().text_range());
 
@@ -10489,6 +10529,124 @@ impl<'a> Lowerer<'a> {
             .map(|index| index as u32)
     }
 
+    /// The stdlib module whose function the method call `fa` names: the
+    /// receiver is a `String`, `Range`, `List`, `Map` or `Set` and the
+    /// method is not a trait method (user functions are never methods).
+    fn stdlib_method_module(&self, fa: &FieldAccess) -> Option<&'static str> {
+        let base = fa.base()?;
+        if let Expr::NameRef(name) = &base {
+            let name = name.text()?;
+            if STDLIB_MODULES.contains(&name.as_str())
+                || self.user_modules.contains_key(&name)
+                || self.service_modules.contains_key(&name)
+                || self.is_sum_type_name(&name)
+                || self.is_struct_type_name(&name)
+            {
+                return None;
+            }
+        }
+        let receiver = self.get_ty(base.syntax().text_range())?;
+        let module = match receiver {
+            Ty::Con(tc) => match tc.name.as_str() {
+                "String" => "String",
+                "Range" => "Range",
+                "Set" => "Set",
+                _ => return None,
+            },
+            Ty::App(con, _) => match con.as_ref() {
+                Ty::Con(tc) if tc.name == "List" => "List",
+                Ty::Con(tc) if tc.name == "Map" => "Map",
+                Ty::Con(tc) if tc.name == "Set" => "Set",
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let method = fa.field()?.text().to_string();
+        if !self
+            .trait_registry
+            .find_method_traits(&method, receiver)
+            .is_empty()
+        {
+            return None;
+        }
+        Some(module)
+    }
+
+    /// The runtime function behind the stdlib function `base_name.field`
+    /// (`Map.get`) instantiated at `fn_ty`; `fallback` is its MIR type when
+    /// the runtime function has no declared one.
+    fn lower_stdlib_function(
+        &mut self,
+        base_name: &str,
+        field: &str,
+        fn_ty: Option<Ty>,
+        fallback: MirType,
+    ) -> MirExpr {
+        // Convert to prefixed name: String.length -> string_length
+        let prefix = match base_name {
+            "WsClient" => "ws_client".to_string(),
+            "BytesBuilder" => "bytes_builder".to_string(),
+            "SecretMap" => "secret_map".to_string(),
+            "StorageKey" => "storage_key".to_string(),
+            "X25519PrivateKey" => "x25519_private_key".to_string(),
+            "SigningPrivateKey" => "signing_private_key".to_string(),
+            "MlKemPrivateKey" => "mlkem_private_key".to_string(),
+            _ => base_name.to_lowercase(),
+        };
+        let prefixed = format!("{prefix}_{field}");
+        // Map to runtime name
+        let runtime_name = map_builtin_name(&prefixed);
+        // Map keys that are not words or strings compare by the
+        // key type's Eq; String keys from a list or an iterator
+        // make a string-keyed map.
+        if let Some(op) = runtime_name.strip_prefix("mesh_map_") {
+            if let Some(Ty::Fun(params, ret)) = fn_ty.clone() {
+                let map_ty = match op {
+                    "from_list" | "collect" => Some(ret.as_ref().clone()),
+                    _ => params.first().cloned(),
+                };
+                let key = map_ty.as_ref().and_then(|ty| match ty {
+                    Ty::App(con, args)
+                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") =>
+                    {
+                        args.first().cloned()
+                    }
+                    _ => None,
+                });
+                if let Some(key) = key {
+                    let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
+                    if let Some(helper) = self.resolve_map_by(op, &params, &ret, &key, string) {
+                        let ty = self.known_functions[&helper].clone();
+                        return MirExpr::Var(helper, ty);
+                    }
+                }
+            }
+        }
+        // Membership of a value that is not a word compares by
+        // the element type's Eq, not by the raw slot.
+        if runtime_name == "mesh_list_contains" {
+            if let Some(Ty::Fun(params, _)) = fn_ty.clone() {
+                if let Some(elem) = params.get(1).filter(|elem| {
+                    !matches!(elem, Ty::Var(_))
+                        && !matches!(elem, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "String"))
+                }) {
+                    let helper = self.resolve_list_contains(elem);
+                    let ty = self.known_functions[&helper].clone();
+                    return MirExpr::Var(helper, ty);
+                }
+            }
+        }
+        // Use known_functions type if available (more accurate for
+        // opaque Ptr returns like List.head on List<(A,B)>), otherwise
+        // fall back to typeck-resolved type.
+        let ty = if let Some(known_ty) = self.known_functions.get(&runtime_name) {
+            known_ty.clone()
+        } else {
+            fallback
+        };
+        MirExpr::Var(runtime_name, ty)
+    }
+
     fn lower_field_access(&mut self, fa: &FieldAccess) -> MirExpr {
         // Check if this is a module-qualified access (e.g., String.length).
         // If the base is a NameRef whose text is a known stdlib module,
@@ -10529,75 +10687,10 @@ impl<'a> Lowerer<'a> {
                     // Check stdlib modules (after user modules so user code can shadow).
                     if STDLIB_MODULES.contains(&base_name.as_str()) {
                         let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        // Convert to prefixed name: String.length -> string_length
-                        let prefix = match base_name.as_str() {
-                            "WsClient" => "ws_client".to_string(),
-                            "BytesBuilder" => "bytes_builder".to_string(),
-                            "SecretMap" => "secret_map".to_string(),
-                            "StorageKey" => "storage_key".to_string(),
-                            "X25519PrivateKey" => "x25519_private_key".to_string(),
-                            "SigningPrivateKey" => "signing_private_key".to_string(),
-                            "MlKemPrivateKey" => "mlkem_private_key".to_string(),
-                            _ => base_name.to_lowercase(),
-                        };
-                        let prefixed = format!("{prefix}_{field}");
-                        // Map to runtime name
-                        let runtime_name = map_builtin_name(&prefixed);
-                        // Map keys that are not words or strings compare by the
-                        // key type's Eq; String keys from a list or an iterator
-                        // make a string-keyed map.
-                        if let Some(op) = runtime_name.strip_prefix("mesh_map_") {
-                            if let Some(Ty::Fun(params, ret)) =
-                                self.get_ty(fa.syntax().text_range()).cloned()
-                            {
-                                let map_ty = match op {
-                                    "from_list" | "collect" => Some(ret.as_ref().clone()),
-                                    _ => params.first().cloned(),
-                                };
-                                let key = map_ty.as_ref().and_then(|ty| match ty {
-                                    Ty::App(con, args)
-                                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") =>
-                                    {
-                                        args.first().cloned()
-                                    }
-                                    _ => None,
-                                });
-                                if let Some(key) = key {
-                                    let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
-                                    if let Some(helper) =
-                                        self.resolve_map_by(op, &params, &ret, &key, string)
-                                    {
-                                        let ty = self.known_functions[&helper].clone();
-                                        return MirExpr::Var(helper, ty);
-                                    }
-                                }
-                            }
-                        }
-                        // Membership of a value that is not a word compares by
-                        // the element type's Eq, not by the raw slot.
-                        if runtime_name == "mesh_list_contains" {
-                            if let Some(Ty::Fun(params, _)) =
-                                self.get_ty(fa.syntax().text_range()).cloned()
-                            {
-                                if let Some(elem) = params.get(1).filter(|elem| {
-                                    !matches!(elem, Ty::Var(_))
-                                        && !matches!(elem, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "String"))
-                                }) {
-                                    let helper = self.resolve_list_contains(elem);
-                                    let ty = self.known_functions[&helper].clone();
-                                    return MirExpr::Var(helper, ty);
-                                }
-                            }
-                        }
-                        // Use known_functions type if available (more accurate for
-                        // opaque Ptr returns like List.head on List<(A,B)>), otherwise
-                        // fall back to typeck-resolved type.
-                        let ty = if let Some(known_ty) = self.known_functions.get(&runtime_name) {
-                            known_ty.clone()
-                        } else {
-                            self.resolve_range(fa.syntax().text_range())
-                        };
-                        return MirExpr::Var(runtime_name, ty);
+                        let range = fa.syntax().text_range();
+                        let fn_ty = self.get_ty(range).cloned();
+                        let fallback = self.resolve_range(range);
+                        return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
                     }
 
                     // Check if this is StructName.from_json or SumTypeName.from_json
