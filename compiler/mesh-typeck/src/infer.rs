@@ -10143,6 +10143,21 @@ fn infer_call_inner(
             if let Some(constraints) = fn_constraints.get(&fn_name) {
                 require_inferred_bounds(ctx, constraints, &arg_types, &origin, call);
             }
+        }
+    }
+    // `String.from(x)` shows `x` as interpolating it would: x needs Display.
+    if let Expr::FieldAccess(fa) = &callee_expr {
+        let is_string_from = fa.field().is_some_and(|f| f.text() == "from")
+            && matches!(fa.base(), Some(Expr::NameRef(base)) if base.text().as_deref() == Some("String"));
+        if is_string_from {
+            if let Some(arg) = arg_types.first() {
+                ctx.operand_traits
+                    .push((arg.clone(), "Display".to_string(), origin.clone()));
+            }
+        }
+    }
+    if let Expr::NameRef(name_ref) = &callee_expr {
+        if let Some(fn_name) = name_ref.text() {
             if let Some(constraints) = fn_constraints.get(&fn_name) {
                 if !constraints.where_constraints.is_empty() {
                     let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();

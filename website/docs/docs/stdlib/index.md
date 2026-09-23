@@ -26,7 +26,7 @@ String indexing is by Unicode code point rather than byte. `String.slice(text, s
 | `String.join(parts, separator)` | `String` | Join a list of strings |
 | `String.to_int(text)` | `Option<Int>` | Parse a signed integer after trimming |
 | `String.to_float(text)` | `Option<Float>` | Parse a float after trimming |
-| `String.from(value)` | `String` | Convert an `Int`, `Float`, or `Bool` |
+| `String.from(value)` | `String` | Show any value with `Display`, as `"${value}"` would |
 | `String.collect(iterator)` | `String` | Consume a string-producing iterator |
 
 The `<>` operator concatenates two strings. `println(value)` writes to standard output with a newline, and `print(value)` writes without one.

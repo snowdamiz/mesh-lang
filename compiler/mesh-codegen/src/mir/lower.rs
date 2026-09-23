@@ -9965,23 +9965,16 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Polymorphic String.from dispatch: mesh_string_from accepts Int/Float/Bool
-        // and routes to the correct runtime conversion function based on arg type.
+        // `String.from(x)` shows `x` the way interpolating it would.
         if let MirExpr::Var(ref name, _) = callee {
             if name == "mesh_string_from" && args.len() == 1 {
-                let arg_ty = args[0].ty().clone();
-                let resolved_name = match &arg_ty {
-                    MirType::Int => "mesh_int_to_string",
-                    MirType::Float => "mesh_float_to_string",
-                    MirType::Bool => "mesh_bool_to_string",
-                    _ => "mesh_int_to_string", // fallback
-                };
-                let fn_ty = MirType::FnPtr(vec![arg_ty], Box::new(MirType::String));
-                return MirExpr::Call {
-                    func: Box::new(MirExpr::Var(resolved_name.to_string(), fn_ty)),
-                    args,
-                    ty: MirType::String,
-                };
+                let source_ty = call
+                    .args()
+                    .first()
+                    .and_then(|arg| self.get_ty(arg.syntax().text_range()))
+                    .cloned();
+                let arg = args.into_iter().next().unwrap_or(MirExpr::Unit);
+                return self.wrap_to_string(arg, source_ty.as_ref());
             }
         }
 
@@ -10197,6 +10190,9 @@ impl<'a> Lowerer<'a> {
         if let Some(Expr::SendExpr(send)) = &rhs {
             return self.lower_piped_send(send, lhs, pipe.lhs(), 0);
         }
+        if let Some(shown) = self.piped_string_from(&rhs, &lhs, pipe.lhs()) {
+            return shown;
+        }
 
         let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
@@ -10266,6 +10262,9 @@ impl<'a> Lowerer<'a> {
         let ty = self.resolve_range(pipe.syntax().text_range());
         if let Some(Expr::SendExpr(send)) = pipe.rhs() {
             return self.lower_piped_send(&send, lhs, pipe.lhs(), insert_idx);
+        }
+        if let Some(shown) = self.piped_string_from(&pipe.rhs(), &lhs, pipe.lhs()) {
+            return shown;
         }
 
         match pipe.rhs() {
@@ -15672,6 +15671,28 @@ impl<'a> Lowerer<'a> {
             terminate_callback,
             ty,
         }
+    }
+
+    /// `x |> String.from()`: shown the way `String.from(x)` is.
+    fn piped_string_from(
+        &mut self,
+        rhs: &Option<Expr>,
+        lhs: &MirExpr,
+        lhs_expr: Option<Expr>,
+    ) -> Option<MirExpr> {
+        let Some(Expr::CallExpr(call)) = rhs else {
+            return None;
+        };
+        let Some(Expr::FieldAccess(fa)) = call.callee() else {
+            return None;
+        };
+        let is_string_from = fa.field().is_some_and(|f| f.text() == "from")
+            && matches!(fa.base(), Some(Expr::NameRef(base)) if base.text().as_deref() == Some("String"));
+        if !is_string_from || !call.args().is_empty() {
+            return None;
+        }
+        let source_ty = lhs_expr.and_then(|e| self.get_ty(e.syntax().text_range()).cloned());
+        Some(self.wrap_to_string(lhs.clone(), source_ty.as_ref()))
     }
 
     /// `send` on the right of a pipe: the piped value (`lhs`, written as

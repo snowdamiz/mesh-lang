@@ -3866,3 +3866,28 @@ end
         .replace("  println(\"#{join(1, 2)}\")\n", "");
     assert_eq!(run(&ok), "3 3.5 7 ab [1, 2]\n");
 }
+
+#[test]
+fn string_from_shows_any_value_with_display() {
+    // Anything but Int, Float and Bool printed a pointer.
+    let source = r##"
+struct P do
+  x :: Int
+end deriving(Display)
+
+fn main() do
+  println(String.from(1))
+  println(String.from(2.5))
+  println(String.from("s"))
+  println(String.from([1, 2]))
+  println(String.from(Some(3)))
+  println(String.from(P { x: 4 }))
+  println(5 |> String.from())
+end
+"##;
+    assert_eq!(run(source), "1\n2.5\ns\n[1, 2]\nSome(3)\nP(4)\n5\n");
+    let err = build_error(
+        "struct Q do\n  x :: Int\nend\n\nfn main() do\n  println(String.from(Q { x: 1 }))\nend\n",
+    );
+    assert!(err.contains("Main.Q does not implement Display"), "{err}");
+}
