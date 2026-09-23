@@ -252,6 +252,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::UnknownInterface { span, .. }
         | TypeError::InvalidLiteral { span, .. }
         | TypeError::InvalidConcat { span, .. }
+        | TypeError::NoSuchModuleFunction { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

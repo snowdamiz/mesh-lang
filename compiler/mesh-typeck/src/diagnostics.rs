@@ -165,6 +165,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnknownInterface { .. } => "E0071",
         TypeError::InvalidLiteral { .. } => "E0072",
         TypeError::InvalidConcat { .. } => "E0073",
+        TypeError::NoSuchModuleFunction { .. } => "E0074",
     }
 }
 
@@ -591,6 +592,7 @@ pub fn render_json_diagnostic(
                 | TypeError::UnknownInterface { span, .. }
                 | TypeError::InvalidLiteral { span, .. }
                 | TypeError::InvalidConcat { span, .. }
+                | TypeError::NoSuchModuleFunction { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2253,6 +2255,27 @@ pub fn render_diagnostic(
                 )
                 .with_help("check the spelling, or define or import the type")
                 .finish()
+        }
+        TypeError::NoSuchModuleFunction {
+            module,
+            name,
+            available,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let mut report = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("module `{module}` has no function `{name}`"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("not a function of `{module}`"))
+                        .with_color(Color::Red),
+                );
+            if !available.is_empty() {
+                report = report.with_help(format!("`{module}` has {}", available.join(", ")));
+            }
+            report.finish()
         }
         TypeError::InvalidConcat { op, ty, span } => {
             let range = clamp(text_range_to_range(*span));

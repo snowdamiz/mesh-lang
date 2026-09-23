@@ -12657,6 +12657,33 @@ fn infer_field_access(
                     return Ok(ty);
                 }
             }
+
+            // A module without the function: say so, instead of
+            // "undefined variable" for the module's name.
+            let module_functions: Option<Vec<String>> = if env.is_local(&base_name) {
+                None
+            } else if let Some(functions) = ctx.qualified_modules.get(&base_name) {
+                Some(functions.keys().cloned().collect())
+            } else if is_stdlib_module(&base_name) {
+                stdlib_modules(ctx.test_builtins)
+                    .get(&base_name)
+                    .map(|functions| functions.keys().cloned().collect())
+            } else {
+                None
+            };
+            if let Some(mut available) = module_functions {
+                available.sort();
+                available.dedup();
+                available.retain(|name| !name.contains("__"));
+                let err = TypeError::NoSuchModuleFunction {
+                    module: base_name,
+                    name: field_name,
+                    available,
+                    span: fa.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
         }
     }
 

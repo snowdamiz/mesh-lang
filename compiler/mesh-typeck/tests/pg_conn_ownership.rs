@@ -48,11 +48,12 @@ fn pool_manual_leases_are_not_public_mesh_api() {
     let checkin =
         check("fn manual(pool :: PoolHandle, conn :: PgConn) do\n  Pool.checkin(pool, conn)\nend");
 
+    // `Pool` has no `checkout` or `checkin` a program can call.
     let pool_is_unbound = |result: &TypeckResult| {
-        result
-            .errors
-            .iter()
-            .any(|error| matches!(error, TypeError::UnboundVariable { name, .. } if name == "Pool"))
+        result.errors.iter().any(|error| {
+            matches!(error, TypeError::NoSuchModuleFunction { module, name, .. }
+                if module == "Pool" && (name == "checkout" || name == "checkin"))
+        })
     };
     assert!(pool_is_unbound(&checkout), "errors: {:?}", checkout.errors);
     assert!(pool_is_unbound(&checkin), "errors: {:?}", checkin.errors);

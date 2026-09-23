@@ -4032,3 +4032,18 @@ fn types_inference_has_not_determined_show_as_holes() {
     assert!(err.contains("expected Int, found Option<_>"), "{err}");
     assert!(!err.contains("?"), "{err}");
 }
+
+#[test]
+fn a_function_a_module_lacks_is_reported_as_such() {
+    // "undefined variable: Math", although `Math` exists.
+    let err = build_error(
+        "fn main() do\n  println(\"#{Math.log(2.0)}\")\n  println(String.upcase(\"s\"))\nend\n",
+    );
+    assert!(err.contains("module `Math` has no function `log`"), "{err}");
+    assert!(err.contains("`Math` has abs, ceil, floor"), "{err}");
+    assert!(
+        err.contains("module `String` has no function `upcase`"),
+        "{err}"
+    );
+    assert!(!err.contains("undefined variable"), "{err}");
+}
