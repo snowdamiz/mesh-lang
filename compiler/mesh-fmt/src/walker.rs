@@ -193,9 +193,14 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::NEWLINE => {}
                     SyntaxKind::COMMENT
                     | SyntaxKind::DOC_COMMENT
-                    | SyntaxKind::MODULE_DOC_COMMENT => {
-                        pending_comments.push(ir::text(tok.text()));
-                    }
+                    | SyntaxKind::MODULE_DOC_COMMENT => match items.last_mut() {
+                        Some((_, last))
+                            if pending_comments.is_empty() && ends_a_line_of_code(&tok) =>
+                        {
+                            append_comment(last, &tok)
+                        }
+                        _ => pending_comments.push(ir::text(tok.text())),
+                    },
                     _ => {}
                 }
             }
@@ -640,7 +645,7 @@ fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::END_KW => {}
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    arms.push(ir::text(tok.text()));
+                    push_comment(&mut arms, &tok);
                 }
                 _ => {}
             },
@@ -836,48 +841,65 @@ fn walk_unary_expr(node: &SyntaxNode) -> FormatIR {
 
 // ── Pipe expression ────────────────────────────────────────────────
 
-fn collect_pipe_segments(node: &SyntaxNode, segments: &mut Vec<FormatIR>) {
+enum PipePiece {
+    Code(FormatIR),
+    Comment(SyntaxToken),
+}
+
+fn collect_pipe_segments(node: &SyntaxNode, pieces: &mut Vec<PipePiece>) {
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::PIPE | SyntaxKind::NEWLINE => {}
-                _ => {}
-            },
+            NodeOrToken::Token(tok) => {
+                if matches!(tok.kind(), SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT) {
+                    pieces.push(PipePiece::Comment(tok));
+                }
+            }
             NodeOrToken::Node(n) => {
                 if n.kind() == SyntaxKind::PIPE_EXPR {
-                    collect_pipe_segments(&n, segments);
+                    collect_pipe_segments(&n, pieces);
                 } else {
-                    segments.push(walk_node(&n));
+                    pieces.push(PipePiece::Code(walk_node(&n)));
                 }
             }
         }
     }
 }
 
+/// One step of a pipeline per line; a comment stays at the end of the line
+/// it ends, or on a line of its own.
 fn walk_pipe_expr(node: &SyntaxNode) -> FormatIR {
-    let mut segments = Vec::new();
-    collect_pipe_segments(node, &mut segments);
+    let mut pieces = Vec::new();
+    collect_pipe_segments(node, &mut pieces);
 
-    if segments.is_empty() {
-        return FormatIR::Empty;
-    }
-
-    let mut parts = Vec::new();
-    let first = segments.remove(0);
-    parts.push(first);
-
-    if !segments.is_empty() {
-        let mut tail_parts = Vec::new();
-        for segment in segments {
-            tail_parts.push(ir::hardline());
-            tail_parts.push(ir::text("|>"));
-            tail_parts.push(sp());
-            tail_parts.push(segment);
+    let mut lines: Vec<FormatIR> = Vec::new();
+    let mut seen_code = false;
+    for piece in pieces {
+        match piece {
+            PipePiece::Comment(tok) => match lines.last_mut() {
+                Some(last) if ends_a_line_of_code(&tok) => append_comment(last, &tok),
+                _ => lines.push(inline_comment(&tok)),
+            },
+            PipePiece::Code(segment) => {
+                lines.push(if seen_code {
+                    ir::concat(vec![ir::text("|>"), sp(), segment])
+                } else {
+                    segment
+                });
+                seen_code = true;
+            }
         }
-        parts.push(ir::indent(ir::concat(tail_parts)));
     }
 
-    ir::concat(parts)
+    let mut lines = lines.into_iter();
+    let Some(first) = lines.next() else {
+        return FormatIR::Empty;
+    };
+    let rest: Vec<FormatIR> = lines.flat_map(|line| [ir::hardline(), line]).collect();
+    if rest.is_empty() {
+        first
+    } else {
+        ir::concat(vec![first, ir::indent(ir::concat(rest))])
+    }
 }
 
 // ── Call expression ──────────────────────────────────────────────────
@@ -917,7 +939,7 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    stmts.push(ir::text(tok.text()));
+                    push_comment(&mut stmts, &tok);
                 }
                 _ => {
                     stmts.push(ir::text(tok.text()));
@@ -1046,7 +1068,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
                     if past_do {
-                        inner_items.push(ir::text(tok.text()));
+                        push_comment(&mut inner_items, &tok);
                     } else {
                         parts.push(sp());
                         parts.push(inline_comment(&tok));
@@ -1084,7 +1106,7 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                                 SyntaxKind::COMMENT
                                 | SyntaxKind::DOC_COMMENT
                                 | SyntaxKind::MODULE_DOC_COMMENT => {
-                                    inner_items.push(ir::text(t.text()));
+                                    push_comment(&mut inner_items, &t);
                                 }
                                 _ => {}
                             },
@@ -1101,9 +1123,12 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     }
 
     if !inner_items.is_empty() {
+        // Definitions are separated by a blank line; a sum type's variants
+        // are listed one per line.
+        let blank_between = node.kind() != SyntaxKind::SUM_TYPE_DEF;
         let mut body_parts = Vec::new();
         for (i, item) in inner_items.into_iter().enumerate() {
-            if i > 0 {
+            if i > 0 && blank_between {
                 body_parts.push(ir::hardline());
             }
             body_parts.push(ir::hardline());
@@ -1260,7 +1285,7 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     if in_body {
-                        fields.push(ir::text(tok.text()));
+                        push_comment(&mut fields, &tok);
                     } else {
                         parts.push(inline_comment(&tok));
                     }
@@ -2202,32 +2227,7 @@ fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
 // ── Map literal ─────────────────────────────────────────────────────
 
 fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::PERCENT => parts.push(ir::text("%")),
-                SyntaxKind::L_BRACE => {
-                    parts.push(ir::text("{"));
-                }
-                SyntaxKind::R_BRACE => {
-                    parts.push(ir::text("}"));
-                }
-                SyntaxKind::COMMA => {
-                    parts.push(ir::text(","));
-                    parts.push(sp());
-                }
-                SyntaxKind::NEWLINE => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-    ir::group(ir::concat(parts))
+    walk_delimited_items(node, "%{", "}")
 }
 
 // ── Map entry ───────────────────────────────────────────────────────
@@ -2258,27 +2258,67 @@ fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
 // ── List literal ────────────────────────────────────────────────────
 
 fn walk_list_literal(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
+    walk_delimited_items(node, "[", "]")
+}
+
+/// `[a, b]` or `%{k => v}`: on one line when it fits, otherwise one element
+/// per line between the delimiters, each keeping its trailing comment.
+fn walk_delimited_items(node: &SyntaxNode, open: &str, close: &str) -> FormatIR {
+    let mut items: Vec<FormatIR> = Vec::new();
+    // Inside delimiters a comment that ends a line is stored at the start of
+    // the next element; that element joins with a plain space, so the comment
+    // stays on the line it ends.
+    let mut joined_by_space: Vec<bool> = Vec::new();
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
-                SyntaxKind::R_BRACKET => parts.push(ir::text("]")),
-                SyntaxKind::COMMA => {
-                    parts.push(ir::text(","));
-                    parts.push(sp());
-                }
-                SyntaxKind::NEWLINE => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
             NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
+                joined_by_space.push(
+                    n.first_token().is_some_and(|t| {
+                        t.kind() == SyntaxKind::COMMENT && ends_a_line_of_code(&t)
+                    }),
+                );
+                items.push(walk_node(&n));
             }
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::COMMA => match items.last_mut() {
+                    Some(last) => {
+                        let item = std::mem::replace(last, FormatIR::Empty);
+                        *last = ir::concat(vec![item, ir::text(",")]);
+                    }
+                    None => {
+                        joined_by_space.push(false);
+                        items.push(ir::text(","));
+                    }
+                },
+                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => match items.last_mut() {
+                    Some(last) if ends_a_line_of_code(&tok) => append_comment(last, &tok),
+                    _ => {
+                        joined_by_space.push(false);
+                        items.push(inline_comment(&tok));
+                    }
+                },
+                // The delimiters, whitespace and newlines are re-emitted.
+                _ => {}
+            },
         }
     }
-    ir::group(ir::concat(parts))
+    if items.is_empty() {
+        return ir::text(format!("{open}{close}"));
+    }
+    let softline = || ir::if_break(FormatIR::Empty, ir::hardline());
+    let mut inner = vec![softline()];
+    for (index, (item, by_space)) in items.into_iter().zip(joined_by_space).enumerate() {
+        if index > 0 {
+            inner.push(if by_space { sp() } else { ir::space() });
+        }
+        inner.push(item);
+    }
+    ir::group(ir::concat(vec![
+        ir::text(open),
+        ir::indent(ir::concat(inner)),
+        softline(),
+        ir::text(close),
+    ]))
 }
 
 // ── Associated type binding ─────────────────────────────────────────
@@ -2322,7 +2362,7 @@ fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    items.push(ir::text(tok.text()));
+                    push_comment(&mut items, &tok);
                 }
                 _ => {}
             },
@@ -2353,9 +2393,14 @@ fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
 fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     // Nothing goes between an opening paren or bracket and what it encloses
-    // (`Some(x)`, not `Some( x)`). Braces stay spaced on both sides, since a
-    // space always precedes `}`: `json { id : 7 }`, not `json {id : 7 }`.
+    // (`Some(x)`, not `Some( x)`), nor inside the angle brackets of a generic
+    // list (`Map<String, Int>`). Braces stay spaced on both sides, since a
+    // space always precedes `}`: `json { id: 7 }`, not `json {id: 7 }`.
     let mut after_open = false;
+    let angles = matches!(
+        node.kind(),
+        SyntaxKind::GENERIC_ARG_LIST | SyntaxKind::GENERIC_PARAM_LIST
+    );
 
     for child in node.elements() {
         match child {
@@ -2374,11 +2419,16 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                     parts.push(inline_comment(&tok));
                     continue;
                 }
-                if !parts.is_empty() && !after_open && needs_space_before(tok.kind()) {
+                let closes_angles = angles && kind == SyntaxKind::GT;
+                if !parts.is_empty() && !after_open && !closes_angles && needs_space_before(kind) {
                     parts.push(sp());
                 }
                 parts.push(ir::text(tok.text()));
-                after_open = matches!(kind, SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET);
+                // `!` here is only ever the result sugar, `Int!String`.
+                after_open = matches!(
+                    kind,
+                    SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::BANG
+                ) || (angles && kind == SyntaxKind::LT);
             }
             NodeOrToken::Node(n) => {
                 if !parts.is_empty() && !after_open && needs_space_before_node(n.kind()) {
@@ -2405,7 +2455,10 @@ fn needs_space_before(kind: SyntaxKind) -> bool {
             | SyntaxKind::R_BRACKET
             | SyntaxKind::COMMA
             | SyntaxKind::DOT
+            | SyntaxKind::COLON
             | SyntaxKind::COLON_COLON
+            | SyntaxKind::QUESTION
+            | SyntaxKind::BANG
             | SyntaxKind::STRING_START
             | SyntaxKind::STRING_END
             | SyntaxKind::STRING_CONTENT
@@ -2418,7 +2471,10 @@ fn needs_space_before(kind: SyntaxKind) -> bool {
 fn needs_space_before_node(kind: SyntaxKind) -> bool {
     !matches!(
         kind,
-        SyntaxKind::PARAM_LIST | SyntaxKind::ARG_LIST | SyntaxKind::GENERIC_PARAM_LIST
+        SyntaxKind::PARAM_LIST
+            | SyntaxKind::ARG_LIST
+            | SyntaxKind::GENERIC_PARAM_LIST
+            | SyntaxKind::GENERIC_ARG_LIST
     )
 }
 
@@ -2458,6 +2514,32 @@ fn inline_comment(tok: &SyntaxToken) -> FormatIR {
     } else {
         ir::concat(vec![ir::text(tok.text()), ir::line_end()])
     }
+}
+
+/// Add a comment to a list of lines. One that ends a line of code
+/// (`x :: Int # why`) stays at the end of that line; one on a line of its own
+/// is a line of its own.
+fn push_comment(items: &mut Vec<FormatIR>, tok: &SyntaxToken) {
+    match items.last_mut() {
+        Some(last) if ends_a_line_of_code(tok) => append_comment(last, tok),
+        _ => items.push(ir::text(tok.text())),
+    }
+}
+
+fn ends_a_line_of_code(comment: &SyntaxToken) -> bool {
+    let mut prev = comment.prev_token();
+    while prev
+        .as_ref()
+        .is_some_and(|t| t.kind() == SyntaxKind::WHITESPACE)
+    {
+        prev = prev.and_then(|t| t.prev_token());
+    }
+    prev.is_some_and(|t| t.kind() != SyntaxKind::NEWLINE)
+}
+
+fn append_comment(line: &mut FormatIR, comment: &SyntaxToken) {
+    let code = std::mem::replace(line, FormatIR::Empty);
+    *line = ir::concat(vec![code, sp(), inline_comment(comment)]);
 }
 
 fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
@@ -2538,11 +2620,11 @@ mod tests {
     #[test]
     fn case_arm_do_block() {
         let result = fmt(
-            "case outcome do\nReject -> do\nlet value = recover(outcome) ?\nOk(value)\nend\n_ -> Ok(outcome)\nend",
+            "case outcome do\nReject -> do\nlet value = recover(outcome)?\nOk(value)\nend\n_ -> Ok(outcome)\nend",
         );
         assert_eq!(
             result,
-            "case outcome do\n  Reject -> do\n    let value = recover(outcome) ?\n    Ok(value)\n  end\n  _ -> Ok(outcome)\nend\n"
+            "case outcome do\n  Reject -> do\n    let value = recover(outcome)?\n    Ok(value)\n  end\n  _ -> Ok(outcome)\nend\n"
         );
     }
 
@@ -2663,11 +2745,11 @@ mod tests {
     #[test]
     fn pipe_with_closure_and_struct_literal_breaks_cleanly() {
         let result = fmt(
-            "fn foo() do\nOk(rows |> List.map(fn (row) do Organization { id : Map.get(row, \"id\"), name : Map.get(row, \"name\"), slug : Map.get(row, \"slug\"), created_at : Map.get(row, \"created_at\") } end))\nend",
+            "fn foo() do\nOk(rows |> List.map(fn (row) do Organization { id: Map.get(row, \"id\"), name: Map.get(row, \"name\"), slug: Map.get(row, \"slug\"), created_at: Map.get(row, \"created_at\") } end))\nend",
         );
         assert_eq!(
             result,
-            "fn foo() do\n  Ok(rows\n    |> List.map(fn (row) do\n      Organization {\n        id : Map.get(row, \"id\"),\n        name : Map.get(row, \"name\"),\n        slug : Map.get(row, \"slug\"),\n        created_at : Map.get(row, \"created_at\")\n      }\n    end))\nend\n"
+            "fn foo() do\n  Ok(rows\n    |> List.map(fn (row) do\n      Organization {\n        id: Map.get(row, \"id\"),\n        name: Map.get(row, \"name\"),\n        slug: Map.get(row, \"slug\"),\n        created_at: Map.get(row, \"created_at\")\n      }\n    end))\nend\n"
         );
     }
 
@@ -2685,7 +2767,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            "fn main() do\n  let xs = [1, # first\n  2]\n  let s = add(1,\n    # left\n    2)\n  let j = json {\n    # the id\n    id : 7\n  }\n  xs\nend\n"
+            "fn main() do\n  let xs = [\n    1, # first\n    2\n  ]\n  let s = add(1,\n    # left\n    2)\n  let j = json {\n    # the id\n    id: 7\n  }\n  xs\nend\n"
         );
     }
 
@@ -2701,7 +2783,30 @@ mod tests {
         let result = fmt("fn health() do\njson { status: \"ok\", backend: \"postgres\", migrations: \"meshc migrate\", handler: \"Work.sync_todos\" }\nend");
         assert_eq!(
             result,
-            "fn health() do\n  json {\n    status : \"ok\",\n    backend : \"postgres\",\n    migrations : \"meshc migrate\",\n    handler : \"Work.sync_todos\"\n  }\nend\n"
+            "fn health() do\n  json {\n    status: \"ok\",\n    backend: \"postgres\",\n    migrations: \"meshc migrate\",\n    handler: \"Work.sync_todos\"\n  }\nend\n"
+        );
+    }
+
+    #[test]
+    fn types_operators_and_trailing_comments_keep_their_documented_spelling() {
+        let source = "fn f<T>(r :: Map<String, List<Int?>>) -> Int!String where T: Display do\n  let v = g(r)? # checked\n  case v do\n    Ok(x) # passes through\n    Err(e) -> Err(e)\n  end\nend\n\ntype Step<T> do\n  Done(T)\n  Failed(String)\nend\n";
+        assert_eq!(fmt(source), source);
+        let pipeline = "fn f(x :: Int) -> Int do\n  x\n    |> add(1) # step one\n    # before two\n    |> add(2)\nend\n";
+        assert_eq!(fmt(pipeline), pipeline);
+        // What earlier versions printed is repaired.
+        assert_eq!(
+            fmt("fn f(x :: Option < Int >) -> Int ! String do\n  g(x) ?\nend"),
+            "fn f(x :: Option<Int>) -> Int!String do\n  g(x)?\nend\n"
+        );
+    }
+
+    #[test]
+    fn a_list_that_does_not_fit_has_one_element_per_line() {
+        let source = "fn f() do\n  let accounts = [\n    checked_account_meta(source, false, true)?,\n    checked_account_meta(mint, false, false)?, # the mint\n    checked_account_meta(destination, false, true)?\n  ]\n  let short = [1, 2, 3]\n  let m = %{\"a\" => 1}\n  accounts\nend\n";
+        assert_eq!(fmt(source), source);
+        assert_eq!(
+            fmt("fn f() do\n  [checked_account_meta(source, false, true)?, checked_account_meta(mint, false, false)?, owner_of(source)]\nend"),
+            "fn f() do\n  [\n    checked_account_meta(source, false, true)?,\n    checked_account_meta(mint, false, false)?,\n    owner_of(source)\n  ]\nend\n"
         );
     }
 
@@ -2709,10 +2814,10 @@ mod tests {
     fn wrapped_arguments_sit_one_level_in() {
         // Before, the broken lines of an argument list landed at the call's own
         // indent, level with the statement they continue.
-        let result = fmt("fn f() do\n  let presented = present_message(input.database_path, input.group_id, input.body, input.attachment_list) ?\nend");
+        let result = fmt("fn f() do\n  let presented = present_message(input.database_path, input.group_id, input.body, input.attachment_list)?\nend");
         assert_eq!(
             result,
-            "fn f() do\n  let presented = present_message(input.database_path,\n    input.group_id,\n    input.body,\n    input.attachment_list) ?\nend\n"
+            "fn f() do\n  let presented = present_message(input.database_path,\n    input.group_id,\n    input.body,\n    input.attachment_list)?\nend\n"
         );
     }
 
@@ -2721,7 +2826,7 @@ mod tests {
         let result = fmt("fn foo() do\nlet j = json { id: 7, ok: Some(x) }\nj\nend");
         assert_eq!(
             result,
-            "fn foo() do\n  let j = json { id : 7, ok : Some(x) }\n  j\nend\n"
+            "fn foo() do\n  let j = json { id: 7, ok: Some(x) }\n  j\nend\n"
         );
     }
 
