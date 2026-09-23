@@ -57,6 +57,9 @@ pub struct InferCtx {
     pub clustered_route_wrappers: FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
     /// Wrapper call ranges that were consumed in the route-handler slot.
     pub consumed_clustered_route_wrappers: FxHashSet<TextRange>,
+    /// Function arguments passed where a callback returning `()` is expected
+    /// whose own result is discarded; lowering wraps each one in an adapter.
+    pub discarded_callback_results: FxHashSet<TextRange>,
     /// Replication counts already declared for a clustered route runtime name.
     pub clustered_route_replication_counts: FxHashMap<String, ClusteredRouteReplicationCount>,
     /// Service method mappings imported from other modules.
@@ -103,6 +106,7 @@ impl InferCtx {
             top_level_function_visibility: FxHashMap::default(),
             clustered_route_wrappers: FxHashMap::default(),
             consumed_clustered_route_wrappers: FxHashSet::default(),
+            discarded_callback_results: FxHashSet::default(),
             clustered_route_replication_counts: FxHashMap::default(),
             imported_service_methods: FxHashMap::default(),
             local_service_exports: FxHashMap::default(),

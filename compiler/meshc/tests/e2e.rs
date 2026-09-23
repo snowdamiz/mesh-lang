@@ -182,6 +182,18 @@ fn e2e_closures() {
     assert_eq!(output, "8\n15\n");
 }
 
+/// A function returning a value is accepted where a `Fun(..) -> ()` callback
+/// is expected, named or closure, and its result is discarded.
+#[test]
+fn e2e_unit_callbacks_discard_results() {
+    let source = read_fixture("unit_callbacks.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "tally 1\ntally 2\nreport 1\nreport 2\nclosure 101\nclosure 102\n"
+    );
+}
+
 /// SC2: Pipe operator chaining.
 #[test]
 fn e2e_pipe() {

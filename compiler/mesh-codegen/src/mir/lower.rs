@@ -23,7 +23,7 @@ use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::{ClusteredRouteWrapperMetadata, TraitRegistry, TypeckResult};
 use rowan::TextRange;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::declared::declared_route_wrapper_name;
 
@@ -423,6 +423,8 @@ struct Lowerer<'a> {
     clustered_route_wrappers: &'a FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
     /// Wrapper spans that successfully lowered to a concrete bare route shim.
     consumed_clustered_route_wrappers: HashSet<TextRange>,
+    /// Callback arguments whose result is discarded (see `discard_callback_result`).
+    discarded_callback_results: &'a FxHashSet<TextRange>,
     /// Fail-closed lowering errors gathered while rewriting clustered routes.
     lowering_errors: Vec<String>,
 }
@@ -696,6 +698,7 @@ impl<'a> Lowerer<'a> {
             overloaded_pub_fn_names: std::collections::HashSet::new(),
             clustered_route_wrappers: &typeck.clustered_route_wrappers,
             consumed_clustered_route_wrappers: HashSet::new(),
+            discarded_callback_results: &typeck.discarded_callback_results,
             lowering_errors: Vec::new(),
         }
     }
@@ -9750,6 +9753,75 @@ impl<'a> Lowerer<'a> {
         call
     }
 
+    /// A function passed where a callback returning `()` is expected may return
+    /// anything; the type checker recorded its range. It is wrapped in an
+    /// adapter that calls it and returns `()`, so the callee never sees the
+    /// result. The runtime calls some callbacks through a bare pointer typed
+    /// for its own return value, and a large result would be written through a
+    /// return slot it never passes.
+    fn discard_callback_result(&mut self, expr: MirExpr, range: TextRange) -> MirExpr {
+        if !self.discarded_callback_results.contains(&range) {
+            return expr;
+        }
+        let callback = self.as_fn_item(expr);
+        let callback_ty = callback.ty().clone();
+        let (param_types, return_type, is_closure) = match &callback_ty {
+            MirType::Closure(params, ret) => (params.clone(), (**ret).clone(), true),
+            MirType::FnPtr(params, ret) => (params.clone(), (**ret).clone(), false),
+            _ => return callback,
+        };
+
+        self.closure_counter += 1;
+        let adapter_name = if self.module_name.is_empty() {
+            format!("__discard_callback_{}", self.closure_counter)
+        } else {
+            format!(
+                "{}__discard_callback_{}",
+                self.module_name.replace('.', "_"),
+                self.closure_counter
+            )
+        };
+        let params = param_types
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| (format!("__arg_{index}"), ty.clone()))
+            .collect::<Vec<_>>();
+        let args = params
+            .iter()
+            .map(|(name, ty)| MirExpr::Var(name.clone(), ty.clone()))
+            .collect();
+        let callback_var = MirExpr::Var("__callback".to_string(), callback_ty.clone());
+        let call = if is_closure {
+            MirExpr::ClosureCall {
+                closure: Box::new(callback_var),
+                args,
+                ty: return_type,
+            }
+        } else {
+            MirExpr::Call {
+                func: Box::new(callback_var),
+                args,
+                ty: return_type,
+            }
+        };
+        let mut function_params = vec![("__env".to_string(), MirType::Ptr)];
+        function_params.extend(params);
+        self.functions.push(MirFunction {
+            name: adapter_name.clone(),
+            params: function_params,
+            return_type: MirType::Unit,
+            body: MirExpr::Block(vec![call, MirExpr::Unit], MirType::Unit),
+            is_closure_fn: true,
+            captures: vec![("__callback".to_string(), callback_ty)],
+            has_tail_calls: false,
+        });
+        MirExpr::MakeClosure {
+            fn_name: adapter_name,
+            captures: vec![callback],
+            ty: MirType::Closure(param_types, Box::new(MirType::Unit)),
+        }
+    }
+
     fn lower_expr(&mut self, expr: &Expr) -> MirExpr {
         let lowered = match expr {
             Expr::Literal(lit) => self.lower_literal(lit),
@@ -9829,7 +9901,8 @@ impl<'a> Lowerer<'a> {
             // Json object literal -- Phase 132-02 codegen
             Expr::JsonExpr(json_expr) => self.lower_json_expr(json_expr),
         };
-        self.adapt_uniform_callback_call(lowered, expr.syntax().text_range())
+        let lowered = self.adapt_uniform_callback_call(lowered, expr.syntax().text_range());
+        self.discard_callback_result(lowered, expr.syntax().text_range())
     }
 
     // ── Literal lowering ─────────────────────────────────────────────

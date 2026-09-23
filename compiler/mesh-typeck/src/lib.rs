@@ -269,6 +269,10 @@ pub struct TypeckResult {
     /// Consumed by later lowering so clustered routes reuse declared-handler
     /// runtime-name/count truth instead of inventing an HTTP-only path.
     pub clustered_route_wrappers: FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
+    /// Ranges of function arguments passed where a callback returning `()` is
+    /// expected, whose own non-unit result is discarded. Lowering wraps each in
+    /// an adapter that calls it and returns `()`.
+    pub discarded_callback_results: FxHashSet<TextRange>,
     /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 }

@@ -4433,6 +4433,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         local_service_exports: ctx.local_service_exports,
         overloaded_call_targets: ctx.overloaded_call_targets,
         clustered_route_wrappers: ctx.clustered_route_wrappers,
+        discarded_callback_results: ctx.discarded_callback_results,
         function_ownership: ownership.function_ownership,
     }
 }
@@ -8641,17 +8642,32 @@ fn infer_call_argument(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    // A callback declared to return `()` is only run for its effects, so it
+    // accepts a function returning anything and the result is discarded:
+    // `Ws.serve` takes an `on_message` that ends in `Ws.broadcast(..)` without
+    // a trailing `nil`. A closure gets the callback's parameter types but keeps
+    // its body's own type.
+    let unit_callback_params = match ctx.resolve(expected_ty.clone()) {
+        Ty::Fun(params, ret) if is_unit(&ctx.resolve((*ret).clone())) => Some(params),
+        _ => None,
+    };
     let arg_ty = match arg {
-        Expr::ClosureExpr(closure) => infer_closure(
-            ctx,
-            env,
-            closure,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-            Some(expected_ty.clone()),
-        )?,
+        Expr::ClosureExpr(closure) => {
+            let expected = match &unit_callback_params {
+                Some(params) => Ty::Fun(params.clone(), Box::new(ctx.fresh_var())),
+                None => expected_ty.clone(),
+            };
+            infer_closure(
+                ctx,
+                env,
+                closure,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+                Some(expected),
+            )?
+        }
         _ => infer_expr(
             ctx,
             env,
@@ -8663,9 +8679,31 @@ fn infer_call_argument(
         )?,
     };
 
+    if let (Some(params), Ty::Fun(arg_params, arg_ret)) =
+        (unit_callback_params, ctx.resolve(arg_ty.clone()))
+    {
+        let arg_ret = ctx.resolve(*arg_ret);
+        if arg_params.len() == params.len()
+            && !is_unit(&arg_ret)
+            && !matches!(arg_ret, Ty::Var(_) | Ty::Never)
+        {
+            for (param, arg_param) in params.into_iter().zip(arg_params) {
+                ctx.unify(param, arg_param, origin.clone())?;
+            }
+            ctx.discarded_callback_results
+                .insert(arg.syntax().text_range());
+            types.insert(arg.syntax().text_range(), ctx.resolve(arg_ty.clone()));
+            return Ok(arg_ty);
+        }
+    }
+
     ctx.unify(expected_ty, arg_ty.clone(), origin)?;
     types.insert(arg.syntax().text_range(), ctx.resolve(arg_ty.clone()));
     Ok(arg_ty)
+}
+
+fn is_unit(ty: &Ty) -> bool {
+    matches!(ty, Ty::Tuple(elems) if elems.is_empty())
 }
 
 /// Which element a call to `Tuple.first`, `Tuple.second` or `Tuple.nth` selects:

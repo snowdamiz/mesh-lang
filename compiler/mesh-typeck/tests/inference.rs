@@ -251,3 +251,44 @@ fn test_computed_tuple_index_takes_the_shared_element_type() {
     let result = check_source("let t = (\"a\", \"b\")\nlet i = 1 + 0\nTuple.nth(t, i)");
     assert_result_type(&result, Ty::string());
 }
+
+// ── Callbacks returning () ─────────────────────────────────────────────
+
+#[test]
+fn test_unit_callback_accepts_a_handler_ending_in_a_value() {
+    // `on_message` ends in `Ws.broadcast`, which returns the failure count;
+    // `Ws.serve` wants a handler returning (), and discards the count.
+    let result = check_source(
+        "fn on_connect(conn, _path, _headers) -> Int do\n  Ws.join(conn, \"room\")\n  1\nend\n\
+         fn on_message(_conn, msg :: String) do\n  Ws.broadcast(\"room\", msg)\nend\n\
+         fn on_close(_conn, _code, _reason) do\n  println(\"closed\")\nend\n\
+         Ws.serve(on_connect, on_message, on_close, 9001)",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(result.discarded_callback_results.len(), 1);
+}
+
+#[test]
+fn test_unit_callback_accepts_a_closure_ending_in_a_value() {
+    let result = check_source(
+        "fn each(f :: Fun(Int) -> ()) do\n  f(1)\nend\n\
+         let base = 10\n\
+         each(fn n -> base + n end)",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(result.discarded_callback_results.len(), 1);
+}
+
+#[test]
+fn test_unit_callback_still_checks_parameters() {
+    let result = check_source(
+        "fn each(f :: Fun(Int) -> ()) do\n  f(1)\nend\n\
+         fn shout(s :: String) -> String do\n  s\nend\n\
+         each(shout)",
+    );
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch (callback parameter String against Int)",
+    );
+}
