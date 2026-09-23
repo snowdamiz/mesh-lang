@@ -6,6 +6,6 @@ expression: output
    ╭─[ test.mpl:1:1 ]
    │
  1 │ x + 1
-   │ ┬  
+   │ ┬
    │ ╰── not found in this scope
 ───╯

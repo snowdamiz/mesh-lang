@@ -6,8 +6,8 @@ expression: output
    ╭─[ test.mpl:2:2 ]
    │
  2 │   _ -> 2 end
-   │  ───┬──  
+   │  ───┬──
    │     ╰──── this arm is unreachable
-   │ 
+   │
    │ Help: remove this arm or reorder the match
 ───╯

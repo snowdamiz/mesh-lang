@@ -2013,7 +2013,18 @@ pub fn render_diagnostic(
     report
         .write(cache, &mut buf)
         .expect("failed to write diagnostic");
-    String::from_utf8(buf).expect("diagnostic output should be valid UTF-8")
+    let rendered = String::from_utf8(buf).expect("diagnostic output should be valid UTF-8");
+    // ariadne pads some lines with trailing spaces. Nothing reads them, and the
+    // repository's whitespace guard strips them from committed snapshots.
+    let mut trimmed = rendered
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if rendered.ends_with('\n') {
+        trimmed.push('\n');
+    }
+    trimmed
 }
 
 #[cfg(test)]

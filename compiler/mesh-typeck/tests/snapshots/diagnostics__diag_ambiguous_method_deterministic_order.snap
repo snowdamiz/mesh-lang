@@ -6,8 +6,8 @@ expression: output
    ╭─[ test.mpl:1:1 ]
    │
  1 │ x.to_string()
-   │ ──────┬──────  
+   │ ──────┬──────
    │       ╰──────── multiple traits provide `to_string`
-   │ 
+   │
    │ Help: use qualified syntax: Displayable.to_string(value) or Printable.to_string(value)
 ───╯

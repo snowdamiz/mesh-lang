@@ -6,6 +6,6 @@ expression: output
    ╭─[ test.mpl:1:1 ]
    │
  1 │ spawn(42)
-   │ ────┬────  
+   │ ────┬────
    │     ╰────── expected a function, found Int
 ───╯

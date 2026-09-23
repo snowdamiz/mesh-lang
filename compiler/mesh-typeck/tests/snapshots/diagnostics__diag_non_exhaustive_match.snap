@@ -6,8 +6,8 @@ expression: output
    ╭─[ test.mpl:1:1 ]
    │
  1 │ case x do Some(v) -> v end
-   │ ─────────────┬────────────  
+   │ ─────────────┬────────────
    │              ╰────────────── missing: None
-   │ 
+   │
    │ Help: add the missing patterns or a wildcard `_` arm
 ───╯
