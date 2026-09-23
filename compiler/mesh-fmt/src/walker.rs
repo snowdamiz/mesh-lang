@@ -946,16 +946,31 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
 // ── Parenthesized lists (param_list, arg_list, tuple_expr) ───────────
 
 fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
+    let mut outer = Vec::new();
+    // The elements of a list that has to break sit one level in rather than at
+    // the enclosing statement's indent. A single element has no separators to
+    // break at and keeps its own layout, so `Ok(rows |> ..)` does not drift.
+    let mut inner = Vec::new();
+    let indented = node.children().count() > 1;
+    let mut open = false;
 
     for child in node.elements() {
+        let parts = if open { &mut inner } else { &mut outer };
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_PAREN => {
                     parts.push(ir::text("("));
+                    open = true;
                 }
                 SyntaxKind::R_PAREN => {
-                    parts.push(ir::text(")"));
+                    let elements = ir::concat(std::mem::take(&mut inner));
+                    outer.push(if indented {
+                        ir::indent(elements)
+                    } else {
+                        elements
+                    });
+                    outer.push(ir::text(")"));
+                    open = false;
                 }
                 SyntaxKind::COMMA => {
                     parts.push(ir::text(","));
@@ -985,7 +1000,7 @@ fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::NEWLINE => {}
                 _ => {
-                    add_token_with_context(&tok, &mut parts);
+                    add_token_with_context(&tok, parts);
                 }
             },
             NodeOrToken::Node(n) => {
@@ -994,7 +1009,9 @@ fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
         }
     }
 
-    ir::group(ir::concat(parts))
+    // A list the parser left unclosed keeps whatever followed its paren.
+    outer.extend(inner);
+    ir::group(ir::concat(outer))
 }
 
 // ── Block-structured definitions (module, actor, service, etc.) ──────
@@ -2668,7 +2685,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            "fn main() do\n  let xs = [1, # first\n  2]\n  let s = add(1,\n  # left\n  2)\n  let j = json {\n    # the id\n    id : 7\n  }\n  xs\nend\n"
+            "fn main() do\n  let xs = [1, # first\n  2]\n  let s = add(1,\n    # left\n    2)\n  let j = json {\n    # the id\n    id : 7\n  }\n  xs\nend\n"
         );
     }
 
@@ -2685,6 +2702,17 @@ mod tests {
         assert_eq!(
             result,
             "fn health() do\n  json {\n    status : \"ok\",\n    backend : \"postgres\",\n    migrations : \"meshc migrate\",\n    handler : \"Work.sync_todos\"\n  }\nend\n"
+        );
+    }
+
+    #[test]
+    fn wrapped_arguments_sit_one_level_in() {
+        // Before, the broken lines of an argument list landed at the call's own
+        // indent, level with the statement they continue.
+        let result = fmt("fn f() do\n  let presented = present_message(input.database_path, input.group_id, input.body, input.attachment_list) ?\nend");
+        assert_eq!(
+            result,
+            "fn f() do\n  let presented = present_message(input.database_path,\n    input.group_id,\n    input.body,\n    input.attachment_list) ?\nend\n"
         );
     }
 
