@@ -1,7 +1,10 @@
 <script>
-  import { Search, Package } from 'lucide-svelte';
-  import { Download } from 'lucide-svelte';
+  import { ArrowRight, Search } from 'lucide-svelte';
+  import PackageList from '$lib/PackageList.svelte';
+
   export let data;
+
+  $: count = data.packages.length;
 </script>
 
 <svelte:head>
@@ -10,79 +13,63 @@
   <meta name="robots" content="noindex" />
 </svelte:head>
 
-<section class="border-b border-border/40 bg-gradient-to-b from-muted/30 to-background">
-  <div class="mx-auto max-w-6xl px-4 py-10">
-    <div class="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-1">Search</div>
-    <h1 class="text-2xl font-bold tracking-tight text-foreground">
-      {#if data.query}
-        Results for <span class="text-muted-foreground">"{data.query}"</span>
-      {:else}
-        Search packages
-      {/if}
-    </h1>
-    {#if !data.error && data.query}
-      <p class="mt-1 text-sm text-muted-foreground tabular-nums">
-        {data.packages.length} result{data.packages.length === 1 ? '' : 's'}
-      </p>
+<section class="px-4 pb-12 pt-12 sm:px-6 lg:px-10 lg:pt-16">
+  <p class="label enter">search</p>
+  <h1 class="display enter mt-5 break-words text-[clamp(2rem,1.2rem+2.6vw,3.25rem)]" style="animation-delay: 60ms">
+    {#if data.query}
+      Results for <span class="text-muted-foreground">"{data.query}"</span>
+    {:else}
+      Search packages
     {/if}
-  </div>
+  </h1>
+
+  <form action="/search" method="GET" role="search" class="enter mt-8 max-w-lg" style="animation-delay: 120ms">
+    <label class="relative block">
+      <span class="sr-only">Search packages</span>
+      <Search class="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <input
+        name="q"
+        value={data.query}
+        placeholder="Search packages"
+        autocomplete="off"
+        class="h-12 w-full rounded-xl border border-line-strong bg-background pl-11 pr-28 text-[15px] text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-brand/60 focus:outline-none focus:ring-4 focus:ring-brand/15"
+      />
+      <button
+        type="submit"
+        class="absolute right-1.5 top-1/2 h-9 -translate-y-1/2 rounded-lg bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+      >
+        Search
+      </button>
+    </label>
+  </form>
 </section>
 
-<section class="py-10">
-  <div class="mx-auto max-w-6xl px-4">
-    {#if data.error}
-      <div class="rounded-xl border border-border bg-card p-8 text-center">
-        <p class="text-muted-foreground">{data.error}</p>
-      </div>
-    {:else if !data.query}
-      <div class="rounded-xl border border-border bg-card p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted">
-          <Search class="size-5 text-muted-foreground" />
-        </div>
-        <p class="mt-4 text-muted-foreground">Enter a query to search packages.</p>
-      </div>
-    {:else if data.packages.length === 0}
-      <div class="rounded-xl border border-border bg-card p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-muted">
-          <Package class="size-5 text-muted-foreground" />
-        </div>
-        <p class="mt-4 text-muted-foreground">No packages found for "{data.query}".</p>
-        <a href="/" class="mt-4 inline-block text-sm text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
-          Browse all packages
+<section class="rule">
+  {#if data.error}
+    <div class="px-4 py-16 text-center sm:px-6 lg:px-10">
+      <p class="text-muted-foreground">{data.error}.</p>
+      <a href="/" class="mt-4 inline-block text-sm text-foreground underline underline-offset-4 hover:text-brand">Browse all packages</a>
+    </div>
+  {:else if data.query}
+    <div class="px-4 pb-5 pt-10 sm:px-6 lg:px-10">
+      <h2 class="label tabular-nums">{count} result{count === 1 ? '' : 's'}</h2>
+    </div>
+    {#if count === 0}
+      <div class="border-t border-line px-4 py-16 text-center sm:px-6 lg:px-10">
+        <p class="text-foreground">Nothing matches "{data.query}".</p>
+        <p class="mt-2 text-sm text-muted-foreground">Descriptions match whole words, so try a complete word, or part of a package name.</p>
+        <a href="/" class="mt-6 inline-flex items-center gap-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-brand">
+          Browse all packages <ArrowRight class="size-3.5" />
         </a>
       </div>
     {:else}
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {#each data.packages as pkg}
-          <a
-            href="/packages/{pkg.name}"
-            class="group block rounded-xl border border-border/60 bg-card p-6 transition-all duration-200 hover:border-foreground/20 hover:shadow-md no-underline"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <h3 class="text-sm font-semibold text-foreground leading-snug break-all min-w-0">
-                {pkg.name}
-              </h3>
-              <span class="shrink-0 rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground max-w-[140px] truncate" title="v{pkg.version}">
-                v{pkg.version}
-              </span>
-            </div>
-            <p class="mt-2.5 text-sm leading-relaxed text-muted-foreground line-clamp-2">
-              {pkg.description || 'No description provided.'}
-            </p>
-            <div class="mt-4 flex items-center gap-3 text-xs text-muted-foreground/70">
-              {#if pkg.owner}
-                <span class="truncate max-w-[120px]">{pkg.owner}</span>
-              {/if}
-              {#if pkg.download_count != null}
-                <span class="flex items-center gap-1">
-                  <Download class="size-3" />
-                  {pkg.download_count.toLocaleString()}
-                </span>
-              {/if}
-            </div>
-          </a>
-        {/each}
-      </div>
+      <PackageList packages={data.packages} />
     {/if}
-  </div>
+  {:else}
+    <div class="px-4 py-12 sm:px-6 lg:px-10">
+      <a href="/" class="inline-flex items-center gap-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-brand">
+        Browse all packages <ArrowRight class="size-3.5" />
+      </a>
+    </div>
+  {/if}
 </section>

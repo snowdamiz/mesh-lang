@@ -1,23 +1,14 @@
 <script>
-  import { marked } from 'marked';
-  import { Copy, Check, Download, User, Tag, ArrowLeft } from 'lucide-svelte';
+  import { ArrowLeft, ArrowUpRight } from 'lucide-svelte';
+  import CopyButton from '$lib/CopyButton.svelte';
+  import { ago, formatBytes, formatDate, dependencyLine } from '$lib/format.js';
+
   export let data;
 
-  let copied = false;
-  async function copyInstall() {
-    if (!data.pkg) return;
-    await navigator.clipboard.writeText(`meshpkg install ${data.pkg.name}`);
-    copied = true;
-    setTimeout(() => { copied = false; }, 2000);
-  }
-
-  $: readmeHtml = data.pkg?.readme ? marked.parse(data.pkg.readme) : null;
-
-  function formatBytes(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / 1048576).toFixed(1) + ' MB';
-  }
+  $: pkg = data.pkg;
+  $: [owner, slug] = pkg ? pkg.name.split('/') : [];
+  $: latestVersion = pkg?.latest?.version;
+  $: latest = data.versions.find((ver) => ver.version === latestVersion);
 </script>
 
 <svelte:head>
@@ -37,139 +28,151 @@
 </svelte:head>
 
 {#if data.notFound}
-  <section class="py-24 text-center">
-    <div class="mx-auto max-w-md">
-      <h1 class="text-2xl font-bold text-foreground">Package not found</h1>
-      <p class="mt-2 text-muted-foreground">This package doesn't exist or has been removed.</p>
-      <a href="/" class="mt-6 inline-flex items-center gap-2 rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-primary-foreground no-underline transition-opacity hover:opacity-90">
-        <ArrowLeft class="size-3.5" />
-        Browse all packages
-      </a>
-    </div>
+  <section class="px-4 py-24 text-center sm:px-6 lg:px-10">
+    <p class="label">not found</p>
+    <h1 class="display mt-5 text-[clamp(2rem,1.4rem+2vw,2.75rem)]">No package by that name.</h1>
+    <p class="mt-3 text-muted-foreground">Registry names look like <code class="font-mono text-foreground">owner/package</code>.</p>
+    <a href="/" class="mt-7 inline-flex items-center gap-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-brand">
+      <ArrowLeft class="size-3.5" /> Browse all packages
+    </a>
   </section>
 {:else if data.error}
-  <section class="py-24 text-center">
-    <p class="text-muted-foreground">{data.error}</p>
+  <section class="px-4 py-24 text-center sm:px-6 lg:px-10">
+    <p class="text-muted-foreground">{data.error}.</p>
+    <a href="/" class="mt-4 inline-block text-sm text-foreground underline underline-offset-4 hover:text-brand">Browse all packages</a>
   </section>
-{:else if data.pkg}
+{:else if pkg}
+  <section class="px-4 pb-10 pt-9 sm:px-6 lg:px-10 lg:pb-12 lg:pt-12">
+    <a href="/" class="enter inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground no-underline transition-colors hover:text-foreground">
+      <ArrowLeft class="size-3" /> all packages
+    </a>
+    <h1 class="display enter mt-6 break-words text-[clamp(2rem,1.1rem+2.8vw,3.25rem)]" style="animation-delay: 50ms">
+      <span class="text-muted-foreground/60">{owner}/</span>{slug}
+    </h1>
+    <p class="enter mt-4 max-w-2xl text-[1.0625rem] leading-relaxed text-muted-foreground" style="animation-delay: 100ms">
+      {pkg.description || 'No description provided.'}
+    </p>
+    <dl class="enter mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs text-muted-foreground tabular-nums" style="animation-delay: 150ms">
+      {#if latestVersion}
+        <div><dt class="sr-only">Latest version</dt><dd class="max-w-full break-all rounded-md bg-brand/12 px-2 py-1 text-brand">v{latestVersion}</dd></div>
+      {/if}
+      {#if latest}
+        <div class="flex gap-1.5"><dt>published</dt><dd class="text-foreground"><time datetime={latest.published_at} title={formatDate(latest.published_at)}>{ago(latest.published_at)}</time></dd></div>
+      {/if}
+      <div class="flex gap-1.5"><dt class="sr-only">Downloads</dt><dd><span class="text-foreground">{pkg.download_count.toLocaleString('en-US')}</span> downloads</dd></div>
+    </dl>
+  </section>
 
-  <!-- Header banner -->
-  <section class="border-b border-border/40 bg-gradient-to-b from-muted/30 to-background">
-    <div class="mx-auto max-w-6xl px-4 py-10">
-      <!-- Breadcrumb -->
-      <a href="/" class="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground no-underline">
-        <ArrowLeft class="size-3.5" />
-        All packages
-      </a>
-
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0 flex-1">
-          <div class="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-1">Package</div>
-          <h1 class="text-3xl font-bold tracking-tight text-foreground break-all">{data.pkg.name}</h1>
-          {#if data.pkg.description}
-            <p class="mt-2 text-base text-muted-foreground">{data.pkg.description}</p>
-          {/if}
+  <!-- Phones read install, then versions, then details; desktop puts install and details in a sidebar. -->
+  <section class="rule grid gap-12 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_1fr] lg:gap-x-14 lg:gap-y-10 lg:px-10 lg:py-12">
+    {#if latestVersion}
+      <div class="lg:col-start-2 lg:row-start-1">
+        <h2 class="label">install</h2>
+        <div class="mt-4 overflow-hidden rounded-xl border border-line-strong bg-panel">
+          <div class="flex h-10 items-center justify-between border-b border-line bg-panel-head pl-4 pr-1.5">
+            <span class="font-mono text-xs text-muted-foreground">mesh.toml</span>
+            <CopyButton text={dependencyLine(pkg.name, latestVersion)} label="Copy the mesh.toml line" />
+          </div>
+          <pre class="whitespace-pre-wrap px-4 py-3.5 font-mono text-[12.5px] leading-6 [overflow-wrap:anywhere]"><code><span class="text-muted-foreground">[dependencies]</span>
+"{pkg.name}" <span class="text-muted-foreground">=</span> <span class="inline-block text-brand">"{latestVersion}"</span></code></pre>
+          <div class="flex h-10 items-center justify-between border-y border-line bg-panel-head pl-4 pr-1.5">
+            <span class="font-mono text-xs text-muted-foreground">terminal</span>
+            <CopyButton text="meshpkg install" label="Copy the install command" />
+          </div>
+          <pre class="px-4 py-3.5 font-mono text-[12.5px] leading-6"><code><span class="select-none text-brand">$ </span>meshpkg install</code></pre>
         </div>
-        {#if data.pkg.latest}
-          <span class="shrink-0 rounded-lg bg-card border border-border px-3 py-1.5 font-mono text-sm text-muted-foreground">
-            v{data.pkg.latest.version}
-          </span>
-        {/if}
+        <p class="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Registry versions are exact. <code class="font-mono">meshpkg install {pkg.name}</code> on its own records the
+          latest release in <code class="font-mono">mesh.lock</code> without editing <code class="font-mono">mesh.toml</code>.
+        </p>
       </div>
+    {/if}
 
-      <!-- Install command terminal block -->
-      <div class="mt-6 flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 max-w-xl">
-        <span class="font-mono text-sm text-muted-foreground select-none shrink-0">$</span>
-        <code class="flex-1 font-mono text-sm text-foreground truncate" title="meshpkg install {data.pkg.name}">meshpkg install {data.pkg.name}</code>
-        <button
-          on:click={copyInstall}
-          class="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Copy install command"
-        >
-          {#if copied}
-            <Check class="size-4 text-foreground" />
-          {:else}
-            <Copy class="size-4" />
-          {/if}
-        </button>
-      </div>
+    <div class="min-w-0 space-y-12 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+      {#if data.readmeHtml}
+        <section aria-labelledby="readme">
+          <h2 id="readme" class="label">readme</h2>
+          <div class="prose prose-neutral mt-6 max-w-none dark:prose-invert prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-a:text-brand prose-code:before:content-none prose-code:after:content-none">
+            {@html data.readmeHtml}
+          </div>
+        </section>
+      {/if}
+
+      {#if data.versions.length > 0}
+        <section id="versions" aria-labelledby="versions-heading">
+          <h2 id="versions-heading" class="label">versions <span class="text-foreground tabular-nums">{data.versions.length}</span></h2>
+          <table class="mt-4 w-full border-b border-line font-mono text-[13px]">
+            <thead>
+              <tr class="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                <th scope="col" class="pb-2.5 pr-4 font-normal">Version</th>
+                <th scope="col" class="pb-2.5 pr-4 font-normal">Published</th>
+                <th scope="col" class="hidden pb-2.5 pr-4 font-normal sm:table-cell">Size</th>
+                <th scope="col" class="pb-2.5 text-right font-normal">Downloads</th>
+                <th scope="col" class="pb-2.5"><span class="sr-only">Copy</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each data.versions as ver (ver.version)}
+                <tr class="border-t border-line transition-colors hover:bg-muted/40">
+                  <td class="py-2.5 pr-4 align-middle">
+                    <span class="break-all text-foreground">v{ver.version}</span>
+                    {#if ver.version === latestVersion}
+                      <span class="ml-1.5 whitespace-nowrap rounded bg-brand/12 px-1.5 py-0.5 text-[10px] text-brand">latest</span>
+                    {/if}
+                  </td>
+                  <td class="whitespace-nowrap py-2.5 pr-4 text-muted-foreground">
+                    <time datetime={ver.published_at} title={formatDate(ver.published_at)}>{ago(ver.published_at)}</time>
+                  </td>
+                  <td class="hidden whitespace-nowrap py-2.5 pr-4 text-muted-foreground sm:table-cell">{formatBytes(ver.size_bytes)}</td>
+                  <td class="py-2.5 text-right text-muted-foreground tabular-nums">{ver.download_count.toLocaleString('en-US')}</td>
+                  <td class="py-1.5 pl-2 text-right">
+                    <CopyButton text={dependencyLine(pkg.name, ver.version)} label="Copy the mesh.toml line for v{ver.version}" />
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </section>
+      {/if}
+
+      {#if !data.readmeHtml}
+        <p class="text-sm text-muted-foreground">
+          This package has no README; <code class="font-mono text-foreground">meshpkg publish</code> doesn't upload one yet.
+        </p>
+      {/if}
     </div>
-  </section>
 
-  <!-- Two-column body: README + sidebar -->
-  <section class="py-10">
-    <div class="mx-auto max-w-6xl px-4">
-      <div class="flex flex-col gap-8 lg:flex-row lg:gap-12">
-
-        <!-- Main: README -->
-        <div class="flex-1 min-w-0">
-          {#if readmeHtml}
-            <div class="rounded-xl border border-border bg-card p-8 overflow-hidden">
-              <div class="prose prose-neutral max-w-none dark:prose-invert prose-pre:overflow-x-auto prose-code:break-all">
-                {@html readmeHtml}
-              </div>
-            </div>
-          {:else}
-            <div class="rounded-xl border border-border bg-card p-12 text-center text-muted-foreground text-sm">
-              No README provided.
-            </div>
-          {/if}
+    <div class="lg:col-start-2 lg:row-start-2">
+      <h2 class="label">details</h2>
+      <dl class="mt-4 divide-y divide-line border-y border-line text-sm">
+        <div class="flex items-center justify-between gap-4 py-2.5">
+          <dt class="text-muted-foreground">Owner</dt>
+          <dd>
+            <a href="https://github.com/{owner}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 font-mono text-foreground no-underline transition-colors hover:text-brand">
+              {owner}<ArrowUpRight class="size-3 opacity-60" />
+            </a>
+          </dd>
         </div>
-
-        <!-- Sidebar: metadata -->
-        <aside class="w-full lg:w-72 shrink-0 space-y-4">
-
-          <!-- Metadata card -->
-          <div class="rounded-xl border border-border bg-card p-5 space-y-3">
-            <h2 class="text-sm font-semibold text-foreground">Package info</h2>
-            <dl class="space-y-2.5 text-sm">
-              {#if data.pkg.owner}
-                <div class="flex items-center gap-2.5 text-muted-foreground">
-                  <User class="size-3.5 shrink-0" />
-                  <dt class="sr-only">Owner</dt>
-                  <dd class="truncate">{data.pkg.owner}</dd>
-                </div>
-              {/if}
-              {#if data.pkg.latest}
-                <div class="flex items-center gap-2.5 text-muted-foreground">
-                  <Tag class="size-3.5 shrink-0" />
-                  <dt class="sr-only">Latest version</dt>
-                  <dd class="font-mono">v{data.pkg.latest.version}</dd>
-                </div>
-              {/if}
-              <div class="flex items-center gap-2.5 text-muted-foreground">
-                <Download class="size-3.5 shrink-0" />
-                <dt class="sr-only">Downloads</dt>
-                <dd class="tabular-nums">{data.pkg.download_count.toLocaleString()} downloads</dd>
-              </div>
-            </dl>
+        {#if latest}
+          <div class="flex items-center justify-between gap-4 py-2.5">
+            <dt class="text-muted-foreground">Published</dt>
+            <dd class="font-mono text-foreground">{formatDate(latest.published_at)}</dd>
           </div>
-
-          <!-- Install card -->
-          <div class="rounded-xl border border-border bg-card p-5">
-            <h2 class="text-sm font-semibold text-foreground mb-3">Install</h2>
-            <pre class="rounded-lg border border-border bg-muted px-3 py-2.5 font-mono text-xs text-foreground overflow-x-auto">meshpkg install {data.pkg.name}</pre>
+          <div class="flex items-center justify-between gap-4 py-2.5">
+            <dt class="text-muted-foreground">Size</dt>
+            <dd class="font-mono text-foreground">{formatBytes(latest.size_bytes)}</dd>
           </div>
-
-          <!-- Version history card -->
-          {#if data.versions && data.versions.length > 0}
-            <div class="rounded-xl border border-border bg-card p-5">
-              <h2 class="text-sm font-semibold text-foreground mb-3">Versions</h2>
-              <ul class="space-y-2">
-                {#each data.versions as ver}
-                  <li class="flex items-center justify-between gap-2 text-sm">
-                    <span class="font-mono text-foreground">v{ver.version}</span>
-                    <span class="text-muted-foreground text-xs tabular-nums">
-                      {new Date(ver.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-
-        </aside>
-      </div>
+        {/if}
+        {#if pkg.latest?.sha256}
+          <div class="py-2.5">
+            <dt class="flex items-center justify-between gap-4 text-muted-foreground">
+              SHA-256
+              <CopyButton text={pkg.latest.sha256} label="Copy the SHA-256 of v{latestVersion}" />
+            </dt>
+            <dd class="mt-1 break-all font-mono text-[11px] leading-5 text-muted-foreground">{pkg.latest.sha256}</dd>
+          </div>
+        {/if}
+      </dl>
     </div>
   </section>
 {/if}

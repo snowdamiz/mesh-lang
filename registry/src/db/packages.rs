@@ -25,13 +25,6 @@ pub struct VersionRow {
     pub download_count: i64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct SearchResult {
-    pub name: String,
-    pub version: Option<String>,
-    pub description: String,
-}
-
 fn package_state_error(message: impl Into<String>) -> sqlx::Error {
     sqlx::Error::Protocol(message.into())
 }
@@ -236,10 +229,16 @@ pub async fn list_packages(
 }
 
 /// Search packages by name+description using PostgreSQL tsvector.
-pub async fn search_packages(pool: &PgPool, query: &str) -> Result<Vec<SearchResult>, sqlx::Error> {
-    sqlx::query_as::<_, SearchResult>(
+pub async fn search_packages(pool: &PgPool, query: &str) -> Result<Vec<PackageRow>, sqlx::Error> {
+    sqlx::query_as::<_, PackageRow>(
         r#"
-        SELECT p.name, v.version, p.description
+        SELECT
+            p.name,
+            p.owner_login,
+            p.description,
+            v.version AS latest_version,
+            p.download_count,
+            p.updated_at
         FROM packages p
         LEFT JOIN versions v
           ON v.package_name = p.name

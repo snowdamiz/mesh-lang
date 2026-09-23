@@ -17,41 +17,20 @@ pub struct PackageListItem {
     pub name: String,
     pub version: String,
     pub description: String,
+    pub download_count: i64,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 async fn load_package_list(
     pool: &PgPool,
     search: Option<&str>,
 ) -> Result<Vec<PackageListItem>, AppError> {
-    if let Some(query) = search {
-        if !query.is_empty() {
-            let results = db::packages::search_packages(pool, query)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-
-            return results
-                .into_iter()
-                .map(|result| {
-                    let version = result.version.ok_or_else(|| {
-                        AppError::Internal(format!(
-                            "Search result for package {} is missing latest version metadata",
-                            result.name
-                        ))
-                    })?;
-
-                    Ok(PackageListItem {
-                        name: result.name,
-                        version,
-                        description: result.description,
-                    })
-                })
-                .collect();
-        }
+    let rows = match search {
+        Some(query) if !query.is_empty() => db::packages::search_packages(pool, query).await,
+        _ => db::packages::list_packages(pool, 100, 0).await,
     }
+    .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let rows = db::packages::list_packages(pool, 100, 0)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
     rows.into_iter()
         .map(|row| {
             let version = row.latest_version.ok_or_else(|| {
@@ -65,6 +44,8 @@ async fn load_package_list(
                 name: row.name,
                 version,
                 description: row.description,
+                download_count: row.download_count,
+                updated_at: row.updated_at,
             })
         })
         .collect()
@@ -135,29 +116,29 @@ mod tests {
         )
         .await?;
 
+        db::packages::increment_download(&pool, package_name, newer).await?;
+        let updated_at: chrono::DateTime<chrono::Utc> =
+            sqlx::query_scalar("SELECT updated_at FROM packages WHERE name = $1")
+                .bind(package_name)
+                .fetch_one(&pool)
+                .await?;
+        let expected = vec![PackageListItem {
+            name: package_name.to_string(),
+            version: newer.to_string(),
+            description: "mesh proof package refreshed".to_string(),
+            download_count: 1,
+            updated_at,
+        }];
+
         let list = load_package_list(&pool, None)
             .await
             .expect("package index should load");
-        assert_eq!(
-            list,
-            vec![PackageListItem {
-                name: package_name.to_string(),
-                version: newer.to_string(),
-                description: "mesh proof package refreshed".to_string(),
-            }]
-        );
+        assert_eq!(list, expected);
 
         let search = load_package_list(&pool, Some("proof"))
             .await
             .expect("package search should load");
-        assert_eq!(
-            search,
-            vec![PackageListItem {
-                name: package_name.to_string(),
-                version: newer.to_string(),
-                description: "mesh proof package refreshed".to_string(),
-            }]
-        );
+        assert_eq!(search, expected);
 
         Ok(())
     }
