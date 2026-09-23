@@ -10141,6 +10141,42 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
+                    // A qualified variant constructor (`Color.Red`, `Result.Ok`)
+                    // lowers like the unqualified one.
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    let variant_arity =
+                        self.registry
+                            .sum_type_defs
+                            .get(&base_name)
+                            .and_then(|info| {
+                                info.variants
+                                    .iter()
+                                    .find(|v| v.name == field)
+                                    .map(|v| v.fields.len())
+                            });
+                    if let Some(arity) = variant_arity {
+                        let ty = self.resolve_range(fa.syntax().text_range());
+                        if arity > 0 {
+                            // The call around it constructs the variant.
+                            return MirExpr::Var(field, ty);
+                        }
+                        let concrete = match &ty {
+                            MirType::SumType(name)
+                                if name == &base_name
+                                    || name.starts_with(&format!("{base_name}_")) =>
+                            {
+                                name.clone()
+                            }
+                            _ => base_name.clone(),
+                        };
+                        return MirExpr::ConstructVariant {
+                            type_name: concrete.clone(),
+                            variant: field,
+                            fields: vec![],
+                            ty: MirType::SumType(concrete),
+                        };
+                    }
+
                     // Check stdlib modules (after user modules so user code can shadow).
                     if STDLIB_MODULES.contains(&base_name.as_str()) {
                         let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();

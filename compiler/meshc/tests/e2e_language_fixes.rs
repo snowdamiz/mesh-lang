@@ -2416,6 +2416,26 @@ end
 }
 
 #[test]
+fn qualified_variant_constructors_work_in_expressions() {
+    let source = r##"
+type Color do
+  Red
+  Rgb(n :: Int)
+end
+
+fn main() do
+  let c = Color.Rgb(1)
+  case c do
+    Red -> println("r")
+    Rgb(n) -> println("rgb #{n}")
+  end
+  println("#{Color.Red == Red} #{Result.Ok(1) == Ok(1)} #{Option.Some(2)}")
+end
+"##;
+    assert_eq!(run(source), "rgb 1\ntrue true Some(2)\n");
+}
+
+#[test]
 fn derived_json_handles_every_serializable_field_type() {
     let source = r##"
 struct A do
