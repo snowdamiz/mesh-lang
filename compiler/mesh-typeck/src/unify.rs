@@ -147,6 +147,9 @@ pub struct InferCtx {
     /// Field reads from values of a type not known yet, resolved when the
     /// enclosing function (or the module, outside functions) is done.
     pub pending_fields: Vec<PendingField>,
+    /// Operands of `<>` or `++` whose type was not known yet, with the
+    /// operator and where it is: checked when the function is done.
+    pub concat_operands: Vec<(Ty, &'static str, TextRange)>,
     /// The builtin `default()` calls of the function being inferred, with
     /// the type each builds (checked when the function is done).
     pub default_calls: Vec<(Ty, TextRange)>,
@@ -205,6 +208,7 @@ impl InferCtx {
             registered_items: Default::default(),
             operand_traits: Vec::new(),
             pending_fields: Vec::new(),
+            concat_operands: Vec::new(),
             default_calls: Vec::new(),
             impl_choices: Vec::new(),
             trait_method_fns: FxHashSet::default(),

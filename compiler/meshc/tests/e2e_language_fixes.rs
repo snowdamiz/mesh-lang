@@ -3803,3 +3803,31 @@ end
         "{err}"
     );
 }
+
+#[test]
+fn concatenation_needs_strings_or_lists() {
+    // `1 <> 2` aborted at runtime, `1.5 <> 2.5` failed the LLVM verifier,
+    // `true ++ false` hung and `(1, 2) <> (3, 4)` printed garbage.
+    let source = r##"
+fn cat<T>(a :: T, b :: T) -> T do
+  a <> b
+end
+
+fn main() do
+  let v = 1 <> 2
+  let w = 1.5 <> 2.5
+  let x = true ++ false
+  let y = (1, 2) <> (3, 4)
+  println("done")
+end
+"##;
+    let err = build_error(source);
+    for ty in ["T", "Int", "Float", "Bool", "(Int, Int)"] {
+        assert!(
+            err.contains(&format!("joins strings or lists, not `{ty}`")),
+            "{ty}\n{err}"
+        );
+    }
+    let ok = "fn main() do\n  println(\"a\" <> \"b\")\n  println(\"#{[1] ++ [2]} #{[3] <> [4]}\")\n  println(\"c\" ++ \"d\")\nend\n";
+    assert_eq!(run(ok), "ab\n[1, 2] [3, 4]\ncd\n");
+}

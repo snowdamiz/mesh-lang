@@ -5304,6 +5304,7 @@ fn infer_multi_clause_fn(
             .map(|(name, ty)| (ty.clone(), name.clone())),
     );
     let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
+    let saved_concat = std::mem::take(&mut ctx.concat_operands);
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5441,6 +5442,9 @@ fn infer_multi_clause_fn(
     let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
     let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
     ctx.pending_fields.extend(unresolved);
+    let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
+    let unresolved = check_concat_operands(ctx, concat, &type_params);
+    ctx.concat_operands.extend(unresolved);
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }
@@ -8165,6 +8169,7 @@ fn infer_fn_def(
     );
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
+    let saved_concat = std::mem::take(&mut ctx.concat_operands);
     let saved_default_calls = std::mem::take(&mut ctx.default_calls);
     let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
     // `main` without a declared return type returns nothing: a `?` in it
@@ -8203,6 +8208,9 @@ fn infer_fn_def(
     let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
     let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
     ctx.pending_fields.extend(unresolved);
+    let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
+    let unresolved = check_concat_operands(ctx, concat, &type_params);
+    ctx.concat_operands.extend(unresolved);
     check_type_param_bounds(
         ctx,
         &type_params,
@@ -8959,9 +8967,27 @@ fn infer_binary(
             Ok(Ty::bool())
         }
 
-        // Concatenation operators: unify both sides, return same type
+        // Concatenation operators join two strings or two lists.
         Some(SyntaxKind::DIAMOND | SyntaxKind::PLUS_PLUS) => {
             ctx.unify(lhs_ty.clone(), rhs_ty, origin)?;
+            let op = if op_kind == Some(SyntaxKind::DIAMOND) {
+                "<>"
+            } else {
+                "++"
+            };
+            let span = bin.syntax().text_range();
+            let operand = ctx.resolve(lhs_ty.clone());
+            if is_type_var(&operand) {
+                ctx.concat_operands.push((operand, op, span));
+            } else if !is_concatenable(&operand) {
+                let err = TypeError::InvalidConcat {
+                    op,
+                    ty: operand,
+                    span,
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
             Ok(lhs_ty)
         }
 
@@ -12769,6 +12795,46 @@ fn infer_field_access(
         });
     }
     Ok(result)
+}
+
+/// Whether `<>`/`++` joins values of type `ty`: strings or lists.
+fn is_concatenable(ty: &Ty) -> bool {
+    match ty {
+        Ty::Con(tc) => tc.name == "String",
+        Ty::App(con, _) => matches!(con.as_ref(), Ty::Con(tc) if tc.name == "List"),
+        _ => false,
+    }
+}
+
+/// Check the operands of `<>`/`++` whose type was unknown when they were
+/// checked, now that the function is done, and return those still unknown.
+/// A declared type parameter stands for any type, so it cannot be joined.
+fn check_concat_operands(
+    ctx: &mut InferCtx,
+    operands: Vec<(Ty, &'static str, TextRange)>,
+    type_params: &FxHashMap<String, Ty>,
+) -> Vec<(Ty, &'static str, TextRange)> {
+    let mut unresolved = Vec::new();
+    for (ty, op, span) in operands {
+        let resolved = ctx.resolve(ty);
+        let param = type_params
+            .iter()
+            .find(|(_, param)| ctx.resolve((*param).clone()) == resolved)
+            .map(|(name, _)| name.clone());
+        let offending = match (&resolved, param) {
+            (_, Some(name)) => Some(Ty::Con(TyCon::new(name))),
+            (Ty::Var(_), None) => {
+                unresolved.push((resolved, op, span));
+                None
+            }
+            (other, None) if !is_concatenable(other) => Some(other.clone()),
+            _ => None,
+        };
+        if let Some(ty) = offending {
+            ctx.errors.push(TypeError::InvalidConcat { op, ty, span });
+        }
+    }
+    unresolved
 }
 
 /// The type a non-generic function declares with every parameter and its

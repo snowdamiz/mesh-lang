@@ -164,6 +164,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnknownFieldOwner { .. } => "E0070",
         TypeError::UnknownInterface { .. } => "E0071",
         TypeError::InvalidLiteral { .. } => "E0072",
+        TypeError::InvalidConcat { .. } => "E0073",
     }
 }
 
@@ -559,6 +560,7 @@ pub fn render_json_diagnostic(
                 | TypeError::UnknownFieldOwner { span, .. }
                 | TypeError::UnknownInterface { span, .. }
                 | TypeError::InvalidLiteral { span, .. }
+                | TypeError::InvalidConcat { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2216,6 +2218,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("check the spelling, or define or import the type")
+                .finish()
+        }
+        TypeError::InvalidConcat { op, ty, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("`{op}` joins strings or lists, not `{ty}`"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("these operands are `{ty}`"))
+                        .with_color(Color::Red),
+                )
+                .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
                 .finish()
         }
         TypeError::InvalidLiteral { reason, span } => {
