@@ -378,6 +378,13 @@ pub enum TypeError {
     InvalidPassThroughArm { reason: String, span: TextRange },
     /// One pattern binds the same name twice (`(a, a)`).
     DuplicateBinding { name: String, span: TextRange },
+    /// A generic function applies an operator to a value of its type
+    /// parameter without bounding the parameter by the operator's trait.
+    UnboundedTypeParam {
+        param: String,
+        trait_name: String,
+        origin: ConstraintOrigin,
+    },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
     /// Two sum types of one module declare a variant of the same name.
@@ -885,6 +892,14 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidLetPattern { reason, .. } => {
                 write!(f, "invalid let destructuring pattern: {reason}")
+            }
+            TypeError::UnboundedTypeParam {
+                param, trait_name, ..
+            } => {
+                write!(
+                    f,
+                    "`{param}` is not known to implement {trait_name}; add `where {param}: {trait_name}`"
+                )
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")

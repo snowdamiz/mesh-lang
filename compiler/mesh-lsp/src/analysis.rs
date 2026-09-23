@@ -181,6 +181,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::UnboundVariable { span, .. } => Some(*span),
         TypeError::NotAFunction { span, .. } => Some(*span),
         TypeError::TraitNotSatisfied { origin, .. } => origin_to_range(origin),
+        TypeError::UnboundedTypeParam { origin, .. } => origin_to_range(origin),
         TypeError::MissingTraitMethod { span, .. } => *span,
         TypeError::TraitMethodSignatureMismatch { span, .. } => *span,
         TypeError::MissingField { span, .. } => Some(*span),

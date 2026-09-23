@@ -102,6 +102,10 @@ pub struct InferCtx {
     pub local_variants: FxHashMap<String, String>,
     /// Type definitions registered before the main pass, which skips them.
     pub registered_items: FxHashSet<TextRange>,
+    /// Operators applied to values of a type not yet known, with the trait
+    /// each needs: a generic function's own type parameter must be bounded
+    /// by it (`where T: Ord`), checked when the function's body is done.
+    pub operand_traits: Vec<(Ty, String, ConstraintOrigin)>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -147,6 +151,7 @@ impl InferCtx {
             json_types: Default::default(),
             local_variants: Default::default(),
             registered_items: Default::default(),
+            operand_traits: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),

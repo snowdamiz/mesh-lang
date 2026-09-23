@@ -2702,3 +2702,17 @@ end
 "##;
     assert_eq!(run(source), "9 2.25 3 true true false\n[1, 4]\n");
 }
+
+#[test]
+fn an_operator_on_a_type_parameter_needs_its_bound() {
+    let err = build_error(
+        "fn less<T>(a :: T, b :: T) -> Bool do\n  a < b\nend\n\nfn main() do\n  println(\"#{less(1, 2)}\")\nend\n",
+    );
+    assert!(
+        err.contains("E0063") && err.contains("where T: Ord") && err.contains(":2:3"),
+        "{err}"
+    );
+    // With the bound (Ord includes Eq) it builds.
+    let source = "fn less<T>(a :: T, b :: T) -> Bool where T: Ord do\n  a < b or a == b\nend\n\nfn main() do\n  println(\"#{less(1, 2)}\")\nend\n";
+    assert_eq!(run(source), "true\n");
+}

@@ -7777,6 +7777,7 @@ fn infer_fn_def(
         &mut ctx.where_bounds,
         where_bounds(&where_constraints, &type_params),
     );
+    let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     ctx.push_fn_return_type(return_type_annotation.clone());
     let body_ty = if is_native {
         return_type_annotation
@@ -7797,10 +7798,12 @@ fn infer_fn_def(
     };
     let returns = ctx.pop_fn_return_type();
     ctx.where_bounds = saved_bounds;
+    let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
 
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
+    check_type_param_bounds(ctx, &type_params, &where_constraints, operand_traits);
 
     env.pop_scope();
 
@@ -8434,6 +8437,10 @@ fn infer_binary(
         Some(SyntaxKind::EQ_EQ | SyntaxKind::NOT_EQ) => {
             ctx.unify(lhs_ty.clone(), rhs_ty, origin.clone())?;
             let resolved = ctx.resolve(lhs_ty);
+            if is_type_var(&resolved) {
+                ctx.operand_traits
+                    .push((resolved.clone(), "Eq".to_string(), origin.clone()));
+            }
             if !is_type_var(&resolved) && !trait_registry.has_impl("Eq", &resolved) {
                 let err = TypeError::TraitNotSatisfied {
                     ty: resolved,
@@ -8450,6 +8457,10 @@ fn infer_binary(
         Some(SyntaxKind::LT | SyntaxKind::GT | SyntaxKind::LT_EQ | SyntaxKind::GT_EQ) => {
             ctx.unify(lhs_ty.clone(), rhs_ty, origin.clone())?;
             let resolved = ctx.resolve(lhs_ty);
+            if is_type_var(&resolved) {
+                ctx.operand_traits
+                    .push((resolved.clone(), "Ord".to_string(), origin.clone()));
+            }
             if !is_type_var(&resolved) && !trait_registry.has_impl("Ord", &resolved) {
                 let err = TypeError::TraitNotSatisfied {
                     ty: resolved,
@@ -8506,6 +8517,8 @@ fn infer_trait_binary_op(
     let resolved = ctx.resolve(lhs_ty.clone());
 
     if is_type_var(&resolved) {
+        ctx.operand_traits
+            .push((resolved.clone(), trait_name.to_string(), origin.clone()));
         return Ok(resolved);
     }
 
@@ -14275,6 +14288,40 @@ fn infer_try_expr(
 
 /// Extract where-clause constraints from a function definition.
 /// A function's `where` bounds as (type parameter variable, trait) pairs.
+
+/// A generic function's body applies an operator to a value of its type
+/// parameter `T`: the parameter needs the operator's trait as a bound
+/// (`where T: Ord`), or a call at a type without it would compile to
+/// nothing. `Ord` includes `Eq`.
+fn check_type_param_bounds(
+    ctx: &mut InferCtx,
+    type_params: &FxHashMap<String, Ty>,
+    constraints: &[(String, String)],
+    uses: Vec<(Ty, String, ConstraintOrigin)>,
+) {
+    let mut reported = FxHashSet::default();
+    for (ty, trait_name, origin) in uses {
+        let used = ctx.resolve(ty);
+        let Some(param) = type_params
+            .iter()
+            .find(|(_, param_ty)| ctx.resolve((*param_ty).clone()) == used)
+            .map(|(name, _)| name.clone())
+        else {
+            continue;
+        };
+        let bounded = constraints.iter().any(|(bound_param, bound)| {
+            *bound_param == param
+                && (*bound == trait_name || (trait_name == "Eq" && bound == "Ord"))
+        });
+        if !bounded && reported.insert((param.clone(), trait_name.clone())) {
+            ctx.errors.push(TypeError::UnboundedTypeParam {
+                param,
+                trait_name,
+                origin,
+            });
+        }
+    }
+}
 fn where_bounds(
     constraints: &[(String, String)],
     type_params: &FxHashMap<String, Ty>,

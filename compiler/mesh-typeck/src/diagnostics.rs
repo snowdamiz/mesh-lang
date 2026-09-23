@@ -154,6 +154,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnderivableField { .. } => "E0060",
         TypeError::DuplicateVariant { .. } => "E0061",
         TypeError::CyclicAlias { .. } => "E0062",
+        TypeError::UnboundedTypeParam { .. } => "E0063",
     }
 }
 
@@ -489,7 +490,8 @@ pub fn render_json_diagnostic(
         _ => {
             fix = None;
             match error {
-                TypeError::TraitNotSatisfied { origin, .. } => {
+                TypeError::TraitNotSatisfied { origin, .. }
+                | TypeError::UnboundedTypeParam { origin, .. } => {
                     if let Some(span) = origin_span(origin) {
                         spans.push(JsonSpan {
                             start: span.start,
@@ -832,6 +834,30 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!("add `impl {} for {} do ... end`", trait_name, ty))
+                .finish()
+        }
+
+        TypeError::UnboundedTypeParam {
+            param,
+            trait_name,
+            origin,
+        } => {
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
+                .with_code(code)
+                .with_message(format!(
+                    "`{param}` is not known to implement {trait_name}"
+                ))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), span))
+                        .with_message(format!("this needs {param}: {trait_name}"))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "add `where {param}: {trait_name}` to the function, so every call is checked for it"
+                ))
                 .finish()
         }
 
