@@ -10650,10 +10650,8 @@ impl<'a> Lowerer<'a> {
         }
 
         // For Map functions that take a key argument (put, get, has_key, delete),
-        // handle key type dispatch:
-        // - String keys: wrap the map argument in mesh_map_tag_string()
-        // - Struct keys with Hash impl: hash the key via Hash__hash__TypeName,
-        //   use the hash as an integer key (hash-as-key approach for v1.3)
+        // String keys wrap the map argument in mesh_map_tag_string(). Keys that
+        // are neither words nor strings use typed wrappers (`resolve_map_by`).
         let args = if let MirExpr::Var(ref name, _) = callee {
             if matches!(
                 name.as_str(),
@@ -10675,26 +10673,6 @@ impl<'a> Lowerer<'a> {
                     };
                     new_args.insert(0, tagged_map);
                     new_args
-                } else if matches!(key_ty, MirType::Struct(_)) {
-                    // Struct key with Hash impl: hash the key, use hash as int key.
-                    let ty_for_lookup = mir_type_to_ty(&key_ty);
-                    if self.trait_registry.has_impl("Hash", &ty_for_lookup) {
-                        let type_name = mir_type_to_impl_name(&key_ty);
-                        let hash_fn_name = format!("Hash__hash__{}", type_name);
-                        let hash_fn_ty =
-                            MirType::FnPtr(vec![key_ty.clone()], Box::new(MirType::Int));
-                        let mut new_args = args;
-                        let key_arg = new_args.remove(1);
-                        let hashed_key = MirExpr::Call {
-                            func: Box::new(MirExpr::Var(hash_fn_name, hash_fn_ty)),
-                            args: vec![key_arg],
-                            ty: MirType::Int,
-                        };
-                        new_args.insert(1, hashed_key);
-                        new_args
-                    } else {
-                        args
-                    }
                 } else {
                     args
                 }
@@ -11123,6 +11101,52 @@ impl<'a> Lowerer<'a> {
                         let prefixed = format!("{prefix}_{field}");
                         // Map to runtime name
                         let runtime_name = map_builtin_name(&prefixed);
+                        // Map keys that are not words or strings compare by the
+                        // key type's Eq; String keys from a list or an iterator
+                        // make a string-keyed map.
+                        if let Some(op) = runtime_name.strip_prefix("mesh_map_") {
+                            if let Some(Ty::Fun(params, ret)) =
+                                self.get_ty(fa.syntax().text_range()).cloned()
+                            {
+                                let map_ty = match op {
+                                    "from_list" | "collect" => Some(ret.as_ref().clone()),
+                                    _ => params.first().cloned(),
+                                };
+                                let key = map_ty.as_ref().and_then(|ty| match ty {
+                                    Ty::App(con, args)
+                                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") =>
+                                    {
+                                        args.first().cloned()
+                                    }
+                                    _ => None,
+                                });
+                                if let Some(key) = key {
+                                    let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
+                                    if let Some(helper) =
+                                        self.resolve_map_by(op, &params, &ret, &key, string)
+                                    {
+                                        let ty = self.known_functions[&helper].clone();
+                                        return MirExpr::Var(helper, ty);
+                                    }
+                                }
+                            }
+                        }
+                        // Membership of a value that is not a word compares by
+                        // the element type's Eq, not by the raw slot.
+                        if runtime_name == "mesh_list_contains" {
+                            if let Some(Ty::Fun(params, _)) =
+                                self.get_ty(fa.syntax().text_range()).cloned()
+                            {
+                                if let Some(elem) = params.get(1).filter(|elem| {
+                                    !matches!(elem, Ty::Var(_))
+                                        && !matches!(elem, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "String"))
+                                }) {
+                                    let helper = self.resolve_list_contains(elem);
+                                    let ty = self.known_functions[&helper].clone();
+                                    return MirExpr::Var(helper, ty);
+                                }
+                            }
+                        }
                         // Use known_functions type if available (more accurate for
                         // opaque Ptr returns like List.head on List<(A,B)>), otherwise
                         // fall back to typeck-resolved type.
@@ -13050,6 +13074,9 @@ impl<'a> Lowerer<'a> {
         let ptr3 = vec![MirType::Ptr, MirType::Ptr, MirType::Ptr];
         match ty {
             Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
+            // A type nothing fixed (`None == None`, `Ok(1) == Ok(1)`'s error
+            // type) has no values to tell apart.
+            Ty::Var(_) => always(lhs, rhs),
             Ty::Tuple(elems) => {
                 let f = self.tuple_eq_fn(elems);
                 Self::call_named(
@@ -13089,12 +13116,29 @@ impl<'a> Lowerer<'a> {
                                 Box::new(MirType::Bool),
                             ),
                         );
-                        Self::call_named(
-                            "mesh_map_eq",
-                            ptr3,
-                            vec![lhs, rhs, callback],
-                            MirType::Bool,
-                        )
+                        match args.first().filter(|key| Self::map_key_needs_eq(key)) {
+                            Some(key) => {
+                                let key_eq = MirExpr::Var(
+                                    self.resolve_eq_callback(key),
+                                    MirType::FnPtr(
+                                        vec![MirType::Int, MirType::Int],
+                                        Box::new(MirType::Bool),
+                                    ),
+                                );
+                                Self::call_named(
+                                    "mesh_map_eq_by",
+                                    vec![MirType::Ptr; 4],
+                                    vec![lhs, rhs, callback, key_eq],
+                                    MirType::Bool,
+                                )
+                            }
+                            None => Self::call_named(
+                                "mesh_map_eq",
+                                ptr3,
+                                vec![lhs, rhs, callback],
+                                MirType::Bool,
+                            ),
+                        }
                     }
                     "Set" => Self::call_named(
                         "mesh_set_eq",
@@ -13598,6 +13642,166 @@ impl<'a> Lowerer<'a> {
             vec![
                 ("__a".to_string(), MirType::Int),
                 ("__b".to_string(), MirType::Int),
+            ],
+            MirType::Bool,
+            body,
+        );
+        name
+    }
+
+    /// Whether a map with keys of type `key` compares them by the key type's
+    /// Eq: keys that are neither words nor strings.
+    fn map_key_needs_eq(key: &Ty) -> bool {
+        !matches!(key, Ty::Var(_))
+            && !matches!(key, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "Float" | "String" | "Atom"))
+    }
+
+    /// A typed wrapper for map operation `op` (`put`, `get`, ...) of type
+    /// `params -> ret` over keys of type `key`, when the runtime needs to be
+    /// told how to compare them: by the key type's Eq (`mesh_map_<op>_by`),
+    /// or as strings when a map is built from a list or an iterator. `None`
+    /// when the plain runtime function already compares correctly.
+    fn resolve_map_by(
+        &mut self,
+        op: &str,
+        params: &[Ty],
+        ret: &Ty,
+        key: &Ty,
+        string: bool,
+    ) -> Option<String> {
+        let by_eq = Self::map_key_needs_eq(key);
+        let builds = matches!(op, "from_list" | "collect");
+        if !(by_eq || (string && builds))
+            || !matches!(
+                op,
+                "put" | "get" | "has_key" | "delete" | "merge" | "from_list" | "collect"
+            )
+        {
+            return None;
+        }
+        let name = format!(
+            "__map_{op}_{}",
+            Self::ty_specialization_component(&Ty::Fun(params.to_vec(), Box::new(ret.clone())))
+        );
+        if self.known_functions.contains_key(&name) {
+            return Some(name);
+        }
+        let param_tys: Vec<MirType> = params.iter().map(|ty| self.binding_type(ty)).collect();
+        let ret_ty = self.binding_type(ret);
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(param_tys.clone(), Box::new(ret_ty.clone())),
+        );
+        let slot_fn = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool));
+        let key_eq = if by_eq {
+            MirExpr::Var(self.resolve_eq_callback(key), slot_fn.clone())
+        } else {
+            // No callback: the runtime compares by the map's key type.
+            MirExpr::IntLit(0, MirType::Ptr)
+        };
+        let arg = |index: usize| MirExpr::Var(format!("__arg_{index}"), param_tys[index].clone());
+        let slot = |index: usize| {
+            Self::call_named(
+                "__mesh_uniform_encode",
+                vec![param_tys[index].clone()],
+                vec![arg(index)],
+                MirType::Int,
+            )
+        };
+        let (mut args, mut arg_tys) = match op {
+            "put" => (
+                vec![arg(0), slot(1), slot(2)],
+                vec![MirType::Ptr, MirType::Int, MirType::Int],
+            ),
+            "get" | "has_key" | "delete" => {
+                (vec![arg(0), slot(1)], vec![MirType::Ptr, MirType::Int])
+            }
+            "merge" => (vec![arg(0), arg(1)], vec![MirType::Ptr, MirType::Ptr]),
+            _ => (
+                vec![
+                    arg(0),
+                    MirExpr::IntLit(if string { 1 } else { 0 }, MirType::Int),
+                ],
+                vec![MirType::Ptr, MirType::Int],
+            ),
+        };
+        args.push(key_eq);
+        arg_tys.push(MirType::Ptr);
+        let raw_ret = match op {
+            "get" => MirType::Int,
+            "has_key" => MirType::Bool,
+            _ => MirType::Ptr,
+        };
+        let call = Self::call_named(&format!("mesh_map_{op}_by"), arg_tys, args, raw_ret);
+        let body = if op == "get" {
+            match &ret_ty {
+                MirType::Int | MirType::Unit | MirType::Never => call,
+                _ => Self::call_named(
+                    "__mesh_uniform_decode",
+                    vec![MirType::Int],
+                    vec![call],
+                    ret_ty.clone(),
+                ),
+            }
+        } else {
+            call
+        };
+        let fn_params = param_tys
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| (format!("__arg_{index}"), ty.clone()))
+            .collect();
+        self.push_helper_fn(&name, fn_params, ret_ty, body);
+        Some(name)
+    }
+
+    /// `List.contains` for elements of type `elem_ty`: the runtime scan
+    /// compares each slot with the element's own Eq.
+    fn resolve_list_contains(&mut self, elem_ty: &Ty) -> String {
+        let name = format!(
+            "__list_contains_{}",
+            Self::ty_specialization_component(elem_ty)
+        );
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let elem_mir = self.binding_type(elem_ty);
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(
+                vec![MirType::Ptr, elem_mir.clone()],
+                Box::new(MirType::Bool),
+            ),
+        );
+        let eq = self.resolve_eq_callback(elem_ty);
+        let slot = Self::call_named(
+            "__mesh_uniform_encode",
+            vec![elem_mir.clone()],
+            vec![MirExpr::Var("__elem".to_string(), elem_mir.clone())],
+            MirType::Int,
+        );
+        let body = Self::call_named(
+            "mesh_list_contains_by",
+            vec![
+                MirType::Ptr,
+                MirType::Int,
+                MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+            ],
+            vec![
+                MirExpr::Var("__list".to_string(), MirType::Ptr),
+                slot,
+                MirExpr::Var(
+                    eq,
+                    MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+                ),
+            ],
+            MirType::Bool,
+        );
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__list".to_string(), MirType::Ptr),
+                ("__elem".to_string(), elem_mir),
             ],
             MirType::Bool,
             body,
@@ -14288,6 +14492,28 @@ impl<'a> Lowerer<'a> {
             vec![MirType::Ptr, MirType::Int, MirType::Int],
             Box::new(MirType::Ptr),
         );
+        // Keys that are not words or strings go through `Map.put` for their
+        // type, which compares them by the key type's Eq.
+        let map_ty = self.get_ty(map_lit.syntax().text_range()).cloned();
+        let put_fn = match &map_ty {
+            Some(Ty::App(_, args)) if args.len() == 2 => {
+                let (key, value) = (args[0].clone(), args[1].clone());
+                let map_ty = map_ty.clone().unwrap();
+                self.resolve_map_by(
+                    "put",
+                    &[map_ty.clone(), key.clone(), value],
+                    &map_ty,
+                    &key,
+                    false,
+                )
+                .map(|helper| {
+                    let ty = self.known_functions[&helper].clone();
+                    MirExpr::Var(helper, ty)
+                })
+            }
+            _ => None,
+        }
+        .unwrap_or_else(|| MirExpr::Var("mesh_map_put".to_string(), put_fn_ty.clone()));
 
         for entry in map_lit.entries() {
             // For keyword argument entries (name: value), the key is a NAME_REF
@@ -14308,9 +14534,8 @@ impl<'a> Lowerer<'a> {
                 .map(|e| self.lower_expr(&e))
                 .unwrap_or(MirExpr::Unit);
 
-            let put_fn = MirExpr::Var("mesh_map_put".to_string(), put_fn_ty.clone());
             result = MirExpr::Call {
-                func: Box::new(put_fn),
+                func: Box::new(put_fn.clone()),
                 args: vec![result, key, val],
                 ty: MirType::Ptr,
             };
@@ -20714,7 +20939,7 @@ end
     }
 
     #[test]
-    fn map_put_with_struct_key_hashes() {
+    fn map_put_with_struct_key_compares_by_eq() {
         let source = r#"
 struct Point do
   x :: Int
@@ -20731,26 +20956,26 @@ end
         let mir = lower(source);
         let main_fn = mir.functions.iter().find(|f| f.name == "mesh_main");
         assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
-        // The MIR should contain a Hash__hash__Point call somewhere in the body
-        // (emitted as part of the map_put key hashing).
-        fn has_hash_call(expr: &MirExpr) -> bool {
+        // A struct key is compared by Point's Eq: the put goes through a typed
+        // wrapper passing the key Eq callback (it used to store the key's hash,
+        // so two keys with one hash collided and Map.keys returned hashes).
+        fn calls_typed_put(expr: &MirExpr) -> bool {
             match expr {
                 MirExpr::Call { func, args, .. } => {
-                    if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == "Hash__hash__Point" {
-                            return true;
-                        }
-                    }
-                    args.iter().any(has_hash_call) || has_hash_call(func)
+                    matches!(func.as_ref(), MirExpr::Var(name, _) if name.starts_with("__map_put_"))
+                        || args.iter().any(calls_typed_put)
                 }
-                MirExpr::Let { value, body, .. } => has_hash_call(value) || has_hash_call(body),
+                MirExpr::Let { value, body, .. } => calls_typed_put(value) || calls_typed_put(body),
                 _ => false,
             }
         }
-        assert!(
-            has_hash_call(&main_fn.unwrap().body),
-            "Map.put with struct key should emit Hash__hash__Point call"
-        );
+        assert!(calls_typed_put(&main_fn.unwrap().body));
+        let wrapper = mir
+            .functions
+            .iter()
+            .find(|f| f.name.starts_with("__map_put_"))
+            .expect("typed put wrapper");
+        assert!(format!("{:?}", wrapper.body).contains("mesh_map_put_by"));
     }
 
     // ── Default MIR lowering tests ──────────────────────────────────

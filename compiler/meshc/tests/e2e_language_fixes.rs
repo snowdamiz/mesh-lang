@@ -1939,6 +1939,73 @@ fn a_closed_stdout_ends_the_program_quietly() {
 // ── Collections compare by Eq ──────────────────────────────────────────
 
 #[test]
+fn list_contains_compares_elements_by_their_eq() {
+    let source = r##"
+struct P do
+  x :: Int
+end
+
+type Color do
+  Red
+  Green
+end
+
+fn main() do
+  println("#{List.contains([(2, "b")], (2, "b"))} #{List.contains([Some(3)], Some(3))} #{List.contains([[3]], [3])}")
+  println("#{List.contains([P { x: 1 }], P { x: 1 })} #{List.contains([Red], Red)} #{List.contains([Red], Green)}")
+  println("#{[(1, 2)] |> List.contains((1, 2))} #{List.contains([0.0], -0.0)} #{List.contains([None], None)}")
+  let nan = 0.0 / 0.0
+  println("#{List.contains([nan], nan)} #{List.contains([1, 2], 2)} #{List.contains(["a"], "a")}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "true true true\ntrue true false\ntrue true true\nfalse true true\n"
+    );
+}
+
+#[test]
+fn maps_compare_compound_keys_by_their_eq() {
+    // `struct K` also checks that the built-in `Map<K, V>` impls do not take
+    // a user type named K for their type parameter.
+    let source = r##"
+struct K do
+  id :: Int
+  name :: String
+end
+
+fn main() do
+  let m = Map.put(Map.new(), (1, 2), "a")
+  let m = Map.put(m, (1, 2), "b")
+  println("#{Map.size(m)} #{Map.has_key(m, (1, 2))} #{Map.get(m, (1, 2))} #{Map.has_key(m, (2, 1))}")
+  let ks = Map.put(Map.new(), K { id: 1, name: "x" }, 10)
+  let ks = Map.put(ks, K { id: 1, name: "x" }, 11)
+  println("#{Map.size(ks)} #{Map.get(ks, K { id: 1, name: "x" })} #{Map.has_key(ks, K { id: 2, name: "x" })}")
+  let ls = Map.delete(Map.put(Map.put(Map.new(), [1], "one"), [2], "two"), [1])
+  println("#{Map.size(ls)} #{Map.keys(ls)}")
+  let fl = Map.from_list([("Al", 1), ("Bo", 2)])
+  println("#{fl} #{Map.has_key(fl, "Al")} #{Map.get(fl, "Bo")}")
+  let pairs = [(1, "a"), (2, "b"), (3, "c")]
+  println("#{Map.from_list(List.drop(pairs, 1))}")
+  let tl = Map.from_list([((1, 1), "x"), ((1, 1), "y")])
+  println("#{Map.size(tl)} #{Map.get(tl, (1, 1))}")
+  let zm = Iter.from(["a", "b"]) |> Iter.zip(Iter.from([1, 2])) |> Map.collect()
+  println("#{Map.has_key(zm, "a")} #{Map.get(zm, "b")}")
+  let lit = %{(1, "a") => 1, (1, "a") => 2}
+  println("#{Map.size(lit)} #{Map.get(lit, (1, "a"))} #{lit == %{(1, "a") => 2}} #{lit == %{(1, "a") => 3}}")
+  let mg = Map.merge(%{(1, 1) => 1}, %{(1, 1) => 2, (2, 2) => 3})
+  println("#{Map.size(mg)} #{Map.get(mg, (1, 1))}")
+  let sk = %{Some(1) => "s", None => "n"}
+  println("#{Map.get(sk, Some(1))} #{Map.get(sk, None)}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "1 true b false\n1 11 false\n1 [[2]]\n%{Al => 1, Bo => 2} true 2\n%{2 => b, 3 => c}\n1 y\ntrue 2\n1 2 true false\n2 2\ns n\n"
+    );
+}
+
+#[test]
 fn iterators_carry_their_element_types() {
     let source = r##"
 struct P do
@@ -1967,6 +2034,12 @@ end
         assert!(err.contains("E0001"), "{bad}\n{err}");
         assert!(!err.contains("E0004"), "no cascade:\n{err}");
     }
+}
+
+#[test]
+fn values_of_a_type_nothing_fixed_compare_equal() {
+    let source = "fn main() do\n  println(\"#{None == None} #{Ok(1) == Ok(1)} #{Ok(1) == Ok(2)} #{[None] == [None]}\")\nend\n";
+    assert_eq!(run(source), "true true false true\n");
 }
 
 // ── Type-checker soundness ─────────────────────────────────────────────

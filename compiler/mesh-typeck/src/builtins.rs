@@ -2675,7 +2675,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     {
         let list_t = Ty::App(
             Box::new(Ty::Con(TyCon::new("List"))),
-            vec![Ty::Con(TyCon::new("T"))],
+            vec![Ty::Con(TyCon::new("'T"))],
         );
         let mut methods = FxHashMap::default();
         methods.insert(
@@ -2687,7 +2687,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             },
         );
         let mut assoc_types = FxHashMap::default();
-        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("T")));
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("'T")));
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("ListIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
@@ -2711,7 +2711,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             },
         );
         let mut assoc_types = FxHashMap::default();
-        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("T")));
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("'T")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
             trait_type_args: vec![],
@@ -2726,7 +2726,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     {
         let map_kv = Ty::App(
             Box::new(Ty::Con(TyCon::new("Map"))),
-            vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))],
+            vec![Ty::Con(TyCon::new("'K")), Ty::Con(TyCon::new("'V"))],
         );
         let mut methods = FxHashMap::default();
         methods.insert(
@@ -2740,7 +2740,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         let mut assoc_types = FxHashMap::default();
         assoc_types.insert(
             "Item".to_string(),
-            Ty::Tuple(vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))]),
+            Ty::Tuple(vec![Ty::Con(TyCon::new("'K")), Ty::Con(TyCon::new("'V"))]),
         );
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("MapIterator")));
         let _ = registry.register_impl(ImplDef {
@@ -2767,7 +2767,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         let mut assoc_types = FxHashMap::default();
         assoc_types.insert(
             "Item".to_string(),
-            Ty::Tuple(vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))]),
+            Ty::Tuple(vec![Ty::Con(TyCon::new("'K")), Ty::Con(TyCon::new("'V"))]),
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
@@ -2920,6 +2920,8 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     // Tuples (by arity), unit, the collections and the built-in sum types
     // compare, order and print by their contents; the MIR lowerer generates
     // each function on demand (`eq_expr`, `cmp_fn`, `display_by_type`).
+    // `'T` is a type parameter whatever the program declares: a user
+    // `struct K` must not turn `Map<'K, 'V>` into a map keyed by that struct.
     let param = |name: &str| Ty::Con(TyCon::new(name));
     let mut structural: Vec<(Ty, &str, &[&str])> = vec![
         (param("Unit"), "Unit", &["Eq", "Ord", "Display", "Debug"]),
@@ -2929,29 +2931,29 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             &["Eq", "Ord", "Display", "Debug"],
         ),
         (
-            Ty::option(param("T")),
+            Ty::option(param("'T")),
             "Option",
             &["Eq", "Ord", "Display", "Debug"],
         ),
         (
-            Ty::result(param("T"), param("E")),
+            Ty::result(param("'T"), param("'E")),
             "Result",
             &["Eq", "Ord", "Display", "Debug"],
         ),
         (Ty::map_untyped(), "Map", &["Eq", "Debug"]),
-        (Ty::map(param("K"), param("V")), "Map", &["Eq", "Debug"]),
+        (Ty::map(param("'K"), param("'V")), "Map", &["Eq", "Debug"]),
         (Ty::set_untyped(), "Set", &["Eq", "Debug"]),
         (
-            Ty::App(Box::new(param("Set")), vec![param("T")]),
+            Ty::App(Box::new(param("Set")), vec![param("'T")]),
             "Set",
             &["Eq", "Debug"],
         ),
         (Ty::list_untyped(), "List", &["Debug"]),
-        (Ty::list(param("T")), "List", &["Debug"]),
+        (Ty::list(param("'T")), "List", &["Debug"]),
     ];
     for arity in 0..=8u8 {
         let elems = (0..arity)
-            .map(|i| param(&((b'A' + i) as char).to_string()))
+            .map(|i| param(&format!("'{}", (b'A' + i) as char)))
             .collect();
         structural.push((
             Ty::Tuple(elems),
@@ -3050,7 +3052,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     {
         let list_t = Ty::App(
             Box::new(Ty::Con(TyCon::new("List"))),
-            vec![Ty::Con(TyCon::new("T"))],
+            vec![Ty::Con(TyCon::new("'T"))],
         );
         let mut eq_methods = FxHashMap::default();
         eq_methods.insert(
@@ -3174,7 +3176,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     {
         let list_t = Ty::App(
             Box::new(Ty::Con(TyCon::new("List"))),
-            vec![Ty::Con(TyCon::new("T"))],
+            vec![Ty::Con(TyCon::new("'T"))],
         );
         let mut methods = FxHashMap::default();
         methods.insert(
@@ -3197,7 +3199,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     {
         let map_kv = Ty::App(
             Box::new(Ty::Con(TyCon::new("Map"))),
-            vec![Ty::Con(TyCon::new("K")), Ty::Con(TyCon::new("V"))],
+            vec![Ty::Con(TyCon::new("'K")), Ty::Con(TyCon::new("'V"))],
         );
         let mut methods = FxHashMap::default();
         methods.insert(

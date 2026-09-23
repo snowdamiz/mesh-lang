@@ -638,6 +638,9 @@ fn import_vars(ty: &Ty, ctx: &mut InferCtx, map: &mut FxHashMap<TyVar, Ty>) -> T
 ///
 /// Concrete constructors (Int, Float, String, List, Option, etc.) are
 /// never freshened -- only single-uppercase-letter names are.
+/// A name starting with `'` is always a type parameter: the built-in impls
+/// name theirs so, and no declared type can collide with them.
+///
 /// Like `freshen_type_params`, but also treats the given explicit names
 /// as type parameters (enables multi-character type parameter names like
 /// "Item", "Output", etc.), and never treats a `nominal` name as one.
@@ -666,6 +669,7 @@ fn freshen_recursive(
             if (c.name.len() == 1
                 && c.name.as_bytes()[0].is_ascii_uppercase()
                 && !nominal.contains(&c.name))
+                || c.name.starts_with('\'')
                 || type_param_names.iter().any(|n| n == &c.name)
             {
                 param_map

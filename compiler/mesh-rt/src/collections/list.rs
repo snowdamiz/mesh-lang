@@ -630,6 +630,23 @@ pub extern "C" fn mesh_list_contains(list: *mut u8, elem: u64) -> i8 {
     }
 }
 
+/// Test if a list contains `elem` by the element type's Eq: `eq` compares
+/// two slots (`fn(u64, u64) -> i8`, 1 when equal).
+#[no_mangle]
+pub extern "C" fn mesh_list_contains_by(list: *mut u8, elem: u64, eq: *mut u8) -> i8 {
+    type ElemEq = unsafe extern "C" fn(u64, u64) -> i8;
+    unsafe {
+        let f: ElemEq = std::mem::transmute(eq);
+        let src = list_data(list);
+        for i in 0..list_len(list) as usize {
+            if f(*src.add(i), elem) != 0 {
+                return 1;
+            }
+        }
+        0
+    }
+}
+
 /// Test if a list of strings contains a given string using content equality.
 ///
 /// Uses `mesh_string_eq` for byte-by-byte comparison, so two distinct string

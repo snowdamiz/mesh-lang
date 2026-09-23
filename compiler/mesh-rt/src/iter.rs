@@ -15,7 +15,7 @@
 use crate::collections::list::alloc_pair;
 use crate::collections::list::mesh_list_iter_next;
 use crate::collections::map::mesh_map_iter_next;
-use crate::collections::map::{mesh_map_new, mesh_map_put};
+
 use crate::collections::range::mesh_range_iter_next;
 use crate::collections::set::mesh_set_iter_next;
 use crate::collections::set::{mesh_set_add, mesh_set_new};
@@ -522,32 +522,23 @@ pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
 /// Expects each element to be a tuple pointer with layout { len: u64, key: u64, value: u64 }.
 #[no_mangle]
 pub extern "C" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
-    unsafe {
-        let mut map = mesh_map_new();
-        loop {
-            let option = mesh_iter_generic_next(iter);
-            let opt_ref = option as *mut MeshOption;
-            if (*opt_ref).tag == 1 {
-                break; // None
-            }
-            let tuple_ptr = (*opt_ref).value as *mut u8;
-            // Tuple layout: { u64 len=2, u64 key, u64 value }
-            let key = *((tuple_ptr as *const u64).add(1));
-            let val = *((tuple_ptr as *const u64).add(2));
-            map = mesh_map_put(map, key, val);
-        }
-        map
-    }
+    mesh_map_collect_by(iter, 0, std::ptr::null_mut())
 }
 
 /// Map.collect(iter) variant for string keys -- materialize iterator of (key, value)
 /// tuples into a Map with string key_type (KEY_TYPE_STR = 1).
-/// Called by codegen when the type checker infers the map's key type as String.
 #[no_mangle]
 pub extern "C" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
+    mesh_map_collect_by(iter, 1, std::ptr::null_mut())
+}
+
+/// Map.collect(iter) with keys compared as `key_type` (0 Int, 1 String) or
+/// by `key_eq`, a `fn(u64, u64) -> i8` over two key slots; the compiler
+/// chooses from the key type.
+#[no_mangle]
+pub extern "C" fn mesh_map_collect_by(iter: *mut u8, key_type: i64, key_eq: *mut u8) -> *mut u8 {
     unsafe {
-        // Create map with string key_type from the start (key_type = 1)
-        let mut map = crate::collections::map::mesh_map_new_typed(1);
+        let mut map = crate::collections::map::mesh_map_new_typed(key_type);
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
@@ -558,7 +549,7 @@ pub extern "C" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
             // Tuple layout: { u64 len=2, u64 key, u64 value }
             let key = *((tuple_ptr as *const u64).add(1));
             let val = *((tuple_ptr as *const u64).add(2));
-            map = mesh_map_put(map, key, val);
+            map = crate::collections::map::mesh_map_put_by(map, key, val, key_eq);
         }
         map
     }

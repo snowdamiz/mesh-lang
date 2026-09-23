@@ -1726,6 +1726,73 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // Map operations comparing keys by a key-type Eq callback (null: by the map's key type).
+    for (name, params, returns_ptr) in [
+        (
+            "mesh_map_put_by",
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            1,
+        ),
+        (
+            "mesh_map_get_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            0,
+        ),
+        (
+            "mesh_map_has_key_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            2,
+        ),
+        (
+            "mesh_map_delete_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            1,
+        ),
+        (
+            "mesh_map_merge_by",
+            vec![ptr_type.into(), ptr_type.into(), ptr_type.into()],
+            1,
+        ),
+        (
+            "mesh_map_from_list_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            1,
+        ),
+        (
+            "mesh_map_collect_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            1,
+        ),
+        (
+            "mesh_map_eq_by",
+            vec![
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            2,
+        ),
+    ] {
+        let params: Vec<inkwell::types::BasicMetadataTypeEnum> = params;
+        let fn_type = match returns_ptr {
+            1 => ptr_type.fn_type(&params, false),
+            2 => i8_type.fn_type(&params, false),
+            _ => i64_type.fn_type(&params, false),
+        };
+        module.add_function(name, fn_type, Some(inkwell::module::Linkage::External));
+    }
+    // mesh_list_contains_by(list: ptr, elem: i64, eq: ptr) -> i8 (Bool) — by the element's Eq
+    module.add_function(
+        "mesh_list_contains_by",
+        i8_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mesh_list_contains_str(list: ptr, elem: ptr) -> i8 (Bool) — String elements, uses mesh_string_eq
     module.add_function(
         "mesh_list_contains_str",
