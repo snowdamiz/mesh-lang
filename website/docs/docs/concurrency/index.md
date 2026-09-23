@@ -467,9 +467,7 @@ reference.
 ```mesh
 fn main() do
   let state = Random.seed(42)
-  let next = Random.next_int(state, 1, 100)
-  let next_state = Tuple.first(next)
-  let value = Tuple.second(next)
+  let (next_state, value) = Random.next_int(state, 1, 100)
   println("state=#{next_state}, value=#{value}")
 end
 ```
@@ -477,8 +475,8 @@ end
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Random.seed(seed)` | `Int` | Normalize a deterministic generator state |
-| `Random.next_int(state, min, max)` | `Tuple` | Return `(next_state, value)` with `min <= value <= max` |
-| `Random.next_unit_ppm(state)` | `Tuple` | Return `(next_state, value)` where `0 <= value < 1_000_000` |
+| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` with `min <= value <= max` |
+| `Random.next_unit_ppm(state)` | `(Int, Int)` | Return `(next_state, value)` where `0 <= value < 1_000_000` |
 
 ## Next Steps
 

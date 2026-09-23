@@ -1103,12 +1103,15 @@ pub fn register_builtins(
         "random_next_int".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::int(), Ty::int(), Ty::int()],
-            Ty::Con(TyCon::new("Tuple")),
+            Ty::Tuple(vec![Ty::int(), Ty::int()]),
         )),
     );
     env.insert(
         "random_next_unit_ppm".into(),
-        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Con(TyCon::new("Tuple")))),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            Ty::Tuple(vec![Ty::int(), Ty::int()]),
+        )),
     );
 
     // ── Standard library: Http client builder API (Phase 137) ─────────────────

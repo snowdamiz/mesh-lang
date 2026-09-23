@@ -6482,7 +6482,7 @@ fn e2e_bounded_channel() {
 fn e2e_deterministic_random() {
     let source = read_fixture("deterministic_random.mpl");
     let output = compile_and_run(&source);
-    assert_eq!(output, "1\ntrue\ntrue\ntrue\n");
+    assert_eq!(output, "1\ntrue\ntrue\ntrue\ntrue true\n");
 }
 
 /// MESH-PROC-001: applications can poll and trigger the same graceful-shutdown flag.

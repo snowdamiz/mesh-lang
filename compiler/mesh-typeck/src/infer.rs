@@ -1003,12 +1003,15 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         "next_int".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::int(), Ty::int(), Ty::int()],
-            Ty::Con(TyCon::new("Tuple")),
+            Ty::Tuple(vec![Ty::int(), Ty::int()]),
         )),
     );
     random_mod.insert(
         "next_unit_ppm".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::Con(TyCon::new("Tuple")))),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int()],
+            Ty::Tuple(vec![Ty::int(), Ty::int()]),
+        )),
     );
     modules.insert("Random".to_string(), random_mod);
 

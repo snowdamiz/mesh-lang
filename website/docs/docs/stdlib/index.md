@@ -129,7 +129,7 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 | `Queue.size(queue)` | `Int` | Count queued values |
 | `Queue.is_empty(queue)` | `Bool` | Test for an empty queue |
 
-A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, which includes an untyped `Tuple` such as `Random.next_int`'s and an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(Int, Queue)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
+A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, such as an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(Int, Queue)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
 
 `Queue.pop` and `Queue.peek` require a non-empty queue.
 
@@ -519,8 +519,8 @@ Both duration conversions detect negative inputs and integer overflow. Their nan
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Random.seed(seed)` | `Int` | Create a deterministic state |
-| `Random.next_int(state, min, max)` | `Tuple` | Return `(next_state, value)` over the inclusive range |
-| `Random.next_unit_ppm(state)` | `Tuple` | Return `(next_state, value)` from `0` through `999_999` |
+| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` over the inclusive range |
+| `Random.next_unit_ppm(state)` | `(Int, Int)` | Return `(next_state, value)` from `0` through `999_999` |
 
 This generator is not suitable for secrets. Use `Crypto.uuid4` for cryptographically random identifiers.
 

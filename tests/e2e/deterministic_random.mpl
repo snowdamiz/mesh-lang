@@ -8,4 +8,7 @@ fn main() do
 
   let unit = Random.next_unit_ppm(Tuple.first(first))
   println("${Tuple.second(unit) >= 0 && Tuple.second(unit) < 1000000}")
+
+  let (state, value) = Random.next_int(initial, 1, 100)
+  println("${state == Tuple.first(first)} ${value == Tuple.second(first)}")
 end
