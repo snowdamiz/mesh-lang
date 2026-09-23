@@ -112,13 +112,15 @@ pub extern "C" fn mesh_range_filter(range: *mut u8, fn_ptr: *mut u8, env_ptr: *m
     }
 }
 
-/// Return the number of elements in the range.
+/// Return the number of elements in the range. A range wider than the
+/// largest Int (`-9223372036854775808..1`) has that many: saturated, not
+/// wrapped (or, in a debug runtime, an abort).
 #[no_mangle]
 pub extern "C" fn mesh_range_length(range: *mut u8) -> i64 {
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
-        (end - start).max(0)
+        end.saturating_sub(start).max(0)
     }
 }
 
@@ -173,6 +175,13 @@ mod tests {
         mesh_rt_init();
         let r = mesh_range_new(1, 5);
         assert_eq!(mesh_range_length(r), 4);
+    }
+
+    #[test]
+    fn test_range_length_saturates() {
+        mesh_rt_init();
+        assert_eq!(mesh_range_length(mesh_range_new(i64::MIN, 1)), i64::MAX);
+        assert_eq!(mesh_range_length(mesh_range_new(5, 1)), 0);
     }
 
     #[test]
