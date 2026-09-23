@@ -5116,8 +5116,19 @@ impl<'a> Lowerer<'a> {
         // arity are the clauses of one function, as the type checker groups
         // them.
         let items: Vec<Item> = sf.items().collect();
+        // Services first: calls to them (`Counter.get(pid)`) anywhere in the
+        // module lower to the helper functions a service definition creates.
+        for item in &items {
+            if let Item::ServiceDef(service_def) = item {
+                self.lower_service_def(service_def);
+            }
+        }
         let mut i = 0;
         while i < items.len() {
+            if matches!(items[i], Item::ServiceDef(_)) {
+                i += 1;
+                continue;
+            }
             if let Item::FnDef(ref fn_def) = items[i] {
                 let key = |f: &FnDef| {
                     (

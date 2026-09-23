@@ -3633,3 +3633,61 @@ end
     );
     assert!(err.contains("expected 2 argument(s), found 3"), "{err}");
 }
+
+#[test]
+fn items_can_be_used_before_their_declaration() {
+    // A generic function called before its definition was pinned to its
+    // first use ("expected Int, found String" at the second), and an actor
+    // or service used above its declaration was an undefined variable.
+    let source = r##"
+fn main() do
+  println("#{List.length(twice(1))} #{List.length(twice("a"))}")
+  let p = spawn(echo)
+  send(p, 1)
+  let c = Counter.start(0)
+  Counter.inc(c)
+  println("#{Counter.get(c)} #{area(Sq(3))}")
+  Timer.sleep(50)
+end
+
+fn twice(x) do
+  [x, x]
+end
+
+fn area(s :: Shape) -> Int do
+  case s do
+    Sq(n) -> n * n
+  end
+end
+
+type Shape do
+  Sq(Int)
+end
+
+actor echo() do
+  receive do
+    m -> println("echo #{m}")
+  end
+end
+
+service Counter do
+  fn init(n :: Int) -> Int do
+    n
+  end
+
+  call Get() :: Int do |s|
+    (s, s)
+  end
+
+  cast Inc() do |s|
+    s + 1
+  end
+end
+"##;
+    let output = run(source);
+    assert!(output.starts_with("2 2\n"), "{output}");
+    assert!(
+        output.contains("echo 1\n") && output.contains("1 9\n"),
+        "{output}"
+    );
+}

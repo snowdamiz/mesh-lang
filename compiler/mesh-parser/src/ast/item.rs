@@ -52,6 +52,25 @@ pub enum Item {
 }
 
 impl Item {
+    /// The item's syntax node.
+    pub fn syntax(&self) -> &SyntaxNode {
+        match self {
+            Item::FnDef(item) => &item.syntax,
+            Item::ModuleDef(item) => &item.syntax,
+            Item::ImportDecl(item) => &item.syntax,
+            Item::FromImportDecl(item) => &item.syntax,
+            Item::StructDef(item) => &item.syntax,
+            Item::LetBinding(item) => &item.syntax,
+            Item::InterfaceDef(item) => &item.syntax,
+            Item::ImplDef(item) => &item.syntax,
+            Item::TypeAliasDef(item) => &item.syntax,
+            Item::SumTypeDef(item) => &item.syntax,
+            Item::ActorDef(item) => &item.syntax,
+            Item::ServiceDef(item) => &item.syntax,
+            Item::SupervisorDef(item) => &item.syntax,
+        }
+    }
+
     pub fn cast(node: SyntaxNode) -> Option<Self> {
         match node.kind() {
             SyntaxKind::FN_DEF => Some(Item::FnDef(FnDef { syntax: node })),

@@ -4024,7 +4024,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
 
     let mut types = FxHashMap::default();
-    let mut result_type = None;
     let mut fn_constraints: FxHashMap<String, FnConstraints> = FxHashMap::default();
     let mut default_method_bodies: FxHashMap<(String, String), TextRange> = FxHashMap::default();
 
@@ -4361,10 +4360,15 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
-    // Process in source order, but skip duplicate grouped item references.
+    // Process in source order, but skip duplicate grouped item references,
+    // and check a function, top-level `let`, actor or service after those
+    // it names further down (see `dependency_order`).
     let mut processed_grouped: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
+    let mut child_types: Vec<Option<Ty>> = vec![None; children_ordered.len()];
 
-    for (_range, child_kind) in &children_ordered {
+    for child in dependency_order(&children_ordered, &item_idx_to_grouped, &grouped) {
+        let mut result_type: Option<Ty> = None;
+        let (_range, child_kind) = &children_ordered[child];
         match child_kind {
             ChildKind::ItemIndex(orig_idx) => {
                 if let Some(&grouped_idx) = item_idx_to_grouped.get(orig_idx) {
@@ -4435,7 +4439,10 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 }
             }
         }
+        child_types[child] = result_type;
     }
+    // The type of the last item or expression in source order.
+    let result_type = child_types.into_iter().flatten().last();
 
     for wrapper_span in ctx
         .clustered_route_wrappers
@@ -4830,6 +4837,105 @@ pub fn register_variant_constructors(
 // ── Multi-Clause Function Grouping (11-02) ────────────────────────────
 
 /// A grouped item: either a single item or a multi-clause function group.
+/// The order to check the module's top-level children in (indices into
+/// `children`): source order, except that a function, top-level `let`,
+/// actor or service comes after the ones of these it names further down.
+/// Their types are then known where it uses them: a generic function
+/// called before its definition stays generic, and `spawn(worker)` above
+/// `actor worker` finds it. Items in a cycle (mutual recursion) keep
+/// their source order, and the earlier ones see the later ones through
+/// their pre-registered placeholders.
+fn dependency_order(
+    children: &[(TextRange, ChildKind)],
+    item_to_group: &FxHashMap<usize, usize>,
+    grouped: &[GroupedItem],
+) -> Vec<usize> {
+    let group_of = |child: usize| match &children[child].1 {
+        ChildKind::ItemIndex(item) => item_to_group.get(item).copied(),
+        ChildKind::Expr(_) => None,
+    };
+    let mut first_child: FxHashMap<usize, usize> = FxHashMap::default();
+    for child in 0..children.len() {
+        if let Some(group) = group_of(child) {
+            first_child.entry(group).or_insert(child);
+        }
+    }
+    let defined_name = |group: &GroupedItem| -> Option<String> {
+        match group {
+            GroupedItem::MultiClause { clauses } => clauses.first()?.name()?.text(),
+            GroupedItem::Single(Item::FnDef(def)) => def.name()?.text(),
+            GroupedItem::Single(Item::LetBinding(def)) => def.name()?.text(),
+            GroupedItem::Single(Item::ActorDef(def)) => def.name()?.text(),
+            GroupedItem::Single(Item::ServiceDef(def)) => def.name()?.text(),
+            _ => None,
+        }
+    };
+    let mut by_name: FxHashMap<String, Vec<usize>> = FxHashMap::default();
+    for (group, item) in grouped.iter().enumerate() {
+        if let Some(name) = defined_name(item) {
+            by_name.entry(name).or_default().push(group);
+        }
+    }
+    let uses = |group: usize| -> Vec<usize> {
+        let nodes: Vec<mesh_parser::SyntaxNode> = match &grouped[group] {
+            GroupedItem::MultiClause { clauses } => {
+                clauses.iter().map(|c| c.syntax().clone()).collect()
+            }
+            GroupedItem::Single(item) => vec![item.syntax().clone()],
+        };
+        let mut used = Vec::new();
+        for node in nodes {
+            for name_ref in node.descendants().filter_map(NameRef::cast) {
+                let Some(text) = name_ref.text() else {
+                    continue;
+                };
+                for &other in by_name.get(&text).into_iter().flatten() {
+                    if other != group && !used.contains(&other) {
+                        used.push(other);
+                    }
+                }
+            }
+        }
+        used
+    };
+
+    fn visit(
+        group: usize,
+        first_child: &FxHashMap<usize, usize>,
+        uses: &dyn Fn(usize) -> Vec<usize>,
+        seen: &mut FxHashSet<usize>,
+        order: &mut Vec<usize>,
+    ) {
+        if !seen.insert(group) {
+            return;
+        }
+        for used in uses(group) {
+            visit(used, first_child, uses, seen, order);
+        }
+        if let Some(&child) = first_child.get(&group) {
+            order.push(child);
+        }
+    }
+
+    let mut seen: FxHashSet<usize> = FxHashSet::default();
+    let mut order = Vec::with_capacity(children.len());
+    for child in 0..children.len() {
+        match group_of(child) {
+            // Only orderable items are checked ahead of their place.
+            Some(group) if defined_name(&grouped[group]).is_some() => {
+                visit(group, &first_child, &uses, &mut seen, &mut order)
+            }
+            Some(group) => {
+                if seen.insert(group) {
+                    order.push(first_child[&group]);
+                }
+            }
+            None => order.push(child),
+        }
+    }
+    order
+}
+
 enum GroupedItem {
     /// A non-FnDef item, or a standalone single-clause FnDef.
     Single(Item),
