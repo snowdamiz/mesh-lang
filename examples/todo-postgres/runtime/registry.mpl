@@ -8,10 +8,10 @@ end
 service TodoRegistry do
   fn init(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
     RegistryState {
-      pool : pool,
-      rate_limiter_pid : rate_limiter_pid,
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      pool: pool,
+      rate_limiter_pid: rate_limiter_pid,
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
@@ -32,7 +32,10 @@ service TodoRegistry do
   end
 end
 
-pub fn start_registry(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) do
+pub fn start_registry(pool :: PoolHandle,
+  rate_limiter_pid :: Pid,
+  window_seconds :: Int,
+  max_requests :: Int) do
   let registry_pid = TodoRegistry.start(pool, rate_limiter_pid, window_seconds, max_requests)
   Process.register("todo_api_registry", registry_pid)
   registry_pid

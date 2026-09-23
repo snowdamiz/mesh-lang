@@ -8,6 +8,8 @@ fn print_double(value :: Int) do
 end
 
 fn main() do
-  20 |> add(1) |> print_double()
+  20
+    |> add(1)
+    |> print_double()
   print_double(-1)
 end

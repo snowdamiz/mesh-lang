@@ -1,10 +1,10 @@
 struct RateLimiterState do
-  counts :: Map < String, Int >
+  counts :: Map<String, Int>
   window_seconds :: Int
   max_requests :: Int
 end
 
-fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterState, Bool) do
+fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
   let count = Map.get(state.counts, key)
   let allowed = count < state.max_requests
   let next_counts = if allowed do
@@ -13,27 +13,27 @@ fn check_limit_impl(state :: RateLimiterState, key :: String) ->( RateLimiterSta
     state.counts
   end
   let next_state = RateLimiterState {
-    counts : next_counts,
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: next_counts,
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
   (next_state, allowed)
 end
 
 fn reset_window_impl(state :: RateLimiterState) -> RateLimiterState do
   RateLimiterState {
-    counts : Map.new(),
-    window_seconds : state.window_seconds,
-    max_requests : state.max_requests
+    counts: Map.new(),
+    window_seconds: state.window_seconds,
+    max_requests: state.max_requests
   }
 end
 
 service TodoWriteRateLimiter do
   fn init(window_seconds :: Int, max_requests :: Int) -> RateLimiterState do
     RateLimiterState {
-      counts : Map.new(),
-      window_seconds : window_seconds,
-      max_requests : max_requests
+      counts: Map.new(),
+      window_seconds: window_seconds,
+      max_requests: max_requests
     }
   end
 
@@ -48,7 +48,9 @@ end
 
 actor rate_window_ticker(limiter_pid, interval_ms :: Int) do
   Timer.sleep(interval_ms)
+
   TodoWriteRateLimiter.reset(limiter_pid)
+
   rate_window_ticker(limiter_pid, interval_ms)
 end
 

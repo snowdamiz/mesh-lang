@@ -5,14 +5,14 @@ pub struct AccountLayout do
   minimum_payload_bytes :: Int
 end
 
-pub fn discriminator(account_name :: String) -> Bytes ! String do
+pub fn discriminator(account_name :: String) -> Bytes!String do
   ("account:" <> account_name)
     |> Bytes.from_utf8()
     |> Crypto.sha256()
     |> Bytes.slice(0, 8)
 end
 
-fn validate_owner(actual :: Bytes, expected :: Bytes) -> Int ! String do
+fn validate_owner(actual :: Bytes, expected :: Bytes) -> Int!String do
   if Bytes.length(actual) != 32 do
     Err("ANCHOR_OWNER: actual owner must be 32 bytes")
   else
@@ -30,17 +30,17 @@ fn validate_owner(actual :: Bytes, expected :: Bytes) -> Int ! String do
 end
 
 pub fn account_payload(data :: Bytes,
-actual_owner :: Bytes,
-expected_owner :: Bytes,
-account_name :: String) -> Bytes ! String do
-  (validate_owner(actual_owner, expected_owner)) ?
+  actual_owner :: Bytes,
+  expected_owner :: Bytes,
+  account_name :: String) -> Bytes!String do
+  (validate_owner(actual_owner, expected_owner))?
   if Bytes.length(data) < 8 do
     Err("ANCHOR_DISCRIMINATOR: account data is shorter than 8 bytes")
   else
     let expected = (account_name
-      |> discriminator()) ?
+      |> discriminator())?
     if (data
-      |> Bytes.slice(0, 8)) ?
+      |> Bytes.slice(0, 8))?
       |> Bytes.secure_equals(expected) do
       data
         |> Bytes.slice(8, Bytes.length(data) - 8)
@@ -51,9 +51,9 @@ account_name :: String) -> Bytes ! String do
 end
 
 pub fn versioned_payload(data :: Bytes,
-actual_owner :: Bytes,
-expected_owner :: Bytes,
-layout :: AccountLayout) -> Bytes ! String do
+  actual_owner :: Bytes,
+  expected_owner :: Bytes,
+  layout :: AccountLayout) -> Bytes!String do
   if layout.minimum_payload_bytes < 0 do
     Err("ANCHOR_LAYOUT: minimum payload size must be non-negative")
   else
@@ -64,7 +64,7 @@ layout :: AccountLayout) -> Bytes ! String do
         Err("ANCHOR_LAYOUT: version must fit one byte")
       else
         let payload = (data
-          |> account_payload(actual_owner, expected_owner, layout.account_name)) ?
+          |> account_payload(actual_owner, expected_owner, layout.account_name))?
         if Bytes.length(payload) < layout.minimum_payload_bytes do
           Err("ANCHOR_LAYOUT: payload is shorter than the versioned layout minimum")
         else
@@ -72,7 +72,7 @@ layout :: AccountLayout) -> Bytes ! String do
             Err("ANCHOR_LAYOUT: version offset is outside the payload")
           else
             let version = (payload
-              |> Bytes.get(layout.version_offset)) ?
+              |> Bytes.get(layout.version_offset))?
             if version == layout.version do
               Ok(payload)
             else

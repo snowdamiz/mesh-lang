@@ -8,12 +8,14 @@ describe("SQLite todo-api config") do
     assert_eq(todo_rate_limit_window_seconds_key(), "TODO_RATE_LIMIT_WINDOW_SECONDS")
     assert_eq(todo_rate_limit_max_requests_key(), "TODO_RATE_LIMIT_MAX_REQUESTS")
   end
-
   test("formats local validation messages") do
     assert_eq(invalid_positive_int(port_key()), "Invalid PORT: expected a positive integer")
-    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()), "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
-    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()), "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
-    assert_eq(invalid_db_path(todo_db_path_key()), "Invalid TODO_DB_PATH: expected a non-empty path")
+    assert_eq(invalid_positive_int(todo_rate_limit_window_seconds_key()),
+      "Invalid TODO_RATE_LIMIT_WINDOW_SECONDS: expected a positive integer")
+    assert_eq(invalid_positive_int(todo_rate_limit_max_requests_key()),
+      "Invalid TODO_RATE_LIMIT_MAX_REQUESTS: expected a positive integer")
+    assert_eq(invalid_db_path(todo_db_path_key()),
+      "Invalid TODO_DB_PATH: expected a non-empty path")
     assert_eq(invalid_todo_id_message(), "invalid todo id")
     assert_eq(title_required_message(), "title is required")
     assert_eq(todo_not_found_message(), "todo not found")
