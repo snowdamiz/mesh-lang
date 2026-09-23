@@ -5468,8 +5468,14 @@ fn infer_item(
                             .or_default()
                             .insert(name.clone(), Scheme::mono(struct_ty));
                     }
-                    // Sum type variant constructors are already in mod_exports.functions
-                    // (registered during the exporting module's type check).
+                    // Its variants, for `Geo.Dot` and `Geo.Line(n)`: constructors
+                    // are registered under their type's name (`Shape.Dot`).
+                    let variants = ctx.module_variants.entry(last_segment.clone()).or_default();
+                    for sum_type in mod_exports.sum_type_defs.values() {
+                        for variant in &sum_type.variants {
+                            variants.insert(variant.name.clone(), sum_type.name.clone());
+                        }
+                    }
 
                     // Register service definitions for qualified access (ServiceName.method)
                     for (service_name, service_info) in &mod_exports.service_defs {
@@ -12129,6 +12135,11 @@ fn infer_field_access(
                 }
                 // Module exists but field not found -- fall through to other checks
             }
+            if let Some(scheme) = module_variant(ctx, &base_name, &field_name)
+                .and_then(|qualified| env.lookup(&qualified).cloned())
+            {
+                return Ok(ctx.instantiate(&scheme));
+            }
 
             // Then check stdlib modules (existing behavior)
             if is_stdlib_module(&base_name) {
@@ -13013,7 +13024,7 @@ fn infer_constructor_pattern(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
-    let lookup_name = constructor_lookup_name(ctor_pat);
+    let lookup_name = constructor_lookup_name(ctx, ctor_pat);
 
     // Look up the constructor in the environment.
     let ctor_scheme = match env.lookup(&lookup_name) {
@@ -13075,7 +13086,10 @@ fn infer_constructor_pattern(
 
 /// The environment name of a constructor pattern's variant: `Circle` or
 /// `Shape.Circle`.
-fn constructor_lookup_name(ctor_pat: &mesh_parser::ast::pat::ConstructorPat) -> String {
+fn constructor_lookup_name(
+    ctx: &InferCtx,
+    ctor_pat: &mesh_parser::ast::pat::ConstructorPat,
+) -> String {
     let name = |token: Option<mesh_parser::SyntaxToken>| {
         token
             .map(|t| t.text().to_string())
@@ -13083,10 +13097,19 @@ fn constructor_lookup_name(ctor_pat: &mesh_parser::ast::pat::ConstructorPat) -> 
     };
     let variant_name = name(ctor_pat.variant_name());
     if ctor_pat.is_qualified() {
-        format!("{}.{}", name(ctor_pat.type_name()), variant_name)
+        let qualifier = name(ctor_pat.type_name());
+        module_variant(ctx, &qualifier, &variant_name)
+            .unwrap_or_else(|| format!("{qualifier}.{variant_name}"))
     } else {
         variant_name
     }
+}
+
+/// `Type.Variant` for a variant named through the module that exports its
+/// type (`Geo.Dot`).
+fn module_variant(ctx: &InferCtx, module: &str, variant: &str) -> Option<String> {
+    let owner = ctx.module_variants.get(module)?.get(variant)?;
+    Some(format!("{owner}.{variant}"))
 }
 
 /// The type of a pass-through arm's value: its pattern read back as an
@@ -13127,7 +13150,7 @@ fn infer_rebuilt_pattern(
             Ok(ty)
         }
         Pattern::Constructor(ctor_pat) => {
-            let Some(scheme) = env.lookup(&constructor_lookup_name(ctor_pat)) else {
+            let Some(scheme) = env.lookup(&constructor_lookup_name(ctx, ctor_pat)) else {
                 return Ok(ctx.fresh_var());
             };
             match ctx.instantiate(scheme) {

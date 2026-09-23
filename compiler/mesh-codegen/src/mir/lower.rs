@@ -10402,18 +10402,32 @@ impl<'a> Lowerer<'a> {
                     }
 
                     // A qualified variant constructor (`Color.Red`, `Result.Ok`)
-                    // lowers like the unqualified one.
+                    // lowers like the unqualified one. Qualified by the module
+                    // exporting its type (`Geo.Dot`), the type is the one the
+                    // checker gave it.
                     let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    let variant_arity =
-                        self.registry
-                            .sum_type_defs
-                            .get(&base_name)
-                            .and_then(|info| {
-                                info.variants
-                                    .iter()
-                                    .find(|v| v.name == field)
-                                    .map(|v| v.fields.len())
-                            });
+                    let owner = if self.user_modules.contains_key(&base_name) {
+                        let result = match self.get_ty(fa.syntax().text_range()) {
+                            Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
+                            other => other.cloned(),
+                        };
+                        match result {
+                            Some(Ty::App(con, _)) => match *con {
+                                Ty::Con(tc) => tc.name,
+                                _ => base_name.clone(),
+                            },
+                            Some(Ty::Con(tc)) => tc.name,
+                            _ => base_name.clone(),
+                        }
+                    } else {
+                        base_name.clone()
+                    };
+                    let variant_arity = self.registry.sum_type_defs.get(&owner).and_then(|info| {
+                        info.variants
+                            .iter()
+                            .find(|v| v.name == field)
+                            .map(|v| v.fields.len())
+                    });
                     if let Some(arity) = variant_arity {
                         let ty = self.resolve_range(fa.syntax().text_range());
                         if arity > 0 {
@@ -10422,12 +10436,11 @@ impl<'a> Lowerer<'a> {
                         }
                         let concrete = match &ty {
                             MirType::SumType(name)
-                                if name == &base_name
-                                    || name.starts_with(&format!("{base_name}_")) =>
+                                if name == &owner || name.starts_with(&format!("{owner}_")) =>
                             {
                                 name.clone()
                             }
-                            _ => base_name.clone(),
+                            _ => owner.clone(),
                         };
                         return MirExpr::ConstructVariant {
                             type_name: concrete.clone(),
@@ -11196,8 +11209,12 @@ impl<'a> Lowerer<'a> {
         variant: &str,
         expected: Option<&Ty>,
     ) -> String {
+        // A qualifier that is not a type is the module exporting it (`Geo.Dot`).
         if let Some(type_name) = ctor.type_name() {
-            return type_name.text().to_string();
+            let type_name = type_name.text().to_string();
+            if self.registry.sum_type_defs.contains_key(&type_name) {
+                return type_name;
+            }
         }
         let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
         find_type_for_variant(variant, expected_mir.as_ref(), self.registry, None)

@@ -69,6 +69,9 @@ pub struct InferCtx {
     pub imported_function_origins: FxHashMap<String, String>,
     /// Full module name for qualified module namespaces (e.g. `Todos` -> `Api.Todos`).
     pub qualified_module_origins: FxHashMap<String, String>,
+    /// The variants of the sum types an imported module exports, by module
+    /// namespace and variant name: the type each belongs to (`Geo.Dot`).
+    pub module_variants: FxHashMap<String, FxHashMap<String, String>>,
     /// Private names exported by a qualified module namespace.
     /// Used to turn `HTTP.clustered(Module.hidden)` into a focused privacy diagnostic.
     pub qualified_module_private_names: FxHashMap<String, FxHashSet<String>>,
@@ -167,6 +170,7 @@ impl InferCtx {
             imported_functions: Vec::new(),
             imported_function_origins: FxHashMap::default(),
             qualified_module_origins: FxHashMap::default(),
+            module_variants: FxHashMap::default(),
             qualified_module_private_names: FxHashMap::default(),
             top_level_function_visibility: FxHashMap::default(),
             clustered_route_wrappers: FxHashMap::default(),

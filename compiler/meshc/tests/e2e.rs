@@ -7812,3 +7812,26 @@ end
     let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
     assert_eq!(output, "7 3 4\n");
 }
+
+#[test]
+fn e2e_module_qualified_variants() {
+    // `Geo.Line(7)` was "undefined variable: Geo" (twice) and the pattern
+    // `Geo.Dot ->` an unknown variant.
+    let geo = "pub type Shape do\n  Dot\n  Line(Int)\nend\n";
+    let main = r##"import Geo
+
+fn size(s :: Geo.Shape) -> Int do
+  case s do
+    Geo.Dot -> 0
+    Geo.Line(n) -> n
+  end
+end
+
+fn main() do
+  let d = Geo.Dot
+  println("#{size(Geo.Line(7))} #{size(d)} #{size(Line(2))}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert_eq!(output, "7 0 2\n");
+}
