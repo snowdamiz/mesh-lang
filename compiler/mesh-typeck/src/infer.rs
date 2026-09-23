@@ -38,7 +38,7 @@ use crate::traits::{
     TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
-use crate::unify::InferCtx;
+use crate::unify::{ImplChoice, InferCtx};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
@@ -7779,6 +7779,7 @@ fn infer_fn_def(
     );
     let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     let saved_default_calls = std::mem::take(&mut ctx.default_calls);
+    let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
     ctx.push_fn_return_type(return_type_annotation.clone());
     let body_ty = if is_native {
         return_type_annotation
@@ -7801,12 +7802,14 @@ fn infer_fn_def(
     ctx.where_bounds = saved_bounds;
     let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
     let default_calls = std::mem::replace(&mut ctx.default_calls, saved_default_calls);
+    let impl_choices = std::mem::replace(&mut ctx.impl_choices, saved_impl_choices);
 
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
     check_type_param_bounds(ctx, &type_params, &where_constraints, operand_traits);
     check_default_calls(ctx, &type_params, trait_registry, default_calls);
+    check_impl_choices(ctx, impl_choices);
 
     env.pop_scope();
 
@@ -11996,9 +11999,13 @@ fn infer_field_access(
                     ctx.errors.push(err.clone());
                     return Err(err);
                 }
-                if let Some(ret_ty) =
-                    trait_registry.resolve_trait_method(&field_name, &resolved_base)
-                {
+                if let Some(ret_ty) = method_return_type(
+                    ctx,
+                    trait_registry,
+                    &field_name,
+                    &resolved_base,
+                    fa.syntax().text_range(),
+                ) {
                     let method_fn_ty = build_method_fn_type(
                         trait_registry,
                         &field_name,
@@ -12067,7 +12074,13 @@ fn infer_field_access(
             ctx.errors.push(err.clone());
             return Err(err);
         }
-        if let Some(ret_ty) = trait_registry.resolve_trait_method(&field_name, &resolved_base) {
+        if let Some(ret_ty) = method_return_type(
+            ctx,
+            trait_registry,
+            &field_name,
+            &resolved_base,
+            fa.syntax().text_range(),
+        ) {
             let method_fn_ty =
                 build_method_fn_type(trait_registry, &field_name, &resolved_base, &ret_ty, ctx);
             return Ok(method_fn_ty);
@@ -14326,6 +14339,58 @@ fn infer_try_expr(
 
 /// Extract where-clause constraints from a function definition.
 /// A function's `where` bounds as (type parameter variable, trait) pairs.
+/// What the trait method `method` returns for a receiver of type `ty`. When
+/// several impls provide it with different return types (`Convert<Int>` and
+/// `Convert<String>` for one type, or `.into()`), the call's context picks
+/// one: its type is left open here and checked when the function is done.
+fn method_return_type(
+    ctx: &mut InferCtx,
+    trait_registry: &TraitRegistry,
+    method: &str,
+    ty: &Ty,
+    span: TextRange,
+) -> Option<Ty> {
+    let mut returns: Vec<Ty> = Vec::new();
+    for (_, ret) in trait_registry.impls_providing(method, ty) {
+        if let Some(ret) = ret {
+            if !returns.contains(&ret) {
+                returns.push(ret);
+            }
+        }
+    }
+    if returns.len() > 1 {
+        let chosen = ctx.fresh_var();
+        ctx.impl_choices.push(ImplChoice {
+            result: chosen.clone(),
+            method: method.to_string(),
+            receiver: ty.clone(),
+            candidates: returns,
+            span,
+        });
+        return Some(chosen);
+    }
+    trait_registry.resolve_trait_method(method, ty)
+}
+
+/// Each method call that several impls could answer must have been given
+/// one of their return types by its context.
+fn check_impl_choices(ctx: &mut InferCtx, choices: Vec<ImplChoice>) {
+    for choice in choices {
+        let result = ctx.resolve(choice.result);
+        if !choice.candidates.contains(&result) {
+            let found = (!result.has_type_vars()).then_some(result);
+            let receiver = ctx.resolve(choice.receiver);
+            ctx.errors.push(TypeError::AmbiguousImplMethod {
+                method: choice.method,
+                receiver,
+                candidates: choice.candidates,
+                found,
+                span: choice.span,
+            });
+        }
+    }
+}
+
 /// Each builtin `default()` call must have been given a type by its context
 /// (a declared type parameter counts: its callers fix it), and that type
 /// must implement Default.

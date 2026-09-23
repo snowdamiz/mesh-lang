@@ -568,6 +568,32 @@ impl TraitRegistry {
     /// the named method and structurally matches the argument type. If the
     /// method's return type contains freshened type variables, they are
     /// resolved through the temporary InferCtx after unification.
+    /// The impls that provide `method_name` for values of type `ty`, each
+    /// with its method's return type (as it reads for `ty`). Several impls
+    /// of one generic interface (`Convert<Int>`, `Convert<String>`) differ
+    /// in what they return, and a call picks one by that.
+    pub fn impls_providing(&self, method_name: &str, ty: &Ty) -> Vec<(&ImplDef, Option<Ty>)> {
+        let mut found = Vec::new();
+        for impl_list in self.impls.values() {
+            for impl_def in impl_list {
+                let Some(method_sig) = impl_def.methods.get(method_name) else {
+                    continue;
+                };
+                let mut ctx = InferCtx::new();
+                let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
+                let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
+                if ctx
+                    .unify(freshened, query, ConstraintOrigin::Builtin)
+                    .is_ok()
+                {
+                    let ret = method_sig.return_type.clone().map(|ret| ctx.resolve(ret));
+                    found.push((impl_def, ret));
+                }
+            }
+        }
+        found
+    }
+
     pub fn resolve_trait_method(&self, method_name: &str, arg_ty: &Ty) -> Option<Ty> {
         for impl_list in self.impls.values() {
             for impl_def in impl_list {

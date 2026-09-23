@@ -156,6 +156,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::CyclicAlias { .. } => "E0062",
         TypeError::UnboundedTypeParam { .. } => "E0063",
         TypeError::AmbiguousDefault { .. } => "E0064",
+        TypeError::AmbiguousImplMethod { .. } => "E0065",
     }
 }
 
@@ -543,6 +544,7 @@ pub fn render_json_diagnostic(
                 | TypeError::DuplicateVariant { span, .. }
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::AmbiguousDefault { span }
+                | TypeError::AmbiguousImplMethod { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2134,6 +2136,41 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give one of the variants another name")
+                .finish()
+        }
+        TypeError::AmbiguousImplMethod {
+            method,
+            receiver,
+            candidates,
+            found,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let returns = candidates
+                .iter()
+                .map(|ty| format!("`{ty}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (message, label) = match found {
+                Some(found) => (
+                    format!("no impl's `{method}` on `{receiver}` returns `{found}`"),
+                    format!("they return {returns}"),
+                ),
+                None => (
+                    format!("cannot tell which impl's `{method}` to call on `{receiver}`"),
+                    format!("its impls return {returns}"),
+                ),
+            };
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(message)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(label)
+                        .with_color(Color::Red),
+                )
+                .with_help("give the result a type: `let x :: Int = value.convert()`")
                 .finish()
         }
         TypeError::AmbiguousDefault { span } => {

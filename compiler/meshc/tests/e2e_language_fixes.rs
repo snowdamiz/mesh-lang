@@ -2749,3 +2749,158 @@ end
 "##;
     assert_eq!(run(source), "0 7 7\n");
 }
+
+#[test]
+fn impls_of_generic_interfaces_are_called_by_their_result_type() {
+    // The reference's example: one impl, with a default method.
+    let source = r##"
+pub interface Container<T> do
+  type Item
+  fn first(self) -> Self.Item
+  fn label(self) -> String do
+    "container"
+  end
+end
+
+struct IntBox do
+  value :: Int
+end
+
+impl Container<Int> for IntBox do
+  type Item = Int
+  fn first(self) -> Int do
+    self.value
+  end
+end
+
+fn main() do
+  let b = IntBox { value: 3 }
+  println("#{b.first()} #{b.label()}")
+end
+"##;
+    assert_eq!(run(source), "3 container\n");
+    // Two impls of one generic interface: the annotation picks.
+    let source = r##"
+interface Convert<T> do
+  fn convert(self) -> T
+end
+
+struct Meters do
+  v :: Int
+end
+
+impl Convert<String> for Meters do
+  fn convert(self) -> String do
+    "#{self.v}m"
+  end
+end
+
+impl Convert<Int> for Meters do
+  fn convert(self) -> Int do
+    self.v * 100
+  end
+end
+
+fn main() do
+  let s :: String = Meters { v: 3 }.convert()
+  let c :: Int = Meters { v: 3 }.convert()
+  println("#{s} #{c}")
+end
+"##;
+    assert_eq!(run(source), "3m 300\n");
+}
+
+#[test]
+fn into_and_try_into_go_to_the_from_impl_the_context_asks_for() {
+    let source = r##"
+struct Wrapper do
+  value :: Int
+end
+
+impl From<Int> for Wrapper do
+  fn from(n :: Int) -> Wrapper do
+    Wrapper { value: n * 2 }
+  end
+end
+
+impl From<String> for Wrapper do
+  fn from(s :: String) -> Wrapper do
+    Wrapper { value: String.length(s) }
+  end
+end
+
+struct Meters do
+  v :: Int
+end
+
+struct Feet do
+  v :: Int
+end
+
+impl From<Meters> for Feet do
+  fn from(m :: Meters) -> Feet do
+    Feet { v: m.v * 3 }
+  end
+end
+
+fn main() do
+  let w :: Wrapper = 21.into()
+  let f :: Float = 2.into()
+  let s :: String = 7.into()
+  let w4 :: Wrapper = "abc".into()
+  let ft :: Feet = Meters { v: 2 }.into()
+  println("#{w.value} #{f} #{s} #{w4.value} #{ft.v}")
+end
+"##;
+    assert_eq!(run(source), "42 2.0 7 3 6\n");
+    let source = r##"
+struct Pos do
+  v :: Int
+end
+
+struct Even do
+  v :: Int
+end
+
+impl TryFrom<Int> for Pos do
+  fn try_from(n :: Int) -> Result<Pos, String> do
+    if n > 0 do
+      Ok(Pos { v: n })
+    else
+      Err("not positive")
+    end
+  end
+end
+
+impl TryFrom<Int> for Even do
+  fn try_from(n :: Int) -> Result<Even, String> do
+    if n % 2 == 0 do
+      Ok(Even { v: n })
+    else
+      Err("odd")
+    end
+  end
+end
+
+fn main() do
+  let p :: Result<Pos, String> = 3.try_into()
+  let e :: Result<Even, String> = 3.try_into()
+  let q :: Result<Pos, String> = Pos.try_from(-1)
+  case p do
+    Ok(x) -> println("pos #{x.v}")
+    Err(m) -> println(m)
+  end
+  case e do
+    Ok(x) -> println("even #{x.v}")
+    Err(m) -> println(m)
+  end
+  case q do
+    Ok(x) -> println("pos #{x.v}")
+    Err(m) -> println(m)
+  end
+end
+"##;
+    assert_eq!(run(source), "pos 3\nodd\nnot positive\n");
+    let err = build_error("fn main() do\n  let x = 5.into()\n  println(\"#{x}\")\nend\n");
+    assert!(err.contains("E0065") && err.contains(":2:11"), "{err}");
+}

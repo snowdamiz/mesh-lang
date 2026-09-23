@@ -385,6 +385,16 @@ pub enum TypeError {
         trait_name: String,
         origin: ConstraintOrigin,
     },
+    /// A method several impls provide, with different return types, called
+    /// where nothing picks one (`found` is the type the context asked for,
+    /// when it asked for one none of them returns).
+    AmbiguousImplMethod {
+        method: String,
+        receiver: Ty,
+        candidates: Vec<Ty>,
+        found: Option<Ty>,
+        span: TextRange,
+    },
     /// Nothing tells which type a `default()` call builds.
     AmbiguousDefault { span: TextRange },
     /// A type alias expands into itself.
@@ -901,6 +911,14 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "`{param}` is not known to implement {trait_name}; add `where {param}: {trait_name}`"
+                )
+            }
+            TypeError::AmbiguousImplMethod {
+                method, receiver, ..
+            } => {
+                write!(
+                    f,
+                    "cannot tell which impl's `{method}` to call on `{receiver}`"
                 )
             }
             TypeError::AmbiguousDefault { .. } => {

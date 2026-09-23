@@ -151,6 +151,26 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
 /// Build a mangled trait method name, incorporating trait type args when present.
 /// Non-parameterized: `Trait__method__Type` (e.g., `Display__to_string__Int`)
 /// Parameterized: `Trait_TypeArg__method__ImplType` (e.g., `From_Int__from__Float`)
+/// The runtime function a built-in impl's method is (`Hash__hash__Int` is
+/// `mesh_hash_int`), else `mangled` itself.
+fn builtin_trait_redirect(mangled: String) -> String {
+    match mangled.as_str() {
+        "Display__to_string__Int" | "Debug__inspect__Int" => "mesh_int_to_string".to_string(),
+        "Display__to_string__Float" | "Debug__inspect__Float" => "mesh_float_to_string".to_string(),
+        "Display__to_string__Bool" | "Debug__inspect__Bool" => "mesh_bool_to_string".to_string(),
+        "Hash__hash__Int" => "mesh_hash_int".to_string(),
+        "Hash__hash__Float" => "mesh_hash_float".to_string(),
+        "Hash__hash__Bool" => "mesh_hash_bool".to_string(),
+        "Hash__hash__String" => "mesh_hash_string".to_string(),
+        // Built-in From dispatch (Phase 77)
+        "From_Int__from__Float" => "mesh_int_to_float".to_string(),
+        "From_Int__from__String" => "mesh_int_to_string".to_string(),
+        "From_Float__from__String" => "mesh_float_to_string".to_string(),
+        "From_Bool__from__String" => "mesh_bool_to_string".to_string(),
+        _ => mangled,
+    }
+}
+
 fn mangle_trait_method(
     trait_name: &str,
     trait_type_args: &[String],
@@ -5162,6 +5182,7 @@ impl<'a> Lowerer<'a> {
                                 self.lower_default_method(
                                     range,
                                     &trait_name,
+                                    &trait_type_args,
                                     &trait_method.name,
                                     &type_name,
                                 );
@@ -5580,6 +5601,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         method_range: TextRange,
         trait_name: &str,
+        trait_type_args: &[String],
         method_name: &str,
         type_name: &str,
     ) {
@@ -5604,7 +5626,7 @@ impl<'a> Lowerer<'a> {
             None => return, // No default body (should not happen since has_default_body is true)
         };
 
-        let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+        let mangled = mangle_trait_method(trait_name, trait_type_args, method_name, type_name);
 
         // The body was type-checked once with `self :: Self`; every type
         // recorded inside it is re-read with `Self` as this implementing type,
@@ -8941,6 +8963,56 @@ impl<'a> Lowerer<'a> {
             .map(|f| MirExpr::Var(f, var_ty.clone()))
     }
 
+    /// The impl method a call of `method` on a `receiver` goes to when its
+    /// impl belongs to a generic interface (named with the interface's type
+    /// arguments: `Convert_Int__convert__Meters`), picked among several by
+    /// the call's `result` type. `.into()` and `.try_into()` go to the
+    /// `From` and `TryFrom` impls they stand for.
+    fn parameterized_impl_callee(
+        &self,
+        method: &str,
+        receiver: &Ty,
+        result: Option<&Ty>,
+        var_ty: &MirType,
+    ) -> Option<MirExpr> {
+        let mut candidates: Vec<_> = self
+            .trait_registry
+            .impls_providing(method, receiver)
+            .into_iter()
+            .filter(|(imp, _)| !imp.trait_type_args.is_empty())
+            .collect();
+        let (imp, _) = if candidates.len() == 1 {
+            candidates.pop()?
+        } else {
+            let result = result.map(|ty| resolve_type(ty, self.registry))?;
+            candidates.into_iter().find(|(_, ret)| {
+                ret.as_ref()
+                    .is_some_and(|ret| resolve_type(ret, self.registry) == result)
+            })?
+        };
+        let name_of = |ty: &Ty| match ty {
+            Ty::Con(tc) => tc.name.clone(),
+            Ty::App(con, _) => match con.as_ref() {
+                Ty::Con(tc) => tc.name.clone(),
+                other => format!("{other}"),
+            },
+            other => format!("{other}"),
+        };
+        let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
+        let source = [name_of(&imp.impl_type)];
+        let mangled = match (imp.trait_name.as_str(), args.first()) {
+            ("Into", Some(target)) => mangle_trait_method("From", &source, "from", target),
+            ("TryInto", Some(target)) => {
+                mangle_trait_method("TryFrom", &source, "try_from", target)
+            }
+            _ => mangle_trait_method(&imp.trait_name, &args, method, &imp.impl_type_name),
+        };
+        Some(MirExpr::Var(
+            builtin_trait_redirect(mangled),
+            var_ty.clone(),
+        ))
+    }
+
     fn resolve_trait_callee(
         &self,
         name: &str,
@@ -8956,40 +9028,7 @@ impl<'a> Lowerer<'a> {
                 let type_name = mir_type_to_impl_name(first_arg_ty);
                 let mangled = format!("{}__{}__{}", trait_name, name, type_name);
 
-                // Primitive Display/Debug/Hash builtin redirects
-                let resolved = match mangled.as_str() {
-                    "Display__to_string__Int" | "Debug__inspect__Int" => {
-                        "mesh_int_to_string".to_string()
-                    }
-                    "Display__to_string__Float" | "Debug__inspect__Float" => {
-                        "mesh_float_to_string".to_string()
-                    }
-                    "Display__to_string__Bool" | "Debug__inspect__Bool" => {
-                        "mesh_bool_to_string".to_string()
-                    }
-                    "Hash__hash__Int" => "mesh_hash_int".to_string(),
-                    "Hash__hash__Float" => "mesh_hash_float".to_string(),
-                    "Hash__hash__Bool" => "mesh_hash_bool".to_string(),
-                    "Hash__hash__String" => "mesh_hash_string".to_string(),
-                    // Built-in From dispatch (Phase 77)
-                    "From_Int__from__Float" => "mesh_int_to_float".to_string(),
-                    "From_Int__from__String" => "mesh_int_to_string".to_string(),
-                    "From_Float__from__String" => "mesh_float_to_string".to_string(),
-                    "From_Bool__from__String" => "mesh_bool_to_string".to_string(),
-                    _ => mangled,
-                };
-                // Phase 128: TryInto.try_into() dispatch -- redirect to underlying TryFrom function.
-                // The synthetic TryInto impl is NOT in known_functions; the user's TryFrom impl IS.
-                // resolved looks like "TryInto__try_into__Int" (source type = Int).
-                // We find TryFrom_Int__try_from__<TargetType> in known_functions.
-                if resolved.starts_with("TryInto__try_into__") {
-                    let source_prefix = format!("TryFrom_{}__try_from__", type_name);
-                    for (fn_name, fn_ty) in self.known_functions.iter() {
-                        if fn_name.starts_with(&source_prefix) {
-                            return MirExpr::Var(fn_name.clone(), fn_ty.clone());
-                        }
-                    }
-                }
+                let resolved = builtin_trait_redirect(mangled);
                 return MirExpr::Var(resolved, var_ty.clone());
             }
 
@@ -9244,10 +9283,25 @@ impl<'a> Lowerer<'a> {
                             return self.compare_call(source, args);
                         }
                     }
+                    let call_result = self.get_ty(call.syntax().text_range()).cloned();
                     let callee = receiver_source
                         .as_ref()
                         .and_then(|source| {
-                            self.instantiation_trait_callee(&method_name, source, &callee_var_ty)
+                            self.parameterized_impl_callee(
+                                &method_name,
+                                source,
+                                call_result.as_ref(),
+                                &callee_var_ty,
+                            )
+                        })
+                        .or_else(|| {
+                            receiver_source.as_ref().and_then(|source| {
+                                self.instantiation_trait_callee(
+                                    &method_name,
+                                    source,
+                                    &callee_var_ty,
+                                )
+                            })
                         })
                         .unwrap_or_else(|| {
                             self.resolve_trait_callee(&method_name, &callee_var_ty, &first_arg_ty)
@@ -9758,8 +9812,12 @@ impl<'a> Lowerer<'a> {
                     .arg_list()
                     .and_then(|list| list.args().next())
                     .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
+                let call_result = self.get_ty(call.syntax().text_range()).cloned();
                 first_arg_source
-                    .and_then(|source| self.instantiation_trait_callee(name, &source, var_ty))
+                    .and_then(|source| {
+                        self.parameterized_impl_callee(name, &source, call_result.as_ref(), var_ty)
+                            .or_else(|| self.instantiation_trait_callee(name, &source, var_ty))
+                    })
                     .unwrap_or_else(|| self.resolve_trait_callee(name, var_ty, &first_arg_ty))
             } else {
                 callee

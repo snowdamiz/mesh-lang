@@ -243,6 +243,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::DuplicateVariant { span, .. }
         | TypeError::CyclicAlias { span, .. }
         | TypeError::AmbiguousDefault { span }
+        | TypeError::AmbiguousImplMethod { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

@@ -17,6 +17,18 @@ use crate::{ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata};
 /// All type inference happens through this context. It creates fresh type
 /// variables, unifies types, tracks levels for generalization, and collects
 /// errors.
+/// A method call that several impls could answer (`Meters.convert()` with
+/// `Convert<Int>` and `Convert<String>`): its open result type, and the
+/// return types of the impls.
+#[derive(Clone, Debug)]
+pub struct ImplChoice {
+    pub result: Ty,
+    pub method: String,
+    pub receiver: Ty,
+    pub candidates: Vec<Ty>,
+    pub span: TextRange,
+}
+
 pub struct InferCtx {
     /// The union-find unification table (ena).
     table: InPlaceUnificationTable<TyVar>,
@@ -109,6 +121,9 @@ pub struct InferCtx {
     /// The builtin `default()` calls of the function being inferred, with
     /// the type each builds (checked when the function is done).
     pub default_calls: Vec<(Ty, TextRange)>,
+    /// Method calls that several impls could answer, to be decided by the
+    /// type their context gives the result (checked when the function is done).
+    pub impl_choices: Vec<ImplChoice>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -156,6 +171,7 @@ impl InferCtx {
             registered_items: Default::default(),
             operand_traits: Vec::new(),
             default_calls: Vec::new(),
+            impl_choices: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),
