@@ -161,9 +161,17 @@ fn classify_source_file_node(node: &SyntaxNode) -> SourceFileItemKind {
     }
 }
 
+struct SourceFileItem {
+    kind: SourceFileItemKind,
+    ir: FormatIR,
+    /// A comment block written directly above the next item.
+    attached_to_next: bool,
+}
+
 fn flush_pending_source_comments(
     pending_comments: &mut Vec<FormatIR>,
-    items: &mut Vec<(SourceFileItemKind, FormatIR)>,
+    items: &mut Vec<SourceFileItem>,
+    attached_to_next: bool,
 ) {
     if pending_comments.is_empty() {
         return;
@@ -177,12 +185,18 @@ fn flush_pending_source_comments(
         parts.push(comment);
     }
 
-    items.push((SourceFileItemKind::CommentBlock, ir::concat(parts)));
+    items.push(SourceFileItem {
+        kind: SourceFileItemKind::CommentBlock,
+        ir: ir::concat(parts),
+        attached_to_next,
+    });
 }
 
 fn walk_source_file(node: &SyntaxNode) -> FormatIR {
-    let mut items: Vec<(SourceFileItemKind, FormatIR)> = Vec::new();
+    let mut items: Vec<SourceFileItem> = Vec::new();
     let mut pending_comments: Vec<FormatIR> = Vec::new();
+    // Line breaks since the last comment or item: two or more is a blank line.
+    let mut newlines = 0;
 
     for child in node.elements() {
         match child {
@@ -190,44 +204,65 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
                 let kind = tok.kind();
                 match kind {
                     SyntaxKind::EOF => {}
-                    SyntaxKind::NEWLINE => {}
+                    SyntaxKind::NEWLINE => newlines += 1,
                     SyntaxKind::COMMENT
                     | SyntaxKind::DOC_COMMENT
-                    | SyntaxKind::MODULE_DOC_COMMENT => match items.last_mut() {
-                        Some((_, last))
-                            if pending_comments.is_empty() && ends_a_line_of_code(&tok) =>
-                        {
-                            append_comment(last, &tok)
+                    | SyntaxKind::MODULE_DOC_COMMENT => {
+                        match items.last_mut() {
+                            Some(last)
+                                if pending_comments.is_empty() && ends_a_line_of_code(&tok) =>
+                            {
+                                append_comment(&mut last.ir, &tok)
+                            }
+                            _ => {
+                                // A blank line ends a comment block.
+                                if newlines > 1 {
+                                    flush_pending_source_comments(
+                                        &mut pending_comments,
+                                        &mut items,
+                                        false,
+                                    );
+                                }
+                                pending_comments.push(ir::text(tok.text()));
+                            }
                         }
-                        _ => pending_comments.push(ir::text(tok.text())),
-                    },
+                        newlines = 0;
+                    }
                     _ => {}
                 }
             }
             NodeOrToken::Node(n) => {
-                flush_pending_source_comments(&mut pending_comments, &mut items);
-                items.push((classify_source_file_node(&n), walk_node(&n)));
+                // A comment block directly above a declaration stays attached to it.
+                flush_pending_source_comments(&mut pending_comments, &mut items, newlines <= 1);
+                items.push(SourceFileItem {
+                    kind: classify_source_file_node(&n),
+                    ir: walk_node(&n),
+                    attached_to_next: false,
+                });
+                newlines = 0;
             }
         }
     }
 
-    flush_pending_source_comments(&mut pending_comments, &mut items);
+    flush_pending_source_comments(&mut pending_comments, &mut items, false);
 
     if items.is_empty() {
         FormatIR::Empty
     } else {
         let mut parts = Vec::new();
-        let mut prev_kind: Option<SourceFileItemKind> = None;
+        let mut prev: Option<(SourceFileItemKind, bool)> = None;
 
-        for (kind, item) in items {
-            if let Some(prev) = prev_kind {
+        for item in items {
+            if let Some((prev_kind, prev_attached)) = prev {
                 parts.push(ir::hardline());
-                if !(prev == SourceFileItemKind::Import && kind == SourceFileItemKind::Import) {
+                let imports = prev_kind == SourceFileItemKind::Import
+                    && item.kind == SourceFileItemKind::Import;
+                if !prev_attached && !imports {
                     parts.push(ir::hardline());
                 }
             }
-            parts.push(item);
-            prev_kind = Some(kind);
+            prev = Some((item.kind, item.attached_to_next));
+            parts.push(item.ir);
         }
         ir::concat(parts)
     }
@@ -634,8 +669,8 @@ fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::CASE_KW => {
-                    parts.push(ir::text("case"));
+                SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => {
+                    parts.push(ir::text(tok.text()));
                     parts.push(sp());
                 }
                 SyntaxKind::DO_KW => {
@@ -937,7 +972,8 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
+                // Statements separated by `;` go on lines of their own.
+                SyntaxKind::NEWLINE | SyntaxKind::SEMICOLON => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
                     push_comment(&mut stmts, &tok);
                 }
@@ -1462,6 +1498,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                         parts.push(body);
                     }
                     SyntaxKind::CLOSURE_CLAUSE => {
+                        parts.push(sp());
                         parts.push(walk_closure_clause(&n));
                     }
                     _ => {
@@ -1998,6 +2035,12 @@ fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("call"));
                     parts.push(sp());
                 }
+                SyntaxKind::BAR => {
+                    if opens_state_param(&tok) {
+                        parts.push(sp());
+                    }
+                    parts.push(ir::text("|"));
+                }
                 SyntaxKind::DO_KW => {
                     parts.push(sp());
                     parts.push(ir::text("do"));
@@ -2035,6 +2078,13 @@ fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
+/// The bar that opens a handler's `do |state|` parameter follows `do`.
+fn opens_state_param(bar: &SyntaxToken) -> bool {
+    std::iter::successors(bar.prev_token(), |token| token.prev_token())
+        .find(|token| !token.kind().is_trivia())
+        .is_some_and(|token| token.kind() == SyntaxKind::DO_KW)
+}
+
 // ── Cast handler ──────────────────────────────────────────────────────
 
 fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
@@ -2046,6 +2096,12 @@ fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::CAST_KW => {
                     parts.push(ir::text("cast"));
                     parts.push(sp());
+                }
+                SyntaxKind::BAR => {
+                    if opens_state_param(&tok) {
+                        parts.push(sp());
+                    }
+                    parts.push(ir::text("|"));
                 }
                 SyntaxKind::DO_KW => {
                     parts.push(sp());
@@ -2227,6 +2283,27 @@ fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
 // ── Map literal ─────────────────────────────────────────────────────
 
 fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
+    // Keyword arguments, `f(x, name: v)`, parse as a map literal without `%{}`.
+    if !node
+        .children_with_tokens()
+        .any(|element| element.kind() == SyntaxKind::PERCENT)
+    {
+        let mut parts = Vec::new();
+        for child in node.elements() {
+            match child {
+                NodeOrToken::Node(n) => parts.push(walk_node(&n)),
+                NodeOrToken::Token(tok) => match tok.kind() {
+                    SyntaxKind::COMMA => {
+                        parts.push(ir::text(","));
+                        parts.push(ir::space());
+                    }
+                    SyntaxKind::NEWLINE => {}
+                    _ => add_token_with_context(&tok, &mut parts),
+                },
+            }
+        }
+        return ir::concat(parts);
+    }
     walk_delimited_items(node, "%{", "}")
 }
 
@@ -2240,6 +2317,11 @@ fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::FAT_ARROW => {
                     parts.push(sp());
                     parts.push(ir::text("=>"));
+                    parts.push(sp());
+                }
+                // A keyword argument, `name: value`.
+                SyntaxKind::COLON => {
+                    parts.push(ir::text(":"));
                     parts.push(sp());
                 }
                 SyntaxKind::NEWLINE => {}
@@ -2420,7 +2502,11 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                     continue;
                 }
                 let closes_angles = angles && kind == SyntaxKind::GT;
-                if !parts.is_empty() && !after_open && !closes_angles && needs_space_before(kind) {
+                // `head :: tail`; elsewhere `::` belongs to a type annotation,
+                // whose caller spaces it.
+                let spaced = needs_space_before(kind)
+                    || (kind == SyntaxKind::COLON_COLON && node.kind() == SyntaxKind::CONS_PAT);
+                if !parts.is_empty() && !after_open && !closes_angles && spaced {
                     parts.push(sp());
                 }
                 parts.push(ir::text(tok.text()));
@@ -2566,7 +2652,9 @@ fn count_block_stmts(node: &SyntaxNode) -> usize {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => {
-                if !tok.kind().is_trivia() && tok.kind() != SyntaxKind::EOF {
+                if !tok.kind().is_trivia()
+                    && !matches!(tok.kind(), SyntaxKind::EOF | SyntaxKind::SEMICOLON)
+                {
                     count += 1;
                 }
             }
@@ -2729,7 +2817,17 @@ mod tests {
         let result = fmt("# one\n# two\nfrom Foo import bar\nfrom Baz import qux");
         assert_eq!(
             result,
-            "# one\n# two\n\nfrom Foo import bar\nfrom Baz import qux\n"
+            "# one\n# two\nfrom Foo import bar\nfrom Baz import qux\n"
+        );
+    }
+
+    #[test]
+    fn top_level_comments_keep_their_blank_lines() {
+        // A comment written directly above a declaration stays attached to it,
+        // and a blank line between two comment blocks stays.
+        formats_to(
+            "# header\n\n## About foo.\nfn foo() do\n1\nend\n# loose\n\nfn bar() do\n2\nend",
+            "# header\n\n## About foo.\nfn foo() do\n  1\nend\n\n# loose\n\nfn bar() do\n  2\nend\n",
         );
     }
 
@@ -3173,6 +3271,60 @@ mod tests {
             result.contains(",)"),
             "Trailing comma should be preserved but without space before ). Got: {:?}",
             result
+        );
+    }
+
+    /// `try_format`, so a refusal fails the test instead of passing the input through.
+    fn formats_to(source: &str, expected: &str) {
+        let formatted = crate::try_format(source, &FormatConfig::default()).expect("formats");
+        assert_eq!(formatted, expected);
+    }
+
+    #[test]
+    fn match_keeps_its_keyword_and_cons_patterns_are_spaced() {
+        formats_to(
+            "fn f(x) do\nmatch x do\nSome(head::tail) -> head\n_ -> 0\nend\nend",
+            "fn f(x) do\n  match x do\n    Some(head :: tail) -> head\n    _ -> 0\n  end\nend\n",
+        );
+    }
+
+    #[test]
+    fn keyword_arguments_stay_keyword_arguments() {
+        formats_to(
+            "fn main() do\nrequest(\"/events\", method:\"POST\", kind: :json)\nend",
+            "fn main() do\n  request(\"/events\", method: \"POST\", kind: :json)\nend\n",
+        );
+    }
+
+    #[test]
+    fn semicolon_separated_statements_get_their_own_lines() {
+        formats_to(
+            "fn main() do\nlet a = 1; let b = 2\na + b;\nend",
+            "fn main() do\n  let a = 1\n  let b = 2\n  a + b\nend\n",
+        );
+    }
+
+    #[test]
+    fn closure_clauses_are_spaced() {
+        formats_to(
+            "let c = fn 0 -> \"zero\"|n when n > 0 -> \"positive\"|_ -> \"other\" end",
+            "let c = fn 0 -> \"zero\" | n when n > 0 -> \"positive\" | _ -> \"other\" end\n",
+        );
+    }
+
+    #[test]
+    fn handler_state_parameter_follows_do_with_a_space() {
+        formats_to(
+            "service S do\nfn init() -> Int do\n0\nend\ncall Get() :: Int do|s|\n(s, s)\nend\ncast Reset() do|_s|\n0\nend\nend",
+            "service S do\n  fn init() -> Int do\n    0\n  end\n\n  call Get() :: Int do |s|\n    (s, s)\n  end\n\n  cast Reset() do |_s|\n    0\n  end\nend\n",
+        );
+    }
+
+    #[test]
+    fn receive_after_clause_is_an_arm_and_end_closes_the_block() {
+        formats_to(
+            "actor w() do\nreceive do\nm -> m\nafter 10 -> 0\nend\nend",
+            "actor w() do\n  receive do\n    m -> m\n    after 10 -> 0\n  end\nend\n",
         );
     }
 }

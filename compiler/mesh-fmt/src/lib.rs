@@ -57,7 +57,8 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
 }
 
 /// Every token but whitespace, with the trailing blanks the printer trims and
-/// without trailing commas, which the formatter may drop (`import (a, b,)`).
+/// without trailing commas, which the formatter may drop (`import (a, b,)`),
+/// and without semicolons: a statement separated by `;` goes on its own line.
 fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKind, String)> {
     use mesh_parser::SyntaxKind;
     let tokens: Vec<_> = parse
@@ -67,7 +68,10 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
         .filter(|token| {
             !matches!(
                 token.kind(),
-                SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::EOF
+                SyntaxKind::WHITESPACE
+                    | SyntaxKind::NEWLINE
+                    | SyntaxKind::SEMICOLON
+                    | SyntaxKind::EOF
             )
         })
         .map(|token| (token.kind(), token.text().trim_end().to_owned()))
@@ -696,7 +700,6 @@ mod snapshot_tests {
         let result = fmt("# A comment\nfn foo() do\n1\nend");
         insta::assert_snapshot!(result, @r"
         # A comment
-
         fn foo() do
           1
         end
