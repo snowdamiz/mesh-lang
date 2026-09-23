@@ -159,6 +159,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::AmbiguousImplMethod { .. } => "E0065",
         TypeError::AmbiguousStaticMethod { .. } => "E0066",
         TypeError::RigidTypeParam { .. } => "E0067",
+        TypeError::DuplicateDefinition { .. } => "E0068",
     }
 }
 
@@ -549,6 +550,7 @@ pub fn render_json_diagnostic(
                 | TypeError::AmbiguousImplMethod { span, .. }
                 | TypeError::AmbiguousStaticMethod { span, .. }
                 | TypeError::RigidTypeParam { span, .. }
+                | TypeError::DuplicateDefinition { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2178,6 +2180,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give the result a type: `let x :: Int = value.convert()`")
+                .finish()
+        }
+        TypeError::DuplicateDefinition { kind, name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("{kind} `{name}` is defined twice"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("defined again here")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("rename or remove one of the two `{name}`s"))
                 .finish()
         }
         TypeError::RigidTypeParam { param, found, span } => {

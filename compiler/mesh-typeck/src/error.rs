@@ -395,6 +395,12 @@ pub enum TypeError {
         found: Option<Ty>,
         span: TextRange,
     },
+    /// A field, variant, parameter or type defined twice.
+    DuplicateDefinition {
+        kind: &'static str,
+        name: String,
+        span: TextRange,
+    },
     /// A generic function's body fixes one of its type parameters (to a
     /// type, or to another parameter).
     RigidTypeParam {
@@ -934,6 +940,9 @@ impl fmt::Display for TypeError {
                     f,
                     "cannot tell which impl's `{method}` to call on `{receiver}`"
                 )
+            }
+            TypeError::DuplicateDefinition { kind, name, .. } => {
+                write!(f, "{kind} `{name}` is defined twice")
             }
             TypeError::RigidTypeParam { param, found, .. } => {
                 write!(

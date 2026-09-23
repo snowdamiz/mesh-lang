@@ -246,6 +246,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::AmbiguousImplMethod { span, .. }
         | TypeError::AmbiguousStaticMethod { span, .. }
         | TypeError::RigidTypeParam { span, .. }
+        | TypeError::DuplicateDefinition { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

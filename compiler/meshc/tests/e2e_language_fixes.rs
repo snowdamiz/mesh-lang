@@ -3289,3 +3289,60 @@ fn a_generic_function_must_keep_its_type_parameters_generic() {
     assert!(err.contains("expected T, found List<T>"), "{err}");
     assert!(!err.contains("infinite type"), "{err}");
 }
+
+#[test]
+fn duplicate_definitions_are_rejected() {
+    let source = r##"
+struct A do
+  x :: Int
+  x :: String
+end
+
+type C do
+  R
+  R
+end
+
+struct A do
+  y :: Int
+end
+
+fn f(x :: Int, x :: String) -> String do
+  x
+end
+
+fn main() do
+  println(f(1, "dup"))
+end
+"##;
+    let diags = json_diagnostics(source);
+    let mut dups: Vec<(&str, usize)> = diags
+        .iter()
+        .filter(|d| d["code"] == "E0068")
+        .map(|d| {
+            (
+                d["message"].as_str().unwrap(),
+                d["spans"][0]["start"].as_u64().unwrap() as usize,
+            )
+        })
+        .collect();
+    dups.sort_by_key(|(_, start)| *start);
+    assert_eq!(
+        dups,
+        [
+            (
+                "field `x` is defined twice",
+                source.find("x :: String").unwrap()
+            ),
+            (
+                "variant `R` is defined twice",
+                source.rfind("  R\n").unwrap() + 2
+            ),
+            ("type `A` is defined twice", source.rfind("A do").unwrap()),
+            (
+                "parameter `x` is defined twice",
+                source.find("x :: String)").unwrap()
+            ),
+        ]
+    );
+}

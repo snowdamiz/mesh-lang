@@ -4287,6 +4287,25 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         );
         ctx.registered_items.insert(range);
     }
+    let mut defined_types: Vec<String> = Vec::new();
+    for item in singles() {
+        let name = match item {
+            Item::StructDef(def) => def.name(),
+            Item::SumTypeDef(def) => def.name(),
+            _ => None,
+        };
+        if let Some((name, span)) = name.and_then(|n| Some((n.text()?, n.syntax().text_range()))) {
+            if defined_types.contains(&name) {
+                ctx.errors.push(TypeError::DuplicateDefinition {
+                    kind: "type",
+                    name,
+                    span,
+                });
+            } else {
+                defined_types.push(name);
+            }
+        }
+    }
     for item in singles() {
         match item {
             Item::StructDef(def) => {
@@ -5785,6 +5804,14 @@ fn register_struct_def(
             .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
             .unwrap_or_else(|| ctx.fresh_var());
 
+        if fields.iter().any(|(existing, _)| *existing == field_name) {
+            ctx.errors.push(TypeError::DuplicateDefinition {
+                kind: "field",
+                name: field_name.clone(),
+                span: field.syntax().text_range(),
+            });
+            continue;
+        }
         fields.push((field_name, field_ty));
     }
 
@@ -6590,6 +6617,23 @@ fn register_sum_type_def(
     trait_registry.register_nominal(&name);
     type_registry.propagate_resource_containment();
     let is_affine_resource = type_registry.is_resource_name(&name);
+
+    // A variant declared twice in the type.
+    let mut declared: Vec<String> = Vec::new();
+    for variant_def in sum_def.variants() {
+        let Some(variant) = variant_def.name().map(|t| t.text().to_string()) else {
+            continue;
+        };
+        if declared.contains(&variant) {
+            ctx.errors.push(TypeError::DuplicateDefinition {
+                kind: "variant",
+                name: variant,
+                span: variant_def.syntax().text_range(),
+            });
+        } else {
+            declared.push(variant);
+        }
+    }
 
     // An unqualified variant name names one variant of this module (one
     // of an imported type it shadows); two here would be ambiguous. The
@@ -7753,6 +7797,20 @@ fn infer_fn_def(
     let mut param_type_param_names: Vec<Option<String>> = Vec::new();
 
     if let Some(param_list) = fn_.param_list() {
+        let mut names: Vec<String> = Vec::new();
+        for param in param_list.params() {
+            if let Some(name) = param.name().map(|t| t.text().to_string()) {
+                if names.contains(&name) {
+                    ctx.errors.push(TypeError::DuplicateDefinition {
+                        kind: "parameter",
+                        name,
+                        span: param.syntax().text_range(),
+                    });
+                } else {
+                    names.push(name);
+                }
+            }
+        }
         for param in param_list.params() {
             let (param_ty, tp_name) = if let Some(ann) = param.type_annotation() {
                 if let Some(type_name) = resolve_type_name_str(&ann) {
