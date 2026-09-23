@@ -267,6 +267,42 @@ impl InferCtx {
         Ty::Var(var)
     }
 
+    /// The `let` level `v` was created at, or lowered to.
+    fn level_of(&self, v: TyVar) -> u32 {
+        self.var_levels.get(v.0 as usize).copied().unwrap_or(0)
+    }
+
+    fn set_level(&mut self, v: TyVar, level: u32) {
+        while self.var_levels.len() <= v.0 as usize {
+            self.var_levels.push(0);
+        }
+        self.var_levels[v.0 as usize] = level;
+    }
+
+    /// Lower every unbound variable in `ty` to at most `level`: bound into a
+    /// variable of that level, they are reachable from outside a deeper
+    /// `let`, which must not generalize them (a call of a function defined
+    /// later in the file fixes them only then).
+    fn lower_levels(&mut self, ty: &Ty, level: u32) {
+        match self.resolve(ty.clone()) {
+            Ty::Var(v) => {
+                if self.level_of(v) > level {
+                    self.set_level(v, level);
+                }
+            }
+            Ty::Fun(params, ret) => {
+                params.iter().for_each(|p| self.lower_levels(p, level));
+                self.lower_levels(&ret, level);
+            }
+            Ty::App(con, args) => {
+                self.lower_levels(&con, level);
+                args.iter().for_each(|a| self.lower_levels(a, level));
+            }
+            Ty::Tuple(elems) => elems.iter().for_each(|e| self.lower_levels(e, level)),
+            Ty::Con(_) | Ty::Never => {}
+        }
+    }
+
     /// A fresh variable at the level of `anchor`'s variable (the current level
     /// when it has none): a `let` inside `anchor`'s scope does not generalize
     /// it away from `anchor`.
@@ -460,6 +496,8 @@ impl InferCtx {
         var_expected: bool,
     ) -> Result<(), TypeError> {
         if !self.occurs_in(v, &ty) {
+            let level = self.level_of(v);
+            self.lower_levels(&ty, level);
             self.table
                 .unify_var_value(v, Some(ty))
                 .expect("binding a var to a concrete type after occurs check should not fail");
@@ -545,11 +583,14 @@ impl InferCtx {
             // Two identical variables -- already unified.
             (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => Ok(()),
 
-            // Variable meets variable -- union them.
+            // Variable meets variable -- union them, at the outer level of the two.
             (Ty::Var(v1), Ty::Var(v2)) => {
+                let level = self.level_of(v1).min(self.level_of(v2));
                 self.table
                     .unify_var_var(v1, v2)
                     .expect("unifying two unbound vars should not fail");
+                let root = self.table.find(v1);
+                self.set_level(root, level);
                 Ok(())
             }
 

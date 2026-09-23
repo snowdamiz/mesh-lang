@@ -3512,3 +3512,25 @@ end
 "##;
     assert_eq!(run(source), "3 1\na 1\n");
 }
+
+#[test]
+fn a_value_from_a_function_defined_later_has_one_type() {
+    // The function's type was still a placeholder when the `let` was
+    // checked, and the `let` generalized it: `r` was accepted both as an
+    // Int and as a String.
+    for later in [
+        "fn make(n) do\n  n * 2\nend\n",
+        "fn make(0) = 1\nfn make(n) = n * make(n - 1)\n",
+    ] {
+        let source = format!(
+            "fn main() do\n  let r = make(5)\n  let a :: Int = r\n  let b :: String = r\n  println(\"#{{a}} #{{b}}\")\nend\n\n{later}"
+        );
+        let err = build_error(&source);
+        assert!(
+            err.contains("expected String, found Int"),
+            "{source}\n{err}"
+        );
+    }
+    let source = "fn main() do\n  let r = make(5)\n  println(\"#{r + 1} #{fact(5)}\")\nend\n\nfn make(n) do\n  n * 2\nend\n\nfn fact(0) = 1\nfn fact(n) = n * fact(n - 1)\n";
+    assert_eq!(run(source), "11 120\n");
+}

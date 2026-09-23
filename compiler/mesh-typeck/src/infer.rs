@@ -5105,6 +5105,12 @@ fn infer_multi_clause_fn(
 
     // ── Step 2: Set up function type infrastructure ────────────────────
 
+    // The placeholder calls earlier in the module used.
+    let pre_registered = env
+        .lookup(&fn_name)
+        .filter(|scheme| scheme.vars.is_empty())
+        .map(|scheme| scheme.ty.clone());
+
     ctx.enter_level();
 
     // Pre-register the function name with a fresh type variable for recursion.
@@ -5343,6 +5349,10 @@ fn infer_multi_clause_fn(
 
     ctx.leave_level();
     let scheme = ctx.generalize(fn_ty.clone());
+    if let Some(pre_var) = pre_registered {
+        let instance = ctx.instantiate(&scheme);
+        let _ = ctx.unify(pre_var, instance, ConstraintOrigin::Builtin);
+    }
     env.insert(fn_name, scheme);
 
     let resolved = ctx.resolve(fn_ty);
@@ -8051,13 +8061,17 @@ fn infer_fn_def(
 
     ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
 
-    // Propagate the pre-registered mutual-recursion placeholder to the actual type.
-    if let Some(pre_var) = pre_registered {
-        let _ = ctx.unify(pre_var, fn_ty.clone(), ConstraintOrigin::Builtin);
-    }
-
     ctx.leave_level();
     let scheme = ctx.generalize(fn_ty.clone());
+
+    // Calls earlier in the module used the pre-registered placeholder: they
+    // are one use of the function, so they get an instance of its type (the
+    // placeholder is module-wide; unified with the type itself it would keep
+    // the function from being generic).
+    if let Some(pre_var) = pre_registered {
+        let instance = ctx.instantiate(&scheme);
+        let _ = ctx.unify(pre_var, instance, ConstraintOrigin::Builtin);
+    }
 
     // For arity-overloaded pub fns, also insert with mangled name__arity key
     // so the pre-registered placeholder gets updated and arity dispatch works.
