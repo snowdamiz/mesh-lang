@@ -928,9 +928,11 @@ pub(crate) fn prepare_project_build(
                     Config::default().with_color(false)
                 }
                 .with_index_type(ariadne::IndexType::Byte);
-                let start = error.span.start as usize;
-                let end = (error.span.end as usize).max(start + 1);
-                let span = (file_name.clone(), start..end);
+                let range = mesh_typeck::diagnostics::report_span(
+                    &source,
+                    error.span.start as usize..error.span.end as usize,
+                );
+                let span = (file_name.clone(), range);
                 let _ = Report::build(ReportKind::Error, span.clone())
                     .with_message("Parse error")
                     .with_config(config)

@@ -332,6 +332,33 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// Render a type error as a JSON diagnostic string (one line).
 ///
 /// Produces machine-readable output for editor/CI integration.
+/// `span` as a range ariadne can underline in `source`: inside the source,
+/// on character boundaries (spans are byte offsets), and at least one
+/// character wide. A span at the end of the file (an unclosed string)
+/// covers the last character, and an empty file gives `0..0`.
+pub fn report_span(source: &str, span: Range<usize>) -> Range<usize> {
+    let len = source.len();
+    let floor = |mut i: usize| {
+        i = i.min(len);
+        while !source.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    };
+    let mut start = floor(span.start);
+    let mut end = floor(span.end).max(start);
+    if start == end {
+        if start < len {
+            end = (start + 1..=len)
+                .find(|&i| source.is_char_boundary(i))
+                .unwrap_or(len);
+        } else if start > 0 {
+            start = floor(start - 1);
+        }
+    }
+    start..end
+}
+
 pub fn render_json_diagnostic(
     error: &TypeError,
     source: &str,
@@ -631,15 +658,7 @@ pub fn render_diagnostic(
     .with_index_type(ariadne::IndexType::Byte);
     let source_len = source.len();
 
-    let clamp = |r: Range<usize>| -> Range<usize> {
-        let s = r.start.min(source_len);
-        let e = r.end.min(source_len).max(s);
-        if s == e {
-            s..e.saturating_add(1).min(source_len)
-        } else {
-            s..e
-        }
-    };
+    let clamp = |r: Range<usize>| report_span(source, r);
 
     let code = error_code(error);
 

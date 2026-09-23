@@ -3953,3 +3953,20 @@ fn long_expressions_do_not_overflow_the_compilers_stack() {
     );
     assert_eq!(run(&source), "2000 800 800\n");
 }
+
+#[test]
+fn a_parse_error_at_the_end_of_the_file_is_reported() {
+    // With byte offsets, the one-past-the-end span of an error at the end
+    // of the file made ariadne panic.
+    for source in [
+        "fn main() do\n  let s = \"abc\n  println(s)\nend\n",
+        "fn main() do\n  println(\"a\n",
+        "fn main() do\n  println(\"é",
+    ] {
+        let err = build_error(source);
+        assert!(
+            err.contains("Parse error") && !err.contains("panicked"),
+            "{err}"
+        );
+    }
+}
