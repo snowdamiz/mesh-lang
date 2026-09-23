@@ -163,6 +163,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnknownType { .. } => "E0069",
         TypeError::UnknownFieldOwner { .. } => "E0070",
         TypeError::UnknownInterface { .. } => "E0071",
+        TypeError::InvalidLiteral { .. } => "E0072",
     }
 }
 
@@ -557,6 +558,7 @@ pub fn render_json_diagnostic(
                 | TypeError::UnknownType { span, .. }
                 | TypeError::UnknownFieldOwner { span, .. }
                 | TypeError::UnknownInterface { span, .. }
+                | TypeError::InvalidLiteral { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2214,6 +2216,19 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("check the spelling, or define or import the type")
+                .finish()
+        }
+        TypeError::InvalidLiteral { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(reason)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("invalid literal")
+                        .with_color(Color::Red),
+                )
                 .finish()
         }
         TypeError::UnknownInterface { name, span } => {

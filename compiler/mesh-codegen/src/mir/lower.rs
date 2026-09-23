@@ -16623,7 +16623,11 @@ fn parse_int_literal(text: &str) -> Option<i64> {
     } else {
         (normalized.as_str(), 10)
     };
-    i64::from_str_radix(digits, radix).ok()
+    // `9223372036854775808` only appears negated (the checker rejects it
+    // otherwise): it wraps to i64::MIN, which negation leaves as is.
+    u64::from_str_radix(digits, radix)
+        .ok()
+        .map(|value| value as i64)
 }
 
 fn parse_float_literal(text: &str) -> Option<f64> {

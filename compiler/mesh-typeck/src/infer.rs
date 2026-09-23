@@ -8468,7 +8468,19 @@ fn infer_expr_here(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     let ty = match expr {
-        Expr::Literal(lit) => infer_literal(lit),
+        Expr::Literal(lit) => {
+            if let Some(token) = lit.token() {
+                // `-9223372036854775808` is a minus applied to a literal.
+                let negated = lit.syntax().parent().is_some_and(|parent| {
+                    parent.kind() == SyntaxKind::UNARY_EXPR
+                        && parent
+                            .children_with_tokens()
+                            .any(|t| t.kind() == SyntaxKind::MINUS)
+                });
+                check_numeric_literal(ctx, &token, negated);
+            }
+            infer_literal(lit)
+        }
         Expr::NameRef(name_ref) => infer_name_ref(ctx, env, name_ref)?,
         Expr::BinaryExpr(bin) => infer_binary(
             ctx,
@@ -8739,6 +8751,57 @@ fn infer_expr_here(
     types.insert(expr.syntax().text_range(), resolved.clone());
 
     Ok(ty)
+}
+
+/// Report a numeric literal that is malformed (`1e`, `0x`) or out of
+/// range (`9223372036854775808` outside `-...`): codegen made each 0.
+fn check_numeric_literal(ctx: &mut InferCtx, token: &mesh_parser::SyntaxToken, negated: bool) {
+    if let Some(reason) = numeric_literal_error(token.kind(), token.text(), negated) {
+        ctx.errors.push(TypeError::InvalidLiteral {
+            reason,
+            span: token.text_range(),
+        });
+    }
+}
+
+/// Why `text` is not a valid literal of `kind`, if it is not.
+fn numeric_literal_error(kind: SyntaxKind, text: &str, negated: bool) -> Option<String> {
+    let normalized = text.replace('_', "");
+    match kind {
+        SyntaxKind::INT_LITERAL => {
+            let lower = normalized.to_ascii_lowercase();
+            let (digits, radix, prefix) = [("0x", 16), ("0b", 2), ("0o", 8)]
+                .iter()
+                .find_map(|(prefix, radix)| {
+                    lower
+                        .strip_prefix(prefix)
+                        .map(|digits| (digits.to_string(), *radix, *prefix))
+                })
+                .unwrap_or((lower.clone(), 10, ""));
+            if digits.is_empty() {
+                return Some(format!("expected digits after `{prefix}`"));
+            }
+            match u64::from_str_radix(&digits, radix) {
+                Ok(value) if value <= i64::MAX as u64 => None,
+                // `-9223372036854775808` is the smallest Int.
+                Ok(value) if negated && value == 1 << 63 => None,
+                _ => Some(format!(
+                    "integer literal `{text}` is out of range: an Int is at most 9223372036854775807"
+                )),
+            }
+        }
+        SyntaxKind::FLOAT_LITERAL => {
+            if normalized.ends_with(['e', 'E', '+', '-']) {
+                return Some("expected digits after the exponent".to_string());
+            }
+            match normalized.parse::<f64>() {
+                Ok(value) if value.is_finite() => None,
+                Ok(_) => Some(format!("float literal `{text}` is out of range")),
+                Err(_) => Some(format!("malformed float literal `{text}`")),
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Infer the type of a literal expression.
@@ -13253,6 +13316,9 @@ fn infer_pattern(
             Ok(ty)
         }
         Pattern::Literal(lit) => {
+            if let Some(token) = lit.token() {
+                check_numeric_literal(ctx, &token, lit.is_negative());
+            }
             let ty = if let Some(token) = lit.token() {
                 match token.kind() {
                     SyntaxKind::INT_LITERAL => Ty::int(),

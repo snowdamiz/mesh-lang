@@ -3771,3 +3771,35 @@ end
 "##;
     assert_eq!(run(source), "got 5\ngot 6\n");
 }
+
+#[test]
+fn numeric_literals_are_checked() {
+    // Each of these compiled to 0; the smallest Int could not be written.
+    let source = r##"
+fn main() do
+  println("#{-9223372036854775808}")
+  let r = case -9223372036854775808 do
+    -9223372036854775808 -> "INT_MIN"
+    _ -> "other"
+  end
+  println("#{r} #{0x7fffffffffffffff} #{1_000} #{0b101} #{0o17} #{1.5e3}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "-9223372036854775808\nINT_MIN 9223372036854775807 1000 5 15 1500.0\n"
+    );
+    let bad = "fn main() do\n  let a = 1e\n  let b = 2e+\n  let c = 0x\n  let d = 9223372036854775808\n  let e = 0xffffffffffffffff\n  let f = 1e999\n  let g = case 0 do\n    99999999999999999999 -> 1\n    _ -> 0\n  end\n  println(\"#{a} #{b} #{c} #{d} #{e} #{f} #{g}\")\nend\n";
+    let err = build_error(bad);
+    assert_eq!(err.matches("E0072").count(), 7, "{err}");
+    assert!(err.contains("expected digits after the exponent"), "{err}");
+    assert!(err.contains("expected digits after `0x`"), "{err}");
+    assert!(
+        err.contains("integer literal `9223372036854775808` is out of range"),
+        "{err}"
+    );
+    assert!(
+        err.contains("float literal `1e999` is out of range"),
+        "{err}"
+    );
+}

@@ -250,6 +250,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::UnknownType { span, .. }
         | TypeError::UnknownFieldOwner { span, .. }
         | TypeError::UnknownInterface { span, .. }
+        | TypeError::InvalidLiteral { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }
