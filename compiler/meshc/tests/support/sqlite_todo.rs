@@ -685,8 +685,8 @@ fn assert_generated_project_shape(project_dir: &Path) {
     );
 
     let health = read_file(&project_dir.join("api/health.mpl"));
-    assert!(health.contains("mode : \"local\""));
-    assert!(health.contains("db_backend : \"sqlite\""));
+    assert!(health.contains("mode: \"local\""));
+    assert!(health.contains("db_backend: \"sqlite\""));
     assert!(!health.contains("clustered_handler"));
 
     let main = read_file(&project_dir.join("main.mpl"));
