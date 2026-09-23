@@ -1407,6 +1407,37 @@ fn error_fn_missing_end_references_do_span() {
 }
 
 #[test]
+fn error_two_statements_on_one_line() {
+    // Once parsed as two statements: a bare `assert_raises` and a closure.
+    for source in [
+        "test(\"t\") do\n  assert_raises fn() do\n    assert(false)\n  end\nend\n",
+        "fn main() do\n  let a = 1 let b = 2\nend\n",
+        "let a = 1 let b = 2\n",
+        "fn f(r) do\n  case r do\n    Ok(v) ->\n      log(v) v\n    Err(_) -> 0\n  end\nend\n",
+        "actor a() do\n  let n = 1 println(\"#{n}\")\nend\n",
+    ] {
+        let p = parse(source);
+        assert_eq!(
+            p.errors().first().map(|e| e.message.as_str()),
+            Some("expected a newline or `;` after the statement"),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn statements_end_at_newlines_inside_delimiters_and_at_semicolons() {
+    for source in [
+        "fn main() do\n  map(xs, fn x do\n    let y = x * 2\n    y\n  end)\nend\n",
+        "fn main() do\n  let a = 1; let b = 2\n  if a do a else b end\nend\n",
+        "let a = 1; let b = 2\n",
+    ] {
+        let p = parse(source);
+        assert!(p.ok(), "{source}: {:?}", p.errors());
+    }
+}
+
+#[test]
 fn error_glob_import_message() {
     // from Math import * -> error about glob imports
     let p = parse("from Math import *");

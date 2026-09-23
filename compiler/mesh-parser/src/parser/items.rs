@@ -1248,17 +1248,15 @@ fn parse_impl_body(p: &mut Parser) {
             }
         }
 
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
         if p.has_error() {
             break;
         }
 
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {}
-            SyntaxKind::END_KW | SyntaxKind::EOF => {}
-            _ => {}
+        if p.at(SyntaxKind::NEWLINE) {
+            p.eat_newlines();
         }
     }
 
@@ -1503,6 +1501,9 @@ fn parse_item_block_body(p: &mut Parser) {
 
         // Parse an item or statement.
         super::parse_item_or_stmt(p);
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
 
         if p.has_error() {
             break;
@@ -1607,17 +1608,15 @@ fn parse_actor_body(p: &mut Parser) {
             }
         }
 
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
         if p.has_error() {
             break;
         }
 
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {}
-            SyntaxKind::END_KW | SyntaxKind::EOF => {}
-            _ => {}
+        if p.at(SyntaxKind::NEWLINE) {
+            p.eat_newlines();
         }
     }
 
@@ -1736,17 +1735,15 @@ fn parse_supervisor_body(p: &mut Parser) {
             }
         }
 
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
         if p.has_error() {
             break;
         }
 
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {}
-            SyntaxKind::END_KW | SyntaxKind::EOF => {}
-            _ => {}
+        if p.at(SyntaxKind::NEWLINE) {
+            p.eat_newlines();
         }
     }
 
@@ -1914,17 +1911,15 @@ fn parse_child_spec_body(p: &mut Parser) {
             }
         }
 
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
         if p.has_error() {
             break;
         }
 
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {}
-            SyntaxKind::END_KW | SyntaxKind::EOF => {}
-            _ => {}
+        if p.at(SyntaxKind::NEWLINE) {
+            p.eat_newlines();
         }
     }
 
@@ -2008,17 +2003,15 @@ fn parse_service_body(p: &mut Parser) {
             }
         }
 
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
         if p.has_error() {
             break;
         }
 
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {}
-            SyntaxKind::END_KW | SyntaxKind::EOF => {}
-            _ => {}
+        if p.at(SyntaxKind::NEWLINE) {
+            p.eat_newlines();
         }
     }
 

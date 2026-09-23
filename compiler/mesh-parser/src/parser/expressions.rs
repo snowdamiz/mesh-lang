@@ -767,6 +767,9 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
 
         // Parse a statement or item.
         super::parse_item_or_stmt(p);
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
 
         if p.has_error() {
             break;
@@ -1024,6 +1027,9 @@ fn parse_arm_block_body(p: &mut Parser) {
 
         super::parse_item_or_stmt(p);
         statements += 1;
+        if !p.has_error() {
+            super::expect_statement_end(p);
+        }
 
         if p.has_error() {
             break;

@@ -655,6 +655,9 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
         }
 
         parse_item_or_stmt(p);
+        if !p.has_error() {
+            expect_statement_end(p);
+        }
 
         if p.has_error() {
             // On error, skip to next newline or EOF.
@@ -684,6 +687,17 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
     p.advance(); // EOF
 
     p.close(root, SyntaxKind::SOURCE_FILE);
+}
+
+/// After a statement or item, the line must end (or a `;` must separate the
+/// next one). Without this, `assert_raises fn() do ... end` would silently
+/// parse as two statements.
+pub(crate) fn expect_statement_end(p: &mut Parser) {
+    // `at_line_end` also sees the newlines that are insignificant inside
+    // delimiters, such as the statements of a closure passed as an argument.
+    if !p.at_line_end() && !matches!(p.current(), SyntaxKind::SEMICOLON | SyntaxKind::ELSE_KW) {
+        p.error("expected a newline or `;` after the statement");
+    }
 }
 
 /// Parse an item or statement.
