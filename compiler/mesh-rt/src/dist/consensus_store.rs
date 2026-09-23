@@ -526,9 +526,20 @@ mod tests {
         network.remove(501).await;
         drop(node);
 
-        let restarted = start_durable_consensus_node(501, network.clone(), "durable-test", &path)
-            .await
-            .expect("restart durable node");
+        // Raft's worker tasks let go of the store just after `shutdown`
+        // returns; reopening before then finds the file still locked.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let restarted = loop {
+            match start_durable_consensus_node(501, network.clone(), "durable-test", &path).await {
+                Err(error)
+                    if error.contains("Database already open")
+                        && tokio::time::Instant::now() < deadline =>
+                {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                result => break result.expect("restart durable node"),
+            }
+        };
         network.register(501, restarted.raft.clone()).await;
         wait_for_consensus_leader(std::slice::from_ref(&restarted), Duration::from_secs(5))
             .await
