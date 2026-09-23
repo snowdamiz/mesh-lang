@@ -3933,3 +3933,10 @@ end
 "##;
     assert_eq!(run(source), "heredoc pattern other\n");
 }
+
+#[test]
+fn heredocs_in_crlf_files_end_their_lines_with_newlines() {
+    // The value was "a\r\nb\r": the `\r` before the closing indent stayed.
+    let source = "fn main() do\r\n  let h = \"\"\"\r\n    a\r\n    b\r\n    \"\"\"\r\n  println(\"#{String.length(h)} #{h == \"a\\nb\"}\")\r\nend\r\n";
+    assert_eq!(run(source), "3 true\n");
+}

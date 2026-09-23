@@ -11950,9 +11950,17 @@ impl<'a> Lowerer<'a> {
         for (index, child) in children.iter().enumerate() {
             match child.kind() {
                 SyntaxKind::STRING_CONTENT => {
+                    // A heredoc's lines end in `\n` whatever the file's
+                    // line endings (an escaped `\r\n` stays).
                     let raw_text = child
                         .as_token()
-                        .map(|t| unescape_string(t.text()))
+                        .map(|t| {
+                            if is_triple {
+                                unescape_string(&t.text().replace("\r\n", "\n"))
+                            } else {
+                                unescape_string(t.text())
+                            }
+                        })
                         .unwrap_or_default();
 
                     let text = if is_triple {
@@ -16763,7 +16771,13 @@ fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String 
         .children_with_tokens()
         .filter_map(|c| c.into_token())
         .filter(|t| t.kind() == SyntaxKind::STRING_CONTENT)
-        .map(|t| t.text().to_string())
+        .map(|t| {
+            if is_triple {
+                t.text().replace("\r\n", "\n")
+            } else {
+                t.text().to_string()
+            }
+        })
         .collect();
     if !is_triple {
         return contents.iter().map(|c| unescape_string(c)).collect();
