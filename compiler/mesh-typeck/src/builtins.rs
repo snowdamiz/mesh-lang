@@ -3034,11 +3034,12 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         associated_types: vec![],
     });
 
-    // Ord impls for Int, Float, String.
+    // Ord impls for Int, Float, String and Bool (false < true, as in tuples).
     for (ty, ty_name) in &[
         (Ty::int(), "Int"),
         (Ty::float(), "Float"),
         (Ty::string(), "String"),
+        (Ty::bool(), "Bool"),
     ] {
         let mut methods = FxHashMap::default();
         methods.insert(

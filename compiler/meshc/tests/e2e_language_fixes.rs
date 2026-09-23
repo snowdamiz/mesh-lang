@@ -2374,3 +2374,23 @@ end
 "##;
     assert_eq!(run(source), "10 true true\n1 20\ntrue true\n1 true\n");
 }
+
+#[test]
+fn bools_order_and_negative_zero_hashes_like_zero() {
+    let source = r##"
+struct S do
+  s :: String
+  b :: Bool
+end deriving(Eq, Ord)
+
+struct F do
+  v :: Float
+end deriving(Eq, Hash)
+
+fn main() do
+  println("#{false < true} #{true <= false} #{compare(true, false)} #{S { s: "a", b: false } < S { s: "a", b: true }}")
+  println("#{F { v: 0.0 } == F { v: -0.0 }} #{F { v: 0.0 }.hash() == F { v: -0.0 }.hash()}")
+end
+"##;
+    assert_eq!(run(source), "true false Greater true\ntrue true\n");
+}

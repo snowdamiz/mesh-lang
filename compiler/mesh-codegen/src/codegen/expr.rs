@@ -1064,6 +1064,19 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_int_compare(IntPredicate::NE, l, r, "bne")
                 .map_err(|e| e.to_string())?
                 .into(),
+            // false < true: the bits compare unsigned.
+            BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                let predicate = match op {
+                    BinOp::Lt => IntPredicate::ULT,
+                    BinOp::Gt => IntPredicate::UGT,
+                    BinOp::LtEq => IntPredicate::ULE,
+                    _ => IntPredicate::UGE,
+                };
+                self.builder
+                    .build_int_compare(predicate, l, r, "bcmp")
+                    .map_err(|e| e.to_string())?
+                    .into()
+            }
             _ => return Err(format!("Unsupported bool binop: {:?}", op)),
         };
         Ok(result)

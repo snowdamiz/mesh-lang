@@ -22,6 +22,8 @@ pub extern "C" fn mesh_hash_int(value: i64) -> i64 {
 
 #[no_mangle]
 pub extern "C" fn mesh_hash_float(value: f64) -> i64 {
+    // 0.0 == -0.0, so they must hash alike.
+    let value = if value == 0.0 { 0.0 } else { value };
     fnv1a_bytes(&value.to_bits().to_le_bytes()) as i64
 }
 

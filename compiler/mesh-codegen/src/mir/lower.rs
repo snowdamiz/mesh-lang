@@ -17452,12 +17452,13 @@ pub fn lower_to_mir(
         ],
     });
 
-    // Generate Ord__compare__ for built-in primitive types (Int, Float, String).
+    // Generate Ord__compare__ for built-in primitive types (Int, Float, String, Bool).
     // These use BinOp::Lt and BinOp::Eq directly since primitives don't have
     // generated Ord__lt__ / Eq__eq__ functions.
     lowerer.generate_compare_primitive("Int", MirType::Int);
     lowerer.generate_compare_primitive("Float", MirType::Float);
     lowerer.generate_compare_primitive("String", MirType::String);
+    lowerer.generate_compare_primitive("Bool", MirType::Bool);
 
     // Generate cross-module trait method wrappers for imported structs/sum types.
     // When a struct like User is defined in module A with deriving(Json), module A
