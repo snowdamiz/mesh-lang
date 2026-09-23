@@ -275,6 +275,10 @@ pub struct TypeckResult {
     pub discarded_callback_results: FxHashSet<TextRange>,
     /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// Associated types reached through a type parameter: (the variable
+    /// standing for the type, trait, associated type name, receiver type).
+    /// A specialization knows the receiver, and so the associated type.
+    pub assoc_projections: Vec<(Ty, String, String, Ty)>,
 }
 
 impl TypeckResult {

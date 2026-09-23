@@ -4342,6 +4342,36 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
+    // Associated types reached through a type parameter are known wherever
+    // the receiver ended up concrete (a call of a generic function).
+    for (var, trait_name, assoc, receiver) in ctx.assoc_projections.clone() {
+        let receiver = ctx.resolve(receiver);
+        if !matches!(ctx.resolve(var.clone()), Ty::Var(_)) || receiver.has_type_vars() {
+            continue;
+        }
+        if let Some(assoc_ty) =
+            trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
+        {
+            let _ = ctx.unify(var, assoc_ty, ConstraintOrigin::Builtin);
+        }
+    }
+
+    for (required, trait_name, assoc, receiver, span) in ctx.projection_requirements.clone() {
+        let receiver = ctx.resolve(receiver);
+        if receiver.has_type_vars() {
+            continue;
+        }
+        if let Some(assoc_ty) =
+            trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
+        {
+            let origin = match span {
+                Some(span) => ConstraintOrigin::Expr { span },
+                None => ConstraintOrigin::Builtin,
+            };
+            let _ = ctx.unify(required, assoc_ty, origin);
+        }
+    }
+
     // Resolve all types in the type table through the union-find.
     let resolved_types: FxHashMap<TextRange, Ty> = types
         .into_iter()
@@ -4354,6 +4384,12 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
+    let assoc_projections = std::mem::take(&mut ctx.assoc_projections)
+        .into_iter()
+        .map(|(var, trait_name, assoc, receiver)| {
+            (ctx.resolve(var), trait_name, assoc, ctx.resolve(receiver))
+        })
+        .collect();
 
     // Extract qualified module function names for the MIR lowerer.
     let qualified_modules_for_codegen: FxHashMap<String, Vec<String>> = ctx
@@ -4378,6 +4414,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         clustered_route_wrappers: ctx.clustered_route_wrappers,
         discarded_callback_results: ctx.discarded_callback_results,
         function_ownership: ownership.function_ownership,
+        assoc_projections,
     }
 }
 
@@ -5025,6 +5062,10 @@ fn infer_multi_clause_fn(
 
     // ── Step 3: Infer each clause (like case arms) ─────────────────────
 
+    let saved_bounds = std::mem::replace(
+        &mut ctx.where_bounds,
+        where_bounds(&where_constraints, &type_params),
+    );
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5151,6 +5192,7 @@ fn infer_multi_clause_fn(
         env.pop_scope();
     }
 
+    ctx.where_bounds = saved_bounds;
     for returned in ctx.pop_fn_return_type() {
         join_branch_ty(ctx, &mut result_ty, returned)?;
     }
@@ -5808,6 +5850,7 @@ fn register_struct_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -5829,6 +5872,7 @@ fn register_struct_def(
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -5850,6 +5894,7 @@ fn register_struct_def(
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -5871,6 +5916,7 @@ fn register_struct_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::int()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -5892,6 +5938,7 @@ fn register_struct_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -5927,6 +5974,7 @@ fn register_struct_def(
                     has_self: true,
                     param_count: 0,
                     return_type: Some(Ty::Con(TyCon::new("Json"))),
+                    param_types: None,
                 },
             );
             let _ = trait_registry.register_impl(TraitImplDef {
@@ -5945,6 +5993,7 @@ fn register_struct_def(
                     has_self: false,
                     param_count: 1,
                     return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
+                    param_types: None,
                 },
             );
             let _ = trait_registry.register_impl(TraitImplDef {
@@ -5980,6 +6029,7 @@ fn register_struct_def(
                     has_self: false,
                     param_count: 1, // takes a Map<String, String>
                     return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
+                    param_types: None,
                 },
             );
             let _ = trait_registry.register_impl(TraitImplDef {
@@ -6404,6 +6454,7 @@ fn register_sum_type_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -6425,6 +6476,7 @@ fn register_sum_type_def(
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -6446,6 +6498,7 @@ fn register_sum_type_def(
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -6467,6 +6520,7 @@ fn register_sum_type_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::int()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -6488,6 +6542,7 @@ fn register_sum_type_def(
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = trait_registry.register_impl(TraitImplDef {
@@ -6535,6 +6590,7 @@ fn register_sum_type_def(
                     has_self: true,
                     param_count: 0,
                     return_type: Some(Ty::Con(TyCon::new("Json"))),
+                    param_types: None,
                 },
             );
             let _ = trait_registry.register_impl(TraitImplDef {
@@ -6553,6 +6609,7 @@ fn register_sum_type_def(
                     has_self: false,
                     param_count: 1,
                     return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
+                    param_types: None,
                 },
             );
             let _ = trait_registry.register_impl(TraitImplDef {
@@ -6568,6 +6625,31 @@ fn register_sum_type_def(
 }
 
 // ── Interface/Impl Registration (03-04) ───────────────────────────────
+
+/// A method's non-self parameter types, when every one is annotated.
+fn method_param_types(
+    ctx: &mut InferCtx,
+    param_list: Option<mesh_parser::ast::item::ParamList>,
+    self_assoc: &FxHashMap<String, Ty>,
+    type_registry: &TypeRegistry,
+) -> Option<Vec<Ty>> {
+    let mut types = Vec::new();
+    for param in param_list?.params() {
+        let is_self = param
+            .syntax()
+            .children_with_tokens()
+            .any(|tok| tok.kind() == SyntaxKind::SELF_KW);
+        if is_self {
+            continue;
+        }
+        let ann = param.type_annotation()?;
+        types.push(
+            resolve_self_assoc_type(&ann, self_assoc)
+                .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))?,
+        );
+    }
+    Some(types)
+}
 
 /// Process an interface definition: register the trait in the registry.
 /// Also stores default method body syntax nodes for later MIR lowering.
@@ -6611,7 +6693,19 @@ fn infer_interface_def(
             }
         }
 
-        let return_type = method.return_type().and_then(|ann| resolve_type_name(&ann));
+        // `Self.Item` names the implementing type's associated type; other
+        // annotations are types in full (`List<Int>`, not `List`).
+        let self_assoc: FxHashMap<String, Ty> = iface
+            .assoc_types()
+            .filter_map(|assoc| assoc.name().and_then(|n| n.text()))
+            .map(|name| (name.clone(), Ty::Con(TyCon::new(&format!("Self.{name}")))))
+            .collect();
+        let return_type = method.return_type().and_then(|ann| {
+            resolve_self_assoc_type(&ann, &self_assoc)
+                .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                .or_else(|| resolve_type_name(&ann))
+        });
+        let param_types = method_param_types(ctx, method.param_list(), &self_assoc, type_registry);
 
         let has_default_body = method.body().is_some();
 
@@ -6629,6 +6723,7 @@ fn infer_interface_def(
             param_count,
             return_type,
             has_default_body,
+            param_types,
         });
     }
 
@@ -6941,6 +7036,7 @@ fn infer_impl_def(
                             .and_then(|ann| {
                                 // Try Self.Item resolution first for impl method params.
                                 resolve_self_assoc_type(&ann, &assoc_types)
+                                    .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
                                     .or_else(|| resolve_type_name(&ann))
                             })
                             .unwrap_or_else(|| ctx.fresh_var());
@@ -6979,12 +7075,19 @@ fn infer_impl_def(
         // The registry answers method lookups from other inference contexts,
         // so a return type still holding this context's type variables stays
         // unknown there (the trait's declared type stands in).
+        let declared_params: Vec<Ty> = all_param_tys
+            .iter()
+            .skip(usize::from(has_self))
+            .map(|ty| ctx.resolve(ty.clone()))
+            .collect();
         impl_methods.insert(
             method_name.clone(),
             ImplMethodSig {
                 has_self,
                 param_count,
                 return_type: return_type.clone().filter(|ty| !ty.has_type_vars()),
+                param_types: (!declared_params.iter().any(|ty| ty.has_type_vars()))
+                    .then_some(declared_params),
             },
         );
 
@@ -7001,7 +7104,7 @@ fn infer_impl_def(
         }
     }
 
-    // Register the impl and collect validation errors.
+    // Register the impl and collect validation errors, located at the impl.
     let errors = trait_registry.register_impl(TraitImplDef {
         trait_name,
         trait_type_args,
@@ -7010,8 +7113,33 @@ fn infer_impl_def(
         methods: impl_methods,
         associated_types: assoc_types,
     });
-
-    ctx.errors.extend(errors);
+    let header = impl_
+        .syntax()
+        .children_with_tokens()
+        .find(|element| element.kind() == SyntaxKind::DO_KW)
+        .map(|do_kw| {
+            TextRange::new(
+                impl_.syntax().text_range().start(),
+                do_kw.text_range().end(),
+            )
+        })
+        .unwrap_or_else(|| impl_.syntax().text_range());
+    ctx.errors.extend(errors.into_iter().map(|mut error| {
+        match &mut error {
+            TypeError::MissingTraitMethod { span, .. } => *span = Some(header),
+            TypeError::TraitMethodSignatureMismatch {
+                method_name, span, ..
+            } => {
+                *span = impl_
+                    .methods()
+                    .find(|m| m.name().and_then(|n| n.text()).as_deref() == Some(method_name))
+                    .map(|m| m.syntax().text_range())
+                    .or(Some(header));
+            }
+            _ => {}
+        }
+        error
+    }));
 }
 
 /// Infer a let binding: `let x = expr`
@@ -7318,6 +7446,10 @@ fn infer_fn_def(
         validate_export_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
 
+    let saved_bounds = std::mem::replace(
+        &mut ctx.where_bounds,
+        where_bounds(&where_constraints, &type_params),
+    );
     ctx.push_fn_return_type(return_type_annotation.clone());
     let body_ty = if is_native {
         return_type_annotation
@@ -7337,6 +7469,7 @@ fn infer_fn_def(
         Ty::Tuple(vec![])
     };
     let returns = ctx.pop_fn_return_type();
+    ctx.where_bounds = saved_bounds;
 
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
@@ -11229,9 +11362,16 @@ fn build_method_fn_type(
     // Look up the method signature to determine parameter count.
     if let Some(method_sig) = trait_registry.find_method_sig(method_name, self_ty) {
         let mut param_types = vec![self_ty.clone()]; // self parameter
-                                                     // Add fresh type vars for remaining params (we only know the count).
-        for _ in 0..method_sig.param_count {
-            param_types.push(ctx.fresh_var());
+        match &method_sig.param_types {
+            // The impl's declared parameter types check the arguments.
+            Some(declared) if declared.len() == method_sig.param_count => {
+                param_types.extend(declared.iter().cloned())
+            }
+            _ => {
+                for _ in 0..method_sig.param_count {
+                    param_types.push(ctx.fresh_var());
+                }
+            }
         }
         return Ty::Fun(param_types, Box::new(ret_ty.clone()));
     }
@@ -11502,6 +11642,32 @@ fn infer_field_access(
     }
 
     // Base type is not a struct (or no struct def found).
+    // A method of a type parameter comes from a trait its `where` clause
+    // names: `x.size()` under `where T: Sized` has `Sized.size`'s type. As a
+    // plain field access it is no field, which sends the call to method
+    // resolution.
+    for (param_ty, trait_name) in ctx.where_bounds.clone() {
+        if ctx.resolve(param_ty) != resolved_base {
+            continue;
+        }
+        if let Some(sig) = trait_registry
+            .get_trait(&trait_name)
+            .and_then(|def| def.methods.iter().find(|m| m.name == field_name))
+            .cloned()
+        {
+            if !is_method_call {
+                let err = TypeError::NoSuchField {
+                    ty: resolved_base,
+                    field_name,
+                    span: fa.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+            return Ok(trait_method_type(ctx, &trait_name, &sig, &resolved_base));
+        }
+    }
+
     if is_method_call {
         let matching_traits = trait_registry.find_method_traits(&field_name, &resolved_base);
         if matching_traits.len() > 1 {
@@ -13752,6 +13918,77 @@ fn infer_try_expr(
 // ── Helpers ────────────────────────────────────────────────────────────
 
 /// Extract where-clause constraints from a function definition.
+/// A function's `where` bounds as (type parameter variable, trait) pairs.
+fn where_bounds(
+    constraints: &[(String, String)],
+    type_params: &FxHashMap<String, Ty>,
+) -> Vec<(Ty, String)> {
+    constraints
+        .iter()
+        .filter_map(|(param, trait_name)| {
+            type_params
+                .get(param)
+                .map(|ty| (ty.clone(), trait_name.clone()))
+        })
+        .collect()
+}
+
+/// A trait method's declared type with `Self` taken as `receiver`. What
+/// cannot be known without the implementing type (`Self.Item`) is left open.
+fn trait_method_type(
+    ctx: &mut InferCtx,
+    trait_name: &str,
+    sig: &TraitMethodSig,
+    receiver: &Ty,
+) -> Ty {
+    fn subst(ctx: &mut InferCtx, trait_name: &str, ty: &Ty, receiver: &Ty) -> Ty {
+        match ty {
+            Ty::Con(tc) if tc.name == "Self" => receiver.clone(),
+            Ty::Con(tc) if tc.name.starts_with("Self.") => {
+                // Beside the type parameter, so that a `let` holding it keeps
+                // this variable, which specializations bind.
+                let var = ctx.fresh_var_beside(receiver);
+                ctx.assoc_projections.push((
+                    var.clone(),
+                    trait_name.to_string(),
+                    tc.name["Self.".len()..].to_string(),
+                    receiver.clone(),
+                ));
+                var
+            }
+            Ty::App(con, args) => Ty::App(
+                Box::new(subst(ctx, trait_name, con, receiver)),
+                args.iter()
+                    .map(|arg| subst(ctx, trait_name, arg, receiver))
+                    .collect(),
+            ),
+            Ty::Fun(params, ret) => Ty::Fun(
+                params
+                    .iter()
+                    .map(|p| subst(ctx, trait_name, p, receiver))
+                    .collect(),
+                Box::new(subst(ctx, trait_name, ret, receiver)),
+            ),
+            Ty::Tuple(elems) => Ty::Tuple(
+                elems
+                    .iter()
+                    .map(|e| subst(ctx, trait_name, e, receiver))
+                    .collect(),
+            ),
+            other => other.clone(),
+        }
+    }
+    let ret = match &sig.return_type {
+        Some(ret) => subst(ctx, trait_name, ret, receiver),
+        None => ctx.fresh_var(),
+    };
+    let mut params = vec![receiver.clone()];
+    for _ in 0..sig.param_count {
+        params.push(ctx.fresh_var());
+    }
+    Ty::Fun(params, Box::new(ret))
+}
+
 fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
     let mut constraints = Vec::new();
 

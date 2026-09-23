@@ -7,16 +7,22 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::error::{ConstraintOrigin, TypeError};
-use crate::ty::{Ty, TyVar};
+use crate::ty::{Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
 /// Check if a type contains `Self` (e.g., `Ty::Con("Self")` from a `Self.Item` projection).
 ///
 /// Used during trait method signature comparison to skip the check when the trait's
 /// return type involves `Self.Item`, which is only resolved at impl level.
+/// Whether `ty` mentions `Self`, an associated type of it (`Self.Item`), or a
+/// type parameter of a generic interface (`T`): what only the impl decides.
 fn ty_contains_self(ty: &Ty) -> bool {
     match ty {
-        Ty::Con(con) => con.name == "Self",
+        Ty::Con(con) => {
+            con.name == "Self"
+                || con.name.starts_with("Self.")
+                || (con.name.len() == 1 && con.name.as_bytes()[0].is_ascii_uppercase())
+        }
         Ty::App(base, args) => ty_contains_self(base) || args.iter().any(ty_contains_self),
         Ty::Fun(params, ret) => params.iter().any(ty_contains_self) || ty_contains_self(ret),
         Ty::Tuple(elems) => elems.iter().any(ty_contains_self),
@@ -40,6 +46,8 @@ pub struct TraitMethodSig {
     /// When true, impl blocks may omit this method and the default body
     /// will be used instead.
     pub has_default_body: bool,
+    /// The non-self parameter types, when every one is annotated.
+    pub param_types: Option<Vec<Ty>>,
 }
 
 /// An associated type declaration in a trait.
@@ -87,6 +95,8 @@ pub struct ImplMethodSig {
     pub param_count: usize,
     /// The return type.
     pub return_type: Option<Ty>,
+    /// The non-self parameter types, when every one is annotated and known.
+    pub param_types: Option<Vec<Ty>>,
 }
 
 /// The trait registry: stores all trait definitions and impl registrations.
@@ -157,6 +167,7 @@ impl TraitRegistry {
                                         .return_type
                                         .as_ref()
                                         .map(|ret| replace_self(ret, &impl_def.impl_type)),
+                                    param_types: None,
                                 },
                             );
                         } else {
@@ -164,10 +175,52 @@ impl TraitRegistry {
                                 trait_name: impl_def.trait_name.clone(),
                                 method_name: method.name.clone(),
                                 impl_ty: impl_def.impl_type_name.clone(),
+                                span: None,
                             });
                         }
                     }
                     Some(impl_method) => {
+                        // The impl takes what the interface declares: self or
+                        // not, as many parameters, of the declared types.
+                        let method_ty = |has_self: bool, count: usize, params: &Option<Vec<Ty>>| {
+                            let mut all = Vec::new();
+                            if has_self {
+                                all.push(Ty::Con(TyCon::new("Self")));
+                            }
+                            match params {
+                                Some(params) => all.extend(params.iter().cloned()),
+                                None => all.extend((0..count).map(|_| Ty::Con(TyCon::new("_")))),
+                            }
+                            Ty::Fun(all, Box::new(Ty::Con(TyCon::new("_"))))
+                        };
+                        let shape_differs = method.has_self != impl_method.has_self
+                            || method.param_count != impl_method.param_count;
+                        let types_differ = match (&method.param_types, &impl_method.param_types) {
+                            (Some(expected), Some(found)) => {
+                                expected.iter().zip(found).any(|(expected, found)| {
+                                    !ty_contains_self(expected) && expected != found
+                                })
+                            }
+                            _ => false,
+                        };
+                        if shape_differs || types_differ {
+                            errors.push(TypeError::TraitMethodSignatureMismatch {
+                                trait_name: impl_def.trait_name.clone(),
+                                method_name: method.name.clone(),
+                                expected: method_ty(
+                                    method.has_self,
+                                    method.param_count,
+                                    &method.param_types,
+                                ),
+                                found: method_ty(
+                                    impl_method.has_self,
+                                    impl_method.param_count,
+                                    &impl_method.param_types,
+                                ),
+                                span: None,
+                            });
+                            continue;
+                        }
                         // Check return type compatibility if both are annotated.
                         if let (Some(expected_ret), Some(actual_ret)) =
                             (&method.return_type, &impl_method.return_type)
@@ -177,6 +230,14 @@ impl TraitRegistry {
                             // Ty::Con("Self") because the associated type projection is only
                             // resolved in impl context. The method body type-checking already
                             // validates the concrete return type against the resolved type.
+                            // `Self.Item` is the impl's own `type Item = ...`.
+                            let expected_ret = match expected_ret {
+                                Ty::Con(con) if con.name.starts_with("Self.") => impl_def
+                                    .associated_types
+                                    .get(&con.name["Self.".len()..])
+                                    .unwrap_or(expected_ret),
+                                other => other,
+                            };
                             let expected_involves_self = ty_contains_self(expected_ret);
                             if !expected_involves_self && expected_ret != actual_ret {
                                 errors.push(TypeError::TraitMethodSignatureMismatch {
@@ -184,6 +245,7 @@ impl TraitRegistry {
                                     method_name: method.name.clone(),
                                     expected: expected_ret.clone(),
                                     found: actual_ret.clone(),
+                                    span: None,
                                 });
                             }
                         }
@@ -310,6 +372,7 @@ impl TraitRegistry {
                     has_self: true,
                     param_count: 0,
                     return_type: Some(target_ty.clone()),
+                    param_types: None,
                 },
             );
             let source_name = format!("{}", source_ty);
@@ -344,6 +407,7 @@ impl TraitRegistry {
                     // resolve_trait_method returns Some(ret) instead of None, allowing
                     // type-checking of 42.try_into() calls to proceed.
                     return_type: synth_try_return_ty,
+                    param_types: None,
                 },
             );
             let try_source_name = format!("{}", try_source_ty);
@@ -722,6 +786,7 @@ mod tests {
                 param_count: 0,
                 return_type: Some(Ty::string()),
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![],
         }
@@ -736,6 +801,7 @@ mod tests {
                 param_count: 0,
                 return_type: Some(Ty::string()),
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![],
         }
@@ -749,6 +815,7 @@ mod tests {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         methods
@@ -874,6 +941,7 @@ mod tests {
                 param_count: 1,
                 return_type: None,
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![],
         });
@@ -885,6 +953,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::int()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -903,6 +972,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::float()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -1083,6 +1153,7 @@ mod tests {
                 param_count: 0,
                 return_type: Some(Ty::string()),
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![],
         });
@@ -1128,6 +1199,7 @@ mod tests {
                 param_count: 1,
                 return_type: None,
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![],
         });
@@ -1140,6 +1212,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::int()),
+                param_types: None,
             },
         );
         let errors = registry.register_impl(ImplDef {
@@ -1161,6 +1234,7 @@ mod tests {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(my_struct.clone()),
+                param_types: None,
             },
         );
         let errors = registry.register_impl(ImplDef {

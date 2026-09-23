@@ -313,6 +313,8 @@ fn shaped_params(names: &[String], types: &[MirType], shapes: &[MsgShape]) -> Ve
 struct Lowerer<'a> {
     /// Type map from typeck: TextRange -> Ty.
     types: &'a FxHashMap<TextRange, Ty>,
+    /// Associated types reached through type parameters (see `TypeckResult`).
+    assoc_projections: &'a [(Ty, String, String, Ty)],
     /// Types of the function being lowered, with its type variables replaced by
     /// what this specialization was called with. A function with unannotated
     /// parameters is checked once, generically, and lowered once per usage
@@ -670,6 +672,7 @@ impl<'a> Lowerer<'a> {
 
         Lowerer {
             types: &typeck.types,
+            assoc_projections: &typeck.assoc_projections,
             spec_types: FxHashMap::default(),
             registry: &typeck.type_registry,
             sum_reach: sum_type_reach(&typeck.type_registry),
@@ -1499,6 +1502,24 @@ impl<'a> Lowerer<'a> {
         let mut bindings = Vec::new();
         if let (Some(generic), Some(concrete)) = (generic, concrete) {
             bind_type_vars(generic, concrete, &mut bindings);
+        }
+        // An associated type reached through a type parameter is known once
+        // the parameter is: `Self.Item` of `StrBox` is String.
+        for (var, trait_name, assoc, receiver) in self.assoc_projections {
+            let Ty::Var(var) = var else { continue };
+            if bindings.iter().any(|(bound, _)| bound == var) {
+                continue;
+            }
+            let receiver = apply_type_vars(receiver, &bindings);
+            if Self::ty_contains_var(&receiver) {
+                continue;
+            }
+            if let Some(assoc_ty) = self
+                .trait_registry
+                .resolve_associated_type(trait_name, assoc, &receiver)
+            {
+                bindings.push((*var, assoc_ty));
+            }
         }
         let specialized = if bindings.is_empty() {
             FxHashMap::default()

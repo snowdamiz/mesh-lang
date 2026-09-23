@@ -825,12 +825,16 @@ pub fn render_diagnostic(
             trait_name,
             method_name,
             impl_ty,
+            span,
         } => {
             let msg = format!(
                 "impl {} for {} is missing method {}",
                 trait_name, impl_ty, method_name
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(
+                span.map(text_range_to_range)
+                    .unwrap_or(0..source_len.max(1).min(source_len)),
+            );
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
@@ -842,8 +846,8 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help(format!(
-                    "add `fn {}(self) ... end` to the impl block",
-                    method_name
+                    "add `fn {}` as `{}` declares it to the impl block",
+                    method_name, trait_name
                 ))
                 .finish()
         }
@@ -853,12 +857,16 @@ pub fn render_diagnostic(
             method_name,
             expected,
             found,
+            span,
         } => {
             let msg = format!(
                 "method {} in impl {} has wrong signature: expected {}, found {}",
                 method_name, trait_name, expected, found
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(
+                span.map(text_range_to_range)
+                    .unwrap_or(0..source_len.max(1).min(source_len)),
+            );
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
@@ -867,8 +875,8 @@ pub fn render_diagnostic(
                 .with_label(
                     Label::new((fname.clone(), span))
                         .with_message(format!(
-                            "expected return type {}, found {}",
-                            expected, found
+                            "`{}` declares {}, this is {}",
+                            trait_name, expected, found
                         ))
                         .with_color(Color::Red),
                 )

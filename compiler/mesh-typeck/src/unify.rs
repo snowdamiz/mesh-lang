@@ -81,6 +81,19 @@ pub struct InferCtx {
     /// Per entry of `fn_return_type_stack`: the types of `return` values in
     /// a function whose return type is not declared.
     pub fn_returned_types: Vec<Vec<Ty>>,
+    /// The `where` bounds of the function whose body is being checked: each
+    /// type parameter's variable with a trait it must implement.
+    pub where_bounds: Vec<(Ty, String)>,
+    /// Associated types used through a type parameter (`c.first()` with
+    /// `first(self) -> Self.Item` under `where T: Container`): the variable
+    /// standing for it, the trait, the associated type's name and the
+    /// receiver. Lowering binds the variable in each specialization.
+    pub assoc_projections: Vec<(Ty, String, String, Ty)>,
+    /// A generic function's body can fix an associated type (`c.first() + 1`
+    /// makes `T.Item` an Int). Each instance of the function then requires it
+    /// of its receiver: (required type, trait, associated type name, the
+    /// instance's receiver, where the function was used).
+    pub projection_requirements: Vec<(Ty, String, String, Ty, Option<TextRange>)>,
     /// Pub fn names that have multiple definitions with different arities.
     /// Used to mangle exported names as name__N for arity overloading.
     pub overloaded_pub_fn_names: FxHashSet<String>,
@@ -120,6 +133,9 @@ impl InferCtx {
             test_builtins: false,
             fn_return_type_stack: Vec::new(),
             fn_returned_types: Vec::new(),
+            where_bounds: Vec::new(),
+            assoc_projections: Vec::new(),
+            projection_requirements: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),
@@ -192,6 +208,19 @@ impl InferCtx {
         }
         self.var_levels[var.0 as usize] = self.current_level;
         Ty::Var(var)
+    }
+
+    /// A fresh variable at the level of `anchor`'s variable (the current level
+    /// when it has none): a `let` inside `anchor`'s scope does not generalize
+    /// it away from `anchor`.
+    pub fn fresh_var_beside(&mut self, anchor: &Ty) -> Ty {
+        let fresh = self.fresh_var();
+        if let (Ty::Var(anchor), Ty::Var(var)) = (self.resolve(anchor.clone()), &fresh) {
+            if let Some(&level) = self.var_levels.get(anchor.0 as usize) {
+                self.var_levels[var.0 as usize] = level;
+            }
+        }
+        fresh
     }
 
     // ── Resolution ──────────────────────────────────────────────────────
@@ -622,6 +651,37 @@ impl InferCtx {
 
         let substitution: FxHashMap<TyVar, Ty> =
             scheme.vars.iter().map(|v| (*v, self.fresh_var())).collect();
+
+        // An associated type the scheme holds as a variable is the same
+        // associated type of the instance's receiver.
+        let mut instances = Vec::new();
+        for (var, trait_name, assoc, receiver) in self.assoc_projections.clone() {
+            let receiver = self.resolve(receiver);
+            let Ty::Var(receiver_root) = receiver else {
+                continue;
+            };
+            if !substitution.contains_key(&receiver_root) {
+                continue;
+            }
+            let instance_receiver = substitution[&receiver_root].clone();
+            match self.resolve(var) {
+                Ty::Var(root) if substitution.contains_key(&root) => instances.push((
+                    substitution[&root].clone(),
+                    trait_name,
+                    assoc,
+                    instance_receiver,
+                )),
+                Ty::Var(_) => {}
+                fixed => self.projection_requirements.push((
+                    fixed,
+                    trait_name,
+                    assoc,
+                    instance_receiver,
+                    self.expr_spans.last().copied(),
+                )),
+            }
+        }
+        self.assoc_projections.extend(instances);
 
         self.apply_substitution(&scheme.ty, &substitution)
     }

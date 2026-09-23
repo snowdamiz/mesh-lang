@@ -2561,8 +2561,10 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 name: trait_name.to_lowercase(),
                 has_self: true,
                 param_count: 1,
-                return_type: None, // return type is Self (the implementing type)
+                // The operator's result is the impl's `type Output`.
+                return_type: Some(Ty::Con(TyCon::new("Self.Output"))),
                 has_default_body: false,
+                param_types: None,
             }],
             associated_types: vec![AssocTypeDef {
                 name: "Output".to_string(),
@@ -2578,6 +2580,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                     has_self: true,
                     param_count: 1,
                     return_type: Some(ty.clone()),
+                    param_types: None,
                 },
             );
             let mut assoc_types = FxHashMap::default();
@@ -2601,8 +2604,9 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             name: "neg".to_string(),
             has_self: true,
             param_count: 0,
-            return_type: None,
+            return_type: Some(Ty::Con(TyCon::new("Self.Output"))),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![AssocTypeDef {
             name: "Output".to_string(),
@@ -2618,6 +2622,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(ty.clone()),
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2642,6 +2647,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: None, // Option<Self.Item> -- resolved per impl
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![AssocTypeDef {
             name: "Item".to_string(),
@@ -2658,6 +2664,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: None, // Self.Iter -- resolved per impl
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![
             AssocTypeDef {
@@ -2684,6 +2691,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2708,6 +2716,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2735,6 +2744,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2762,6 +2772,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2789,6 +2800,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2813,6 +2825,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2837,6 +2850,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2861,6 +2875,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: None,
+                param_types: None,
             },
         );
         let mut assoc_types = FxHashMap::default();
@@ -2885,6 +2900,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 1,
             return_type: Some(Ty::bool()),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -2903,6 +2919,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -2977,6 +2994,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                         has_self: true,
                         param_count: *param_count,
                         return_type: Some(ret.clone()),
+                        param_types: None,
                     },
                 );
             }
@@ -3002,6 +3020,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 param_count: 1,
                 return_type: Some(Ty::bool()),
                 has_default_body: false,
+                param_types: None,
             },
             TraitMethodSig {
                 name: "compare".to_string(),
@@ -3009,6 +3028,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 param_count: 1,
                 return_type: Some(Ty::Con(TyCon::new("Ordering"))),
                 has_default_body: true,
+                param_types: None,
             },
         ],
         associated_types: vec![],
@@ -3027,6 +3047,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         methods.insert(
@@ -3035,6 +3056,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::Con(TyCon::new("Ordering"))),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3061,6 +3083,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3079,6 +3102,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::bool()),
+                param_types: None,
             },
         );
         ord_methods.insert(
@@ -3087,6 +3111,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 1,
                 return_type: Some(Ty::Con(TyCon::new("Ordering"))),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3109,6 +3134,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: Some(Ty::bool()),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3120,6 +3146,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             has_self: true,
             param_count: 0,
             return_type: Some(Ty::bool()),
+            param_types: None,
         },
     );
     let _ = registry.register_impl(ImplDef {
@@ -3140,6 +3167,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0, // no params besides self
             return_type: Some(Ty::string()),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3157,6 +3185,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3185,6 +3214,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3208,6 +3238,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3228,6 +3259,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3249,6 +3281,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: Some(Ty::string()),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3269,6 +3302,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3290,6 +3324,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: Some(Ty::int()),
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3308,6 +3343,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: true,
                 param_count: 0,
                 return_type: Some(Ty::int()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3331,6 +3367,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: None, // Self -- resolved per concrete type at call site
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3350,6 +3387,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: false,
                 param_count: 0,
                 return_type: Some(ty.clone()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3371,6 +3409,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 1,
             return_type: None, // Self -- resolved per impl
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3384,6 +3423,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: None, // T -- the target type
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3397,6 +3437,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 1,
             return_type: None, // Result<Self, E> -- resolved per impl
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3410,6 +3451,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 0,
             return_type: None, // Result<T, E> -- the target type wrapped in Result
             has_default_body: false,
+            param_types: None,
         }],
         associated_types: vec![],
     });
@@ -3427,6 +3469,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: false,
                 param_count: 1,
                 return_type: Some(Ty::float()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3448,6 +3491,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: false,
                 param_count: 1,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3469,6 +3513,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: false,
                 param_count: 1,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
@@ -3490,6 +3535,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 has_self: false,
                 param_count: 1,
                 return_type: Some(Ty::string()),
+                param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {

@@ -116,6 +116,8 @@ pub enum TypeError {
         trait_name: String,
         method_name: String,
         impl_ty: String,
+        /// The impl's header, once the checker knows it.
+        span: Option<TextRange>,
     },
     /// An impl method's signature does not match the trait's method signature.
     TraitMethodSignatureMismatch {
@@ -123,6 +125,8 @@ pub enum TypeError {
         method_name: String,
         expected: Ty,
         found: Ty,
+        /// The impl method, once the checker knows it.
+        span: Option<TextRange>,
     },
     /// A struct literal is missing a required field.
     MissingField {
@@ -439,6 +443,7 @@ impl fmt::Display for TypeError {
                 trait_name,
                 method_name,
                 impl_ty,
+                ..
             } => {
                 write!(
                     f,
@@ -451,6 +456,7 @@ impl fmt::Display for TypeError {
                 method_name,
                 expected,
                 found,
+                ..
             } => {
                 write!(
                     f,

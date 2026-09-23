@@ -2158,3 +2158,106 @@ end
 "##;
     assert_eq!(run(source), "5 five <7> <hello> <2.5>\n1 1 0\n");
 }
+
+#[test]
+fn methods_of_bounded_type_parameters_have_their_interface_types() {
+    let source = r##"
+interface Sized do
+  fn size(self) -> Int
+end
+
+interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+
+struct Sq do
+  s :: Int
+end
+
+struct IntBox do
+  value :: Int
+end
+
+struct StrBox do
+  s :: String
+end
+
+impl Sized for Sq do
+  fn size(self) -> Int do
+    self.s
+  end
+end
+
+impl Container for IntBox do
+  type Item = Int
+  fn first(self) -> Int do
+    self.value
+  end
+end
+
+impl Container for StrBox do
+  type Item = String
+  fn first(self) -> String do
+    self.s
+  end
+end
+
+fn report<T>(x :: T) -> String where T: Sized do
+  let n = x.size()
+  "${n} ${x.size() + 1}"
+end
+
+fn show_first<T>(c :: T) -> String where T: Container do
+  let x = c.first()
+  "${x}"
+end
+
+fn get<T>(c :: T) where T: Container do
+  c.first()
+end
+
+fn main() do
+  let v = get(IntBox { value: 5 })
+  println("#{report(Sq { s: 3 })} #{show_first(IntBox { value: 5 })} #{show_first(StrBox { s: "hi" })} #{v + 1}")
+end
+"##;
+    assert_eq!(run(source), "3 4 5 hi 6\n");
+    // `T.Item` fixed to Int by the body does not hold for StrBox.
+    let err = build_error(&source.replace(
+        "fn main() do",
+        "fn plus<T>(c :: T) -> Int where T: Container do\n  c.first() + 1\nend\n\nfn main() do\n  println(\"#{plus(StrBox { s: \"x\" })}\")",
+    ));
+    assert!(err.contains("expected Int, found String"), "{err}");
+}
+
+#[test]
+fn method_arguments_and_impl_signatures_are_checked_against_the_interface() {
+    let interface = "interface Scale do\n  fn scale(self, k :: Int) -> String\nend\n\nstruct Cat do\n  n :: String\nend\n\n";
+    let err = build_error(&format!(
+        "{interface}impl Scale for Cat do\n  fn scale(self, k :: Int) -> String do\n    \"${{k}}\"\n  end\nend\n\nfn main() do\n  println(Cat {{ n: \"a\" }}.scale(\"oops\"))\nend\n"
+    ));
+    assert!(err.contains("expected Int, found String"), "{err}");
+    for (method, found) in [
+        (
+            "fn scale(self, k :: String) -> String do\n    k\n  end",
+            "(Self, String)",
+        ),
+        ("fn scale(self) -> String do\n    \"x\"\n  end", "(Self)"),
+        ("fn scale(k :: Int) -> String do\n    \"x\"\n  end", "(Int)"),
+    ] {
+        let err = build_error(&format!(
+            "{interface}impl Scale for Cat do\n  {method}\nend\n\nfn main() do\n  println(Cat {{ n: \"a\" }}.scale(1))\nend\n"
+        ));
+        assert!(
+            err.contains("E0008") && err.contains(found),
+            "{method}\n{err}"
+        );
+        // Located at the impl method, not the whole file.
+        assert!(err.contains(":10:3"), "{method}\n{err}");
+    }
+    let err = build_error(
+        "struct V do\n  x :: Int\nend\n\nimpl Mul for V do\n  type Output = Int\n  fn mul(self, other :: V) -> V do\n    V { x: self.x * other.x }\n  end\nend\n\nfn main() do\n  println(\"#{(V { x: 2 } * V { x: 3 }).x}\")\nend\n",
+    );
+    assert!(err.contains("expected Int, found V"), "{err}");
+}
