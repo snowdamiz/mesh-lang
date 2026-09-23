@@ -3831,3 +3831,38 @@ end
     let ok = "fn main() do\n  println(\"a\" <> \"b\")\n  println(\"#{[1] ++ [2]} #{[3] <> [4]}\")\n  println(\"c\" ++ \"d\")\nend\n";
     assert_eq!(run(ok), "ab\n[1, 2] [3, 4]\ncd\n");
 }
+
+#[test]
+fn operators_in_unannotated_functions_are_checked_at_their_calls() {
+    // `add("x", "y")` reached codegen ("Unsupported binop type: String",
+    // no location), and `join(1, 2)` aborted at runtime.
+    let source = r##"
+fn add(a, b) do
+  a + b
+end
+
+fn pass(x, y) do
+  add(x, y)
+end
+
+fn join(a, b) do
+  a <> b
+end
+
+fn main() do
+  println("#{add(1, 2)} #{add(1.5, 2.0)} #{pass(3, 4)} #{join("a", "b")} #{join([1], [2])}")
+  println(pass("x", "y"))
+  println("#{join(1, 2)}")
+end
+"##;
+    let err = build_error(source);
+    assert!(err.contains("String does not implement Add"), "{err}");
+    assert!(
+        err.contains("`<>` joins strings or lists, not `Int`"),
+        "{err}"
+    );
+    let ok = source
+        .replace("  println(pass(\"x\", \"y\"))\n", "")
+        .replace("  println(\"#{join(1, 2)}\")\n", "");
+    assert_eq!(run(&ok), "3 3.5 7 ab [1, 2]\n");
+}

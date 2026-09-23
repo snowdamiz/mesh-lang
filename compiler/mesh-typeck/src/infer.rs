@@ -253,6 +253,32 @@ impl TypeRegistry {
 
 // ── Per-function metadata for where-clause enforcement (03-04) ────────
 
+/// What a function with inferred parameter types needs of them (an
+/// operator's trait, being joinable), required of this call's arguments:
+/// checked once the calling function is done, or handed on to its own
+/// callers when an argument's type is open there too.
+fn require_inferred_bounds(
+    ctx: &mut InferCtx,
+    constraints: &FnConstraints,
+    arg_types: &[Ty],
+    origin: &ConstraintOrigin,
+    call: &CallExpr,
+) {
+    for (index, trait_name) in &constraints.inferred_bounds {
+        if let Some(arg) = arg_types.get(*index) {
+            ctx.operand_traits
+                .push((arg.clone(), trait_name.clone(), origin.clone()));
+        }
+    }
+    for (index, op) in &constraints.concat_params {
+        if let Some(arg) = arg_types.get(*index) {
+            let arg = ctx.resolve(arg.clone());
+            ctx.concat_operands
+                .push((arg, op, call.syntax().text_range()));
+        }
+    }
+}
+
 /// Per-function metadata for where-clause enforcement.
 #[derive(Clone, Debug)]
 struct FnConstraints {
@@ -264,6 +290,12 @@ struct FnConstraints {
     /// was annotated with (if any). Used to resolve type params from call-site
     /// argument types after instantiation + unification.
     param_type_param_names: Vec<Option<String>>,
+    /// Traits the body needs of a parameter whose type is inferred, not
+    /// declared (`fn add(a, b) do a + b end` needs Add of both): by
+    /// parameter index. Each call hands them on to its arguments.
+    inferred_bounds: Vec<(usize, String)>,
+    /// Parameters, by index, that the body joins with `<>` or `++`.
+    concat_params: Vec<(usize, &'static str)>,
 }
 
 // ── Standard Library Module Resolution (Phase 8) ──────────────────────
@@ -5287,6 +5319,8 @@ fn infer_multi_clause_fn(
                 where_constraints: where_constraints.clone(),
                 type_params: type_params.clone(),
                 param_type_param_names,
+                inferred_bounds: Vec::new(),
+                concat_params: Vec::new(),
             },
         );
     }
@@ -8134,6 +8168,8 @@ fn infer_fn_def(
                 where_constraints: where_constraints.clone(),
                 type_params: type_params.clone(),
                 param_type_param_names,
+                inferred_bounds: Vec::new(),
+                concat_params: Vec::new(),
             },
         );
     }
@@ -8209,15 +8245,46 @@ fn infer_fn_def(
     let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
     ctx.pending_fields.extend(unresolved);
     let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
-    let unresolved = check_concat_operands(ctx, concat, &type_params);
-    ctx.concat_operands.extend(unresolved);
-    check_type_param_bounds(
+    let unresolved_concat = check_concat_operands(ctx, concat, &type_params);
+    let inferred_bounds = check_type_param_bounds(
         ctx,
         &type_params,
         &where_constraints,
         trait_registry,
         operand_traits,
     );
+    // What the body needs of parameters whose type is still open, for the
+    // calls to check against their arguments.
+    let param_of = |ctx: &mut InferCtx, ty: &Ty| {
+        let ty = ctx.resolve(ty.clone());
+        (0..param_types.len()).find(|&i| ctx.resolve(param_types[i].clone()) == ty)
+    };
+    let mut inferred = Vec::new();
+    for (ty, trait_name) in inferred_bounds {
+        if let Some(index) = param_of(ctx, &ty) {
+            inferred.push((index, trait_name));
+        }
+    }
+    let mut concat_params = Vec::new();
+    for (ty, op, _) in &unresolved_concat {
+        if let Some(index) = param_of(ctx, ty) {
+            concat_params.push((index, *op));
+        }
+    }
+    ctx.concat_operands.extend(unresolved_concat);
+    if !inferred.is_empty() || !concat_params.is_empty() {
+        let entry = fn_constraints
+            .entry(fn_name.clone())
+            .or_insert_with(|| FnConstraints {
+                where_constraints: Vec::new(),
+                type_params: FxHashMap::default(),
+                param_type_param_names: vec![None; param_types.len()],
+                inferred_bounds: Vec::new(),
+                concat_params: Vec::new(),
+            });
+        entry.inferred_bounds.extend(inferred);
+        entry.concat_params.extend(concat_params);
+    }
     check_rigid_type_params(ctx, fn_, &type_params);
     check_default_calls(ctx, &type_params, trait_registry, default_calls);
     check_impl_choices(ctx, impl_choices);
@@ -10073,6 +10140,9 @@ fn infer_call_inner(
     // type parameter name, then check trait constraints on the resolved types.
     if let Expr::NameRef(name_ref) = &callee_expr {
         if let Some(fn_name) = name_ref.text() {
+            if let Some(constraints) = fn_constraints.get(&fn_name) {
+                require_inferred_bounds(ctx, constraints, &arg_types, &origin, call);
+            }
             if let Some(constraints) = fn_constraints.get(&fn_name) {
                 if !constraints.where_constraints.is_empty() {
                     let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
@@ -15444,8 +15514,9 @@ fn check_type_param_bounds(
     constraints: &[(String, String)],
     trait_registry: &TraitRegistry,
     uses: Vec<(Ty, String, ConstraintOrigin)>,
-) {
+) -> Vec<(Ty, String)> {
     let mut reported = FxHashSet::default();
+    let mut inferred = Vec::new();
     for (ty, trait_name, origin) in uses {
         let used = ctx.resolve(ty);
         // A type fixed only later must still implement the trait.
@@ -15464,6 +15535,10 @@ fn check_type_param_bounds(
             .find(|(_, param_ty)| ctx.resolve((*param_ty).clone()) == used)
             .map(|(name, _)| name.clone())
         else {
+            // A type inference left open: the callers' arguments decide.
+            if is_type_var(&used) && !inferred.contains(&(used.clone(), trait_name.clone())) {
+                inferred.push((used, trait_name));
+            }
             continue;
         };
         let bounded = constraints.iter().any(|(bound_param, bound)| {
@@ -15478,6 +15553,7 @@ fn check_type_param_bounds(
             });
         }
     }
+    inferred
 }
 
 fn where_bounds(
