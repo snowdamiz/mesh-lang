@@ -30,6 +30,22 @@ pub extern "C-unwind" fn mesh_panic(
         let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg, msg_len as usize));
         let file =
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
+        if line == 0 {
+            // No source line: `file` names the function that panicked.
+            panic!("Mesh panic in {}: {}", file, msg);
+        }
         panic!("Mesh panic at {}:{}: {}", file, line, msg);
+    }
+}
+
+/// Run the program's `main` function on the main thread.
+///
+/// A Mesh panic there ends the process with status 101 once the panic hook
+/// has printed it. Without a handler to catch it the unwinder cannot start,
+/// and the process aborted with "failed to initiate panic" instead.
+#[no_mangle]
+pub extern "C" fn mesh_run_main(entry: extern "C-unwind" fn()) {
+    if std::panic::catch_unwind(|| entry()).is_err() {
+        std::process::exit(101);
     }
 }

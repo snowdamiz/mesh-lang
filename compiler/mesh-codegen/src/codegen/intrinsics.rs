@@ -30,6 +30,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_run_main(entry: ptr) -> void: runs `main`, turning a panic into exit 101
+    module.add_function(
+        "mesh_run_main",
+        void_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_library_invoke(entrypoint: ptr, input: ptr, len: u64, output: ptr) -> i32
     module.add_function(
         "mesh_library_invoke",
@@ -4598,6 +4605,7 @@ mod tests {
 
         // Verify all expected functions exist
         assert!(module.get_function("mesh_rt_init").is_some());
+        assert!(module.get_function("mesh_run_main").is_some());
         assert!(module.get_function("mesh_gc_alloc_actor").is_some());
         assert!(module.get_function("mesh_string_new").is_some());
         assert!(module.get_function("mesh_string_concat").is_some());

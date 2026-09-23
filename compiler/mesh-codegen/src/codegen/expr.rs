@@ -938,16 +938,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_int_mul(l, r, "mul")
                 .map_err(|e| e.to_string())?
                 .into(),
-            BinOp::Div => self
-                .builder
-                .build_int_signed_div(l, r, "div")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Mod => self
-                .builder
-                .build_int_signed_rem(l, r, "mod")
-                .map_err(|e| e.to_string())?
-                .into(),
+            BinOp::Div | BinOp::Mod => self.codegen_int_div(op, l, r)?.into(),
             BinOp::Eq => self
                 .builder
                 .build_int_compare(IntPredicate::EQ, l, r, "eq")
@@ -1025,7 +1016,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .into(),
             BinOp::NotEq => self
                 .builder
-                .build_float_compare(inkwell::FloatPredicate::ONE, l, r, "fne")
+                .build_float_compare(inkwell::FloatPredicate::UNE, l, r, "fne")
                 .map_err(|e| e.to_string())?
                 .into(),
             BinOp::Lt => self
@@ -1708,14 +1699,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "mesh_float_to_int" => {
                     let arg_val = self.codegen_expr(&args[0])?;
                     let float_val = arg_val.into_float_value();
-                    let int_val = self
-                        .builder
-                        .build_float_to_signed_int(
-                            float_val,
-                            self.context.i64_type(),
-                            "float_to_int",
-                        )
-                        .map_err(|e| e.to_string())?;
+                    let int_val = self.saturating_float_to_int(float_val, "float_to_int")?;
                     return Ok(int_val.into());
                 }
                 // ── pow/sqrt/floor/ceil/round (Phase 43 Plan 02) ──────────
@@ -1767,13 +1751,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .basic()
                         .ok_or("floor returned void")?;
                     let int_result = self
-                        .builder
-                        .build_float_to_signed_int(
-                            float_result.into_float_value(),
-                            self.context.i64_type(),
-                            "floor_to_int",
-                        )
-                        .map_err(|e| e.to_string())?;
+                        .saturating_float_to_int(float_result.into_float_value(), "floor_to_int")?;
                     return Ok(int_result.into());
                 }
                 "mesh_math_ceil" => {
@@ -1791,13 +1769,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .basic()
                         .ok_or("ceil returned void")?;
                     let int_result = self
-                        .builder
-                        .build_float_to_signed_int(
-                            float_result.into_float_value(),
-                            self.context.i64_type(),
-                            "ceil_to_int",
-                        )
-                        .map_err(|e| e.to_string())?;
+                        .saturating_float_to_int(float_result.into_float_value(), "ceil_to_int")?;
                     return Ok(int_result.into());
                 }
                 "mesh_math_round" => {
@@ -1815,13 +1787,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .basic()
                         .ok_or("round returned void")?;
                     let int_result = self
-                        .builder
-                        .build_float_to_signed_int(
-                            float_result.into_float_value(),
-                            self.context.i64_type(),
-                            "round_to_int",
-                        )
-                        .map_err(|e| e.to_string())?;
+                        .saturating_float_to_int(float_result.into_float_value(), "round_to_int")?;
                     return Ok(int_result.into());
                 }
                 _ => {} // Fall through to normal call handling
@@ -4167,6 +4133,94 @@ impl<'ctx> CodeGen<'ctx> {
             // No arms: return the raw message value.
             Ok(msg_val)
         }
+    }
+
+    /// Integer `/` and `%`. Dividing by zero panics; `Int.MIN / -1` wraps to
+    /// `Int.MIN` (and its remainder is 0) like the other Int operators. A bare
+    /// `sdiv`/`srem` is undefined behaviour in both cases.
+    fn codegen_int_div(
+        &mut self,
+        op: &BinOp,
+        l: inkwell::values::IntValue<'ctx>,
+        r: inkwell::values::IntValue<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let int_ty = r.get_type();
+        let function = self.current_function();
+        let zero_bb = self.context.append_basic_block(function, "div_by_zero");
+        let ok_bb = self.context.append_basic_block(function, "div_ok");
+        let is_zero = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r, int_ty.const_zero(), "div_is_zero")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(is_zero, zero_bb, ok_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(zero_bb);
+        let fn_name = function.get_name().to_string_lossy().into_owned();
+        self.codegen_panic("division by zero", &fn_name, 0)?;
+
+        self.builder.position_at_end(ok_bb);
+        let minus_one = int_ty.const_all_ones();
+        let is_minus_one = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r, minus_one, "div_by_minus_one")
+            .map_err(|e| e.to_string())?;
+        let divisor = self
+            .builder
+            .build_select(is_minus_one, int_ty.const_int(1, false), r, "divisor")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let (value, by_minus_one) = if matches!(op, BinOp::Div) {
+            let quotient = self
+                .builder
+                .build_int_signed_div(l, divisor, "div")
+                .map_err(|e| e.to_string())?;
+            let negated = self
+                .builder
+                .build_int_sub(int_ty.const_zero(), l, "div_neg")
+                .map_err(|e| e.to_string())?;
+            (quotient, negated)
+        } else {
+            let remainder = self
+                .builder
+                .build_int_signed_rem(l, divisor, "mod")
+                .map_err(|e| e.to_string())?;
+            (remainder, int_ty.const_zero())
+        };
+        Ok(self
+            .builder
+            .build_select(is_minus_one, by_minus_one, value, "div_result")
+            .map_err(|e| e.to_string())?
+            .into_int_value())
+    }
+
+    /// Float to Int that saturates: NaN is 0, and values beyond the Int range
+    /// clamp to its ends. A plain `fptosi` is poison there, which the optimizer
+    /// turns into garbage.
+    fn saturating_float_to_int(
+        &mut self,
+        value: inkwell::values::FloatValue<'ctx>,
+        name: &str,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let intrinsic = Intrinsic::find("llvm.fptosi.sat").ok_or("llvm.fptosi.sat not found")?;
+        let decl = intrinsic
+            .get_declaration(
+                &self.module,
+                &[
+                    self.context.i64_type().into(),
+                    self.context.f64_type().into(),
+                ],
+            )
+            .ok_or("Failed to get llvm.fptosi.sat declaration")?;
+        Ok(self
+            .builder
+            .build_call(decl, &[value.into()], name)
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("fptosi.sat returned void")?
+            .into_int_value())
     }
 
     fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {

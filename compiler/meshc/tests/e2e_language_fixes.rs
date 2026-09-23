@@ -1436,6 +1436,76 @@ fn receive_arms_must_cover_the_message_type() {
     assert_eq!(out, "any 1\n");
 }
 
+// ── Numbers ────────────────────────────────────────────────────────────
+
+/// Build and run a program that may fail; returns (exit code, stdout, stderr).
+fn run_status(source: &str, args: &[&str]) -> (Option<i32>, String, String) {
+    let built = build_with_args(source, args);
+    assert!(built.ok, "build failed:\n{}", built.stderr);
+    let output = Command::new(built.dir.path().join("project/project"))
+        .output()
+        .expect("run binary");
+    (
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn integer_division_by_zero_panics_and_min_divided_by_minus_one_wraps() {
+    let wraps = r##"
+fn div(a :: Int, b :: Int) -> Int = a / b
+fn rem(a :: Int, b :: Int) -> Int = a % b
+
+fn main() do
+  let min = 0 - 9223372036854775807 - 1
+  println("#{div(min, -1)} #{rem(min, -1)} #{div(7, -1)} #{rem(7, -2)} #{div(-7, 2)}")
+end
+"##;
+    let panics = r##"
+fn main() do
+  let zero = 0
+  println("before")
+  println("#{10 % zero}")
+  println("after")
+end
+"##;
+    for opt in ["0", "2"] {
+        let (code, out, _) = run_status(wraps, &["--opt-level", opt]);
+        assert_eq!(code, Some(0));
+        assert_eq!(out, "-9223372036854775808 0 -7 1 -3\n", "--opt-level {opt}");
+        // The panic ends the process cleanly instead of aborting.
+        let (code, out, err) = run_status(panics, &["--opt-level", opt]);
+        assert_eq!(code, Some(101), "--opt-level {opt}\n{err}");
+        assert_eq!(out, "before\n");
+        assert!(err.contains("division by zero"), "{err}");
+        assert!(!err.contains("failed to initiate panic"), "{err}");
+    }
+}
+
+#[test]
+fn nan_is_unequal_to_itself_and_float_to_int_saturates() {
+    let source = r##"
+fn main() do
+  let nan = 0.0 / 0.0
+  let big = 1.0e20
+  println("#{nan != nan} #{not (nan == nan)} #{[nan] != [nan]} #{1.0 != 1.0}")
+  println("#{Float.to_int(big)} #{Float.to_int(0.0 - big)} #{Float.to_int(nan)}")
+  println("#{Math.floor(big)} #{Math.ceil(nan)} #{Math.round(0.0 - big)} #{Float.to_int(2.9)}")
+end
+"##;
+    for opt in ["0", "2"] {
+        let (code, out, err) = run_status(source, &["--opt-level", opt]);
+        assert_eq!(code, Some(0), "{err}");
+        assert_eq!(
+            out,
+            "true true true false\n9223372036854775807 -9223372036854775808 0\n9223372036854775807 0 -9223372036854775808 2\n",
+            "--opt-level {opt}"
+        );
+    }
+}
+
 // ── Diagnostic locations ───────────────────────────────────────────────
 
 #[test]

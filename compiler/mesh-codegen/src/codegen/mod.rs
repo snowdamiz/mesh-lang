@@ -1128,7 +1128,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Call the Mesh entry function on the main thread.
+        // Call the Mesh entry function on the main thread, through the runtime
+        // so that a panic in it ends the process cleanly.
         // mesh_main runs synchronously, spawning service/job actors along the way.
         // The runtime handles service calls from the main thread context by using
         // a dedicated main process entry in the process table.
@@ -1136,8 +1137,13 @@ impl<'ctx> CodeGen<'ctx> {
             .functions
             .get(entry_name)
             .ok_or_else(|| format!("Entry function '{}' not found", entry_name))?;
+        let run_main = intrinsics::get_intrinsic(&self.module, "mesh_run_main");
         self.builder
-            .build_call(*mesh_main, &[], "")
+            .build_call(
+                run_main,
+                &[mesh_main.as_global_value().as_pointer_value().into()],
+                "",
+            )
             .map_err(|e| e.to_string())?;
 
         if !self.startup_work_registrations.is_empty() {
