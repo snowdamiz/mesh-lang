@@ -9063,7 +9063,7 @@ impl<'a> Lowerer<'a> {
         {
             return None;
         }
-        let args: Vec<Expr> = call.arg_list()?.args().collect();
+        let args = call.args();
         let receiver = self.get_ty(args.first()?.syntax().text_range())?.clone();
         let lowered: Vec<MirExpr> = args.iter().map(|arg| self.lower_expr(arg)).collect();
         let ty = self.resolve_range(call.syntax().text_range());
@@ -9376,10 +9376,7 @@ impl<'a> Lowerer<'a> {
                         });
                     if field_holds_function {
                         let func = self.lower_field_access(fa);
-                        let args = call
-                            .arg_list()
-                            .map(|list| list.args().map(|arg| self.lower_expr(&arg)).collect())
-                            .unwrap_or_default();
+                        let args = call.args().iter().map(|arg| self.lower_expr(arg)).collect();
                         let ty = self.resolve_range(call.syntax().text_range());
                         return MirExpr::Call {
                             func: Box::new(func),
@@ -9396,10 +9393,8 @@ impl<'a> Lowerer<'a> {
 
                     // Lower explicit arguments
                     let mut args = vec![receiver];
-                    if let Some(arg_list) = call.arg_list() {
-                        for arg in arg_list.args() {
-                            args.push(self.lower_expr(&arg));
-                        }
+                    for arg in call.args() {
+                        args.push(self.lower_expr(&arg));
                     }
 
                     let ty = self.resolve_range(call.syntax().text_range());
@@ -9682,10 +9677,7 @@ impl<'a> Lowerer<'a> {
             // The method's type: the receiver's, then the arguments', to
             // the call's.
             let method = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-            let args: Vec<Expr> = call
-                .arg_list()
-                .map(|al| al.args().collect())
-                .unwrap_or_default();
+            let args = call.args();
             let params: Option<Vec<Ty>> = fa
                 .base()
                 .into_iter()
@@ -9714,10 +9706,7 @@ impl<'a> Lowerer<'a> {
             .as_ref()
             .and_then(|(_, fa)| fa.base())
             .map(|base| self.lower_expr(&base));
-        let explicit: Vec<Expr> = call
-            .arg_list()
-            .map(|al| al.args().collect())
-            .unwrap_or_default();
+        let explicit = call.args();
         let args: Vec<MirExpr> = receiver
             .into_iter()
             .chain(explicit.iter().map(|a| self.lower_expr(a)))
@@ -10126,10 +10115,8 @@ impl<'a> Lowerer<'a> {
                 let callee = call.callee().map(|e| self.lower_callee(&e));
                 let mut args: Vec<MirExpr> = Vec::new();
                 args.push(lhs);
-                if let Some(arg_list) = call.arg_list() {
-                    for arg in arg_list.args() {
-                        args.push(self.lower_expr(&arg));
-                    }
+                for arg in call.args() {
+                    args.push(self.lower_expr(&arg));
                 }
                 let callee = match callee {
                     Some(c) => c,
@@ -10193,10 +10180,8 @@ impl<'a> Lowerer<'a> {
             Some(Expr::CallExpr(call)) => {
                 let callee = call.callee().map(|e| self.lower_callee(&e));
                 let mut explicit_args: Vec<MirExpr> = Vec::new();
-                if let Some(arg_list) = call.arg_list() {
-                    for arg in arg_list.args() {
-                        explicit_args.push(self.lower_expr(&arg));
-                    }
+                for arg in call.args() {
+                    explicit_args.push(self.lower_expr(&arg));
                 }
                 // Insert lhs at insert_idx (0-indexed), clamping to length
                 let actual_idx = insert_idx.min(explicit_args.len());

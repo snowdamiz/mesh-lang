@@ -75,7 +75,10 @@ pub(crate) fn check(
             !binding.syntax().ancestors().skip(1).any(|ancestor| {
                 matches!(
                     ancestor.kind(),
-                    SyntaxKind::FN_DEF | SyntaxKind::ACTOR_DEF | SyntaxKind::CLOSURE_EXPR
+                    SyntaxKind::FN_DEF
+                        | SyntaxKind::ACTOR_DEF
+                        | SyntaxKind::CLOSURE_EXPR
+                        | SyntaxKind::TRAILING_CLOSURE
                 )
             })
         })
@@ -1136,8 +1139,8 @@ impl Checker<'_> {
                 .get(&call.syntax().text_range())
                 .is_some_and(|ty| is_resource_sum_constructor(self.registry, ty, callee))
         });
-        if let Some(arguments) = call.arg_list() {
-            for (index, argument) in arguments.args().enumerate() {
+        {
+            for (index, argument) in call.args().into_iter().enumerate() {
                 let is_resource = self.expr_is_resource(&argument);
                 if is_resource {
                     if let Some(reason) = forbidden_reason {

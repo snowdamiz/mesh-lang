@@ -255,6 +255,25 @@ impl CallExpr {
     pub fn arg_list(&self) -> Option<ArgList> {
         child_node(&self.syntax)
     }
+
+    /// The closure written after the call, `f(x) do |v| ... end`: a closure
+    /// passed as the last argument.
+    pub fn trailing_closure(&self) -> Option<ClosureExpr> {
+        self.syntax
+            .children()
+            .find(|node| node.kind() == SyntaxKind::TRAILING_CLOSURE)
+            .map(|syntax| ClosureExpr { syntax })
+    }
+
+    /// The arguments: those in parentheses, then the trailing closure.
+    pub fn args(&self) -> Vec<Expr> {
+        let mut args: Vec<Expr> = self
+            .arg_list()
+            .map(|list| list.args().collect())
+            .unwrap_or_default();
+        args.extend(self.trailing_closure().map(Expr::ClosureExpr));
+        args
+    }
 }
 
 ast_node!(ArgList, ARG_LIST);

@@ -9620,7 +9620,7 @@ fn infer_call_inner(
     // Arity dispatch: check for overloaded functions (name__N mangled keys) first.
     // This handles both plain NameRef calls (slugify(str)) and qualified FieldAccess
     // calls (Slug.slugify(str)) where the module exports overloaded variants.
-    let arg_count = call.arg_list().map(|al| al.args().count()).unwrap_or(0);
+    let arg_count = call.args().len();
     let mut arity_dispatched_ty: Option<Ty> = None;
 
     // Plain NameRef: look up name__N in env
@@ -9710,10 +9710,7 @@ fn infer_call_inner(
                     ) {
                         Ok(callee_ty) => {
                             let base = fa.base().ok_or_else(|| first_err.clone())?;
-                            let explicit_args: Vec<Expr> = call
-                                .arg_list()
-                                .map(|arg_list| arg_list.args().collect())
-                                .unwrap_or_default();
+                            let explicit_args = call.args();
                             let ret_var = ctx.fresh_var();
                             let origin = ConstraintOrigin::FnArg {
                                 call_site: call.syntax().text_range(),
@@ -9777,10 +9774,7 @@ fn infer_call_inner(
         }
     }; // close else { match ... } and the let binding
 
-    let args: Vec<Expr> = call
-        .arg_list()
-        .map(|arg_list| arg_list.args().collect())
-        .unwrap_or_default();
+    let args = call.args();
 
     let ret_var = ctx.fresh_var();
     let origin = ConstraintOrigin::FnArg {
@@ -10043,10 +10037,7 @@ fn infer_pipe(
                 fn_constraints,
             )?;
 
-            let args: Vec<Expr> = call
-                .arg_list()
-                .map(|arg_list| arg_list.args().collect())
-                .unwrap_or_default();
+            let args = call.args();
 
             let origin = ConstraintOrigin::FnArg {
                 call_site: call.syntax().text_range(),
@@ -10343,10 +10334,7 @@ fn infer_slot_pipe(
                 fn_constraints,
             )?;
 
-            let explicit_args: Vec<Expr> = call
-                .arg_list()
-                .map(|arg_list| arg_list.args().collect())
-                .unwrap_or_default();
+            let explicit_args = call.args();
             // `x |2> f(a, b, c)` means f(a, x, b, c): insert at index 1 (slot-1).
             // If the requested position exceeds the explicit argument list, MIR lowering
             // clamps it to the end, so inference must do the same.
@@ -14887,10 +14875,7 @@ fn infer_bare_method_call(
     let Some(name) = name_ref.text() else {
         return Ok(None);
     };
-    let args: Vec<Expr> = call
-        .arg_list()
-        .map(|list| list.args().collect())
-        .unwrap_or_default();
+    let args = call.args();
     let is_method_name = env.lookup(&name).is_none() || ctx.trait_method_fns.contains(&name);
     if env.is_local(&name) || !is_method_name {
         return Ok(None);

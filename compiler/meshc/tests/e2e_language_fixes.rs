@@ -3594,3 +3594,42 @@ end
         "{err}"
     );
 }
+
+#[test]
+fn trailing_closures_are_the_last_argument() {
+    // The docs' `with_value(10) do |value| ... end` was "expected 2
+    // argument(s), found 1": the closure was parsed and then ignored.
+    let source = r##"
+fn with_value(value :: Int, block :: Fun(Int) -> Int) -> Int do
+  block(value)
+end
+
+fn twice(block :: Fun() -> Int) -> Int do
+  block() + block()
+end
+
+fn main() do
+  let result = with_value(10) do |value|
+    value * 2
+  end
+  let base = 5
+  let total = twice() do
+    base + 1
+  end
+  let lengths = List.map(["a", "bb"]) do |w|
+    String.length(w)
+  end
+  let piped = 3 |> with_value() do |n|
+    n * 10
+  end
+  println("#{result} #{total} #{lengths} #{piped}")
+end
+"##;
+    assert_eq!(run(source), "20 12 [1, 2] 30\n");
+    // A closure passed both ways is one argument too many; the trailing
+    // one was dropped without a word.
+    let err = build_error(
+        "fn with_value(value :: Int, block :: Fun(Int) -> Int) -> Int do\n  block(value)\nend\n\nfn main() do\n  let r = with_value(10, fn x -> x + 1 end) do |v|\n    v\n  end\n  println(\"#{r}\")\nend\n",
+    );
+    assert!(err.contains("expected 2 argument(s), found 3"), "{err}");
+}
