@@ -3,7 +3,7 @@ source: compiler/mesh-parser/tests/parser_tests.rs
 expression: "parse_and_debug(\"receive do\\n  x -> x\\nafter 5000 -> 0\\nend\")"
 ---
 SOURCE_FILE@0..39
-  RECEIVE_EXPR@0..35
+  RECEIVE_EXPR@0..39
     RECEIVE_KW@0..7 "receive"
     WHITESPACE@7..8 " "
     DO_KW@8..10 "do"
@@ -28,9 +28,6 @@ SOURCE_FILE@0..39
       WHITESPACE@33..34 " "
       LITERAL@34..35
         INT_LITERAL@34..35 "0"
-  NEWLINE@35..36 "\n"
-  END_KW@36..39 "end"
+    NEWLINE@35..36 "\n"
+    END_KW@36..39 "end"
   EOF@39..39 ""
-
-errors:
-  - expected `end` to close `receive` block @35..36

@@ -1748,6 +1748,9 @@ fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
         }
     }
 
+    // The `after` clause ends the loop above; `end` may follow on its own line.
+    p.eat_newlines();
+
     if !p.at(SyntaxKind::END_KW) {
         p.error_with_related(
             "expected `end` to close `receive` block",
