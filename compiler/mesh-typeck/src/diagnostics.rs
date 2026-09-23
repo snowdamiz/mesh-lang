@@ -149,6 +149,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidLetPattern { .. } => "E0054",
         TypeError::InvalidPassThroughArm { .. } => "E0056",
         TypeError::DuplicateBinding { .. } => "E0057",
+        TypeError::CyclicAlias { .. } => "E0062",
     }
 }
 
@@ -529,6 +530,7 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::InvalidPassThroughArm { span, .. }
                 | TypeError::DuplicateBinding { span, .. }
+                | TypeError::CyclicAlias { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2040,6 +2042,20 @@ pub fn render_diagnostic(
                 .with_help(
                     "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
                 )
+                .finish()
+        }
+        TypeError::CyclicAlias { alias_name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("type alias `{alias_name}` refers to itself"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("expanding it never ends")
+                        .with_color(Color::Red),
+                )
+                .with_help("an alias names an existing type; use a struct or sum type for a recursive type")
                 .finish()
         }
         TypeError::DuplicateBinding { name, span } => {

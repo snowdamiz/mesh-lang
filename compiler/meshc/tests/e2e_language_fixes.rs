@@ -2563,3 +2563,16 @@ end
 "##;
     assert_eq!(run(source), "(1, 2) 3 [(a, b)]\n");
 }
+
+#[test]
+fn an_alias_that_refers_to_itself_is_reported() {
+    let err = build_error(
+        "type A = B\ntype B = A\ntype L<T> = List<L<T>>\n\nfn main() do\n  println(\"x\")\nend\n",
+    );
+    for alias in ["`A`", "`B`", "`L`"] {
+        assert!(
+            err.contains(&format!("type alias {alias} refers to itself")),
+            "{err}"
+        );
+    }
+}

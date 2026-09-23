@@ -6261,6 +6261,18 @@ fn validate_type_aliases(
     errors: &mut Vec<crate::error::TypeError>,
 ) {
     for (alias_def, range) in alias_defs {
+        let alias_name = alias_def
+            .name()
+            .and_then(|n| n.text())
+            .unwrap_or_else(|| "<unnamed>".to_string());
+        if alias_is_cyclic(&alias_name, type_registry) {
+            errors.push(crate::error::TypeError::CyclicAlias {
+                alias_name,
+                span: *range,
+            });
+            continue;
+        }
+
         // Only validate simple (non-generic) aliases — generic aliases like
         // `type Pair<A, B> = (A, B)` use type variables that aren't in the registry.
         let generic_params: Vec<String> = alias_def
@@ -6295,6 +6307,45 @@ fn validate_type_aliases(
             }
         }
     }
+}
+
+/// Whether the alias `name` refers back to itself through the aliases its
+/// definition names (`type A = B` with `type B = A`, or
+/// `type L<T> = List<L<T>>`), so it could never be expanded.
+fn alias_is_cyclic(name: &str, type_registry: &TypeRegistry) -> bool {
+    fn constructors(ty: &Ty, out: &mut Vec<String>) {
+        match ty {
+            Ty::Con(tc) => out.push(tc.name.clone()),
+            Ty::App(con, args) => {
+                constructors(con, out);
+                args.iter().for_each(|arg| constructors(arg, out));
+            }
+            Ty::Fun(params, ret) => {
+                params.iter().for_each(|p| constructors(p, out));
+                constructors(ret, out);
+            }
+            Ty::Tuple(elems) => elems.iter().for_each(|e| constructors(e, out)),
+            _ => {}
+        }
+    }
+    let mut stack = vec![name.to_string()];
+    let mut seen = FxHashSet::default();
+    while let Some(current) = stack.pop() {
+        let Some(alias) = type_registry.lookup_alias(&current) else {
+            continue;
+        };
+        let mut names = Vec::new();
+        constructors(&alias.aliased_type, &mut names);
+        for referenced in names {
+            if referenced == name {
+                return true;
+            }
+            if seen.insert(referenced.clone()) {
+                stack.push(referenced);
+            }
+        }
+    }
+    false
 }
 
 // ── Sum Type Registration (04-02) ──────────────────────────────────────

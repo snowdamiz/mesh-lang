@@ -378,6 +378,8 @@ pub enum TypeError {
     InvalidPassThroughArm { reason: String, span: TextRange },
     /// One pattern binds the same name twice (`(a, a)`).
     DuplicateBinding { name: String, span: TextRange },
+    /// A type alias expands into itself.
+    CyclicAlias { alias_name: String, span: TextRange },
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
@@ -862,6 +864,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidLetPattern { reason, .. } => {
                 write!(f, "invalid let destructuring pattern: {reason}")
+            }
+            TypeError::CyclicAlias { alias_name, .. } => {
+                write!(f, "type alias `{alias_name}` refers to itself")
             }
             TypeError::DuplicateBinding { name, .. } => {
                 write!(f, "`{name}` is bound twice in one pattern")
