@@ -1449,7 +1449,14 @@ impl<'a> Lowerer<'a> {
 
     // ── Type resolution helper ───────────────────────────────────────
 
+    /// The MIR type of the value at `range`. A tuple value is a pointer to its
+    /// heap block (`runtime_value_type`); `resolve_range_structure` keeps the
+    /// element types.
     fn resolve_range(&self, range: TextRange) -> MirType {
+        runtime_value_type(self.resolve_range_structure(range))
+    }
+
+    fn resolve_range_structure(&self, range: TextRange) -> MirType {
         if let Some(ty) = self.get_ty(range) {
             resolve_type(ty, self.registry)
         } else {
@@ -5680,7 +5687,13 @@ impl<'a> Lowerer<'a> {
             if let Some(info) = self.registry.struct_defs.get(&name) {
                 info.fields
                     .iter()
-                    .map(|(fname, fty)| (fname.clone(), resolve_type(fty, self.registry)))
+                    // A tuple field holds the pointer to its heap block.
+                    .map(|(fname, fty)| {
+                        (
+                            fname.clone(),
+                            runtime_value_type(resolve_type(fty, self.registry)),
+                        )
+                    })
                     .collect()
             } else {
                 Vec::new()
@@ -5841,7 +5854,12 @@ impl<'a> Lowerer<'a> {
             .collect();
         let fields: Vec<(String, MirType)> = typed_fields
             .iter()
-            .map(|(fname, fty)| (fname.clone(), resolve_type(fty, self.registry)))
+            .map(|(fname, fty)| {
+                (
+                    fname.clone(),
+                    runtime_value_type(resolve_type(fty, self.registry)),
+                )
+            })
             .collect();
 
         // Check which traits are registered via the trait registry.
@@ -11643,8 +11661,8 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        let key_mir_ty = resolve_type(key_ty_src, self.registry);
-        let val_mir_ty = resolve_type(val_ty_src, self.registry);
+        let key_mir_ty = runtime_value_type(resolve_type(key_ty_src, self.registry));
+        let val_mir_ty = runtime_value_type(resolve_type(val_ty_src, self.registry));
 
         self.push_scope();
         self.insert_var(key_var.clone(), key_mir_ty.clone());
@@ -13324,7 +13342,7 @@ impl<'a> Lowerer<'a> {
         let terms = fields
             .iter()
             .map(|(field, ty)| {
-                let mir = resolve_type(ty, self.registry);
+                let mir = runtime_value_type(resolve_type(ty, self.registry));
                 let access = |object: &str| MirExpr::FieldAccess {
                     object: Box::new(MirExpr::Var(object.to_string(), struct_ty.clone())),
                     field: field.clone(),
@@ -14853,7 +14871,7 @@ impl<'a> Lowerer<'a> {
             let reply_type = handler
                 .body()
                 .and_then(|block| block.tail_expr())
-                .map(|expr| self.resolve_range(expr.syntax().text_range()))
+                .map(|expr| self.resolve_range_structure(expr.syntax().text_range()))
                 .and_then(|ty| {
                     if let MirType::Tuple(ref elems) = ty {
                         if elems.len() >= 2 {
@@ -17224,7 +17242,12 @@ pub fn lower_to_mir(
                 fields: definition
                     .fields
                     .iter()
-                    .map(|(field, ty)| (field.clone(), resolve_type(ty, &typeck.type_registry)))
+                    .map(|(field, ty)| {
+                        (
+                            field.clone(),
+                            runtime_value_type(resolve_type(ty, &typeck.type_registry)),
+                        )
+                    })
                     .collect(),
             });
         }

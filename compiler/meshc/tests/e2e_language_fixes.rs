@@ -1828,3 +1828,62 @@ fn clauses_that_do_not_cover_every_argument_warn_and_panic_when_missed() {
         assert!(output.stdout.is_empty(), "{source}");
     }
 }
+
+// ── Tuple values ───────────────────────────────────────────────────────
+
+#[test]
+fn tuple_values_keep_their_elements_wherever_they_come_from() {
+    let source = r##"
+struct P do
+  n :: Int
+  f :: (String, Int)
+end deriving(Eq)
+
+struct Box<T> do
+  value :: T
+end
+
+fn pair() -> (Int, Int) = (1, 2)
+
+fn fst(t :: (String, Int)) -> String do
+  let (s, _) = t
+  s
+end
+
+fn main() do
+  let z = pair()
+  println("#{z} #{z == (1, 2)} #{Tuple.first(z)}")
+  let w = if true do (1, "a") else (2, "b") end
+  let c = case 2 do
+    1 -> (0, 0)
+    _ -> (3, 4)
+  end
+  println("#{w} #{c}")
+  let p = fn (a :: Int) -> (a, a * 10) end
+  let t = p(7)
+  println("#{p(1)} #{Tuple.second(t)} #{[p(2)]}")
+  let a = P { n: 1, f: ("x", 2) }
+  let b = P { n: 1, f: ("x", 2) }
+  let d = P { n: 1, f: ("y", 9) }
+  println("#{a.f} #{fst(a.f)} #{a == b} #{a == d} #{Box { value: (5, 6) }.value}")
+  let m = %{"b" => (2, 3)}
+  let v = Map.get(m, "b")
+  println("#{v} #{Tuple.first(v)}")
+  for {k, pv} in m do
+    println("#{k} #{pv}")
+  end
+  for (k, (x, y)) in %{1 => (10, "s")} do
+    println("#{k} #{x} #{y}")
+  end
+end
+"##;
+    for opt in ["0", "2"] {
+        let (code, out, err) = run_status(source, &["--opt-level", opt]);
+        assert_eq!(code, Some(0), "{err}");
+        assert_eq!(
+            out,
+            "(1, 2) true 1\n(1, a) (3, 4)\n(1, 10) 70 [(2, 20)]\n(x, 2) x true false (5, 6)\n(2, 3) 2\nb (2, 3)\n1 10 s\n",
+            "--opt-level {opt}"
+        );
+    }
+}
