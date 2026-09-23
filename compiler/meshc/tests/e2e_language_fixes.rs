@@ -3717,3 +3717,35 @@ end
 "##;
     assert_eq!(run(source), "1 two 3.5\n1 x y 2\n");
 }
+
+#[test]
+fn an_impl_must_name_an_existing_interface_and_type() {
+    // Both impls were accepted; the first one's methods even worked.
+    let source = r##"
+struct C do
+  n :: Int
+end
+
+impl Dispaly for C do
+  fn to_string(self) -> String do
+    "c"
+  end
+end
+
+impl Display for Nope do
+  fn to_string(self) -> String do
+    "x"
+  end
+end
+
+fn main() do
+  println("x")
+end
+"##;
+    let err = build_error(source);
+    assert!(
+        err.contains("[E0071] Error: unknown interface `Dispaly`"),
+        "{err}"
+    );
+    assert!(err.contains("[E0069] Error: unknown type `Nope`"), "{err}");
+}

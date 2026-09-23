@@ -4356,6 +4356,13 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
     for item in singles() {
         if let Item::ImplDef(impl_) = item {
+            check_impl_header(
+                &mut ctx,
+                impl_,
+                &type_registry,
+                &trait_registry,
+                &builtin_types,
+            );
             register_impl_signature(&mut ctx, impl_, &type_registry, &mut trait_registry);
         }
     }
@@ -6628,6 +6635,34 @@ fn builtin_type_names(
         }
     }
     names.into_iter().collect()
+}
+
+/// An impl names an interface and a type that exist: `impl Dispaly for P`
+/// (a typo) or `impl Show for Nope` was accepted and did nothing.
+fn check_impl_header(
+    ctx: &mut InferCtx,
+    impl_: &AstImplDef,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    builtin_types: &FxHashSet<String>,
+) {
+    if let Some(name) = impl_.interface_name() {
+        if trait_registry.get_trait(name.text()).is_none() {
+            ctx.errors.push(TypeError::UnknownInterface {
+                name: name.text().to_string(),
+                span: name.text_range(),
+            });
+        }
+    }
+    if let Some(ty) = impl_.type_name() {
+        let known = builtin_types.contains(ty.text()) || is_known_type(ty.text(), type_registry);
+        if !known {
+            ctx.errors.push(TypeError::UnknownType {
+                name: ty.text().to_string(),
+                span: ty.text_range(),
+            });
+        }
+    }
 }
 
 /// Report each type name an annotation uses that names no type: a

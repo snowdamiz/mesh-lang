@@ -162,6 +162,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DuplicateDefinition { .. } => "E0068",
         TypeError::UnknownType { .. } => "E0069",
         TypeError::UnknownFieldOwner { .. } => "E0070",
+        TypeError::UnknownInterface { .. } => "E0071",
     }
 }
 
@@ -555,6 +556,7 @@ pub fn render_json_diagnostic(
                 | TypeError::DuplicateDefinition { span, .. }
                 | TypeError::UnknownType { span, .. }
                 | TypeError::UnknownFieldOwner { span, .. }
+                | TypeError::UnknownInterface { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2212,6 +2214,20 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("check the spelling, or define or import the type")
+                .finish()
+        }
+        TypeError::UnknownInterface { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("unknown interface `{name}`"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("no interface has this name")
+                        .with_color(Color::Red),
+                )
+                .with_help("check the spelling, or declare the interface or import its module")
                 .finish()
         }
         TypeError::UnknownFieldOwner { field, span } => {
