@@ -338,6 +338,10 @@ struct Lowerer<'a> {
     default_method_bodies: &'a FxHashMap<(String, String), TextRange>,
     /// The parse tree, used for looking up default method body AST nodes.
     parse: &'a Parse,
+    /// Default method bodies of interfaces declared in other modules, by
+    /// (interface, method): that module's syntax tree, its types, and the
+    /// method's range there.
+    foreign_defaults: HashMap<(String, String), ForeignDefault<'a>>,
     /// Functions being built.
     functions: Vec<MirFunction>,
     /// Bodyless native archive functions.
@@ -685,6 +689,7 @@ impl<'a> Lowerer<'a> {
             trait_registry: &typeck.trait_registry,
             default_method_bodies: &typeck.default_method_bodies,
             parse,
+            foreign_defaults: HashMap::new(),
             functions: Vec::new(),
             native_functions: Vec::new(),
             structs: Vec::new(),
@@ -5217,6 +5222,20 @@ impl<'a> Lowerer<'a> {
                                     &trait_method.name,
                                     &type_name,
                                 );
+                            } else if let Some(foreign) = self.foreign_defaults.get(&key).copied() {
+                                // Lowered from the declaring module's syntax
+                                // and types, for this module's type.
+                                let parse = std::mem::replace(&mut self.parse, foreign.parse);
+                                let types = std::mem::replace(&mut self.types, foreign.types);
+                                self.lower_default_method(
+                                    foreign.range,
+                                    &trait_name,
+                                    &trait_type_args,
+                                    &trait_method.name,
+                                    &type_name,
+                                );
+                                self.parse = parse;
+                                self.types = types;
                             }
                         }
                     }
@@ -17131,6 +17150,35 @@ pub fn lower_to_mir(
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
 ) -> Result<MirModule, String> {
+    lower_module_to_mir(
+        parse,
+        typeck,
+        module_name,
+        pub_fns,
+        inferred_fn_usage_types,
+        &[],
+    )
+}
+
+/// A default method body of an interface declared in another module.
+#[derive(Clone, Copy)]
+struct ForeignDefault<'a> {
+    parse: &'a Parse,
+    types: &'a FxHashMap<TextRange, Ty>,
+    range: TextRange,
+}
+
+/// `lower_to_mir` for one module of a project: `other_modules` are the
+/// project's other modules, whose interfaces' default methods this
+/// module's impls may inherit.
+pub fn lower_module_to_mir<'a>(
+    parse: &'a Parse,
+    typeck: &'a TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
+    other_modules: &[(&'a Parse, &'a TypeckResult)],
+) -> Result<MirModule, String> {
     if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
         TypeError::ResourceViolation { reason, .. }
             if reason.contains("cannot be captured by a closure") =>
@@ -17149,6 +17197,20 @@ pub fn lower_to_mir(
     };
 
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
+    for &(other_parse, other) in other_modules {
+        for (key, &range) in &other.default_method_bodies {
+            if !typeck.default_method_bodies.contains_key(key) {
+                lowerer.foreign_defaults.insert(
+                    key.clone(),
+                    ForeignDefault {
+                        parse: other_parse,
+                        types: &other.types,
+                        range,
+                    },
+                );
+            }
+        }
+    }
 
     // Also register builtin sum types from the registry (Option, Result).
     // Generic type params (T, E) are resolved to Ptr since all Mesh values

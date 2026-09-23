@@ -1077,12 +1077,21 @@ pub(crate) fn prepare_project_build(
             .map(|e| e.functions.keys().cloned().collect())
             .unwrap_or_default();
 
-        let mir = mesh_codegen::lower_to_mir_raw(
+        let other_modules: Vec<_> = project
+            .module_parses
+            .iter()
+            .zip(&all_typeck)
+            .enumerate()
+            .filter(|(other, _)| *other != idx)
+            .filter_map(|(_, (parse, typeck))| Some((parse, typeck.as_ref()?)))
+            .collect();
+        let mir = mesh_codegen::lower_module_to_mir_raw(
             parse,
             typeck,
             module_name,
             &pub_fns,
             &inferred_fn_usage_types,
+            &other_modules,
         )?;
         if id == entry_id {
             entry_mir_idx = i;

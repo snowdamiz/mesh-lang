@@ -7885,3 +7885,34 @@ end
     let output = compile_multifile_and_run(&[("shapes.mpl", shapes), ("main.mpl", &main)]);
     assert_eq!(output, "9\n");
 }
+
+#[test]
+fn e2e_default_methods_of_interfaces_from_other_modules() {
+    // The impl in `main` inherits `label` from `shapes`: "no method
+    // `label`", then "Undefined variable 'Shape__label__Circle'".
+    let shapes = "pub interface Shape do\n  fn area(self) -> Int\n  fn label(self) -> String do\n    \"area=#{self.area()}\"\n  end\nend\n";
+    let main = r##"import Shapes
+
+struct Circle do
+  r :: Int
+end
+
+impl Shapes.Shape for Circle do
+  fn area(self) -> Int do
+    3 * self.r * self.r
+  end
+end
+
+fn show<T>(x :: T) -> String where T: Shape do
+  x.label()
+end
+
+fn main() do
+  let c = Circle { r: 2 }
+  println(c.label())
+  println(show(c))
+end
+"##;
+    let output = compile_multifile_and_run(&[("shapes.mpl", shapes), ("main.mpl", main)]);
+    assert_eq!(output, "area=12\narea=12\n");
+}

@@ -255,6 +255,26 @@ pub fn lower_to_mir_raw(
     Ok(module)
 }
 
+/// `lower_to_mir_raw` for one module of a project, with the project's other
+/// modules (whose interfaces' default methods its impls may inherit).
+pub fn lower_module_to_mir_raw<'a>(
+    parse: &'a mesh_parser::Parse,
+    typeck: &'a mesh_typeck::TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<mesh_typeck::ty::Ty>>,
+    other_modules: &[(&'a mesh_parser::Parse, &'a mesh_typeck::TypeckResult)],
+) -> Result<mir::MirModule, String> {
+    mir::lower::lower_module_to_mir(
+        parse,
+        typeck,
+        module_name,
+        pub_fns,
+        inferred_fn_usage_types,
+        other_modules,
+    )
+}
+
 /// Compile a parsed and type-checked Mesh program to an object file.
 ///
 /// This is the main entry point for code generation. It:
