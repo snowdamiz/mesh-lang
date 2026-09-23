@@ -447,23 +447,17 @@ fn collect_symbols(source: &str, node: &SyntaxNode) -> Vec<DocumentSymbol> {
     symbols
 }
 
-/// Extract a display name for an IMPL_DEF node.
-///
-/// Returns "impl TraitName" by reading the first IDENT from the first PATH child.
+/// Extract a display name for an IMPL_DEF node: `impl Show for Point`.
 fn extract_impl_name(node: &SyntaxNode) -> String {
-    for child in node.children() {
-        if child.kind() == SyntaxKind::PATH {
-            // Get the first IDENT token from the PATH.
-            for token in child.children_with_tokens() {
-                if let rowan::NodeOrToken::Token(t) = token {
-                    if t.kind() == SyntaxKind::IDENT {
-                        return format!("impl {}", t.text());
-                    }
-                }
-            }
-        }
+    use mesh_parser::ast::AstNode;
+    let Some(impl_def) = mesh_parser::ast::item::ImplDef::cast(node.clone()) else {
+        return "impl".to_string();
+    };
+    match (impl_def.interface_name(), impl_def.type_name()) {
+        (Some(interface), Some(ty)) => format!("impl {} for {}", interface.text(), ty.text()),
+        (Some(interface), None) => format!("impl {}", interface.text()),
+        _ => "impl".to_string(),
     }
-    "impl".to_string()
 }
 
 /// Construct a `DocumentSymbol` from a CST node.

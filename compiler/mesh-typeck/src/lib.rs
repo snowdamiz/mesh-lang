@@ -326,7 +326,6 @@ pub fn check_with_imports(parse: &mesh_parser::Parse, import_ctx: &ImportContext
 pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> ExportedSymbols {
     use mesh_parser::ast::item::Item;
     use mesh_parser::ast::AstNode;
-    use mesh_parser::syntax_kind::SyntaxKind;
 
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();
@@ -482,27 +481,8 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
     // 1. Explicit impl blocks in the AST.
     for item in tree.items() {
         if let Item::ImplDef(ref impl_def) = item {
-            // Extract trait name from the first PATH child.
-            let paths: Vec<_> = impl_def
-                .syntax()
-                .children()
-                .filter(|n| n.kind() == SyntaxKind::PATH)
-                .collect();
-
-            let trait_name = paths.first().and_then(|path| {
-                path.children_with_tokens()
-                    .filter_map(|t| t.into_token())
-                    .find(|t| t.kind() == SyntaxKind::IDENT)
-                    .map(|t| t.text().to_string())
-            });
-
-            // Extract type name from the second PATH child (after `for`).
-            let type_name = paths.get(1).and_then(|path| {
-                path.children_with_tokens()
-                    .filter_map(|t| t.into_token())
-                    .find(|t| t.kind() == SyntaxKind::IDENT)
-                    .map(|t| t.text().to_string())
-            });
+            let trait_name = impl_def.interface_name().map(|t| t.text().to_string());
+            let type_name = impl_def.type_name().map(|t| t.text().to_string());
 
             if let (Some(tn), Some(ty)) = (trait_name, type_name) {
                 local_impl_traits.push((tn, ty));

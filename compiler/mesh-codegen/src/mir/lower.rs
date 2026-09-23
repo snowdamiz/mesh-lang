@@ -104,20 +104,9 @@ fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
 /// Returns `(trait_name, trait_type_args, type_name)`, e.g. `("From", vec!["Int"], "Float")`.
 /// For non-parameterized traits, trait_type_args is empty.
 fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
-    let paths: Vec<_> = impl_def
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::PATH)
-        .collect();
-
-    let trait_name = paths
-        .first()
-        .and_then(|path| {
-            path.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .find(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
+    let trait_name = impl_def
+        .interface_name()
+        .map(|t| t.text().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
 
     // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
@@ -135,14 +124,9 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
         })
         .collect();
 
-    let type_name = paths
-        .get(1)
-        .and_then(|path| {
-            path.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .find(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
+    let type_name = impl_def
+        .type_name()
+        .map(|t| t.text().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
 
     (trait_name, trait_type_args, type_name)

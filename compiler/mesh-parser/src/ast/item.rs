@@ -832,6 +832,29 @@ impl ImplDef {
         child_node(&self.syntax)
     }
 
+    /// The implemented interface's name: `Show` in `impl Show for T` and in
+    /// the module-qualified `impl Fmt.Show for T`.
+    pub fn interface_name(&self) -> Option<SyntaxToken> {
+        self.path_name(0)
+    }
+
+    /// The implementing type's name, the last segment of the path after
+    /// `for` (`Point` in `impl Show for Geo.Point`).
+    pub fn type_name(&self) -> Option<SyntaxToken> {
+        self.path_name(1)
+    }
+
+    fn path_name(&self, index: usize) -> Option<SyntaxToken> {
+        self.syntax
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::PATH)
+            .nth(index)?
+            .children_with_tokens()
+            .filter_map(|t| t.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT)
+            .last()
+    }
+
     /// The function definitions in the impl block.
     pub fn methods(&self) -> impl Iterator<Item = FnDef> + '_ {
         // Methods are inside the BLOCK child.

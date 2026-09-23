@@ -7835,3 +7835,23 @@ end
     let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
     assert_eq!(output, "7 0 2\n");
 }
+
+#[test]
+fn e2e_impl_header_names_can_be_module_qualified() {
+    // `impl Geo.Describe for Geo.P` was read as an impl of `Geo` for `Geo`.
+    let geo = "pub interface Describe do\n  fn describe(self) -> String\nend\n\npub struct P do\n  n :: Int\nend\n";
+    let main = r##"import Geo
+
+impl Geo.Describe for Geo.P do
+  fn describe(self) -> String do
+    "p #{self.n}"
+  end
+end
+
+fn main() do
+  println(Geo.P { n: 3 }.describe())
+end
+"##;
+    let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert_eq!(output, "p 3\n");
+}

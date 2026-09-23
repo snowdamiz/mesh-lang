@@ -7505,21 +7505,9 @@ fn impl_signature(
     impl_: &AstImplDef,
     type_registry: &TypeRegistry,
 ) -> TraitImplDef {
-    // Extract trait name from the first PATH child.
-    let paths: Vec<_> = impl_
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::PATH)
-        .collect();
-
-    let trait_name = paths
-        .first()
-        .and_then(|path| {
-            path.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .find(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
+    let trait_name = impl_
+        .interface_name()
+        .map(|t| t.text().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
 
     // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
@@ -7537,15 +7525,9 @@ fn impl_signature(
         })
         .collect();
 
-    // Extract type name from the second PATH child (after `for`).
-    let impl_type_name = paths
-        .get(1)
-        .and_then(|path| {
-            path.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .find(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
+    let impl_type_name = impl_
+        .type_name()
+        .map(|t| t.text().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
 
     let impl_type = name_to_type(&impl_type_name);
