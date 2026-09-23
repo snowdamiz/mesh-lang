@@ -12556,6 +12556,9 @@ impl<'a> Lowerer<'a> {
         };
         match ty {
             Ty::Tuple(elems) if elems.is_empty() => int(0),
+            // A type nothing fixed (`Ok(1) < Ok(2)`'s error type) has no
+            // values to tell apart, as in `eq_expr`.
+            Ty::Var(_) => MirExpr::Block(vec![lhs, rhs, int(0)], MirType::Int),
             Ty::Tuple(elems) => {
                 let f = self.tuple_cmp_fn(elems);
                 Self::call_named(

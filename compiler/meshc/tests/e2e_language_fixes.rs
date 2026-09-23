@@ -2524,3 +2524,21 @@ fn derive_errors_point_at_the_field_or_the_deriving_clause() {
         build_error("type T do\n  A\nend deriving(Ord)\n\nfn main() do\n  println(\"x\")\nend\n");
     assert!(err.contains("E0029") && err.contains(":3:5"), "{err}");
 }
+
+#[test]
+fn values_whose_type_parameter_is_never_fixed_compare_and_order() {
+    // `Ok(1)`'s error type is never fixed; it holds no values to tell apart.
+    let source = r##"
+type Outcome<T> do
+  Pending
+  Done(T)
+end deriving(Eq, Ord)
+
+fn main() do
+  let r = Ok(1)
+  println("#{r == Ok(1)} #{None == None} #{Pending == Pending} #{Err("x") == Err("x")}")
+  println("#{r < Ok(2)} #{compare(None, None)} #{Pending < Pending} #{Err("a") < Err("b")}")
+end
+"##;
+    assert_eq!(run(source), "true true true true\ntrue Equal false true\n");
+}
