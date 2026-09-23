@@ -48,6 +48,9 @@ pub enum ConstraintOrigin {
     /// A constraint the checker derived while inferring the expression at
     /// `span`, with no more specific origin.
     Expr { span: TextRange },
+    /// A pattern must match the value it is matched against: the value's
+    /// type is expected, the pattern's found.
+    Pattern { pattern_span: TextRange },
     /// Synthetic origin for built-in constraints (e.g. arithmetic operators).
     Builtin,
 }

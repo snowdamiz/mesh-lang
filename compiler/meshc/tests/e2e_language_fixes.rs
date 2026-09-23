@@ -4002,3 +4002,23 @@ fn a_parse_error_is_not_repeated_at_the_same_place() {
         "{err}"
     );
 }
+
+#[test]
+fn a_pattern_of_the_wrong_type_is_reported_at_the_pattern() {
+    // It spanned the whole function (and `main`), said "expected String,
+    // found Int" the wrong way round, and suggested to_string().
+    let source = "fn f(x :: Int) -> String do\n  case x do\n    \"a\" -> \"str\"\n    _ -> \"other\"\n  end\nend\n\nfn main() do\n  println(f(1))\nend\n";
+    let diags = json_diagnostics(source);
+    let mismatch = diags.iter().find(|d| d["code"] == "E0001").expect("E0001");
+    assert_eq!(
+        mismatch["spans"][0]["start"].as_u64().unwrap() as usize,
+        source.find("\"a\"").unwrap()
+    );
+    assert_eq!(mismatch["fix"], serde_json::Value::Null);
+    let err = build_error(source);
+    assert!(
+        err.contains("this pattern matches String, but the value is Int"),
+        "{err}"
+    );
+    assert_eq!(err.matches("E0001").count(), 1, "{err}");
+}

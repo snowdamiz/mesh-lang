@@ -200,6 +200,7 @@ fn origin_span(origin: &ConstraintOrigin) -> Option<Range<usize>> {
         ConstraintOrigin::LetBinding { binding_span } => Some(text_range_to_range(*binding_span)),
         ConstraintOrigin::Assignment { lhs_span, .. } => Some(text_range_to_range(*lhs_span)),
         ConstraintOrigin::Expr { span } => Some(text_range_to_range(*span)),
+        ConstraintOrigin::Pattern { pattern_span } => Some(text_range_to_range(*pattern_span)),
         ConstraintOrigin::Builtin => None,
     }
 }
@@ -440,7 +441,8 @@ pub fn render_json_diagnostic(
                 }
                 _ => {}
             }
-            fix = fix_suggestion(expected, found);
+            fix = fix_suggestion(expected, found)
+                .filter(|_| !matches!(origin, ConstraintOrigin::Pattern { .. }));
         }
         TypeError::UnboundVariable { span, .. } => {
             let range = text_range_to_range(*span);
@@ -753,6 +755,16 @@ pub fn render_diagnostic(
                             .with_color(Color::Blue),
                     );
                 }
+                ConstraintOrigin::Pattern { pattern_span } => {
+                    let range = clamp(text_range_to_range(*pattern_span));
+                    builder.add_label(
+                        Label::new((fname.clone(), range))
+                            .with_message(format!(
+                                "this pattern matches {found}, but the value is {expected}"
+                            ))
+                            .with_color(Color::Red),
+                    );
+                }
                 _ => {
                     builder.add_label(
                         Label::new((fname.clone(), span.clone()))
@@ -762,7 +774,8 @@ pub fn render_diagnostic(
                 }
             }
 
-            if let Some(fix) = fix_suggestion(expected, found) {
+            let is_pattern = matches!(origin, ConstraintOrigin::Pattern { .. });
+            if let Some(fix) = fix_suggestion(expected, found).filter(|_| !is_pattern) {
                 builder.set_help(fix);
             }
 

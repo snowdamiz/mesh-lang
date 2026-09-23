@@ -5371,9 +5371,11 @@ fn infer_multi_clause_fn(
                 // Pattern parameter -- infer the pattern type and unify.
                 let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
                 ctx.unify(
-                    pat_ty,
                     param_types[param_idx].clone(),
-                    ConstraintOrigin::Builtin,
+                    pat_ty,
+                    ConstraintOrigin::Pattern {
+                        pattern_span: pat.syntax().text_range(),
+                    },
                 )?;
 
                 // Convert to abstract pattern for exhaustiveness.
@@ -11429,9 +11431,11 @@ fn infer_multi_clause_closure(
                     // Pattern parameter: infer type and unify with param position.
                     let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
                     ctx.unify(
-                        pat_ty,
                         param_types[param_idx].clone(),
-                        ConstraintOrigin::Builtin,
+                        pat_ty,
+                        ConstraintOrigin::Pattern {
+                            pattern_span: pat.syntax().text_range(),
+                        },
                     )?;
                     clause_abs_pats.push(ast_pattern_to_abstract(&pat, env, type_registry));
                 } else {
@@ -12162,7 +12166,13 @@ fn infer_case(
         if let Some(pat) = arm.pattern() {
             check_unique_binders(ctx, std::slice::from_ref(&pat), env);
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-            ctx.unify(pat_ty, scrutinee_ty.clone(), ConstraintOrigin::Builtin)?;
+            ctx.unify(
+                scrutinee_ty.clone(),
+                pat_ty,
+                ConstraintOrigin::Pattern {
+                    pattern_span: pat.syntax().text_range(),
+                },
+            )?;
 
             // Convert to abstract pattern for exhaustiveness.
             let abs_pat = ast_pattern_to_abstract(&pat, env, type_registry);
@@ -14901,7 +14911,13 @@ fn infer_receive(
             check_unique_binders(ctx, std::slice::from_ref(&pat), env);
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             // Unify pattern type with actor message type.
-            ctx.unify(pat_ty, actor_msg_ty.clone(), ConstraintOrigin::Builtin)?;
+            ctx.unify(
+                actor_msg_ty.clone(),
+                pat_ty,
+                ConstraintOrigin::Pattern {
+                    pattern_span: pat.syntax().text_range(),
+                },
+            )?;
             // Lowering reads the message type from the pattern's range.
             types.insert(pat.syntax().text_range(), actor_msg_ty.clone());
             arm_patterns.push(ast_pattern_to_abstract(&pat, env, type_registry));
