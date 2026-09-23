@@ -2542,3 +2542,24 @@ end
 "##;
     assert_eq!(run(source), "true true true true\ntrue Equal false true\n");
 }
+
+// ── Struct literals, updates, aliases and variants ─────────────────────
+
+#[test]
+fn aliases_expand_through_other_aliases() {
+    let source = r##"
+type Pair<A, B> = (A, B)
+type Twin<T> = Pair<T, T>
+type Id<T> = T
+type Twice<T> = Id<Id<T>>
+type Nested<T> = List<Pair<T, T>>
+
+fn main() do
+  let n :: Twin<Int> = (1, 2)
+  let i :: Twice<Int> = 3
+  let l :: Nested<String> = [("a", "b")]
+  println("#{n} #{i} #{l}")
+end
+"##;
+    assert_eq!(run(source), "(1, 2) 3 [(a, b)]\n");
+}

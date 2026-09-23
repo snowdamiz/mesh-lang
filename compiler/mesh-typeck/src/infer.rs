@@ -14231,51 +14231,47 @@ fn apply_type_sugar(tokens: &[(SyntaxKind, String)], pos: &mut usize, base: Ty) 
     }
 }
 
-/// Recursively resolve type aliases.
+/// Recursively resolve type aliases, including aliases an alias expands
+/// to (`type Twin<T> = Pair<T, T>`).
 fn resolve_alias(ty: Ty, type_registry: &TypeRegistry) -> Ty {
+    resolve_alias_within(ty, type_registry, 0)
+}
+
+/// `resolve_alias` at nesting `depth`; an alias that keeps expanding into
+/// itself stops at a fixed depth instead of recursing forever.
+fn resolve_alias_within(ty: Ty, type_registry: &TypeRegistry, depth: usize) -> Ty {
+    const MAX_DEPTH: usize = 64;
+    if depth > MAX_DEPTH {
+        return ty;
+    }
+    let again = |ty: Ty| resolve_alias_within(ty, type_registry, depth + 1);
     match ty {
         Ty::App(con, args) => {
+            let resolved_args: Vec<Ty> = args.into_iter().map(&again).collect();
             if let Ty::Con(ref tc) = *con {
                 if let Some(alias) = type_registry.lookup_alias(&tc.name) {
-                    let resolved_args: Vec<Ty> = args
-                        .into_iter()
-                        .map(|a| resolve_alias(a, type_registry))
-                        .collect();
-                    return substitute_type_params(
+                    return again(substitute_type_params(
                         &alias.aliased_type,
                         &alias.generic_params,
                         &resolved_args,
-                    );
+                    ));
                 }
             }
-            let resolved_args: Vec<Ty> = args
-                .into_iter()
-                .map(|a| resolve_alias(a, type_registry))
-                .collect();
             Ty::App(con, resolved_args)
         }
         Ty::Con(ref tc) => {
             if let Some(alias) = type_registry.lookup_alias(&tc.name) {
                 if alias.generic_params.is_empty() {
-                    return resolve_alias(alias.aliased_type.clone(), type_registry);
+                    return again(alias.aliased_type.clone());
                 }
             }
             ty
         }
         Ty::Fun(params, ret) => {
-            let p: Vec<Ty> = params
-                .into_iter()
-                .map(|p| resolve_alias(p, type_registry))
-                .collect();
-            Ty::Fun(p, Box::new(resolve_alias(*ret, type_registry)))
+            let p: Vec<Ty> = params.into_iter().map(&again).collect();
+            Ty::Fun(p, Box::new(again(*ret)))
         }
-        Ty::Tuple(elems) => {
-            let e: Vec<Ty> = elems
-                .into_iter()
-                .map(|e| resolve_alias(e, type_registry))
-                .collect();
-            Ty::Tuple(e)
-        }
+        Ty::Tuple(elems) => Ty::Tuple(elems.into_iter().map(&again).collect()),
         _ => ty,
     }
 }
