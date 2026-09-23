@@ -380,6 +380,7 @@ pub fn render_json_diagnostic(
             found,
             origin,
         } => {
+            let (expected, found) = (&expected.with_holes(), &found.with_holes());
             if let Some(span) = origin_span(origin) {
                 let s = span.start.min(source_len);
                 let e = span.end.min(source_len).max(s);
@@ -672,6 +673,7 @@ pub fn render_diagnostic(
             found,
             origin,
         } => {
+            let (expected, found) = (&expected.with_holes(), &found.with_holes());
             let msg = format!("expected {}, found {}", expected, found);
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);

@@ -2,10 +2,10 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0001] Error: expected Int, found (Int) -> ?6
+[E0001] Error: expected Int, found (Int) -> _
    ╭─[ test.mpl:2:1 ]
    │
  2 │ x(1)
    │ ──┬─
-   │   ╰─── argument 1 has type (Int) -> ?6, expected Int
+   │   ╰─── argument 1 has type (Int) -> _, expected Int
 ───╯

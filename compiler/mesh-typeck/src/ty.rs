@@ -96,6 +96,24 @@ pub enum Ty {
 }
 
 impl Ty {
+    /// This type as a diagnostic shows it: the parts inference has not
+    /// determined (`?9`) as `_`.
+    pub fn with_holes(&self) -> Ty {
+        match self {
+            Ty::Var(_) => Ty::Con(TyCon::new("_")),
+            Ty::App(con, args) => Ty::App(
+                Box::new(con.with_holes()),
+                args.iter().map(Ty::with_holes).collect(),
+            ),
+            Ty::Fun(params, ret) => Ty::Fun(
+                params.iter().map(Ty::with_holes).collect(),
+                Box::new(ret.with_holes()),
+            ),
+            Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(Ty::with_holes).collect()),
+            other => other.clone(),
+        }
+    }
+
     /// Create an `Int` type.
     pub fn int() -> Ty {
         Ty::Con(TyCon::new("Int"))

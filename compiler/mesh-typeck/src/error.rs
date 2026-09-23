@@ -471,7 +471,8 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "type mismatch: expected `{}`, found `{}`",
-                    expected, found
+                    expected.with_holes(),
+                    found.with_holes()
                 )
             }
             TypeError::InfiniteType { var, ty, .. } => {

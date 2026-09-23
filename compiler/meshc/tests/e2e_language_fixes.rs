@@ -4022,3 +4022,13 @@ fn a_pattern_of_the_wrong_type_is_reported_at_the_pattern() {
     );
     assert_eq!(err.matches("E0001").count(), 1, "{err}");
 }
+
+#[test]
+fn types_inference_has_not_determined_show_as_holes() {
+    // "expected Int, found Option<?9>" leaked an inference variable.
+    let err = build_error(
+        "fn f(x :: Int) -> String do\n  case x do\n    Some(_) -> \"opt\"\n    _ -> \"other\"\n  end\nend\n\nfn main() do\n  println(f(1))\nend\n",
+    );
+    assert!(err.contains("expected Int, found Option<_>"), "{err}");
+    assert!(!err.contains("?"), "{err}");
+}
