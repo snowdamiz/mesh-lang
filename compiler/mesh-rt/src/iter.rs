@@ -13,7 +13,6 @@
 //! on-the-fly.
 
 use crate::collections::list::alloc_pair;
-use crate::collections::list::mesh_list_from_array;
 use crate::collections::list::mesh_list_iter_next;
 use crate::collections::map::mesh_map_iter_next;
 use crate::collections::map::{mesh_map_new, mesh_map_put};
@@ -498,23 +497,24 @@ pub extern "C" fn mesh_iter_reduce(
 // ── Collect Terminal Operations (Phase 79) ──────────────────────────
 
 /// List.collect(iter) -- materialize iterator into a List.
-/// Collects all elements into a safe Rust Vec, then builds the final
-/// GC-allocated list via mesh_list_from_array in one shot.
-/// One allocation of the right size, rather than the repeated growth of
-/// `mesh_list_builder_push` over an iterator of unknown length.
+///
+/// The elements go straight into a GC-allocated list builder. Pulling the
+/// next element runs Mesh code (an `Iter.map` callback) that may collect, and
+/// the elements produced so far are often fresh objects referenced from
+/// nowhere else: a Rust `Vec` holding them is invisible to the collector.
 #[no_mangle]
 pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
     unsafe {
-        let mut elements: Vec<u64> = Vec::new();
+        let mut list = crate::collections::list::mesh_list_builder_new(0);
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
             if (*opt_ref).tag == 1 {
                 break; // None -- done
             }
-            elements.push((*opt_ref).value as u64);
+            list = crate::collections::list::mesh_list_builder_push(list, (*opt_ref).value as u64);
         }
-        mesh_list_from_array(elements.as_ptr(), elements.len() as i64)
+        list
     }
 }
 

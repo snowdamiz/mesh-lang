@@ -684,39 +684,26 @@ pub extern "C" fn mesh_list_flat_map(list: *mut u8, fn_ptr: *mut u8, env_ptr: *m
     type BareFn = unsafe extern "C" fn(u64) -> u64;
     type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
 
+    // The callback runs Mesh code that may collect, so the results so far
+    // live in a GC-allocated builder: a Rust `Vec` holding them is invisible
+    // to the collector, and the sub-lists' elements are often fresh objects.
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
-        let mut all_elems: Vec<u64> = Vec::new();
+        let mut result = alloc_list(len);
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let sub_list = f(*src.add(i)) as *mut u8;
-                let sub_len = list_len(sub_list) as usize;
-                let sub_data = list_data(sub_list);
-                for j in 0..sub_len {
-                    all_elems.push(*sub_data.add(j));
-                }
+        for i in 0..len as usize {
+            let sub_list = if env_ptr.is_null() {
+                let f: BareFn = std::mem::transmute(fn_ptr);
+                f(*src.add(i))
+            } else {
+                let f: ClosureFn = std::mem::transmute(fn_ptr);
+                f(env_ptr, *src.add(i))
+            } as *mut u8;
+            let sub_data = list_data(sub_list);
+            for j in 0..list_len(sub_list) as usize {
+                result = mesh_list_builder_push(result, *sub_data.add(j));
             }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let sub_list = f(env_ptr, *src.add(i)) as *mut u8;
-                let sub_len = list_len(sub_list) as usize;
-                let sub_data = list_data(sub_list);
-                for j in 0..sub_len {
-                    all_elems.push(*sub_data.add(j));
-                }
-            }
-        }
-
-        let result_len = all_elems.len() as u64;
-        let result = alloc_list(result_len);
-        *(result as *mut u64) = result_len;
-        let dst = list_data_mut(result);
-        for (i, elem) in all_elems.iter().enumerate() {
-            *dst.add(i) = *elem;
         }
         result
     }

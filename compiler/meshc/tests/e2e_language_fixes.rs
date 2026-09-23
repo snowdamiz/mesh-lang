@@ -1887,3 +1887,27 @@ end
         );
     }
 }
+
+// ── Runtime ────────────────────────────────────────────────────────────
+
+#[test]
+fn list_collect_and_flat_map_keep_their_results_alive_across_collections() {
+    let source = r##"
+fn check(ws :: List<String>, i :: Int, bad :: Int) -> Int do
+  case ws do
+    w :: rest -> check(rest, i + 1, if w == "w#{i}" do bad else bad + 1 end)
+    _ -> bad
+  end
+end
+
+fn main() do
+  let xs = for i in 0..20000 do
+    i
+  end
+  let lazy :: List<String> = Iter.from(xs) |> Iter.map(fn (x :: Int) -> "w#{x}" end) |> List.collect()
+  let fm = List.flat_map(xs, fn x -> ["w#{x}"] end)
+  println("#{check(lazy, 0, 0)} #{check(fm, 0, 0)} #{List.length(fm)}")
+end
+"##;
+    assert_eq!(run(source), "0 0 20000\n");
+}
