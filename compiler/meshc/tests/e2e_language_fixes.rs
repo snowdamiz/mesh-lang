@@ -4056,3 +4056,10 @@ fn float_has_to_string_like_int() {
         "1.5 2\n"
     );
 }
+
+#[test]
+fn an_error_is_reported_once() {
+    // A failed callee was inferred again as a method call and reported twice.
+    let err = build_error("fn main() do\n  println(Foo.bar(1))\nend\n");
+    assert_eq!(err.matches("undefined variable: Foo").count(), 1, "{err}");
+}

@@ -4546,6 +4546,10 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     type_registry.propagate_resource_containment();
     let ownership = crate::ownership::check(parse, &resolved_types, &type_registry, import_ctx);
     ctx.errors.extend(ownership.errors);
+    // A call whose callee failed is inferred again as a method call, which
+    // reports the same error a second time; each error is reported once.
+    let mut seen = FxHashSet::default();
+    ctx.errors.retain(|error| seen.insert(format!("{error:?}")));
 
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
