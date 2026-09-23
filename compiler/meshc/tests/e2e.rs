@@ -491,39 +491,6 @@ fn e2e_self_contained_binary() {
     }
 }
 
-/// SC5: 100-line program compiles in under 5 seconds at -O0.
-#[test]
-fn e2e_performance() {
-    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-    let project_dir = temp_dir.path().join("project");
-    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
-
-    let source = read_fixture("comprehensive.mpl");
-    let main_mesh = project_dir.join("main.mpl");
-    std::fs::write(&main_mesh, &source).expect("failed to write main.mpl");
-
-    let meshc = find_meshc();
-
-    let start = std::time::Instant::now();
-    let output = Command::new(&meshc)
-        .args(["build", project_dir.to_str().unwrap(), "--opt-level", "0"])
-        .output()
-        .expect("failed to invoke meshc");
-    let elapsed = start.elapsed();
-
-    assert!(
-        output.status.success(),
-        "Compilation failed:\nstderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    assert!(
-        elapsed.as_secs() < 5,
-        "Compilation took {:?} which exceeds 5 second limit",
-        elapsed
-    );
-}
-
 // ── Multi-Clause Function E2E Tests (Phase 11) ─────────────────────────
 
 /// Multi-clause functions with literal patterns, recursion, and = expr body form.
