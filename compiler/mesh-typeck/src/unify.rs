@@ -85,6 +85,9 @@ pub struct InferCtx {
     /// Populated during inference for arity-overloaded calls.
     /// Consumed by the MIR lowerer to emit the correct function reference.
     pub overloaded_call_targets: FxHashMap<TextRange, String>,
+    /// The expressions being inferred, innermost last: where a constraint
+    /// with no more specific origin is reported.
+    pub expr_spans: Vec<TextRange>,
 }
 
 impl InferCtx {
@@ -115,6 +118,7 @@ impl InferCtx {
             fn_return_type_stack: Vec::new(),
             overloaded_pub_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
+            expr_spans: Vec::new(),
         }
     }
 
@@ -352,6 +356,10 @@ impl InferCtx {
     /// through the union-find table, then structurally compared. If they
     /// differ, a type error is recorded.
     pub fn unify(&mut self, a: Ty, b: Ty, origin: ConstraintOrigin) -> Result<(), TypeError> {
+        let origin = match (origin, self.expr_spans.last()) {
+            (ConstraintOrigin::Builtin, Some(&span)) => ConstraintOrigin::Expr { span },
+            (origin, _) => origin,
+        };
         let a = self.resolve(a);
         let b = self.resolve(b);
 

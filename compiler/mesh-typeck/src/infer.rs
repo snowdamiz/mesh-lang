@@ -7620,6 +7620,31 @@ fn infer_expr(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    // Constraints without a more specific origin are reported at the
+    // innermost expression being inferred.
+    ctx.expr_spans.push(expr.syntax().text_range());
+    let result = infer_expr_here(
+        ctx,
+        env,
+        expr,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
+    ctx.expr_spans.pop();
+    result
+}
+
+fn infer_expr_here(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    expr: &Expr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
     let ty = match expr {
         Expr::Literal(lit) => infer_literal(lit),
         Expr::NameRef(name_ref) => infer_name_ref(ctx, env, name_ref)?,
@@ -8895,7 +8920,12 @@ fn infer_call(
             Ok(ty) => ty,
             Err(first_err) => {
                 // If callee is a FieldAccess and normal inference failed, try method resolution.
-                if let Expr::FieldAccess(ref fa) = callee_expr {
+                // An undefined base (`Nope.start()`) is already reported; retrying
+                // would only report it again.
+                if let (Expr::FieldAccess(ref fa), false) = (
+                    &callee_expr,
+                    matches!(first_err, TypeError::UnboundVariable { .. }),
+                ) {
                     // Remove the error that was pushed during the failed attempt.
                     // The failed infer_field_access(false) pushed a NoSuchField error.
                     if let Some(pos) = ctx
@@ -12755,6 +12785,23 @@ fn to_snake_case(name: &str) -> String {
 /// - start(init_args...) -> Pid<Unit>
 /// - Per call handler: snake_name(pid, args...) -> reply_ty
 /// - Per cast handler: snake_name(pid, args...) -> Unit
+/// Where a handler body's type is checked: the body's last expression, or the
+/// whole body when it is empty.
+fn body_origin(body: Option<Block>) -> ConstraintOrigin {
+    match body {
+        Some(block) => ConstraintOrigin::Expr {
+            span: block
+                .syntax()
+                .children()
+                .filter_map(Expr::cast)
+                .last()
+                .map(|expr| expr.syntax().text_range())
+                .unwrap_or_else(|| block.syntax().text_range()),
+        },
+        None => ConstraintOrigin::Builtin,
+    }
+}
+
 fn infer_service_def(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -12805,6 +12852,8 @@ fn infer_service_def(
 
         // Infer init body -- its return type is the initial state.
         let init_body_ty = if let Some(body) = init_fn.body() {
+            // An error in one handler is recorded; the service is still
+            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -12813,13 +12862,14 @@ fn infer_service_def(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
+            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             Ty::Tuple(vec![])
         };
 
         // Unify init return type with state_ty.
-        ctx.unify(init_body_ty, state_ty.clone(), ConstraintOrigin::Builtin)?;
+        let _ = ctx.unify(init_body_ty, state_ty.clone(), body_origin(init_fn.body()));
 
         // Record the init function's type so MIR lowering can resolve parameter types.
         let init_fn_ty = Ty::Fun(
@@ -12874,6 +12924,8 @@ fn infer_service_def(
 
         // Infer call handler body -- should return (new_state, reply) tuple.
         let body_ty = if let Some(body) = handler.body() {
+            // An error in one handler is recorded; the service is still
+            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -12882,14 +12934,15 @@ fn infer_service_def(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
+            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()])
         };
 
         // Body should return a tuple of (new_state, reply).
         let expected_body_ty = Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()]);
-        ctx.unify(body_ty, expected_body_ty, ConstraintOrigin::Builtin)?;
+        let _ = ctx.unify(expected_body_ty, body_ty, body_origin(handler.body()));
 
         env.pop_scope();
 
@@ -12933,6 +12986,8 @@ fn infer_service_def(
 
         // Infer cast handler body -- returns new_state.
         let body_ty = if let Some(body) = handler.body() {
+            // An error in one handler is recorded; the service is still
+            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -12941,13 +12996,14 @@ fn infer_service_def(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
+            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             state_ty.clone()
         };
 
         // Unify body return with state type.
-        ctx.unify(body_ty, state_ty.clone(), ConstraintOrigin::Builtin)?;
+        let _ = ctx.unify(state_ty.clone(), body_ty, body_origin(handler.body()));
 
         env.pop_scope();
 

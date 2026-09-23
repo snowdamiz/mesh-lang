@@ -179,6 +179,7 @@ fn origin_span(origin: &ConstraintOrigin) -> Option<Range<usize>> {
         ConstraintOrigin::Return { return_span, .. } => Some(text_range_to_range(*return_span)),
         ConstraintOrigin::LetBinding { binding_span } => Some(text_range_to_range(*binding_span)),
         ConstraintOrigin::Assignment { lhs_span, .. } => Some(text_range_to_range(*lhs_span)),
+        ConstraintOrigin::Expr { span } => Some(text_range_to_range(*span)),
         ConstraintOrigin::Builtin => None,
     }
 }

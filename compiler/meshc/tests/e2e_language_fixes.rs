@@ -1435,3 +1435,27 @@ fn receive_arms_must_cover_the_message_type() {
     assert!(warnings.contains("redundant match arm"), "{warnings}");
     assert_eq!(out, "any 1\n");
 }
+
+// ── Diagnostic locations ───────────────────────────────────────────────
+
+#[test]
+fn a_service_handler_type_error_points_at_the_handler() {
+    let source = "service Registry do\n  fn init() -> Int do\n    0\n  end\n\n  call Get() :: String do |n|\n    (n, n)\n  end\nend\n\nfn main() do\n  let r = Registry.start()\n  println(Registry.get(r))\nend\n";
+    let diags = json_diagnostics(source);
+    let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
+    // Only the handler's error: the service is still defined for `main`.
+    assert_eq!(codes, ["E0001", "C0001"], "{diags:?}");
+    assert_eq!(
+        diags[0]["message"],
+        "type mismatch: expected `String`, found `Int`"
+    );
+    let start = source.find("(n, n)").unwrap();
+    assert_eq!(diags[0]["spans"][0]["start"], start);
+}
+
+#[test]
+fn an_undefined_module_is_reported_once() {
+    let diags = json_diagnostics("fn main() do\n  let r = Nope.start()\n  println(\"x\")\nend\n");
+    let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
+    assert_eq!(codes, ["E0004", "C0001"], "{diags:?}");
+}

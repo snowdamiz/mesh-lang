@@ -248,6 +248,7 @@ fn origin_to_range(origin: &ConstraintOrigin) -> Option<TextRange> {
         ConstraintOrigin::Return { return_span, .. } => Some(*return_span),
         ConstraintOrigin::LetBinding { binding_span } => Some(*binding_span),
         ConstraintOrigin::Assignment { lhs_span, .. } => Some(*lhs_span),
+        ConstraintOrigin::Expr { span } => Some(*span),
         ConstraintOrigin::Builtin => None,
     }
 }

@@ -45,6 +45,9 @@ pub enum ConstraintOrigin {
         lhs_span: TextRange,
         rhs_span: TextRange,
     },
+    /// A constraint the checker derived while inferring the expression at
+    /// `span`, with no more specific origin.
+    Expr { span: TextRange },
     /// Synthetic origin for built-in constraints (e.g. arithmetic operators).
     Builtin,
 }
