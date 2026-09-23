@@ -529,6 +529,10 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidLetPattern { span, .. }
                 | TypeError::InvalidPassThroughArm { span, .. }
                 | TypeError::DuplicateBinding { span, .. }
+                | TypeError::UnsupportedDerive { span, .. }
+                | TypeError::MissingDerivePrerequisite { span, .. }
+                | TypeError::NonSerializableField { span, .. }
+                | TypeError::NonMappableField { span, .. }
                 | TypeError::ResourceViolation { span, .. } => {
                     let range = text_range_to_range(*span);
                     spans.push(JsonSpan {
@@ -1452,9 +1456,10 @@ pub fn render_diagnostic(
         TypeError::UnsupportedDerive {
             trait_name,
             type_name,
+            span,
         } => {
             let msg = format!("cannot derive `{}` for `{}`", trait_name, type_name);
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(text_range_to_range(*span));
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
@@ -1473,12 +1478,13 @@ pub fn render_diagnostic(
             trait_name,
             requires,
             type_name,
+            span,
         } => {
             let msg = format!(
                 "cannot derive `{}` for `{}` without `{}`",
                 trait_name, type_name, requires
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(text_range_to_range(*span));
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
@@ -1775,12 +1781,13 @@ pub fn render_diagnostic(
             struct_name: _,
             field_name,
             field_type,
+            span,
         } => {
             let msg = format!(
                 "field `{}` of type `{}` is not JSON-serializable",
                 field_name, field_type
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(text_range_to_range(*span));
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)
@@ -1802,12 +1809,13 @@ pub fn render_diagnostic(
             struct_name: _,
             field_name,
             field_type,
+            span,
         } => {
             let msg = format!(
                 "field `{}` has type `{}` which cannot be mapped from a database row",
                 field_name, field_type
             );
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(text_range_to_range(*span));
 
             Report::build(ReportKind::Error, (fname.clone(), span.clone()))
                 .with_code(code)

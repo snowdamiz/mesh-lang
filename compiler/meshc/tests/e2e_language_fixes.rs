@@ -2513,3 +2513,14 @@ end
          {\"value\":[\"x\"]} {\"value\":{\"a\":1}}\n"
     );
 }
+
+#[test]
+fn derive_errors_point_at_the_field_or_the_deriving_clause() {
+    let err = build_error(
+        "struct X do\n  n :: Int\nend\n\nstruct W do\n  x :: X\nend deriving(Json)\n\nfn main() do\n  println(\"x\")\nend\n",
+    );
+    assert!(err.contains("E0038") && err.contains(":6:3"), "{err}");
+    let err =
+        build_error("type T do\n  A\nend deriving(Ord)\n\nfn main() do\n  println(\"x\")\nend\n");
+    assert!(err.contains("E0029") && err.contains(":3:5"), "{err}");
+}

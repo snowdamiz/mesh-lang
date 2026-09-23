@@ -5729,6 +5729,7 @@ fn register_struct_def(
             ctx.errors.push(TypeError::UnsupportedDerive {
                 trait_name: trait_name.clone(),
                 type_name: name.clone(),
+                span: deriving_span(struct_def.syntax()),
             });
         }
     }
@@ -5758,6 +5759,7 @@ fn register_struct_def(
             trait_name: "Ord".to_string(),
             requires: "Eq".to_string(),
             type_name: name.clone(),
+            span: deriving_span(struct_def.syntax()),
         });
         // Register the struct type info so the rest of compilation doesn't crash,
         // but skip trait impl registration to avoid generating broken MIR.
@@ -5969,6 +5971,7 @@ fn register_struct_def(
                     struct_name: name.clone(),
                     field_name: field_name.clone(),
                     field_type: format!("{}", field_ty),
+                    span: struct_field_span(struct_def, field_name),
                 });
                 json_valid = false;
             }
@@ -6024,6 +6027,7 @@ fn register_struct_def(
                     struct_name: name.clone(),
                     field_name: field_name.clone(),
                     field_type: format!("{}", field_ty),
+                    span: struct_field_span(struct_def, field_name),
                 });
                 row_valid = false;
             }
@@ -6056,6 +6060,24 @@ fn register_struct_def(
         generic_params,
         fields,
     });
+}
+
+/// Where a diagnostic about a type definition's derives points: its
+/// `deriving(...)` clause, else the whole definition.
+fn deriving_span(def: &mesh_parser::SyntaxNode) -> TextRange {
+    def.children()
+        .find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
+        .map(|n| n.text_range())
+        .unwrap_or_else(|| def.text_range())
+}
+
+/// The span of the struct field named `field`, else the deriving clause.
+fn struct_field_span(struct_def: &StructDef, field: &str) -> TextRange {
+    struct_def
+        .fields()
+        .find(|f| f.name().and_then(|n| n.text()).as_deref() == Some(field))
+        .map(|f| f.syntax().text_range())
+        .unwrap_or_else(|| deriving_span(struct_def.syntax()))
 }
 
 /// Whether a field of type `ty` can be converted to and from JSON: a
@@ -6382,6 +6404,7 @@ fn register_sum_type_def(
             ctx.errors.push(TypeError::UnsupportedDerive {
                 trait_name: trait_name.clone(),
                 type_name: name.clone(),
+                span: deriving_span(sum_def.syntax()),
             });
         }
     }
@@ -6401,6 +6424,7 @@ fn register_sum_type_def(
         ctx.errors.push(TypeError::UnsupportedDerive {
             trait_name: "Schema".to_string(),
             type_name: name.clone(),
+            span: deriving_span(sum_def.syntax()),
         });
     }
 
@@ -6413,6 +6437,7 @@ fn register_sum_type_def(
             trait_name: "Ord".to_string(),
             requires: "Eq".to_string(),
             type_name: name.clone(),
+            span: deriving_span(sum_def.syntax()),
         });
         // Sum type and variant constructors are already registered above.
         // Skip trait impl registration to avoid generating broken MIR.
@@ -6565,6 +6590,11 @@ fn register_sum_type_def(
                         struct_name: name.clone(),
                         field_name: field_ident,
                         field_type: format!("{}", field_ty),
+                        span: sum_def
+                            .variants()
+                            .find(|v| v.name().is_some_and(|n| n.text() == variant.name))
+                            .map(|v| v.syntax().text_range())
+                            .unwrap_or_else(|| deriving_span(sum_def.syntax())),
                     });
                     json_valid = false;
                 }

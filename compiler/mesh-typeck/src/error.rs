@@ -262,12 +262,14 @@ pub enum TypeError {
     UnsupportedDerive {
         trait_name: String,
         type_name: String,
+        span: TextRange,
     },
     /// A derived trait requires another trait that is not in the deriving list.
     MissingDerivePrerequisite {
         trait_name: String,
         requires: String,
         type_name: String,
+        span: TextRange,
     },
     /// `break` used outside of a loop.
     BreakOutsideLoop { span: TextRange },
@@ -335,12 +337,14 @@ pub enum TypeError {
         struct_name: String,
         field_name: String,
         field_type: String,
+        span: TextRange,
     },
     /// A field type in a `deriving(Row)` struct is not row-mappable.
     NonMappableField {
         struct_name: String,
         field_name: String,
         field_type: String,
+        span: TextRange,
     },
     /// An impl block is missing a required associated type declared by the trait.
     MissingAssocType {
@@ -667,6 +671,7 @@ impl fmt::Display for TypeError {
             TypeError::UnsupportedDerive {
                 trait_name,
                 type_name,
+                ..
             } => {
                 write!(
                     f,
@@ -678,6 +683,7 @@ impl fmt::Display for TypeError {
                 trait_name,
                 requires,
                 type_name,
+                ..
             } => {
                 write!(
                     f,
