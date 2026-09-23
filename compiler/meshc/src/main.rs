@@ -895,12 +895,13 @@ pub(crate) fn prepare_project_build(
                 };
                 let start = error.span.start as usize;
                 let end = (error.span.end as usize).max(start + 1);
-                let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, start..end)
+                let span = (file_name.clone(), start..end);
+                let _ = Report::build(ReportKind::Error, span.clone())
                     .with_message("Parse error")
                     .with_config(config)
-                    .with_label(Label::new(start..end).with_message(&error.message))
+                    .with_label(Label::new(span).with_message(&error.message))
                     .finish()
-                    .eprint(Source::from(source.as_str()));
+                    .eprint((file_name.clone(), Source::from(source.as_str())));
             }
         }
     }
@@ -1453,71 +1454,6 @@ fn emit_clustered_declaration_diagnostics(
             eprintln!("  --> {}", file_name);
         }
     }
-}
-
-/// Report parse and type-check diagnostics.
-///
-/// When `diag_opts.json` is true, outputs one JSON object per line to stderr.
-/// Otherwise, outputs colorized (or colorless) human-readable diagnostics.
-/// Returns true if there are any errors.
-#[allow(dead_code)]
-fn report_diagnostics(
-    source: &str,
-    path: &Path,
-    parse: &mesh_parser::Parse,
-    typeck: &mesh_typeck::TypeckResult,
-    diag_opts: &DiagnosticOptions,
-) -> bool {
-    let file_name = path.display().to_string();
-    let mut has_errors = false;
-
-    // Check for parse errors
-    for error in parse.errors() {
-        has_errors = true;
-        if diag_opts.json {
-            // Emit parse errors as JSON.
-            let start = error.span.start as usize;
-            let end = (error.span.end as usize).max(start + 1);
-            let json_diag = serde_json::json!({
-                "code": "P0001",
-                "severity": "error",
-                "message": format!("Parse error: {}", error.message),
-                "file": file_name,
-                "spans": [{
-                    "start": start,
-                    "end": end,
-                    "label": error.message
-                }],
-                "fix": null
-            });
-            eprintln!("{}", json_diag);
-        } else {
-            use ariadne::{Config, Label, Report, ReportKind, Source};
-            let config = if diag_opts.color {
-                Config::default()
-            } else {
-                Config::default().with_color(false)
-            };
-            let start = error.span.start as usize;
-            let end = (error.span.end as usize).max(start + 1);
-            let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, start..end)
-                .with_message("Parse error")
-                .with_config(config)
-                .with_label(Label::new(start..end).with_message(&error.message))
-                .finish()
-                .eprint(Source::from(source));
-        }
-    }
-
-    // Check for type errors
-    for error in &typeck.errors {
-        has_errors = true;
-        let rendered =
-            mesh_typeck::diagnostics::render_diagnostic(error, source, &file_name, diag_opts, None);
-        eprint!("{}", rendered);
-    }
-
-    has_errors
 }
 
 // ── Deps subcommand ──────────────────────────────────────────────────

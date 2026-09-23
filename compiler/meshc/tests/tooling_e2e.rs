@@ -453,6 +453,27 @@ fn test_fmt_idempotent() {
     );
 }
 
+#[test]
+fn test_build_parse_error_names_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    write_file(
+        &dir.path().join("main.mpl"),
+        "fn main() do\n  let = 1\nend\n",
+    );
+
+    let output = Command::new(meshc_bin())
+        .args(["build", dir.path().to_str().unwrap(), "--no-color"])
+        .output()
+        .expect("failed to run meshc build");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("main.mpl:2:7") && !stderr.contains("<unknown>"),
+        "{stderr}"
+    );
+}
+
 // ── Test runner ──────────────────────────────────────────────────────
 
 #[test]
