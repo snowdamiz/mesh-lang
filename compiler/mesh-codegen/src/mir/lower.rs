@@ -9234,30 +9234,9 @@ impl<'a> Lowerer<'a> {
                         if name == "Display__to_string__String" && !args.is_empty() {
                             return args.into_iter().next().unwrap();
                         }
-                        // Debug__inspect__String wraps in quotes
+                        // Debug__inspect__String quotes and escapes
                         if name == "Debug__inspect__String" && !args.is_empty() {
-                            let val = args.into_iter().next().unwrap();
-                            let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
-                            let concat_ty = MirType::FnPtr(
-                                vec![MirType::String, MirType::String],
-                                Box::new(MirType::String),
-                            );
-                            let left = MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_string_concat".to_string(),
-                                    concat_ty.clone(),
-                                )),
-                                args: vec![quote.clone(), val],
-                                ty: MirType::String,
-                            };
-                            return MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_string_concat".to_string(),
-                                    concat_ty,
-                                )),
-                                args: vec![left, quote],
-                                ty: MirType::String,
-                            };
+                            return Self::inspect_string(args.into_iter().next().unwrap());
                         }
                     }
 
@@ -9770,27 +9749,9 @@ impl<'a> Lowerer<'a> {
             if name == "Display__to_string__String" && !args.is_empty() {
                 return args.into_iter().next().unwrap();
             }
-            // Debug__inspect__String wraps the value in quotes: "\"" <> value <> "\""
+            // Debug__inspect__String quotes and escapes the value.
             if name == "Debug__inspect__String" && !args.is_empty() {
-                let val = args.into_iter().next().unwrap();
-                let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
-                let concat_ty = MirType::FnPtr(
-                    vec![MirType::String, MirType::String],
-                    Box::new(MirType::String),
-                );
-                let left = MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_string_concat".to_string(),
-                        concat_ty.clone(),
-                    )),
-                    args: vec![quote.clone(), val],
-                    ty: MirType::String,
-                };
-                return MirExpr::Call {
-                    func: Box::new(MirExpr::Var("mesh_string_concat".to_string(), concat_ty)),
-                    args: vec![left, quote],
-                    ty: MirType::String,
-                };
+                return Self::inspect_string(args.into_iter().next().unwrap());
             }
         }
 
@@ -13285,12 +13246,21 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// The string `expr` as `inspect` shows it: quoted and escaped.
+    fn inspect_string(expr: MirExpr) -> MirExpr {
+        Self::call_named(
+            "mesh_string_inspect",
+            vec![MirType::String],
+            vec![expr],
+            MirType::String,
+        )
+    }
+
     /// `expr` as `inspect` would show it: strings quoted, otherwise the
     /// type's `Debug` when it has one, else its display.
     fn debug_string(&mut self, expr: MirExpr, ty: &Ty) -> MirExpr {
         if matches!(ty, Ty::Con(tc) if tc.name == "String") {
-            let quote = MirExpr::StringLit("\"".to_string(), MirType::String);
-            return Self::concat_all(vec![quote.clone(), expr, quote]);
+            return Self::inspect_string(expr);
         }
         if let Some(shown) = self.display_by_type(&expr, ty, true) {
             return shown;

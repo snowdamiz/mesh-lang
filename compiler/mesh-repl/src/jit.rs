@@ -2080,6 +2080,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_string_to_lower as *const (),
         ),
         (
+            "mesh_string_inspect",
+            mesh_rt::string::mesh_string_inspect as *const (),
+        ),
+        (
             "mesh_string_to_string",
             mesh_rt::string::mesh_string_to_string as *const (),
         ),

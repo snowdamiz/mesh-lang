@@ -149,6 +149,28 @@ pub extern "C" fn mesh_string_to_string(val: u64) -> *mut MeshString {
     val as *mut MeshString
 }
 
+/// `s` as `inspect()` shows it: in quotes, with the characters a string
+/// literal escapes (`"`, `\`, newline, tab, carriage return, NUL) escaped.
+#[no_mangle]
+pub extern "C" fn mesh_string_inspect(s: *const MeshString) -> *mut MeshString {
+    let text = unsafe { (*s).as_str() };
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            '\0' => out.push_str("\\0"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    mesh_string_new(out.as_ptr(), out.len() as u64)
+}
+
 /// Print a Mesh string to stdout (no trailing newline).
 #[no_mangle]
 pub extern "C" fn mesh_print(s: *const MeshString) {

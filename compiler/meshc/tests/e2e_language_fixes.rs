@@ -2396,6 +2396,26 @@ end
 }
 
 #[test]
+fn inspect_quotes_and_escapes_strings_at_every_level() {
+    let source = r##"
+struct S do
+  s :: String
+end deriving(Debug)
+
+fn main() do
+  println("a\"b\\c\nd".inspect())
+  println(("x", ["y"], Some("z")).inspect())
+  println(S { s: "w\t" }.inspect())
+  println(%{"k" => "v"}.inspect())
+end
+"##;
+    assert_eq!(
+        run(source),
+        "\"a\\\"b\\\\c\\nd\"\n(\"x\", [\"y\"], Some(\"z\"))\nS { s: \"w\\t\" }\n%{\"k\" => \"v\"}\n"
+    );
+}
+
+#[test]
 fn derived_json_handles_every_serializable_field_type() {
     let source = r##"
 struct A do

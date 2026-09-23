@@ -3076,6 +3076,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_string_inspect(s: ptr) -> ptr (quoted and escaped, for inspect())
+    module.add_function(
+        "mesh_string_inspect",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_string_to_string(val: u64) -> ptr (identity for string elements in collections)
     module.add_function(
         "mesh_string_to_string",
