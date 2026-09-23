@@ -19,7 +19,7 @@ require_file() {
 require_text() {
   local relative_path="$1"
   local expected="$2"
-  rg -F -q -- "$expected" "$ROOT_DIR/$relative_path" ||
+  grep -F -q -- "$expected" "$ROOT_DIR/$relative_path" ||
     fail "$relative_path is missing: $expected"
 }
 
