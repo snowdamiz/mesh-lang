@@ -2622,6 +2622,18 @@ fn a_field_is_given_once() {
 }
 
 #[test]
+fn a_function_field_takes_no_value_derives() {
+    // No deriving clause: the struct works, but has no Eq to call.
+    let source = "struct Op do\n  run :: Fun(Int) -> Int\nend\n\nfn main() do\n  let o = Op { run: fn x -> x * 2 end }\n  println(\"#{o.run(10)}\")\nend\n";
+    assert_eq!(run(source), "20\n");
+    let err = build_error(&source.replace("#{o.run(10)}", "#{o == o}"));
+    assert!(err.contains("does not implement Eq"), "{err}");
+    // Deriving one explicitly is an error at the field.
+    let err = build_error(&source.replace("end\n\nfn main", "end deriving(Eq)\n\nfn main"));
+    assert!(err.contains("E0060") && err.contains(":2:3"), "{err}");
+}
+
+#[test]
 fn an_alias_that_refers_to_itself_is_reported() {
     let err = build_error(
         "type A = B\ntype B = A\ntype L<T> = List<L<T>>\n\nfn main() do\n  println(\"x\")\nend\n",

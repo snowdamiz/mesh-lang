@@ -5718,7 +5718,17 @@ fn register_struct_def(
     }
     let has_deriving = struct_def.has_deriving_clause();
     let derive_list = struct_def.deriving_traits();
-    let derive_all = !has_deriving && !is_affine_resource;
+    let fn_field = fields
+        .iter()
+        .find(|(_, ty)| holds_function(ty))
+        .map(|(field, _)| (field.clone(), struct_field_span(struct_def, field)));
+    let (derive_list, derive_all) = without_function_derives(
+        ctx,
+        &name,
+        derive_list,
+        !has_deriving && !is_affine_resource,
+        fn_field,
+    );
 
     // Validate derive trait names.
     let valid_derives = [
@@ -6060,6 +6070,48 @@ fn register_struct_def(
         generic_params,
         fields,
     });
+}
+
+/// Whether a value of type `ty` holds a function, which cannot be compared,
+/// hashed or shown.
+fn holds_function(ty: &Ty) -> bool {
+    match ty {
+        Ty::Fun(..) => true,
+        Ty::App(con, args) => holds_function(con) || args.iter().any(holds_function),
+        Ty::Tuple(elems) => elems.iter().any(holds_function),
+        _ => false,
+    }
+}
+
+/// The derives of type `name` once a function-valued field (`fn_field`:
+/// its label and span) is taken into account: it gets none of the traits
+/// that compare, hash or show values by default, and naming one of them is
+/// an error at the field. Returns the derive list and whether to derive the
+/// defaults.
+fn without_function_derives(
+    ctx: &mut InferCtx,
+    name: &str,
+    derive_list: Vec<String>,
+    derive_all: bool,
+    fn_field: Option<(String, TextRange)>,
+) -> (Vec<String>, bool) {
+    let Some((field, span)) = fn_field else {
+        return (derive_list, derive_all);
+    };
+    let needs_values = |t: &str| matches!(t, "Eq" | "Ord" | "Hash" | "Debug" | "Display");
+    for trait_name in derive_list.iter().filter(|t| needs_values(t)) {
+        ctx.errors.push(TypeError::UnderivableField {
+            trait_name: trait_name.clone(),
+            type_name: name.to_string(),
+            field_name: field.clone(),
+            span,
+        });
+    }
+    let kept = derive_list
+        .into_iter()
+        .filter(|t| !needs_values(t))
+        .collect();
+    (kept, false)
 }
 
 /// Where a diagnostic about a type definition's derives points: its
@@ -6444,7 +6496,29 @@ fn register_sum_type_def(
     // Explicit deriving(...) = only derive listed traits.
     let has_deriving = sum_def.has_deriving_clause();
     let derive_list = sum_def.deriving_traits();
-    let derive_all = !has_deriving && !is_affine_resource;
+    let fn_field = variants.iter().find_map(|variant| {
+        variant.fields.iter().enumerate().find_map(|(i, field)| {
+            let (label, ty) = match field {
+                VariantFieldInfo::Positional(ty) => (format!("{}::{i}", variant.name), ty),
+                VariantFieldInfo::Named(field, ty) => (format!("{}::{field}", variant.name), ty),
+            };
+            holds_function(ty).then(|| {
+                let span = sum_def
+                    .variants()
+                    .find(|v| v.name().is_some_and(|n| n.text() == variant.name))
+                    .map(|v| v.syntax().text_range())
+                    .unwrap_or_else(|| deriving_span(sum_def.syntax()));
+                (label, span)
+            })
+        })
+    });
+    let (derive_list, derive_all) = without_function_derives(
+        ctx,
+        &name,
+        derive_list,
+        !has_deriving && !is_affine_resource,
+        fn_field,
+    );
 
     // Validate derive trait names.
     let valid_derives = [

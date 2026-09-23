@@ -454,7 +454,7 @@ An explicit deriving clause is selective: only the listed capabilities are gener
 | Struct | `Debug`, `Eq`, `Ord`, `Hash` |
 | Sum type | `Debug`, `Eq`, `Ord` |
 
-`Display`, `Json`, `Row`, and `Schema` are never enabled by omission; list them explicitly.
+`Display`, `Json`, `Row`, and `Schema` are never enabled by omission; list them explicitly. A type with a field that holds a function gets none of `Debug`, `Eq`, `Ord` and `Hash` by default (a function cannot be compared, hashed or shown), and listing one of them is an error.
 
 ### Deriving on Sum Types
 

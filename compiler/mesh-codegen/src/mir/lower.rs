@@ -5853,6 +5853,10 @@ impl<'a> Lowerer<'a> {
             let has_deriving = struct_def.has_deriving_clause();
             let derive_list = struct_def.deriving_traits();
             let derive_all = !has_deriving;
+            // Only what the type checker granted (a type holding a function
+            // gets no Eq, Ord, Hash, Debug or Display).
+            let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(&name));
+            let granted = |lowerer: &Self, t: &str| lowerer.trait_registry.has_impl(t, &struct_ty);
 
             let typed_fields = self
                 .registry
@@ -5860,20 +5864,20 @@ impl<'a> Lowerer<'a> {
                 .get(&name)
                 .map(|info| info.fields.clone())
                 .unwrap_or_default();
-            if derive_all || derive_list.iter().any(|t| t == "Debug") {
+            if (derive_all || derive_list.iter().any(|t| t == "Debug")) && granted(self, "Debug") {
                 self.generate_display_struct_typed(&name, &name, &name, &typed_fields, true);
             }
-            if derive_all || derive_list.iter().any(|t| t == "Eq") {
+            if (derive_all || derive_list.iter().any(|t| t == "Eq")) && granted(self, "Eq") {
                 self.generate_eq_struct_typed(&name, &typed_fields);
             }
-            if derive_all || derive_list.iter().any(|t| t == "Ord") {
+            if (derive_all || derive_list.iter().any(|t| t == "Ord")) && granted(self, "Ord") {
                 self.generate_ord_struct_typed(&name, &name, &typed_fields);
             }
-            if derive_all || derive_list.iter().any(|t| t == "Hash") {
+            if (derive_all || derive_list.iter().any(|t| t == "Hash")) && granted(self, "Hash") {
                 self.generate_hash_struct_typed(&name, &name, &typed_fields);
             }
             // Display: only via explicit deriving(Display), never auto-derived
-            if derive_list.iter().any(|t| t == "Display") {
+            if derive_list.iter().any(|t| t == "Display") && granted(self, "Display") {
                 self.generate_display_struct_typed(&name, &name, &name, &typed_fields, false);
             }
             // Json: only via explicit deriving(Json), never auto-derived
@@ -6097,6 +6101,10 @@ impl<'a> Lowerer<'a> {
         let has_deriving = sum_def.has_deriving_clause();
         let derive_list = sum_def.deriving_traits();
         let derive_all = !has_deriving;
+        // Only what the type checker granted (a type holding a function
+        // gets no Eq, Ord, Hash, Debug or Display).
+        let sum_ty = Ty::Con(mesh_typeck::ty::TyCon::new(&name));
+        let granted = |lowerer: &Self, t: &str| lowerer.trait_registry.has_impl(t, &sum_ty);
 
         // The source field types: Eq and Display compare and print each
         // payload by its own type.
@@ -6122,21 +6130,21 @@ impl<'a> Lowerer<'a> {
             })
             .unwrap_or_default();
 
-        if derive_all || derive_list.iter().any(|t| t == "Debug") {
+        if (derive_all || derive_list.iter().any(|t| t == "Debug")) && granted(self, "Debug") {
             self.generate_display_sum_typed(&name, &name, &typed_variants, true);
         }
-        if derive_all || derive_list.iter().any(|t| t == "Eq") {
+        if (derive_all || derive_list.iter().any(|t| t == "Eq")) && granted(self, "Eq") {
             self.generate_eq_sum_typed(&name, &typed_variants);
         }
-        if derive_all || derive_list.iter().any(|t| t == "Ord") {
+        if (derive_all || derive_list.iter().any(|t| t == "Ord")) && granted(self, "Ord") {
             self.generate_ord_sum_typed(&name, &name, &typed_variants);
         }
         // Display: only via explicit deriving(Display), never auto-derived
-        if derive_list.iter().any(|t| t == "Display") {
+        if derive_list.iter().any(|t| t == "Display") && granted(self, "Display") {
             self.generate_display_sum_typed(&name, &name, &typed_variants, false);
         }
         // Hash: only via explicit deriving(Hash) for sum types
-        if has_deriving && derive_list.iter().any(|t| t == "Hash") {
+        if has_deriving && derive_list.iter().any(|t| t == "Hash") && granted(self, "Hash") {
             self.generate_hash_sum_typed(&name, &name, &typed_variants);
         }
         // Json: only via explicit deriving(Json) for sum types

@@ -380,6 +380,14 @@ pub enum TypeError {
     DuplicateBinding { name: String, span: TextRange },
     /// A type alias expands into itself.
     CyclicAlias { alias_name: String, span: TextRange },
+    /// A derived trait needs to compare, hash or show a field that holds a
+    /// function.
+    UnderivableField {
+        trait_name: String,
+        type_name: String,
+        field_name: String,
+        span: TextRange,
+    },
     /// A struct literal or update gives the same field twice.
     DuplicateField { field_name: String, span: TextRange },
     /// A struct literal names, or a struct update is applied to, something
@@ -873,6 +881,17 @@ impl fmt::Display for TypeError {
             }
             TypeError::CyclicAlias { alias_name, .. } => {
                 write!(f, "type alias `{alias_name}` refers to itself")
+            }
+            TypeError::UnderivableField {
+                trait_name,
+                type_name,
+                field_name,
+                ..
+            } => {
+                write!(
+                    f,
+                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` holds a function"
+                )
             }
             TypeError::DuplicateField { field_name, .. } => {
                 write!(f, "field `{field_name}` is given more than once")

@@ -151,6 +151,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DuplicateBinding { .. } => "E0057",
         TypeError::DuplicateField { .. } => "E0058",
         TypeError::NotAStruct { .. } => "E0059",
+        TypeError::UnderivableField { .. } => "E0060",
         TypeError::CyclicAlias { .. } => "E0062",
     }
 }
@@ -534,6 +535,7 @@ pub fn render_json_diagnostic(
                 | TypeError::DuplicateBinding { span, .. }
                 | TypeError::DuplicateField { span, .. }
                 | TypeError::NotAStruct { span, .. }
+                | TypeError::UnderivableField { span, .. }
                 | TypeError::CyclicAlias { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
@@ -2060,6 +2062,27 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("give each field one value")
+                .finish()
+        }
+        TypeError::UnderivableField {
+            trait_name,
+            type_name,
+            field_name,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!(
+                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` holds a function"
+                ))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("functions cannot be compared, hashed or shown")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("remove `{trait_name}` from the deriving list"))
                 .finish()
         }
         TypeError::CyclicAlias { alias_name, span } => {
