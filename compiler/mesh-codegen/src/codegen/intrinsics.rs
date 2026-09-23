@@ -1793,6 +1793,20 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         i8_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_{list,set}_hash_by(coll: ptr, hash: ptr) -> i64 — by the element's Hash
+    for name in ["mesh_list_hash_by", "mesh_set_hash_by"] {
+        module.add_function(
+            name,
+            i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+    // mesh_map_hash_by(map: ptr, key_hash: ptr, val_hash: ptr) -> i64
+    module.add_function(
+        "mesh_map_hash_by",
+        i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mesh_list_contains_str(list: ptr, elem: ptr) -> i8 (Bool) — String elements, uses mesh_string_eq
     module.add_function(
         "mesh_list_contains_str",

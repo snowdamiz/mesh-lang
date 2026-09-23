@@ -647,6 +647,20 @@ pub extern "C" fn mesh_list_contains_by(list: *mut u8, elem: u64, eq: *mut u8) -
     }
 }
 
+/// Hash a list by its elements in order, each hashed by `hash`
+/// (`fn(slot) -> Int`), so lists equal by their elements' Eq hash alike.
+#[no_mangle]
+pub extern "C" fn mesh_list_hash_by(list: *mut u8, hash: *mut u8) -> i64 {
+    type ElemHash = unsafe extern "C" fn(u64) -> i64;
+    unsafe {
+        let f: ElemHash = std::mem::transmute(hash);
+        let (src, len) = (list_data(list), list_len(list));
+        (0..len as usize).fold(crate::hash::mesh_hash_int(len as i64), |h, i| {
+            crate::hash::mesh_hash_combine(h, f(*src.add(i)))
+        })
+    }
+}
+
 /// Test if a list of strings contains a given string using content equality.
 ///
 /// Uses `mesh_string_eq` for byte-by-byte comparison, so two distinct string

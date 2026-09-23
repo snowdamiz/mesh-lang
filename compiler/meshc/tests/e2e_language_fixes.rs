@@ -730,7 +730,7 @@ end
 "##;
     assert_eq!(
         run(source),
-        "3 5050\ntrue false\nCons(1, Cons(2, Nil))\nCons(...)\n2 1\n"
+        "3 5050\ntrue false\nCons(1, Cons(2, Nil))\nCons(1, Cons(2, Nil))\n2 1\n"
     );
 }
 
@@ -2260,4 +2260,93 @@ fn method_arguments_and_impl_signatures_are_checked_against_the_interface() {
         "struct V do\n  x :: Int\nend\n\nimpl Mul for V do\n  type Output = Int\n  fn mul(self, other :: V) -> V do\n    V { x: self.x * other.x }\n  end\nend\n\nfn main() do\n  println(\"#{(V { x: 2 } * V { x: 3 }).x}\")\nend\n",
     );
     assert!(err.contains("expected Int, found V"), "{err}");
+}
+
+// ── Derived traits follow the source types ─────────────────────────────
+
+#[test]
+fn generic_struct_instantiations_derive_by_their_type_arguments() {
+    // Box<List<Int>> and Box<List<String>> share a layout; their derived
+    // helpers must not be shared.
+    let source = r##"
+struct Box<T> do
+  value :: T
+end deriving(Eq, Ord, Display, Debug, Hash)
+
+fn main() do
+  let a = Box { value: [1, 2] }
+  let b = Box { value: ["x", "y"] }
+  println("#{a} #{b} #{b.to_string()}")
+  println("#{b == Box { value: ["x", "y"] }} #{a == Box { value: [1, 3] }}")
+  println("#{a.inspect()} #{b.inspect()}")
+  println("#{a < Box { value: [1, 3] }} #{b > Box { value: ["x"] }} #{compare(a, Box { value: [0] })}")
+  println("#{b.hash() == Box { value: ["x", "y"] }.hash()} #{Box { value: 1 }.hash() == Box { value: 2 }.hash()}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "Box([1, 2]) Box([x, y]) Box([x, y])\ntrue false\nBox { value: [1, 2] } Box { value: [\"x\", \"y\"] }\ntrue true Greater\ntrue false\n"
+    );
+}
+
+#[test]
+fn derived_traits_handle_collection_tuple_option_and_bool_fields() {
+    let source = r##"
+struct P do
+  name :: String
+  tags :: List<String>
+  ok :: Bool
+  pair :: (Int, String)
+  opt :: Option<List<Int>>
+end deriving(Eq, Ord, Display, Debug, Hash)
+
+type Shape do
+  Circle(Float)
+  Poly(List<Int>)
+  Named(String, Bool)
+end deriving(Eq, Ord, Display, Debug, Hash)
+
+type Chain do
+  Link(Int, Chain)
+  End
+end deriving(Eq, Ord, Display, Debug)
+
+fn main() do
+  let p = P { name: "n", tags: ["a", "b"], ok: true, pair: (1, "z"), opt: Some([3]) }
+  let q = P { name: "n", tags: ["a", "b"], ok: false, pair: (1, "z"), opt: None }
+  println("#{p}")
+  println(p.inspect())
+  println("#{p == q} #{q < p} #{p < q} #{compare(p, p)}")
+  println("#{Poly([1, 2])} #{Named("s", true).inspect()} #{Circle(1.5) < Poly([])} #{Poly([1]) < Poly([2])} #{Named("a", false) < Named("a", true)}")
+  let c = Link(1, Link(2, End))
+  println("#{c.inspect()} #{c < Link(1, Link(3, End))} #{End < c} #{compare(Circle(2.0), Circle(1.0))}")
+  let tags = ["a"] ++ ["b"]
+  println("#{p.hash() == P { name: "n", tags: tags, ok: true, pair: (1, "z"), opt: Some([3]) }.hash()} #{Poly([1, 2]).hash() == Poly([1] ++ [2]).hash()}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "P(n, [a, b], true, (1, z), Some([3]))\n\
+         P { name: \"n\", tags: [\"a\", \"b\"], ok: true, pair: (1, \"z\"), opt: Some([3]) }\n\
+         false true false Equal\n\
+         Poly([1, 2]) Named(\"s\", true) true true true\n\
+         Link(1, Link(2, End)) true false Greater\n\
+         true true\n"
+    );
+}
+
+#[test]
+fn compare_and_inspect_work_on_any_ordered_or_shown_type() {
+    let source = r##"
+fn main() do
+  println("#{compare(1, 2)} #{compare("b", "a")} #{compare([1], [2])} #{compare((1, 2), (1, 2))}")
+  let o = compare("b", "a")
+  println("#{o == Greater} #{o.to_string()} #{[1].compare([0])}")
+  println("#{["x", "y"].inspect()} #{[(1, "a")].inspect()}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "Less Greater Less Equal\ntrue Greater Greater\n[\"x\", \"y\"] [(1, \"a\")]\n"
+    );
 }

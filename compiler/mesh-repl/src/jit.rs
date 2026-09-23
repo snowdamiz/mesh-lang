@@ -1202,6 +1202,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_list_from_array as *const (),
         ),
         ("mesh_list_get", mesh_rt::mesh_list_get as *const ()),
+        (
+            "mesh_list_hash_by",
+            mesh_rt::collections::list::mesh_list_hash_by as *const (),
+        ),
         ("mesh_list_head", mesh_rt::mesh_list_head as *const ()),
         (
             "mesh_list_iter_new",
@@ -1273,6 +1277,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_map_has_key_by",
             mesh_rt::collections::map::mesh_map_has_key_by as *const (),
+        ),
+        (
+            "mesh_map_hash_by",
+            mesh_rt::collections::map::mesh_map_hash_by as *const (),
         ),
         (
             "mesh_map_iter_new",
@@ -1936,6 +1944,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_set_from_list",
             mesh_rt::mesh_set_from_list as *const (),
+        ),
+        (
+            "mesh_set_hash_by",
+            mesh_rt::collections::set::mesh_set_hash_by as *const (),
         ),
         (
             "mesh_set_intersection",

@@ -297,6 +297,23 @@ pub extern "C" fn mesh_map_eq_by(a: *mut u8, b: *mut u8, val_eq: *mut u8, key_eq
     }
 }
 
+/// Hash a map by its entries, keys hashed by `key_hash` and values by
+/// `val_hash` (`fn(slot) -> Int`), independently of their order.
+#[no_mangle]
+pub extern "C" fn mesh_map_hash_by(map: *mut u8, key_hash: *mut u8, val_hash: *mut u8) -> i64 {
+    type SlotHash = unsafe extern "C" fn(u64) -> i64;
+    unsafe {
+        let (k, v): (SlotHash, SlotHash) =
+            (std::mem::transmute(key_hash), std::mem::transmute(val_hash));
+        let (entries, len) = (map_entries(map), map_len(map));
+        let sum = (0..len as usize).fold(0i64, |acc, i| {
+            let [key, value] = *entries.add(i);
+            acc.wrapping_add(crate::hash::mesh_hash_combine(k(key), v(value)))
+        });
+        crate::hash::mesh_hash_combine(crate::hash::mesh_hash_int(len as i64), sum)
+    }
+}
+
 /// Return a List of all keys in the map.
 #[no_mangle]
 pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {

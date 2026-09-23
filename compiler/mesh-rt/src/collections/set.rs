@@ -132,6 +132,19 @@ pub extern "C" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
     }
 }
 
+/// Hash a set by its elements, each hashed by `hash` (`fn(slot) -> Int`),
+/// independently of their order.
+#[no_mangle]
+pub extern "C" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
+    type ElemHash = unsafe extern "C" fn(u64) -> i64;
+    unsafe {
+        let f: ElemHash = std::mem::transmute(hash);
+        let (data, len) = (set_data(set), set_len(set));
+        let sum = (0..len as usize).fold(0i64, |acc, i| acc.wrapping_add(f(*data.add(i))));
+        crate::hash::mesh_hash_combine(crate::hash::mesh_hash_int(len as i64), sum)
+    }
+}
+
 /// Return a NEW set that is the union of `a` and `b`.
 #[no_mangle]
 pub extern "C" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
