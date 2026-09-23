@@ -99,6 +99,55 @@ pub fn compile_match(
     compile_matrix(matrix, file, line, sum_type_defs)
 }
 
+/// Whether every arm (every or-alternative) of a match on a tuple literal of
+/// `arity` values is a tuple pattern of that arity or `_`, so the values can
+/// be matched as separate columns without building the tuple.
+pub fn arms_match_columns(arms: &[MirMatchArm], arity: usize) -> bool {
+    arms.iter().all(|arm| {
+        pattern_alternatives(&arm.pattern)
+            .iter()
+            .all(|pattern| match pattern {
+                MirPattern::Tuple(elements) => elements.len() == arity,
+                MirPattern::Wildcard => true,
+                _ => false,
+            })
+    })
+}
+
+/// Compile a match on several values at once: arm patterns are tuples with
+/// one sub-pattern per value (see `arms_match_columns`), and value N is
+/// reached through `AccessPath::Column(N, ..)`.
+pub fn compile_match_columns(
+    column_types: &[MirType],
+    arms: &[MirMatchArm],
+    file: &str,
+    line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) -> DecisionTree {
+    let rows = expand_or_patterns(arms)
+        .into_iter()
+        .map(|(arm_index, pattern, guard)| PatRow {
+            patterns: match pattern {
+                MirPattern::Tuple(elements) => elements,
+                _ => vec![MirPattern::Wildcard; column_types.len()],
+            },
+            arm_index,
+            guard,
+            bindings: Vec::new(),
+        })
+        .collect();
+    let matrix = PatMatrix {
+        rows,
+        column_paths: column_types
+            .iter()
+            .enumerate()
+            .map(|(index, ty)| AccessPath::Column(index, ty.clone()))
+            .collect(),
+        column_types: column_types.to_vec(),
+    };
+    compile_matrix(matrix, file, line, sum_type_defs)
+}
+
 /// Walk all `MirExpr::Match` nodes in a module and compile them to
 /// `MirExpr::CompiledMatch` with decision trees.
 pub fn compile_patterns(module: &mut MirModule) {
@@ -125,23 +174,92 @@ fn expand_or_patterns(arms: &[MirMatchArm]) -> Vec<(usize, MirPattern, Option<Mi
     result
 }
 
-/// Recursively expand or-patterns in a single pattern.
+/// Expand the or-patterns in a single pattern, wherever they are nested: each
+/// alternative becomes its own row with the same arm_index (they share the
+/// body). `Some(1 | 2)` becomes `Some(1)` and `Some(2)`.
 fn expand_pattern(
     arm_index: usize,
     pattern: &MirPattern,
     guard: &Option<MirExpr>,
     out: &mut Vec<(usize, MirPattern, Option<MirExpr>)>,
 ) {
+    for alternative in pattern_alternatives(pattern) {
+        out.push((arm_index, alternative, guard.clone()));
+    }
+}
+
+/// The or-free patterns that together match what `pattern` matches.
+fn pattern_alternatives(pattern: &MirPattern) -> Vec<MirPattern> {
+    /// Every combination of one alternative per sub-pattern.
+    fn product(parts: &[MirPattern]) -> Vec<Vec<MirPattern>> {
+        let mut combos = vec![Vec::new()];
+        for part in parts {
+            let alternatives = pattern_alternatives(part);
+            combos = combos
+                .into_iter()
+                .flat_map(|combo| {
+                    alternatives.iter().map(move |alternative| {
+                        let mut next = combo.clone();
+                        next.push(alternative.clone());
+                        next
+                    })
+                })
+                .collect();
+        }
+        combos
+    }
+
     match pattern {
         MirPattern::Or(alternatives) => {
-            for alt in alternatives {
-                // Each alternative in an or-pattern becomes its own row
-                // with the same arm_index (they share the body).
-                expand_pattern(arm_index, alt, guard, out);
-            }
+            alternatives.iter().flat_map(pattern_alternatives).collect()
         }
-        _ => {
-            out.push((arm_index, pattern.clone(), guard.clone()));
+        MirPattern::Constructor {
+            type_name,
+            variant,
+            fields,
+            bindings,
+        } => product(fields)
+            .into_iter()
+            .map(|fields| MirPattern::Constructor {
+                type_name: type_name.clone(),
+                variant: variant.clone(),
+                fields,
+                bindings: bindings.clone(),
+            })
+            .collect(),
+        MirPattern::Tuple(elements) => product(elements)
+            .into_iter()
+            .map(MirPattern::Tuple)
+            .collect(),
+        MirPattern::ListCons {
+            head,
+            tail,
+            elem_ty,
+        } => product(&[(**head).clone(), (**tail).clone()])
+            .into_iter()
+            .map(|mut parts| {
+                let tail = parts.pop().unwrap();
+                let head = parts.pop().unwrap();
+                MirPattern::ListCons {
+                    head: Box::new(head),
+                    tail: Box::new(tail),
+                    elem_ty: elem_ty.clone(),
+                }
+            })
+            .collect(),
+        MirPattern::As { name, ty, inner } => pattern_alternatives(inner)
+            .into_iter()
+            .map(|inner| MirPattern::As {
+                name: name.clone(),
+                ty: ty.clone(),
+                inner: Box::new(inner),
+            })
+            .collect(),
+        MirPattern::Wildcard
+        | MirPattern::Var(..)
+        | MirPattern::Literal(_)
+        | MirPattern::ListNil => {
+            vec![pattern.clone()]
         }
     }
 }
@@ -183,17 +301,12 @@ fn compile_matrix(
     }
 
     // Base case 2: No columns -- all patterns consumed. The first row wins.
-    if matrix.column_paths.is_empty() {
-        let row = &matrix.rows[0];
-        return make_leaf_or_guard(row, &matrix.rows[1..], file, line);
-    }
-
     // Base case 3: First row is all wildcards/variables -- it matches.
-    if row_is_all_wildcards(&matrix.rows[0]) {
-        let mut row = matrix.rows[0].clone();
+    if matrix.column_paths.is_empty() || row_is_all_wildcards(&matrix.rows[0]) {
+        let mut row = matrix.rows.remove(0);
         // Collect variable bindings from this row.
         collect_bindings_from_row(&mut row, &matrix.column_paths, &matrix.column_types);
-        return make_leaf_or_guard(&row, &matrix.rows[1..], file, line);
+        return make_leaf_or_guard(&row, matrix, file, line, sum_type_defs);
     }
 
     // Step 1: Select the best column to test (most constructor diversity).
@@ -236,34 +349,27 @@ fn compile_matrix(
 // ── Leaf / Guard creation ───────────────────────────────────────────
 
 /// Create a Leaf node, possibly wrapping it in a Guard if the arm has a guard.
-/// If the guard fails, fall through to the remaining rows.
-fn make_leaf_or_guard(row: &PatRow, rest: &[PatRow], file: &str, line: u32) -> DecisionTree {
+/// If the guard fails, matching continues with the remaining rows: `rest` is
+/// the matrix without `row`, whose columns the rows have not been tested
+/// against yet.
+fn make_leaf_or_guard(
+    row: &PatRow,
+    rest: PatMatrix,
+    file: &str,
+    line: u32,
+    sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
+) -> DecisionTree {
     let leaf = DecisionTree::Leaf {
         arm_index: row.arm_index,
         bindings: row.bindings.clone(),
     };
 
     match &row.guard {
-        Some(guard_expr) => {
-            // Build failure branch from remaining rows.
-            let failure = if rest.is_empty() {
-                DecisionTree::Fail {
-                    message: "non-exhaustive match".to_string(),
-                    file: file.to_string(),
-                    line,
-                }
-            } else {
-                // Remaining rows might also have guards, so we chain them.
-                let first_rest = &rest[0];
-                make_leaf_or_guard(first_rest, &rest[1..], file, line)
-            };
-
-            DecisionTree::Guard {
-                guard_expr: guard_expr.clone(),
-                success: Box::new(leaf),
-                failure: Box::new(failure),
-            }
-        }
+        Some(guard_expr) => DecisionTree::Guard {
+            guard_expr: guard_expr.clone(),
+            success: Box::new(leaf),
+            failure: Box::new(compile_matrix(rest, file, line, sum_type_defs)),
+        },
         None => leaf,
     }
 }

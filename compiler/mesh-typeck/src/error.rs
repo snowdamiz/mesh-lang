@@ -164,6 +164,13 @@ pub enum TypeError {
         missing_patterns: Vec<String>,
         span: TextRange,
     },
+    /// Function or closure clauses that do not cover every argument (a
+    /// warning: a call no clause matches panics at run time).
+    NonExhaustiveClauses {
+        scrutinee_type: String,
+        missing_patterns: Vec<String>,
+        span: TextRange,
+    },
     /// A match arm is redundant (unreachable given prior arms).
     RedundantArm { arm_index: usize, span: TextRange },
     /// A guard expression uses disallowed constructs.
@@ -498,6 +505,18 @@ impl fmt::Display for TypeError {
                     "or-pattern binding mismatch: expected [{}], found [{}]",
                     expected_bindings.join(", "),
                     found_bindings.join(", ")
+                )
+            }
+            TypeError::NonExhaustiveClauses {
+                scrutinee_type,
+                missing_patterns,
+                ..
+            } => {
+                write!(
+                    f,
+                    "clauses do not cover every `{}`: missing patterns [{}]",
+                    scrutinee_type,
+                    missing_patterns.join(", ")
                 )
             }
             TypeError::NonExhaustiveMatch {

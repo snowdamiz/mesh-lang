@@ -34,6 +34,9 @@ pub enum AccessPath {
     ListHead(Box<AccessPath>, MirType),
     /// Tail of a list (remaining elements after head).
     ListTail(Box<AccessPath>),
+    /// Value N of a match on several values at once (`case (a, b)`, or the
+    /// parameters of a clause function), held unboxed in a stack struct.
+    Column(usize, MirType),
 }
 
 // ── ConstructorTag ──────────────────────────────────────────────────

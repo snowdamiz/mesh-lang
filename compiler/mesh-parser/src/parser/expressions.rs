@@ -1431,13 +1431,24 @@ pub(crate) fn parse_fn_clause_param_list(p: &mut Parser) {
 /// - `-` followed by number -> negative literal pattern param
 /// - `_` -> wildcard pattern param
 /// - `(` -> tuple pattern param
-/// - Uppercase IDENT followed by `(` -> constructor pattern param
+/// - Uppercase IDENT -> constructor pattern param (`Some(x)`, `Red`, `Shape.Circle(r)`)
+/// - `[` -> list pattern param
+/// - Lowercase IDENT followed by `::` and a pattern (lowercase name, `_`, `[`)
+///   -> cons pattern param `h :: t`
 /// - Lowercase IDENT (not `_`) -> regular named param with optional `:: Type`
 /// - `self` -> regular param
 pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
     let m = p.open();
 
     match p.current() {
+        SyntaxKind::L_BRACKET => {
+            super::patterns::parse_pattern(p);
+        }
+
+        SyntaxKind::IDENT if p.nth(1) == SyntaxKind::COLON_COLON && at_cons_tail(p, 2) => {
+            super::patterns::parse_pattern(p);
+        }
+
         // Literal patterns: 0, 1, 3.14, true, false, nil
         SyntaxKind::INT_LITERAL
         | SyntaxKind::FLOAT_LITERAL
@@ -1473,13 +1484,8 @@ pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
             if text == "_" {
                 // Wildcard pattern
                 super::patterns::parse_pattern(p);
-            } else if text.starts_with(|c: char| c.is_uppercase())
-                && p.nth(1) == SyntaxKind::L_PAREN
-            {
-                // Constructor pattern: Some(x), Ok(val)
-                super::patterns::parse_pattern(p);
-            } else if text.starts_with(|c: char| c.is_uppercase()) && p.nth(1) == SyntaxKind::DOT {
-                // Qualified constructor pattern: Shape.Circle(r)
+            } else if text.starts_with(|c: char| c.is_uppercase()) {
+                // Constructor pattern: Some(x), Ok(val), None, Shape.Circle(r)
                 super::patterns::parse_pattern(p);
             } else {
                 // Regular identifier parameter with optional type annotation
@@ -1507,6 +1513,21 @@ pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::PARAM);
+}
+
+/// Whether the token at `n` (just after `name ::`) starts a list pattern
+/// rather than a type: a lowercase name, `_` or `[`. Types start uppercase or
+/// with `(`, and `borrow`/`consume` before a type are ownership modifiers.
+fn at_cons_tail(p: &Parser, n: usize) -> bool {
+    match p.nth(n) {
+        SyntaxKind::L_BRACKET => true,
+        SyntaxKind::IDENT => {
+            let text = p.nth_text(n);
+            !matches!(text, "borrow" | "consume")
+                && text.starts_with(|c: char| c.is_lowercase() || c == '_')
+        }
+        _ => false,
+    }
 }
 
 /// Parse the contextual parameter ownership modifier following `::`.

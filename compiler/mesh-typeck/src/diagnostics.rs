@@ -104,6 +104,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::OrPatternBindingMismatch { .. } => "E0011",
         TypeError::NonExhaustiveMatch { .. } => "E0012",
         TypeError::RedundantArm { .. } => "W0001",
+        TypeError::NonExhaustiveClauses { .. } => "W0003",
         TypeError::InvalidGuardExpression { .. } => "E0013",
         TypeError::SendTypeMismatch { .. } => "E0014",
         TypeError::SelfOutsideActor { .. } => "E0015",
@@ -153,7 +154,9 @@ fn error_code(err: &TypeError) -> &'static str {
 /// Determine severity string for JSON output.
 fn severity(err: &TypeError) -> &'static str {
     match err {
-        TypeError::RedundantArm { .. } => "warning",
+        TypeError::RedundantArm { .. }
+        | TypeError::NonFirstClauseAnnotation { .. }
+        | TypeError::NonExhaustiveClauses { .. } => "warning",
         _ => "error",
     }
 }
@@ -451,6 +454,11 @@ pub fn render_json_diagnostic(
             };
         }
         TypeError::NonExhaustiveMatch {
+            missing_patterns,
+            span,
+            ..
+        }
+        | TypeError::NonExhaustiveClauses {
             missing_patterns,
             span,
             ..
@@ -1035,6 +1043,27 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("add the missing patterns or a wildcard `_` arm")
+                .finish()
+        }
+
+        TypeError::NonExhaustiveClauses {
+            scrutinee_type,
+            missing_patterns,
+            span,
+        } => {
+            let msg = format!("clauses do not cover every `{}`", scrutinee_type);
+            let range = clamp(text_range_to_range(*span));
+
+            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(&msg)
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("missing: {}", missing_patterns.join(", ")))
+                        .with_color(Color::Yellow),
+                )
+                .with_help("add a clause for the missing patterns: a call no clause matches panics")
                 .finish()
         }
 

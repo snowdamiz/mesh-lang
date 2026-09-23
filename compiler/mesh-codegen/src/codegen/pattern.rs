@@ -149,76 +149,17 @@ impl<'ctx> CodeGen<'ctx> {
         result_alloca: PointerValue<'ctx>,
         merge_bb: BasicBlock<'ctx>,
     ) -> Result<(), String> {
-        // Bind variables from access paths.
-        for (name, ty, path) in bindings {
-            // If already bound by a guard node for this arm, just update the
-            // store so the value is current (guard pre-binds for guard-expr
-            // evaluation but the scrutinee may differ between case expressions).
-            if let Some(&existing_alloca) = self
-                .locals
-                .get(name)
-                .filter(|_| self.local_types.get(name) == Some(ty))
-            {
-                let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
-                let llvm_ty = self.llvm_type(ty);
-                let val = if should_deref_boxed_payload(ty, &val, &llvm_ty) {
-                    self.builder
-                        .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
-                        .map_err(|e| e.to_string())?
-                } else {
-                    val
-                };
-                self.builder
-                    .build_store(existing_alloca, val)
-                    .map_err(|e| e.to_string())?;
-                continue;
-            }
-            let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
-            let llvm_ty = self.llvm_type(ty);
-
-            // When the binding type is a Struct, SumType, or opaque i64 handle (e.g., DateTime,
-            // SqliteConn — MirType::Int) but the extracted value is a pointer, dereference the
-            // pointer to load the actual value. This covers:
-            // - Result<Struct, String> where Ok's payload is heap-allocated (Ptr)
-            // - Result<DateTime, String> where Ok's i64 payload is boxed via alloc_result
-            let val = if should_deref_boxed_payload(ty, &val, &llvm_ty) {
-                self.builder
-                    .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
-                    .map_err(|e| e.to_string())?
-            } else {
-                val
-            };
-
-            // Place alloca in the function entry block for proper LLVM domination.
-            // Without this, allocas inside case blocks (e.g., for Err(e) or Some(x)
-            // bindings) fail verification when referenced from subsequent code.
-            let current_bb = self.builder.get_insert_block().unwrap();
-            let fn_val = self.current_function();
-            let entry_bb = fn_val.get_first_basic_block().unwrap();
-            if let Some(first_instr) = entry_bb.get_first_instruction() {
-                self.builder.position_before(&first_instr);
-            } else {
-                self.builder.position_at_end(entry_bb);
-            }
-            let alloca = self
-                .builder
-                .build_alloca(llvm_ty, name)
-                .map_err(|e| e.to_string())?;
-
-            // Store the value at the original position (not in entry block).
-            self.builder.position_at_end(current_bb);
-            self.builder
-                .build_store(alloca, val)
-                .map_err(|e| e.to_string())?;
-            self.locals.insert(name.clone(), alloca);
-            self.local_types.insert(name.clone(), ty.clone());
-        }
+        // Bind variables from access paths. A binding shadows an outer name
+        // only for the arm body.
+        let saved = self.bind_pattern_values(bindings, scrutinee_alloca, scrutinee_ty)?;
 
         // Codegen arm body
         let arm = arms
             .get(arm_index)
             .ok_or_else(|| format!("Invalid arm index {}", arm_index))?;
-        let body_val = self.codegen_expr(&arm.body)?;
+        let body_val = self.codegen_expr(&arm.body);
+        self.restore_locals(saved);
+        let body_val = body_val?;
 
         // Store result and branch to merge (only if not already terminated by
         // return/panic). The ? operator desugaring generates match arms with
@@ -241,6 +182,66 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         Ok(())
+    }
+
+    /// Bind each pattern variable to a fresh entry-block alloca holding the
+    /// value at its access path. Returns what the names meant before, for
+    /// `restore_locals`.
+    #[allow(clippy::type_complexity)]
+    fn bind_pattern_values(
+        &mut self,
+        bindings: &[(String, MirType, AccessPath)],
+        scrutinee_alloca: PointerValue<'ctx>,
+        scrutinee_ty: &MirType,
+    ) -> Result<Vec<(String, Option<PointerValue<'ctx>>, Option<MirType>)>, String> {
+        let mut saved = Vec::with_capacity(bindings.len());
+        for (name, ty, path) in bindings {
+            let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
+            let llvm_ty = self.llvm_type(ty);
+
+            // When the binding type is a Struct, SumType, or opaque i64 handle (e.g., DateTime,
+            // SqliteConn — MirType::Int) but the extracted value is a pointer, dereference the
+            // pointer to load the actual value. This covers:
+            // - Result<Struct, String> where Ok's payload is heap-allocated (Ptr)
+            // - Result<DateTime, String> where Ok's i64 payload is boxed via alloc_result
+            let val = if should_deref_boxed_payload(ty, &val, &llvm_ty) {
+                self.builder
+                    .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
+                    .map_err(|e| e.to_string())?
+            } else {
+                val
+            };
+
+            // Place alloca in the function entry block for proper LLVM domination.
+            let alloca = self.build_entry_alloca(llvm_ty, name)?;
+            self.builder
+                .build_store(alloca, val)
+                .map_err(|e| e.to_string())?;
+            saved.push((
+                name.clone(),
+                self.locals.insert(name.clone(), alloca),
+                self.local_types.insert(name.clone(), ty.clone()),
+            ));
+        }
+        Ok(saved)
+    }
+
+    /// Undo `bind_pattern_values`, innermost binding last in, first out.
+    #[allow(clippy::type_complexity)]
+    fn restore_locals(
+        &mut self,
+        saved: Vec<(String, Option<PointerValue<'ctx>>, Option<MirType>)>,
+    ) {
+        for (name, alloca, ty) in saved.into_iter().rev() {
+            match alloca {
+                Some(alloca) => self.locals.insert(name.clone(), alloca),
+                None => self.locals.remove(&name),
+            };
+            match ty {
+                Some(ty) => self.local_types.insert(name, ty),
+                None => self.local_types.remove(&name),
+            };
+        }
     }
 
     // ── Switch node ──────────────────────────────────────────────────
@@ -504,44 +505,17 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), String> {
         let fn_val = self.current_function();
 
-        // Guard expressions may reference variables bound by the pattern.
-        // Extract bindings from the success Leaf and bind them before evaluating
-        // the guard, so that guard expressions like `n < 0` can access `n`.
-        // Allocas are placed in the entry block to ensure proper LLVM domination.
-        if let DecisionTree::Leaf { bindings, .. } = success {
-            let current_bb = self.builder.get_insert_block().unwrap();
-            let entry_bb = fn_val.get_first_basic_block().unwrap();
-
-            for (name, ty, path) in bindings {
-                let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
-                let llvm_ty = self.llvm_type(ty);
-
-                // Place alloca in the entry block for proper domination.
-                if let Some(first_instr) = entry_bb.get_first_instruction() {
-                    self.builder.position_before(&first_instr);
-                } else {
-                    self.builder.position_at_end(entry_bb);
-                }
-                let alloca = self
-                    .builder
-                    .build_alloca(llvm_ty, name)
-                    .map_err(|e| e.to_string())?;
-
-                // Store the value at the original position (not in entry block).
-                self.builder.position_at_end(current_bb);
-                self.builder
-                    .build_store(alloca, val)
-                    .map_err(|e| e.to_string())?;
-
-                self.locals.insert(name.clone(), alloca);
-                self.local_types.insert(name.clone(), ty.clone());
+        // Guard expressions may reference variables bound by the pattern, so
+        // the success Leaf's bindings are bound while the guard is evaluated.
+        let saved = match success {
+            DecisionTree::Leaf { bindings, .. } => {
+                self.bind_pattern_values(bindings, scrutinee_alloca, scrutinee_ty)?
             }
-
-            // Restore insertion point.
-            self.builder.position_at_end(current_bb);
-        }
-
-        let guard_val = self.codegen_expr(guard_expr)?.into_int_value();
+            _ => Vec::new(),
+        };
+        let guard_val = self.codegen_expr(guard_expr);
+        self.restore_locals(saved);
+        let guard_val = guard_val?.into_int_value();
 
         let success_bb = self.context.append_basic_block(fn_val, "guard_pass");
         let failure_bb = self.context.append_basic_block(fn_val, "guard_fail");
@@ -697,6 +671,16 @@ impl<'ctx> CodeGen<'ctx> {
         match path {
             AccessPath::Root => Ok(scrutinee_alloca),
 
+            AccessPath::Column(index, _) => self
+                .builder
+                .build_struct_gep(
+                    self.llvm_type(scrutinee_ty).into_struct_type(),
+                    scrutinee_alloca,
+                    *index as u32,
+                    "column",
+                )
+                .map_err(|e| e.to_string()),
+
             AccessPath::TupleField(parent, index, element_ty) => {
                 // Tuples use the runtime layout `{ u64 len, u64 elements[] }`,
                 // including when a generic constructor stores the tuple as Ptr.
@@ -837,7 +821,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Convert u64 -> the element type.
                 let path_ty = elem_ty.clone();
-                let converted = self.convert_list_elem_from_u64(head_i64, &path_ty)?;
+                let converted = self.convert_from_list_element(head_i64, &path_ty)?;
 
                 // Store in an alloca so we can return a pointer.
                 let llvm_ty = self.llvm_type(&path_ty);
@@ -878,53 +862,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_store(alloca, tail_ptr)
                     .map_err(|e| e.to_string())?;
                 Ok(alloca)
-            }
-        }
-    }
-
-    /// Convert a u64 value from mesh_list_head to the actual element type.
-    ///
-    /// `mesh_list_head` returns u64 (uniform storage). Based on the element type:
-    /// - Int: keep as i64
-    /// - Bool: truncate to i1
-    /// - Float: bitcast to f64
-    /// - String/Ptr: inttoptr
-    fn convert_list_elem_from_u64(
-        &self,
-        val: inkwell::values::IntValue<'ctx>,
-        elem_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        match elem_ty {
-            MirType::Int => Ok(val.into()),
-            MirType::Bool => {
-                let i1_val = self
-                    .builder
-                    .build_int_truncate(val, self.context.bool_type(), "head_to_bool")
-                    .map_err(|e| e.to_string())?;
-                Ok(i1_val.into())
-            }
-            MirType::Float => {
-                let f64_val = self
-                    .builder
-                    .build_bit_cast(val, self.context.f64_type(), "head_to_f64")
-                    .map_err(|e| e.to_string())?;
-                Ok(f64_val)
-            }
-            MirType::String
-            | MirType::Ptr
-            | MirType::Struct(_)
-            | MirType::SumType(_)
-            | MirType::Pid(_) => {
-                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                let ptr_val = self
-                    .builder
-                    .build_int_to_ptr(val, ptr_ty, "head_to_ptr")
-                    .map_err(|e| e.to_string())?;
-                Ok(ptr_val.into())
-            }
-            _ => {
-                // Fallback: keep as i64
-                Ok(val.into())
             }
         }
     }
@@ -980,6 +917,8 @@ impl<'ctx> CodeGen<'ctx> {
             AccessPath::Root => Ok(scrutinee_ty.clone()),
 
             AccessPath::TupleField(_, _, element_ty) => Ok(element_ty.clone()),
+
+            AccessPath::Column(_, column_ty) => Ok(column_ty.clone()),
 
             AccessPath::VariantField(_, _, _, field_ty) => Ok(field_ty.clone()),
 

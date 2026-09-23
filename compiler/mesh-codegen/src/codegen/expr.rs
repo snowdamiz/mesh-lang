@@ -16,7 +16,7 @@ use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirResourceDestructor, MirResourceField,
     MirResourceMoveSource, MirType, UnaryOp,
 };
-use crate::pattern::compile::compile_match;
+use crate::pattern::compile::{self, compile_match};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generate LLVM IR for a MIR expression.
@@ -2656,6 +2656,16 @@ impl<'ctx> CodeGen<'ctx> {
         arms: &[MirMatchArm],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // `case (a, b) do (0, y) -> .. end` (and a clause function's
+        // parameters) match the values as columns, without building the tuple.
+        if let MirExpr::Call { func, args, .. } = scrutinee {
+            if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "__mesh_make_tuple")
+                && compile::arms_match_columns(arms, args.len())
+            {
+                return self.codegen_match_columns(args, arms, ty);
+            }
+        }
+
         // Evaluate the scrutinee
         let scrutinee_val = self.codegen_expr(scrutinee)?;
         let scrutinee_ty = scrutinee.ty();
@@ -2720,6 +2730,56 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         Ok(result)
+    }
+
+    /// Match `arms` against several values at once, held in a stack struct
+    /// (see `compile::compile_match_columns`).
+    fn codegen_match_columns(
+        &mut self,
+        values: &[MirExpr],
+        arms: &[MirMatchArm],
+        ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let column_types: Vec<MirType> = values.iter().map(|value| value.ty().clone()).collect();
+        let scrutinee_ty = MirType::Tuple(column_types.clone());
+        let struct_ty = self.llvm_type(&scrutinee_ty).into_struct_type();
+        let scrutinee_alloca = self.build_entry_alloca(struct_ty.into(), "columns")?;
+        for (index, value) in values.iter().enumerate() {
+            let value = self.codegen_expr(value)?;
+            let slot = self
+                .builder
+                .build_struct_gep(struct_ty, scrutinee_alloca, index as u32, "column")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(slot, value)
+                .map_err(|e| e.to_string())?;
+        }
+
+        let tree = compile::compile_match_columns(
+            &column_types,
+            arms,
+            "<unknown>",
+            0,
+            &self.sum_type_defs,
+        );
+        let result_ty = self.llvm_type(ty);
+        let result_alloca = self.build_entry_alloca(result_ty, "match_result")?;
+        let merge_bb = self
+            .context
+            .append_basic_block(self.current_function(), "match_merge");
+        self.codegen_decision_tree(
+            &tree,
+            scrutinee_alloca,
+            &scrutinee_ty,
+            arms,
+            ty,
+            result_alloca,
+            merge_bb,
+        )?;
+        self.builder.position_at_end(merge_bb);
+        self.builder
+            .build_load(result_ty, result_alloca, "match_val")
+            .map_err(|e| e.to_string())
     }
 
     // ── Struct literal ───────────────────────────────────────────────
@@ -6078,7 +6138,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Convert an i64 value from the runtime back to a typed BasicValueEnum.
     /// This is the inverse of `convert_to_list_element`.
-    fn convert_from_list_element(
+    pub(super) fn convert_from_list_element(
         &mut self,
         val: inkwell::values::IntValue<'ctx>,
         target_ty: &MirType,

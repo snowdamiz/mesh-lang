@@ -189,6 +189,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::UnknownVariant { span, .. } => Some(*span),
         TypeError::OrPatternBindingMismatch { span, .. } => Some(*span),
         TypeError::NonExhaustiveMatch { span, .. } => Some(*span),
+        TypeError::NonExhaustiveClauses { span, .. } => Some(*span),
         TypeError::RedundantArm { span, .. } => Some(*span),
         TypeError::InvalidGuardExpression { span, .. } => Some(*span),
         TypeError::SendTypeMismatch { span, .. } => Some(*span),

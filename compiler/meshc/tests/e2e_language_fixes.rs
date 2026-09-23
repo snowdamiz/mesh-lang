@@ -1529,3 +1529,302 @@ fn an_undefined_module_is_reported_once() {
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
     assert_eq!(codes, ["E0004", "C0001"], "{diags:?}");
 }
+
+// ── Pattern matching: guards, nesting, scoping ─────────────────────────
+
+#[test]
+fn a_failed_guard_tests_the_next_arms_patterns() {
+    let source = r##"
+fn classify(x :: Int) -> String do
+  case x do
+    n when n > 7 -> "big"
+    0 -> "zero"
+    _ -> "other"
+  end
+end
+
+fn clause(n) when n > 7 = "big"
+fn clause(0) = "zero"
+fn clause(_) = "other"
+
+fn never(o :: Option<Int>) -> Bool = false
+
+fn main() do
+  let closure = fn n when n > 7 -> "big" | 0 -> "zero" | _ -> "other" end
+  println("#{classify(5)} #{classify(0)} #{classify(9)} #{clause(5)} #{closure(5)}")
+  let r = case Some(1) do
+    o when never(o) -> "never"
+    None -> "none"
+    Some(_) -> "some"
+  end
+  println(r)
+  case 5 do
+    a when a > 7 -> println("big #{a}")
+    b -> println("other #{b}")
+  end
+end
+"##;
+    assert_eq!(run(source), "other zero big other other\nsome\nother 5\n");
+}
+
+#[test]
+fn nested_or_patterns_match_only_their_alternatives() {
+    let source = r##"
+type Letter do
+  A
+  B
+  C
+end
+
+fn describe(o :: Option<Int>) -> String do
+  case o do
+    Some(1 | 2) -> "small"
+    Some(n) -> "n #{n}"
+    None -> "none"
+  end
+end
+
+fn main() do
+  println("#{describe(Some(2))} #{describe(Some(3))} #{describe(None)}")
+  let t = case (3, 0) do
+    (1 | 2, _) -> "small"
+    (n, _) -> "n #{n}"
+  end
+  let l = case Some(C) do
+    Some(A | B) -> "a or b"
+    _ -> "other"
+  end
+  println("#{t} #{l}")
+end
+"##;
+    assert_eq!(run(source), "small n 3 none\nn 3 other\n");
+}
+
+#[test]
+fn case_arm_bindings_do_not_leak_into_the_enclosing_scope() {
+    let source = r##"
+fn main() do
+  let x = 1
+  case Some(2) do
+    Some(x) -> println("arm #{x}")
+    None -> println("none")
+  end
+  println("after #{x}")
+  let b = "outer"
+  let r = case Some(5) do
+    Some(b) -> b
+    None -> 0
+  end
+  println("#{r} #{b}")
+  for i in [1, 2] do
+    case Some(i * 10) do
+      Some(i) -> println("inner #{i}")
+      None -> println("none")
+    end
+    println("loop #{i}")
+  end
+end
+"##;
+    assert_eq!(
+        run(source),
+        "arm 2\nafter 1\n5 outer\ninner 10\nloop 1\ninner 20\nloop 2\n"
+    );
+}
+
+#[test]
+fn list_patterns_read_aggregate_elements() {
+    let source = r##"
+struct P do
+  x :: Int
+end
+
+type Sh do
+  C(r :: Int)
+  S(w :: Int)
+end
+
+fn first_ok(xs :: List<Int!String>) -> Int do
+  case xs do
+    Ok(a) :: _ -> a
+    _ -> 0
+  end
+end
+
+fn main() do
+  case [P { x: 42 }] do
+    h :: _ -> println("#{h.x}")
+    [] -> println("empty")
+  end
+  case [Some(7)] do
+    [Some(a)] -> println("got #{a}")
+    _ -> println("no match")
+  end
+  case [S(8)] do
+    h :: _ -> case h do
+      C(a) -> println("C #{a}")
+      S(a) -> println("S #{a}")
+    end
+    [] -> println("empty")
+  end
+  case [fn n -> n * 3 end] do
+    f :: _ -> println("#{f(10)}")
+    [] -> println("none")
+  end
+  case [Some(9)] do
+    Some(a) :: _ -> println("head #{a}")
+    _ -> println("no")
+  end
+  println("#{first_ok([Ok(7)])}")
+end
+"##;
+    for opt in ["0", "2"] {
+        let (code, out, err) = run_status(source, &["--opt-level", opt]);
+        assert_eq!(code, Some(0), "{err}");
+        assert_eq!(out, "42\ngot 7\nS 8\n30\nhead 9\n7\n", "--opt-level {opt}");
+    }
+}
+
+#[test]
+fn a_tuple_literal_scrutinee_is_matched_by_columns() {
+    let source = r##"
+type Sh do
+  C(r :: Int)
+  S(w :: Int)
+end
+
+fn classify(a :: Int, b :: String, s :: Sh) -> String do
+  case (a, b, s) do
+    (0, "x", _) -> "zero-x"
+    (n, _, C(r)) when n > r -> "big C #{n} #{r}"
+    (1 | 2, t, S(w)) -> "small S #{t} #{w}"
+    (n, t, _) -> "other #{n} #{t}"
+  end
+end
+
+fn main() do
+  println(classify(0, "x", C(1)))
+  println(classify(5, "y", C(2)))
+  println(classify(2, "z", S(9)))
+  println(classify(1, "q", C(4)))
+end
+"##;
+    assert_eq!(run(source), "zero-x\nbig C 5 2\nsmall S z 9\nother 1 q\n");
+}
+
+// ── Function clauses ───────────────────────────────────────────────────
+
+#[test]
+fn clause_parameters_match_constructors_tuples_and_or_patterns() {
+    let source = r##"
+type Sh do
+  C(r :: Int)
+  S(w :: Int)
+end
+
+type Color do
+  Red
+  Green
+  Blue
+end
+
+fn f(C(_), n) = "C #{n}"
+fn f(_, n) = "other #{n}"
+
+fn g((0, _), n) = "zero-first #{n}"
+fn g(_, n) = "other #{n}"
+
+fn opt_add(Some(a), Some(b)) = Some(a + b)
+fn opt_add(_, _) = None
+
+fn pick((a, _), true) = a
+fn pick((_, b), false) = b
+
+fn small(1 | 2, label) = "small #{label}"
+fn small(_, label) = "big #{label}"
+
+fn name(Red) = "red"
+fn name(Green) = "green"
+fn name(Blue) = "blue"
+
+fn len([]) = 0
+fn len(_ :: t) = 1 + len(t)
+
+fn max(a, b) when a > b = a
+fn max(_, b) = b
+
+fn fact(0) do
+  1
+end
+fn fact(n) do
+  n * fact(n - 1)
+end
+
+fn unwrap(Some(v)) = v
+fn unwrap(None) = 0
+
+fn first(x, _) = x
+
+fn main() do
+  println("#{f(S(1), 2)} #{f(C(1), 3)} #{g((5, 1), 2)} #{g((0, 1), 4)}")
+  println("#{opt_add(Some(1), Some(2))} #{opt_add(None, Some(2))} #{pick((1, 2), true)} #{pick((1, 2), false)}")
+  println("#{small(2, "a")} #{small(3, "b")} #{name(Green)} #{name(Blue)}")
+  println("#{len([1, 2, 3])} #{max(3, 2)} #{max(2, 3)} #{fact(5)} #{unwrap(Some(3))} #{unwrap(None)}")
+  println("#{first(1, "a")} #{first("s", 2)}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "other 2 C 3 other 2 zero-first 4\nSome(3) None 1 2\nsmall a big b green blue\n3 3 3 120 3 0\n1 s\n"
+    );
+}
+
+#[test]
+fn closure_clauses_match_their_parameters() {
+    let source = r##"
+type Sh do
+  C(r :: Int)
+  S(w :: Int)
+end
+
+type Wrap do
+  W(Int)
+end
+
+fn main() do
+  let f = fn C(_), n -> "C #{n}" | _, n -> "other #{n}" end
+  let some = fn Some(x) -> x * 2 | None -> 0 end
+  let unwrap = fn W(v) -> v end
+  let flag = fn true -> "T" | false -> "F" end
+  println("#{f(S(1), 2)} #{f(C(1), 3)} #{some(Some(4))} #{some(None)} #{unwrap(W(3))} #{flag(false)}")
+end
+"##;
+    assert_eq!(run(source), "other 2 C 3 8 0 3 F\n");
+}
+
+#[test]
+fn clauses_that_do_not_cover_every_argument_warn_and_panic_when_missed() {
+    for (source, missing) in [
+        ("fn f(\"a\") = 1\nfn main() do\n  println(\"#{f(\"zzz\")}\")\nend\n", "missing: _"),
+        ("fn pos(n) when n > 0 = n\nfn main() do\n  println(\"#{pos(-5)}\")\nend\n", "missing: _"),
+        ("fn f(0, n) = n\nfn f(1, n) = n + 1\nfn main() do\n  println(\"#{f(5, 4)}\")\nend\n", "missing: (_, _)"),
+        ("type Color do\n  Red\n  Green\nend\nfn f(Red) = \"red\"\nfn main() do\n  println(f(Green))\nend\n", "missing: Green"),
+        ("fn main() do\n  let t = fn true -> \"T\" end\n  println(t(false))\nend\n", "missing: false"),
+    ] {
+        // A clause group that misses values is a warning, as documented; a
+        // call no clause matches panics instead of returning garbage.
+        let built = build(source, false);
+        assert!(built.ok, "{source}\n{}", built.stderr);
+        assert!(built.stderr.contains("clauses do not cover every"), "{source}\n{}", built.stderr);
+        assert!(built.stderr.contains(missing), "{source}\n{}", built.stderr);
+        assert!(built.stderr.contains("Warning"), "{source}\n{}", built.stderr);
+        let output = Command::new(built.dir.path().join("project/project"))
+            .output()
+            .expect("run binary");
+        assert_eq!(output.status.code(), Some(101), "{source}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("non-exhaustive match"),
+            "{source}"
+        );
+        assert!(output.stdout.is_empty(), "{source}");
+    }
+}

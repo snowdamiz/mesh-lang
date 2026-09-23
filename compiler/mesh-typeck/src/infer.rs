@@ -4789,8 +4789,15 @@ fn group_multi_clause_fns(items: Vec<Item>) -> Vec<GroupedItem> {
                 }
 
                 if clauses.len() == 1 {
-                    // Single FnDef -- check if it's an `= expr` form.
-                    if clauses[0].has_eq_body() {
+                    // Single FnDef -- an `= expr` form, a guard, or a parameter
+                    // written as a pattern makes it a clause to match against.
+                    let clause = &clauses[0];
+                    if clause.has_eq_body()
+                        || clause.guard().is_some()
+                        || clause
+                            .param_list()
+                            .is_some_and(|pl| pl.params().any(|param| param.pattern().is_some()))
+                    {
                         // Single-clause multi-clause function (still valid).
                         result.push(GroupedItem::MultiClause { clauses });
                     } else {
@@ -4874,6 +4881,14 @@ fn is_catch_all_clause(fn_def: &FnDef) -> bool {
         if let Some(pat) = param.pattern() {
             // Has a pattern child -- check if it's just a variable or wildcard.
             match pat {
+                // An uppercase name is a constructor (`Red`, `None`).
+                Pattern::Ident(ident)
+                    if ident
+                        .name()
+                        .is_some_and(|name| name.text().starts_with(char::is_uppercase)) =>
+                {
+                    return false;
+                }
                 Pattern::Wildcard(_) | Pattern::Ident(_) => {
                     // Simple binding or wildcard -- still catch-all for this param.
                 }
@@ -5207,48 +5222,17 @@ fn infer_multi_clause_fn(
         Ty::Tuple(param_types.iter().map(|t| ctx.resolve(t.clone())).collect())
     };
 
-    let scrutinee_type_info = type_to_type_info(&scrutinee_ty, type_registry);
-    let abs_registry = build_abs_type_registry(type_registry);
-
-    // For exhaustiveness: exclude guarded arms.
-    let unguarded_patterns: Vec<AbsPat> = arm_patterns
-        .iter()
-        .zip(arm_has_guard.iter())
-        .filter(|(_, has_guard)| !**has_guard)
-        .map(|(pat, _)| pat.clone())
-        .collect();
-
-    if let Some(witnesses) = exhaustiveness::check_exhaustiveness(
-        &unguarded_patterns,
-        &scrutinee_type_info,
-        &abs_registry,
-    ) {
-        let missing: Vec<String> = witnesses.iter().map(format_abstract_pat).collect();
-        let err = TypeError::NonExhaustiveMatch {
-            scrutinee_type: format!("{}", scrutinee_ty),
-            missing_patterns: missing,
-            span: first.syntax().text_range(),
-        };
-        ctx.warnings.push(err);
-    }
-
-    // Redundancy checking; guarded clauses cover nothing for later ones.
-    let redundant_indices = exhaustiveness::check_redundancy(
+    // The clauses must cover every argument, as a case's arms must.
+    check_arm_coverage(
+        ctx,
+        &scrutinee_ty,
         &arm_patterns,
         &arm_has_guard,
-        &scrutinee_type_info,
-        &abs_registry,
+        &arm_spans,
+        first.syntax().text_range(),
+        type_registry,
+        true,
     );
-    for idx in redundant_indices {
-        let warn = TypeError::RedundantArm {
-            arm_index: idx,
-            span: arm_spans
-                .get(idx)
-                .copied()
-                .unwrap_or(first.syntax().text_range()),
-        };
-        ctx.warnings.push(warn);
-    }
 
     // ── Step 5: Build function type and register ───────────────────────
 
@@ -10140,8 +10124,9 @@ fn infer_closure(
     fn_constraints: &FxHashMap<String, FnConstraints>,
     expected_ty: Option<Ty>,
 ) -> Result<Ty, TypeError> {
-    // Check if this is a multi-clause closure.
-    if closure.is_multi_clause() {
+    // Several clauses, a guard, or a parameter written as a pattern: the
+    // arguments are matched against each clause.
+    if closure.matches_arguments() {
         return infer_multi_clause_closure(
             ctx,
             env,
@@ -10264,34 +10249,82 @@ fn infer_multi_clause_closure(
         })
         .collect();
 
-    // ── Process the first clause (inline in CLOSURE_EXPR) ───────────────
+    // The first clause's params/guard/body are direct children of the
+    // CLOSURE_EXPR; later clauses are CLOSURE_CLAUSE children.
+    let clauses = std::iter::once((
+        closure.param_list(),
+        closure.guard(),
+        closure.body(),
+        closure.syntax().text_range(),
+    ))
+    .chain(closure.clauses().map(|clause| {
+        (
+            clause.param_list(),
+            clause.guard(),
+            clause.body(),
+            clause.syntax().text_range(),
+        )
+    }))
+    .collect::<Vec<_>>();
 
-    env.push_scope();
+    let mut result_ty: Option<Ty> = None;
+    let mut arm_patterns: Vec<AbsPat> = Vec::new();
+    let mut arm_has_guard: Vec<bool> = Vec::new();
+    let mut arm_spans: Vec<TextRange> = Vec::new();
 
-    if let Some(param_list) = closure.param_list() {
-        for (param_idx, param) in param_list.params().enumerate() {
-            if param_idx >= arity {
-                break;
-            }
-            if let Some(pat) = param.pattern() {
-                // Pattern parameter: infer type and unify with param position.
-                let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-                ctx.unify(
-                    pat_ty,
-                    param_types[param_idx].clone(),
-                    ConstraintOrigin::Builtin,
-                )?;
-            } else if let Some(name_tok) = param.name() {
-                // Regular named parameter: bind as wildcard.
-                let name_text = name_tok.text().to_string();
-                env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
+    for (param_list, guard, body, span) in clauses {
+        env.push_scope();
+
+        let mut clause_abs_pats = Vec::new();
+        if let Some(param_list) = param_list {
+            for (param_idx, param) in param_list.params().enumerate() {
+                if param_idx >= arity {
+                    break;
+                }
+                if let Some(pat) = param.pattern() {
+                    // Pattern parameter: infer type and unify with param position.
+                    let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+                    ctx.unify(
+                        pat_ty,
+                        param_types[param_idx].clone(),
+                        ConstraintOrigin::Builtin,
+                    )?;
+                    clause_abs_pats.push(ast_pattern_to_abstract(&pat, env, type_registry));
+                } else {
+                    if let Some(ann) = param.type_annotation() {
+                        if let Some(annotated) = resolve_type_annotation(ctx, &ann, type_registry) {
+                            ctx.unify(
+                                param_types[param_idx].clone(),
+                                annotated,
+                                ConstraintOrigin::Annotation {
+                                    annotation_span: ann.syntax().text_range(),
+                                },
+                            )?;
+                        }
+                    }
+                    if let Some(name_tok) = param.name() {
+                        // Regular named parameter: bind as wildcard.
+                        let name_text = name_tok.text().to_string();
+                        env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
+                    }
+                    clause_abs_pats.push(AbsPat::Wildcard);
+                }
             }
         }
-    }
+        arm_patterns.push(match clause_abs_pats.len() {
+            0 => AbsPat::Wildcard,
+            1 => clause_abs_pats.pop().unwrap(),
+            _ => AbsPat::Constructor {
+                name: "Tuple".to_string(),
+                type_name: "Tuple".to_string(),
+                args: clause_abs_pats,
+            },
+        });
+        arm_has_guard.push(guard.is_some());
+        arm_spans.push(span);
 
-    // Process guard expression if present.
-    if let Some(guard_clause) = closure.guard() {
-        if let Some(guard_expr) = guard_clause.expr() {
+        // Process guard expression if present.
+        if let Some(guard_expr) = guard.and_then(|guard_clause| guard_clause.expr()) {
             let guard_ty = infer_expr(
                 ctx,
                 env,
@@ -10303,81 +10336,11 @@ fn infer_multi_clause_closure(
             )?;
             let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
         }
-    }
 
-    // Infer the body (reset loop_depth inside closure -- BRKC-05).
-    let saved_loop_depth = ctx.enter_closure();
-    ctx.push_fn_return_type(expected_return_ty.clone());
-    let first_body_ty = if let Some(body) = closure.body() {
-        infer_block(
-            ctx,
-            env,
-            &body,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )?
-    } else {
-        Ty::Tuple(vec![])
-    };
-    ctx.pop_fn_return_type();
-    ctx.exit_closure(saved_loop_depth);
-    if let Some(ref expected_return_ty) = expected_return_ty {
-        ctx.unify(
-            first_body_ty.clone(),
-            expected_return_ty.clone(),
-            ConstraintOrigin::Builtin,
-        )?;
-    }
-    let mut result_ty: Option<Ty> = Some(first_body_ty);
-
-    env.pop_scope();
-
-    // ── Process subsequent clauses (CLOSURE_CLAUSE children) ────────────
-
-    for clause in closure.clauses() {
-        env.push_scope();
-
-        if let Some(param_list) = clause.param_list() {
-            for (param_idx, param) in param_list.params().enumerate() {
-                if param_idx >= arity {
-                    break;
-                }
-                if let Some(pat) = param.pattern() {
-                    let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-                    ctx.unify(
-                        pat_ty,
-                        param_types[param_idx].clone(),
-                        ConstraintOrigin::Builtin,
-                    )?;
-                } else if let Some(name_tok) = param.name() {
-                    let name_text = name_tok.text().to_string();
-                    env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
-                }
-            }
-        }
-
-        // Process guard if present.
-        if let Some(guard_clause) = clause.guard() {
-            if let Some(guard_expr) = guard_clause.expr() {
-                let guard_ty = infer_expr(
-                    ctx,
-                    env,
-                    &guard_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?;
-                let _ = ctx.unify(guard_ty, Ty::bool(), ConstraintOrigin::Builtin);
-            }
-        }
-
-        // Infer body (reset loop_depth inside closure -- BRKC-05).
+        // Infer the body (reset loop_depth inside closure -- BRKC-05).
         let saved_loop_depth = ctx.enter_closure();
         ctx.push_fn_return_type(expected_return_ty.clone());
-        let body_ty = if let Some(body) = clause.body() {
+        let body_ty = if let Some(body) = body {
             infer_block(
                 ctx,
                 env,
@@ -10406,6 +10369,23 @@ fn infer_multi_clause_closure(
 
         env.pop_scope();
     }
+
+    // The clauses must cover every argument, as a case's arms must.
+    let scrutinee_ty = match param_types.len() {
+        0 => Ty::Tuple(vec![]),
+        1 => param_types[0].clone(),
+        _ => Ty::Tuple(param_types.clone()),
+    };
+    check_arm_coverage(
+        ctx,
+        &scrutinee_ty,
+        &arm_patterns,
+        &arm_has_guard,
+        &arm_spans,
+        closure.syntax().text_range(),
+        type_registry,
+        true,
+    );
 
     let body_ty = result_ty.unwrap_or_else(|| Ty::Tuple(vec![]));
 
@@ -11095,6 +11075,7 @@ fn infer_case(
         &arm_spans,
         case.syntax().text_range(),
         type_registry,
+        false,
     );
 
     Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
@@ -11122,6 +11103,10 @@ fn join_branch_ty(
 
 /// Report a `case` or `receive` that misses values of the scrutinee type, and
 /// warn about arms that earlier arms already cover.
+///
+/// Missing values are an error for a `case` or `receive`, and a warning for
+/// function or closure `clauses` (a call no clause matches panics).
+#[allow(clippy::too_many_arguments)]
 fn check_arm_coverage(
     ctx: &mut InferCtx,
     scrutinee_ty: &Ty,
@@ -11130,6 +11115,7 @@ fn check_arm_coverage(
     arm_spans: &[TextRange],
     span: TextRange,
     type_registry: &TypeRegistry,
+    clauses: bool,
 ) {
     let resolved_scrutinee = ctx.resolve(scrutinee_ty.clone());
     let scrutinee_type_info = type_to_type_info(&resolved_scrutinee, type_registry);
@@ -11149,12 +11135,20 @@ fn check_arm_coverage(
         &abs_registry,
     ) {
         let missing: Vec<String> = witnesses.iter().map(format_abstract_pat).collect();
-        let err = TypeError::NonExhaustiveMatch {
-            scrutinee_type: format!("{}", resolved_scrutinee),
-            missing_patterns: missing,
-            span,
-        };
-        ctx.errors.push(err);
+        let scrutinee_type = format!("{}", resolved_scrutinee);
+        if clauses {
+            ctx.warnings.push(TypeError::NonExhaustiveClauses {
+                scrutinee_type,
+                missing_patterns: missing,
+                span,
+            });
+        } else {
+            ctx.errors.push(TypeError::NonExhaustiveMatch {
+                scrutinee_type,
+                missing_patterns: missing,
+                span,
+            });
+        }
     }
 
     // For redundancy: check all arms; guarded arms cover nothing for later ones.
@@ -13397,6 +13391,7 @@ fn infer_receive(
             &arm_spans,
             recv.syntax().text_range(),
             type_registry,
+            false,
         );
         // `assert_receive` adds a catch-all arm that fails the test; it is
         // redundant whenever the asserted pattern matches everything.

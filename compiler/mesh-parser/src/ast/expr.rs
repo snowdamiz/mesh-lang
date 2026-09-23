@@ -490,6 +490,17 @@ impl ClosureExpr {
             .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE)
     }
 
+    /// Whether the closure matches its arguments against patterns: it has
+    /// several clauses, a guard, or a parameter written as a pattern
+    /// (`fn Some(x) -> x end`).
+    pub fn matches_arguments(&self) -> bool {
+        self.is_multi_clause()
+            || self.guard().is_some()
+            || self
+                .param_list()
+                .is_some_and(|params| params.params().any(|param| param.pattern().is_some()))
+    }
+
     /// Returns additional clauses (2nd, 3rd, ...) for multi-clause closures.
     ///
     /// The first clause's data is stored as direct children of CLOSURE_EXPR

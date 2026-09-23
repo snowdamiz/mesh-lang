@@ -190,7 +190,7 @@ case value do
 end
 ```
 
-`case`/`match` must be exhaustive; redundant arms are warned about. Current patterns do not include struct patterns or list-literal patterns such as `[a, b]`.
+`case`/`match` must be exhaustive; redundant arms are warned about. List-literal patterns such as `[]` and `[a, b]` match lists of exactly that length; there are no struct patterns. Function and closure parameters take the same patterns (`fn len(_ :: t) = 1 + len(t)`); clauses that miss a value are a warning, and a call they miss panics.
 
 ## Control Flow
 
