@@ -17250,9 +17250,16 @@ fn rewrite_tail_calls(expr: &mut MirExpr, current_fn_name: &str) -> bool {
             any
         }
         MirExpr::Return(inner) => {
-            // The inner expression of Return IS in tail position
-            // (if inner is a self-call, the return just passes through the value)
-            rewrite_tail_calls(inner, current_fn_name)
+            // The inner expression of Return IS in tail position. A tail call
+            // jumps back to the top of the function, so `return self(...)` is
+            // the tail call itself: a `ret` after the jump would be a second
+            // terminator in the block.
+            let rewritten = rewrite_tail_calls(inner, current_fn_name);
+            if matches!(inner.as_ref(), MirExpr::TailCall { .. }) {
+                let tail_call = std::mem::replace(inner.as_mut(), MirExpr::Unit);
+                *expr = tail_call;
+            }
+            rewritten
         }
         // Everything else is NOT a tail context -- do NOT recurse.
         // This includes: BinOp, UnaryOp, Call (non-self), ClosureCall, StructLit,

@@ -4111,3 +4111,30 @@ fn a_bad_digit_in_a_radix_literal_is_named() {
         "{err}"
     );
 }
+
+#[test]
+fn return_of_a_tail_call_is_a_tail_call() {
+    // "Terminator found in the middle of a basic block": the `ret` stayed
+    // after the tail call's jump.
+    let source = r##"
+fn count(n :: Int, acc :: Int) -> Int do
+  if n == 0 do
+    return acc
+  end
+  return count(n - 1, acc + 1)
+end
+
+fn count2(n :: Int, acc :: Int) -> Int do
+  if n == 0 do
+    acc
+  else
+    return count2(n - 1, acc + 1)
+  end
+end
+
+fn main() do
+  println("#{count(10, 0)} #{count2(1000000, 0)}")
+end
+"##;
+    assert_eq!(run(source), "10 1000000\n");
+}
