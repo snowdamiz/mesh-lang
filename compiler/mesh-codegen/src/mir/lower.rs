@@ -10157,12 +10157,15 @@ impl<'a> Lowerer<'a> {
                     .arg_list()
                     .and_then(|list| list.args().next())
                     .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
+                // Any other value is built into a JSON tree by its type: its
+                // raw word was read as a tree (a map printed as a number,
+                // an Int crashed). A `Json` value is a tree already.
                 if let Some(source) = source {
-                    let user_type = Self::ty_head(&source).is_some_and(|(head, _)| {
-                        self.registry.struct_defs.contains_key(head)
-                            || self.registry.sum_type_defs.contains_key(head)
-                    });
-                    if user_type && self.trait_registry.has_impl("ToJson", &source) {
+                    let tree = match Self::ty_head(&source) {
+                        Some((head, _)) => head != "Json",
+                        None => matches!(source, Ty::Tuple(_)),
+                    };
+                    if tree {
                         let json = self.json_encode_expr(args[0].clone(), &source);
                         return MirExpr::Call {
                             func: Box::new(callee),

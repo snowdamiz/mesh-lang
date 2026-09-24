@@ -918,7 +918,13 @@ pub fn render_diagnostic(
                         .with_message(format!("{} does not satisfy {}", ty, trait_name))
                         .with_color(Color::Red),
                 )
-                .with_help(format!("add `impl {} for {} do ... end`", trait_name, ty))
+                .with_help(if trait_name == "Json" {
+                    "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
+                     Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
+                        .to_string()
+                } else {
+                    format!("add `impl {} for {} do ... end`", trait_name, ty)
+                })
                 .finish()
         }
 

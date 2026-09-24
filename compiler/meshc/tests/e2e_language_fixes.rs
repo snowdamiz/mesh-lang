@@ -4747,3 +4747,41 @@ end
         assert!(started.elapsed() < std::time::Duration::from_secs(60));
     }
 }
+
+#[test]
+fn json_encode_takes_any_value_json_holds() {
+    // Only a Json value or a derived type was encoded: a map printed as a
+    // number, an Int or a Bool crashed, a String printed `true`, a Float
+    // failed LLVM verification, and a closure was accepted.
+    let source = r##"
+struct P do
+  b :: Int
+  a :: String
+end deriving(Json)
+
+fn main() do
+  println(Json.encode(1))
+  println(Json.encode(true))
+  println(Json.encode(1.5))
+  println(Json.encode("s"))
+  println(Json.encode([1.5, 2.0]))
+  println(Json.encode(Some(1)))
+  println(Json.encode((1, "a")))
+  println(Json.encode(%{"z" => 1, "y" => 2}))
+  println(Json.encode([P { b: 1, a: "x" }]))
+  case Json.parse("[1, 2]") do
+    Ok(tree) -> println(Json.encode(tree))
+    Err(e) -> println(e)
+  end
+end
+"##;
+    assert_eq!(
+        run(source),
+        "1\ntrue\n1.5\n\"s\"\n[1.5,2.0]\n1\n[1,\"a\"]\n{\"y\":2,\"z\":1}\n[{\"a\":\"x\",\"b\":1}]\n[1,2]\n"
+    );
+    let err = build_error("fn main() do\n  println(Json.encode(%{1 => 2}))\nend\n");
+    assert!(
+        err.contains("Map<Int, Int> does not implement Json"),
+        "{err}"
+    );
+}

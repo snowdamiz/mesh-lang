@@ -247,7 +247,7 @@ fn main() do
 end
 ```
 
-`JSON` is an alias of the same module. `Json.encode` additionally accepts structs with `deriving(Json)`.
+`JSON` is an alias of the same module. `Json.encode` also takes any value JSON can hold: `Int`, `Float`, `Bool`, `String`, tuples (as arrays), and `Option` (`None` is `null`), `List` and `Map<String, V>` of them, and types with `deriving(Json)`. Object keys are written in sorted order.
 
 | Function | Returns | Description |
 |----------|---------|-------------|

@@ -10239,6 +10239,16 @@ fn infer_call_inner(
                     .push((arg.clone(), "Display".to_string(), origin.clone()));
             }
         }
+        // `Json.encode(x)`: x must be something JSON holds (checked with the
+        // operators' traits, see `check_type_param_bounds`).
+        let is_json_encode = fa.field().is_some_and(|f| f.text() == "encode")
+            && matches!(fa.base(), Some(Expr::NameRef(base)) if matches!(base.text().as_deref(), Some("Json" | "JSON")));
+        if is_json_encode {
+            if let Some(arg) = arg_types.first() {
+                ctx.operand_traits
+                    .push((arg.clone(), "Json".to_string(), origin.clone()));
+            }
+        }
     }
     if let Expr::NameRef(name_ref) = &callee_expr {
         if let Some(fn_name) = name_ref.text() {
@@ -15853,6 +15863,20 @@ fn check_type_param_bounds(
     let mut inferred = Vec::new();
     for (ty, trait_name, origin) in uses {
         let used = ctx.resolve(ty);
+        // What `Json.encode` takes: a `Json` value, or one `deriving(Json)`
+        // could store. A type left open is encoded by its instances.
+        if trait_name == "Json" {
+            let encodable = matches!(&used, Ty::Con(c) if c.name == "Json")
+                || is_json_serializable(&used, &[], &ctx.json_types, trait_registry);
+            if !used.has_type_vars() && !encodable {
+                ctx.errors.push(TypeError::TraitNotSatisfied {
+                    ty: used,
+                    trait_name,
+                    origin,
+                });
+            }
+            continue;
+        }
         // A type fixed only later must still implement the trait.
         if !used.has_type_vars() {
             if !trait_registry.has_impl(&trait_name, &used) {
