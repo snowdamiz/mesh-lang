@@ -1348,12 +1348,9 @@ impl<'ctx> CodeGen<'ctx> {
         // Compile arguments, splitting closure structs into (fn_ptr, env_ptr) pairs
         // only for runtime intrinsics that expect separate pointer arguments.
         //
-        // To avoid adding spurious env_ptr args to functions that don't expect them
-        // (one that takes a plain fn_ptr, not a closure pair), we check whether
-        // expanding closures/FnPtrs would exceed the target function's declared
-        // parameter count. A function that may receive a closure has to declare
-        // the pair, as mesh_http_route and mesh_ws_serve do: otherwise the closure
-        // is boxed and the box passed as the function pointer.
+        // A function that may receive a closure has to declare the pair, as
+        // mesh_http_route and mesh_ws_serve do: otherwise the closure is boxed
+        // and the box passed as the function pointer.
         let target_fn = if let MirExpr::Var(name, _) = func {
             self.functions
                 .get(name)
@@ -1362,33 +1359,45 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             None
         };
-        let target_param_count: Option<usize> = target_fn.map(|f| f.count_params() as usize);
-        // Pre-compute how many LLVM args we'd produce with expansion.
-        let expanded_arg_count: usize = args
-            .iter()
-            .map(|arg| {
-                if !is_user_fn && matches!(arg.ty(), MirType::Closure(_, _) | MirType::FnPtr(_, _))
-                {
-                    2 // fn_ptr + env_ptr
-                } else {
-                    1
-                }
-            })
-            .sum();
-        // Only expand closure/FnPtr args if the expanded count matches the target's param count.
-        // If expansion would cause a mismatch, pass values as-is.
+        // Which closure/FnPtr arguments go as a pair: those the declared
+        // signature has two pointer parameters for, where the arguments after
+        // them still fit. A closure passed as a value (`List.reduce`'s initial
+        // accumulator, an `i64` slot) stays whole beside a callback that is
+        // split.
         // `__mesh_make_tuple` is synthetic and its arguments are the tuple's
         // elements: values, so a closure stays whole. Splitting it made
         // `(f, 5)` a three-element tuple `[fn, env, 5]`.
         let is_tuple_literal = matches!(func, MirExpr::Var(name, _) if name == "__mesh_make_tuple");
-        let should_expand_closures = match target_param_count {
-            Some(expected) => expanded_arg_count == expected && !is_user_fn,
-            None => !is_user_fn && !is_tuple_literal, // unknown target, expand by default
+        let is_closure_like = |arg: &MirExpr| {
+            !is_user_fn && matches!(arg.ty(), MirType::Closure(_, _) | MirType::FnPtr(_, _))
+        };
+        let expand: Vec<bool> = match target_fn {
+            Some(target) => {
+                let params = target.get_type().get_param_types();
+                let is_ptr = |i: usize| params.get(i).is_some_and(|p| p.is_pointer_type());
+                let mut position = 0;
+                args.iter()
+                    .enumerate()
+                    .map(|(i, arg)| {
+                        let pair = is_closure_like(arg)
+                            && is_ptr(position)
+                            && is_ptr(position + 1)
+                            && params.len().saturating_sub(position + 2) >= args.len() - i - 1;
+                        position += if pair { 2 } else { 1 };
+                        pair
+                    })
+                    .collect()
+            }
+            // Unknown target: expand by default.
+            None => args
+                .iter()
+                .map(|arg| is_closure_like(arg) && !is_tuple_literal)
+                .collect(),
         };
 
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
         let mut _has_closure_args = false;
-        for arg in args {
+        for (arg, &should_expand_closures) in args.iter().zip(&expand) {
             // A named function goes to the runtime as the bare pointer it
             // always was -- unless the parameter is a uniform `i64` value slot
             // (`Map.put`, `List.append`), which stores it as the closure value

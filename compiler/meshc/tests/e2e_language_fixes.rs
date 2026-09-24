@@ -4421,3 +4421,17 @@ end
 "##);
     assert_eq!(out, "[2, 3, 4]\n[4, 8]\n[1, 2]\n");
 }
+
+#[test]
+fn a_function_can_be_the_accumulator_of_a_reduce() {
+    // A closure as the initial value was split into (fn, env) like the
+    // callback, or neither was: "Incorrect number of arguments passed to
+    // called function!" from LLVM.
+    let out = run(r##"fn main() do
+  let id = fn (x :: Int) -> x end
+  let f = List.reduce([1, 2, 3], id, fn acc, i -> fn x -> acc(x) + i end end)
+  println("#{f(0)} #{f(10)}")
+end
+"##);
+    assert_eq!(out, "6 16\n");
+}
