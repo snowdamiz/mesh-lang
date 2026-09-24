@@ -515,10 +515,10 @@ Patterns can bind names and decompose tuples and constructors:
 | Pattern | Meaning |
 |---------|---------|
 | `_` | Match anything without binding it |
-| `name` | Match anything and bind it |
+| `name` | Match anything and bind it (a lowercase name) |
 | `42`, `-1`, `"ok"`, `true`, `nil` | Literal pattern |
 | `(left, right)` | Tuple pattern |
-| `Some(value)`, `Result.Ok(value)` | Constructor pattern |
+| `Some(value)`, `Result.Ok(value)`, `None` | Constructor pattern; an uppercase name is always a constructor, and an unknown one is an error |
 | `head :: tail` | Match a non-empty list as its head and tail |
 | `[]`, `[first, second]` | Match a list of exactly that length, element by element |
 | `left | right` | Or-pattern; both sides must bind the same names |

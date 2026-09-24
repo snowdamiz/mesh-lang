@@ -4311,3 +4311,34 @@ fn a_misspelled_name_suggests_the_one_in_scope() {
     assert!(err.contains("unknown variant: Sme"), "{err}");
     assert!(err.contains("did you mean `Some`?"), "{err}");
 }
+
+#[test]
+fn an_unknown_capitalized_pattern_is_an_error() {
+    // A misspelled constructor was a new variable that matched every value:
+    // `Grean` caught `Green`, and `Five` matched any Int.
+    let err = build_error(
+        r##"type Color do
+  Red
+  Green
+end
+
+fn name(c :: Color) -> String do
+  case c do
+    Red -> "red"
+    Grean -> "green"
+  end
+end
+
+fn main() do
+  println(name(Green))
+  let r = case 5 do
+    Five -> "five?"
+  end
+  println(r)
+end
+"##,
+    );
+    assert!(err.contains("unknown variant: Grean"), "{err}");
+    assert!(err.contains("did you mean `Green`?"), "{err}");
+    assert!(err.contains("unknown variant: Five"), "{err}");
+}

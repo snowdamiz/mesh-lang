@@ -13583,6 +13583,17 @@ fn infer_pattern(
                         }
                     }
                 }
+                // An uppercase name is a constructor, never a new binding: a
+                // misspelled one (`Grean`) matched everything.
+                if constructor_like {
+                    let err = TypeError::UnknownVariant {
+                        suggestion: did_you_mean(env, &name_text),
+                        name: name_text,
+                        span: pat.syntax().text_range(),
+                    };
+                    ctx.errors.push(err.clone());
+                    return Err(err);
+                }
 
                 // Regular identifier pattern: create a fresh binding.
                 let ty = ctx.fresh_var();
