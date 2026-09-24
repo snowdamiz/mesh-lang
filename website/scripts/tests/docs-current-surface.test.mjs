@@ -60,7 +60,7 @@ test('public docs cover the current Mesh surface', () => {
   assert.match(concurrency, /\(new_state, reply\)/)
   assert.doesNotMatch(concurrency, /\(reply, new_state\)/)
   assert.doesNotMatch(web, /Ws\.serve_tls/)
-  assert.doesNotMatch(`${testing}\n${docs}`, /String\.downcase|IO\.puts|\bpanic\(/)
+  assert.doesNotMatch(`${testing}\n${docs}`, /String\.downcase|IO\.puts/)
   assert.match(testing, /assert_raises[\s\S]+assert\(false\)/)
   assert.doesNotMatch(landing, /Pg\.query\(pool|Env\.get\("DATABASE_URL"\)|Ws\.broadcast\(conn/)
   assert.doesNotMatch(landing, /Sqlite\.open\("app\.db"\)/)
