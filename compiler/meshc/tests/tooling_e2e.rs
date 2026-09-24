@@ -1987,3 +1987,37 @@ fn test_nested_describes_run() {
     );
     assert!(stdout.contains("2 passed"), "{stdout}");
 }
+
+#[test]
+fn test_runner_reports_a_test_file_that_crashes() {
+    // A test binary killed by a signal printed nothing, and `meshc test`
+    // said only "1 test file failed": the file and the cause were lost.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"crash-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/deep.test.mpl"),
+        r##"fn deep(n :: Int) -> Int do
+  deep(n + 1) + 1
+end
+
+test("overflows the stack") do
+  assert(deep(0) > 0)
+end
+"##,
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("CRASHED") && stdout.contains("deep.test.mpl") && stdout.contains("signal"),
+        "{stdout}"
+    );
+}

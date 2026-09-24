@@ -351,6 +351,11 @@ pub fn run_tests(
         if output.status.success() {
             passed += 1;
         } else {
+            // A binary killed by a signal reported nothing itself, and lost
+            // the output it had buffered: say what happened to it.
+            if output.status.code().is_none() {
+                println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+            }
             failed += 1;
         }
     }
