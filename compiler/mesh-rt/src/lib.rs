@@ -65,6 +65,7 @@ pub mod process_signal;
 pub mod random;
 pub mod regex;
 pub mod secret;
+pub mod stack_overflow;
 pub mod storage_wrapping;
 pub mod string;
 pub mod test; // Phase 138

@@ -4138,3 +4138,17 @@ end
 "##;
     assert_eq!(run(source), "10 1000000\n");
 }
+
+#[test]
+fn a_stack_overflow_is_reported() {
+    // Deep non-tail recursion died with a bare "Segmentation fault: 11".
+    let recurse = "fn depth(n :: Int) -> Int do\n  if n == 0 do\n    0\n  else\n    1 + depth(n - 1)\n  end\nend\n\n";
+    for main in [
+        "fn main() do\n  println(\"#{depth(100000000)}\")\nend\n",
+        "actor deep() do\n  receive do\n    n -> println(\"#{depth(n)}\")\n  end\nend\n\nfn main() do\n  let p = spawn(deep)\n  send(p, 100000000)\n  Timer.sleep(2000)\nend\n",
+    ] {
+        let (code, _stdout, stderr) = run_status(&format!("{recurse}{main}"), &[]);
+        assert_ne!(code, Some(0), "{stderr}");
+        assert!(stderr.contains("error: stack overflow"), "{stderr}");
+    }
+}

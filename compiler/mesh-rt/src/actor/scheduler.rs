@@ -356,6 +356,7 @@ impl Scheduler {
             let sleepers = Arc::clone(&self.sleepers);
 
             let handle = std::thread::spawn(move || {
+                crate::stack_overflow::install_for_current_thread();
                 let shared = WorkerLoopShared {
                     injector,
                     shutdown,

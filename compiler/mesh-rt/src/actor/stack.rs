@@ -147,6 +147,8 @@ pub fn yield_current() {
 /// created them.
 pub struct CoroutineHandle {
     coro: Coroutine<(), (), ()>,
+    /// Lowest address of the coroutine's stack (its guard page).
+    stack_limit: usize,
 }
 
 impl CoroutineHandle {
@@ -160,6 +162,10 @@ impl CoroutineHandle {
     pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
         let stack =
             DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack");
+        let stack_limit = {
+            use corosensei::stack::Stack;
+            stack.limit().get()
+        };
 
         // Capture the function pointer and args for the closure.
         let fn_ptr = entry_fn as usize;
@@ -202,7 +208,7 @@ impl CoroutineHandle {
             // on this thread if it ran between our yield and resume.
         });
 
-        CoroutineHandle { coro }
+        CoroutineHandle { coro, stack_limit }
     }
 
     /// Resume the coroutine.
@@ -210,7 +216,9 @@ impl CoroutineHandle {
     /// Returns `true` if the coroutine yielded (still has work to do),
     /// `false` if it completed (returned from entry function).
     pub fn resume(&mut self) -> bool {
-        match self.coro.resume(()) {
+        let limit = self.stack_limit;
+        let result = crate::stack_overflow::on_stack(limit, || self.coro.resume(()));
+        match result {
             CoroutineResult::Yield(()) => true,
             CoroutineResult::Return(()) => false,
         }
@@ -219,7 +227,11 @@ impl CoroutineHandle {
     /// Resume an actor while converting an unwinding Mesh panic into an exit
     /// reason that the scheduler can propagate to links and supervisors.
     pub(crate) fn resume_catching_panic(&mut self) -> Result<bool, String> {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume())) {
+        let resumed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume()));
+        if resumed.is_err() {
+            crate::stack_overflow::back_on_thread_stack();
+        }
+        match resumed {
             Ok(value) => Ok(value),
             Err(panic) if panic.is::<ActorStopped>() => Ok(false),
             Err(panic) => Err(if let Some(message) = panic.downcast_ref::<String>() {
