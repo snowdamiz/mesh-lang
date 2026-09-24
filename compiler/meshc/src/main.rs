@@ -323,8 +323,14 @@ fn run() {
             json,
             no_color,
         } => {
+            // Diagnostics go to stderr: color them only for a terminal, and
+            // not when `NO_COLOR` is set.
+            let color = !no_color
+                && !json
+                && std::env::var_os("NO_COLOR").is_none()
+                && std::io::IsTerminal::is_terminal(&std::io::stderr());
             let diag_opts = DiagnosticOptions {
-                color: !no_color && !json,
+                color,
                 json,
                 display_paths: Vec::new(),
             };
@@ -1648,8 +1654,15 @@ fn deps_command(dir: &Path) -> Result<(), String> {
 
     let lock_path = dir.join("mesh.lock");
 
-    // Check if lockfile is fresh: exists and manifest hasn't been modified after it
-    if lock_path.exists() {
+    // The lockfile is fresh when the manifest has not changed since it was
+    // written and every git dependency is checked out: `meshpkg install`
+    // writes it too, without fetching git dependencies.
+    let git_checkouts_present = mesh_pkg::Manifest::from_file(&manifest_path)?
+        .dependencies
+        .iter()
+        .filter(|(_, dep)| matches!(dep, mesh_pkg::manifest::Dependency::Git { .. }))
+        .all(|(name, _)| dir.join(".mesh").join("deps").join(name).is_dir());
+    if git_checkouts_present && lock_path.exists() {
         let manifest_modified = std::fs::metadata(&manifest_path)
             .and_then(|m| m.modified())
             .ok();
@@ -1698,29 +1711,32 @@ fn fmt_command(
         return Err(format!("No .mpl files found at '{}'", path.display()));
     }
 
-    let mut total = 0;
-    let mut unformatted = 0;
-
+    // Format every file before writing any: a file that cannot be formatted
+    // leaves the whole tree as it was.
+    let mut changed = Vec::new();
     for file in &files {
         let source = std::fs::read_to_string(file)
             .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
-
         let formatted = mesh_fmt::try_format(&source, config)
             .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))?;
-        total += 1;
-
         if formatted != source {
-            if check {
-                eprintln!("  would reformat: {}", file.display());
-                unformatted += 1;
-            } else {
-                std::fs::write(file, &formatted)
-                    .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))?;
-            }
+            changed.push((file, formatted));
         }
     }
 
-    Ok(FmtStats { total, unformatted })
+    for (file, formatted) in &changed {
+        if check {
+            eprintln!("  would reformat: {}", file.display());
+        } else {
+            std::fs::write(file, formatted)
+                .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))?;
+        }
+    }
+
+    Ok(FmtStats {
+        total: files.len(),
+        unformatted: if check { changed.len() } else { 0 },
+    })
 }
 
 /// Execute the `lint` subcommand: print each finding (and each file that does
@@ -1778,10 +1794,15 @@ fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     Err(format!("'{}' is not a file or directory", path.display()))
 }
 
-/// Recursively collect `.mpl` files from a directory.
+/// Recursively collect `.mpl` files from a directory, skipping hidden entries
+/// as a build does: `.git`, installed packages under `.mesh`, and editor or
+/// filesystem sidecar files are not the project's source.
 fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
         let entry_path = entry.path();
         if entry_path.is_dir() {
             collect_mesh_files_recursive(&entry_path, files)?;

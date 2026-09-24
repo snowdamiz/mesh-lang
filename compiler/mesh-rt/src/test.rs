@@ -101,6 +101,12 @@ thread_local! {
     static CURRENT_FAILED: Cell<bool> = Cell::new(false);
 }
 
+/// When the file's first test began (set by that first call).
+fn first_test_started() -> std::time::Instant {
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *STARTED.get_or_init(std::time::Instant::now)
+}
+
 /// The unwinding payload of a failed assertion, already recorded.
 struct TestFailed;
 
@@ -186,6 +192,7 @@ fn assertion_failed(msg: impl FnOnce() -> String) -> ! {
 /// comes before its line).
 #[no_mangle]
 pub extern "C" fn mesh_test_begin(name: *const MeshString) {
+    first_test_started();
     run_test_case_cleanup_hook();
     let name_str = unsafe { mesh_str(name) }.to_owned();
     CURRENT_TEST.with(|ct| *ct.borrow_mut() = name_str.clone());
@@ -325,7 +332,12 @@ pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
         }
     });
 
-    let elapsed = elapsed_ms as f64 / 1000.0;
+    // The harness passes 0; the file's tests are timed from the first one.
+    let elapsed = if elapsed_ms > 0 {
+        elapsed_ms as f64 / 1000.0
+    } else {
+        first_test_started().elapsed().as_secs_f64()
+    };
     if failed > 0 {
         println!("\n{red}{bold}{failed} failed{reset}, {passed} passed in {elapsed:.2}s");
         std::process::exit(1);
@@ -434,26 +446,39 @@ pub unsafe extern "C" fn mesh_test_mock_actor(fn_ptr: *const u8, env_ptr: *const
         env_ptr: *const u8,
     }
 
+    // The mock actor calls the closure from its own heap: keep the
+    // environment where the collector will not move or free it.
+    if !env_ptr.is_null() {
+        crate::actor::pin_closure_env(env_ptr as *mut u8);
+    }
     // Leak args so the actor thread can read them.
     let args = Box::new(MockArgs { fn_ptr, env_ptr });
     let args_ptr = Box::into_raw(args) as *const u8;
     let args_size = std::mem::size_of::<MockArgs>() as u64;
 
-    // The actor entry function: reads MockArgs and calls fn_ptr(env_ptr) in a loop.
-    // We use a generic wrapper defined below.
-    extern "C" fn mock_actor_entry(args: *const u8) {
+    // The actor calls the closure with each message, a `String`, until the
+    // test's cleanup exits it. A closure takes `(env, message)`; a named
+    // function (null env) takes `(message)`. The reply is ignored.
+    extern "C-unwind" fn mock_actor_entry(args: *const u8) {
         unsafe {
             let mock_args = &*(args as *const MockArgs);
-            let f: extern "C" fn(*const u8) -> i64 = std::mem::transmute(mock_args.fn_ptr);
-            // Run the closure once per message received.
-            // In a real implementation this would loop on receive; for test mocks
-            // we run the closure once and exit.
             loop {
-                let msg_ptr = crate::actor::mesh_actor_receive(100); // 100ms timeout
+                let msg_ptr = crate::actor::mesh_actor_receive(-1);
                 if msg_ptr.is_null() {
-                    break; // no message in time window — exit actor
+                    break; // the scheduler is shutting down
                 }
-                f(mock_args.env_ptr);
+                // Message layout: [u64 type_tag, u64 data_len, data]; a
+                // String's data is its pointer.
+                let message = *(msg_ptr.add(16) as *const *const u8);
+                if mock_args.env_ptr.is_null() {
+                    let f: extern "C" fn(*const u8) -> *const u8 =
+                        std::mem::transmute(mock_args.fn_ptr);
+                    f(message);
+                } else {
+                    let f: extern "C" fn(*const u8, *const u8) -> *const u8 =
+                        std::mem::transmute(mock_args.fn_ptr);
+                    f(mock_args.env_ptr, message);
+                }
             }
         }
     }

@@ -86,7 +86,7 @@ version = "0.1.0"
     write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
 
     let main_mesh = r#"fn main() do
-  IO.puts("Hello from Mesh!")
+  println("Hello from Mesh!")
 end
 "#;
     write_project_file(&project_dir.join("main.mpl"), main_mesh)?;
@@ -2465,7 +2465,7 @@ mod tests {
         let main_path = tmp.path().join("hello").join("main.mpl");
         let content = std::fs::read_to_string(&main_path).unwrap();
         assert!(content.contains("fn main()"), "Should have main function");
-        assert!(content.contains("IO.puts"), "Should have IO.puts call");
+        assert!(content.contains("println(\"Hello from Mesh!\")"));
     }
 
     #[test]

@@ -93,12 +93,8 @@ fn resolve_deps(
 
         // Determine source and resolve
         let (source, revision, dep_path) = match dep {
-            Dependency::RegistryShorthand(version) | Dependency::Registry { version } => {
-                return Err(format!(
-                    "Registry dependency `{}@{}` must be installed via `meshpkg install` before building",
-                    name, version
-                ));
-            }
+            // `meshpkg install` downloads registry packages into `.mesh/packages`.
+            Dependency::RegistryShorthand(_) | Dependency::Registry { .. } => continue,
             Dependency::Git {
                 git: url,
                 rev,
@@ -293,6 +289,17 @@ pub fn resolve_dependencies(project_dir: &Path) -> Result<(Vec<ResolvedDep>, Loc
         })
         .collect();
 
+    // Keep the registry pins `meshpkg install` wrote; they are its to change.
+    let mut locked_packages = locked_packages;
+    let lock_path = project_dir.join("mesh.lock");
+    if lock_path.exists() {
+        locked_packages.extend(
+            Lockfile::read(&lock_path)?
+                .packages
+                .into_iter()
+                .filter(|package| package.sha256.is_some()),
+        );
+    }
     let lockfile = Lockfile::new(locked_packages);
 
     Ok((resolved, lockfile))
@@ -623,6 +630,43 @@ version = "1.0.0"
         assert_eq!(lockfile.packages[0].name, "my-lib");
         assert_eq!(lockfile.packages[0].revision, "local");
         assert_eq!(lockfile.version, 1);
+    }
+
+    #[test]
+    fn registry_deps_are_left_to_meshpkg_and_keep_their_pins() {
+        let root = TempDir::new().unwrap();
+        let lib_dir = root.path().join("lib");
+        std::fs::create_dir_all(&lib_dir).unwrap();
+        write_manifest(&lib_dir, "my-lib", "");
+        let deps = format!(
+            "[dependencies]\nwidget = \"1.2.3\"\nmy-lib = {{ path = \"{}\" }}",
+            lib_dir.display()
+        );
+        write_manifest(root.path(), "my-app", &deps);
+        let pinned = LockedPackage {
+            name: "widget".to_string(),
+            version: "1.2.3".to_string(),
+            source: "https://registry.example/widget/1.2.3/download".to_string(),
+            revision: "1.2.3".to_string(),
+            sha256: Some("ab".repeat(32)),
+        };
+        let stale_path_pin = LockedPackage {
+            name: "old-lib".to_string(),
+            version: String::new(),
+            source: "/gone".to_string(),
+            revision: "local".to_string(),
+            sha256: None,
+        };
+        Lockfile::new(vec![pinned.clone(), stale_path_pin])
+            .write(&root.path().join("mesh.lock"))
+            .unwrap();
+
+        let (resolved, lockfile) = resolve_dependencies(root.path()).unwrap();
+
+        assert_eq!(resolved.len(), 1);
+        let names: Vec<&str> = lockfile.packages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["my-lib", "widget"]);
+        assert_eq!(lockfile.packages[1], pinned);
     }
 
     #[test]

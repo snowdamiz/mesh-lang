@@ -74,7 +74,7 @@ fn main() {
         Ok(()) => process::exit(0),
         Err(e) => {
             if json_mode {
-                eprintln!("{{\"error\": \"{}\"}}", e.replace('"', "\\\""));
+                eprintln!("{}", serde_json::json!({ "error": e }));
             } else {
                 eprintln!("{} {}", "✗".red().bold(), e);
             }
@@ -126,7 +126,10 @@ fn run_login(token: Option<String>, json_mode: bool) -> Result<(), String> {
     auth::write_token(&token)?;
 
     if json_mode {
-        println!("{{\"status\": \"ok\", \"message\": \"Token saved\"}}");
+        println!(
+            "{}",
+            serde_json::json!({ "status": "ok", "message": "Token saved" })
+        );
     } else {
         println!(
             "{} Token saved to {}",

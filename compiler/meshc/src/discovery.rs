@@ -370,9 +370,9 @@ fn build_project_with_entrypoint_and_sources_in_scope(
         module_parses.push(parse);
     }
 
-    // Phase 1b: Discover declared path dependencies and installed package
-    // modules under .mesh/packages.
-    let mut package_roots = mesh_pkg::manifest::path_dependency_roots(project_root)?;
+    // Phase 1b: Discover declared path and git dependencies and installed
+    // package modules under .mesh/packages.
+    let mut package_roots = mesh_pkg::manifest::source_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
         package_roots.extend(discover_installed_package_roots(&packages_dir)?);
@@ -795,6 +795,44 @@ mod tests {
 
         let project = build_project(&root).unwrap();
 
+        assert!(project.graph.resolve("Support.Message").is_some());
+    }
+
+    #[test]
+    fn test_build_project_discovers_git_dependency_checkouts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("app");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("mesh.toml"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nshared = { git = \"https://example.invalid/shared.git\", tag = \"v1\" }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("main.mpl"),
+            "from Support.Message import message\n\nfn main() do\n  println(message())\nend\n",
+        )
+        .unwrap();
+
+        let error = build_project(&root)
+            .err()
+            .expect("unfetched git dependency");
+        assert!(error.contains("run `meshc deps`"), "{error}");
+
+        let checkout = root.join(".mesh/deps/shared");
+        fs::create_dir_all(checkout.join("support")).unwrap();
+        fs::write(
+            checkout.join("mesh.toml"),
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            checkout.join("support/message.mpl"),
+            "pub fn message() -> String do\n  \"hello from git dependency\"\nend\n",
+        )
+        .unwrap();
+
+        let project = build_project(&root).unwrap();
         assert!(project.graph.resolve("Support.Message").is_some());
     }
 

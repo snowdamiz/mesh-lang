@@ -38,8 +38,8 @@ pub fn run(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), St
 
     if json_mode {
         println!(
-            "{{\"status\": \"ok\", \"name\": \"{}\", \"version\": \"{}\", \"sha256\": \"{}\"}}",
-            name, version, sha256
+            "{}",
+            serde_json::json!({ "status": "ok", "name": name, "version": version, "sha256": sha256 })
         );
     } else {
         println!("{} Published {}@{}", "✓".green().bold(), name, version);

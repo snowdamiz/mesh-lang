@@ -337,6 +337,27 @@ fn test_build_without_main_names_the_entrypoint() {
     assert!(!stderr.contains("Linking failed"), "stderr: {stderr}");
 }
 
+#[test]
+fn test_build_diagnostics_are_plain_when_piped() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("main.mpl"),
+        "fn main() do\n  println(1 + \"a\")\nend\n",
+    )
+    .unwrap();
+
+    let output = Command::new(meshc_bin())
+        .args(["build", dir.path().to_str().unwrap()])
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("failed to run meshc build");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("main.mpl"), "stderr: {stderr}");
+    assert!(!stderr.contains('\u{1b}'), "stderr: {stderr}");
+}
+
 // ── Formatter ────────────────────────────────────────────────────────
 
 #[test]
@@ -506,6 +527,62 @@ fn test_lint_clean_file_succeeds_silently() {
 
     assert!(output.status.success());
     assert!(output.stdout.is_empty() && output.stderr.is_empty());
+}
+
+#[test]
+fn test_fmt_writes_nothing_when_a_file_cannot_be_formatted() {
+    let dir = tempfile::tempdir().unwrap();
+    let unformatted = "fn add(a,b) do\na+b\nend\n";
+    write_file(&dir.path().join("a.mpl"), unformatted);
+    write_file(&dir.path().join("b.mpl"), "fn h() do\n  let = 1\nend\n");
+
+    let output = Command::new(meshc_bin())
+        .args(["fmt", dir.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc fmt");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Cannot format") && stderr.contains("b.mpl"),
+        "{stderr}"
+    );
+    let a = std::fs::read_to_string(dir.path().join("a.mpl")).unwrap();
+    assert_eq!(a, unformatted);
+}
+
+#[test]
+fn test_fmt_and_lint_skip_hidden_entries() {
+    // Installed packages under `.mesh`, `.git`, and `._*` sidecar files are
+    // not the project's source, as a build does not compile them either.
+    let dir = tempfile::tempdir().unwrap();
+    write_file(&dir.path().join("main.mpl"), "fn main() do\n  1\nend\n");
+    let hidden = [
+        ".mesh/packages/dep@1.0.0/dep.mpl",
+        ".git/x.mpl",
+        "._main.mpl",
+    ];
+    for path in hidden {
+        write_file(&dir.path().join(path), "fn  broken(\n");
+    }
+
+    for args in [vec!["lint"], vec!["fmt", "--check"], vec!["fmt"]] {
+        let output = Command::new(meshc_bin())
+            .args(&args)
+            .arg(dir.path())
+            .output()
+            .expect("failed to run meshc");
+        assert!(
+            output.status.success(),
+            "meshc {args:?}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    for path in hidden {
+        let source = std::fs::read_to_string(dir.path().join(path)).unwrap();
+        assert_eq!(source, "fn  broken(\n");
+    }
 }
 
 #[test]
@@ -997,6 +1074,22 @@ fn test_init_creates_project() {
         toml_contents.contains("test-project"),
         "mesh.toml does not contain project name"
     );
+
+    // The generated program compiles and runs.
+    let project = dir.path().join("test-project");
+    let binary = dir.path().join("hello-bin");
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap(), "-o"])
+        .arg(&binary)
+        .output()
+        .expect("failed to run meshc build");
+    assert!(
+        build.status.success(),
+        "scaffold does not build: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(&binary).output().expect("run scaffold");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "Hello from Mesh!\n");
 }
 
 #[test]
@@ -1567,6 +1660,57 @@ fn test_lsp_subcommand_exists() {
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn test_mock_actor_calls_its_callback_with_each_message() {
+    // The mock called its callback with the closure environment alone, so
+    // the message parameter was garbage and printing it crashed the file;
+    // it also exited after 100ms without a message, dropping later sends.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"mock-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/mock.test.mpl"),
+        r##"fn shout(msg :: String) -> String do
+  println("named got #{msg}")
+  "ok"
+end
+
+test("closure") do
+  let prefix = "closure"
+  let mock = Test.mock_actor(fn msg do
+    println("#{prefix} got #{msg}")
+    "ok"
+  end)
+  send(mock, "first")
+  Timer.sleep(300)
+  send(mock, "second")
+  Timer.sleep(50)
+end
+
+test("named") do
+  let mock = Test.mock_actor(shout)
+  send(mock, "hi")
+  Timer.sleep(50)
+end
+"##,
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}{stderr}");
+    for line in ["closure got first", "closure got second", "named got hi", "2 passed"] {
+        assert!(stdout.contains(line), "missing {line:?}: {stdout}");
+    }
+    assert!(!stderr.contains("panicked"), "{stderr}");
 }
 
 #[test]

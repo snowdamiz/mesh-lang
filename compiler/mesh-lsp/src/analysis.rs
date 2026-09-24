@@ -671,9 +671,9 @@ fn build_project_with_overlays(
         module_parses.push(parse);
     }
 
-    // Path dependencies and installed packages, as meshc finds them: a
+    // Path and git dependencies and installed packages, as meshc finds them: a
     // project using a path dependency had "module not found" in the editor.
-    let mut package_roots = mesh_pkg::manifest::path_dependency_roots(project_root)?;
+    let mut package_roots = mesh_pkg::manifest::source_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
         package_roots.extend(discover_installed_package_roots(&packages_dir)?);

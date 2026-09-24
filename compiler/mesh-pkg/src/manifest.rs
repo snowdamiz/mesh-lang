@@ -473,16 +473,19 @@ fn normalize_native_path(path: &Path, extension: &str, label: &str) -> Result<Pa
     Ok(normalized)
 }
 
-/// The roots of a project's path dependencies (`name = { path = ... }` in
-/// `mesh.toml`), and of theirs, each once.
-pub fn path_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String> {
+/// The roots of a project's path and git dependencies, and of theirs, each
+/// once. A path dependency is read where it is; a git dependency from its
+/// `meshc deps` checkout under `<project>/.mesh/deps/<name>`. Registry
+/// packages live under `.mesh/packages` and are found separately.
+pub fn source_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String> {
     let manifest_path = project_root.join("mesh.toml");
     if !manifest_path.is_file() {
         return Ok(Vec::new());
     }
     let mut roots = Vec::new();
     let mut visited = BTreeSet::new();
-    collect_path_dependency_roots(
+    collect_source_dependency_roots(
+        project_root,
         project_root,
         &Manifest::from_file(&manifest_path)?,
         &mut visited,
@@ -492,25 +495,43 @@ pub fn path_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String
     Ok(roots)
 }
 
-fn collect_path_dependency_roots(
+fn collect_source_dependency_roots(
+    project_root: &Path,
     package_root: &Path,
     manifest: &Manifest,
     visited: &mut BTreeSet<PathBuf>,
     roots: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
     for (name, dependency) in &manifest.dependencies {
-        let Dependency::Path { path } = dependency else {
-            continue;
+        let root = match dependency {
+            Dependency::Path { path } => {
+                package_root.join(path).canonicalize().map_err(|error| {
+                    format!("Failed to resolve path dependency `{name}` ({path}): {error}")
+                })?
+            }
+            Dependency::Git { .. } => {
+                let checkout = project_root.join(".mesh").join("deps").join(name);
+                if !checkout.join("mesh.toml").is_file() {
+                    return Err(format!(
+                        "Git dependency `{name}` is not fetched; run `meshc deps`"
+                    ));
+                }
+                checkout
+            }
+            Dependency::RegistryShorthand(_) | Dependency::Registry { .. } => continue,
         };
-        let root = package_root.join(path).canonicalize().map_err(|error| {
-            format!("Failed to resolve path dependency `{name}` ({path}): {error}")
-        })?;
         if !visited.insert(root.clone()) {
             continue;
         }
         let dependency_manifest = Manifest::from_file(&root.join("mesh.toml"))?;
         roots.push(root.clone());
-        collect_path_dependency_roots(&root, &dependency_manifest, visited, roots)?;
+        collect_source_dependency_roots(
+            project_root,
+            &root,
+            &dependency_manifest,
+            visited,
+            roots,
+        )?;
     }
     Ok(())
 }

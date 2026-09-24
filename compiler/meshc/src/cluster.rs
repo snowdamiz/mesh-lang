@@ -32,7 +32,7 @@ pub enum ClusterCommand {
     Routing(ClusterRuntimeArgs),
     /// Show scheduler and horizontal scaling state.
     Scaling(ClusterRuntimeArgs),
-    /// Show ordered control, scaling, and continuity events.
+    /// Show ordered control, scaling, and continuity events (the same log as `diagnostics`).
     Events(ClusterDiagnosticsArgs),
     /// Explain the retained placement and current candidate state for a request.
     Explain(ClusterExplainArgs),

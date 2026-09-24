@@ -190,7 +190,11 @@ fn compile_and_run_migration(
         None,
         crate::BuildArtifact::Executable,
         false,
-        &DiagnosticOptions::default(),
+        &DiagnosticOptions {
+            color: std::env::var_os("NO_COLOR").is_none()
+                && std::io::IsTerminal::is_terminal(&std::io::stderr()),
+            ..DiagnosticOptions::default()
+        },
     )
     .map_err(|e| {
         format!(
@@ -210,7 +214,7 @@ fn compile_and_run_migration(
             )
         })?;
 
-    // Check for errors in stdout (the Mesh program prints errors to stdout via IO.puts)
+    // Check for errors in stdout (the generated main prints them with println)
     let stdout = String::from_utf8_lossy(&output.stdout);
     if let Some(line) = stdout.lines().find(|l| l.starts_with("MIGRATION_ERROR:")) {
         let error_msg = line.trim_start_matches("MIGRATION_ERROR:");

@@ -65,19 +65,18 @@ fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<()
             None => continue, // skip git/path deps (handled by meshc deps)
         };
 
-        // Check if already in lockfile
-        let (resolved_version, sha256_opt) = if let Some(ref lock) = existing_lock {
-            if let Some(entry) = lock.packages.iter().find(|p| p.name == *name) {
-                (entry.version.clone(), entry.sha256.clone())
-            } else {
-                // Not in lock — resolve from registry
+        // Versions are exact: a lock entry for another version is stale.
+        let locked = existing_lock.as_ref().and_then(|lock| {
+            lock.packages
+                .iter()
+                .find(|p| p.name == *name && p.version == version && p.sha256.is_some())
+        });
+        let (resolved_version, sha256_opt) = match locked {
+            Some(entry) => (entry.version.clone(), entry.sha256.clone()),
+            None => {
                 let (v, s) = resolve_version(name, version, registry)?;
                 (v, Some(s))
             }
-        } else {
-            // No lockfile — resolve from registry
-            let (v, s) = resolve_version(name, version, registry)?;
-            (v, Some(s))
         };
 
         let msg = format!("Downloading {}@{}...", name, resolved_version);
@@ -95,15 +94,10 @@ fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<()
             }
         }
 
-        // Extract to .mesh/packages/<name>@<version>/
-        let install_dir = project_dir
-            .join(".mesh")
-            .join("packages")
-            .join(format!("{}@{}", name, resolved_version));
-        std::fs::create_dir_all(&install_dir)
-            .map_err(|e| format!("Failed to create {}: {}", install_dir.display(), e))?;
-
-        extract_tarball(&tarball_bytes, &install_dir)?;
+        extract_tarball(
+            &tarball_bytes,
+            &package_install_dir(project_dir, name, &resolved_version)?,
+        )?;
 
         let source_url = format!(
             "{}/api/v1/packages/{}/{}/download",
@@ -179,14 +173,10 @@ fn install_named(
         ));
     }
 
-    // Extract to .mesh/packages/<name>@<version>/
-    let install_dir = project_dir
-        .join(".mesh")
-        .join("packages")
-        .join(format!("{}@{}", name, version));
-    std::fs::create_dir_all(&install_dir)
-        .map_err(|e| format!("Failed to create install dir: {}", e))?;
-    extract_tarball(&tarball_bytes, &install_dir)?;
+    extract_tarball(
+        &tarball_bytes,
+        &package_install_dir(project_dir, name, &version)?,
+    )?;
 
     // Update mesh.lock
     let lock_path = project_dir.join(LOCKFILE_NAME);
@@ -305,6 +295,36 @@ fn resolve_latest(name: &str, registry: &str) -> Result<(String, String), String
     Ok((version, sha256))
 }
 
+/// Create `.mesh/packages/<name>@<version>/` and remove any other installed
+/// version of the package: a build compiles every installed package, and two
+/// versions of one would define the same modules twice.
+fn package_install_dir(
+    project_dir: &Path,
+    name: &str,
+    version: &str,
+) -> Result<std::path::PathBuf, String> {
+    let install_dir = project_dir
+        .join(".mesh")
+        .join("packages")
+        .join(format!("{}@{}", name, version));
+    let parent = install_dir.parent().expect("package directory has a parent");
+    let leaf = name.rsplit('/').next().unwrap_or(name);
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            if file_name.starts_with(&format!("{leaf}@")) && entry.path() != install_dir {
+                std::fs::remove_dir_all(entry.path()).map_err(|e| {
+                    format!("Failed to remove {}: {}", entry.path().display(), e)
+                })?;
+            }
+        }
+    }
+    std::fs::create_dir_all(&install_dir)
+        .map_err(|e| format!("Failed to create {}: {}", install_dir.display(), e))?;
+    Ok(install_dir)
+}
+
 /// Extract a .tar.gz tarball to the given directory.
 fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), String> {
     let dec = GzDecoder::new(bytes);
@@ -318,7 +338,25 @@ fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), String> {
 mod tests {
     use super::{
         dependency_declaration_snippet, named_install_follow_up, named_install_result_json,
+        package_install_dir,
     };
+
+    #[test]
+    fn installing_a_version_removes_the_other_installed_versions() {
+        let project = tempfile::tempdir().unwrap();
+        let packages = project.path().join(".mesh/packages");
+        for dir in ["acme/widget@1.0.0", "acme/widget-extra@1.0.0", "widget@1.0.0"] {
+            std::fs::create_dir_all(packages.join(dir)).unwrap();
+        }
+
+        let dir = package_install_dir(project.path(), "acme/widget", "1.1.0").unwrap();
+
+        assert_eq!(dir, packages.join("acme/widget@1.1.0"));
+        assert!(dir.is_dir());
+        assert!(!packages.join("acme/widget@1.0.0").exists());
+        assert!(packages.join("acme/widget-extra@1.0.0").is_dir());
+        assert!(packages.join("widget@1.0.0").is_dir());
+    }
 
     #[test]
     fn named_install_json_reports_lockfile_and_manifest_stability() {
