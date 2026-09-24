@@ -4689,3 +4689,15 @@ fn an_argument_error_points_at_the_argument() {
     assert!(err.contains("main.mpl:8:5"), "{err}");
     assert!(err.contains("main.mpl:10:23"), "{err}");
 }
+
+#[test]
+fn a_mismatch_of_two_collection_types_names_both_whole() {
+    // "expected Map, found List": the arguments were left out.
+    let err = build_error(
+        "fn main() do\n  let m :: Map<String, Int> = [1]\n  println(\"#{Map.size(m)}\")\nend\n",
+    );
+    assert!(
+        err.contains("expected Map<String, Int>, found List<Int>"),
+        "{err}"
+    );
+}

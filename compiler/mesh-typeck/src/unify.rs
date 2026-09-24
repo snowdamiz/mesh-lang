@@ -683,6 +683,24 @@ impl InferCtx {
 
             // Type applications -- unify constructor and args.
             (Ty::App(c1, a1), Ty::App(c2, a2)) => {
+                // Different constructors: the whole types differ ("expected
+                // Map<String, Int>, found List<Int>", not "Map, found List").
+                if let (Ty::Con(h1), Ty::Con(h2)) =
+                    (self.resolve(*c1.clone()), self.resolve(*c2.clone()))
+                {
+                    if h1 != h2
+                        && !Self::iterator_ptr_compatible(&h1, &h2)
+                        && !Self::json_string_compatible(&h1, &h2)
+                    {
+                        let err = TypeError::Mismatch {
+                            expected: self.resolve(Ty::App(c1, a1)),
+                            found: self.resolve(Ty::App(c2, a2)),
+                            origin,
+                        };
+                        self.errors.push(err.clone());
+                        return Err(err);
+                    }
+                }
                 self.unify(*c1, *c2, origin.clone())?;
                 if a1.len() != a2.len() {
                     let err = TypeError::ArityMismatch {
