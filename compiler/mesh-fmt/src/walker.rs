@@ -102,7 +102,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::LIST_LITERAL => walk_list_literal(node),
         SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
         SyntaxKind::SCHEMA_OPTION => walk_schema_option(node),
-        SyntaxKind::TRY_EXPR => walk_tokens_inline(node),
+        SyntaxKind::TRY_EXPR | SyntaxKind::ASSERT_RECEIVE_EXPR => walk_tokens_inline(node),
         SyntaxKind::PATH => walk_path(node),
         // Simple leaf-like nodes: just emit their tokens inline.
         SyntaxKind::LITERAL

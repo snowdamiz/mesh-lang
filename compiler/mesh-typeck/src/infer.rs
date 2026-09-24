@@ -11729,6 +11729,13 @@ fn infer_block(
             block_items.push(item);
         } else if let Some(_expr) = Expr::cast(child.clone()) {
             block_children.push((range, BlockChildKind::ExprNode(child)));
+        } else if child.kind() == SyntaxKind::ASSERT_RECEIVE_EXPR {
+            // The test assertion `meshc test` expands; not defined elsewhere.
+            let keyword = child
+                .first_token()
+                .map_or(range, |token| token.text_range());
+            ctx.errors
+                .push(TypeError::AssertReceiveOutsideTest { span: keyword });
         }
     }
 

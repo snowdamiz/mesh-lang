@@ -341,6 +341,8 @@ pub enum SyntaxKind {
     RECEIVE_EXPR,
     /// Individual arm within a receive block
     RECEIVE_ARM,
+    /// `assert_receive PATTERN[, TIMEOUT]`, the test assertion
+    ASSERT_RECEIVE_EXPR,
     /// Self expression: `self()` -- get own PID
     SELF_EXPR,
     /// Link expression: `link(pid)`
@@ -829,6 +831,7 @@ mod tests {
             SyntaxKind::SEND_EXPR,
             SyntaxKind::RECEIVE_EXPR,
             SyntaxKind::RECEIVE_ARM,
+            SyntaxKind::ASSERT_RECEIVE_EXPR,
             SyntaxKind::SELF_EXPR,
             SyntaxKind::LINK_EXPR,
             SyntaxKind::AFTER_CLAUSE,

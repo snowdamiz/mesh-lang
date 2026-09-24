@@ -429,6 +429,9 @@ pub enum TypeError {
         available: Vec<String>,
         span: TextRange,
     },
+    /// `assert_receive PATTERN, TIMEOUT` outside a test file, where
+    /// `meshc test` does not expand it.
+    AssertReceiveOutsideTest { span: TextRange },
     /// An `impl` for a type that takes type parameters (`impl Show for
     /// Box` with `struct Box<T>`), which is not supported.
     GenericImplTarget { name: String, span: TextRange },
@@ -994,6 +997,12 @@ impl fmt::Display for TypeError {
             TypeError::InvalidLiteral { reason, .. } => write!(f, "{reason}"),
             TypeError::NoSuchModuleFunction { module, name, .. } => {
                 write!(f, "module `{module}` has no function `{name}`")
+            }
+            TypeError::AssertReceiveOutsideTest { .. } => {
+                write!(
+                    f,
+                    "`assert_receive` works only in test files run by `meshc test`"
+                )
             }
             TypeError::GenericImplTarget { name, .. } => {
                 write!(

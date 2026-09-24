@@ -696,6 +696,17 @@ mod snapshot_tests {
     }
 
     #[test]
+    fn assert_receive_is_formatted() {
+        // Test files using it were refused: "source contains parse errors".
+        let src = "test(\"receive\") do\n  send(self(), 42)\n  assert_receive 42, 500\n  assert_receive (a, _)\nend\n";
+        assert_eq!(fmt(src), src);
+        assert_eq!(
+            fmt("test(\"x\") do\n  assert_receive   42 ,  500\nend\n"),
+            "test(\"x\") do\n  assert_receive 42, 500\nend\n"
+        );
+    }
+
+    #[test]
     fn snapshot_comment_preserved() {
         let result = fmt("# A comment\nfn foo() do\n1\nend");
         insta::assert_snapshot!(result, @r"

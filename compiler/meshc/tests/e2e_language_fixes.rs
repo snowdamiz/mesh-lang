@@ -4580,3 +4580,11 @@ fn an_impl_for_a_generic_type_is_reported_at_its_header() {
     );
     assert_eq!(err.matches("Error").count(), 1, "{err}");
 }
+
+#[test]
+fn assert_receive_outside_a_test_is_undefined() {
+    // `meshc test` expands it; elsewhere it is parsed (for `meshc fmt` and
+    // `meshc lint`) and reported (E0077), not skipped.
+    let err = build_error("fn main() do\n  assert_receive 42, 500\nend\n");
+    assert!(err.contains("[E0077]"), "{err}");
+}

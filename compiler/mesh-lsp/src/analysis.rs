@@ -255,6 +255,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::NoSuchModuleFunction { span, .. }
         | TypeError::OverloadedFunctionValue { span, .. }
         | TypeError::GenericImplTarget { span, .. }
+        | TypeError::AssertReceiveOutsideTest { span }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

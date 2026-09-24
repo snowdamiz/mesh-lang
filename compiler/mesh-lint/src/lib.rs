@@ -414,6 +414,13 @@ end
     }
 
     #[test]
+    fn a_test_file_using_assert_receive_parses() {
+        // It was a parse error: "expected a newline or `;` after the statement".
+        let source = "test(\"receive\") do\n  send(self(), 42)\n  assert_receive 42, 500\nend\n";
+        assert_eq!(findings(source), vec![]);
+    }
+
+    #[test]
     fn bool_comparison_flags_literals_only() {
         let source = "\
 fn f(flag, other) do

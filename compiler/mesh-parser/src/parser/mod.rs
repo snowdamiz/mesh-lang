@@ -190,6 +190,25 @@ impl<'src> Parser<'src> {
         ""
     }
 
+    /// Returns the span of the Nth significant token ahead.
+    pub(crate) fn nth_span(&self, n: usize) -> Span {
+        let mut pos = self.pos;
+        let mut remaining = n;
+        while pos < self.tokens.len() {
+            if self.should_skip(&self.tokens[pos].kind) {
+                pos += 1;
+                continue;
+            }
+            if remaining == 0 {
+                return self.tokens[pos].span;
+            }
+            remaining -= 1;
+            pos += 1;
+        }
+        let end = self.source.len() as u32;
+        Span::new(end, end)
+    }
+
     /// Returns the span of the current significant token.
     pub(crate) fn current_span(&self) -> Span {
         let pos = self.skip_to_significant(self.pos);
@@ -857,6 +876,21 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
         }
 
         SyntaxKind::LET_KW => expressions::parse_let_binding(p),
+
+        // `assert_receive PATTERN[, TIMEOUT]`, the assertion `meshc test`
+        // expands into a `receive`: read so `meshc fmt` and `meshc lint`
+        // take test files. Written as a call (`assert_receive(x)`, no space)
+        // it stays one, as `meshc test` leaves it.
+        SyntaxKind::IDENT
+            if p.current_text() == "assert_receive"
+                && !matches!(
+                    p.nth(1),
+                    SyntaxKind::NEWLINE | SyntaxKind::EOF | SyntaxKind::SEMICOLON
+                )
+                && p.nth_span(1).start > p.current_span().end =>
+        {
+            expressions::parse_assert_receive(p);
+        }
 
         SyntaxKind::RETURN_KW => {
             expressions::parse_return_expr(p);

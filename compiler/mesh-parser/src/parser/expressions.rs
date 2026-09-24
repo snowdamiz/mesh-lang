@@ -894,6 +894,19 @@ pub(crate) fn parse_let_binding(p: &mut Parser) {
     p.close(m, SyntaxKind::LET_BINDING);
 }
 
+// ── assert_receive ─────────────────────────────────────────────────────
+
+/// Parse `assert_receive PATTERN[, TIMEOUT]`.
+pub(crate) fn parse_assert_receive(p: &mut Parser) {
+    let m = p.open();
+    p.advance(); // assert_receive
+    super::patterns::parse_pattern(p);
+    if p.eat(SyntaxKind::COMMA) {
+        expr(p);
+    }
+    p.close(m, SyntaxKind::ASSERT_RECEIVE_EXPR);
+}
+
 // ── Return Expression ─────────────────────────────────────────────────
 
 /// Parse a return expression: `return [expr]`
