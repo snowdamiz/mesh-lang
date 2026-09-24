@@ -5346,6 +5346,11 @@ fn infer_multi_clause_fn(
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
+    let mut first_branch: Option<TextRange> = None;
+    let clauses_span = TextRange::new(
+        first.syntax().text_range().start(),
+        clauses[clauses.len() - 1].syntax().text_range().end(),
+    );
     let mut arm_patterns: Vec<AbsPat> = Vec::new();
     let mut arm_has_guard: Vec<bool> = Vec::new();
     let mut arm_spans: Vec<TextRange> = Vec::new();
@@ -5467,7 +5472,19 @@ fn infer_multi_clause_fn(
         };
 
         // Unify body type with previous clause body types.
-        join_branch_ty(ctx, &mut result_ty, body_ty.clone())?;
+        let body_span = clause
+            .expr_body()
+            .map(|body| body.syntax().text_range())
+            .or_else(|| clause.body().map(|body| body.syntax().text_range()))
+            .unwrap_or_else(|| clause.syntax().text_range());
+        join_branch_ty(
+            ctx,
+            &mut result_ty,
+            &mut first_branch,
+            clauses_span,
+            body_ty.clone(),
+            body_span,
+        )?;
 
         // Unify with return type annotation if present.
         if let Some(ref ret_ann) = return_type_annotation {
@@ -11500,11 +11517,15 @@ fn infer_multi_clause_closure(
     .collect::<Vec<_>>();
 
     let mut result_ty: Option<Ty> = None;
+    let mut first_branch: Option<TextRange> = None;
     let mut arm_patterns: Vec<AbsPat> = Vec::new();
     let mut arm_has_guard: Vec<bool> = Vec::new();
     let mut arm_spans: Vec<TextRange> = Vec::new();
 
     for (param_list, guard, body, span) in clauses {
+        let body_span = body
+            .as_ref()
+            .map_or(span, |body| body.syntax().text_range());
         env.push_scope();
 
         let mut clause_abs_pats = Vec::new();
@@ -11607,7 +11628,14 @@ fn infer_multi_clause_closure(
         }
 
         // Unify body type with previous clauses.
-        join_branch_ty(ctx, &mut result_ty, body_ty)?;
+        join_branch_ty(
+            ctx,
+            &mut result_ty,
+            &mut first_branch,
+            closure.syntax().text_range(),
+            body_ty,
+            body_span,
+        )?;
 
         env.pop_scope();
     }
@@ -12244,6 +12272,7 @@ fn infer_case(
     };
 
     let mut result_ty: Option<Ty> = None;
+    let mut first_branch: Option<TextRange> = None;
 
     // Collect patterns and guard info for exhaustiveness checking.
     let mut arm_patterns: Vec<AbsPat> = Vec::new();
@@ -12322,7 +12351,18 @@ fn infer_case(
             _ => None,
         };
         if let Some(body_ty) = body_ty {
-            join_branch_ty(ctx, &mut result_ty, body_ty)?;
+            let branch_span = arm
+                .body()
+                .map(|body| body.syntax().text_range())
+                .unwrap_or_else(|| arm.syntax().text_range());
+            join_branch_ty(
+                ctx,
+                &mut result_ty,
+                &mut first_branch,
+                case.syntax().text_range(),
+                body_ty,
+                branch_span,
+            )?;
         }
 
         env.pop_scope();
@@ -12342,22 +12382,36 @@ fn infer_case(
     Ok(result_ty.unwrap_or_else(|| Ty::Tuple(vec![])))
 }
 
-/// Merge one branch's type into the type of a multi-branch expression. A
-/// branch that never returns (`return`, `panic`) is `Never`, which unifies
-/// with anything but must not become the type of the whole expression.
+/// Merge one branch's type into the type of a multi-branch expression at
+/// `whole` (`case`, `receive`, clauses). A branch that never returns
+/// (`return`, `panic`) is `Never`, which unifies with anything but must not
+/// become the type of the whole expression. A branch that disagrees is
+/// reported at itself and at `first`, the branch that set the type.
 fn join_branch_ty(
     ctx: &mut InferCtx,
     joined: &mut Option<Ty>,
+    first: &mut Option<TextRange>,
+    whole: TextRange,
     branch: Ty,
+    span: TextRange,
 ) -> Result<(), TypeError> {
     match joined {
         Some(prev) => {
-            ctx.unify(prev.clone(), branch.clone(), ConstraintOrigin::Builtin)?;
+            let origin = ConstraintOrigin::IfBranches {
+                if_span: whole,
+                then_span: first.unwrap_or(whole),
+                else_span: span,
+            };
+            ctx.unify(prev.clone(), branch.clone(), origin)?;
             if matches!(ctx.resolve(prev.clone()), Ty::Never) {
                 *prev = branch;
+                *first = Some(span);
             }
         }
-        None => *joined = Some(branch),
+        None => {
+            *joined = Some(branch);
+            *first = Some(span);
+        }
     }
     Ok(())
 }
@@ -15035,6 +15089,7 @@ fn infer_receive(
         .unwrap_or_else(|| ctx.fresh_var());
 
     let mut result_ty: Option<Ty> = None;
+    let mut first_branch: Option<TextRange> = None;
     let mut arm_patterns: Vec<AbsPat> = Vec::new();
     let mut arm_has_guard: Vec<bool> = Vec::new();
     let mut arm_spans: Vec<TextRange> = Vec::new();
@@ -15097,7 +15152,14 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            join_branch_ty(ctx, &mut result_ty, body_ty)?;
+            join_branch_ty(
+                ctx,
+                &mut result_ty,
+                &mut first_branch,
+                recv.syntax().text_range(),
+                body_ty,
+                body.syntax().text_range(),
+            )?;
         }
 
         env.pop_scope();
@@ -15157,7 +15219,14 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            join_branch_ty(ctx, &mut result_ty, body_ty)?;
+            join_branch_ty(
+                ctx,
+                &mut result_ty,
+                &mut first_branch,
+                recv.syntax().text_range(),
+                body_ty,
+                body.syntax().text_range(),
+            )?;
         }
     }
 

@@ -4342,3 +4342,35 @@ end
     assert!(err.contains("did you mean `Green`?"), "{err}");
     assert!(err.contains("unknown variant: Five"), "{err}");
 }
+
+#[test]
+fn an_arm_of_another_type_is_reported_at_the_arms() {
+    // A `case` arm, `receive` arm or clause whose type differs from the
+    // first was reported over the whole enclosing function.
+    for (source, first, other) in [
+        (
+            "fn main() do\n  let x = case 1 do\n    1 -> 5\n    _ -> \"s\"\n  end\n  println(\"#{x}\")\nend\n",
+            "5",
+            "\"s\"",
+        ),
+        (
+            "fn f(0) = 1\nfn f(n) = \"many\"\n\nfn main() do\n  println(\"#{f(2)}\")\nend\n",
+            "1",
+            "\"many\"",
+        ),
+    ] {
+        let diags = json_diagnostics(source);
+        let mismatch = diags
+            .iter()
+            .find(|d| d["code"] == "E0001")
+            .unwrap_or_else(|| panic!("{source}\n{diags:?}"));
+        let spans = mismatch["spans"].as_array().unwrap();
+        let at = |text: &str| {
+            let start = source.rfind(text).unwrap();
+            spans
+                .iter()
+                .any(|s| s["start"] == start && s["end"] == start + text.len())
+        };
+        assert!(at(first) && at(other), "{source}\n{spans:?}");
+    }
+}
