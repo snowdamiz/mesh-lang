@@ -27,6 +27,9 @@ use std::time::Instant;
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
+use std::ops::Range;
+
+use mesh_parser::{SyntaxKind, SyntaxNode};
 use mesh_typeck::diagnostics::DiagnosticOptions;
 
 /// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
@@ -281,7 +284,15 @@ pub fn run_tests(
         let source = std::fs::read_to_string(test_file)
             .map_err(|e| format!("Failed to read '{}': {}", test_file.display(), e))?;
 
-        let preprocessed = preprocess_test_source(&source);
+        let preprocessed = match preprocess_test_source(&source) {
+            Ok(preprocessed) => preprocessed,
+            Err(e) => {
+                println!("{red}{bold}COMPILE ERROR{reset}: {label}");
+                println!("  {e}");
+                failed += 1;
+                continue;
+            }
+        };
 
         // Compile the preprocessed source to a temp binary.
         let tmp_dir =
@@ -295,9 +306,15 @@ pub fn run_tests(
             continue;
         }
 
+        // Diagnostics name the test file and the project's files, not
+        // their copies in the temporary project.
         let diag_opts = DiagnosticOptions {
             color: use_color(),
             json: false,
+            display_paths: vec![
+                (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
+                (tmp_dir.path().to_path_buf(), project_dir.to_path_buf()),
+            ],
         };
         let compile_result = crate::build(
             tmp_dir.path(),
@@ -363,773 +380,252 @@ pub fn run_tests(
 
 // ── Source Preprocessor ───────────────────────────────────────────────────
 
-/// A test block extracted from the .test.mpl source.
-#[derive(Debug)]
-struct TestBlock {
-    /// Full test label (includes describe group prefix when nested).
-    label: String,
-    /// Source text of the test body (between `do` and the matching `end`).
-    body: String,
-    /// Optional setup body to run before this test (from enclosing describe).
-    setup_body: Option<String>,
-    /// Optional teardown body to run after this test (from enclosing describe).
-    teardown_body: Option<String>,
-}
-
-/// Preprocess a .test.mpl source file into a valid Mesh program.
+/// Preprocess a .test.mpl source file into a valid Mesh program. The file is
+/// rewritten in place, so each of its lines keeps its line and column and a
+/// diagnostic points at the test as written:
 ///
-/// Transforms:
-/// - `test("label") do body end` → `fn __test_body_N() do body end`, with
-///   the setup and teardown of an enclosing describe
-/// - `describe("group") do setup/teardown/test blocks end` → grouped tests
-/// - Generates `fn main() do test_begin/test_run_body/test_end/test_summary ... end`
+/// - `test("label") do` becomes `fn __test_body_N() do`.
+/// - `describe("group") do` becomes `fn __test_describe_N(__case :: Int) do`. Its
+///   `setup` lines run first, so what they bind is in scope for the tests and
+///   the teardown; each `test` in it becomes
+///   `if __case == I do test_run_body(fn() do ... end) end`; a `teardown`
+///   becomes a closure run after the test, whether the test passed or not.
+/// - `assert_receive PATTERN[, TIMEOUT]` becomes a `receive` on its line.
+/// - A `fn main()` is appended that runs each test (`test_begin`,
+///   `test_run_body`, `test_end`) and then `test_summary`.
 ///
-/// The output is standard Mesh that the compiler accepts.
-pub fn preprocess_test_source(source: &str) -> String {
-    let tokens = tokenize_test_source(source);
-    let blocks = extract_test_blocks(&tokens);
-
-    if blocks.is_empty() {
-        // Not a test file or no test blocks — pass through unchanged.
-        return source.to_string();
+/// A file that does not parse is returned as it is, for the build to report
+/// its errors where they are.
+pub fn preprocess_test_source(source: &str) -> Result<String, String> {
+    let parse = mesh_parser::parse(source);
+    if !parse.errors().is_empty() {
+        return Ok(source.to_string());
     }
 
-    let mut out = String::new();
-
-    // Emit any top-level definitions from the source (fn, struct, etc.)
-    // that aren't test/describe blocks.
-    emit_non_test_items(source, &mut out);
-
-    // Emit a function for each test: its setup, then its body. A teardown
-    // runs after the body whether the body passed or not, so then the body
-    // runs as a step of its own; both see what the setup binds. Lines are
-    // copied as written: indenting them would change multi-line strings.
-    for (i, block) in blocks.iter().enumerate() {
-        out.push_str(&format!("fn __test_body_{i}() do\n"));
-        if let Some(ref setup) = block.setup_body {
-            out.push_str(&transform_assert_receive(setup));
-        }
-        match block.teardown_body {
-            Some(ref teardown) => {
-                out.push_str("test_run_body(fn() do\n");
-                out.push_str(&transform_assert_receive(&block.body));
-                out.push_str("end)\ntest_run_body(fn() do\n");
-                out.push_str(&transform_assert_receive(teardown));
-                out.push_str("end)\n");
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    // Each test: its label, and the call in `main` that runs it.
+    let mut tests: Vec<(String, String)> = Vec::new();
+    let mut describes = 0;
+    for node in parse.syntax().children() {
+        let Some(call) = BlockCall::of(&node) else {
+            continue;
+        };
+        match call.name.as_str() {
+            "test" => {
+                let n = tests.len();
+                call.rewrite(&mut edits, &format!("fn __test_body_{n}() do"), "end");
+                tests.push((call.label("unnamed"), format!("__test_body_{n}()")));
             }
-            None => out.push_str(&transform_assert_receive(&block.body)),
+            "describe" => {
+                let d = describes;
+                describes += 1;
+                let group = call.label("describe");
+                let mut cases = 0;
+                let mut teardown = false;
+                for stmt in call.block.children() {
+                    let Some(inner) = BlockCall::of(&stmt) else {
+                        continue;
+                    };
+                    match inner.name.as_str() {
+                        "setup" if cases > 0 => {
+                            return Err(format!(
+                                "line {}: `setup` must come before the tests of its describe",
+                                line_of(source, inner.header.start)
+                            ));
+                        }
+                        "setup" => inner.rewrite(&mut edits, "", ""),
+                        "teardown" if teardown => {
+                            return Err(format!(
+                                "line {}: a describe has one `teardown`",
+                                line_of(source, inner.header.start)
+                            ));
+                        }
+                        "teardown" => {
+                            teardown = true;
+                            inner.rewrite(&mut edits, "let __teardown = fn() do", "end");
+                        }
+                        "test" => {
+                            inner.rewrite(
+                                &mut edits,
+                                &format!("if __case == {cases} do test_run_body(fn() do"),
+                                "end) end",
+                            );
+                            tests.push((
+                                format!("{group} > {}", inner.label("unnamed")),
+                                format!("__test_describe_{d}({cases})"),
+                            ));
+                            cases += 1;
+                        }
+                        _ => {}
+                    }
+                }
+                let end = if teardown {
+                    "test_run_body(__teardown) end"
+                } else {
+                    "end"
+                };
+                call.rewrite(
+                    &mut edits,
+                    &format!("fn __test_describe_{d}(__case :: Int) do"),
+                    end,
+                );
+            }
+            _ => continue,
         }
-        out.push_str("end\n\n");
+        // An `assert_receive` becomes a `receive` on its own lines.
+        for node in call.block.descendants() {
+            if node.kind() == SyntaxKind::ASSERT_RECEIVE_EXPR {
+                edits.push((range_of(&node), expand_assert_receive(&node)));
+            }
+        }
     }
 
-    // Emit fn main() harness; `test_end` counts the test once.
-    out.push_str("fn main() do\n");
-    for (i, block) in blocks.iter().enumerate() {
-        // Escape double-quotes in the label for the Mesh string literal.
-        let escaped_label = block.label.replace('\\', "\\\\").replace('"', "\\\"");
+    if tests.is_empty() {
+        // Not a test file or no test blocks — pass through unchanged.
+        return Ok(source.to_string());
+    }
+
+    let mut out = source.to_string();
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    for (range, text) in edits {
+        out.replace_range(range, &text);
+    }
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+
+    // The harness, after every line of the file; `test_end` counts the test
+    // once. The label is the test's string literal, as written.
+    out.push_str("\nfn main() do\n");
+    for (label, run) in &tests {
         out.push_str(&format!(
-            "  test_cleanup_actors()\n  test_begin(\"{escaped_label}\")\n  test_run_body(fn() do __test_body_{i}() end)\n  test_end()\n"
+            "  test_cleanup_actors()\n  test_begin(\"{label}\")\n  test_run_body(fn() do {run} end)\n  test_end()\n"
         ));
     }
     // Pass 0 for elapsed_ms; accurate timing is cosmetic and can be added later.
     out.push_str("  test_summary(test_pass_count(), test_fail_count(), 0)\n");
     out.push_str("end\n");
-
-    out
+    Ok(out)
 }
 
-// ── Tokenizer ─────────────────────────────────────────────────────────────
-
-/// A token kind for the test source mini-lexer.
-#[derive(Debug, Clone, PartialEq)]
-enum TToken {
-    /// `test` keyword (bare IDENT)
-    TestKw,
-    /// `describe` keyword (bare IDENT)
-    DescribeKw,
-    /// `setup` keyword (bare IDENT)
-    SetupKw,
-    /// `teardown` keyword (bare IDENT)
-    TeardownKw,
-    /// `do` keyword
-    Do,
-    /// `end` keyword
-    End,
-    /// `fn` keyword (to track nested fn do ... end)
-    Fn,
-    /// `if` keyword
-    If,
-    /// `while` keyword
-    While,
-    /// `case` keyword
-    Case,
-    /// `for` keyword
-    For,
-    /// `actor` keyword
-    Actor,
-    /// `service` keyword
-    Service,
-    /// `receive` keyword
-    Receive,
-    /// A string literal like `"..."` with the raw text (including quotes).
-    StringLit(String),
-    /// An open paren `(`
-    LParen,
-    /// A close paren `)`
-    RParen,
-    /// Everything else (whitespace, comments, other tokens).
-    Other(String),
+/// A `name(...) do ... end` or `name do ... end` statement, as `test`,
+/// `describe`, `setup` and `teardown` are written.
+struct BlockCall {
+    name: String,
+    call: SyntaxNode,
+    /// From the call's start through its `do`.
+    header: Range<usize>,
+    /// The statements of its `do` block.
+    block: SyntaxNode,
+    /// The block's `end`.
+    end: Range<usize>,
 }
 
-/// Tokenize the test source into a flat sequence of TTokens.
-///
-/// Handles:
-/// - String literals (to avoid misidentifying keywords inside strings)
-/// - Line comments `# ...`
-/// - Keywords: test, describe, setup, teardown, do, end, fn, if, while, case
-fn tokenize_test_source(source: &str) -> Vec<TToken> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = source.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        // Skip line comments
-        if chars[i] == '#' {
-            let mut s = String::new();
-            while i < chars.len() && chars[i] != '\n' {
-                s.push(chars[i]);
-                i += 1;
-            }
-            tokens.push(TToken::Other(s));
-            continue;
+impl BlockCall {
+    fn of(node: &SyntaxNode) -> Option<Self> {
+        if node.kind() != SyntaxKind::CALL_EXPR {
+            return None;
         }
-
-        // String literals
-        if chars[i] == '"' {
-            let mut s = String::new();
-            s.push('"');
-            i += 1;
-            while i < chars.len() {
-                if chars[i] == '\\' && i + 1 < chars.len() {
-                    s.push(chars[i]);
-                    s.push(chars[i + 1]);
-                    i += 2;
-                } else if chars[i] == '"' {
-                    s.push('"');
-                    i += 1;
-                    break;
-                } else {
-                    s.push(chars[i]);
-                    i += 1;
-                }
-            }
-            tokens.push(TToken::StringLit(s));
-            continue;
-        }
-
-        // String interpolation `"${...}"` — treat whole thing as string lit
-        // (not common in test files but handle to avoid mis-tokenizing)
-
-        // Identifiers and keywords
-        if chars[i].is_alphabetic() || chars[i] == '_' {
-            let mut ident = String::new();
-            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
-                ident.push(chars[i]);
-                i += 1;
-            }
-            let tok = match ident.as_str() {
-                "test" => TToken::TestKw,
-                "describe" => TToken::DescribeKw,
-                "setup" => TToken::SetupKw,
-                "teardown" => TToken::TeardownKw,
-                "do" => TToken::Do,
-                "end" => TToken::End,
-                "fn" => TToken::Fn,
-                "if" => TToken::If,
-                "while" => TToken::While,
-                "case" => TToken::Case,
-                "for" => TToken::For,
-                "actor" => TToken::Actor,
-                "service" => TToken::Service,
-                "receive" => TToken::Receive,
-                _ => TToken::Other(ident),
-            };
-            tokens.push(tok);
-            continue;
-        }
-
-        // Parens
-        if chars[i] == '(' {
-            tokens.push(TToken::LParen);
-            i += 1;
-            continue;
-        }
-        if chars[i] == ')' {
-            tokens.push(TToken::RParen);
-            i += 1;
-            continue;
-        }
-
-        // Everything else (whitespace, operators, numbers, etc.)
-        let mut s = String::new();
-        s.push(chars[i]);
-        i += 1;
-        tokens.push(TToken::Other(s));
+        let name = node
+            .children()
+            .find(|child| child.kind() == SyntaxKind::NAME_REF)?
+            .text()
+            .to_string();
+        let closure = node
+            .children()
+            .find(|child| child.kind() == SyntaxKind::TRAILING_CLOSURE)?;
+        let block = closure
+            .children()
+            .find(|child| child.kind() == SyntaxKind::BLOCK)?;
+        let end = closure
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .find(|token| token.kind() == SyntaxKind::END_KW)?
+            .text_range();
+        Some(BlockCall {
+            name,
+            header: range_of(node).start..range_of(&block).start,
+            end: end.start().into()..end.end().into(),
+            call: node.clone(),
+            block,
+        })
     }
 
-    tokens
-}
-
-/// How deep the mini token stream is inside `do...end` blocks.
-///
-/// Every block opener takes its own `do` and `end`, except `else if`: it
-/// continues the `if` before it and shares that chain's single `end`, so its
-/// `do` opens nothing. Counting `do` and `end` alone leaves the depth one too
-/// high after every chain; from then on a top-level `test(...)` block is
-/// emitted as ordinary source, and a chain inside a test body swallows
-/// whatever follows the block.
-struct BlockNesting {
-    depth: usize,
-    /// Block keywords still waiting for their `do`; `true` marks an `else if`.
-    openers: Vec<bool>,
-    /// Nothing but whitespace and comments since the last `else`.
-    after_else: bool,
-}
-
-impl BlockNesting {
-    fn new(depth: usize) -> Self {
-        Self {
-            depth,
-            openers: Vec::new(),
-            after_else: false,
-        }
+    /// The first argument's string literal, as written between its quotes.
+    fn label(&self, default: &str) -> String {
+        self.call
+            .children()
+            .find(|child| child.kind() == SyntaxKind::ARG_LIST)
+            .and_then(|args| {
+                args.children()
+                    .find(|child| child.kind() == SyntaxKind::STRING_EXPR)
+            })
+            .map(|string| {
+                string
+                    .descendants_with_tokens()
+                    .filter_map(|element| element.into_token())
+                    .filter(|token| {
+                        !matches!(
+                            token.kind(),
+                            SyntaxKind::STRING_START | SyntaxKind::STRING_END
+                        )
+                    })
+                    .map(|token| token.text().to_string())
+                    .collect()
+            })
+            .unwrap_or_else(|| default.to_string())
     }
 
-    /// Accounts for one token and returns the depth after it.
-    fn feed(&mut self, tok: &TToken) -> usize {
-        match tok {
-            TToken::If => self.openers.push(self.after_else),
-            TToken::Case
-            | TToken::While
-            | TToken::For
-            | TToken::Fn
-            | TToken::Actor
-            | TToken::Service
-            | TToken::Receive => self.openers.push(false),
-            TToken::Do => {
-                // A `do` with no keyword waiting for it is a bare block.
-                if !self.openers.pop().unwrap_or(false) {
-                    self.depth += 1;
-                }
-            }
-            TToken::End => self.depth = self.depth.saturating_sub(1),
-            _ => {}
-        }
-        self.after_else = match tok {
-            TToken::Other(text) if text == "else" => true,
-            TToken::Other(text) if text.trim().is_empty() || text.starts_with('#') => {
-                self.after_else
-            }
-            _ => false,
-        };
-        self.depth
+    /// Replace the header and the `end`, keeping the header's line breaks.
+    fn rewrite(&self, edits: &mut Vec<(Range<usize>, String)>, header: &str, end: &str) {
+        let header = (
+            self.header.clone(),
+            keep_lines(header, &self.call, self.header.clone()),
+        );
+        edits.push(header);
+        edits.push((self.end.clone(), end.to_string()));
     }
 }
 
-/// Extract test blocks from the token stream.
-///
-/// Recognizes:
-/// - `test(STRING) do BODY end`
-/// - `describe(STRING) do [setup() do BODY end] [teardown() do BODY end] test(...) ... end`
-fn extract_test_blocks(tokens: &[TToken]) -> Vec<TestBlock> {
-    let mut blocks = Vec::new();
-    let mut i = 0;
-    extract_blocks_at(tokens, &mut i, None, None, None, &mut blocks);
-    blocks
+fn range_of(node: &SyntaxNode) -> Range<usize> {
+    let range = node.text_range();
+    range.start().into()..range.end().into()
 }
 
-/// Extract test blocks starting at index `i`, up to end of token stream or end of a describe block.
-///
-/// `group_prefix`: label prefix from enclosing describe (e.g., "Group: ").
-/// `setup_body`: setup body from enclosing describe.
-/// `teardown_body`: teardown body from enclosing describe.
-///
-/// When `group_prefix` is None (top-level scan), `End` tokens from helper function
-/// definitions (e.g., `fn foo() do ... end`) are skipped — they do NOT terminate the scan.
-/// When `group_prefix` is Some (inside a describe block), an unmatched `End` terminates
-/// the scan (it's the describe block's closing `end`).
-fn extract_blocks_at(
-    tokens: &[TToken],
-    i: &mut usize,
-    group_prefix: Option<&str>,
-    setup_body: Option<&str>,
-    teardown_body: Option<&str>,
-    blocks: &mut Vec<TestBlock>,
-) {
-    // How deep we are inside `do...end` blocks from non-test items (e.g. helper
-    // function bodies). While inside one, tokens are skipped without checking
-    // for test/describe keywords.
-    let mut nesting = BlockNesting::new(0);
-
-    while *i < tokens.len() {
-        // Inside a non-test block (e.g., a helper `fn` body) — skip tokens until `end`.
-        if nesting.depth > 0 {
-            nesting.feed(&tokens[*i]);
-            *i += 1;
-            continue;
-        }
-
-        match &tokens[*i] {
-            TToken::TestKw => {
-                // test(STRING) do BODY end
-                *i += 1;
-                // Expect ( STRING )
-                let label = extract_string_arg(tokens, i).unwrap_or_else(|| "unnamed".to_string());
-                let full_label = match group_prefix {
-                    Some(prefix) => format!("{} > {}", prefix, label),
-                    None => label,
-                };
-                // Expect 'do'
-                skip_to_do(tokens, i);
-                if *i < tokens.len() {
-                    *i += 1; // consume 'do'
-                }
-                // Extract body until matching 'end'
-                let body = extract_block_body(tokens, i);
-                blocks.push(TestBlock {
-                    label: full_label,
-                    body,
-                    setup_body: setup_body.map(|s| s.to_string()),
-                    teardown_body: teardown_body.map(|s| s.to_string()),
-                });
-            }
-            TToken::DescribeKw => {
-                // describe(STRING) do [setup] [teardown] test... end
-                *i += 1;
-                let group_name =
-                    extract_string_arg(tokens, i).unwrap_or_else(|| "describe".to_string());
-                skip_to_do(tokens, i);
-                if *i < tokens.len() {
-                    *i += 1; // consume 'do'
-                }
-                // Now parse the describe body: find setup, teardown, and test blocks.
-                let (inner_setup, inner_teardown, inner_end) = peek_describe_body(tokens, *i);
-                // Walk only the test tokens between setup/teardown sub-blocks.
-                extract_tests_from_describe(
-                    tokens,
-                    *i,
-                    inner_end,
-                    &group_name,
-                    inner_setup.as_deref(),
-                    inner_teardown.as_deref(),
-                    blocks,
-                );
-                // Advance past the describe body.
-                *i = inner_end;
-            }
-            TToken::End => {
-                if group_prefix.is_some() {
-                    // End of a describe block (caller handles this).
-                    *i += 1;
-                    return;
-                }
-                // At top level: this `end` shouldn't be here unmatched
-                // (depth tracking above handles normal cases). Skip it.
-                *i += 1;
-            }
-            tok => {
-                // A `do` here enters a non-test block (e.g. a helper function
-                // body). The keyword before it, and any `else`, are tracked so
-                // the block's `end` is recognised.
-                nesting.feed(tok);
-                *i += 1;
-            }
-        }
-    }
+/// `text` with as many line breaks as `range` (within `node`) had.
+fn keep_lines(text: &str, node: &SyntaxNode, range: Range<usize>) -> String {
+    let start = range_of(node).start;
+    let original = &node.text().to_string()[range.start - start..range.end - start];
+    format!("{text}{}", "\n".repeat(original.matches('\n').count()))
 }
 
-/// Extract test blocks from within a describe body, skipping setup/teardown sub-blocks.
-///
-/// `start`: token index at the start of the describe body (just after the opening `do`).
-/// `end_idx`: token index just after the closing `end` of the describe (from peek_describe_body).
-fn extract_tests_from_describe(
-    tokens: &[TToken],
-    start: usize,
-    end_idx: usize,
-    group_name: &str,
-    setup_body: Option<&str>,
-    teardown_body: Option<&str>,
-    blocks: &mut Vec<TestBlock>,
-) {
-    let mut i = start;
-    // end_idx points AFTER the describe's closing `end`, so we stop before it.
-    // The setup/teardown sub-block being skipped, tracked from its opening `do`.
-    let mut skipped: Option<BlockNesting> = None;
-
-    while i < tokens.len() {
-        // Stop when we've passed the describe's closing token range.
-        // peek_describe_body positions end_idx after the closing `end`, so
-        // the closing `end` is at end_idx - 1. We stop at end_idx - 1.
-        if i >= end_idx.saturating_sub(1) {
-            break;
-        }
-
-        if let Some(nesting) = skipped.as_mut() {
-            // Inside a setup/teardown block body — skip everything and track nesting.
-            let closed = nesting.feed(&tokens[i]) == 0;
-            i += 1;
-            if closed {
-                skipped = None;
-            }
-            continue;
-        }
-
-        match &tokens[i] {
-            TToken::SetupKw | TToken::TeardownKw => {
-                // Skip this setup/teardown sub-block entirely.
-                // Skip past the keyword, then find and consume the opening Do.
-                i += 1;
-                while i < tokens.len() {
-                    if matches!(tokens[i], TToken::Do) {
-                        skipped = Some(BlockNesting::new(1));
-                        i += 1; // consume 'do', now inside the block
-                        break;
-                    }
-                    i += 1;
-                }
-            }
-            TToken::TestKw => {
-                i += 1;
-                let label =
-                    extract_string_arg(tokens, &mut i).unwrap_or_else(|| "unnamed".to_string());
-                let full_label = format!("{} > {}", group_name, label);
-                skip_to_do(tokens, &mut i);
-                if i < tokens.len() {
-                    i += 1; // consume 'do'
-                }
-                let body = extract_block_body(tokens, &mut i);
-                blocks.push(TestBlock {
-                    label: full_label,
-                    body,
-                    setup_body: setup_body.map(|s| s.to_string()),
-                    teardown_body: teardown_body.map(|s| s.to_string()),
-                });
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
+fn line_of(source: &str, offset: usize) -> usize {
+    source[..offset].matches('\n').count() + 1
 }
 
-/// Parse the describe body to extract optional `setup()` and `teardown()` bodies.
+// ── assert_receive ────────────────────────────────────────────────────────
+
+/// `assert_receive PATTERN[, TIMEOUT_MS]` (timeout 100ms by default) as a
+/// `receive` on the same lines:
 ///
-/// Returns `(setup_body, teardown_body, end_index)`.
-/// `end_index` points to the token AFTER the matching `end` of the describe.
-fn peek_describe_body(tokens: &[TToken], start: usize) -> (Option<String>, Option<String>, usize) {
-    let mut setup = None;
-    let mut teardown = None;
-    let mut i = start;
-    let mut nesting = BlockNesting::new(1); // we're inside the describe's 'do', depth starts at 1
-
-    while i < tokens.len() {
-        match &tokens[i] {
-            TToken::SetupKw if nesting.depth == 1 => {
-                i += 1;
-                // Expect `() do BODY end`
-                skip_to_do(tokens, &mut i);
-                if i < tokens.len() {
-                    i += 1;
-                } // consume 'do'
-                let body = extract_block_body_raw(tokens, &mut i);
-                setup = Some(body);
-            }
-            TToken::TeardownKw if nesting.depth == 1 => {
-                i += 1;
-                skip_to_do(tokens, &mut i);
-                if i < tokens.len() {
-                    i += 1;
-                } // consume 'do'
-                let body = extract_block_body_raw(tokens, &mut i);
-                teardown = Some(body);
-            }
-            TToken::End if nesting.depth == 1 => {
-                i += 1; // consume the closing 'end' of describe
-                return (setup, teardown, i);
-            }
-            tok => {
-                nesting.feed(tok);
-                i += 1;
-            }
-        }
-    }
-
-    (setup, teardown, i)
-}
-
-/// Parse a string argument from `(STRING)` at position `i`.
-/// Advances `i` past the closing `)`.
-fn extract_string_arg(tokens: &[TToken], i: &mut usize) -> Option<String> {
-    // Skip whitespace / Other tokens until we find '('
-    while *i < tokens.len() {
-        match &tokens[*i] {
-            TToken::LParen => {
-                *i += 1;
-                break;
-            }
-            TToken::Other(_) => {
-                *i += 1;
-            }
-            _ => break,
-        }
-    }
-
-    // Find the string literal
-    let mut label = None;
-    while *i < tokens.len() {
-        match &tokens[*i] {
-            TToken::StringLit(s) => {
-                // Strip surrounding quotes
-                let inner = s.trim_matches('"').to_string();
-                label = Some(inner);
-                *i += 1;
-            }
-            TToken::RParen => {
-                *i += 1;
-                break;
-            }
-            TToken::Other(_) => {
-                *i += 1;
-            }
-            _ => {
-                *i += 1;
-                break;
-            }
-        }
-    }
-
-    label
-}
-
-/// Skip tokens until we reach a `do` token. Advances `i` to point AT the `do` token.
-fn skip_to_do(tokens: &[TToken], i: &mut usize) {
-    while *i < tokens.len() {
-        if matches!(tokens[*i], TToken::Do) {
-            return;
-        }
-        *i += 1;
-    }
-}
-
-/// Extract a block body from the token stream, tracking do/end nesting.
-///
-/// Called AFTER consuming the opening `do`. Advances `i` past the matching `end`.
-/// Returns the extracted body as source text (reconstructed from tokens).
-fn extract_block_body(tokens: &[TToken], i: &mut usize) -> String {
-    extract_block_body_raw(tokens, i)
-}
-
-/// Extract block body as raw source text, tracking do/end nesting.
-///
-/// Called AFTER consuming the opening `do`. Advances `i` past the matching `end`.
-/// `BlockNesting` says which `do` opens a block: every one except the `do` of an
-/// `else if`, which continues the chain before it and shares its `end`.
-fn extract_block_body_raw(tokens: &[TToken], i: &mut usize) -> String {
-    let mut body = String::new();
-    let mut nesting = BlockNesting::new(1);
-
-    while *i < tokens.len() {
-        let tok = &tokens[*i];
-        if matches!(tok, TToken::End) && nesting.depth <= 1 {
-            *i += 1; // consume the block's own 'end'
-            break;
-        }
-        nesting.feed(tok);
-        body.push_str(&token_to_str(tok));
-        *i += 1;
-    }
-
-    // Trim leading/trailing whitespace from the body
-    body.trim().to_string()
-}
-
-fn token_to_str(tok: &TToken) -> String {
-    match tok {
-        TToken::TestKw => "test".to_string(),
-        TToken::DescribeKw => "describe".to_string(),
-        TToken::SetupKw => "setup".to_string(),
-        TToken::TeardownKw => "teardown".to_string(),
-        TToken::Do => "do".to_string(),
-        TToken::End => "end".to_string(),
-        TToken::Fn => "fn".to_string(),
-        TToken::If => "if".to_string(),
-        TToken::While => "while".to_string(),
-        TToken::Case => "case".to_string(),
-        TToken::For => "for".to_string(),
-        TToken::Actor => "actor".to_string(),
-        TToken::Service => "service".to_string(),
-        TToken::Receive => "receive".to_string(),
-        TToken::StringLit(s) => s.clone(),
-        TToken::LParen => "(".to_string(),
-        TToken::RParen => ")".to_string(),
-        TToken::Other(s) => s.clone(),
-    }
-}
-
-/// Emit non-test top-level definitions from the source (fn, struct, type, impl, etc.).
-///
-/// This preserves user-defined helper functions used in test bodies.
-///
-/// Uses `tokenize_test_source` and `BlockNesting` for token-level depth tracking,
-/// which correctly handles `describe` blocks containing `setup do...end` or
-/// `teardown do...end` sub-blocks, and `else if` chains that share one `end`.
-/// The old line-by-line `count_do_in_line`/`count_end_in_line` approach failed because
-/// each `setup do` and `teardown do` sub-block inside a describe block would confuse
-/// the depth counter, causing the describe's closing `end` to be missed.
-fn emit_non_test_items(source: &str, out: &mut String) {
-    let tokens = tokenize_test_source(source);
-    let mut i = 0;
-    // Nesting of the non-test blocks being emitted (depth 0 = top level).
-    let mut emitted = BlockNesting::new(0);
-    // Between a top-level test/describe keyword and its opening `do`.
-    let mut skipping = false;
-    // The test/describe block being suppressed, tracked from its opening `do`.
-    let mut skipped: Option<BlockNesting> = None;
-
-    while i < tokens.len() {
-        let tok = &tokens[i];
-
-        if let Some(nesting) = skipped.as_mut() {
-            // Inside a test/describe block body — skip everything and track nesting.
-            let closed = nesting.feed(tok) == 0;
-            i += 1;
-            if closed {
-                skipped = None;
-            }
-            continue;
-        }
-
-        if skipping {
-            // Between TestKw/DescribeKw and the opening Do (skipping label, parens, etc.).
-            // Once we see the Do keyword, start depth tracking.
-            if matches!(tok, TToken::Do) {
-                skipped = Some(BlockNesting::new(1));
-                skipping = false;
-            }
-            // Do not emit anything while skipping.
-            i += 1;
-            continue;
-        }
-
-        match tok {
-            TToken::TestKw | TToken::DescribeKw if emitted.depth == 0 => {
-                // Start of a test/describe block at top level — suppress it entirely.
-                skipping = true;
-                // Do not emit the keyword.
-            }
-            _ => {
-                emitted.feed(tok);
-                out.push_str(&token_to_str(tok));
-            }
-        }
-        i += 1;
-    }
-
-    if !out.trim().is_empty() {
-        out.push('\n');
-    }
-}
-
-// ── assert_receive preprocessor ───────────────────────────────────────────
-
-/// Transform `assert_receive PATTERN, TIMEOUT` lines in a test body into
-/// equivalent Mesh `receive` blocks with a timeout arm.
-///
-/// Handles:
-///   assert_receive PATTERN, TIMEOUT_MS
-///   assert_receive PATTERN              (default timeout: 100ms)
-///
-/// Output (for each matching line, all on that line):
-///   receive
+///   receive do
 ///     PATTERN -> ()
 ///     __assert_receive_other -> test_fail_msg("assert_receive PATTERN received another message")
-///     after TIMEOUT_MS -> test_fail_msg("assert_receive PATTERN timed out after TIMEOUT_MSms")
+///   after TIMEOUT_MS -> test_fail_msg("assert_receive PATTERN timed out after TIMEOUT_MSms")
 ///   end
 ///
 /// The catch-all arm fails the test on a message the pattern does not match
 /// (the type checker does not report it as redundant).
-///
-/// LOCKED DECISION: The failure message includes BOTH the pattern and the elapsed time.
-/// Format: "assert_receive {pattern} timed out after {timeout_ms}ms"
-///
-/// Lines that do not start with `assert_receive ` are passed through unchanged.
-fn transform_assert_receive(body: &str) -> String {
-    let mut out = String::new();
-    for line in body.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("assert_receive ") {
-            // Strip "assert_receive " prefix
-            let rest = trimmed["assert_receive ".len()..].trim();
-            // Split on the last top-level comma to find optional timeout.
-            // The pattern may contain commas (e.g., {:ping, "data"}), so split on
-            // the last comma that is NOT inside brackets/parens.
-            let (pattern, timeout_ms) = split_assert_receive_args(rest);
-            let indent = &line[..line.len() - line.trim_start().len()];
-            // Escape double quotes inside the pattern for embedding in the error message string.
-            let escaped_pattern = pattern.replace('\\', "\\\\").replace('"', "\\\"");
-            // One line, so the test body keeps its line numbers.
-            out.push_str(&format!(
-                "{indent}receive do {pattern} -> () __assert_receive_other -> test_fail_msg(\"assert_receive {escaped_pattern} received another message\") after {timeout_ms} -> test_fail_msg(\"assert_receive {escaped_pattern} timed out after {timeout_ms}ms\") end\n"
-            ));
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-/// Split `assert_receive` arguments into (pattern, timeout_ms).
-///
-/// Splits on the LAST top-level comma (not inside {} or () brackets).
-/// If no comma found, returns (rest, "100") — default 100ms timeout.
-fn split_assert_receive_args(rest: &str) -> (String, String) {
-    // Find the last comma at depth 0 (not inside brackets).
-    let chars: Vec<char> = rest.chars().collect();
-    let mut depth = 0i32;
-    let mut last_comma: Option<usize> = None;
-    let mut char_pos = 0usize;
-
-    for (i, &ch) in chars.iter().enumerate() {
-        match ch {
-            '{' | '(' | '[' => depth += 1,
-            '}' | ')' | ']' => depth -= 1,
-            ',' if depth == 0 => last_comma = Some(i),
-            _ => {}
-        }
-        char_pos = i;
-    }
-    let _ = char_pos; // suppress unused warning
-
-    match last_comma {
-        Some(pos) => {
-            // Reconstruct the string slices from char positions.
-            // Since we collected chars, we need byte offsets.
-            let byte_pos = rest.char_indices().nth(pos).map(|(b, _)| b).unwrap_or(0);
-            let pattern = rest[..byte_pos].trim().to_string();
-            let timeout = rest[byte_pos + 1..].trim().to_string();
-            let timeout_ms = if timeout.is_empty() {
-                "100".to_string()
-            } else {
-                timeout
-            };
-            (pattern, timeout_ms)
-        }
-        None => {
-            // No comma — entire rest is the pattern; use default timeout.
-            (rest.trim().to_string(), "100".to_string())
-        }
-    }
+fn expand_assert_receive(node: &SyntaxNode) -> String {
+    let mut parts = node.children().map(|child| child.text().to_string());
+    let pattern = parts.next().unwrap_or_default();
+    let timeout_ms = parts.next().unwrap_or_else(|| "100".to_string());
+    // Escape the pattern for embedding in the failure messages.
+    let escaped = pattern.replace('\\', "\\\\").replace('"', "\\\"");
+    let expansion = format!(
+        "receive do {pattern} -> () __assert_receive_other -> test_fail_msg(\"assert_receive {escaped} received another message\") after {timeout_ms} -> test_fail_msg(\"assert_receive {escaped} timed out after {timeout_ms}ms\") end"
+    );
+    keep_lines(&expansion, node, range_of(node))
 }
 
 // ── Copy project sources into temp dir for cross-module test compilation ──
@@ -1320,33 +816,90 @@ mod tests {
     }
 
     #[test]
-    fn preprocess_test_source_keeps_else_if_chains_balanced() {
-        let source = "fn pick(n :: Int) -> Int do\n  if n < 0 do\n    0\n  else if n > 9 do\n    9\n  else\n    n\n  end\nend\n\ntest(\"pick\") do\n  if pick(3) == 3 do\n    assert(true)\n  else if pick(3) == 0 do\n    assert(false)\n  else\n    assert(false)\n  end\nend\n\nfn after() -> Int do\n  1\nend\n";
+    fn preprocess_test_source_keeps_every_line_in_place() {
+        // Diagnostics named the generated file's lines, which had moved: the
+        // tests were emitted after the other items, re-indented.
+        let source = "fn pick(n :: Int) -> Int do\n  if n < 0 do\n    0\n  else if n > 9 do\n    9\n  else\n    n\n  end\nend\n\ntest(\"pick\") do\n  if pick(3) == 3 do\n    assert(true)\n  else if pick(3) == 0 do\n    assert(false)\n  else\n    assert(false)\n  end\nend\n\nfn later() -> Int do\n  1\nend\n";
 
-        let out = preprocess_test_source(source);
+        let out = preprocess_test_source(source).unwrap();
 
-        // The helper before the chain-carrying test is kept, the test block is
-        // not emitted as ordinary source, and the helper after it is emitted
-        // once, outside the test body.
-        assert!(out.contains("fn pick(n :: Int) -> Int do"), "{out}");
-        assert!(!out.contains("test(\"pick\")"), "{out}");
-        assert_eq!(out.matches("fn after() -> Int do").count(), 1, "{out}");
-        let body_start = out.find("fn __test_body_0() do").unwrap();
-        let body = &out[body_start..out.find("fn main() do").unwrap()];
-        assert!(body.contains("else if pick(3) == 0 do"), "{out}");
-        assert!(!body.contains("fn after()"), "{out}");
+        let out_lines: Vec<&str> = out.lines().collect();
+        for (i, line) in source.lines().enumerate() {
+            if i == 10 {
+                assert_eq!(out_lines[i], "fn __test_body_0() do", "{out}");
+            } else {
+                assert_eq!(out_lines[i], line, "{out}");
+            }
+        }
+        assert!(
+            out[source.len()..].contains(
+                "test_begin(\"pick\")\n  test_run_body(fn() do __test_body_0() end)\n  test_end()"
+            ),
+            "{out}"
+        );
     }
 
     #[test]
-    fn preprocess_test_source_keeps_else_if_chains_balanced_in_describe_setup() {
-        let source = "describe(\"group\") do\n  setup() do\n    if true do\n      1\n    else if false do\n      2\n    else\n      3\n    end\n  end\n  test(\"one\") do\n    assert(true)\n  end\nend\n\ntest(\"two\") do\n  assert(true)\nend\n";
+    fn preprocess_test_source_reads_strings_in_interpolations() {
+        // The text scanner took the `end` in `" end "` for the test's own.
+        let source = "test(\"interp\") do\n  let s = \"#{String.join([\"a\"], \" end \")}\"\n  assert_eq(s, \"a\")\nend\n";
+        let out = preprocess_test_source(source).unwrap();
+        assert!(
+            out.starts_with(&source.replace("test(\"interp\") do", "fn __test_body_0() do")),
+            "{out}"
+        );
+    }
 
-        let out = preprocess_test_source(source);
+    #[test]
+    fn preprocess_test_source_runs_a_describe_by_case() {
+        let source = "describe(\"group\") do\n  setup() do\n    let base = if true do\n      1\n    else if false do\n      2\n    else\n      3\n    end\n  end\n  teardown do\n    println(\"#{base}\")\n  end\n  test(\"one\") do\n    assert_receive 40, 50\n  end\nend\n\ntest(\"two\") do\n  assert(true)\nend\n";
 
-        assert!(out.contains("test_begin(\"group > one\")"), "{out}");
+        let out = preprocess_test_source(source).unwrap();
+
+        let out_lines: Vec<&str> = out.lines().collect();
+        assert_eq!(
+            out_lines[0], "fn __test_describe_0(__case :: Int) do",
+            "{out}"
+        );
+        assert_eq!(out_lines[1], "  ", "{out}");
+        assert_eq!(out_lines[2], "    let base = if true do", "{out}");
+        assert_eq!(out_lines[9], "  ", "{out}");
+        assert_eq!(out_lines[10], "  let __teardown = fn() do", "{out}");
+        assert_eq!(
+            out_lines[13], "  if __case == 0 do test_run_body(fn() do",
+            "{out}"
+        );
+        assert!(
+            out_lines[14].starts_with("    receive do 40 -> () "),
+            "{out}"
+        );
+        assert!(
+            out_lines[14].ends_with(
+                "after 50 -> test_fail_msg(\"assert_receive 40 timed out after 50ms\") end"
+            ),
+            "{out}"
+        );
+        assert_eq!(out_lines[15], "  end) end", "{out}");
+        assert_eq!(out_lines[16], "test_run_body(__teardown) end", "{out}");
+        assert_eq!(out_lines[18], "fn __test_body_1() do", "{out}");
+        assert!(
+            out.contains(
+                "test_begin(\"group > one\")\n  test_run_body(fn() do __test_describe_0(0) end)"
+            ),
+            "{out}"
+        );
         assert!(out.contains("test_begin(\"two\")"), "{out}");
-        assert!(!out.contains("describe("), "{out}");
-        assert!(!out.contains("test(\"two\")"), "{out}");
+    }
+
+    #[test]
+    fn preprocess_test_source_refuses_a_late_setup_and_passes_parse_errors() {
+        let late = "describe(\"g\") do\n  test(\"a\") do\n    assert(true)\n  end\n  setup do\n    let x = 1\n  end\nend\n";
+        let err = preprocess_test_source(late).unwrap_err();
+        assert!(err.starts_with("line 5: `setup` must come before"), "{err}");
+
+        // The build reports the parse error where it is.
+        let broken = "test(\"a\") do\n  let x = (1\nend\n";
+        assert_eq!(preprocess_test_source(broken).unwrap(), broken);
     }
 
     #[test]

@@ -326,6 +326,7 @@ fn run() {
             let diag_opts = DiagnosticOptions {
                 color: !no_color && !json,
                 json,
+                display_paths: Vec::new(),
             };
             if let Err(e) = build(
                 &dir,
@@ -903,7 +904,7 @@ pub(crate) fn prepare_project_build(
 
         for error in parse.errors() {
             has_errors = true;
-            let file_name = module_path.display().to_string();
+            let file_name = diag_opts.display_path(&module_path);
             if diag_opts.json {
                 let start = error.span.start as usize;
                 let end = (error.span.end as usize).max(start + 1);
@@ -970,13 +971,13 @@ pub(crate) fn prepare_project_build(
         let canonical = full_path.canonicalize().map_err(|error| {
             format!(
                 "Failed to resolve native binding source '{}': {error}",
-                full_path.display()
+                diag_opts.display_path(&full_path)
             )
         })?;
         if !allowed_native_bindings.contains(canonical.as_path()) {
             return Err(format!(
                 "Native declaration in '{}' is outside a manifest-declared native binding",
-                full_path.display()
+                diag_opts.display_path(&full_path)
             ));
         }
     }
@@ -1010,7 +1011,7 @@ pub(crate) fn prepare_project_build(
         let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
 
         // Report type-check diagnostics for this module
-        let file_name = module_path.display().to_string();
+        let file_name = diag_opts.display_path(&module_path);
         for error in &typeck.errors {
             has_type_errors = true;
             let rendered = mesh_typeck::diagnostics::render_diagnostic(

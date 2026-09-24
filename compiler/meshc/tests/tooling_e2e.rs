@@ -1751,3 +1751,60 @@ fn test_output_is_quiet_or_plain_as_asked() {
     assert!(!plain.contains("running:"), "{plain}");
     assert!(!plain.contains('\u{1b}'), "{plain}");
 }
+
+#[test]
+fn test_diagnostics_point_at_the_test_file() {
+    // A type error in a test was reported in the generated program,
+    // `/var/folders/.../main.mpl:7:13`, at a line that had moved and under
+    // re-indented code.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"diag-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/diag.test.mpl"),
+        "fn helper(x :: Int) -> Int do\n  x + 1\nend\n\ndescribe(\"group\") do\n  setup do\n    let base = 40\n  end\n\n  test(\"sees setup\") do\n    assert_eq(base + true, 42)\n  end\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stdout}{stderr}");
+    assert!(stderr.contains("tests/diag.test.mpl:11:15"), "{stderr}");
+    assert!(
+        stderr.contains("    assert_eq(base + true, 42)"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("main.mpl"), "{stderr}");
+}
+
+#[test]
+fn test_a_file_of_describes_runs() {
+    // With no top-level test, the generated program had no `__test_body_`
+    // function, and the compiler did not treat it as a test program:
+    // "Undefined variable 'assert_eq'".
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"describe-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/group.test.mpl"),
+        "describe(\"group\") do\n  test(\"compares\") do\n    assert_eq(1 + 1, 2)\n  end\n  test(\"receives\") do\n    send(self(), 7)\n    assert_receive 7, 500\n  end\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}{stderr}");
+    assert!(stdout.contains("2 passed"), "{stdout}");
+}

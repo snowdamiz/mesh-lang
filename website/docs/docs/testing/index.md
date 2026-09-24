@@ -172,7 +172,7 @@ describe("counter") do
 end
 ```
 
-`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. Values that `setup` binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
+`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. `setup` comes before the tests of its `describe`, and values it binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
 
 ## In-memory secure store
 

@@ -29,6 +29,10 @@ pub struct DiagnosticOptions {
     pub color: bool,
     /// Whether to output JSON format instead of human-readable. Default: false.
     pub json: bool,
+    /// Paths to name in place of others, `(from, to)`: a file, or a
+    /// directory for the files under it. `meshc test` builds a copy of the
+    /// project in a temporary directory, and names the user's files.
+    pub display_paths: Vec<(std::path::PathBuf, std::path::PathBuf)>,
 }
 
 impl Default for DiagnosticOptions {
@@ -36,16 +40,34 @@ impl Default for DiagnosticOptions {
         Self {
             color: true,
             json: false,
+            display_paths: Vec::new(),
         }
     }
 }
 
 impl DiagnosticOptions {
+    /// `path` as diagnostics name it (see `display_paths`).
+    pub fn display_path(&self, path: &std::path::Path) -> String {
+        for (from, to) in &self.display_paths {
+            if let Ok(rest) = path.strip_prefix(from) {
+                // `join("")` would add a separator.
+                let to = if rest.as_os_str().is_empty() {
+                    to.clone()
+                } else {
+                    to.join(rest)
+                };
+                return to.display().to_string();
+            }
+        }
+        path.display().to_string()
+    }
+
     /// Create options for colorless output (used in tests for deterministic snapshots).
     pub fn colorless() -> Self {
         Self {
             color: false,
             json: false,
+            display_paths: Vec::new(),
         }
     }
 
@@ -54,6 +76,7 @@ impl DiagnosticOptions {
         Self {
             color: false,
             json: true,
+            display_paths: Vec::new(),
         }
     }
 }

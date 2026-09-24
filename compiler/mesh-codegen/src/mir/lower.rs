@@ -424,7 +424,8 @@ struct Lowerer<'a> {
     actor_body_target: Option<(String, String, Vec<MirType>)>,
     /// Enables special lowering of test DSL constructs (assert, assert_eq, assert_ne,
     /// assert_raises). Detected in lower_source_file's pre-scan pass by looking
-    /// for `fn __test_body_*` function definitions (injected by the preprocessor).
+    /// for `fn __test_body_*` or `fn __test_describe_*` function definitions
+    /// (injected by the preprocessor).
     is_test_mode: bool,
     /// Maps call-site TextRange -> mangled callee name (e.g. "slugify__2").
     /// Populated by the typechecker for arity-overloaded calls; used here to
@@ -2391,12 +2392,13 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Detect test mode: scan for `fn __test_body_*` functions injected by the
-        // test preprocessor. When found, enable special DSL lowering for assert/assert_raises.
+        // Detect test mode: scan for the `fn __test_body_*` and
+        // `fn __test_describe_*` functions injected by the test preprocessor.
+        // When found, enable special DSL lowering for assert/assert_raises.
         for item in sf.items() {
             if let Item::FnDef(ref fn_def) = item {
                 if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                    if name.starts_with("__test_body_") {
+                    if name.starts_with("__test_body_") || name.starts_with("__test_describe_") {
                         self.is_test_mode = true;
                         break;
                     }
