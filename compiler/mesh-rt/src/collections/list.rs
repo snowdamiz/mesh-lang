@@ -14,7 +14,13 @@
 //! format) resolves views the same way.
 //!
 //! All mutation operations (append, tail, concat, etc.) return a NEW list,
-//! preserving immutability semantics.
+//! preserving immutability semantics. `append` and `concat` still avoid the
+//! copy when they can: the newest list written into a buffer with room to
+//! spare (its elements end where the buffer's written slots do) is extended
+//! in place, and the longer list is a view of that buffer. Every other list
+//! sharing the buffer ends before the new slots and never sees them; a list
+//! that is not the newest copies, into a buffer twice as large. So a list
+//! built one `append` at a time takes amortized O(1) per element.
 
 use crate::gc::mesh_gc_alloc_actor;
 use crate::option::alloc_option;
@@ -39,9 +45,26 @@ unsafe fn list_len(list: *const u8) -> u64 {
     *(list as *const u64)
 }
 
+/// The low bits of an owned list's capacity word are its capacity; the high
+/// bits count the slots past its own elements that appends have written
+/// (see [`extend_in_place`]). A capacity is below 2^31, so the word is never
+/// `VIEW`.
+const WRITTEN_SHIFT: u32 = 32;
+const CAP_MASK: u64 = (1 << WRITTEN_SHIFT) - 1;
+const MAX_CAP: u64 = (1 << 31) - 1;
+
 /// Read the capacity field from a list pointer (`VIEW` for a view).
 unsafe fn list_cap(list: *const u8) -> u64 {
-    *((list as *const u64).add(1))
+    match *((list as *const u64).add(1)) {
+        VIEW => VIEW,
+        word => word & CAP_MASK,
+    }
+}
+
+/// The slots of an owned list's buffer written so far: its own elements and
+/// those appends placed after them.
+unsafe fn list_written(list: *const u8) -> u64 {
+    list_len(list) + (*((list as *const u64).add(1)) >> WRITTEN_SHIFT)
 }
 
 /// Get a pointer to the data region, following a view to its parent.
@@ -91,6 +114,11 @@ unsafe fn alloc_view(list: *const u8, skip: u64, len: u64) -> *mut u8 {
 
 /// Allocate a new list with the given capacity, length set to 0.
 unsafe fn alloc_list(cap: u64) -> *mut u8 {
+    if cap > MAX_CAP {
+        crate::panic::raise(format_args!(
+            "List: a list holds at most {MAX_CAP} elements"
+        ));
+    }
     let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
     let p = mesh_gc_alloc_actor(total as u64, 8);
     // len = 0, cap = cap
@@ -107,6 +135,60 @@ unsafe fn alloc_list_from(src: *const u64, len: u64, cap: u64) -> *mut u8 {
         ptr::copy_nonoverlapping(src, list_data_mut(p), len as usize);
     }
     p
+}
+
+/// A view of `len` elements of the owned list `buffer` from `offset` on.
+unsafe fn view_of_buffer(buffer: *mut u8, offset: u64, len: u64) -> *mut u8 {
+    let p = mesh_gc_alloc_actor(VIEW_SIZE as u64, 8);
+    *(p as *mut u64) = len;
+    *((p as *mut u64).add(1)) = VIEW;
+    *((p as *mut u64).add(2)) = buffer as u64;
+    *((p as *mut u64).add(3)) = offset;
+    p
+}
+
+/// `list` followed by `count` elements from `elements`, written into the
+/// spare room of `list`'s buffer when `list` is the newest list there (its
+/// elements end at the buffer's last written slot): a view of the buffer.
+/// `None` when it is not, the buffer is full, or it belongs to another heap.
+unsafe fn extend_in_place(list: *const u8, elements: *const u64, count: u64) -> Option<*mut u8> {
+    let (buffer, offset) = if list_cap(list) == VIEW {
+        (
+            *((list as *const u64).add(2)) as *mut u8,
+            *((list as *const u64).add(3)),
+        )
+    } else {
+        (list as *mut u8, 0)
+    };
+    let len = list_len(list);
+    let end = offset + len;
+    if end != list_written(buffer)
+        || list_cap(buffer) - end < count
+        || !crate::gc::may_update_in_place(buffer)
+    {
+        return None;
+    }
+    // The source may be this buffer's own elements (`xs ++ xs`); they end
+    // before `end`, where the new ones start.
+    ptr::copy_nonoverlapping(
+        elements,
+        list_data_mut(buffer).add(end as usize),
+        count as usize,
+    );
+    let extra = end + count - list_len(buffer);
+    *((buffer as *mut u64).add(1)) = list_cap(buffer) | (extra << WRITTEN_SHIFT);
+    Some(view_of_buffer(buffer, offset, len + count))
+}
+
+/// A new list of `a` and then `b`, with room for as many elements again.
+unsafe fn concat_copy(a: *const u8, b: *const u64, b_len: u64) -> *mut u8 {
+    let a_len = list_len(a);
+    let len = a_len + b_len;
+    let list = alloc_list((len * 2).clamp(4, MAX_CAP).max(len));
+    *(list as *mut u64) = len;
+    ptr::copy_nonoverlapping(list_data(a), list_data_mut(list), a_len as usize);
+    ptr::copy_nonoverlapping(b, list_data_mut(list).add(a_len as usize), b_len as usize);
+    list
 }
 
 /// Allocate a 2-element tuple on the GC heap matching Mesh's tuple layout.
@@ -137,17 +219,7 @@ pub extern "C-unwind" fn mesh_list_length(list: *mut u8) -> i64 {
 /// Return a NEW list with `element` appended at the end.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_list_append(list: *mut u8, element: u64) -> *mut u8 {
-    unsafe {
-        let len = list_len(list);
-        let new_cap = len + 1;
-        let new_list = alloc_list(new_cap);
-        *(new_list as *mut u64) = new_cap; // len = old len + 1
-        if len > 0 {
-            ptr::copy_nonoverlapping(list_data(list), list_data_mut(new_list), len as usize);
-        }
-        *list_data_mut(new_list).add(len as usize) = element;
-        new_list
-    }
+    unsafe { extend_in_place(list, &element, 1).unwrap_or_else(|| concat_copy(list, &element, 1)) }
 }
 
 /// Return the first element. Panics if empty.
@@ -192,22 +264,15 @@ pub extern "C-unwind" fn mesh_list_get(list: *mut u8, index: i64) -> u64 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_list_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
-        let a_len = list_len(a);
-        let b_len = list_len(b);
-        let new_len = a_len + b_len;
-        let new_list = alloc_list(new_len);
-        *(new_list as *mut u64) = new_len;
-        if a_len > 0 {
-            ptr::copy_nonoverlapping(list_data(a), list_data_mut(new_list), a_len as usize);
+        let (b_len, b_data) = list_slots(b);
+        if b_len == 0 {
+            return a;
         }
-        if b_len > 0 {
-            ptr::copy_nonoverlapping(
-                list_data(b),
-                list_data_mut(new_list).add(a_len as usize),
-                b_len as usize,
-            );
+        if list_len(a) == 0 {
+            return b;
         }
-        new_list
+        extend_in_place(a, b_data, b_len as u64)
+            .unwrap_or_else(|| concat_copy(a, b_data, b_len as u64))
     }
 }
 
@@ -359,7 +424,8 @@ pub extern "C-unwind" fn mesh_list_builder_push(list: *mut u8, element: u64) -> 
     unsafe {
         let len = list_len(list);
         let cap = list_cap(list);
-        let list = if cap != VIEW && len < cap {
+        // A buffer an append has written past this list is not its to fill.
+        let list = if cap != VIEW && len < cap && list_written(list) == len {
             list
         } else {
             alloc_list_from(list_data(list), len, (len * 2).max(4))

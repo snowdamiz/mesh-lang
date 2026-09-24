@@ -533,27 +533,30 @@ pub extern "C-unwind" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
 /// Expects each element to be a tuple pointer with layout { len: u64, key: u64, value: u64 }.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
-    mesh_map_collect_by(iter, 0, std::ptr::null_mut())
+    mesh_map_collect_by(iter, 0, std::ptr::null_mut(), std::ptr::null_mut())
 }
 
 /// Map.collect(iter) variant for string keys -- materialize iterator of (key, value)
 /// tuples into a Map with string key_type (KEY_TYPE_STR = 1).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
-    mesh_map_collect_by(iter, 1, std::ptr::null_mut())
+    mesh_map_collect_by(iter, 1, std::ptr::null_mut(), std::ptr::null_mut())
 }
 
 /// Map.collect(iter) with keys compared as `key_type` (0 Int, 1 String) or
-/// by `key_eq`, a `fn(u64, u64) -> i8` over two key slots; the compiler
-/// chooses from the key type.
+/// by `key_eq` and `key_hash` (`fn(u64, u64) -> i8` and `fn(u64) -> Int`
+/// over key slots); the compiler chooses from the key type. The map grows in
+/// place, held on this stack while the iterator's closures run.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_map_collect_by(
     iter: *mut u8,
     key_type: i64,
     key_eq: *mut u8,
+    key_hash: *mut u8,
 ) -> *mut u8 {
+    use crate::collections::map::{mesh_map_new_typed, mesh_map_put_by};
     unsafe {
-        let mut map = crate::collections::map::MapBuilder::new(key_type as u64, key_eq);
+        let mut map = mesh_map_new_typed(key_type);
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
@@ -564,27 +567,28 @@ pub extern "C-unwind" fn mesh_map_collect_by(
             // Tuple layout: { u64 len=2, u64 key, u64 value }
             let key = *((tuple_ptr as *const u64).add(1));
             let val = *((tuple_ptr as *const u64).add(2));
-            map.put(key, val);
+            map = mesh_map_put_by(map, key, val, key_eq, key_hash);
         }
-        map.finish()
+        map
     }
 }
 
 /// Set.collect(iter) -- materialize iterator into a Set.
-/// Repeated elements are kept once (`SetBuilder`).
+/// Repeated elements are kept once.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
+    use crate::collections::set::{mesh_set_add, mesh_set_new};
     unsafe {
-        let mut set = crate::collections::set::SetBuilder::new();
+        let mut set = mesh_set_new();
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
             if (*opt_ref).tag == 1 {
                 break; // None
             }
-            set.add((*opt_ref).value as u64);
+            set = mesh_set_add(set, (*opt_ref).value as u64);
         }
-        set.finish()
+        set
     }
 }
 

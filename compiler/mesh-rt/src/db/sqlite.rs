@@ -129,8 +129,8 @@ unsafe fn bind_params(
     stmt: *mut sqlite3_stmt,
     params: *mut u8,
 ) -> Result<(), *mut u8> {
-    let len = *(params as *const u64);
-    let data_ptr = (params as *const u64).add(2); // skip len + cap
+    // Through `list_slots`: the list may be a view of another's buffer.
+    let (len, data_ptr) = crate::collections::list::list_slots(params);
 
     // We need to keep CStrings alive until all binds are complete.
     let mut cstrings = Vec::with_capacity(len as usize);

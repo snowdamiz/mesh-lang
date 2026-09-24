@@ -1064,11 +1064,10 @@ fn err_result(msg: &str) -> *mut u8 {
 
 /// Extract param strings from a Mesh List<String>.
 ///
-/// MeshList layout: `{ len: u64, cap: u64, data: [u64; cap] }`
-/// Each element is a u64 that is actually a pointer to a MeshString.
+/// Each element is a u64 that is actually a pointer to a MeshString. The
+/// list is read through `list_slots`: it may be a view of another's buffer.
 unsafe fn extract_params(params: *mut u8) -> Vec<String> {
-    let len = *(params as *const u64);
-    let data_ptr = (params as *const u64).add(2); // skip len + cap
+    let (len, data_ptr) = crate::collections::list::list_slots(params);
     let mut result = Vec::with_capacity(len as usize);
     for i in 0..len as usize {
         let param_ptr = *data_ptr.add(i) as *const MeshString;

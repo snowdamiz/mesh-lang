@@ -8,4 +8,5 @@ pub mod map;
 pub mod queue;
 pub mod range;
 pub mod set;
+pub(crate) mod table;
 pub mod tuple;

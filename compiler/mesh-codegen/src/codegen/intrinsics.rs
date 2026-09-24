@@ -1732,7 +1732,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         i8_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
-    // Map operations comparing keys by a key-type Eq callback (null: by the map's key type).
+    // Map operations comparing keys by a key-type Eq callback and hashing them
+    // by its Hash callback (both null: by the map's key type).
     for (name, params, returns_ptr) in [
         (
             "mesh_map_put_by",
@@ -1741,47 +1742,84 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
                 i64_type.into(),
                 i64_type.into(),
                 ptr_type.into(),
+                ptr_type.into(),
             ],
             1,
         ),
         (
             "mesh_map_get_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             0,
         ),
         (
             "mesh_map_fetch_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             0,
         ),
         (
             "mesh_map_has_key_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             2,
         ),
         (
             "mesh_map_delete_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             1,
         ),
         (
             "mesh_map_merge_by",
-            vec![ptr_type.into(), ptr_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             1,
         ),
         (
             "mesh_map_from_list_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             1,
         ),
         (
             "mesh_map_collect_by",
-            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
             1,
         ),
         (
             "mesh_map_eq_by",
             vec![
+                ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),

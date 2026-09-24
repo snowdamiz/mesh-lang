@@ -199,6 +199,35 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
     CURRENT_PROCESS.try_with(alloc).ok().flatten()
 }
 
+/// Whether a runtime function may change the object at `ptr` in place (a
+/// collection growing into its spare room): the object is in the running
+/// actor's own heap, which no other thread writes and whose collector sees
+/// what is stored in it. An object of another heap (lent) or of the global
+/// arena is not. Off an actor (the runtime's own threads, unit tests) every
+/// object a thread handles is its own.
+pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
+    use crate::actor::stack::get_current_pid;
+    use crate::actor::GLOBAL_SCHEDULER;
+
+    let Some(pid) = get_current_pid() else {
+        return true;
+    };
+    let owns = |cached: &CachedProcess| {
+        let mut cached = cached.borrow_mut();
+        if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
+            *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
+        }
+        let (_, process) = cached.as_ref()?;
+        let contains = process.lock().heap.contains_address(ptr);
+        Some(contains)
+    };
+    CURRENT_PROCESS
+        .try_with(owns)
+        .ok()
+        .flatten()
+        .unwrap_or(false)
+}
+
 thread_local! {
     /// The process that last allocated on this thread, keyed by its PID.
     static CURRENT_PROCESS: CachedProcess = const { std::cell::RefCell::new(None) };

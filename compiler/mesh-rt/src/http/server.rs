@@ -1742,18 +1742,14 @@ fn process_request(
         let mut extra_headers = if resp.headers.is_null() {
             None
         } else {
-            let headers_map = resp.headers;
-            let len = map::mesh_map_size(headers_map) as usize;
-            if len == 0 {
+            // The map's live entries (a map may be a view of a table), each
+            // a pair of MeshString pointers (a string-keyed map).
+            let (_, entries) = map::live_entries(resp.headers);
+            if entries.is_empty() {
                 None
             } else {
-                let mut headers_vec = Vec::with_capacity(len);
-                // Iterate the MeshMap's internal entries array.
-                // Layout: [u64; 2] per entry where [0] = key, [1] = value.
-                // Both are MeshString pointers cast to u64 (string-keyed map).
-                let entries = (headers_map as *const u8).add(16) as *const [u64; 2];
-                for i in 0..len {
-                    let entry = &*entries.add(i);
+                let mut headers_vec = Vec::with_capacity(entries.len());
+                for entry in &entries {
                     let key_ptr = entry[0] as *const MeshString;
                     let val_ptr = entry[1] as *const MeshString;
                     let key_str = (*key_ptr).as_str().to_string();

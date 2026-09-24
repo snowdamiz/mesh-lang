@@ -4809,3 +4809,93 @@ fn a_module_blocks_struct_stays_in_the_block() {
     );
     assert!(err.contains("unknown type `Secret`"), "{err}");
 }
+
+#[test]
+fn collections_grow_in_place_one_element_at_a_time() {
+    // `List.append`, `Map.put` and `Set.add` copied the collection they were
+    // given, and a map or set found a key by a scan: building 100 000
+    // elements one at a time took minutes. The newest version of a
+    // collection now grows in place (a map or set through a hash index), and
+    // a change to an older one copies it, so every value keeps its elements.
+    let source = r##"
+fn build(i :: Int, n :: Int, xs :: List<Int>, m :: Map<Int, Int>, s :: Set) -> (List<Int>, Map<Int, Int>, Set) do
+  if i == n do
+    (xs, m, s)
+  else
+    build(i + 1, n, List.append(xs, i), Map.put(m, i % 5000, i), Set.add(s, i % 7000))
+  end
+end
+
+fn count_words(words :: List<String>) -> Map<String, Int> do
+  List.reduce(words, %{}, fn acc, w ->
+    if Map.has_key(acc, w) do
+      Map.put(acc, w, Map.get(acc, w) + 1)
+    else
+      Map.put(acc, w, 1)
+    end
+  end)
+end
+
+fn main() do
+  let (xs, m, s) = build(0, 100000, [], %{}, Set.new())
+  println("#{List.length(xs)} #{List.last(xs)} #{Map.size(m)} #{Map.get(m, 4999)} #{Set.size(s)} #{Set.contains(s, 6999)}")
+  let short = List.take(xs, 3)
+  let a = List.append(short, 7)
+  let b = List.append(short, 8)
+  let c = short ++ [9, 10]
+  let d = a ++ a
+  println("#{short} #{a} #{b} #{c} #{d}")
+  let big = List.reduce(Range.to_list(0..20), %{}, fn acc, i -> Map.put(acc, i, i) end)
+  let left = Map.put(big, 5, 50)
+  let right = Map.delete(big, 5)
+  let again = Map.put(big, 100, 1)
+  println("#{Map.get(big, 5)} #{Map.get(left, 5)} #{Map.has_key(right, 5)} #{Map.size(big)} #{Map.size(right)} #{Map.size(again)} #{Map.has_key(big, 100)}")
+  let moved = Map.put(Map.delete(big, 0), 0, 7)
+  println("#{List.head(Map.keys(moved))} #{List.last(Map.keys(moved))} #{Map.get(moved, 0)} #{left == Map.put(big, 5, 50)} #{left == big}")
+  let total = for {k, v} in left do
+    k + v
+  end
+  println("#{List.reduce(total, 0, fn x, y -> x + y end)}")
+  let grid = List.reduce(Range.to_list(0..3000), %{}, fn acc, i -> Map.put(acc, (i % 50, i / 50), i) end)
+  println("#{Map.size(grid)} #{Map.get(grid, (7, 11))} #{Map.has_key(grid, (50, 0))}")
+  let words = List.map(Range.to_list(0..30000), fn i -> "w#{i % 300}" end)
+  let counts = count_words(words)
+  println("#{Map.size(counts)} #{Map.get(counts, "w17")} #{Json.encode(Map.delete(counts, "w1")) |> String.length()}")
+  let sset = Set.remove(Set.add(s, 70000), 3)
+  println("#{Set.size(sset)} #{Set.contains(sset, 3)} #{Set.contains(s, 3)} #{Set.size(Set.intersection(s, sset))}")
+end
+"##;
+    let started = std::time::Instant::now();
+    assert_eq!(
+        run(source),
+        "100000 99999 5000 99999 7000 true\n[0, 1, 2] [0, 1, 2, 7] [0, 1, 2, 8] [0, 1, 2, 9, 10] [0, 1, 2, 7, 0, 1, 2, 7]\n5 50 false 20 19 21 false\n1 0 7 true false\n425\n3000 557 false\n300 100 3182\n7000 false true 6999\n"
+    );
+    // Compiling included. A collection at every allocation (MESH_GC_STRESS)
+    // is slower than that.
+    if std::env::var_os("MESH_GC_STRESS").is_none() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+    // A grown map, set or list sent to another actor arrives as its live
+    // elements.
+    let source = r##"
+actor keeper() do
+  receive do
+    (m, s, xs) -> do
+      let m2 = Map.put(m, "extra", 1)
+      println("#{Map.size(m)} #{Map.get(m, "k3")} #{Map.has_key(m, "k0")} #{Map.size(m2)} #{Set.size(s)} #{Set.contains(s, 12)} #{List.length(xs)} #{List.last(xs)}")
+    end
+  end
+end
+
+fn main() do
+  let m = List.reduce(Range.to_list(0..30), %{}, fn acc, i -> Map.put(acc, "k#{i % 12}", i) end)
+  let m = Map.delete(m, "k0")
+  let s = List.reduce(Range.to_list(0..40), Set.new(), fn acc, i -> Set.add(acc, i % 13) end)
+  let xs = List.reduce(Range.to_list(0..50), [], fn acc, i -> List.append(acc, i) end)
+  let pid = spawn(keeper)
+  send(pid, (m, s, xs))
+  Timer.sleep(200)
+end
+"##;
+    assert_eq!(run(source), "11 27 false 12 13 true 50 49\n");
+}

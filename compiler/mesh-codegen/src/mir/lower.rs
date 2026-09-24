@@ -12648,10 +12648,14 @@ impl<'a> Lowerer<'a> {
                                         Box::new(MirType::Bool),
                                     ),
                                 );
+                                let key_hash = MirExpr::Var(
+                                    self.resolve_hash_callback(key),
+                                    MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
+                                );
                                 Self::call_named(
                                     "mesh_map_eq_by",
-                                    vec![MirType::Ptr; 4],
-                                    vec![lhs, rhs, callback, key_eq],
+                                    vec![MirType::Ptr; 5],
+                                    vec![lhs, rhs, callback, key_eq, key_hash],
                                     MirType::Bool,
                                 )
                             }
@@ -13522,11 +13526,19 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(param_tys.clone(), Box::new(ret_ty.clone())),
         );
         let slot_fn = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool));
-        let key_eq = if by_eq {
-            MirExpr::Var(self.resolve_eq_callback(key), slot_fn.clone())
+        let hash_fn = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
+        // The key type's Eq and Hash (the runtime indexes large maps by the
+        // hash); no callbacks: the runtime compares by the map's key type.
+        let (key_eq, key_hash) = if by_eq {
+            (
+                MirExpr::Var(self.resolve_eq_callback(key), slot_fn.clone()),
+                MirExpr::Var(self.resolve_hash_callback(key), hash_fn),
+            )
         } else {
-            // No callback: the runtime compares by the map's key type.
-            MirExpr::IntLit(0, MirType::Ptr)
+            (
+                MirExpr::IntLit(0, MirType::Ptr),
+                MirExpr::IntLit(0, MirType::Ptr),
+            )
         };
         let arg = |index: usize| MirExpr::Var(format!("__arg_{index}"), param_tys[index].clone());
         let slot = |index: usize| {
@@ -13555,6 +13567,8 @@ impl<'a> Lowerer<'a> {
             ),
         };
         args.push(key_eq);
+        arg_tys.push(MirType::Ptr);
+        args.push(key_hash);
         arg_tys.push(MirType::Ptr);
         let raw_ret = match op {
             "get" => MirType::Int,

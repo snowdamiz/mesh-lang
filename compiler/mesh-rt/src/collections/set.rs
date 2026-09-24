@@ -1,49 +1,39 @@
 //! GC-managed immutable Set for the Mesh runtime.
 //!
-//! A MeshSet stores unique elements as uniform 8-byte (`u64`) values.
-//! Backed by a simple sorted vector with linear scan -- efficient for
-//! the small sets typical in Phase 8.
+//! A set's elements are uniform 8-byte words, compared as words, kept in
+//! the order they were added. The storage (a table that small sets copy on a
+//! change and large ones grow in place, with a hash index) is in
+//! [`super::table`].
 //!
-//! All mutation operations return a NEW set (immutable semantics).
+//! All operations return a NEW set (immutable semantics): a value never sees
+//! a change made after it.
 
-use crate::gc::mesh_gc_alloc_actor;
-use std::ptr;
+use super::table::{self, Keys};
 
-/// Header: len (u64), cap (u64).
-const HEADER_SIZE: usize = 16;
-const ELEM_SIZE: usize = 8;
-
-// ── Internal helpers ──────────────────────────────────────────────────
-
-unsafe fn set_len(s: *const u8) -> u64 {
-    *(s as *const u64)
+/// The live elements, in order, as a table of their own.
+unsafe fn elements(set: *mut u8) -> (*const u64, usize) {
+    let compact = table::compact::<1>(set);
+    (table::entry::<1>(compact, 0), table::len(compact))
 }
 
-unsafe fn set_data(s: *const u8) -> *const u64 {
-    (s as *const u64).add(2)
+unsafe fn contains(set: *mut u8, element: u64) -> bool {
+    let (table, n, _) = table::state::<1>(set);
+    table::find::<1>(table, n, element, &Keys::WORDS).is_some()
 }
 
-unsafe fn set_data_mut(s: *mut u8) -> *mut u64 {
-    (s as *mut u64).add(2)
+/// The live elements of a set, in order, without allocating: for message
+/// capture and the wire format.
+pub(crate) unsafe fn live_elements(set: *const u8) -> Vec<u64> {
+    table::live_entries::<1>(set)
+        .into_iter()
+        .map(|[element]| element)
+        .collect()
 }
 
-unsafe fn alloc_set(cap: u64) -> *mut u8 {
-    let total = HEADER_SIZE + (cap as usize) * ELEM_SIZE;
-    let p = mesh_gc_alloc_actor(total as u64, 8);
-    *(p as *mut u64) = 0;
-    *((p as *mut u64).add(1)) = cap;
-    p
-}
-
-unsafe fn contains_elem(s: *const u8, elem: u64) -> bool {
-    let len = set_len(s) as usize;
-    let data = set_data(s);
-    for i in 0..len {
-        if *data.add(i) == elem {
-            return true;
-        }
-    }
-    false
+/// A set of `elements` (unique).
+pub(crate) unsafe fn set_from_elements(elements: &[u64]) -> *mut u8 {
+    let entries: Vec<[u64; 1]> = elements.iter().map(|&element| [element]).collect();
+    table::table_from::<1>(&entries, 0)
 }
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -51,84 +41,48 @@ unsafe fn contains_elem(s: *const u8, elem: u64) -> bool {
 /// Create an empty set.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_new() -> *mut u8 {
-    unsafe { alloc_set(0) }
+    unsafe { table::alloc_table::<1>(0, 0) }
 }
 
-/// Return a NEW set with the element added (no-op if already present).
+/// Return a NEW set with the element added (the set itself if it holds it).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
     unsafe {
-        if contains_elem(set, element) {
-            // Already present -- return a copy.
-            let len = set_len(set);
-            let new_set = alloc_set(len);
-            *(new_set as *mut u64) = len;
-            if len > 0 {
-                ptr::copy_nonoverlapping(set_data(set), set_data_mut(new_set), len as usize);
-            }
-            return new_set;
+        if contains(set, element) {
+            set
+        } else {
+            table::put::<1>(set, [element], &Keys::WORDS)
         }
-
-        let len = set_len(set) as usize;
-        let new_len = len + 1;
-        let new_set = alloc_set(new_len as u64);
-        *(new_set as *mut u64) = new_len as u64;
-        if len > 0 {
-            ptr::copy_nonoverlapping(set_data(set), set_data_mut(new_set), len);
-        }
-        *set_data_mut(new_set).add(len) = element;
-        new_set
     }
 }
 
 /// Return a NEW set without the element.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
-    unsafe {
-        let len = set_len(set) as usize;
-        let data = set_data(set);
-        let new_set = alloc_set(len as u64);
-        let dst = set_data_mut(new_set);
-        let mut j = 0;
-        for i in 0..len {
-            if *data.add(i) != element {
-                *dst.add(j) = *data.add(i);
-                j += 1;
-            }
-        }
-        *(new_set as *mut u64) = j as u64;
-        new_set
-    }
+    unsafe { table::delete::<1>(set, element, &Keys::WORDS) }
 }
 
 /// Returns 1 if the element is in the set, 0 otherwise.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
-    unsafe {
-        if contains_elem(set, element) {
-            1
-        } else {
-            0
-        }
-    }
+    unsafe { contains(set, element) as i8 }
 }
 
 /// Return the number of elements in the set.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_size(set: *mut u8) -> i64 {
-    unsafe { set_len(set) as i64 }
+    unsafe { table::size::<1>(set) as i64 }
 }
 
 /// Whether two sets hold the same elements, in any order.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
     unsafe {
-        let len = set_len(a) as usize;
-        if len != set_len(b) as usize {
+        if table::size::<1>(a) != table::size::<1>(b) {
             return 0;
         }
-        let data = set_data(a);
-        (0..len).all(|i| contains_elem(b, *data.add(i))) as i8
+        let (data, len) = elements(a);
+        (0..len).all(|i| contains(b, *data.add(i))) as i8
     }
 }
 
@@ -139,74 +93,43 @@ pub extern "C-unwind" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
     type ElemHash = unsafe extern "C-unwind" fn(u64) -> i64;
     unsafe {
         let f: ElemHash = std::mem::transmute(hash);
-        let (data, len) = (set_data(set), set_len(set));
-        let sum = (0..len as usize).fold(0i64, |acc, i| acc.wrapping_add(f(*data.add(i))));
+        let (data, len) = elements(set);
+        let sum = (0..len).fold(0i64, |acc, i| acc.wrapping_add(f(*data.add(i))));
         crate::hash::mesh_hash_combine(crate::hash::mesh_hash_int(len as i64), sum)
     }
 }
 
-/// Return a NEW set that is the union of `a` and `b`.
+/// Return a NEW set that is the union of `a` and `b`: `a`'s elements, then
+/// `b`'s that are not in `a`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
-        // Start with a copy of `a`, then add elements from `b`.
-        let a_len = set_len(a) as usize;
-        let b_len = set_len(b) as usize;
-        let max_len = a_len + b_len;
-        let result = alloc_set(max_len as u64);
-        let dst = set_data_mut(result);
-
-        // Copy all of `a`.
-        let a_data = set_data(a);
-        if a_len > 0 {
-            ptr::copy_nonoverlapping(a_data, dst, a_len);
+        let (data, len) = elements(b);
+        let mut result = a;
+        for i in 0..len {
+            result = mesh_set_add(result, *data.add(i));
         }
-        let mut count = a_len;
-
-        // Add elements from `b` that are not in `a`.
-        let b_data = set_data(b);
-        for i in 0..b_len {
-            let elem = *b_data.add(i);
-            // Linear search in result so far.
-            let mut found = false;
-            for j in 0..count {
-                if *dst.add(j) == elem {
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                *dst.add(count) = elem;
-                count += 1;
-            }
-        }
-
-        *(result as *mut u64) = count as u64;
         result
     }
+}
+
+/// The elements of `a` that are (`keep`) or are not in `b`, in `a`'s order.
+unsafe fn filter_by(a: *mut u8, b: *mut u8, keep: bool) -> *mut u8 {
+    let (data, len) = elements(a);
+    let mut result = mesh_set_new();
+    for i in 0..len {
+        let element = *data.add(i);
+        if contains(b, element) == keep {
+            result = table::put::<1>(result, [element], &Keys::WORDS);
+        }
+    }
+    result
 }
 
 /// Return a NEW set that is the intersection of `a` and `b`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
-    unsafe {
-        let a_len = set_len(a) as usize;
-        let result = alloc_set(a_len as u64);
-        let a_data = set_data(a);
-        let dst = set_data_mut(result);
-        let mut count = 0;
-
-        for i in 0..a_len {
-            let elem = *a_data.add(i);
-            if contains_elem(b, elem) {
-                *dst.add(count) = elem;
-                count += 1;
-            }
-        }
-
-        *(result as *mut u64) = count as u64;
-        result
-    }
+    unsafe { filter_by(a, b, true) }
 }
 
 /// Get the element at index i. Panics if out of bounds.
@@ -214,14 +137,10 @@ pub extern "C-unwind" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_element_at(set: *mut u8, index: i64) -> u64 {
     unsafe {
-        let len = set_len(set);
-        if index < 0 || index as u64 >= len {
-            panic!(
-                "mesh_set_element_at: index {} out of bounds (len {})",
-                index, len
-            );
+        let (data, len) = elements(set);
+        if index < 0 || index as usize >= len {
+            panic!("mesh_set_element_at: index {index} out of bounds (len {len})");
         }
-        let data = set_data(set);
         *data.add(index as usize)
     }
 }
@@ -235,8 +154,7 @@ pub extern "C-unwind" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) 
     type ElemToStr = unsafe extern "C-unwind" fn(u64) -> *mut u8;
 
     unsafe {
-        let len = set_len(set) as usize;
-        let data = set_data(set);
+        let (data, len) = elements(set);
         let f: ElemToStr = std::mem::transmute(elem_to_str);
 
         let mut result = String::from("#{");
@@ -255,94 +173,32 @@ pub extern "C-unwind" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) 
 /// Return a NEW set containing elements in `a` that are NOT in `b`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
-    unsafe {
-        let a_len = set_len(a) as usize;
-        let a_data = set_data(a);
-        let result = alloc_set(a_len as u64);
-        let dst = set_data_mut(result);
-        let mut count = 0;
-
-        for i in 0..a_len {
-            let elem = *a_data.add(i);
-            if !contains_elem(b, elem) {
-                *dst.add(count) = elem;
-                count += 1;
-            }
-        }
-
-        *(result as *mut u64) = count as u64;
-        result
-    }
+    unsafe { filter_by(a, b, false) }
 }
 
 /// Convert a set to a list of its elements.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
     unsafe {
-        let len = set_len(set) as usize;
-        let src = set_data(set);
+        let (data, len) = elements(set);
         let mut list = super::list::mesh_list_builder_new(len as i64);
         for i in 0..len {
-            list = super::list::mesh_list_builder_push(list, *src.add(i));
+            list = super::list::mesh_list_builder_push(list, *data.add(i));
         }
         list
     }
 }
 
-/// Builds a set in place, for `from_list` and `collect`: `add` copies the
-/// set it is given, so adding one element at a time took quadratic time.
-/// Elements keep the order they first appear in; a hash index of their
-/// words (what a set compares) finds repeats. The set being built is a GC
-/// object held here, as `add`'s result was.
-pub(crate) struct SetBuilder {
-    set: *mut u8,
-    seen: std::collections::HashSet<u64>,
-}
-
-impl SetBuilder {
-    pub(crate) unsafe fn new() -> Self {
-        SetBuilder {
-            set: alloc_set(4),
-            seen: Default::default(),
-        }
-    }
-
-    pub(crate) unsafe fn add(&mut self, element: u64) {
-        if !self.seen.insert(element) {
-            return;
-        }
-        let len = set_len(self.set);
-        if len == *((self.set as *const u64).add(1)) {
-            let grown = alloc_set(len * 2);
-            ptr::copy_nonoverlapping(set_data(self.set), set_data_mut(grown), len as usize);
-            *(grown as *mut u64) = len;
-            self.set = grown;
-        }
-        *set_data_mut(self.set).add(len as usize) = element;
-        *(self.set as *mut u64) = len + 1;
-    }
-
-    /// The set, with no room to spare: every other set's capacity is its
-    /// length.
-    pub(crate) unsafe fn finish(self) -> *mut u8 {
-        let len = set_len(self.set);
-        let set = alloc_set(len);
-        ptr::copy_nonoverlapping(set_data(self.set), set_data_mut(set), len as usize);
-        *(set as *mut u64) = len;
-        set
-    }
-}
-
-/// Build a set from a list, without its repeats.
+/// Build a set from a list, without its repeats; `add` grows it in place.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
         let (len, data) = super::list::list_slots(list);
-        let mut set = SetBuilder::new();
+        let mut set = mesh_set_new();
         for i in 0..len {
-            set.add(*data.add(i));
+            set = mesh_set_add(set, *data.add(i));
         }
-        set.finish()
+        set
     }
 }
 
@@ -361,11 +217,13 @@ struct SetIterator {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
     unsafe {
+        // The elements in order, laid out once.
+        let set = table::compact::<1>(set);
         let size = mesh_set_size(set);
-        let iter = mesh_gc_alloc_actor(
+        let iter = crate::gc::mesh_gc_alloc_actor(
             std::mem::size_of::<SetIterator>() as u64,
             std::mem::align_of::<SetIterator>() as u64,
-        ) as *mut u8 as *mut SetIterator;
+        ) as *mut SetIterator;
         (*iter).tag = 2; // ITER_TAG_SET
         (*iter).set = set;
         (*iter).index = 0;

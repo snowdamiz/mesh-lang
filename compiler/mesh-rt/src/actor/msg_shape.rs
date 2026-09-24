@@ -360,6 +360,9 @@ impl Capture<'_> {
         if self.kind(node) == LIST {
             self.flatten_list_view(object);
         }
+        if self.kind(node) == MAP {
+            self.flatten_table::<2>(object);
+        }
         let size = self.out.objects[object as usize].bytes.len();
         // `{len, ...}` headers are trusted only as far as the allocation goes.
         let count = |header: usize, stride: usize| {
@@ -420,8 +423,14 @@ impl Capture<'_> {
     /// cannot be read; the view is left as it is and the parent lent.
     fn flatten_list_view(&mut self, object: u32) {
         let container = Some(object);
+        // A LIST node describes sets too.
+        if self.read_word(container, 8)
+            == Some(crate::collections::table::view_sentinel(1) as usize)
+        {
+            return self.flatten_table::<1>(object);
+        }
         if self.read_word(container, 8) != Some(crate::collections::list::VIEW as usize) {
-            return;
+            return self.flatten_table::<1>(object);
         }
         let (Some(len), Some(parent), Some(offset)) = (
             self.read_word(container, 0),
@@ -443,6 +452,74 @@ impl Capture<'_> {
             std::slice::from_raw_parts((parent as *const u8).add(16 + 8 * offset), 8 * take)
         };
         bytes.extend_from_slice(slots);
+        self.out.objects[object as usize].bytes = bytes;
+    }
+
+    /// A map (`W = 2`) or set (`W = 1`) value: a table, or a view of the
+    /// first entries of one (see `collections::table`). The receiver gets a
+    /// table of just the live entries. The table's index, the word after its
+    /// entries, points into this heap: the copy has none (0). An owned list
+    /// also comes here: its capacity word's high bits count slots appends
+    /// wrote past it, which the copy does not have. A view whose table or
+    /// index this heap cannot vouch for is left as it is, the table lent.
+    fn flatten_table<const W: usize>(&mut self, object: u32) {
+        use crate::collections::table;
+        const CAP_MASK: usize = (1 << 32) - 1;
+        const TAG_SHIFT: u32 = 56;
+        let container = Some(object);
+        let Some(capword) = self.read_word(container, 8) else {
+            return;
+        };
+        let read = |address: usize, offset: usize| unsafe {
+            ((address + offset) as *const usize).read_unaligned()
+        };
+        if capword as u64 != table::view_sentinel(W) {
+            let cap = capword & CAP_MASK;
+            let bytes = &mut self.out.objects[object as usize].bytes;
+            let keep = if W == 1 { CAP_MASK } else { usize::MAX };
+            bytes[8..16].copy_from_slice(&(capword & keep).to_ne_bytes());
+            let entries_end = (16 + 8 * W * cap).min(bytes.len());
+            bytes[entries_end..].fill(0);
+            return;
+        }
+        let (Some(n), Some(table_address)) =
+            (self.read_word(container, 0), self.read_word(container, 16))
+        else {
+            return;
+        };
+        let lend = |this: &mut Self| this.out.lend.push(table_address);
+        let Some(table_size) = self.heap.live_allocation_size(table_address as *const u8) else {
+            return lend(self);
+        };
+        let table_capword = read(table_address, 8);
+        let cap = table_capword & CAP_MASK;
+        if table_size < table::table_bytes::<W>(cap) || n > cap {
+            return lend(self);
+        }
+        let index = unsafe { table::index_address::<W>(table_address as *const u8) };
+        let index_ok = index != 0
+            && self
+                .heap
+                .live_allocation_size(index as *const u8)
+                .is_some_and(|size| {
+                    let (written, slots) = (read(index, 0), read(index, 8));
+                    size >= table::index_bytes(slots, cap) && n <= written && written <= cap
+                });
+        if !index_ok {
+            return lend(self);
+        }
+        let entries = unsafe { table::live_entries_in::<W>(table_address as *const u8, n) };
+        let count = entries.len();
+        let mut bytes = Vec::with_capacity(table::table_bytes::<W>(count));
+        bytes.extend_from_slice(&(count as u64).to_ne_bytes());
+        let tag = (table_capword >> TAG_SHIFT) as u64;
+        bytes.extend_from_slice(&((tag << TAG_SHIFT) | count as u64).to_ne_bytes());
+        for entry in &entries {
+            for word in entry {
+                bytes.extend_from_slice(&word.to_ne_bytes());
+            }
+        }
+        bytes.extend_from_slice(&0u64.to_ne_bytes());
         self.out.objects[object as usize].bytes = bytes;
     }
 

@@ -493,6 +493,15 @@ impl ActorHeap {
         unsafe { ((*header).data_ptr() as *const u8 == data).then(|| (*header).size as usize) }
     }
 
+    /// Whether `ptr` lies in one of this heap's pages.
+    pub(crate) fn contains_address(&self, ptr: *const u8) -> bool {
+        let addr = ptr as usize;
+        let after = self
+            .page_ranges
+            .partition_point(|&(start, ..)| start <= addr);
+        after > 0 && addr < self.page_ranges[after - 1].1
+    }
+
     /// True when `data` is the start of a live allocation of at least `size` bytes.
     pub(crate) fn is_live_allocation(&self, data: *const u8, size: usize) -> bool {
         self.live_allocation_size(data)

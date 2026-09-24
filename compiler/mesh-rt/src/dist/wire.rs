@@ -203,20 +203,16 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
 
         StfType::Map(key_type, val_type) => {
             buf.push(TAG_MAP);
-            let ptr = value as *const u8;
-            let len = unsafe { *(ptr as *const u64) } as u32;
+            // The live entries, whether the map is a table or a view of one.
+            let (key_type_tag, entries) =
+                unsafe { crate::collections::map::live_entries(value as *const u8) };
+            let len = entries.len() as u32;
             if len > MAX_COLLECTION_LEN {
                 return Err(StfError::PayloadTooLarge(len));
             }
-            // Extract key_type_tag from upper 8 bits of cap field.
-            let key_type_tag = unsafe { (*((ptr as *const u64).add(1))) >> 56 } as u8;
-            buf.push(key_type_tag);
+            buf.push(key_type_tag as u8);
             buf.extend_from_slice(&len.to_le_bytes());
-            // Entries start at offset 2 words. Each entry is [u64 key, u64 value].
-            let entries = unsafe { (ptr as *const u64).add(2) };
-            for i in 0..len as usize {
-                let key = unsafe { *entries.add(i * 2) };
-                let val = unsafe { *entries.add(i * 2 + 1) };
+            for [key, val] in entries {
                 stf_encode(key, key_type, buf)?;
                 stf_encode(val, val_type, buf)?;
             }
@@ -225,15 +221,13 @@ pub fn stf_encode(value: u64, type_hint: &StfType, buf: &mut Vec<u8>) -> Result<
 
         StfType::Set(elem_type) => {
             buf.push(TAG_SET);
-            let ptr = value as *const u8;
-            let len = unsafe { *(ptr as *const u64) } as u32;
+            let elements = unsafe { crate::collections::set::live_elements(value as *const u8) };
+            let len = elements.len() as u32;
             if len > MAX_COLLECTION_LEN {
                 return Err(StfError::PayloadTooLarge(len));
             }
             buf.extend_from_slice(&len.to_le_bytes());
-            let data = unsafe { (ptr as *const u64).add(2) };
-            for i in 0..len as usize {
-                let elem = unsafe { *data.add(i) };
+            for elem in elements {
                 stf_encode(elem, elem_type, buf)?;
             }
             Ok(())
@@ -479,29 +473,22 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             if count > MAX_COLLECTION_LEN {
                 return Err(StfError::PayloadTooLarge(count));
             }
-            // Allocate map: { len: u64, cap|key_type: u64, entries: [(u64,u64); count] }
-            let total = 16 + (count as usize) * 16;
-            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
-            unsafe {
-                *(ptr as *mut u64) = count as u64; // len
-                                                   // Store cap with key_type_tag in upper 8 bits.
-                *((ptr as *mut u64).add(1)) = ((key_type_tag as u64) << 56) | (count as u64);
-            }
-            let entries_ptr = unsafe { (ptr as *mut u64).add(2) };
+            let mut entries = Vec::with_capacity(count as usize);
             let mut kt = StfType::Int;
             let mut vt = StfType::Unit;
             for i in 0..count as usize {
                 let (key, key_t) = stf_decode(data, pos)?;
                 let (val, val_t) = stf_decode(data, pos)?;
-                unsafe {
-                    *entries_ptr.add(i * 2) = key;
-                    *entries_ptr.add(i * 2 + 1) = val;
-                }
+                entries.push([key, val]);
                 if i == 0 {
                     kt = key_t;
                     vt = val_t;
                 }
             }
+            // Decoding allocates but never collects, so the entries held
+            // here are safe until the map holds them.
+            let ptr =
+                unsafe { crate::collections::map::map_from_entries(key_type_tag as u64, &entries) };
             Ok((ptr as u64, StfType::Map(Box::new(kt), Box::new(vt))))
         }
 
@@ -510,24 +497,16 @@ pub fn stf_decode(data: &[u8], pos: &mut usize) -> Result<(u64, StfType), StfErr
             if count > MAX_COLLECTION_LEN {
                 return Err(StfError::PayloadTooLarge(count));
             }
-            // Allocate set: { len: u64, cap: u64, data: [u64; count] }
-            let total = 16 + (count as usize) * 8;
-            let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
-            unsafe {
-                *(ptr as *mut u64) = count as u64; // len
-                *((ptr as *mut u64).add(1)) = count as u64; // cap
-            }
-            let data_ptr = unsafe { (ptr as *mut u64).add(2) };
+            let mut elements = Vec::with_capacity(count as usize);
             let mut elem_type = StfType::Unit;
             for i in 0..count as usize {
                 let (val, et) = stf_decode(data, pos)?;
-                unsafe {
-                    *data_ptr.add(i) = val;
-                }
+                elements.push(val);
                 if i == 0 {
                     elem_type = et;
                 }
             }
+            let ptr = unsafe { crate::collections::set::set_from_elements(&elements) };
             Ok((ptr as u64, StfType::Set(Box::new(elem_type))))
         }
 
@@ -804,18 +783,8 @@ mod tests {
 
     /// Helper: allocate a set of i64 values on the GC heap.
     fn alloc_set_of_ints(values: &[i64]) -> *mut u8 {
-        let count = values.len() as u64;
-        let total = 16 + (count as usize) * 8;
-        let ptr = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
-        unsafe {
-            *(ptr as *mut u64) = count; // len
-            *((ptr as *mut u64).add(1)) = count; // cap
-            let data = (ptr as *mut u64).add(2);
-            for (i, &v) in values.iter().enumerate() {
-                *data.add(i) = v as u64;
-            }
-        }
-        ptr
+        let elements: Vec<u64> = values.iter().map(|&v| v as u64).collect();
+        unsafe { crate::collections::set::set_from_elements(&elements) }
     }
 
     #[test]
@@ -870,18 +839,9 @@ mod tests {
         // Create a map with 2 int->string entries.
         let v1 = mesh_string_new("alpha".as_ptr(), 5);
         let v2 = mesh_string_new("beta".as_ptr(), 4);
-        // Map layout: { len, cap|key_type, entries: [(key, val), ...] }
-        let total = 16 + 2 * 16; // header + 2 entries of 16 bytes
-        let map = crate::gc::mesh_gc_alloc_actor(total as u64, 8);
-        unsafe {
-            *(map as *mut u64) = 2; // len
-            *((map as *mut u64).add(1)) = 2; // key_type=0 (int), cap=2
-            let entries = (map as *mut u64).add(2);
-            *entries = 1; // key[0]
-            *entries.add(1) = v1 as u64; // val[0]
-            *entries.add(2) = 2; // key[1]
-            *entries.add(3) = v2 as u64; // val[1]
-        }
+        let map = unsafe {
+            crate::collections::map::map_from_entries(0, &[[1, v1 as u64], [2, v2 as u64]])
+        };
         let ty = StfType::Map(Box::new(StfType::Int), Box::new(StfType::String));
         let encoded = stf_encode_value(map as u64, &ty).unwrap();
         let (decoded_ptr, decoded_type) = stf_decode_value(&encoded).unwrap();
@@ -900,6 +860,37 @@ mod tests {
             assert_eq!((*dv0).as_str(), "alpha");
             assert_eq!((*dv1).as_str(), "beta");
         }
+    }
+
+    #[test]
+    fn test_map_and_set_views_roundtrip() {
+        // A map or set that grew in place is a view of a table with entries
+        // past it; the wire carries just its live entries, in order.
+        use crate::collections::{map, set};
+        mesh_rt_init();
+        let mut m = map::mesh_map_new();
+        let mut s = set::mesh_set_new();
+        for i in 0..40u64 {
+            m = map::mesh_map_put(m, i % 20, i);
+            s = set::mesh_set_add(s, i % 25);
+        }
+        m = map::mesh_map_delete(m, 3);
+        s = set::mesh_set_remove(s, 4);
+        let ty = StfType::Map(Box::new(StfType::Int), Box::new(StfType::Int));
+        let (decoded, _) = stf_decode_value(&stf_encode_value(m as u64, &ty).unwrap()).unwrap();
+        let decoded = decoded as *mut u8;
+        assert_eq!(map::mesh_map_size(decoded), 19);
+        assert_eq!(map::mesh_map_get(decoded, 5), 25);
+        assert_eq!(map::mesh_map_has_key(decoded, 3), 0);
+        assert_eq!(map::mesh_map_entry_key(decoded, 0), 0);
+        assert_eq!(map::mesh_map_entry_key(decoded, 2), 2);
+        assert_eq!(map::mesh_map_entry_key(decoded, 3), 4);
+        let ty = StfType::Set(Box::new(StfType::Int));
+        let (decoded, _) = stf_decode_value(&stf_encode_value(s as u64, &ty).unwrap()).unwrap();
+        let decoded = decoded as *mut u8;
+        assert_eq!(set::mesh_set_size(decoded), 24);
+        assert_eq!(set::mesh_set_contains(decoded, 4), 0);
+        assert_eq!(set::mesh_set_contains(decoded, 24), 1);
     }
 
     #[test]
@@ -1093,22 +1084,9 @@ mod tests {
     #[test]
     fn test_list_of_maps() {
         mesh_rt_init();
-        // Create a map with 1 int->int entry: {10 => 20}
-        let map1 = crate::gc::mesh_gc_alloc_actor(32, 8);
-        unsafe {
-            *(map1 as *mut u64) = 1; // len
-            *((map1 as *mut u64).add(1)) = 1; // key_type=0, cap=1
-            *((map1 as *mut u64).add(2)) = 10; // key
-            *((map1 as *mut u64).add(3)) = 20; // val
-        }
-        // Create a map with 1 int->int entry: {30 => 40}
-        let map2 = crate::gc::mesh_gc_alloc_actor(32, 8);
-        unsafe {
-            *(map2 as *mut u64) = 1;
-            *((map2 as *mut u64).add(1)) = 1;
-            *((map2 as *mut u64).add(2)) = 30;
-            *((map2 as *mut u64).add(3)) = 40;
-        }
+        // Two maps with 1 int->int entry each: {10 => 20} and {30 => 40}.
+        let map1 = unsafe { crate::collections::map::map_from_entries(0, &[[10, 20]]) };
+        let map2 = unsafe { crate::collections::map::map_from_entries(0, &[[30, 40]]) };
         // Outer list of 2 maps.
         let outer = crate::gc::mesh_gc_alloc_actor(16 + 2 * 8, 8);
         unsafe {
