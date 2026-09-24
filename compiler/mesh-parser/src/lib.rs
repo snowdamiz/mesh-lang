@@ -10,6 +10,7 @@ pub mod cst;
 pub mod error;
 mod parser;
 pub mod syntax_kind;
+pub mod test_harness;
 
 pub use ast::AstNode;
 pub use cst::{SyntaxElement, SyntaxNode, SyntaxToken};
