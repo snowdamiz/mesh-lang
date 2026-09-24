@@ -27,8 +27,8 @@ end
 
 | Form | Meaning |
 | --- | --- |
-| `module Name do ... end` | Declare a module |
-| `pub module Name do ... end` | Export a module |
+| `module Name do ... end` | Declare a module inside a file; import it to use it, from that file only |
+| `pub module Name do ... end` | Declare a module any file may import |
 | `import Foo.Bar` | Import a module for qualified access |
 | `from Foo.Bar import one, two` | Import selected public symbols |
 | `pub` | Export a function, module, struct, interface, supervisor, sum type, or alias |

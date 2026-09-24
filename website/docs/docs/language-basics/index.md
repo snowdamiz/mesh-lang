@@ -1026,6 +1026,22 @@ pub module Geometry do
 end
 ```
 
+A module block is a module like a file is: import it to use it, in the file that holds it too. Without `pub`, only that file may import it:
+
+```mesh
+import Billing
+
+module Billing do
+  pub fn total(items :: List<Int>) -> Int do
+    List.reduce(items, 0, fn acc, item -> acc + item end)
+  end
+end
+
+fn main() do
+  println("${Billing.total([1, 2, 3])}")
+end
+```
+
 `pub` is available on functions, modules, structs, interfaces, supervisors, sum types, and type aliases. Actors, services, impl blocks, imports, and local bindings are not declared `pub`.
 
 ### Standard Library Modules

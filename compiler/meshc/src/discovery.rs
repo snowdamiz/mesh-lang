@@ -427,6 +427,42 @@ fn build_project_with_entrypoint_and_sources_in_scope(
         module_parses.push(parse);
     }
 
+    // Phase 1c: a `module Name do ... end` block is a module of its own,
+    // which files import like any other (the file holding it too). Its
+    // source is the file with the rest blanked, so diagnostics point into
+    // the file. A block without `pub` is private to its file.
+    let mut private_inline: std::collections::HashMap<ModuleId, ModuleId> =
+        std::collections::HashMap::new();
+    let mut next = 0;
+    while next < graph.module_count() {
+        let owner = ModuleId(next as u32);
+        // A file that does not parse is reported as it is.
+        let inline = if module_parses[next].ok() {
+            mesh_parser::inline_modules(&module_sources[next], &module_parses[next])
+        } else {
+            Vec::new()
+        };
+        for module in inline {
+            let path = graph.get(owner).path.clone();
+            if let Some(existing) = graph.resolve(&module.name) {
+                return Err(format!(
+                    "Module `{}` declared in '{}' conflicts with the module of '{}'",
+                    module.name,
+                    path.display(),
+                    graph.get(existing).path.display()
+                ));
+            }
+            let parse = mesh_parser::parse(&module.source);
+            let id = graph.add_module(module.name, path, false);
+            if !module.public {
+                private_inline.insert(id, owner);
+            }
+            module_sources.push(module.source);
+            module_parses.push(parse);
+        }
+        next += 1;
+    }
+
     // Phase 2: Build dependency edges from import declarations.
     for id_val in 0..graph.module_count() {
         let id = ModuleId(id_val as u32);
@@ -443,6 +479,16 @@ fn build_project_with_entrypoint_and_sources_in_scope(
                     return Err(format!("Module '{}' cannot import itself", module_name));
                 }
                 Some(dep_id) => {
+                    if let Some(&owner) = private_inline.get(&dep_id) {
+                        if graph.get(owner).path != graph.get(id).path {
+                            return Err(format!(
+                                "Module `{import_name}` is private to '{}': declare it \
+                                 `pub module` to import it from '{}'",
+                                graph.get(owner).path.display(),
+                                graph.get(id).path.display()
+                            ));
+                        }
+                    }
                     graph.add_dependency(id, dep_id);
                 }
             }

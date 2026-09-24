@@ -8049,3 +8049,41 @@ end
         compile_multifile_and_run(&[("alpha.mpl", alpha), ("zed.mpl", zed), ("main.mpl", main)]);
     assert_eq!(output, "<Rect(5)>\n<Square(2)>\n18\n");
 }
+
+#[test]
+fn e2e_a_module_block_is_a_module() {
+    // `module ... do ... end` blocks were skipped: never type-checked (a
+    // body adding a string to an undefined name built) and never reachable
+    // ("undefined variable: Geometry").
+    let main = r##"import Billing
+import Shapes
+
+module Billing do
+  pub fn total(items :: List<Int>) -> Int do
+    List.reduce(items, 0, fn acc, item -> acc + item end)
+  end
+end
+
+fn main() do
+  println("${Billing.total([1, 2, 3])} ${Shapes.area(2)}")
+end
+"##;
+    let geo =
+        "pub module Shapes do\n  pub fn area(r :: Int) -> Int do\n    r * r * 3\n  end\nend\n";
+    let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert_eq!(output, "6 12\n");
+
+    // Its body is checked.
+    let main = "module Billing do\n  pub fn total(items :: List<Int>) -> Int do\n    \"no\" + undefined_thing\n  end\nend\n\nfn main() do\n  println(\"ok\")\nend\n";
+    let err = compile_multifile_expect_error(&[("main.mpl", main)]);
+    assert!(err.contains("undefined_thing"), "{err}");
+
+    // Without `pub`, only its own file imports it.
+    let geo = "module Shapes do\n  pub fn area(r :: Int) -> Int do\n    r * r * 3\n  end\nend\n";
+    let main = "import Shapes\n\nfn main() do\n  println(\"${Shapes.area(2)}\")\nend\n";
+    let err = compile_multifile_expect_error(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert!(
+        err.contains("Module `Shapes` is private to 'geo.mpl'"),
+        "{err}"
+    );
+}

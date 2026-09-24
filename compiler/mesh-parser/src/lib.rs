@@ -64,6 +64,55 @@ pub fn parse(source: &str) -> Parse {
     Parse { green, errors }
 }
 
+/// A `module Name do ... end` block at the top of a source file: a module of
+/// its own, whose source is the file with everything outside the block
+/// blanked, so its offsets, lines and columns are the file's.
+pub struct InlineModule {
+    pub name: String,
+    /// Declared `pub module`: other files may import it, not only its own.
+    pub public: bool,
+    pub source: String,
+}
+
+/// The `module ... do ... end` blocks at the top level of `source`.
+pub fn inline_modules(source: &str, parse: &Parse) -> Vec<InlineModule> {
+    use ast::item::Item;
+    parse
+        .tree()
+        .items()
+        .filter_map(|item| match item {
+            Item::ModuleDef(module) => Some(module),
+            _ => None,
+        })
+        .filter_map(|module| {
+            let name = module.name()?.text()?;
+            let body = module
+                .syntax()
+                .children()
+                .find(|child| child.kind() == SyntaxKind::BLOCK)?
+                .text_range();
+            let (start, end) = (usize::from(body.start()), usize::from(body.end()));
+            let blanked: Vec<u8> = source
+                .bytes()
+                .enumerate()
+                .map(|(i, byte)| {
+                    if (start..end).contains(&i) || byte == b'\n' || byte == b'\r' {
+                        byte
+                    } else {
+                        b' '
+                    }
+                })
+                .collect();
+            Some(InlineModule {
+                name,
+                public: module.visibility().is_some(),
+                // Whole characters are kept or blanked byte by byte.
+                source: String::from_utf8(blanked).ok()?,
+            })
+        })
+        .collect()
+}
+
 /// Parse a single expression from Mesh source code.
 ///
 /// This is primarily useful for testing the expression parser in isolation.

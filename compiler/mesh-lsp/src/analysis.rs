@@ -451,7 +451,17 @@ fn analyze_project_document(
             ),
         ));
     };
-    let Some(current_typeck) = all_typeck.into_iter().nth(current_idx).flatten() else {
+    // The type errors of the file's `module ... do ... end` blocks, which
+    // are modules of their own over the same text.
+    let inline_errors: Vec<_> = project
+        .graph
+        .modules
+        .iter()
+        .filter(|module| module.path == relative_path && module.id != current_id)
+        .filter_map(|module| all_typeck[module.id.0 as usize].as_ref())
+        .flat_map(|typeck| typeck.errors.iter().cloned())
+        .collect();
+    let Some(mut current_typeck) = all_typeck.into_iter().nth(current_idx).flatten() else {
         return ProjectAnalysis::Failed(project_failure_analysis(
             source,
             format!(
@@ -461,6 +471,7 @@ fn analyze_project_document(
             ),
         ));
     };
+    current_typeck.errors.extend(inline_errors);
     let current_parse = mesh_parser::parse(&current_source);
     let mut diagnostics =
         diagnostics_from_parse_and_typeck(&current_source, &current_parse, &current_typeck);
@@ -659,6 +670,29 @@ fn build_project_with_overlays(
             module_sources.push(source);
             module_parses.push(parse);
         }
+    }
+
+    // `module Name do ... end` blocks are modules of their own, as meshc
+    // builds them (see its discovery).
+    let mut next = 0;
+    while next < graph.module_count() {
+        let owner = ModuleId(next as u32);
+        let inline = if module_parses[next].ok() {
+            mesh_parser::inline_modules(&module_sources[next], &module_parses[next])
+        } else {
+            Vec::new()
+        };
+        for module in inline {
+            if graph.resolve(&module.name).is_some() {
+                continue;
+            }
+            let path = graph.get(owner).path.clone();
+            let parse = mesh_parser::parse(&module.source);
+            graph.add_module(module.name, path, false);
+            module_sources.push(module.source);
+            module_parses.push(parse);
+        }
+        next += 1;
     }
 
     for id_val in 0..graph.module_count() {
@@ -2106,5 +2140,31 @@ mod tests {
         let source = std::fs::read_to_string(&main_path).unwrap();
         let result = analyze_document(&file_uri(&main_path), &source, &[]);
         assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn a_module_block_is_checked_in_its_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path().join("app");
+        let main_path = project_dir.join("main.mpl");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(project_dir.join("mesh.toml"), package_manifest("app")).unwrap();
+        let source = "import Billing\n\nmodule Billing do\n  pub fn total() -> Int do\n    \"no\" + nope\n  end\nend\n\nfn main() do\n  println(\"${Billing.total()}\")\nend\n";
+        std::fs::write(&main_path, source).unwrap();
+
+        let result = analyze_document(&file_uri(&main_path), source, &[]);
+        let messages: Vec<&str> = result
+            .diagnostics
+            .iter()
+            .map(|diag| diag.message.as_str())
+            .collect();
+        assert!(
+            messages.iter().any(|message| message.contains("nope")),
+            "{messages:?}"
+        );
+        assert!(
+            !messages.iter().any(|message| message.contains("Billing")),
+            "{messages:?}"
+        );
     }
 }
