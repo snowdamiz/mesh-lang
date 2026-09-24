@@ -7916,3 +7916,41 @@ end
     let output = compile_multifile_and_run(&[("shapes.mpl", shapes), ("main.mpl", main)]);
     assert_eq!(output, "area=12\narea=12\n");
 }
+
+#[test]
+fn e2e_arity_overloads_across_modules() {
+    // Pub overloads imported and called qualified, a private arity beside a
+    // pub one, and private overloads of one name in two modules.
+    let geo = r##"pub fn area(r :: Int) -> Int = r * r * 3
+pub fn area(w :: Int, h :: Int) -> Int = w * h
+
+pub fn wrap(x) = [x]
+fn wrap(x, y) = [x, y]
+
+pub fn pair(x, y) = wrap(x, y)
+
+fn helper(x :: Int) -> Int = x + 1
+fn helper(x :: Int, y :: Int) -> Int = x + y
+
+pub fn use_helpers() -> Int = helper(1) + helper(2, 3)
+"##;
+    let other = r##"fn helper(x :: Int) -> Int = x * 100
+fn helper(x :: Int, y :: Int) -> Int = x * y
+
+pub fn other_helpers() -> Int = helper(1) + helper(2, 3)
+"##;
+    let main = r##"import Geo
+from Geo import area, wrap, pair, use_helpers
+from Other import other_helpers
+
+fn main() do
+  println("#{area(2)} #{area(3, 4)} #{Geo.area(1)} #{Geo.area(2, 5)}")
+  println("#{List.length(wrap(1))} #{List.length(wrap("s"))} #{List.length(pair(1, 2))}")
+  println("#{use_helpers()} #{other_helpers()}")
+  println("#{2 |> area} #{2 |> area(3)} #{2 |> Geo.area(3)}")
+end
+"##;
+    let output =
+        compile_multifile_and_run(&[("geo.mpl", geo), ("other.mpl", other), ("main.mpl", main)]);
+    assert_eq!(output, "12 12 3 10\n1 1 2\n7 106\n12 6 6\n");
+}

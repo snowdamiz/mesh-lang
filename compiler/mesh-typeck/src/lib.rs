@@ -265,9 +265,12 @@ pub struct TypeckResult {
     /// Populated during infer_service_def, consumed by collect_exports.
     pub local_service_exports: FxHashMap<String, ServiceExportInfo>,
     /// Maps call-site TextRange -> mangled callee name (e.g. "slugify__2").
-    /// Non-empty only when the source file has arity-overloaded pub fns.
+    /// Non-empty only when a call reaches an arity-overloaded fn.
     /// Consumed by the MIR lowerer to emit the correct mangled function reference.
     pub overloaded_call_targets: FxHashMap<TextRange, String>,
+    /// Top-level fn names this module defines at more than one arity: each
+    /// arity is its own function, named `name__N`.
+    pub overloaded_fn_names: FxHashSet<String>,
     /// Metadata for `HTTP.clustered(...)` wrappers keyed by wrapper call range.
     /// Consumed by later lowering so clustered routes reuse declared-handler
     /// runtime-name/count truth instead of inventing an HTTP-only path.
@@ -333,18 +336,6 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();
 
-    // First pass: count pub fn occurrences by name to detect arity overloading.
-    let mut pub_fn_counts: FxHashMap<String, usize> = FxHashMap::default();
-    for item in tree.items() {
-        if let Item::FnDef(fn_def) = &item {
-            if fn_def.visibility().is_some() {
-                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                    *pub_fn_counts.entry(name).or_insert(0) += 1;
-                }
-            }
-        }
-    }
-
     for item in tree.items() {
         match item {
             Item::FnDef(fn_def) => {
@@ -353,9 +344,8 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                     let range = fn_def.syntax().text_range();
                     if let Some(ty) = typeck.types.get(&range) {
                         if fn_def.visibility().is_some() {
-                            // Mangle name if multiple pub fns share the same name (arity overloading).
-                            let export_name = if pub_fn_counts.get(&name).copied().unwrap_or(0) > 1
-                            {
+                            // Each arity of an overloaded name is its own function.
+                            let export_name = if typeck.overloaded_fn_names.contains(&name) {
                                 let arity = fn_def
                                     .param_list()
                                     .map(|pl| pl.params().count())

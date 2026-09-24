@@ -1288,11 +1288,25 @@ fn collect_inferred_fn_usage_types(
             continue;
         };
 
+        // A callee of a call to an overloaded fn names the arity the call
+        // runs (`name__N`).
+        let overload_target = |callee: &mesh_parser::SyntaxNode| {
+            let call = callee
+                .parent()
+                .and_then(mesh_parser::ast::expr::CallExpr::cast)?;
+            (call.callee()?.syntax() == callee)
+                .then(|| {
+                    typeck
+                        .overloaded_call_targets
+                        .get(&call.syntax().text_range())
+                })?
+                .cloned()
+        };
         for node in parse.syntax().descendants() {
             match node.kind() {
                 SyntaxKind::NAME_REF => {
                     if let Some(name_ref) = NameRef::cast(node.clone()) {
-                        if let Some(name) = name_ref.text() {
+                        if let Some(name) = overload_target(&node).or_else(|| name_ref.text()) {
                             if candidate_names.contains(&name) {
                                 if let Some(ty) = typeck.types.get(&name_ref.syntax().text_range())
                                 {
@@ -1316,7 +1330,8 @@ fn collect_inferred_fn_usage_types(
                         if !typeck.qualified_modules.contains_key(&base_name) {
                             continue;
                         }
-                        let Some(field_name) = field_access.field().map(|t| t.text().to_string())
+                        let Some(field_name) = overload_target(field_access.syntax())
+                            .or_else(|| field_access.field().map(|t| t.text().to_string()))
                         else {
                             continue;
                         };

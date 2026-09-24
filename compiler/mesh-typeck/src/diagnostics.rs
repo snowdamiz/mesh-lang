@@ -166,6 +166,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidLiteral { .. } => "E0072",
         TypeError::InvalidConcat { .. } => "E0073",
         TypeError::NoSuchModuleFunction { .. } => "E0074",
+        TypeError::OverloadedFunctionValue { .. } => "E0075",
     }
 }
 
@@ -593,6 +594,7 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidLiteral { span, .. }
                 | TypeError::InvalidConcat { span, .. }
                 | TypeError::NoSuchModuleFunction { span, .. }
+                | TypeError::OverloadedFunctionValue { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2276,6 +2278,35 @@ pub fn render_diagnostic(
                 report = report.with_help(format!("`{module}` has {}", available.join(", ")));
             }
             report.finish()
+        }
+        TypeError::OverloadedFunctionValue {
+            name,
+            arities,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let counts: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
+            let counts = match counts.split_last() {
+                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+                None => String::new(),
+            };
+            let shown = arities.iter().copied().find(|&a| a > 0).unwrap_or(0);
+            let params: Vec<String> = (0..shown).map(|i| format!("a{i}")).collect();
+            let params = params.join(", ");
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(error.to_string())
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("each arity is its own function")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "call it with {counts} arguments; as a value, use a closure \
+                     that calls one: `fn {params} -> {name}({params}) end`"
+                ))
+                .finish()
         }
         TypeError::InvalidConcat { op, ty, span } => {
             let range = clamp(text_range_to_range(*span));

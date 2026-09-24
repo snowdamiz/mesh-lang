@@ -4152,3 +4152,52 @@ fn a_stack_overflow_is_reported() {
         assert!(stderr.contains("error: stack overflow"), "{stderr}");
     }
 }
+
+#[test]
+fn a_name_can_be_defined_at_several_arities() {
+    // Each arity is its own function. `= expr` bodies and private fns were
+    // rejected ("expected 2 argument(s), found 1"), and clauses of one arity
+    // beside another arity failed to link.
+    let out = run(r##"fn area(r) = r * r * 3
+fn area(w, h) = w * h
+
+fn fact(0) = 1
+fn fact(n) = fact(n, 1)
+fn fact(0, acc) = acc
+fn fact(n, acc) = fact(n - 1, acc * n)
+
+fn scale(x :: Int) -> Int do
+  x * 10
+end
+
+fn scale(x :: Int, by :: Int) -> Int do
+  x * by
+end
+
+fn first(xs) = List.head(xs)
+fn first(xs, fallback) = if List.length(xs) == 0 do fallback else List.head(xs) end
+
+fn main() do
+  println("#{area(2)} #{area(3, 4)}")
+  println("#{fact(5)} #{fact(4, 1)}")
+  println("#{3 |> scale} #{3 |> scale(4)} #{4 |2> scale(5)}")
+  println("#{first([1, 2])} #{first(["a"])} #{first([], 7)} #{first([], "z")}")
+  let scale = fn x -> x + 1 end
+  println("#{scale(1)}")
+end
+"##);
+    assert_eq!(out, "12 12\n120 24\n30 12 20\n1 a 7 z\n2\n");
+}
+
+#[test]
+fn a_name_defined_at_several_arities_is_not_a_value() {
+    let err = build_error(
+        "fn area(r) = r * r * 3\nfn area(w, h) = w * h\n\nfn main() do\n  let f = area\n  println(\"#{area(1, 2, 3)}\")\nend\n",
+    );
+    assert_eq!(err.matches("[E0075]").count(), 2, "{err}");
+    assert!(
+        err.contains("`area` is defined at arities 1 and 2"),
+        "{err}"
+    );
+    assert!(err.contains("fn a0 -> area(a0) end"), "{err}");
+}

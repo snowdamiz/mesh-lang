@@ -159,9 +159,9 @@ pub struct InferCtx {
     /// Names bound in the environment to an impl's method (so `hello(x)`
     /// resolves), which a bare call dispatches by its first argument.
     pub trait_method_fns: FxHashSet<String>,
-    /// Pub fn names that have multiple definitions with different arities.
-    /// Used to mangle exported names as name__N for arity overloading.
-    pub overloaded_pub_fn_names: FxHashSet<String>,
+    /// Top-level fn names defined at more than one arity. Each arity is its
+    /// own function, known in the env (and exported) as `name__N`.
+    pub overloaded_fn_names: FxHashSet<String>,
     /// Maps call-site TextRange -> mangled callee name (e.g. "slugify__2").
     /// Populated during inference for arity-overloaded calls.
     /// Consumed by the MIR lowerer to emit the correct function reference.
@@ -212,7 +212,7 @@ impl InferCtx {
             default_calls: Vec::new(),
             impl_choices: Vec::new(),
             trait_method_fns: FxHashSet::default(),
-            overloaded_pub_fn_names: FxHashSet::default(),
+            overloaded_fn_names: FxHashSet::default(),
             overloaded_call_targets: FxHashMap::default(),
             expr_spans: Vec::new(),
         }

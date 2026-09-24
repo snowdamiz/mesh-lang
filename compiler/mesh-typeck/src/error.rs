@@ -419,6 +419,13 @@ pub enum TypeError {
         available: Vec<String>,
         span: TextRange,
     },
+    /// A bare reference to a fn defined at more than one arity, which
+    /// names no single function.
+    OverloadedFunctionValue {
+        name: String,
+        arities: Vec<usize>,
+        span: TextRange,
+    },
     /// `<>` or `++` on values that are neither strings nor lists.
     InvalidConcat {
         op: &'static str,
@@ -975,6 +982,9 @@ impl fmt::Display for TypeError {
             TypeError::NoSuchModuleFunction { module, name, .. } => {
                 write!(f, "module `{module}` has no function `{name}`")
             }
+            TypeError::OverloadedFunctionValue { name, arities, .. } => {
+                write!(f, "`{name}` is defined at {}", arity_list(arities))
+            }
             TypeError::InvalidConcat { op, ty, .. } => {
                 write!(f, "`{op}` joins strings or lists, not `{ty}`")
             }
@@ -1041,5 +1051,16 @@ impl fmt::Display for TypeError {
                 write!(f, "resource ownership violation: {reason}")
             }
         }
+    }
+}
+
+/// "arities 1 and 2", "arities 0, 1 and 3".
+pub(crate) fn arity_list(arities: &[usize]) -> String {
+    let names: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => {
+            format!("arities {} and {last}", rest.join(", "))
+        }
+        _ => format!("arity {}", names.join("")),
     }
 }

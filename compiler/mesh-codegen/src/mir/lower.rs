@@ -430,10 +430,9 @@ struct Lowerer<'a> {
     /// Populated by the typechecker for arity-overloaded calls; used here to
     /// emit the correct mangled function reference in lower_call_expr.
     overloaded_call_targets: HashMap<rowan::TextRange, String>,
-    /// Pub fn names that have multiple definitions at different arities.
-    /// Detected in the lower_source_file pre-pass; used in lower_fn_def
-    /// to emit the mangled MIR function name (e.g. "slugify__1").
-    overloaded_pub_fn_names: std::collections::HashSet<String>,
+    /// Top-level fn names this module defines at more than one arity: each
+    /// arity is its own function, named `name__N` (see `fn_def_name`).
+    overloaded_fn_names: &'a FxHashSet<String>,
     /// Metadata for `HTTP.clustered(...)` wrappers keyed by wrapper call range.
     clustered_route_wrappers: &'a FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
     /// Wrapper spans that successfully lowered to a concrete bare route shim.
@@ -731,7 +730,7 @@ impl<'a> Lowerer<'a> {
                 .iter()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect(),
-            overloaded_pub_fn_names: std::collections::HashSet::new(),
+            overloaded_fn_names: &typeck.overloaded_fn_names,
             clustered_route_wrappers: &typeck.clustered_route_wrappers,
             consumed_clustered_route_wrappers: HashSet::new(),
             discarded_callback_results: &typeck.discarded_callback_results,
@@ -1567,6 +1566,58 @@ impl<'a> Lowerer<'a> {
         self.as_fn_item(lowered)
     }
 
+    /// The function the call at `call_range` runs: `callee`, or the arity
+    /// of an overloaded fn the type checker chose for it (`name__N`).
+    fn lower_call_target(&mut self, call_range: TextRange, callee: &Expr) -> MirExpr {
+        let Some(target) = self.overloaded_call_targets.get(&call_range).cloned() else {
+            return self.lower_callee(callee);
+        };
+        let range = callee.syntax().text_range();
+        let ty = self.resolve_range(range);
+        let symbol = if self.user_fn_defs.contains(&target) {
+            let qualified = self.qualify_name(&target);
+            self.lowered_fn_symbol_name(&target, &qualified, range)
+        } else {
+            self.lowered_fn_symbol_name(&target, &target, range)
+        };
+        MirExpr::Var(symbol, ty)
+    }
+
+    /// A top-level fn's name: `name__N` when the module defines the name at
+    /// more than one arity, each arity being its own function.
+    fn fn_def_name(&self, fn_def: &FnDef) -> Option<String> {
+        let name = fn_def.name()?.text()?;
+        let top_level = fn_def
+            .syntax()
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::SOURCE_FILE);
+        if top_level && self.overloaded_fn_names.contains(&name) {
+            let arity = fn_def.param_list().map_or(0, |pl| pl.params().count());
+            Some(format!("{name}__{arity}"))
+        } else {
+            Some(name)
+        }
+    }
+
+    /// The fn `name_ref` names: its text, or, as the callee of a call to an
+    /// overloaded fn, the arity the call runs (`name__N`).
+    fn name_ref_fn_name(&self, name_ref: &NameRef) -> Option<String> {
+        let range = name_ref.syntax().text_range();
+        let call_range = name_ref
+            .syntax()
+            .parent()
+            .and_then(CallExpr::cast)
+            .filter(|call| {
+                call.callee()
+                    .is_some_and(|c| c.syntax().text_range() == range)
+            })
+            .map_or(range, |call| call.syntax().text_range());
+        self.overloaded_call_targets
+            .get(&call_range)
+            .cloned()
+            .or_else(|| name_ref.text())
+    }
+
     // ── Message shapes ───────────────────────────────────────────────
 
     /// The shape of the value the syntax at `range` evaluates to.
@@ -1857,7 +1908,7 @@ impl<'a> Lowerer<'a> {
         for node in root.descendants() {
             if node.kind() == SyntaxKind::NAME_REF {
                 if let Some(name_ref) = NameRef::cast(node) {
-                    if let Some(name) = name_ref.text() {
+                    if let Some(name) = self.name_ref_fn_name(&name_ref) {
                         if self.user_fn_defs.contains(&name) {
                             if let Some(ty) = self.types.get(&name_ref.syntax().text_range()) {
                                 // Only record concrete function types — skip Ty::Var results.
@@ -1940,7 +1991,7 @@ impl<'a> Lowerer<'a> {
         let mut bodies: Vec<(usize, mesh_parser::SyntaxNode)> = Vec::new();
         for item in sf.items() {
             let Item::FnDef(fn_def) = item else { continue };
-            let Some(name) = fn_def.name().and_then(|n| n.text()) else {
+            let Some(name) = self.fn_def_name(&fn_def) else {
                 continue;
             };
             let index = match fns.iter().position(|(fn_name, _, _)| *fn_name == name) {
@@ -1960,7 +2011,7 @@ impl<'a> Lowerer<'a> {
                 .descendants()
                 .filter_map(NameRef::cast)
                 .filter_map(|name_ref| {
-                    let callee = name_ref.text()?;
+                    let callee = self.name_ref_fn_name(&name_ref)?;
                     fns.iter()
                         .any(|(name, ty, _)| *name == callee && Self::ty_contains_var(ty))
                         .then(|| (callee, name_ref.syntax().text_range()))
@@ -2235,7 +2286,7 @@ impl<'a> Lowerer<'a> {
             let Some(function) = FnDef::cast(node) else {
                 continue;
             };
-            let Some(name) = function.name().and_then(|name| name.text()) else {
+            let Some(name) = self.fn_def_name(&function) else {
                 continue;
             };
             let modes = function
@@ -2256,32 +2307,12 @@ impl<'a> Lowerer<'a> {
                 .or_insert(modes);
         }
 
-        // Pre-pass: detect arity-overloaded pub fns (same name, multiple arities).
-        // Populate overloaded_pub_fn_names so lower_fn_def can emit mangled MIR names.
-        {
-            let mut pub_fn_counts: HashMap<String, usize> = HashMap::new();
-            for item in sf.items() {
-                if let Item::FnDef(fn_def) = &item {
-                    if fn_def.visibility().is_some() {
-                        if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                            *pub_fn_counts.entry(name).or_insert(0) += 1;
-                        }
-                    }
-                }
-            }
-            for (name, count) in pub_fn_counts {
-                if count > 1 {
-                    self.overloaded_pub_fn_names.insert(name);
-                }
-            }
-        }
-
         // First pass: register all function names so we know which are direct calls.
         // For multi-clause functions, only register the FIRST clause (which has the type).
         for item in sf.items() {
             match &item {
                 Item::FnDef(fn_def) => {
-                    if let Some(name) = fn_def.name().and_then(|n| n.text()) {
+                    if let Some(name) = self.fn_def_name(fn_def) {
                         // Skip if already registered (subsequent clause of a multi-clause fn).
                         if !self.known_functions.contains_key(&name) {
                             let fn_ty = self.resolve_range(fn_def.syntax().text_range());
@@ -5116,7 +5147,7 @@ impl<'a> Lowerer<'a> {
         // ABI, and multi-signature cases need per-signature MIR clones.
         for item in sf.items() {
             if let Item::FnDef(fn_def) = item {
-                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
+                if let Some(name) = self.fn_def_name(&fn_def) {
                     let range = fn_def.syntax().text_range();
                     if let Some(fn_ty) = self.get_ty(range) {
                         if Self::ty_contains_var(fn_ty) {
@@ -5263,9 +5294,8 @@ impl<'a> Lowerer<'a> {
     /// with one name and arity. Types come from the first clause.
     fn lower_fn_clauses(&mut self, clauses: &[&FnDef]) {
         let fn_def = clauses[0];
-        let original_name = fn_def
-            .name()
-            .and_then(|n| n.text())
+        let original_name = self
+            .fn_def_name(fn_def)
             .unwrap_or_else(|| "<anonymous>".to_string());
 
         let fn_range = fn_def.syntax().text_range();
@@ -5274,12 +5304,6 @@ impl<'a> Lowerer<'a> {
         let base_name = if original_name == "main" {
             self.entry_function = Some("mesh_main".to_string());
             "mesh_main".to_string()
-        } else if self.overloaded_pub_fn_names.contains(&original_name) {
-            let arity = fn_def
-                .param_list()
-                .map(|pl| pl.params().count())
-                .unwrap_or(0);
-            format!("{}__{}", original_name, arity)
         } else {
             self.qualify_name(&original_name)
         };
@@ -9752,13 +9776,6 @@ impl<'a> Lowerer<'a> {
         }
 
         // Non-method-call path: normal function calls.
-        // Check overloaded_call_targets first: if this call was resolved to a mangled
-        // name__arity by the typechecker, emit the mangled name directly instead of
-        // delegating to lower_expr (which would look up the plain unmangled name).
-        let overloaded_target = self
-            .overloaded_call_targets
-            .get(&call.syntax().text_range())
-            .cloned();
         let callee = if let Some((module, fa)) = &stdlib_method {
             // The method's type: the receiver's, then the arguments', to
             // the call's.
@@ -9779,14 +9796,9 @@ impl<'a> Lowerer<'a> {
                 .map(|ty| resolve_type(ty, self.registry))
                 .unwrap_or(MirType::Unit);
             Some(self.lower_stdlib_function(module, &method, fn_ty, fallback))
-        } else if let Some(ref mangled_name) = overloaded_target {
-            let callee_ty = call
-                .callee()
-                .map(|e| self.resolve_range(e.syntax().text_range()))
-                .unwrap_or(MirType::Unit);
-            Some(MirExpr::Var(mangled_name.clone(), callee_ty))
         } else {
-            call.callee().map(|e| self.lower_callee(&e))
+            call.callee()
+                .map(|e| self.lower_call_target(call.syntax().text_range(), &e))
         };
         let receiver = stdlib_method
             .as_ref()
@@ -10197,7 +10209,9 @@ impl<'a> Lowerer<'a> {
         let mut result = match rhs {
             Some(Expr::CallExpr(call)) => {
                 // `x |> f(a, b)` -> `f(x, a, b)` -- prepend lhs to existing args.
-                let callee = call.callee().map(|e| self.lower_callee(&e));
+                let callee = call
+                    .callee()
+                    .map(|e| self.lower_call_target(call.syntax().text_range(), &e));
                 let mut args: Vec<MirExpr> = Vec::new();
                 args.push(lhs);
                 for arg in call.args() {
@@ -10216,7 +10230,7 @@ impl<'a> Lowerer<'a> {
             }
             Some(rhs_expr) => {
                 // `x |> f` -> `f(x)` -- bare function reference.
-                let func = self.lower_callee(&rhs_expr);
+                let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
                     ty: tuple_slot_type(&func, ty),
@@ -10269,7 +10283,9 @@ impl<'a> Lowerer<'a> {
 
         match pipe.rhs() {
             Some(Expr::CallExpr(call)) => {
-                let callee = call.callee().map(|e| self.lower_callee(&e));
+                let callee = call
+                    .callee()
+                    .map(|e| self.lower_call_target(call.syntax().text_range(), &e));
                 let mut explicit_args: Vec<MirExpr> = Vec::new();
                 for arg in call.args() {
                     explicit_args.push(self.lower_expr(&arg));
@@ -10290,7 +10306,7 @@ impl<'a> Lowerer<'a> {
             }
             Some(rhs_expr) => {
                 // Bare function reference with slot — treat as regular pipe (insert at position 0)
-                let func = self.lower_callee(&rhs_expr);
+                let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
                     ty: tuple_slot_type(&func, ty),

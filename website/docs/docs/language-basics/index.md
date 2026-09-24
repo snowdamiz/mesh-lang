@@ -363,7 +363,20 @@ fn main() do
 end
 ```
 
-The compiler tries each clause in order and uses the first one that matches. Clauses for the same function and arity must be consecutive, and a catch-all clause must be last. Functions can reuse a name at different arities.
+The compiler tries each clause in order and uses the first one that matches. Clauses for the same function and arity must be consecutive, and a catch-all clause must be last.
+
+Functions can reuse a name at different arities. Each arity is its own function, and a call runs the one with as many parameters as it has arguments (a piped value counts as one):
+
+```mesh
+fn area(r) = r * r * 3
+fn area(w, h) = w * h
+
+fn main() do
+  println("${area(2)} ${area(3, 4)} ${3 |> area(4)}")
+end
+```
+
+Because such a name does not identify one function, it cannot be used as a value on its own. Pass a closure instead, for example `fn r -> area(r) end`.
 
 ### Guard Clauses
 

@@ -4208,63 +4208,48 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // Check for non-consecutive same-name function definitions.
     check_non_consecutive_clauses(&grouped, &mut ctx);
 
-    // Detect overloaded pub fn names (same name, different arity) for arity dispatch.
+    // Record visibility, and the names defined at more than one arity: each
+    // arity is its own function (`name__N`), dispatched by argument count.
     {
-        let mut pub_fn_counts: FxHashMap<String, usize> = FxHashMap::default();
+        let mut arities: FxHashMap<String, FxHashSet<usize>> = FxHashMap::default();
         for gi in &grouped {
-            let (name_opt, is_pub): (Option<String>, bool) = match gi {
-                GroupedItem::Single(Item::FnDef(fn_)) => (
-                    fn_.name().and_then(|n| n.text()),
-                    fn_.visibility().is_some(),
-                ),
-                GroupedItem::MultiClause { clauses } => (
-                    clauses
-                        .first()
-                        .and_then(|f| f.name().and_then(|n| n.text())),
-                    clauses
-                        .first()
-                        .map(|f| f.visibility().is_some())
-                        .unwrap_or(false),
-                ),
-                _ => (None, false),
+            let first = match gi {
+                GroupedItem::Single(Item::FnDef(fn_)) => Some(fn_),
+                GroupedItem::MultiClause { clauses } => clauses.first(),
+                _ => None,
             };
-            if let Some(name) = name_opt.clone() {
-                ctx.top_level_function_visibility
-                    .entry(name.clone())
-                    .and_modify(|visible| *visible |= is_pub)
-                    .or_insert(is_pub);
-            }
-            if is_pub {
-                if let Some(name) = name_opt {
-                    *pub_fn_counts.entry(name).or_insert(0) += 1;
-                }
-            }
+            let Some(first) = first else { continue };
+            let Some(name) = first.name().and_then(|n| n.text()) else {
+                continue;
+            };
+            ctx.top_level_function_visibility
+                .entry(name.clone())
+                .and_modify(|visible| *visible |= first.visibility().is_some())
+                .or_insert(first.visibility().is_some());
+            arities.entry(name).or_default().insert(fn_arity(first));
         }
-        for (name, count) in &pub_fn_counts {
-            if *count > 1 {
-                ctx.overloaded_pub_fn_names.insert(name.clone());
-            }
-        }
+        ctx.overloaded_fn_names = arities
+            .into_iter()
+            .filter(|(_, arities)| arities.len() > 1)
+            .map(|(name, _)| name)
+            .collect();
     }
 
     // Pre-register all top-level fn names so mutual recursion works.
     // Each fn gets a fresh monomorphic placeholder in env. When infer_fn_def
     // later processes the fn, it unifies the placeholder with the actual
     // inferred type, propagating constraints from any earlier forward references.
-    // For arity-overloaded pub fns, register with mangled name__arity keys.
+    // An arity-overloaded fn is registered under its `name__N` key.
     for gi in &grouped {
         let (fn_name_opt, arity): (Option<String>, usize) = match gi {
-            GroupedItem::Single(Item::FnDef(fn_)) => (
-                fn_.name().and_then(|n| n.text()),
-                fn_.param_list().map(|pl| pl.params().count()).unwrap_or(0),
-            ),
+            GroupedItem::Single(Item::FnDef(fn_)) => {
+                (fn_.name().and_then(|n| n.text()), fn_arity(fn_))
+            }
             GroupedItem::MultiClause { clauses } => {
                 let first = clauses.first();
                 (
                     first.and_then(|f| f.name().and_then(|n| n.text())),
-                    first
-                        .map(|f| f.param_list().map(|pl| pl.params().count()).unwrap_or(0))
-                        .unwrap_or(0),
+                    first.map(fn_arity).unwrap_or(0),
                 )
             }
             _ => (None, 0),
@@ -4279,12 +4264,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 _ => None,
             };
             let pre_var = declared.unwrap_or_else(|| ctx.fresh_var());
-            if ctx.overloaded_pub_fn_names.contains(&name) {
-                let mangled = format!("{}__{}", name, arity);
-                env.insert(mangled, Scheme::mono(pre_var));
-            } else {
-                env.insert(name, Scheme::mono(pre_var));
-            }
+            env.insert(fn_env_key(&ctx, &env, &name, arity), Scheme::mono(pre_var));
         }
     }
 
@@ -4580,6 +4560,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         imported_service_methods: ctx.imported_service_methods,
         local_service_exports: ctx.local_service_exports,
         overloaded_call_targets: ctx.overloaded_call_targets,
+        overloaded_fn_names: ctx.overloaded_fn_names,
         clustered_route_wrappers: ctx.clustered_route_wrappers,
         discarded_callback_results: ctx.discarded_callback_results,
         function_ownership: ownership.function_ownership,
@@ -4993,6 +4974,20 @@ enum GroupedItem {
     },
 }
 
+fn fn_arity(fn_: &FnDef) -> usize {
+    fn_.param_list().map(|pl| pl.params().count()).unwrap_or(0)
+}
+
+/// The env key of a fn: `name__N` for a top-level fn whose name is defined
+/// at more than one arity, so each arity is its own function.
+fn fn_env_key(ctx: &InferCtx, env: &TypeEnv, name: &str, arity: usize) -> String {
+    if env.depth() == 1 && ctx.overloaded_fn_names.contains(name) {
+        format!("{}__{}", name, arity)
+    } else {
+        name.to_string()
+    }
+}
+
 /// Group consecutive same-name, same-arity FnDef items from a list of items.
 ///
 /// Rules:
@@ -5272,8 +5267,9 @@ fn infer_multi_clause_fn(
     // ── Step 2: Set up function type infrastructure ────────────────────
 
     // The placeholder calls earlier in the module used.
+    let env_key = fn_env_key(ctx, env, &fn_name, arity);
     let pre_registered = env
-        .lookup(&fn_name)
+        .lookup(&env_key)
         .filter(|scheme| scheme.vars.is_empty())
         .map(|scheme| scheme.ty.clone());
 
@@ -5281,7 +5277,7 @@ fn infer_multi_clause_fn(
 
     // Pre-register the function name with a fresh type variable for recursion.
     let self_var = ctx.fresh_var();
-    env.insert(fn_name.clone(), Scheme::mono(self_var.clone()));
+    env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters from the FIRST clause only.
     let mut type_params: FxHashMap<String, Ty> = FxHashMap::default();
@@ -5322,7 +5318,7 @@ fn infer_multi_clause_fn(
     if !where_constraints.is_empty() || !type_params.is_empty() {
         let param_type_param_names: Vec<Option<String>> = (0..arity).map(|_| None).collect();
         fn_constraints.insert(
-            fn_name.clone(),
+            env_key.clone(),
             FnConstraints {
                 where_constraints: where_constraints.clone(),
                 type_params: type_params.clone(),
@@ -5531,7 +5527,7 @@ fn infer_multi_clause_fn(
         let instance = ctx.instantiate(&scheme);
         let _ = ctx.unify(pre_var, instance, ConstraintOrigin::Builtin);
     }
-    env.insert(fn_name, scheme);
+    env.insert(env_key, scheme);
 
     let resolved = ctx.resolve(fn_ty);
     types.insert(first.syntax().text_range(), resolved.clone());
@@ -8073,16 +8069,10 @@ fn infer_fn_def(
     }
 
     // Save any pre-registered mutual-recursion placeholder before we overwrite the env entry.
-    // For arity-overloaded fns, the placeholder is stored under the mangled name__arity key.
-    // Using the plain name for overloaded fns would pick up a previously-processed overload's
-    // real scheme and cause a spurious arity mismatch error on unification.
-    let pre_registered_key = if ctx.overloaded_pub_fn_names.contains(&fn_name) {
-        let arity = fn_.param_list().map(|pl| pl.params().count()).unwrap_or(0);
-        format!("{}__{}", fn_name, arity)
-    } else {
-        fn_name.clone()
-    };
-    let pre_registered = env.lookup(&pre_registered_key).and_then(|s| {
+    // An arity-overloaded fn's placeholder is under its `name__N` key: the
+    // plain name may hold another arity's scheme.
+    let env_key = fn_env_key(ctx, env, &fn_name, fn_arity(fn_));
+    let pre_registered = env.lookup(&env_key).and_then(|s| {
         if s.vars.is_empty() {
             Some(s.ty.clone())
         } else {
@@ -8093,7 +8083,7 @@ fn infer_fn_def(
     ctx.enter_level();
 
     let self_var = ctx.fresh_var();
-    env.insert(fn_name.clone(), Scheme::mono(self_var.clone()));
+    env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters if present.
     let mut type_params: FxHashMap<String, Ty> = FxHashMap::default();
@@ -8173,7 +8163,7 @@ fn infer_fn_def(
 
     if !where_constraints.is_empty() || !type_params.is_empty() {
         fn_constraints.insert(
-            fn_name.clone(),
+            env_key.clone(),
             FnConstraints {
                 where_constraints: where_constraints.clone(),
                 type_params: type_params.clone(),
@@ -8284,7 +8274,7 @@ fn infer_fn_def(
     ctx.concat_operands.extend(unresolved_concat);
     if !inferred.is_empty() || !concat_params.is_empty() {
         let entry = fn_constraints
-            .entry(fn_name.clone())
+            .entry(env_key.clone())
             .or_insert_with(|| FnConstraints {
                 where_constraints: Vec::new(),
                 type_params: FxHashMap::default(),
@@ -8322,14 +8312,7 @@ fn infer_fn_def(
         let _ = ctx.unify(pre_var, instance, ConstraintOrigin::Builtin);
     }
 
-    // For arity-overloaded pub fns, also insert with mangled name__arity key
-    // so the pre-registered placeholder gets updated and arity dispatch works.
-    if ctx.overloaded_pub_fn_names.contains(&fn_name) {
-        let arity = fn_.param_list().map(|pl| pl.params().count()).unwrap_or(0);
-        let mangled = format!("{}__{}", fn_name, arity);
-        env.insert(mangled, scheme.clone());
-    }
-    env.insert(fn_name, scheme);
+    env.insert(env_key, scheme);
 
     let resolved = ctx.resolve(fn_ty);
     types.insert(fn_.syntax().text_range(), resolved.clone());
@@ -8921,9 +8904,16 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
     match env.lookup(&name) {
         Some(scheme) => Ok(ctx.instantiate(scheme)),
         None => {
-            let err = TypeError::UnboundVariable {
-                name,
-                span: name_ref.syntax().text_range(),
+            let arities = env.overload_arities(&name);
+            let span = name_ref.syntax().text_range();
+            let err = if arities.len() > 1 {
+                TypeError::OverloadedFunctionValue {
+                    name,
+                    arities,
+                    span,
+                }
+            } else {
+                TypeError::UnboundVariable { name, span }
             };
             ctx.errors.push(err.clone());
             Err(err)
@@ -9921,51 +9911,15 @@ fn infer_call_inner(
         );
     }
 
-    // Arity dispatch: check for overloaded functions (name__N mangled keys) first.
-    // This handles both plain NameRef calls (slugify(str)) and qualified FieldAccess
-    // calls (Slug.slugify(str)) where the module exports overloaded variants.
-    let arg_count = call.args().len();
-    let mut arity_dispatched_ty: Option<Ty> = None;
-
-    // Plain NameRef: look up name__N in env
-    if let Expr::NameRef(ref nr) = callee_expr {
-        if let Some(fn_name) = nr.text() {
-            let mangled = format!("{}__{}", fn_name, arg_count);
-            if let Some(scheme) = env.lookup(&mangled) {
-                let scheme = scheme.clone();
-                let ty = ctx.instantiate(&scheme);
-                ctx.overloaded_call_targets
-                    .insert(call.syntax().text_range(), mangled);
-                arity_dispatched_ty = Some(ty);
-            }
-        }
-    }
-
-    // Qualified FieldAccess: Slug.slugify(str) → look for slugify__N in qualified_modules["Slug"]
-    if arity_dispatched_ty.is_none() {
-        if let Expr::FieldAccess(ref fa) = callee_expr {
-            if let Some(base) = fa.base() {
-                if let Expr::NameRef(ref nr) = base {
-                    if let Some(mod_name) = nr.text() {
-                        if let Some(field_name) = fa.field().map(|f| f.text().to_string()) {
-                            let mangled = format!("{}__{}", field_name, arg_count);
-                            let scheme_opt = ctx
-                                .qualified_modules
-                                .get(&mod_name)
-                                .and_then(|m| m.get(&mangled))
-                                .cloned();
-                            if let Some(scheme) = scheme_opt {
-                                let ty = ctx.instantiate(&scheme);
-                                ctx.overloaded_call_targets
-                                    .insert(call.syntax().text_range(), mangled);
-                                arity_dispatched_ty = Some(ty);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // A fn defined at more than one arity: the arity the call names.
+    let arity_dispatched_ty = infer_overloaded_callee(
+        ctx,
+        env,
+        &callee_expr,
+        call.args().len(),
+        call.syntax().text_range(),
+        types,
+    );
 
     // Try normal callee inference first. For FieldAccess callees, this goes through
     // the standard infer_field_access path (modules, services, variants, struct fields).
@@ -10157,9 +10111,16 @@ fn infer_call_inner(
     // After unification, arg_types hold the resolved concrete types for each
     // parameter. Use param_type_param_names to map from arg position back to
     // type parameter name, then check trait constraints on the resolved types.
+    // An overloaded callee's constraints are its arity's (`name__N`).
+    let constraints_key = |ctx: &InferCtx, name: String| {
+        ctx.overloaded_call_targets
+            .get(&call.syntax().text_range())
+            .cloned()
+            .unwrap_or(name)
+    };
     if let Expr::NameRef(name_ref) = &callee_expr {
         if let Some(fn_name) = name_ref.text() {
-            if let Some(constraints) = fn_constraints.get(&fn_name) {
+            if let Some(constraints) = fn_constraints.get(&constraints_key(ctx, fn_name)) {
                 require_inferred_bounds(ctx, constraints, &arg_types, &origin, call);
             }
         }
@@ -10177,7 +10138,7 @@ fn infer_call_inner(
     }
     if let Expr::NameRef(name_ref) = &callee_expr {
         if let Some(fn_name) = name_ref.text() {
-            if let Some(constraints) = fn_constraints.get(&fn_name) {
+            if let Some(constraints) = fn_constraints.get(&constraints_key(ctx, fn_name)) {
                 if !constraints.where_constraints.is_empty() {
                     let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
 
@@ -10286,6 +10247,44 @@ fn infer_call_inner(
 }
 
 /// Infer the type of a pipe expression: `lhs |> rhs`
+/// A call to a fn defined at more than one arity (`area(2)`, `Geo.area(2)`,
+/// `x |> area(3)`, `x |> area`): the type of the arity `arg_count` names,
+/// `name__N`, recorded as the target of the call at `call_range`. `None`
+/// when the callee is no such fn.
+fn infer_overloaded_callee(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    callee_expr: &Expr,
+    arg_count: usize,
+    call_range: TextRange,
+    types: &mut FxHashMap<TextRange, Ty>,
+) -> Option<Ty> {
+    let (scheme, mangled) = match callee_expr {
+        Expr::NameRef(name_ref) => {
+            let name = name_ref.text()?;
+            // A local variable of that name is what the call means.
+            if env.is_local(&name) {
+                return None;
+            }
+            let mangled = format!("{name}__{arg_count}");
+            (env.lookup(&mangled)?.clone(), mangled)
+        }
+        Expr::FieldAccess(fa) => {
+            let Some(Expr::NameRef(module)) = fa.base() else {
+                return None;
+            };
+            let mangled = format!("{}__{arg_count}", fa.field()?.text());
+            let module = ctx.qualified_modules.get(&module.text()?)?;
+            (module.get(&mangled)?.clone(), mangled)
+        }
+        _ => return None,
+    };
+    let ty = ctx.instantiate(&scheme);
+    types.insert(callee_expr.syntax().text_range(), ty.clone());
+    ctx.overloaded_call_targets.insert(call_range, mangled);
+    Some(ty)
+}
+
 fn infer_pipe(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -10364,15 +10363,25 @@ fn infer_pipe(
                 return Err(err);
             }
 
-            let callee_ty = infer_expr(
+            let callee_ty = match infer_overloaded_callee(
                 ctx,
                 env,
                 &callee_expr,
+                call.args().len() + 1,
+                call.syntax().text_range(),
                 types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
+            ) {
+                Some(ty) => ty,
+                None => infer_expr(
+                    ctx,
+                    env,
+                    &callee_expr,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
 
             let args = call.args();
 
@@ -10458,7 +10467,11 @@ fn infer_pipe(
             // Check where-clause constraints at the call site (mirrors infer_call).
             if let Expr::NameRef(name_ref) = &callee_expr {
                 if let Some(fn_name) = name_ref.text() {
-                    if let Some(constraints) = fn_constraints.get(&fn_name) {
+                    if let Some(constraints) = fn_constraints.get(
+                        ctx.overloaded_call_targets
+                            .get(&call.syntax().text_range())
+                            .unwrap_or(&fn_name),
+                    ) {
                         if !constraints.where_constraints.is_empty() {
                             let mut resolved_type_args: FxHashMap<String, Ty> =
                                 FxHashMap::default();
@@ -10569,15 +10582,25 @@ fn infer_pipe(
         }
         _ => {
             // Existing behavior: infer rhs as function, unify with Fun([lhs_ty], ret).
-            let rhs_ty = infer_expr(
+            let rhs_ty = match infer_overloaded_callee(
                 ctx,
                 env,
                 &rhs,
+                1,
+                rhs.syntax().text_range(),
                 types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
+            ) {
+                Some(ty) => ty,
+                None => infer_expr(
+                    ctx,
+                    env,
+                    &rhs,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
             match tuple_accessor(ctx, &rhs, None) {
                 Some(index) => {
                     let element =
@@ -10676,15 +10699,25 @@ fn infer_slot_pipe(
                 return Err(err);
             }
 
-            let callee_ty = infer_expr(
+            let callee_ty = match infer_overloaded_callee(
                 ctx,
                 env,
                 &callee_expr,
+                call.args().len() + 1,
+                call.syntax().text_range(),
                 types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
+            ) {
+                Some(ty) => ty,
+                None => infer_expr(
+                    ctx,
+                    env,
+                    &callee_expr,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
 
             let explicit_args = call.args();
             // `x |2> f(a, b, c)` means f(a, x, b, c): insert at index 1 (slot-1).
@@ -10782,7 +10815,11 @@ fn infer_slot_pipe(
             // Where-clause constraint checking (mirrors infer_pipe's CallExpr arm)
             if let Expr::NameRef(ref name_ref) = callee_expr {
                 if let Some(fn_name) = name_ref.text() {
-                    if let Some(constraints) = fn_constraints.get(&fn_name) {
+                    if let Some(constraints) = fn_constraints.get(
+                        ctx.overloaded_call_targets
+                            .get(&call.syntax().text_range())
+                            .unwrap_or(&fn_name),
+                    ) {
                         if !constraints.where_constraints.is_empty() {
                             let mut resolved_type_args: FxHashMap<String, Ty> =
                                 FxHashMap::default();
@@ -10820,15 +10857,25 @@ fn infer_slot_pipe(
         }
         _ => {
             // Bare function reference: treat like regular pipe (insert lhs at position 0)
-            let rhs_ty = infer_expr(
+            let rhs_ty = match infer_overloaded_callee(
                 ctx,
                 env,
                 &rhs,
+                1,
+                rhs.syntax().text_range(),
                 types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
+            ) {
+                Some(ty) => ty,
+                None => infer_expr(
+                    ctx,
+                    env,
+                    &rhs,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
             let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
             ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
         }

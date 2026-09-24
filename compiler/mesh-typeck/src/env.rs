@@ -71,6 +71,21 @@ impl TypeEnv {
             .any(|scope| scope.contains_key(name))
     }
 
+    /// The arities of `name` when it is bound only as overloads
+    /// (`name__1`, `name__2`, ...), in increasing order.
+    pub fn overload_arities(&self, name: &str) -> Vec<usize> {
+        let prefix = format!("{name}__");
+        let mut arities: Vec<usize> = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.keys())
+            .filter_map(|key| key.strip_prefix(&prefix)?.parse().ok())
+            .collect();
+        arities.sort_unstable();
+        arities.dedup();
+        arities
+    }
+
     /// Every binding in every scope.
     pub fn schemes(&self) -> impl Iterator<Item = &Scheme> {
         self.scopes.iter().flat_map(|scope| scope.values())
