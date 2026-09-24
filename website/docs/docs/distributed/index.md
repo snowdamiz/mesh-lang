@@ -129,6 +129,8 @@ end
 
 `Node.spawn` accepts the actor's normal arguments and returns a PID that is valid across nodes. Remote arguments may currently be `Int`, `Float`, `Bool`, `String`, `Pid`, or `Unit`. The target executable must contain the referenced actor so its runtime entry is registered there. Call remote spawn from an actor: the caller waits cooperatively for the spawn reply. PID `0` reports a failed spawn, such as a missing connection, unsupported argument, or unknown actor entry.
 
+The compiler checks a remote spawn as it checks `spawn`: the node name must be a `String`, the arguments must match the actor's parameters, and the result is the actor's `Pid<M>`, so sending it a message of another type is an error.
+
 ### Spawning with Links
 
 Use `Node.spawn_link` to spawn a remote actor and establish a bidirectional link in one step. If either the local or remote actor crashes, the other receives an exit signal:
@@ -155,7 +157,7 @@ Use `Process` names for services within one runtime:
 ```mesh
 actor cache() do
   receive do
-    message -> println("cache: #{message}")
+    message -> println("cache: " <> message)
   end
 end
 
@@ -181,7 +183,7 @@ Use `Global.register` to assign a name to a process globally:
 ```mesh
 actor db_service() do
   receive do
-    message -> println("query: #{message}")
+    message -> println("query: " <> message)
   end
 end
 
@@ -261,8 +263,8 @@ This means you do not need to manually unregister names in crash or disconnect s
 | `Node.connect(name)` | `Int` | Connect and authenticate; `0` is success |
 | `Node.self()` | `String` | Current node name |
 | `Node.list()` | `List<String>` | Connected node names |
-| `Node.spawn(node, actor, args...)` | `Pid<T>` | Spawn remotely; `0` signals failure |
-| `Node.spawn_link(node, actor, args...)` | `Pid<T>` | Spawn remotely and link |
+| `Node.spawn(node, actor, args...)` | `Pid<M>` | Spawn remotely; `0` signals failure. Arguments and messages are checked against the actor |
+| `Node.spawn_link(node, actor, args...)` | `Pid<M>` | Spawn remotely and link, checked like `Node.spawn` |
 | `Node.monitor(name)` | `Int` | Monitor a remote node; `0` is success and `1` is failure |
 | `Process.register(name, pid)` | `Int` | Register a local process |
 | `Process.whereis(name)` | `Pid` | Resolve a local process |

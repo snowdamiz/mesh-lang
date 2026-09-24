@@ -99,7 +99,61 @@ actor boundary. PostgreSQL placeholders are `$1`, `$2`, and so on.
 | `Pool.query_as(pool, sql, params, decoder)` | `Result<List<Result<T, String>>, String>` | Query and decode each row |
 
 Pool leases are runtime-internal so their provenance cannot be forged. Use the
-scoped `Pool.query`, `Pool.execute`, typed value variants, or `Repo` APIs.
+scoped `Pool.query`, `Pool.execute`, their [typed value variants](#binary-and-null-values),
+or `Repo` APIs.
+
+## Binary and NULL Values
+
+The string APIs above bind every parameter as text and return every column as
+a `String`. To store `Bytes` or distinguish SQL `NULL`, use the `_values`
+variants. They take and return `DbValue`, a built-in type with the variants
+`Text(String)`, `Binary(Bytes)`, and `Null`:
+
+```mesh
+fn save_avatar(db :: SqliteConn, user_id :: String, image :: Bytes) -> Int!String do
+  Sqlite.execute_values(
+    db,
+    "INSERT INTO avatars (user_id, image, caption) VALUES (?, ?, ?)",
+    [Text(user_id), Binary(image), Null]
+  )
+end
+
+fn load_avatar(db :: SqliteConn, user_id :: String) -> Bytes!String do
+  let rows = Sqlite.query_values(
+    db,
+    "SELECT image FROM avatars WHERE user_id = ?",
+    [Text(user_id)]
+  )?
+  case rows do
+    [] -> Err("no avatar")
+    row :: _ -> case Map.get(row, "image") do
+      Binary(image) -> Ok(image)
+      _ -> Err("image is not a BLOB")
+    end
+  end
+end
+```
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Sqlite.execute_values(connection, sql, params)` | `Result<Int, String>` | Execute with `DbValue` parameters and return the affected-row count |
+| `Sqlite.query_values(connection, sql, params)` | `Result<List<Map<String, DbValue>>, String>` | Query rows as `DbValue` maps |
+| `Pg.execute_values(connection, sql, params)` | `Result<Int, String>` | Borrow the connection to execute with `DbValue` parameters |
+| `Pg.query_values(connection, sql, params)` | `Result<List<Map<String, DbValue>>, String>` | Borrow the connection to query rows as `DbValue` maps |
+| `Pool.execute_values(pool, sql, params)` | `Result<Int, String>` | Execute using a checked-out connection |
+| `Pool.query_values(pool, sql, params)` | `Result<List<Map<String, DbValue>>, String>` | Query using a checked-out connection |
+
+`Binary` parameters bind as SQLite BLOBs or PostgreSQL binary-format values
+(such as `bytea`), and `Null` binds SQL `NULL`; an empty `Binary` is a
+zero-length value, not `NULL`.
+In results, SQL `NULL` is `Null`, SQLite BLOB columns and PostgreSQL `bytea`
+columns are `Binary`, and every other column is `Text` in the database's text
+form, so an integer column reads as `Text("1")`. PostgreSQL text that is not
+valid UTF-8 is an error; SQLite replaces invalid UTF-8.
+
+Each value is limited to 16 MiB, and a result to 100,000 rows and 64 MiB. A
+statement accepts at most 32,766 SQLite or 32,767 PostgreSQL parameters, and
+SQLite requires exactly as many parameters as the statement has placeholders.
 
 ## Struct Row Decoding
 
@@ -252,7 +306,10 @@ let query = Query.from("accounts")
 
 ## Repository Operations
 
-`Repo` executes queries against a `PoolHandle`.
+`Repo` executes queries against a `PoolHandle`. Every operation returns a
+`Result`: rows come back as `Map<String, String>` (a list of them for
+several), counts as `Int`, and failures as `Err(message)`, except the
+changeset operations, whose error is the changeset itself.
 
 ### Reads
 
@@ -262,9 +319,9 @@ let query = Query.from("accounts")
 | `Repo.one(pool, query)` | Return the first row, or `Err("not found")` |
 | `Repo.get(pool, table, id)` | Read by primary-key value |
 | `Repo.get_by(pool, table, field, value)` | Read by one field |
-| `Repo.count(pool, query)` | Count matching rows |
-| `Repo.exists(pool, query)` | Test whether a match exists |
-| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations |
+| `Repo.count(pool, query)` | Count matching rows: `Result<Int, String>` |
+| `Repo.exists(pool, query)` | Test whether a match exists: `Result<Bool, String>` |
+| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations (`associations` is a `List<String>`, nested ones written `"posts.comments"`): `Result<List<Map<String, String>>, String>` |
 
 ### Writes
 
@@ -272,7 +329,7 @@ let query = Query.from("accounts")
 |----------|-------------|
 | `Repo.insert(pool, table, fields)` | Insert string-valued fields and return the row |
 | `Repo.insert_expr(pool, table, fields)` | Insert expression-valued fields |
-| `Repo.update(pool, table, id, fields)` | Update by primary key |
+| `Repo.update(pool, table, id, fields)` | Update by primary key from a `Map<String, String>`; returns the updated row |
 | `Repo.update_where(pool, table, fields, query)` | Update matching rows with string values |
 | `Repo.update_where_expr(pool, table, fields, query)` | Update matching rows with expressions |
 | `Repo.delete(pool, table, id)` | Delete by primary key and return the row |

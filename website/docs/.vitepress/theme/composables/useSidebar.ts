@@ -1,6 +1,5 @@
 import { computed, ref, watch } from 'vue'
 import { useData, useRoute } from 'vitepress'
-import { useMediaQuery } from '@vueuse/core'
 
 // Shared mobile sidebar state across NavBar, DocsLayout and MobileSidebar.
 const sharedSidebarOpen = ref(false)
@@ -18,7 +17,6 @@ export interface SidebarItem {
 export function useSidebar() {
   const { theme, page, frontmatter } = useData()
   const route = useRoute()
-  const is960 = useMediaQuery('(min-width: 960px)')
 
   const sidebar = computed<SidebarItem[]>(() => {
     const sidebarConfig = theme.value.sidebar
@@ -64,7 +62,6 @@ export function useSidebar() {
     sidebar,
     hasSidebar,
     isOpen: sharedSidebarOpen,
-    is960,
     open,
     close,
     toggle,

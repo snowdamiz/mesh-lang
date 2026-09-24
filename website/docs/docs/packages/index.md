@@ -13,11 +13,12 @@ Two commands intentionally split the work:
 
 - `meshpkg` authenticates with the registry and publishes, searches, or
   installs registry packages.
-- `meshc deps` resolves git and path dependency graphs and writes their lock
-  entries.
+- `meshc deps` resolves git and path dependency graphs, checks git
+  dependencies out, and writes their lock entries.
 
-`meshc build` does not fetch missing packages. Resolve dependencies before
-building and commit `mesh.lock` with the project.
+Each command keeps the lock entries the other wrote. `meshc build` does not
+fetch missing packages. Resolve dependencies before building and commit
+`mesh.lock` with the project.
 
 ## Declare dependencies
 
@@ -35,7 +36,8 @@ remote_rules = { git = "https://github.com/example/remote-rules.git", tag = "v1.
 ```
 
 Registry names contain `/`, so quote them as TOML keys. Version ranges are not
-supported: `"1.2.0"` is valid, while `"^1.2"` and `">=1"` are not.
+supported: `"1.2.0"` is valid, while `"^1.2"` and `">=1"` are not. The table
+form `{ version = "1.2.0" }` means the same as the string.
 
 Git dependencies accept one of:
 
@@ -45,8 +47,10 @@ by_tag = { git = "https://github.com/example/lib.git", tag = "v1.0.0" }
 by_branch = { git = "https://github.com/example/lib.git", branch = "main" }
 ```
 
-Use an immutable `rev` for release builds. A branch can move between
-resolutions even though the resulting lockfile pins the checkout used.
+`rev` must be a hex commit id. Without `rev`, `tag`, or `branch`, the
+remote's default branch is used. Use an immutable `rev` for release builds. A
+branch can move between resolutions even though the resulting lockfile pins
+the checkout used.
 
 ## Install and lock
 
@@ -59,10 +63,12 @@ meshpkg install
 That command:
 
 1. reads exact registry versions from `mesh.toml`;
-2. reuses exact entries already present in `mesh.lock`;
+2. reuses the checksum of a `mesh.lock` entry that pins the same version, and
+   asks the registry for any other;
 3. downloads and SHA-256 verifies each package;
-4. extracts it under the project's package cache; and
-5. updates `mesh.lock`.
+4. extracts it to `.mesh/packages/<name>@<version>/`, removing any other
+   installed version of that package; and
+5. updates `mesh.lock`, keeping its git and path entries.
 
 To inspect the latest release of one package:
 
@@ -72,7 +78,12 @@ meshpkg install your-login/json-tools
 
 A named install downloads the latest registry version and records it in
 `mesh.lock`, but deliberately does **not** edit `mesh.toml`. Add the printed
-exact dependency declaration yourself before relying on it in a build.
+exact dependency declaration yourself to keep it: a later `meshpkg install`
+without a name rewrites the registry entries of `mesh.lock` from the manifest.
+There is no `name@version` form; declare a specific version in `mesh.toml`.
+
+`meshc build` compiles every package installed under `.mesh/packages`,
+declared or not, so remove a package's directory to stop using it.
 
 Resolve git and path dependencies separately:
 
@@ -80,8 +91,9 @@ Resolve git and path dependencies separately:
 meshc deps
 ```
 
-Both commands accept the current project by default. Run them again after
-changing dependency declarations.
+`meshc deps` checks each git dependency out into `.mesh/deps/<name>/`, which
+the build compiles like a path dependency. Both commands accept the current
+project by default. Run them again after changing dependency declarations.
 
 ## Search and browse
 
@@ -90,6 +102,9 @@ Search package names and descriptions:
 ```bash
 meshpkg search json
 ```
+
+The result is a `NAME`, `VERSION`, `DESCRIPTION` table of each match's latest
+version.
 
 Browse package metadata, version history, checksums, and download counts at
 [packages.meshlang.dev](https://packages.meshlang.dev).
@@ -109,6 +124,9 @@ meshpkg --json search json
 meshpkg --json install
 ```
 
+See [Developer Tools](/docs/tooling/#searching) for each
+command's JSON shape.
+
 ## Publish a package
 
 Open [packages.meshlang.dev/publish](https://packages.meshlang.dev/publish),
@@ -119,7 +137,9 @@ meshpkg login --token <your-token>
 ```
 
 Without `--token`, `meshpkg login` prompts on standard input. Credentials are
-stored in `~/.mesh/credentials`.
+stored in `~/.mesh/credentials`, readable by their owner only. `meshpkg
+publish` sends the token to the registry it publishes to, so use `--registry`
+only with a registry you trust.
 
 The package name must be scoped to the authenticated GitHub login:
 

@@ -4,14 +4,16 @@ import { useData } from 'vitepress'
 import { isActive, type SidebarItem } from '@/composables/useSidebar'
 import {
   Blocks, BookOpen, ClipboardList, Code2, Container, Database, FileText, FlaskConical, Globe,
-  Library, ListTree, Network, PackageOpen, Repeat, Shapes, ShieldCheck, Workflow, Wrench,
+  Library, ListTree, Network, PackageOpen, Plug, Repeat, Shapes, ShieldCheck, Variable, Workflow,
+  Wrench,
 } from 'lucide-vue-next'
 
 // The `icon` names used by the sidebar in config.mts. Importing the whole
 // icon set instead put all of Lucide into the theme chunk every page loads.
 const icons: Record<string, Component> = {
   Blocks, BookOpen, ClipboardList, Code2, Container, Database, FileText, FlaskConical, Globe,
-  Library, ListTree, Network, PackageOpen, Repeat, Shapes, ShieldCheck, Workflow, Wrench,
+  Library, ListTree, Network, PackageOpen, Plug, Repeat, Shapes, ShieldCheck, Variable, Workflow,
+  Wrench,
 }
 
 const props = defineProps<{

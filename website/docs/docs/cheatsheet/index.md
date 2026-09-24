@@ -21,8 +21,13 @@ A quick reference for Mesh syntax. For details, see the full guides linked in ea
 | Nested block comment | `#= outer #= inner =# =#` |
 | Tuple binding | `let (name, age) = ("Ada", 36)` |
 | Ignore a result | `do_work()` on its own line |
-| Multiple statements | `let x = 1; let y = 2` |
-| Print | `println("hello")` |
+| Multiple statements | `let x = 1; let y = 2` (a newline or `;` must separate them) |
+| Print | `println("hello")`, `print("no newline")` (a `String` only) |
+| Panic | `panic("message")` |
+| Default value | `let n :: Int = default()` |
+| Compare | `compare(a, b)` returns `Less`, `Equal`, or `Greater` |
+| List prelude | `map(xs, f)`, `filter(xs, f)`, `reduce(xs, 0, f)`, `head(xs)`, `tail(xs)` |
+| Debug text | `inspect(value)` |
 
 ## Types
 
@@ -42,19 +47,19 @@ A quick reference for Mesh syntax. For details, see the full guides linked in ea
 | `List<T>` | `[1, 2, 3]` |
 | `Map<K, V>` | `%{"key" => "value"}` |
 | `Set` | `Set.new()` (integer values) |
-| `Range` | `Range.new(0, 10)`; use `0..10` directly in `for` |
+| `Range` | `Range.new(0, 10)` or `0..10` |
 | `Queue` | `Queue.new()` (integer values) |
 | `Pid<M>` | returned by `spawn(...)` |
-| `Option<T>` | `Some(42)`, `None` (shorthand: `Int?`) |
-| `Result<T, E>` | `Ok(42)`, `Err("fail")` (shorthand: `Int!String`) |
+| `Option<T>` | `Some(42)`, `None` (shorthand: `Int?`, `(Int, String)?`) |
+| `Result<T, E>` | `Ok(42)`, `Err("fail")` (shorthand: `Int!String`, `(Int, Int)!String`) |
 | `Fun(A) -> B` | `Fun(Int) -> String` |
 
-Integer literals also support separators and radices: `1_000_000`, `0xff`, `0b1010`, and `0o755`. Floats support exponent notation such as `1.25e3`.
+Integer literals also support separators and radices: `1_000_000`, `0xff`, `0b1010`, and `0o755`. Floats support exponent notation such as `1.25e3`; `1e3` is a `Float` too. A malformed or out-of-range literal (`0b102`, `0xffffffffffffffff`, `1e999`) is a compile error.
 
 ## String Features
 
 ```mesh
-# Hash-brace interpolation (v12.0, preferred)
+# Hash-brace interpolation (preferred)
 let name = "World"
 println("Hello, #{name}!")
 println("Expr: #{count * 2 + 1}")
@@ -66,6 +71,11 @@ println("Hello, ${name}!")
 let body = """
   SELECT * FROM events WHERE id = #{id}
   """
+# The newline after the opening """, the final indent-only line, and the
+# closing """'s indentation are removed: body starts with "SELECT"
+
+# Escapes: \n \t \r \0 \\ \" \$ \# \u{1F389}; any other escape is an error
+let literal = "\#{not interpolated} \u{1F389}"
 
 # JSON object literals (prefer over heredoc JSON templates)
 let resp = json { status: "ok", count: n }          # {"status":"ok","count":42}
@@ -105,7 +115,13 @@ fn fib(0) = 0
 fn fib(1) = 1
 fn fib(n) = fib(n - 1) + fib(n - 2)
 
-# Guards
+# Clause parameters take any pattern; clauses may have do-end bodies
+fn len([]) = 0
+fn len(_ :: rest) = 1 + len(rest)
+fn size_label(1 | 2) = "small"
+fn size_label(_) = "large"
+
+# Guards (a function clause's guard may be any Bool expression)
 fn abs(n) when n < 0 = -n
 fn abs(n) = n
 
@@ -131,6 +147,14 @@ fn with_value(value :: Int, block :: Fun(Int) -> Int) -> Int = block(value)
 let result = with_value(10) do |value|
   value * 2
 end
+# A trailing closure is the last argument of calls, method calls, and pipes
+let doubled = [1, 2, 3].map() do |x|
+  x * 2
+end
+
+# Stdlib functions as methods on String, List, Map, Set, and Range values
+let found = [1, 2, 3].contains(2)   # List.contains([1, 2, 3], 2)
+let size = "mesh".length()          # String.length("mesh")
 
 # Keyword arguments become one final Map argument
 request("/events", method: "POST", content_type: "application/json")
@@ -170,6 +194,7 @@ value
 0
 -1
 "ok"
+:ok
 true
 nil
 
@@ -190,7 +215,7 @@ case value do
 end
 ```
 
-`case`/`match` must be exhaustive; redundant arms are warned about. List-literal patterns such as `[]` and `[a, b]` match lists of exactly that length; there are no struct patterns. Function and closure parameters take the same patterns (`fn len(_ :: t) = 1 + len(t)`); clauses that miss a value are a warning, and a call they miss panics.
+`case`/`match` must be exhaustive; redundant arms are warned about. A `when` guard is any `Bool` expression. List-literal patterns such as `[]` and `[a, b]` match lists of exactly that length; there are no struct patterns. Function and closure parameters take the same patterns (`fn len(_ :: t) = 1 + len(t)`); clauses that miss a value are a warning, and a call they miss panics.
 
 ## Control Flow
 
@@ -200,6 +225,15 @@ if x > 0 do
   "positive"
 else
   "non-positive"
+end
+
+# else if chains close with one end; an if without else has type ()
+if x > 0 do
+  "positive"
+else if x == 0 do
+  "zero"
+else
+  "negative"
 end
 
 # Case (pattern matching)
@@ -220,6 +254,17 @@ end
 case r do
   Ok(value) # same as Ok(value) -> Ok(value)
   Err(message) -> Err(String.length(message))
+end
+
+# Several statements in an arm: -> do ... end, or an indented next line
+case o do
+  Some(n) -> do
+    let doubled = n * 2
+    doubled + 1
+  end
+  None ->
+    let fallback = 0
+    fallback
 end
 
 # For loop (list comprehension)
@@ -471,7 +516,17 @@ fn first_positive(values :: List<Int>) -> Int? do
   let value = List.find(values, fn n -> n > 0 end)?
   Some(value)
 end
+
+# panic ends the actor (or the program from main, exit status 101)
+fn port(text :: String) -> Int do
+  case String.to_int(text) do
+    Some(n) -> n
+    None -> panic("not a port: #{text}")
+  end
+end
 ```
+
+Runtime errors such as `List.get` out of range, `Map.get` of a missing key, and integer division by zero panic the same way. See [Panics](/docs/language-basics/#panics).
 
 ## Concurrency
 
@@ -526,11 +581,12 @@ See [Concurrency](/docs/concurrency/) for details.
 ## Modules
 
 ```mesh
-# Import a module
-import String
-
-# Use qualified access
+# Standard-library modules need no import
 let n = String.length("test")
+
+# A file's path names its module: geo/shapes.mpl is Geo.Shapes
+import Geo.Shapes
+let p = Shapes.Point { x: 1, y: 2 }   # use the last segment
 
 # Import specific functions
 from String import length
@@ -575,9 +631,15 @@ end
 # Bodyless native ABI binding
 @native("mesh_math_add")
 pub fn native_add(left :: Int, right :: Int) -> Int
+
+# C symbol for a staticlib/cdylib build (meshc build --artifact staticlib)
+@export("mesh_mobile_echo")
+pub fn echo(request :: Bytes) -> Bytes!String do
+  Ok(request)
+end
 ```
 
-`@cluster` applies only to a unique public `fn`/`def`; the old `clustered(work)` spelling is rejected. `@native` declarations require explicit parameter and result types, cannot use generics/bounds/guards, and support `Int`, `Float`, `Bool`, `String`, `Bytes`, `U64`, `U128`, and `I128` values plus `Option`/`Result` returns over supported values.
+`@cluster` applies only to a unique public `fn`/`def`; the old `clustered(work)` spelling is rejected. `@native` declarations require explicit parameter and result types, cannot use generics/bounds/guards, and support `Int`, `Float`, `Bool`, `String`, `Bytes`, `U64`, `U128`, and `I128` values plus `Option`/`Result` returns over supported values. `@export` requires a public function with exactly the signature `(Bytes) -> Bytes!String`; see [Library Builds](/docs/library-builds/).
 
 ## Operators
 
@@ -588,12 +650,13 @@ pub fn native_add(left :: Int, right :: Int) -> Int
 | Logical | `and` / `&&`, `or` / `\|\|`, `not` / `!` |
 | Pipe | `\|>` |
 | Slot pipe | `\|N>` (e.g. `\|2>`) |
-| String concat | `<>` |
-| List concat | `++` |
+| Concatenation | `<>`, `++` (either joins two strings or two lists) |
 | Error propagation | `?` |
 | Range | `..` |
 
 Precedence from low to high is: pipes; or; and; equality; ordering; range; concatenation; addition; multiplication; prefix; postfix call/field/`?`.
+
+`Int` `/` truncates toward zero (`-7 / 2` is `-3`) and `%` takes the dividend's sign (`7 % -2` is `1`); dividing by zero panics. NaN is unequal to itself, and `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round` saturate at the `Int` bounds.
 
 ## Testing
 
@@ -627,35 +690,43 @@ end
 test("actor messaging") do
   let me = self()
   send(me, 42)
-  assert_receive 42, 500   # pattern, timeout_ms
+  assert_receive 42, 500
 end
 
-# Mock actor for concurrency tests
-let mock = Test.mock_actor(fn msg do
-  # handle msg
-  println("mock received: #{msg}")
-  "ignored"   # callback is currently typed String -> String
-end)
+test("mock actor") do
+  let me = self()
+  let mock = Test.mock_actor(fn msg do
+    send(me, "saw " <> msg)
+    "ignored"
+  end)
+  send(mock, "ping")
+  assert_receive "saw ping", 500
+end
 ```
 
-`self()` is available only in actor-context code; test bodies run as test
-actors. The identity/link lines above are context-only fragments.
-`Test.mock_actor` is a test-owned cleanup helper whose callback return value is
-ignored. Use a normal actor when callback behavior itself must be observed.
+Test bodies run as actors, so `self()` works in them. `Test.mock_actor` calls
+its `String -> String` callback with each message until the test ends and
+ignores what it returns.
 
 | Assertion | Description |
 |-----------|-------------|
-| `assert expr` | Fail if expr is false |
-| `assert_eq a, b` | Fail if a != b |
-| `assert_ne a, b` | Fail if a == b |
-| `assert_raises fn` | Fail if fn does not raise |
-| `assert_receive pat, ms` | Fail if not received within timeout |
+| `assert(expr)` | Fail if `expr` is false |
+| `assert_eq(a, b)` | Fail if `a` and `b` display differently |
+| `assert_ne(a, b)` | Fail if `a` and `b` display the same |
+| `assert_raises(fn)` | Fail if calling `fn` does not panic or fail an assertion |
+| `assert_receive pat, ms` | Fail if the next message does not match `pat`, or none arrives within `ms` (default 100) |
 
 See [Testing](/docs/testing/) for full guide.
 
 ## Standard Library
 
 ```mesh
+# Conversions
+let a = Int.to_string(42)      # "42"
+let b = Float.to_string(1.5)   # "1.5"
+let c = String.from(42)        # any Display value, as "#{42}" shows it
+let d = Float.to_int(2.9)      # 2 (truncates; saturates at the Int bounds)
+
 # Crypto
 let input = Bytes.from_utf8("hello")
 let h256 = Crypto.sha256(input)             # Bytes

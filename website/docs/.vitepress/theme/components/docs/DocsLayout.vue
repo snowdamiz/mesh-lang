@@ -11,9 +11,11 @@ import DocsLastUpdated from './DocsLastUpdated.vue'
 import DocsVersionBadge from './DocsVersionBadge.vue'
 import MobileSidebar from './MobileSidebar.vue'
 
-const { sidebar, hasSidebar } = useSidebar()
+const { sidebar, hasSidebar, close } = useSidebar()
+// Layout switches in CSS so server and client render the same tree; this only
+// closes the mobile sheet if the window grows past the breakpoint.
 const isDesktop = useMediaQuery('(min-width: 960px)')
-const isWide = useMediaQuery('(min-width: 1280px)')
+watch(isDesktop, (desktop) => { if (desktop) close() })
 
 const route = useRoute()
 const contentKey = ref(0)
@@ -27,14 +29,14 @@ watch(() => route.path, () => {
   <div class="relative mx-auto flex max-w-[90rem]">
     <!-- Desktop sidebar -->
     <aside
-      v-if="hasSidebar && isDesktop"
-      class="sticky top-14 h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-border"
+      v-if="hasSidebar"
+      class="hidden min-[960px]:block sticky top-14 h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-border"
     >
       <DocsSidebar :items="sidebar" />
     </aside>
 
     <!-- Mobile sidebar -->
-    <MobileSidebar v-if="hasSidebar && !isDesktop" :items="sidebar" />
+    <MobileSidebar v-if="hasSidebar" :items="sidebar" />
 
     <!-- Main content -->
     <main class="min-w-0 flex-1 px-6 py-12 lg:px-12">
@@ -55,8 +57,7 @@ watch(() => route.path, () => {
 
     <!-- Right aside: Table of Contents -->
     <aside
-      v-if="isWide"
-      class="sticky top-14 h-[calc(100vh-3.5rem)] w-56 shrink-0"
+      class="hidden xl:block sticky top-14 h-[calc(100vh-3.5rem)] w-56 shrink-0"
     >
       <DocsTableOfContents />
     </aside>

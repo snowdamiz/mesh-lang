@@ -113,7 +113,7 @@ Autonomous channels use overlapping trust keyrings so credentials can rotate wit
 | --- | --- | --- |
 | Node TLS roots | `MESH_TLS_CA_DER_B64` | One or more base64 DER roots; the local certificate and private key remain single-valued |
 | Signed node claims | `MESH_NODE_IDENTITY_VERIFY_KEYS_B64` | One or more Ed25519 public keys; claims bind cluster, stable node ID, advertised name, roles, and expiry |
-| Cluster-cookie compatibility HMAC | `MESH_CLUSTER_COOKIE` | Every generation must be at least 32 characters. First key signs the handshake; every listed key verifies. |
+| Cluster-cookie compatibility HMAC | `MESH_CLUSTER_COOKIE` | In autonomous mode every generation must be at least 32 characters; other clusters need only a non-empty cookie. First key signs the handshake; every listed key verifies. |
 | Operator control HMAC | `MESH_OPERATOR_KEY` or owner-only `--operator-key-file PATH` | Every retained key must be at least 32 characters. The CLI signs with its first key; controllers verify every configured key. Literal secret argv flags are intentionally unsupported. |
 | Driver TLS roots | `MESH_DOCKER_DRIVER_CA_DER_B64` | One or more base64 DER roots for both client and service verification |
 | Driver request HMAC | `MESH_DOCKER_DRIVER_SHARED_KEY` | Each side signs with its first key and verifies every listed key |

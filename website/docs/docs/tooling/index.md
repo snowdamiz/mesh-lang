@@ -40,6 +40,17 @@ meshc --version
 meshpkg --version
 ```
 
+The installers put both commands in `~/.mesh/bin` and the runtime libraries
+that every program links against in `~/.mesh/lib` (`libmesh_rt.a` and
+`libmesh_test_rt.a`; `mesh_rt.lib` and `mesh_test_rt.lib` on Windows). `meshc`
+finds them in the `lib` directory beside its own `bin` directory, so keep the
+two together if you move the installation.
+
+`meshc build` links with the system C compiler driver: `cc` on macOS and Linux
+(the Xcode Command Line Tools, or `build-essential` and its equivalents), and
+`clang` from LLVM 21 on Windows, taken from `LLVM_SYS_211_PREFIX\bin` when that
+variable is set and from `PATH` otherwise.
+
 ### Update an installed toolchain
 
 If you installed Mesh through the public installers, refresh both binaries in place with either command:
@@ -63,8 +74,9 @@ sh /tmp/mesh-install.sh --uninstall
 ```
 
 On Windows, invoke the downloaded PowerShell script with `-Version`,
-`-Uninstall`, `-Yes`, or `-Help`. Uninstall removes both commands and the PATH
-changes managed by the installer.
+`-Uninstall`, `-Yes`, or `-Help`. Uninstall removes the whole `~/.mesh`
+directory (both commands, the runtime libraries, and the `meshpkg` registry
+credentials) and the PATH changes managed by the installer.
 
 If you are contributing to Mesh or need an unsupported target, see the
 [source-build prerequisites](/docs/getting-started/#alternative-build-from-source).
@@ -101,6 +113,10 @@ fn main() do
   println("Hello from Mesh!")
 end
 ```
+
+`meshc init` refuses a name whose directory already exists. `--clustered` and
+`--template` cannot be combined, `todo-api` is the only template, and
+`--db sqlite|postgres` applies only to that template (default `sqlite`).
 
 Use `meshc init --clustered` when you want the public clustered-app scaffold instead of the hello-world starter:
 
@@ -176,33 +192,56 @@ entrypoint = "lib/start.mpl"
 [dependencies]
 ```
 
+The entrypoint must be a relative path that stays inside the project and ends
+in `.mpl`.
+
+| `[package]` key | Required | Meaning |
+|-----------------|----------|---------|
+| `name` | yes | Package name; a published package is scoped as `login/name` |
+| `version` | yes | Package version |
+| `description` | no | One-line summary shown by the registry |
+| `authors` | no | List of author strings |
+| `license` | no | License identifier, such as `"MIT"` |
+| `entrypoint` | no | Executable entry file; default `main.mpl` |
+
+Other keys under `[package]` and unknown top-level tables are ignored. Two
+further tables have pages of their own: `[native]` declares a package's native
+libraries ([Native Packages](/docs/native-packages/)), and `[cluster]` holds
+autonomous-cluster deployment policy
+([Autonomous Clusters](/docs/autonomous-clusters/)); unknown keys inside
+`[cluster]` are errors, as are the removed `[cluster]` keys `enabled` and
+`declarations`.
+
 The manifest supports registry, git, and path dependencies:
 
 ```toml
 [dependencies]
 "your-login/your-package" = "1.0.0"
+widget = { version = "2.1.0" }
 my_lib = { path = "../my_lib" }
 some_pkg = { git = "https://github.com/user/some_pkg", tag = "v1.0.0" }
 ```
 
-Registry versions must be exact. Git dependencies support `rev`, `branch`, and
-`tag`; prefer an immutable `rev` for a release.
+Registry versions must be exact, written as a string or as
+`{ version = "..." }`. Git dependencies support `rev` (a hex commit id),
+`branch`, and `tag`; with none of them the remote's default branch is used.
+Prefer an immutable `rev` for a release.
 
 ### Lockfile
 
-When dependencies are resolved, `mesh.lock` records exact registry versions and
-checksums, git revisions, and local path entries. Resolve git/path dependencies
-first, then install registry dependencies so the registry command can merge
-both sets of entries:
+`mesh.lock` records exact registry versions and checksums, git commits, and
+local path entries. `meshc deps` writes the git and path entries and
+`meshpkg install` the registry ones; each keeps the entries the other wrote,
+so run them in either order:
 
 ```bash
 meshc deps
 meshpkg install
 ```
 
-Commit `mesh.lock`. `meshc build` consumes installed and locked dependencies but
-does not fetch missing code. See [Packages and Registry](/docs/packages/) for
-the complete dependency and publishing workflow.
+Commit `mesh.lock`. `meshc build` consumes installed and fetched dependencies
+but does not fetch missing code. See [Packages and Registry](/docs/packages/)
+for the complete dependency and publishing workflow.
 
 ## Build projects
 
@@ -213,10 +252,17 @@ meshc build .
 ./output
 ```
 
-The directory must contain `mesh.toml` and the resolved entrypoint. When the
-directory argument is `.`, the default output is `./output`. When it is a named
-directory such as `apps/api`, the default is `apps/api/api`. Prefer an explicit
-output when a script depends on the name:
+The directory must contain the entrypoint: `main.mpl`, or the file
+`[package].entrypoint` names. `mesh.toml` is optional for a program with no
+dependencies; without it the build compiles the directory's `.mpl` files and
+nothing else. Every `.mpl` file under the directory is compiled, except hidden
+files and directories, the top-level `tests/` directory, `*.test.mpl` files,
+and `*.test-support.mpl` fragments. An executable build fails with
+"`main.mpl` has no `fn main()`" when the entrypoint defines no `main`.
+
+When the directory argument is `.`, the default output is `./output`. When it
+is a named directory such as `apps/api`, the default is `apps/api/api`. Prefer
+an explicit output when a script depends on the name:
 
 ```bash
 meshc build . --output my_app
@@ -228,12 +274,36 @@ Build options:
 | Option | Behavior |
 | --- | --- |
 | `--opt-level 0` | Debug/default optimization |
-| `--opt-level 2` | Release optimization |
+| `--opt-level 1` | LLVM `O1` |
+| `--opt-level 2` | Release optimization (`O2`); higher values also mean `O2` |
 | `--emit-llvm` | Write a `.ll` file next to the executable |
 | `-o, --output <path>` | Choose the executable path |
 | `--target <triple>` | Generate and link for an explicit target triple |
+| `--artifact <kind>` | `executable` (default), `staticlib`, or `cdylib`; see [Library Builds](/docs/library-builds/) |
 | `--json` | Emit newline-delimited JSON diagnostics |
 | `--no-color` | Disable color in human-readable diagnostics |
+
+The build reports `  Compiled: <path>` (and `  LLVM IR: <path>` with
+`--emit-llvm`) on standard error. Human-readable diagnostics are colored only
+when standard error is a terminal and `NO_COLOR` is unset.
+
+### JSON diagnostics
+
+With `--json`, each diagnostic is one JSON object per line on standard error.
+For `let x :: Int = "abc"` in `main.mpl`, `meshc build . --json` prints:
+
+```text
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"./main.mpl","spans":[{"start":21,"end":27,"label":"expected Int, found String"}],"fix":null}
+{"code":"C0001","file":"","fix":null,"message":"Compilation failed due to errors above.","severity":"error","spans":[]}
+```
+
+`spans` hold byte offsets into `file`, which is named as the build argument
+names it. Codes starting with `E` are type errors and `W` warnings from the
+type checker; `P0001` is a parse error and `CFG0001` an invalid cluster
+declaration. A failed build always ends with one `C0001` object with an empty
+`file`, carrying either the summary above or a failure outside any source file
+(a missing entrypoint, a link error). The exit status is 1 whenever the build
+fails.
 
 For example:
 
@@ -246,6 +316,24 @@ meshc build . --target x86_64-unknown-linux-gnu --output dist/my_app-linux
 install a cross-linker, sysroot, C runtime, or target system libraries. Supply
 those separately. A native dependency must declare a checksummed archive for
 the exact effective target. See [Native Packages](/docs/native-packages/).
+
+The linker depends on the target:
+
+| Target | Linker |
+| --- | --- |
+| macOS, Linux, and other Unix-like triples | `cc` |
+| `*-apple-ios`, `*-apple-ios-sim` | `xcrun --sdk iphoneos` (`iphonesimulator` for `-sim`) |
+| `*-linux-android` | `<triple>26-clang` and `llvm-ar` from the NDK in `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT` |
+| `*-windows-msvc` | `clang.exe` from `LLVM_SYS_211_PREFIX\bin`, or `clang` on `PATH` |
+
+Other Windows triples are rejected. A cross build also needs the Mesh runtime
+compiled for that target: `meshc` looks for it in `lib/<triple>/` beside the
+installed toolchain, then in a Cargo target directory (`CARGO_TARGET_DIR`, or a
+`target/` above the `meshc` binary) under `<triple>/release` and
+`<triple>/debug`. `MESH_RT_LIB_PATH` names the runtime library explicitly
+(`MESH_TEST_RT_LIB_PATH` for `meshc test`); its file name must be the target's
+(`libmesh_rt.a`, or `mesh_rt.lib` for Windows MSVC). See
+[Environment Variables](/docs/environment-variables/) for the rest.
 
 ### Resolve git and path dependencies
 
@@ -261,13 +349,21 @@ Pass another project directory when needed:
 meshc deps apps/api
 ```
 
-The resolver walks transitive git and path dependencies, checks out git
-packages under the project cache, and writes exact revisions and local entries
-to `mesh.lock`. If the manifest is not newer than the lockfile, it reports that
-dependencies are already up to date.
+The resolver walks transitive git and path dependencies, checks git packages
+out into `.mesh/deps/<name>/`, and writes their commits and the local path
+entries to `mesh.lock`, keeping the registry entries already there. It prints
+`Resolved N dependencies` or `No dependencies`. When the manifest is not newer
+than the lockfile and every git dependency is checked out, it prints
+`Dependencies up to date` and fetches nothing.
 
-Registry downloads belong to `meshpkg install`, not `meshc deps`. For a mixed
-project, run:
+A git dependency is fetched at its `rev`, the head of its `branch`, its `tag`,
+or the remote's default branch. The build compiles each checkout like a path
+dependency; building before `meshc deps` has fetched one fails with
+"Git dependency `name` is not fetched; run `meshc deps`". A dependency name
+reached from two different sources, or a cycle, is an error.
+
+Registry downloads belong to `meshpkg install`, which `meshc deps` leaves
+alone. For a mixed project, run both:
 
 ```bash
 meshc deps
@@ -285,7 +381,8 @@ meshc migrate generate create_users
 
 Names may contain lowercase ASCII letters, digits, and underscores. The command
 creates `migrations/YYYYMMDDHHMMSS_create_users.mpl` with public `up` and
-`down` functions:
+`down` functions that return `Ok(0)`, with example `Migration.*` and `Pg.*`
+calls commented out inside them. Fill them in:
 
 ```mesh
 pub fn up(pool :: PoolHandle) -> Int!String do
@@ -328,11 +425,17 @@ meshc migrate apps/api up
 | `down` | Compile and run `down` for the most recently applied migration |
 | no action | Same as `up` |
 
-The runner creates and maintains `_mesh_migrations` in PostgreSQL. Each
-migration is compiled as Mesh code and executed with a small connection pool.
-`down` needs the corresponding source file to remain present. Use neutral
-`Migration.*` helpers for portable DDL and explicit `Pg.*` helpers for
-PostgreSQL-only features. See [Databases](/docs/databases/).
+The runner creates and maintains `_mesh_migrations` (`version BIGINT PRIMARY
+KEY`, `name`, `applied_at`) in PostgreSQL. Only files named
+`<digits>_<name>.mpl` in `migrations/` are migrations; others are ignored.
+Each migration is compiled on its own, as a program of that one file and a
+generated `main`, so it cannot import the project's modules, and runs with a
+pool of one to two connections (`Pool.open(url, 1, 2, 5000)`). Without
+`DATABASE_URL`, `status`, `up`, and `down` fail with
+`DATABASE_URL environment variable is required`. `down` needs the
+corresponding source file to remain present. Use neutral `Migration.*` helpers
+for portable DDL and explicit `Pg.*` helpers for PostgreSQL-only features. See
+[Databases](/docs/databases/).
 
 ## Cluster operator commands
 
@@ -349,13 +452,18 @@ commands are:
 | `meshc cluster pressure <target>` | Cluster/per-node pressure and dominant signals |
 | `meshc cluster routing <target>` | Eligibility, load reports, and reservations |
 | `meshc cluster scaling <target>` | Scheduler and horizontal scaling state |
-| `meshc cluster events <target>` | Ordered control, scaling, and continuity events |
+| `meshc cluster events <target>` | The same ordered log as `diagnostics`: control, drain, scaling, startup, and continuity transitions |
 | `meshc cluster explain <target> <request-key>` | Retained placement and current candidates |
 
 All read commands accept `--cookie-file <path>`, `--timeout-ms <number>`
 (default `5000`), and `--json`. Without `--cookie-file`, the CLI reads
 `MESH_CLUSTER_COOKIE`.
-Continuity lists, diagnostics, and events also accept `--limit <number>`.
+Continuity lists, diagnostics, and events also accept `--limit <number>`;
+`continuity` rejects `--limit` together with a request key.
+
+A cookie or operator-key file must be a regular file, not a symbolic link,
+with no group or other permission bits (mode `0600`), and must not be blank;
+the environment-variable fallbacks must not be blank either.
 
 Authenticated mutation commands are:
 
@@ -380,8 +488,10 @@ Mutation options:
 | `--timeout-ms <number>` | Bound the remote request; default `5000` |
 | `--json` | Machine-readable result |
 
-Literal secret flags are intentionally unsupported. Put cookies and signing
-keys in owner-only files or the documented environment variables. Follow the
+Each mutation is a signed request that expires 30 seconds after the CLI
+creates it. Literal secret flags are intentionally unsupported. Put cookies
+and signing keys in owner-only files or the documented environment variables.
+Follow the
 [Cluster Operations](/docs/cluster-operations/) runbook before changing live
 capacity or drain state.
 
@@ -429,10 +539,18 @@ meshc proof autonomous-chaos --rounds 5
 meshc proof continuity-soak
 ```
 
-All three accept `--evidence-dir`. Performance also accepts `--iterations` and
-`--budget`; chaos accepts `--rounds`. The soak accepts
-`--duration-seconds`, `--cycle-millis`, and `--allow-short`. A shortened soak
-is a harness smoke result, never a 24-hour release pass.
+All three accept `--evidence-dir`; without it, evidence goes to
+`target/proof/<kind>/<unix-millis>`. Performance also accepts `--iterations`
+(default `10000`) and `--budget` (default
+`proof/autonomous-gates/performance-budget.json`); chaos accepts `--rounds`
+(default `5`, from 1 to 100). The soak accepts `--duration-seconds` (default
+`86400`), `--cycle-millis` (default `100`), and `--allow-short`, which a
+duration under 24 hours requires. A shortened soak is a harness smoke result,
+never a 24-hour release pass.
+
+Proof deadlines stretch on slower machines: by 3 on four cores or fewer, by 2
+on five to eight, and not at all above that. Set `MESH_PROOF_TIME_SCALE` (1 to
+10) to choose the factor.
 
 ### Fly driver gates
 
@@ -486,8 +604,11 @@ meshc proof fly-autoscaling-materialize \
 ```
 
 The output path must be new; the command does not overwrite an existing
-identity file. See [Capacity Drivers](/docs/capacity-drivers/) for the Fly
-driver contract.
+identity file, and writes it with mode `0600`. App names must be 1 to 63
+lowercase letters, digits, or hyphens, starting and ending with a letter or
+digit; the cluster id must be non-blank and at most 128 bytes. The signed
+identities it writes expire after two days. See
+[Capacity Drivers](/docs/capacity-drivers/) for the Fly driver contract.
 
 ## Test Runner
 
@@ -499,7 +620,8 @@ meshc test tests
 meshc test tests/example.test.mpl
 ```
 
-The test runner discovers all files ending in `.test.mpl` under the requested target, compiles and executes each independently, and prints a line per test, the failures again, and each file's count:
+The path defaults to the current directory and must lie inside a project (a
+directory with `mesh.toml`). The test runner discovers all files ending in `.test.mpl` under the requested target, skipping hidden directories and `target/`, compiles and executes each independently, and prints a line per test, the failures again, and each file's count:
 
 ```
   ✓ arithmetic is correct
@@ -527,7 +649,7 @@ is merged into `foo.mpl` only in the temporary test project. Tests can import
 fragment. See the [Testing guide](/docs/testing/#private-module-test-support)
 for the exact naming and isolation rules.
 
-Exit code is non-zero if any test fails, making `meshc test` suitable for CI pipelines.
+Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files prints `No *.test.mpl files found.` and exits 0.
 
 Use compact output for a large suite, a `.` per passing test and an `F` per failing one, with the failures listed after them:
 
@@ -566,8 +688,9 @@ meshc fmt --check .
 ```
 
 The path is required and may be one `.mpl` file or a directory. Directory
-formatting walks nested directories recursively. Override the default
-100-column width or two-space indentation when a project needs it:
+formatting walks nested directories recursively and skips hidden files and
+directories, such as `.git` and the packages installed under `.mesh`. Override
+the default 100-column width or two-space indentation when a project needs it:
 
 ```bash
 meshc fmt . --line-width 120 --indent-size 4
@@ -579,6 +702,17 @@ The formatter uses the **Wadler-Lindig** pretty-printing algorithm with a CST-ba
 - **Comments are preserved** -- the formatter works on the concrete syntax tree, so comments stay exactly where you put them
 - **Whitespace and indentation are rewritten** canonically according to Mesh style conventions
 - **Formatting is idempotent** -- running the formatter twice produces the same output as running it once
+
+Beyond whitespace, the formatter puts `;`-separated statements on lines of
+their own and may drop trailing commas. It never changes what the code means:
+it refuses a file it cannot reproduce exactly, and a file with parse errors.
+Either refusal (`Cannot format '<file>': ...`) fails the whole run before any
+file is written.
+
+`meshc fmt` prints `Formatted N file(s)`, counting every file it read. With
+`--check`, it lists each file as `  would reformat: <path>`, prints
+`N file(s) would be reformatted`, and exits with status 1 when any would
+change.
 
 ### Example
 
@@ -602,6 +736,10 @@ end
 
 Mesh only publishes repo-owned format-on-save guidance for the first-class editors in the [support tiers](#support-tiers) below. In VS Code, the Mesh extension routes document formatting through `meshc lsp`. In Neovim, the repo-owned pack attaches the native `meshc lsp` client, so save-time formatting should use your normal Neovim LSP formatting hook. Best-effort editors should invoke `meshc fmt <file>` directly and treat that integration as user-maintained.
 
+Formatting through the language server uses the editor's tab size as the
+indent and a 100-column width, and leaves a document with parse errors
+unchanged.
+
 ## Linter
 
 `meshc lint` reports code that compiles but is harder to follow than it needs to be:
@@ -622,9 +760,23 @@ api/users.mpl:31:3: collapsible-else-if: this `else` holds only an `if`; write `
 | `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
 | `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
 | `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
-| `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` | The value itself, or `not` it |
+| `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` or `done != false` | The value itself, or `not` it |
 
-Nesting is counted from each named function, service handler, actor body, and top-level `test`, `describe`, `setup`, or `teardown` block. An `else if` chain stays at the level of its first `if`.
+Nesting is counted from each named function, service handler, `terminate`
+clause, actor body, and top-level `test`, `describe`, `setup`, or `teardown`
+block. An `else if` chain stays at the level of its first `if`; a trailing
+`do |x| ... end` closure counts as a level. Only the outermost construct past
+the limit is reported, so fixing it may reveal a deeper one.
+
+`pass-through-arm` fires only where the pattern alone would compile as the
+arm's value: a name, a literal, or a constructor of those. A tuple or list
+pattern such as `(0, b) -> (0, b)` is left alone.
+
+Findings go to standard output, one per line, with 1-based line and byte
+columns; the count, `N problem(s) found`, goes to standard error. A file that
+does not parse reports its first parse error. Like the formatter, the linter
+skips hidden files and directories. It has no options, configuration file, or
+suppression comments yet.
 
 ## REPL
 
@@ -659,10 +811,15 @@ mesh> double(21)
 The REPL runs parsing, type checking, MIR lowering, and LLVM JIT compilation for
 each expression. It is not a separate interpreted language. Its current value
 printer is narrower than compiled application output: `Int`, `Bool`, `Float`,
-and `Unit` render as values, while pointer-backed values such as `String`,
-`Bytes`, collections, and structs render as typed pointer placeholders. Use
-ordinary functions such as `println`, `Bytes.to_hex`, or a package-specific
-renderer when inspecting those values.
+`String` (quoted, as in `"ab" :: String`), and `Unit` render as values, while
+other pointer-backed values such as `Bytes`, collections, and structs render as
+`<Type at 0x...>` placeholders. Use ordinary functions such as `println`,
+`inspect`, `Bytes.to_hex`, or a package-specific renderer when inspecting those
+values.
+
+Input that starts with `fn`, `def`, `let`, `type`, `struct`, `module`, `actor`,
+`service`, `interface`, `trait`, `impl`, or `supervisor` is kept as a
+definition for the rest of the session; anything else is evaluated.
 
 The REPL initializes the actor runtime, but it does not replace a project build
 for manifest-gated native packages or deployment configuration.
@@ -676,7 +833,7 @@ for manifest-gated native packages or deployment configuration.
 | `:quit` | `:q` | Exit the REPL |
 | `:clear` | | Clear the screen |
 | `:reset` | | Reset session (clear all definitions and history) |
-| `:load <file>` | | Load and evaluate a Mesh source file |
+| `:load <file>` | | Type-check a Mesh source file and keep its definitions; nothing in it runs |
 
 ### Multi-line Input
 
@@ -692,8 +849,9 @@ mesh> greet("world")
 Hello, world!
 ```
 
-Input history is loaded from and saved to `~/.mesh_repl_history`. `Ctrl-C`
-cancels the current input without exiting; `Ctrl-D`, `:quit`, and `:q` exit.
+Input history is loaded from and saved to `~/.mesh_repl_history` when `HOME`
+is set. `Ctrl-C` cancels the current input without exiting; `Ctrl-D`,
+`:quit`, and `:q` exit.
 
 ## meshpkg — Package Registry CLI
 
@@ -708,8 +866,13 @@ in with GitHub, and save the generated token:
 meshpkg login --token <your-token>
 ```
 
-Without `--token`, `meshpkg login` prompts on standard input. Credentials are
-stored in `~/.mesh/credentials`.
+Without `--token`, `meshpkg login` prompts on standard input. The token is
+stored in `~/.mesh/credentials` (`[registry]` / `token = "..."`), readable by
+its owner only. `meshpkg publish` sends it as a bearer token to whichever
+registry it publishes to, so point `--registry` only at a registry you trust.
+
+Every command talks to `https://api.packages.meshlang.dev` unless given
+`--registry <url>`.
 
 ### Publishing a Package
 
@@ -745,7 +908,7 @@ Install the latest release of a package from the registry into the current proje
 meshpkg install your-login/your-package
 ```
 
-This fetches the latest published release, verifies its SHA-256 checksum, extracts it into the project's dependency directory, and updates mesh.lock to pin the exact version. Named install does not edit mesh.toml; add the dependency yourself when you want it declared in the manifest.
+This fetches the latest published release, verifies its SHA-256 checksum, extracts it into `.mesh/packages/<name>@<version>/`, and updates mesh.lock to pin the exact version. Named install does not edit mesh.toml; add the dependency yourself when you want it declared in the manifest. A named install always takes the latest release; to use another version, declare it in `mesh.toml` and run `meshpkg install` without a name.
 
 Omit the name to install every exact registry dependency already declared in
 `mesh.toml`:
@@ -754,8 +917,16 @@ Omit the name to install every exact registry dependency already declared in
 meshpkg install
 ```
 
-Registry dependencies support exact versions only. Run `meshc deps` before
-`meshpkg install` in a project that also has git or path dependencies.
+A dependency whose `mesh.lock` entry pins the declared version is downloaded
+at that pin and checked against its recorded checksum; after you change the
+version in `mesh.toml`, the next install resolves the new version and updates
+the pin. Installing a version removes any other installed version of the same
+package.
+
+`meshc build` compiles every package installed under `.mesh/packages`, whether
+or not `mesh.toml` declares it, so a named install is importable at once.
+Registry dependencies support exact versions only. `meshpkg install` leaves
+git and path dependencies to `meshc deps`.
 
 ### Searching
 
@@ -765,15 +936,26 @@ Search the registry by name or keyword:
 meshpkg search json
 ```
 
-Returns matching package names and descriptions.
+Prints a `NAME`, `VERSION`, `DESCRIPTION` table of the matching packages.
 
-Search and install accept `--registry <url>`. Every meshpkg command accepts the
-global `--json` flag:
+Search, install, and publish accept `--registry <url>`. Every meshpkg command
+except `update` accepts the global `--json` flag:
 
 ```bash
 meshpkg --json search json
 meshpkg --json install
 ```
+
+| Command | JSON on standard output |
+| --- | --- |
+| `search` | `[{"name", "version", "description"}]` |
+| `install` | `{"status": "ok", "lockfile": "mesh.lock"}` |
+| `install <name>` | `{"status": "ok", "name", "version", "lockfile": "mesh.lock", "manifest_changed": false}` |
+| `publish` | `{"status": "ok", "name", "version", "sha256"}` |
+| `login` | `{"status": "ok", "message"}` |
+
+A failure prints `{"error": "..."}` on standard error and exits with status 1.
+`meshpkg update` refuses `--json`, because it hands over to the installer.
 
 ### mesh.toml with Registry Dependencies
 
@@ -825,7 +1007,23 @@ editor-facing behaviors over real stdio JSON-RPC:
 | **Signature help** | Parameter hints for function calls, including active-parameter tracking |
 
 The language server receives full-document changes and reruns the Mesh lexer,
-parser, and type checker before publishing diagnostics.
+parser, and type checker before publishing diagnostics. When the file belongs
+to a project (an ancestor directory holds `mesh.toml`), it checks the file as
+part of the whole project, as `meshc build` would: imports resolve across the
+project's modules, path and git dependencies, and installed packages, using
+the unsaved text of any other open documents, and manifest or entrypoint
+errors appear as diagnostics. A file outside a project is checked alone.
+
+Hover shows the inferred type of the expression under the cursor. Completion
+has no trigger characters, so request it explicitly or let the editor ask as
+you type; signature help triggers on `(` and `,`. Document symbols cover
+functions, structs, sum types, type aliases, modules, actors, services, their
+call and cast handlers, supervisors, interfaces, impls, and top-level `let`
+bindings. References, rename, code actions, workspace symbols, and semantic
+tokens are not implemented.
+
+`meshc lsp` takes no arguments and always speaks over stdio; configure clients
+not to pass `--stdio`.
 
 ### LSP client configuration
 
@@ -1057,9 +1255,9 @@ The verifier persists the candidate and hosted-run evidence under:
 
 | Tool | Command | Description |
 |------|---------|-------------|
-| Compiler | `meshc build <dir>` | Compile a project to a native executable |
+| Compiler | `meshc build <dir>` | Compile a project to a native executable, or with `--artifact` to a static or dynamic library |
 | Project scaffolding | `meshc init [--clustered \| --template todo-api --db <backend>] <name>` | Create hello-world, clustered, SQLite Todo, or PostgreSQL Todo projects |
-| Source dependencies | `meshc deps [dir]` | Resolve git/path dependencies and write lock entries |
+| Source dependencies | `meshc deps [dir]` | Resolve git/path dependencies, fetch git checkouts, and write lock entries |
 | Registry dependencies | `meshpkg install [name]` | Install all declared exact registry dependencies or one latest named package |
 | Migrations | `meshc migrate [dir] [up \| down \| status \| generate]` | Generate and run PostgreSQL migrations |
 | Formatter | `meshc fmt <path>` | Recursively format Mesh source or use `--check` in CI |

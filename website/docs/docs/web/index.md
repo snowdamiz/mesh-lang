@@ -126,6 +126,52 @@ end
 
 `Request.param` returns an `Option` -- `Some(value)` if the parameter exists, `None` otherwise. Use pattern matching to handle both cases.
 
+### Clustered Routes
+
+In a cluster, wrap a handler in `HTTP.clustered` to let Mesh choose the node
+that runs it and record each request for replay:
+
+```mesh
+pub fn handle_get_account(request :: Request) -> Response do
+  case Request.param(request, "id") do
+    Some(id) -> HTTP.response(200, json { id: id })
+    None -> HTTP.response(400, json { error: "missing id" })
+  end
+end
+
+pub fn handle_create_account(request :: Request) -> Response do
+  HTTP.response(201, Request.body(request))
+end
+
+fn main() do
+  let router = HTTP.router()
+    |> HTTP.on_get("/accounts/:id", HTTP.clustered(1, handle_get_account))
+    |> HTTP.on_post("/accounts", HTTP.clustered(2, handle_create_account))
+  HTTP.serve(router, 8080)
+end
+```
+
+`HTTP.clustered(handler)` and `HTTP.clustered(N, handler)` are valid only as
+the handler argument of `HTTP.route` or `HTTP.on_*`. The handler must be a
+public function named directly or through its module, and `N` must be a
+positive integer literal: the total number of copies of each request's record,
+including the node that runs it. Omitting `N` uses the manifest's
+`[cluster].default_replicas`, or 2 without one, and one handler cannot be
+registered with two different counts.
+
+The runtime records the request, runs the handler on the selected node, and
+adds `X-Mesh-Continuity-Request-Key`, `X-Mesh-Ingress-Node`,
+`X-Mesh-Execution-Node`, and `X-Mesh-Routed-Remotely` headers to the response.
+A request carrying an `Idempotency-Key` header gets a key scoped to the
+application, handler, and tenant. Repeating a completed request with the same
+key replays the retained response with `Idempotency-Replayed: true`; reusing
+the key for a different request is rejected. When a request cannot be placed,
+the response is `503` with a JSON `error` field. A process without peers
+answers every request to a route with a count above 1 with
+`{"error":"replica_required_unavailable"}`. See
+[Autonomous Clusters](/docs/autonomous-clusters/#handler-and-replica-semantics)
+for replica, replay, and routing rules.
+
 ### Request Accessors
 
 The `Request` module provides accessors for reading request data:
@@ -437,25 +483,34 @@ fn main() do
 end
 ```
 
-| Function | Description |
-|----------|-------------|
-| `WsClient.options()` | Create a single-use options handle |
-| `WsClient.connect_timeout(options, ms)` | Set the DNS/TCP/TLS/upgrade timeout |
-| `WsClient.heartbeat_timeout(options, ms)` | Set the ping/pong liveness timeout |
-| `WsClient.max_message_bytes(options, bytes)` | Bound inbound and outbound text or binary messages, including fragments |
-| `WsClient.queue_capacity(options, messages)` | Bound unread inbound messages |
-| `WsClient.connect(url, options)` | Connect and consume the options handle |
-| `WsClient.send_text(connection, text)` | Send a masked text frame |
-| `WsClient.send_bytes(connection, bytes)` | Send a masked binary frame |
-| `WsClient.recv(connection, timeout_ms)` | Receive a `WsMessage`; only one receiver may wait per connection |
-| `WsClient.close(connection, code, reason)` | Send a close frame and release the handle |
-| `WsClient.reconnect_delay(attempt, base_ms, max_ms, jitter_ppm)` | Return bounded exponential backoff with jitter |
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `WsClient.options()` | `Int` | Create a single-use options handle |
+| `WsClient.connect_timeout(options, ms)` | `Int` | Set the DNS/TCP/TLS/upgrade timeout |
+| `WsClient.heartbeat_timeout(options, ms)` | `Int` | Set the ping/pong liveness timeout |
+| `WsClient.max_message_bytes(options, bytes)` | `Int` | Bound inbound and outbound text or binary messages, including fragments |
+| `WsClient.queue_capacity(options, messages)` | `Int` | Bound unread inbound messages |
+| `WsClient.connect(url, options)` | `Result<Int, String>` | Connect, consume the options handle, and return a connection handle |
+| `WsClient.send_text(connection, text)` | `Result<Unit, String>` | Send a masked text frame |
+| `WsClient.send_bytes(connection, bytes)` | `Result<Unit, String>` | Send a masked binary frame |
+| `WsClient.recv(connection, timeout_ms)` | `Result<WsMessage, String>` | Receive the next message; only one receiver may wait per connection |
+| `WsClient.close(connection, code, reason)` | `Result<Unit, String>` | Send a close frame and release the handle |
+| `WsClient.reconnect_delay(attempt, base_ms, max_ms, jitter_ppm)` | `Result<Int, String>` | Return a bounded exponential backoff delay in milliseconds, with jitter |
 
 Options default to a 10-second connect timeout, 30-second heartbeat timeout, 1 MiB message limit, and 256-message queue. Connect timeouts must be 1–120,000 ms, heartbeat timeouts 1,000–300,000 ms, message limits 1 byte–16 MiB, and queue capacities 1–65,536. Setters retain the fluent handle; `connect` performs validation and consumes it.
 
-`WsMessage.kind` is `"text"`, `"binary"`, or `"close"`; payload bytes are in `data`, and close details are in `close_code` and `close_reason`. Queue overflow closes the connection with a `BACKPRESSURE` error rather than dropping data silently. Heartbeat timeout and other disconnects are observable errors.
+`WsMessage` has four fields:
 
-Reconnect is deliberately explicit. After an interruption, the caller chooses whether to reconnect, uses `reconnect_delay`, restores subscriptions, and checks source sequence numbers for regressions. The helper accepts attempts `0..62`, positive `base_ms <= max_ms`, and jitter from `0` to `1_000_000` parts per million. The runtime never restores subscriptions or retries writes implicitly.
+| Field | Type | Meaning |
+|-------|------|---------|
+| `kind` | `String` | `"text"`, `"binary"`, or `"close"` |
+| `data` | `Bytes` | Payload bytes, with text as UTF-8; empty for `"close"` |
+| `close_code` | `Int` | Close code for `"close"`, otherwise `0` |
+| `close_reason` | `String` | Close reason for `"close"`, otherwise empty |
+
+`WsClient.recv` returns `Err("TIMEOUT: WebSocket receive")` when no message arrives within `timeout_ms`; a negative timeout is an error. Queue overflow closes the connection with a `BACKPRESSURE` error rather than dropping data silently. Heartbeat timeout and other disconnects are observable errors.
+
+Reconnect is deliberately explicit. After an interruption, the caller chooses whether to reconnect, uses `reconnect_delay`, restores subscriptions, and checks source sequence numbers for regressions. The helper doubles `base_ms` for each attempt up to `max_ms`, then picks a delay within `jitter_ppm` parts per million of that value, never above `max_ms`. It accepts attempts `0..62`, positive `base_ms <= max_ms`, and jitter from `0` to `1_000_000`; other arguments return `Err`. The runtime never restores subscriptions or retries writes implicitly.
 
 ## TLS
 

@@ -31,6 +31,10 @@ fn main() do
 end
 ```
 
+A `let` binds inside a function; there are no module-level bindings, and a `let`
+outside a function is error E0080. Make a shared constant a function instead:
+`fn max_retries() -> Int do 3 end`.
+
 Type annotations are optional -- the compiler infers types from context. Use annotations when you want to be explicit or when the compiler needs a hint.
 
 Since variables are immutable, you cannot reassign them. Instead, you create a new binding with the same name (shadowing):
@@ -93,7 +97,7 @@ Mesh supports line comments, documentation comments, module documentation, and n
 =#
 ```
 
-Newlines normally end statements. A semicolon can separate statements on the same line:
+A newline ends a statement. To put two statements on one line, separate them with a semicolon; without one, the second statement is a parse error:
 
 ```mesh
 let x = 1; let y = 2
@@ -142,6 +146,10 @@ let octal = 0o777
 let scientific = 1.25e3
 ```
 
+The radix prefixes may also be written `0X`, `0B`, and `0O`. A literal with an exponent, such as `1e3`, is a `Float`.
+
+The compiler checks every numeric literal. A malformed one (`0x`, `1e`) is an error, and so is a digit the radix does not have: the error for `0b102` names the digit `2`. An integer literal must fit an `Int`: `9223372036854775807` is the largest, and `-9223372036854775808` may be written directly. A hexadecimal, binary, or octal literal is limited to the same maximum, so `0xffffffffffffffff` is rejected. A float literal that overflows, such as `1e999`, is an error too.
+
 ### Unit and `nil`
 
 `()` is the Unit value. `nil` is an equivalent spelling and is useful when a value is required syntactically but carries no information:
@@ -155,11 +163,25 @@ end
 
 ### Atoms and Regular Expressions
 
-Atoms are lightweight symbolic values. An atom begins with `:` followed by a lowercase letter or underscore:
+Atoms are lightweight symbolic values. An atom begins with `:` followed by a lowercase ASCII letter or underscore; the rest of the name may be `_` or any Unicode letter or digit, uppercase included:
 
 ```mesh
 let status = :ready
 let unit = :millisecond
+let mixed = :notFound
+```
+
+Atoms compare with `==` and `!=`, match as patterns, hash as map keys, and
+print as their names (`"#{:ready}"` is `ready`):
+
+```mesh
+fn label(status) -> String do
+  case status do
+    :ready -> "go"
+    :waiting -> "hold"
+    _ -> "unknown"
+  end
+end
 ```
 
 Regex literals use `~r/.../` and accept `i` (case-insensitive), `m` (multiline), and `s` (dot matches newline) flags:
@@ -184,7 +206,7 @@ literal to span source lines.
 
 ### String Interpolation
 
-Strings support two interpolation syntaxes -- `#{}` (preferred, v12.0) and `${}` (also valid). Expressions inside the braces are evaluated and rendered through their `Display` implementations:
+Strings support two interpolation syntaxes -- `#{}` (preferred) and `${}` (also valid). Expressions inside the braces are evaluated and rendered through their `Display` implementations:
 
 ```mesh
 fn main() do
@@ -193,6 +215,26 @@ fn main() do
   println("Hello, #{name}!")
   println("The answer is #{val}")
   println("Double: #{val * 2}")
+end
+```
+
+### String Escapes
+
+A backslash starts an escape:
+
+| Escape | Meaning |
+|--------|---------|
+| `\n`, `\t`, `\r`, `\0` | Newline, tab, carriage return, NUL |
+| `\\`, `\"` | Backslash, double quote |
+| `\$`, `\#` | A literal `$` or `#`, so `"\#{x}"` is the text `#{x}` rather than an interpolation |
+| `\u{1F389}` | The Unicode character with that hexadecimal code point (1 to 6 digits) |
+
+Any other escape, such as `\q`, is a compile error, as is a malformed `\u{...}`.
+
+```mesh
+fn main() do
+  let price = 5
+  println("tab:\t| quote: \" | literal: \#{price} | emoji: \u{1F389}")
 end
 ```
 
@@ -212,6 +254,17 @@ fn main() do
   println(body)
 end
 ```
+
+The heredoc's text is trimmed so the source can be indented naturally:
+
+- The newline right after the opening `"""` is dropped.
+- A final line holding only the indentation before the closing `"""` is dropped, so the text does not end with a newline.
+- Every line loses as much leading indentation as the closing `"""` has; deeper indentation is kept. Above, the body is `{"id": 42, "name": "Alice"}`.
+- Escapes are processed and checked as in ordinary strings.
+- A Windows line ending (`\r\n`) in the source becomes `\n`.
+- In a run of more than three quotes, the last three close the heredoc, so it can end with a quote: `"""say "hi""""` is `say "hi"`.
+
+A heredoc can also be a `case` pattern; it is trimmed the same way before matching.
 
 Heredocs are useful for SQL queries and any multiline string content where backslash escaping would be cumbersome. For JSON objects, prefer `json { }` literals instead (see [JSON Literals](#json-literals)).
 
@@ -253,14 +306,25 @@ From lowest to highest precedence, Mesh groups operators as follows:
 | Boolean and | `and`, `&&` |
 | Equality | `==`, `!=` |
 | Ordering | `<`, `>`, `<=`, `>=` |
-| Range in a `for` source | `..` |
+| Range | `..` |
 | Concatenation | `<>`, `++` |
 | Addition | `+`, `-` |
 | Multiplication | `*`, `/`, `%` |
 | Prefix | `-`, `not`, `!` |
 | Postfix | calls, field access, `?` |
 
-`<>` concatenates strings and `++` concatenates lists. Parentheses can make any grouping explicit.
+`<>` and `++` are interchangeable: each joins two strings or two lists, and both sides must have the same type. `a..b` builds a `Range` wherever it appears. Parentheses can make any grouping explicit.
+
+### Integer and Float Arithmetic
+
+`Int` arithmetic follows these rules:
+
+- `/` truncates toward zero: `-7 / 2` is `-3`.
+- `%` takes the sign of the dividend: `-7 % 2` is `-1` and `7 % -2` is `1`.
+- Dividing by zero with `/` or `%` is a runtime error that [panics](#panics).
+- The one overflowing division, `-9223372036854775808 / -1`, wraps to `-9223372036854775808`.
+
+`Float` values follow IEEE 754: `0.0 / 0.0` is NaN, `1.0 / 0.0` is infinity, and NaN is unequal to everything, itself included, so `nan != nan` is `true`. Converting a float to an integer saturates: `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round` return the largest or smallest `Int` for a value beyond the range, and `0` for NaN.
 
 ## Functions
 
@@ -365,6 +429,36 @@ end
 
 The compiler tries each clause in order and uses the first one that matches. Clauses for the same function and arity must be consecutive, and a catch-all clause must be last.
 
+A parameter can be any [pattern](#pattern-forms): a constructor, a tuple, a list, a cons, or an or-pattern. A clause can also have a `do ... end` body:
+
+```mesh
+type Shape do
+  Circle(Int)
+  Square(Int)
+end
+
+fn area(Circle(r)) = r * r * 3
+fn area(Square(w)) = w * w
+
+fn len([]) = 0
+fn len(_ :: rest) = 1 + len(rest)
+
+fn size_label(1 | 2) = "small"
+fn size_label(_) = "large"
+
+fn pick((a, _), true) = a
+fn pick((_, b), false) = b
+
+fn fact(0) do
+  1
+end
+fn fact(n) do
+  n * fact(n - 1)
+end
+```
+
+In a parameter, `name :: Type` is a type annotation. When `::` is followed by a lowercase name, `_`, or a list pattern, as in `_ :: rest`, the parameter is a cons pattern instead. (The ownership modifiers `borrow` and `consume` are the exception: `r :: borrow Handle` is an annotation.)
+
 Functions can reuse a name at different arities. Each arity is its own function, and a call runs the one with as many parameters as it has arguments (a piped value counts as one):
 
 ```mesh
@@ -380,7 +474,7 @@ Because such a name does not identify one function, it cannot be used as a value
 
 ### Guard Clauses
 
-Multi-clause functions can include `when` guards for additional conditions:
+Multi-clause functions can include `when` guards for additional conditions. A guard may be any `Bool` expression, such as `when n * 2 > limit` (see [Guards](#guards)):
 
 ```mesh
 fn abs(n) when n < 0 = -n
@@ -431,7 +525,7 @@ fn main() do
 end
 ```
 
-Closures capture variables from their surrounding scope. A closure bound with `let` is as polymorphic as a named function: `let id = fn x -> x end` can be applied to an `Int` and then to a `String`, and each use gets its own compiled copy. There are two syntax forms:
+Closures capture variables from their surrounding scope. A closure bound with `let` is as polymorphic as a named function: `let id = fn x -> x end` can be applied to an `Int` and then to a `String`, and each use gets its own compiled copy. The syntax forms are:
 
 - **Arrow syntax** for one-line closures: `fn x -> x * 2 end`
 - **Do-end syntax** for multi-line closures: `fn x do ... end`
@@ -468,6 +562,20 @@ let result = with_value(10) do |value|
   value * 2
 end
 ```
+
+A trailing `do |params| ... end` closure follows a call's argument list and becomes the call's last argument. It works the same after a method call or at the end of a pipe:
+
+```mesh
+let doubled = [1, 2, 3].map() do |x|
+  x * 2
+end
+
+let labels = [1, 2] |> List.map() do |n|
+  "item #{n}"
+end
+```
+
+The heads of `if`, `while`, `case`, and `for` never take a trailing closure: in `if ready(x) do`, the `do` opens the `if` body.
 
 A parameter typed to return `()` runs its function only for its effects, so it
 accepts a function that returns anything and drops the result:
@@ -508,6 +616,26 @@ The `_` pattern is a wildcard that matches anything.
 
 Every unguarded `case` or `match` must cover all possible values. The compiler reports a non-exhaustive match as an error and warns about redundant arms. An arm with a `when` guard does not count as exhaustive because the guard may be false.
 
+### Arm Bodies
+
+An arm's body is one expression after `->`. For several statements, write `-> do ... end`, or start the body on the next line, indented. The last expression is the arm's value. `return` is an expression too, so an arm can leave the function early:
+
+```mesh
+fn score(o :: Option<Int>) -> Int do
+  let points = case o do
+    Some(n) when n > 100 -> do
+      let capped = 100
+      capped
+    end
+    Some(n) ->
+      let doubled = n * 2
+      doubled + 1
+    None -> return 0
+  end
+  points * 10
+end
+```
+
 ### Pattern Forms
 
 Patterns can bind names and decompose tuples and constructors:
@@ -516,7 +644,7 @@ Patterns can bind names and decompose tuples and constructors:
 |---------|---------|
 | `_` | Match anything without binding it |
 | `name` | Match anything and bind it (a lowercase name) |
-| `42`, `-1`, `"ok"`, `true`, `nil` | Literal pattern |
+| `42`, `-1`, `"ok"`, `:ok`, `true`, `nil` | Literal pattern |
 | `(left, right)` | Tuple pattern |
 | `Some(value)`, `Result.Ok(value)`, `None` | Constructor pattern; an uppercase name is always a constructor, and an unknown one is an error |
 | `head :: tail` | Match a non-empty list as its head and tail |
@@ -585,7 +713,7 @@ end
 
 ### Guards
 
-`case`, `match`, `receive`, function clauses, and multi-clause closures can use a `when` guard. Guards must evaluate to `Bool` and are syntactically limited to literals and names, comparisons, boolean operators, grouping, and named function calls:
+`case`, `match`, `receive`, function clauses, and multi-clause closures can use a `when` guard. A guard is any expression of type `Bool`, and it can use the names its pattern binds: `n when n * 2 > limit`, `n when n > -1`, and `s when String.length(s) > 3` are all guards.
 
 ```mesh
 case score do
@@ -638,7 +766,21 @@ fn main() do
 end
 ```
 
-`if` is an expression in Mesh, so it returns a value. The `else` branch is optional when the result is not used.
+`if` is an expression in Mesh, so it returns a value. The `else` branch is optional; an `if` without one has type `()`, so use that form only for its effects.
+
+Chain conditions with `else if`. The whole chain closes with a single `end`:
+
+```mesh
+fn sign(n :: Int) -> String do
+  if n < 0 do
+    "negative"
+  else if n == 0 do
+    "zero"
+  else
+    "positive"
+  end
+end
+```
 
 ### For Loops
 
@@ -969,20 +1111,50 @@ end
 
 The pattern may bind names, nest constructors (`Some(Ok(value))`), contain literals (`Ok(true)`), be a nullary constructor such as `None`, and take a `when` guard. A pattern that does not name a whole value, such as `_` or a bare `Ok`, needs an explicit `->`.
 
+### Panics
+
+For a failure the program cannot handle, call `panic(message)`. It has type `String -> Never`, so it fits in any branch: `None -> panic("not a port: #{text}")`. A panic prints `Mesh panic: message` to standard error and ends the current actor, which a supervisor can restart; in `main`, it ends the program with exit status 101. See [Standard Library](/docs/stdlib/#strings) for an example.
+
+Runtime errors are panics too and behave the same way: `List.get` past the end of a list, `Map.get` of a missing key, a call that no function clause matches, and integer division by zero. Recursion too deep for the stack is different: it ends the whole program with `error: stack overflow`. A direct self-call in tail position runs as a loop and never overflows (see [Direct Tail Recursion](#direct-tail-recursion)).
+
 ## Modules
 
-Mesh organizes code into modules. The standard library provides built-in modules like `String`, `List`, and `Map`, accessed with dot notation:
+Mesh organizes code into modules. The standard library provides built-in modules like `String`, `List`, and `Map`. They need no import; call their functions with dot notation:
 
 ```mesh
-import String
-
 fn main() do
   let n = String.length("test")
   println("${n}")
 end
 ```
 
-The `import` statement makes a module available. You can also import specific public names directly:
+Every other source file of a project is a module too. Its name comes from its path: each directory and the file name are converted to PascalCase (`linear_algebra` becomes `LinearAlgebra`) and joined with dots. The entry file, `main.mpl`, has no module name.
+
+```text
+main.mpl                  entry point
+geo/shapes.mpl            Geo.Shapes
+lib/linear_algebra.mpl    Lib.LinearAlgebra
+```
+
+The `import` statement makes a module available under the last segment of its name. Qualified names work in type annotations, struct literals, constructors and their patterns, and `impl` headers such as `impl Shapes.Describe for Shapes.Point`:
+
+```mesh
+import Geo.Shapes
+
+fn area(s :: Shapes.Shape) -> Int do
+  case s do
+    Shapes.Circle(r) -> r * r * 3
+    Shapes.Square(w) -> w * w
+  end
+end
+
+fn main() do
+  let p :: Shapes.Point = Shapes.Point { x: 1, y: 2 }
+  println("#{p.x} #{area(Shapes.Circle(2))}")
+end
+```
+
+You can also import specific public names directly:
 
 ```mesh
 from String import length
@@ -1026,7 +1198,7 @@ pub module Geometry do
 end
 ```
 
-A module block is a module like a file is: import it to use it, in the file that holds it too. Without `pub`, only that file may import it:
+A module block is a module like a file is: import it to use it, in the file that holds it too. Its name is exactly the one it declares, wherever the file is: `module Billing` in `lib/helpers.mpl` is `Billing`, not `Lib.Helpers.Billing`. A block named like a file's module, such as `Billing` beside `billing.mpl`, is an error. Without `pub`, only the block's own file may import it:
 
 ```mesh
 import Billing
@@ -1042,11 +1214,11 @@ fn main() do
 end
 ```
 
-`pub` is available on functions, modules, structs, interfaces, supervisors, sum types, and type aliases. Actors, services, impl blocks, imports, and local bindings are not declared `pub`.
+`pub` is available on functions, modules, structs, interfaces, supervisors, sum types, type aliases, and resources (`pub resource`; see [Resource Types](/docs/type-system/#resource-types)). Actors, services, impl blocks, imports, and local bindings are not declared `pub`.
 
 ### Standard Library Modules
 
-Mesh includes several built-in modules:
+Mesh includes several built-in modules. None of them needs an `import`:
 
 | Module   | Purpose                     | Example                          |
 |----------|-----------------------------|----------------------------------|
@@ -1054,50 +1226,6 @@ Mesh includes several built-in modules:
 | `Map`    | Key-value maps              | `Map.new()`, `Map.put(m, k, v)` |
 | `Set`    | Unique value sets           | `Set.new()`, `Set.add(s, v)`    |
 | `String` | String manipulation         | `String.length(s)`              |
-
-## Clustered and Native Function Declarations
-
-Mesh has two source decorators for function boundaries. They are declarations with compiler-defined behavior, not general-purpose annotations.
-
-### `@cluster`
-
-`@cluster` marks a public function as runtime-owned clustered work. The uncounted form uses the default total copy count of two; `@cluster(N)` requests an explicit total copy count:
-
-```mesh
-@cluster
-pub fn refresh_cache() -> Int do
-  1
-end
-
-@cluster(3)
-pub fn rebuild_index() -> Int do
-  3
-end
-```
-
-The decorated target must resolve to one public, non-overloaded function. The removed `clustered(work)` spelling is not supported. See [Autonomous Clusters](/docs/autonomous-clusters/) for deployment and runtime policy.
-
-### `@native`
-
-`@native("symbol")` declares a Mesh signature implemented by a symbol in a checksum-verified static library:
-
-```mesh
-@native("mesh_math_add")
-pub fn add(left :: Int, right :: Int) -> Int
-
-@native("mesh_decode")
-pub fn decode(input :: Bytes) -> Bytes!String
-```
-
-A native declaration:
-
-- must be `pub` and have no Mesh body;
-- must give every parameter and the return value an explicit type;
-- cannot have generic parameters, a `where` clause, or a guard;
-- can pass `Int`, `Float`, `Bool`, `String`, `Bytes`, `U64`, `U128`, and `I128`;
-- can additionally return `Option` or `Result` containing supported ABI values.
-
-The package's `[native]` manifest entry selects ABI version 1 bindings and a SHA-256-pinned archive for the exact target. The package manager never executes a native build script.
 
 ### Working with Lists
 
@@ -1143,6 +1271,77 @@ fn main() do
   println("#{Map.size(scores)}")
 end
 ```
+
+### Method-Call Syntax
+
+A function of the `String`, `List`, `Map`, `Set`, or `Range` module can also be called as a method on a value of that type. `value.fn(args)` means `Module.fn(value, args)`:
+
+```mesh
+fn main() do
+  let xs = [1, 2, 3]
+  let m = %{"a" => 1}.put("b", 2)
+  println("#{xs.contains(2)} #{m.get("b")} #{m.size()} #{"mesh".length()}")
+end
+```
+
+An interface method of the same name takes precedence over the module function.
+
+## Function Decorators
+
+Mesh has three source decorators for function boundaries: `@cluster`, `@native`, and `@export`. They are declarations with compiler-defined behavior, not general-purpose annotations.
+
+### `@cluster`
+
+`@cluster` marks a public function as runtime-owned clustered work. The uncounted form uses the manifest's `[cluster].default_replicas`, or a total copy count of two without one; `@cluster(N)` requests an explicit total copy count:
+
+```mesh
+@cluster
+pub fn refresh_cache() -> Int do
+  1
+end
+
+@cluster(3)
+pub fn rebuild_index() -> Int do
+  3
+end
+```
+
+The decorated target must resolve to one public, non-overloaded function. The removed `clustered(work)` spelling is not supported. See [Autonomous Clusters](/docs/autonomous-clusters/) for deployment and runtime policy.
+
+### `@native`
+
+`@native("symbol")` declares a Mesh signature implemented by a symbol in a checksum-verified static library:
+
+```mesh
+@native("mesh_math_add")
+pub fn add(left :: Int, right :: Int) -> Int
+
+@native("mesh_decode")
+pub fn decode(input :: Bytes) -> Bytes!String
+```
+
+A native declaration:
+
+- must be `pub` and have no Mesh body;
+- must give every parameter and the return value an explicit type;
+- cannot have generic parameters, a `where` clause, or a guard;
+- can pass `Int`, `Float`, `Bool`, `String`, `Bytes`, `U64`, `U128`, and `I128`;
+- can additionally return `Option` or `Result` containing supported ABI values.
+
+The package's `[native]` manifest entry selects ABI version 1 bindings and a SHA-256-pinned archive for the exact target. The package manager never executes a native build script.
+
+### `@export`
+
+`@export("c_symbol")` makes a Mesh function callable from a host program when the project is built as a library with `meshc build --artifact staticlib` or `--artifact cdylib`:
+
+```mesh
+@export("mesh_mobile_echo")
+pub fn echo(request :: Bytes) -> Bytes!String do
+  Ok(request)
+end
+```
+
+An exported function must be `pub`, its symbol must be a C identifier, and its signature must be exactly `(Bytes) -> Bytes!String`, with no generic parameters, `where` clause, or guard. Any other declaration is an error (E0055). See [Library Builds](/docs/library-builds/) for building and calling the library.
 
 ## JSON Literals
 

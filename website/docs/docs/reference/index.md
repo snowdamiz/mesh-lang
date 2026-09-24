@@ -27,11 +27,18 @@ end
 
 | Form | Meaning |
 | --- | --- |
-| `module Name do ... end` | Declare a module inside a file; import it to use it, from that file only |
+| `foo/bar_baz.mpl` | A file module named `Foo.BarBaz`: each path segment in PascalCase |
+| `module Name do ... end` | Declare a module named exactly `Name` inside a file; import it to use it, from that file only |
 | `pub module Name do ... end` | Declare a module any file may import |
-| `import Foo.Bar` | Import a module for qualified access |
+| `import Foo.Bar` | Import a module for qualified access through its last segment: `Bar.run()` |
 | `from Foo.Bar import one, two` | Import selected public symbols |
-| `pub` | Export a function, module, struct, interface, supervisor, sum type, or alias |
+| `pub` | Export a function, module, struct, interface, supervisor, sum type, alias, or resource |
+
+Standard-library modules need no import. A module block may not share its name
+with a file module. Qualified names work in calls, type annotations
+(`p :: Geo.Point`), struct literals (`Geo.Point { x: 1, y: 2 }`), constructors
+and constructor patterns (`Shapes.Circle(r)`), and `impl` headers
+(`impl Geo.Describe for Geo.Point`).
 
 Selective imports may be parenthesized. Only the parenthesized form may span
 lines; an unparenthesized import list ends at the newline. Glob imports are not
@@ -45,15 +52,15 @@ supported.
 | Documentation comment | `## item documentation` |
 | Module documentation | `##! module documentation` |
 | Nested block comment | `#= outer #= inner =# outer =#` |
-| Statements | Significant newlines or `;` |
+| Statements | A newline ends a statement; two statements on one line need `;` between them |
 | Identifier | Starts with `_` or a Unicode alphabetic code point; later characters may be `_` or a Unicode alphanumeric code point |
-| Integer | Decimal, `0x` hexadecimal, `0b` binary, or `0o` octal; `_` separators are accepted |
-| Float | Decimal and scientific notation |
+| Integer | Decimal, `0x` hexadecimal, `0b` binary, or `0o` octal (prefixes may be uppercase); `_` separators are accepted; at most `9223372036854775807` in any radix, and `-9223372036854775808` may be written |
+| Float | Decimal and scientific notation; any literal with an exponent, such as `1e3`, is a `Float` |
 | Boolean | `true`, `false` |
 | Unit | `nil` or `()` |
-| String | `"text"`, with interpolation and the escapes `\n` `\t` `\r` `\0` `\\` `\"`, `\$` and `\#` (a literal `${` or `#{`), and `\u{1F389}`; any other escape is an error |
-| Heredoc | `"""multiline text"""` |
-| Atom | `:name`, using lowercase letters, digits, and underscores |
+| String | `"text"`, with interpolation and the escapes `\n` `\t` `\r` `\0` `\\` `\"`, `\$` and `\#` (a literal `${` or `#{`), and `\u{1F389}` (1 to 6 hex digits); any other escape is an error |
+| Heredoc | `"""multiline text"""`; dedented to the closing `"""`, with escapes and interpolation as in strings |
+| Atom | `:name`; the first character after `:` is a lowercase ASCII letter or `_`, later ones may be `_` or any Unicode letter or digit |
 | Regex | `~r/pattern/ims`; the pattern may span physical source lines until an unescaped `/`; supported flags are `i`, `m`, and `s` |
 | List | `[one, two]` |
 | Tuple | `(one, two)` |
@@ -64,6 +71,16 @@ supported.
 
 Both `"#{expression}"` and `"${expression}"` interpolate. The `#{...}` form is
 preferred in new code.
+
+The compiler rejects malformed numeric literals, a digit outside the radix
+(`0b102`), an integer literal beyond the `Int` range (`0xffffffffffffffff`),
+and a float literal that overflows (`1e999`).
+
+A heredoc drops the newline after its opening `"""` and the final line holding
+only the closing indentation, removes that indentation from every line, and
+turns source `\r\n` line endings into `\n`. In a run of more than three quotes,
+the last three close it: `"""say "hi""""` is `say "hi"`. A heredoc may also be
+a pattern. See [Heredoc Strings](/docs/language-basics/#heredoc-strings).
 
 Reserved keywords are exact ASCII identifiers: `let` is a keyword, but `letπ`
 is a valid ordinary identifier.
@@ -84,11 +101,11 @@ typed scalar accessors.
 | `Bytes` | Binary-safe byte sequence |
 | `U64`, `U128`, `I128` | Opaque checked wide integers; use their module functions |
 | `Json` | Structured JSON value with implicit String compatibility |
-| `Atom` | Named atom such as `:ok` |
+| `Atom` | Named atom such as `:ok`; has `Eq`, `Display`, `Debug`, and `Hash`, and matches as a literal pattern |
 | `Regex` | Compiled regular expression |
 | `()` | Unit |
-| `Option<T>` / `T?` | `Some(T)` or `None` |
-| `Result<T, E>` / `T!E` | `Ok(T)` or `Err(E)` |
+| `Option<T>` / `T?` | `Some(T)` or `None`; a tuple takes the shorthand too: `(Int, String)?` |
+| `Result<T, E>` / `T!E` | `Ok(T)` or `Err(E)`; for example `(Int, Int)!String` |
 | `List<T>` | Immutable list |
 | `Map<K, V>` | Immutable map |
 | `Set` | Immutable set of `Int` values |
@@ -142,9 +159,13 @@ registered before their bodies are inferred, so mutual recursion is
 supported. A non-exhaustive function-clause group warns; a non-exhaustive
 `case` or `match` is an error.
 
-Function parameters may be patterns. The first clause owns the public,
-generic, return-type, and `where` metadata for a same-name/arity clause group.
-Put a catch-all clause last.
+Function parameters may be patterns: literals, constructors, tuples, lists
+(`len([])`), cons (`len(_ :: rest)`), and or-patterns (`small(1 | 2)`). In a
+parameter, `name :: Type` is an annotation; a lowercase name, `_`, or a list
+pattern after `::` makes a cons pattern. A clause may use `= expression` or a
+`do ... end` body. The first clause owns the public, generic, return-type, and
+`where` metadata for a same-name/arity clause group. Put a catch-all clause
+last. A function clause's `when` guard may be any `Bool` expression.
 
 Direct calls to the current function in tail position are lowered to a loop,
 including tail positions reached through blocks, `let` continuations,
@@ -174,11 +195,36 @@ Closures capture lexical bindings. Calls support:
 
 - positional arguments;
 - keyword arguments, which become one final map argument;
-- trailing closures;
+- a trailing `do |x| ... end` closure after the argument list, which becomes
+  the last argument of a call, method call, or pipe step;
 - field and method chaining;
 - postfix `?` on `Option` and `Result`.
 
-Positional arguments cannot follow keyword arguments.
+Positional arguments cannot follow keyword arguments. The heads of `if`,
+`while`, `case`, and `for` do not take a trailing closure, so their `do` always
+opens the body.
+
+On a `String`, `List`, `Map`, `Set`, or `Range` value, a method call falls back
+to that module's function: `xs.contains(x)` is `List.contains(xs, x)`,
+`m.put(k, v)` is `Map.put(m, k, v)`, and `"s".length()` is `String.length("s")`.
+An interface method of the same name is preferred.
+
+## Built-in functions
+
+These functions need no module prefix and no import:
+
+| Function | Behavior |
+| --- | --- |
+| `println(text)`, `print(text)` | Write a `String` to standard output, with or without a newline; interpolate other values |
+| `panic(message)` | `String -> Never`; end the current actor, or the program from `main` |
+| `default()` | The `Default` value of the type the context expects |
+| `compare(a, b)` | An `Ordering` (`Less`, `Equal`, or `Greater`) through `Ord` |
+| `map`, `filter`, `reduce`, `head`, `tail` | The `List` functions of the same names |
+| `spawn`, `send`, `self`, `link` | Actor operations; see [Actors](#actors-and-concurrent-processes) |
+| `test`, `describe`, `setup`, `teardown`, `assert`, `assert_eq`, `assert_ne`, `assert_raises` | The test DSL; see [Testing](/docs/testing/) |
+
+`inspect(value)` and `to_string(value)` call the `Debug` and `Display`
+methods as functions, the same as `value.inspect()` and `value.to_string()`.
 
 ## Pattern matching
 
@@ -198,7 +244,7 @@ Supported patterns are:
 
 - wildcard `_`;
 - variable binding;
-- integer, float, string, boolean, and `nil` literals;
+- integer, float, string, atom, boolean, and `nil` literals;
 - negative numeric literals;
 - tuple patterns;
 - qualified and unqualified constructors;
@@ -210,7 +256,15 @@ Supported patterns are:
 - optional `when` guards on function, closure, receive, and match arms.
 
 Both sides of an or-pattern must bind the same names. Struct-field patterns are
-not currently supported; use tuple and constructor patterns.
+not currently supported; use tuple and constructor patterns. A heredoc literal
+is also a pattern.
+
+An arm body is one expression, a `-> do ... end` block, or statements starting
+on the next line and indented under the arm. `return` is an expression, so
+`None -> return -1` leaves the function.
+
+A guard on a `case`, `match`, or `receive` arm, a function clause, or a
+multi-clause closure may be any `Bool` expression.
 
 A `case` or `match` arm with no `->` is its pattern alone and passes the
 matched value through, rebuilt: `Ok(value)` means `Ok(value) -> Ok(value)`.
@@ -224,6 +278,8 @@ constructors such as `None`; `_` and a bare `Ok` are rejected (E0056).
 | Form | Result |
 | --- | --- |
 | `if condition do ... else ... end` | Unified branch type |
+| `if a do ... else if b do ... else ... end` | `else if` chain closed by one `end` |
+| `if condition do ... end` | `()` |
 | `case value do ... end` | Unified arm type; exhaustiveness checked |
 | `match value do ... end` | Synonym for `case` |
 | `for value in iterable [when guard] do ... end` | `List<body type>` |
@@ -232,10 +288,11 @@ constructors such as `None`; `_` and a bare `Ok` are rejected (E0056).
 | `continue` | Continue the enclosing loop |
 
 `for` supports ranges, lists, maps, sets, and user implementations of
-`Iterable`/`Iterator`. Ranges are end-exclusive: `0..5` yields `0` through `4`.
-Map destructuring uses `{key, value}`.
+`Iterable`/`Iterator`. Ranges are end-exclusive: `0..5` yields `0` through `4`,
+and `a..b` is a `Range` value anywhere, not only in a `for` head. A map loop
+binds each entry with `{key, value}` or a tuple pattern `(key, value)`.
 
-An `if` without `else` is best used only when its result is discarded.
+An `if` without `else` has type `()`, so use it only for its effects.
 
 ## Pipes and operators
 
@@ -259,8 +316,14 @@ Operators are listed from lower to higher precedence:
 argument position N; N begins at 2. Leading and trailing multiline pipe forms
 are both supported.
 
-Arithmetic and comparisons dispatch through built-in interfaces. `<>` is the
-String concatenation form and `++` is the List concatenation form.
+Arithmetic and comparisons dispatch through built-in interfaces. `<>` and `++`
+are interchangeable: either joins two strings or two lists of the same type.
+
+`Int` division truncates toward zero (`-7 / 2` is `-3`), and `%` takes the
+dividend's sign (`7 % -2` is `1`). Integer division or remainder by zero
+panics; `-9223372036854775808 / -1` wraps. `Float` follows IEEE 754, so NaN is
+unequal to itself. `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round`
+saturate at the `Int` bounds and turn NaN into `0`.
 
 ## Structs, sum types, and aliases
 
@@ -372,6 +435,15 @@ end
 - `?` returns `None`/`Err` early.
 - A `Result` error may be converted through `From`.
 - Use `case`/`match` for explicit handling.
+- `panic(message)` (`String -> Never`) prints `Mesh panic: message` and ends
+  the current actor, which a supervisor can restart, or ends the program with
+  exit status 101 when called from `main`.
+- Runtime errors are panics: `List.get` out of range, `Map.get` of a missing
+  key, a call no function clause matches, and integer division by zero.
+- Recursion deeper than the stack ends the whole program with
+  `error: stack overflow`.
+
+See [Panics](/docs/language-basics/#panics).
 
 ## Actors and concurrent processes
 
@@ -450,6 +522,21 @@ layouts.
 See [Native Packages](/docs/native-packages/) for manifests, archive
 verification, ownership, errors, and target selection.
 
+## Exported functions
+
+```mesh
+@export("mesh_mobile_echo")
+pub fn echo(request :: Bytes) -> Bytes!String do
+  Ok(request)
+end
+```
+
+`@export("c_symbol")` exposes a function under a C symbol when the project is
+built with `meshc build --artifact staticlib` or `--artifact cdylib`. The
+function must be `pub`, the symbol a C identifier, and the signature exactly
+`(Bytes) -> Bytes!String`, without generic parameters, `where`, or a guard;
+anything else is error E0055. See [Library Builds](/docs/library-builds/).
+
 ## Standard-library module index
 
 This table lists every compiler-recognized built-in module on the current
@@ -458,9 +545,11 @@ branch.
 | Area | Modules | Detailed guide |
 | --- | --- | --- |
 | Text and collections | `String`, `List`, `Map`, `Set`, `Tuple`, `Range`, `Queue`, `Iter`, `Regex` | [Standard Library](/docs/stdlib/), [Iterators](/docs/iterators/) |
-| Binary and numbers | `Bytes`, `U64`, `U128`, `I128`, `Checked`, `Math`, `Int`, `Float` | [Standard Library](/docs/stdlib/) |
+| Binary and numbers | `Bytes`, `BytesBuilder`, `U64`, `U128`, `I128`, `Checked`, `Math`, `Int`, `Float` | [Standard Library](/docs/stdlib/) |
 | Encoding and JSON | `JSON`, `Json`, `Base64`, `Hex` | [Web](/docs/web/), [Standard Library](/docs/stdlib/) |
 | System and time | `IO`, `Env`, `File`, `DateTime`, `Monotonic`, `Duration`, `Random`, `Crypto` | [Standard Library](/docs/stdlib/) |
+| Secrets and keys | `Secret`, `SecretMap`, `StorageKey`, `X25519PrivateKey`, `SigningPrivateKey`, `MlKemPrivateKey` | [Standard Library](/docs/stdlib/) |
+| Host callbacks | `Host` | [Standard Library](/docs/stdlib/), [Library Builds](/docs/library-builds/) |
 | Concurrent runtime | `Job`, `Timer`, `Channel`, `Process`, `Test` | [Concurrency](/docs/concurrency/), [Testing](/docs/testing/) |
 | Web and sockets | `HTTP`, `Request`, `Ws`, `Http`, `WsClient` | [Web](/docs/web/) |
 | Databases | `Sqlite`, `Pg`, `Pool`, `Orm`, `Expr`, `Query`, `Repo`, `Changeset`, `Migration` | [Databases](/docs/databases/) |
@@ -484,9 +573,9 @@ provenance, and explicit non-goals.
 
 | Command | Purpose |
 | --- | --- |
-| `meshc build` | Compile and link a project |
+| `meshc build` | Compile and link a project as an executable, static library, or dynamic library |
 | `meshc init` | Generate hello, clustered, or Todo API starters |
-| `meshc deps` | Resolve source git/path dependencies |
+| `meshc deps` | Resolve git and path dependencies and fetch git checkouts |
 | `meshc fmt` | Format or check `.mpl` files |
 | `meshc lint` | Report deep nesting and other lint findings in `.mpl` files |
 | `meshc test` | Run `.test.mpl` tests |
@@ -498,14 +587,42 @@ provenance, and explicit non-goals.
 | `meshc update` | Refresh an installer-managed toolchain |
 | `meshpkg login` | Store a registry token |
 | `meshpkg search` | Search the registry |
-| `meshpkg install` | Install one exact package or manifest registry dependencies |
+| `meshpkg install` | Install the latest release of one package, or the manifest's exact registry dependencies |
 | `meshpkg publish` | Publish an immutable package version |
 | `meshpkg update` | Refresh the toolchain |
 
 See [Developer Tools](/docs/tooling/) for arguments, output paths, supported
-targets, editor integration, and limitations.
+targets, editor integration, and limitations, [Library Builds](/docs/library-builds/)
+for `--artifact staticlib|cdylib`, and
+[Environment Variables](/docs/environment-variables/) for the variables the
+tools and runtime read.
 
-## Reserved words that are not features
+## Keywords
+
+These words are reserved and cannot name a variable or function:
+
+`actor`, `after`, `alias`, `and`, `break`, `call`, `case`, `cast`, `cond`,
+`continue`, `def`, `do`, `else`, `end`, `false`, `fn`, `for`, `if`, `impl`,
+`import`, `in`, `interface`, `json`, `let`, `link`, `match`, `module`,
+`monitor`, `nil`, `not`, `or`, `pub`, `receive`, `return`, `self`, `send`,
+`service`, `spawn`, `struct`, `supervisor`, `terminate`, `trait`, `trap`,
+`true`, `type`, `when`, `where`, `while`, `with`.
+
+Some words have a meaning only in one position and remain ordinary names
+elsewhere:
+
+| Word | Position |
+| --- | --- |
+| `from` | `from Module import name` |
+| `as` | After a pattern: `pattern as whole` |
+| `deriving` | After a struct or sum type's `end` |
+| `resource` | Before a type declaration: `resource Name`, `resource struct Name do ... end` |
+| `borrow`, `consume` | Parameter ownership after `::`: `handle :: borrow Handle` |
+| `table`, `primary_key`, `timestamps`, `belongs_to`, `has_many`, `has_one` | ORM schema metadata inside a struct |
+| `strategy`, `max_restarts`, `max_seconds`, `child`, `start`, `restart`, `shutdown` | Fields of a `supervisor` block and its `child` blocks |
+| `cluster`, `native`, `export` | Decorator names after `@` |
+
+### Reserved words that are not features
 
 The lexer reserves `alias`, `cond`, `trait`, `trap`, and `with`, but the parser
 does not implement those forms on the current branch. Do not use them as
@@ -525,9 +642,12 @@ language features. Use:
 - Variables and collections are immutable.
 - `Iter.from` currently accepts `List<T>`; `for ... in` has the wider
   iterable surface.
-- Index expressions are parser placeholders and are not an executable
-  source-level collection API; use module functions such as `List.get`,
-  `Map.get`, and `Json.array_get`.
+- There are no module-level bindings: a `let` outside a function is error E0080
+  in a build. Use a function, such as `fn limit() -> Int do 10 end`. The REPL
+  keeps its `let` bindings between inputs.
+- There is no bracket indexing: an index expression is error E0078. Use
+  module functions such as `List.get`, `Map.get`, `Tuple.nth`, and
+  `Json.array_get`.
 - Struct-field patterns are not implemented.
 - Wide integers use checked module functions instead of ordinary literal
   operators.

@@ -269,6 +269,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Native Packages', link: '/docs/native-packages/', icon: 'Blocks' } as any,
+            { text: 'Library Builds', link: '/docs/library-builds/', icon: 'Plug' } as any,
             { text: 'Packages & Registry', link: '/docs/packages/', icon: 'PackageOpen' } as any,
           ],
         },
@@ -305,6 +306,7 @@ export default defineConfig({
           items: [
             { text: 'Syntax Cheatsheet', link: '/docs/cheatsheet/', icon: 'ClipboardList' } as any,
             { text: 'Complete Reference', link: '/docs/reference/', icon: 'ListTree' } as any,
+            { text: 'Environment Variables', link: '/docs/environment-variables/', icon: 'Variable' } as any,
           ],
         },
         {

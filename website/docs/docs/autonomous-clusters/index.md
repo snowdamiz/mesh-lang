@@ -111,10 +111,10 @@ image = "registry.example.com/todos@sha256:..."
 pool = "workers"
 template_revision = "2026-07-15"
 network = "todos-private"
-env = ["DATABASE_URL", "PORT=8080", "MESH_ROLES=worker"]
+env = ["PORT=8080"]
 ```
 
-Mesh rejects invalid bounds, unsafe controller autoscaling, even multi-voter quorums, missing driver templates, secrets embedded in provider configuration, replica policies that cannot fit, scale-down windows no longer than scale-up windows, and snapshot chunks above transport bounds.
+Mesh rejects invalid bounds, unsafe controller autoscaling, even multi-voter quorums, missing driver templates, Docker worker `env` entries that are not `NAME=value` (pass secrets through `MESH_CAPACITY_WORKER_ENV_ALLOWLIST`; see [Capacity Drivers](/docs/capacity-drivers/#docker-driver)), secrets embedded in provider configuration, replica policies that cannot fit, scale-down windows no longer than scale-up windows, and snapshot chunks above transport bounds.
 
 Controllers are a fixed, explicitly administered voter set. Worker autoscaling never adds or removes a voter.
 

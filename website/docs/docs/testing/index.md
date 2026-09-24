@@ -18,7 +18,16 @@ meshc test my-app/tests/config.test.mpl
 meshc test --quiet my-app
 ```
 
-`meshc test` discovers all `*.test.mpl` files under the requested project root or directory target, compiles and runs each independently, and prints each file's results followed by a summary across files:
+The path is optional and defaults to the current directory. It may be a
+project, a directory inside one, or one `*.test.mpl` file; the project is the
+nearest enclosing directory with a `mesh.toml`, and without one the run fails
+with "Could not resolve a Mesh project root". `meshc test` finds every
+`*.test.mpl` file under the path, skipping hidden directories and `target/`,
+and runs the files in path order. Each file is compiled, at debug optimization
+and together with the project's modules, into a program of its own, and run as
+its own process; the tests of one file run one after another in that process.
+It prints each file's results when the file finishes, then a summary across
+files:
 
 ```
   ✓ arithmetic is correct
@@ -29,9 +38,19 @@ meshc test --quiet my-app
 1 test file passed in 1.76s
 ```
 
-On failure, the output includes the failing assertion, the expected and actual values, and the file/test name. The exit code is non-zero if any test fails.
+Output a test prints itself comes before its `✓` or `✗` line. A failed test is
+listed again under `Failures:` after the file's tests, with what failed. The
+last line counts test files, and its time includes compiling them. A file that
+does not compile is reported as `COMPILE ERROR: <file>` with the compiler's
+diagnostics, which point at the lines of the test file as written.
 
-`--quiet` prints compact progress dots instead of every test name.
+The exit status is 1 when any file fails, including one that does not
+compile, and 0 otherwise, including when there are no test files (`No
+*.test.mpl files found.`). Output is colored only on a terminal with `NO_COLOR`
+unset.
+
+`--quiet` prints a `.` for each passing test and an `F` for each failing one,
+then the `Failures:` list and the counts.
 
 The top-level `tests/` directory may also contain ordinary `.mpl` helper
 modules imported by test files. `meshc test` includes those helpers, while
@@ -44,7 +63,12 @@ to test-only or out-of-project source.
 
 ## Writing Tests
 
-Test files are standalone `.test.mpl` programs. Each `test` block defines a named test:
+A test file holds `test` blocks, `describe` groups, and ordinary definitions
+such as helper functions. It can import the project's modules, except its
+entrypoint (`main.mpl`, or the manifest's `entrypoint`), which the runner
+replaces with its own. Helper modules under `tests/` are imported by their
+path, as `from Tests.Support import label` for `tests/support.mpl`. Each `test`
+block defines a named test; its label must be a string literal:
 
 ```mesh
 test("arithmetic is correct") do
@@ -106,15 +130,28 @@ the project tree.
 
 | Assertion | Description |
 |-----------|-------------|
-| `assert(expr)` | Passes if `expr` is true; prints expression source and value on failure |
-| `assert_eq(a, b)` | Passes if `a == b`; prints expected and actual on failure |
-| `assert_ne(a, b)` | Passes if `a != b`; prints both values on failure |
-| `assert_raises(fn)` | Passes if calling `fn` raises a runtime error or fails an assertion |
+| Assertion | Passes when | Failure message |
+|-----------|-------------|-----------------|
+| `assert(expr)` | `expr`, a `Bool`, is `true` | `assert failed: <expr as written>` |
+| `assert_eq(a, b)` | `a` and `b` show the same text | `assert_eq failed: <a> == <b>`, then `left:` and `right:` values |
+| `assert_ne(a, b)` | `a` and `b` show different text | `assert_ne failed: <a> != <b>`, then `both sides equal:` |
+| `assert_raises(fn)` | calling `fn` panics or fails an assertion | `assert_raises failed: expression did not raise` |
+
+`assert_eq` and `assert_ne` take two values of the same type and compare them
+as `"#{value}"` shows them, through `Display`, so both sides must implement it.
 
 A failed assertion ends its test and fails it, as a runtime error (a panic,
 such as `List.get` past the end or a division by zero) does; the run goes on
-with the next test. Inside `assert_raises`, a failed assertion is the raise it
-expects.
+with the next test. A panic's message is the failure: `panicked: <message>`,
+so `panic("...")` fails a test with a message of your own. Inside
+`assert_raises`, a failed assertion is the raise it expects.
+
+A failure that ends the whole process, such as a stack overflow, ends the file
+without its summary, and the file counts as failed. There is no per-test
+timeout: a test that never finishes stops the run. The tests of a file share
+one process, so actors they spawn and names they register carry over to the
+next test; only mock actors and the host fixtures below are reset between
+tests.
 
 ```mesh
 test("assertions") do
@@ -129,7 +166,8 @@ end
 
 ## Grouping with describe
 
-Use `describe` to group related tests. The group name appears in failure output:
+Use `describe` to group related tests. The group name, a string literal, is
+joined to each test's name with ` > `:
 
 ```mesh
 describe("string operations") do
@@ -143,7 +181,9 @@ describe("string operations") do
 end
 ```
 
-A failed test is marked `✗` with its group and name, followed by what failed:
+A failed test is marked `✗` with its group and name, followed by what failed.
+Had `length` asserted `assert_eq(String.length("hello"), 4)`, the output would
+read:
 
 ```
   ✗ string operations > length
@@ -154,7 +194,8 @@ A failed test is marked `✗` with its group and name, followed by what failed:
 
 ## Setup and Teardown
 
-`setup` and `teardown` blocks run before and after each test in a `describe` group:
+`setup` and `teardown` blocks run before and after each test in a `describe`
+group. Both may be written with or without the empty parentheses (`setup do`):
 
 ```mesh
 describe("counter") do
@@ -172,7 +213,33 @@ describe("counter") do
 end
 ```
 
-`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. `setup` comes before the tests of its `describe`, and values it binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
+`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. A `describe` may have several `setup` blocks, which run in order, and at most one `teardown`; every `setup` must come before the first test or nested `describe` of its `describe`, or the file does not compile. Values a `setup` binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
+
+### Nested describe
+
+A `describe` can contain another. Its tests are named with both labels, as
+`outer > inner > test`; each one runs the outer `setup` blocks and then the
+inner ones, so it sees the bindings of both, and afterwards the inner
+`teardown` and then the outer one.
+
+```mesh
+describe("accounts") do
+  setup do
+    let owner = "ada"
+  end
+
+  describe("with a balance") do
+    setup do
+      let balance = 10
+    end
+
+    test("belongs to its owner") do
+      assert_eq(owner, "ada")
+      assert_eq(balance, 10)
+    end
+  end
+end
+```
 
 ## In-memory secure store
 
@@ -187,8 +254,10 @@ test("persists wrapped state") do
 end
 ```
 
-The adapter uses the production host-callback framing, holds at most 256 entries
-and 1 MiB, zeroizes stored values, and is cleared after each test. The builtin is
+The adapter uses the production host-callback framing, holds at most 256
+entries with keys of 1 to 4096 bytes and 1 MiB of keys and values together,
+zeroizes stored values, and is cleared after each test and by each call that
+installs it. The builtin is
 available only through `meshc test`; ordinary builds reject it and still require
 platform secure-store callbacks.
 
@@ -209,8 +278,10 @@ end
 ```
 
 `Test.set_push_token` accepts an exact non-empty selector up to 4 KiB and any
-token up to 1 MiB, including empty and non-UTF-8 values. Its callback accepts
-only that selector, uses the production host framing and status codes, and is
+token up to 1 MiB, including empty and non-UTF-8 values. A test may set up to
+256 selectors, 1 MiB of tokens in all; setting a selector again replaces its
+token. The callback answers only the selectors that were set (any other is
+invalid input), uses the production host framing and status codes, and is
 cleared and zeroized after the test. It composes with
 `Test.install_in_memory_secure_store()` in either call order. Like the
 secure-store adapter, it exists only in `meshc test`; ordinary builds must
@@ -221,33 +292,48 @@ register a platform callback.
 Use `Test.mock_actor` to spawn a lightweight actor owned by the current test:
 
 ```mesh
-test("mock actor lifecycle") do
-  let mock = Test.mock_actor(fn _message do
+test("mock actor receives messages") do
+  let me = self()
+  let mock = Test.mock_actor(fn message do
+    send(me, "got " <> message)
     "handled"
   end)
   send(mock, "hello")
+  assert_receive "got hello", 500
 end
 ```
 
-`Test.mock_actor(fn(String) -> String)` returns a test-owned `Pid` you can send strings to. The helper checks for messages with a 100 ms idle timeout, ignores the callback's return value, and has no `"ok"`/`"stop"` control protocol. Mesh tracks mock PIDs and cleans them up between tests. Treat it as a lifecycle and cleanup helper; when message payload or callback behavior matters, define a normal actor in the test file and use `assert_receive` to verify observable messages.
+`Test.mock_actor(fn(String) -> String)` returns a `Pid` you can send strings
+to. The actor calls the function with each message, in order, and ignores what
+it returns; there is no `"ok"`/`"stop"` control protocol. It keeps waiting for
+messages until the test ends: Mesh tracks mock PIDs and stops them before the
+next test. The function may be a closure or a named function. To check what a
+mock saw, have it send to the test, as above, and use `assert_receive`.
 
 ## assert_receive
 
-`assert_receive` waits for the current test actor to receive a message matching a pattern:
+`assert_receive PATTERN, TIMEOUT_MS` waits up to the timeout for the test's
+next message and checks it against the pattern:
 
 ```mesh
 test("receive a message") do
   let me = self()
   send(me, 42)
-  assert_receive 42, 500   # pattern, timeout_ms
+  assert_receive 42, 500
 end
 ```
 
-If the message is not received within the timeout, the test fails with the pattern and elapsed time. The default timeout is 100ms when omitted:
+A next message that does not match fails the test at once with
+`assert_receive 42 received another message`; no message in time fails it with
+`assert_receive 42 timed out after 500ms`. Without a timeout, it waits 100ms:
 
 ```mesh
-assert_receive "done", 1000   # explicit timeout
+assert_receive "done"
 ```
+
+`assert_receive` is a statement of its own, written in a `test`, `setup`, or
+`teardown` block; anywhere else, even in a helper function in the test file, it
+is error E0077. Names its pattern binds are not available after it.
 
 ## Coverage
 

@@ -47,7 +47,18 @@ image = "registry.example.com/app@sha256:..."
 pool = "workers"
 template_revision = "release-42"
 network = "app-private"
-env = ["DATABASE_URL", "PORT=8080", "MESH_ROLES=worker"]
+env = ["PORT=8080"]
+```
+
+Each `env` entry is a literal `NAME=value` given to every worker; the manifest
+is rejected when an entry has no `=`. Pass a controller's own variables, such
+as a `DATABASE_URL` secret, through by name instead: list them, comma
+separated, in `MESH_CAPACITY_WORKER_ENV_ALLOWLIST` on the controller, and each
+one that is set is added with the controller's value. The driver always sets
+`MESH_ROLES` to the managed roles, replacing any value from either source.
+
+```bash
+MESH_CAPACITY_WORKER_ENV_ALLOWLIST=DATABASE_URL
 ```
 
 Managed containers carry cluster, managed, pool, template, operation, term, and desired-revision labels. Create-response loss is handled by finding the exact labeled container. Removing an already absent container succeeds. A container with a mismatched cluster, pool, or template is never adopted or deleted.
@@ -85,7 +96,7 @@ cpus = 1
 memory_mb = 256
 ```
 
-The bearer token is read only from `token_env`. Production manifests pin the origin to `https://api.machines.dev`; an arbitrary manifest cannot redirect the token. A direct test-only driver can use another HTTPS origin only when the process owner explicitly sets `MESH_FLY_ALLOW_CUSTOM_API_BASE_URL`, which forwards the configured bearer token to that origin and must never be enabled around production credentials.
+The bearer token is read only from `token_env`. The optional `api_base_url` key defaults to, and in a manifest must be, `https://api.machines.dev`; an arbitrary manifest cannot redirect the token. A direct test-only driver can use another HTTPS origin only when the process owner explicitly sets `MESH_FLY_ALLOW_CUSTOM_API_BASE_URL`, which forwards the configured bearer token to that origin and must never be enabled around production credentials.
 
 Machine metadata uses the same identity and fencing labels as other drivers. HTTP 408, 429, provider timeouts, and server errors are retryable with operation-scoped exponential backoff and full jitter; validation and authorization errors are permanent. The driver re-observes before creation, adopts exactly one metadata match after create-response loss or controller restart, and treats absence during deletion as success. It rate-limits provider mutations independently from retry timing.
 

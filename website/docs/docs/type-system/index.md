@@ -29,6 +29,8 @@ Mesh has a static Hindley-Milner-style type system with local and function infer
 
 `U64`, `U128`, and `I128` are not alternate literal types. They are opaque checked values constructed through their modules, and their arithmetic functions return `Result` on overflow or underflow.
 
+The `?` and `!` suffixes apply to a tuple type too: `(Int, String)?` is `Option<(Int, String)>`, and `(Int, Int)!String` is `Result<(Int, Int), String>`.
+
 ## Type Inference
 
 The Mesh compiler infers types from how values are used. You can declare variables without annotations and the compiler determines the correct type:
@@ -134,6 +136,8 @@ end
 ```
 
 Bounds are comma-separated and trait names may be qualified. They are checked at each call site.
+
+`<>` and `++` join two `String`s or two `List`s, so applying them to values of a type parameter is always an error (E0073), whatever its bounds. Convert the values first, as `combine` does with `to_string()`.
 
 ### Function Types
 
@@ -399,13 +403,137 @@ interface Named do
 end
 ```
 
-A method without a `self` parameter is static. User-defined conversion methods can be called through the destination type, as in `Wrapper.from(value)`. The compiler-provided `default()` function is resolved from context:
+An `impl` must provide every required method and associated type with a matching signature. Overlapping implementations for the same trait and type are rejected. If multiple in-scope interfaces provide an equally valid method name, the compiler reports the candidates instead of choosing one arbitrarily; name the interface to pick one: `Named.hello(value)`. A method can also be called as a function of its receiver, `hello(value)`, which dispatches by the value's type like `value.hello()`.
+
+The standard library works the other way round too: a `String`, `List`, `Map`, `Set` or `Range` value takes its module's functions as methods, with itself as the first argument. `"mesh".length()` is `String.length("mesh")`, and `list.map(f)`, `m.get(key)` and `(1..4).to_list()` work the same way (see [Method-Call Syntax](/docs/language-basics/#method-call-syntax)).
+
+### Static Methods
+
+A method without a `self` parameter is static. Call it on the implementing type:
+
+```mesh
+interface Versioned do
+  fn version() -> Int
+end
+
+struct Config do
+  path :: String
+end
+
+struct Schema do
+  name :: String
+end
+
+impl Versioned for Config do
+  fn version() -> Int do
+    1
+  end
+end
+
+impl Versioned for Schema do
+  fn version() -> Int do
+    3
+  end
+end
+
+impl Versioned for Int do
+  fn version() -> Int do
+    0
+  end
+end
+
+fn version_of<T>(_value :: T) -> Int where T: Versioned do
+  T.version()
+end
+
+fn main() do
+  println("#{Config.version()} #{Schema.version()} #{Int.version()}")  # 1 3 0
+  println("#{version_of(Config { path: "app.toml" })}")                # 1
+end
+```
+
+In a generic function, a type parameter bounded by the interface names the impl: `T.version()` calls the one for the type `T` stands for. A built-in type can be the receiver too, as `Int.version()` shows. A bare `version()` works when exactly one type implements the method; when several do, as here, it is error E0066, and the compiler suggests the qualified call.
+
+Conversions are static methods as well: `Wrapper.from(value)` (see [From/Into Conversion](#from-into-conversion)). The compiler-provided `default()` function is resolved from context:
 
 ```mesh
 let value :: Int = default()
 ```
 
-An `impl` must provide every required method and associated type with a matching signature. Overlapping implementations for the same trait and type are rejected. If multiple in-scope interfaces provide an equally valid method name, the compiler reports the candidates instead of choosing one arbitrarily; name the interface to pick one: `Named.hello(value)`. A method can also be called as a function of its receiver, `hello(value)`, which dispatches by the value's type like `value.hello()`.
+### `Self` in Interface Signatures
+
+In an interface, `Self` stands for the implementing type. A method can take or return it. An impl may write `Self` too, where it means the type the impl is for, or name that type, as `merge` does here:
+
+```mesh
+interface Scalable do
+  fn scale(self, factor :: Int) -> Self
+  fn merge(self, other :: Self) -> Self
+end
+
+struct Size do
+  width :: Int
+  height :: Int
+end
+
+impl Scalable for Size do
+  fn scale(self, factor :: Int) -> Self do
+    Size { width: self.width * factor, height: self.height * factor }
+  end
+
+  fn merge(self, other :: Size) -> Size do
+    Size { width: self.width + other.width, height: self.height + other.height }
+  end
+end
+
+fn grow<T>(value :: T) -> T where T: Scalable do
+  value.scale(2).merge(value)
+end
+
+fn main() do
+  let s = grow(Size { width: 2, height: 3 })
+  println("#{s.width}x#{s.height}")  # 6x9
+end
+```
+
+A generic caller gets its own type back: `grow` returns a `T`. `Self.Item` names an associated type of the implementing type; see [Associated Types](#associated-types).
+
+### Choosing an Impl by Result Type
+
+A type can implement one generic interface several times with different type arguments. When the impls differ only in what a method returns, the type the call is expected to have picks one:
+
+```mesh
+interface Convert<T> do
+  fn convert(self) -> T
+end
+
+struct Meters do
+  value :: Int
+end
+
+impl Convert<String> for Meters do
+  fn convert(self) -> String do
+    "#{self.value}m"
+  end
+end
+
+impl Convert<Int> for Meters do
+  fn convert(self) -> Int do
+    self.value * 100
+  end
+end
+
+fn centimeters(m :: Meters) -> Int do
+  m.convert()
+end
+
+fn main() do
+  let m = Meters { value: 3 }
+  let label :: String = m.convert()
+  println("#{label} #{centimeters(m)}")  # 3m 300
+end
+```
+
+An annotation or a declared return type fixes the expected type. When nothing does, as in `let x = m.convert()`, the call is error E0065, which lists the result types of the candidate impls.
 
 ### Built-in Traits
 
@@ -462,7 +590,7 @@ An explicit deriving clause is selective: only the listed capabilities are gener
 | Struct | `Debug`, `Eq`, `Ord`, `Hash` |
 | Sum type | `Debug`, `Eq`, `Ord` |
 
-`Display`, `Json`, `Row`, and `Schema` are never enabled by omission; list them explicitly. A type with a field that holds a function gets none of `Debug`, `Eq`, `Ord` and `Hash` by default (a function cannot be compared, hashed or shown), and listing one of them is an error.
+`Display`, `Json`, `Row`, and `Schema` are never enabled by omission; list them explicitly. A type with a field that holds a function gets none of `Debug`, `Eq`, `Ord` and `Hash` by default (a function cannot be compared, hashed or shown), and listing one of them is an error. A [resource type](#resource-types) derives nothing at all.
 
 ### Deriving on Sum Types
 
@@ -655,16 +783,18 @@ end
 
 ### Automatic Into
 
-Every `impl From<Source> for Target` also makes `Into<Target>` available on the source. Give the result an annotation when the target is otherwise ambiguous:
+Every `impl From<Source> for Target` also makes `Into<Target>` available on the source. `into()` converts to the type the call is expected to have, so it needs an annotation or another context that fixes the target. The same applies to the built-in conversions below and to a source with several `From` impls:
 
 ```mesh
 fn main() do
   let w :: Wrapper = 21.into()
-  println("#{w.value}")
+  let f :: Float = 2.into()
+  let s :: String = 7.into()
+  println("#{w.value} #{f} #{s}")  # 42 2.0 7
 end
 ```
 
-You do not write the corresponding `Into` implementation yourself.
+Without a target, as in `let x = 5.into()`, the call is error E0065. You do not write the corresponding `Into` implementation yourself.
 
 ### Built-in Conversions
 
@@ -790,6 +920,85 @@ end
 ```
 
 TryFrom/TryInto is for fallible conversions. For infallible conversions, use [From/Into](#from-into-conversion).
+
+## Resource Types
+
+A resource type is affine: each of its values can be moved at most once. Use one for a value that stands for something that must not be duplicated, such as an open connection or key material. The compiler tracks every resource and reports misuse as error E0053 (`resource ownership violation`).
+
+```mesh
+resource struct Session do
+  id :: Int
+  user :: String
+end
+
+fn describe(session :: borrow Session) -> String do
+  "session #{session.id} for #{session.user}"
+end
+
+fn rename(session :: Session, user :: String) -> Session do
+  %{session | user: user}
+end
+
+fn close(session :: consume Session) -> Int do
+  println("closing #{session.id}")
+  session.id
+end
+
+fn main() do
+  let session = Session { id: 1, user: "ada" }
+  println(describe(session))
+  let session = rename(session, "grace")
+  println(describe(session))
+  let closed = close(session)
+  println("closed #{closed}")
+end
+```
+
+Using `session` after `close(session)` would be an error: ``resource `session` was used after it moved``.
+
+### Declaring Resources
+
+| Declaration | Meaning |
+|-------------|---------|
+| `resource struct Name do ... end` | A struct whose values are resources. It is built, read and updated like any struct. |
+| `resource Name` | An opaque resource: it has no fields, and its name is not a constructor, so Mesh code cannot create a value of it. |
+| `pub resource Name`, `pub resource struct Name do ... end` | Exported forms |
+
+A struct or sum type with a field that holds a resource is a resource too, and so is an `Option`, `Result` or tuple that holds one.
+
+### Moves and Parameter Modes
+
+Binding a resource to another name, passing it to a function, returning it, storing it in a struct, variant or tuple, and updating it with `%{value | field: new}` all move it. After a move the old name cannot be used. If either branch of an `if` or `case` moves a resource, it counts as moved afterwards, and a loop cannot move a resource from outside the loop, because the loop could run more than once. Reading a field that is not itself a resource, such as `session.id`, does not move the value; taking out a field that holds a resource moves the whole value, unless the field goes straight to a `borrow` parameter.
+
+A parameter's mode says what a call does with a resource argument:
+
+| Parameter | Effect on the caller's value |
+|-----------|------------------------------|
+| `x :: T` | Moved into the call |
+| `x :: consume T` | Moved into the call; states the intent explicitly |
+| `x :: borrow T` | Lent for the duration of the call; the caller keeps it |
+
+A function cannot move a borrowed parameter (``borrowed resource `x` cannot be moved``), but it can read its fields and pass it on to another `borrow` parameter. A function may return without moving a resource parameter it owns.
+
+### Restrictions
+
+A resource cannot:
+
+- be sent to an actor, passed to `spawn`, or captured by a closure;
+- be interpolated, printed, compared with `==`, hashed, or encoded as JSON;
+- go into a `List`, `Map` or `Set`, and `List<Session>` is not a valid annotation;
+- pass through an indirect call, such as a function held in a variable, or through a parameter of a generic type; call a named function directly;
+- be bound by a top-level `let`.
+
+A `case` arm that binds a resource must move it on every path out of the arm, and a pattern cannot discard one with `_`.
+
+A resource type derives nothing: listing any trait in its `deriving(...)` is an error, and the default `Debug`, `Eq`, `Ord` and `Hash` are not generated.
+
+### Standard Library Resources
+
+`PgConn` is a resource. `Pg.connect` returns one, the query functions such as `Pg.execute` and `Pg.query` borrow it, and `Pg.close` consumes it. A `Pg.transaction` or `Repo.transaction` callback must declare its connection parameter as `conn :: borrow PgConn` (see [Databases](/docs/databases/)). `SqliteConn` is an ordinary value.
+
+`SecretBytes`, `AeadKey` and the private keys of the `Crypto` key pairs are resources, which makes `X25519KeyPair`, `SigningKeyPair` and `MlKemKeyPair` resources too; so is `BytesBuilder`, whose writes borrow it and whose `finish` consumes it (see the [Standard Library](/docs/stdlib/)).
 
 ## Next Steps
 

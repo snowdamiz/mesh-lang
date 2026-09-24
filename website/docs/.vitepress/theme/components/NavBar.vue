@@ -6,7 +6,7 @@ import ThemeToggle from './ThemeToggle.vue'
 import { useSidebar } from '@/composables/useSidebar'
 import { Menu, X } from 'lucide-vue-next'
 
-const { hasSidebar, is960, toggle } = useSidebar()
+const { hasSidebar, toggle } = useSidebar()
 const { page } = useData()
 
 // Mobile menu for non-docs pages (landing, packages, etc.)
@@ -32,10 +32,11 @@ const activeSection = computed(() => {
     <div class="relative mx-auto flex h-14 max-w-[90rem] items-center px-4 lg:px-6">
       <!-- Logo + mobile hamburger -->
       <div class="flex shrink-0 items-center gap-3">
-        <!-- Docs sidebar toggle (mobile, inside docs) -->
+        <!-- Docs sidebar toggle (narrow screens, inside docs). Breakpoints are CSS, not
+             media-query refs: the server renders before the viewport is known. -->
         <button
-          v-if="hasSidebar && !is960"
-          class="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          v-if="hasSidebar"
+          class="min-[960px]:hidden inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           aria-label="Toggle sidebar"
           @click="toggle"
         >
@@ -43,7 +44,7 @@ const activeSection = computed(() => {
         </button>
         <!-- Mobile menu toggle (outside docs) -->
         <button
-          v-if="!hasSidebar || is960"
+          v-if="!hasSidebar"
           class="md:hidden inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
           :aria-expanded="mobileMenuOpen"

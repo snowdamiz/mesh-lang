@@ -82,6 +82,12 @@
   border: 1px solid var(--border);
 }
 
+/* The pill marks inline code; drop the typography plugin's literal backticks */
+.prose :where(code):not(:where(pre *, .not-prose *))::before,
+.prose :where(code):not(:where(pre *, .not-prose *))::after {
+  content: none;
+}
+
 /* Prevent prose from interfering with code blocks */
 .prose :where(pre):not(:where(.not-prose, .not-prose *)) {
   background-color: transparent;
@@ -130,7 +136,11 @@
 
 /* Tables */
 .prose :where(table):not(:where(.not-prose, .not-prose *)) {
-  width: 100%;
+  /* A block that scrolls: a wide table must not widen the page on a phone */
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: 0.875rem;
 }

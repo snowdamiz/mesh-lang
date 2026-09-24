@@ -9,7 +9,7 @@ Mesh provides lazy iterator adapters for composing list transformations as pipel
 
 The two entry points have different scopes:
 
-- `Iter.from(list)` currently accepts `List<T>` and starts a lazy pipeline.
+- `Iter.from(list)` accepts a `List<T>` and starts a lazy pipeline of type `Iter<T>`.
 - `for value in source` accepts built-in lists, maps, sets, ranges, and user-defined `Iterable` or `Iterator` values.
 
 Do not use `Iter.from(map)` or `Iter.from(set)`; those are not part of the current typed API.
@@ -31,6 +31,8 @@ end
 
 The returned list iterator is consumed as a terminal operation or collect requests values. A pipeline is single-pass: after a terminal operation has exhausted an iterator, create another iterator if you need to traverse the list again.
 
+A pipeline has the type `Iter<T>`, where `T` is the element type: every adapter below takes an `Iter` and returns one, and compiler messages name it (`Iter<Int>`). A function that returns a pipeline declares it as `-> Iter<Int>`. The older `ListIterator`, a type without an element type, is compatible with every `Iter<T>`.
+
 ### Eager List Operations vs Lazy Iterators
 
 The prelude functions `map`, `filter`, and `reduce` (and their `List` module equivalents) operate directly on a `List`. `map` and `filter` eagerly return new lists:
@@ -42,6 +44,8 @@ let total = reduce(positive, 0, fn acc, x -> acc + x end)
 ```
 
 The `Iter.map` and `Iter.filter` functions below instead return lazy adapter handles. Use the eager list operations when you immediately need a list; use `Iter` when you want to compose work and materialize once.
+
+`head(list)` and `tail(list)`, also in the prelude, return a list's first element and the list without it. Both are runtime errors on an empty list.
 
 ### Custom Iterables
 
@@ -82,13 +86,48 @@ end
 
 The `Iterable` interface requires two associated types (`Item` and `Iter`) and an `iter` method that returns an iterator handle.
 
-The compiler-known `Iterator` contract has an associated `Item` type and a
-`next(self)` operation. Semantically, `next` either yields the next `Item` or
-signals exhaustion. Implement the existing contract with
-`impl Iterator for MyIterator`; do not redeclare the interface in application
-code.
+### Implementing Iterator
 
-A value that directly implements `Iterator` can also appear on the right side of `in`.
+`Iterator` is a compiler-known interface with one associated type, `Item`, and one method, `next(self) -> Item?`. `next` returns `Some(value)` for the next element and `None` when there are no more. Implement it with `impl Iterator for YourType`; do not declare the interface yourself. A value whose type implements `Iterator` can stand on the right of `in`, and the loop calls `next` until it returns `None`.
+
+Values are immutable, so `next` receives the same value on every call and cannot advance a field of it. Keep the position somewhere that can change, such as a service:
+
+```mesh
+service Countdown do
+  fn init(count :: Int) -> Int do
+    count
+  end
+
+  call Next() :: Int? do |n|
+    if n > 0 do
+      (n - 1, Some(n))
+    else
+      (0, None)
+    end
+  end
+end
+
+struct Ticks do
+  pid :: Pid
+end
+
+impl Iterator for Ticks do
+  type Item = Int
+  fn next(self) -> Int? do
+    Countdown.next(self.pid)
+  end
+end
+
+fn main() do
+  let ticks = Ticks { pid: Countdown.start(3) }
+  let seen = for n in ticks do
+    n * 10
+  end
+  println("#{seen}")  # [30, 20, 10]
+end
+```
+
+A user-defined iterator is driven by `for...in` or by calling `next` directly; the `Iter` functions accept only pipelines started with `Iter.from`.
 
 ### `for...in` Sources
 
@@ -98,7 +137,7 @@ A value that directly implements `Iterator` can also appear on the right side of
 |--------|---------|
 | `start..end`, or a `Range` value (`let r = 1..5`, `Range.new(1, 5)`) | `Int`; the end is exclusive |
 | `List<T>` | `T` |
-| `Map<K, V>` | `{key, value}` destructuring, or one name for the key |
+| `Map<K, V>` | `{key, value}` destructuring, a `(key, value)` tuple pattern, or one name for the key |
 | `Set` | `Int` |
 | `Iterable` | its associated `Item` |
 | `Iterator` | its associated `Item` |
@@ -274,19 +313,19 @@ Both `any` and `all` short-circuit -- `any` stops as soon as it finds a match, a
 
 ### find
 
-The typed search operation is currently `List.find`, which returns `Option<T>`:
+`Iter.find` stops at the first element the predicate accepts and returns it as `Option<T>` (`None` when there is none):
 
 ```mesh
 fn main() do
   let list = [1, 2, 3, 4, 5]
-  case List.find(list, fn x -> x > 3 end) do
+  case Iter.from(list) |> Iter.find(fn x -> x > 3 end) do
     Some(value) -> println(value.to_string())
     None -> println("not found")
   end
 end
 ```
 
-`Iter.find(iter, predicate)` stops at the first element the predicate accepts and returns it as `Option<T>` (`None` when there is none).
+`List.find(list, predicate)` runs the same search on a list directly.
 
 ### next
 
@@ -321,7 +360,7 @@ fn main() do
 end
 ```
 
-The first argument to `reduce` is the initial accumulator value. In the current iterator API, the accumulator and element have the same type; the function receives the current accumulator and next element and returns that type.
+The first argument to `reduce` is the initial accumulator value. For an `Iter<T>`, the initial value, the accumulator and the result all have the element type `T`: the function has the type `Fun(T, T) -> T` and receives the current accumulator and the next element. For an accumulator of another type, use the prelude `reduce` on a list, as in `reduce(list, "", fn acc, x -> acc <> "#{x}" end)`.
 
 ## Collecting Results
 
@@ -400,24 +439,24 @@ end
 
 | Operation | Result | Notes |
 |-----------|--------|-------|
-| `Iter.from(list)` | List iterator | `list` must be `List<T>` |
-| `Iter.map(iter, fn)` | Lazy iterator | Transforms each value |
-| `Iter.filter(iter, fn)` | Lazy iterator | Predicate must return `Bool` |
-| `Iter.take(iter, n)` | Lazy iterator | Stops after at most `n` values |
-| `Iter.skip(iter, n)` | Lazy iterator | Discards the first `n` values |
-| `Iter.enumerate(iter)` | Lazy iterator of `(index, value)` | Index starts at zero |
-| `Iter.zip(left, right)` | Lazy iterator of pairs | Stops with the shorter input |
+| `Iter.from(list)` | `Iter<T>` | `list` must be `List<T>` |
+| `Iter.map(iter, fn)` | `Iter<U>` | Transforms each value with a `(T) -> U` function |
+| `Iter.filter(iter, fn)` | `Iter<T>` | Predicate must return `Bool` |
+| `Iter.take(iter, n)` | `Iter<T>` | Stops after at most `n` values |
+| `Iter.skip(iter, n)` | `Iter<T>` | Discards the first `n` values |
+| `Iter.enumerate(iter)` | `Iter<(Int, T)>` | Index starts at zero |
+| `Iter.zip(left, right)` | `Iter<(T, U)>` | Stops with the shorter input |
 | `Iter.count(iter)` | `Int` | Consumes the iterator |
-| `Iter.sum(iter)` | `Int` | Integer elements only |
+| `Iter.sum(iter)` | `Int` | Takes an `Iter<Int>` |
 | `Iter.any(iter, fn)` | `Bool` | Short-circuits on `true` |
 | `Iter.all(iter, fn)` | `Bool` | Short-circuits on `false` |
 | `Iter.find(iter, fn)` | `Option<T>` | First value the predicate accepts |
-| `Iter.reduce(iter, initial, fn)` | accumulator type | Element and accumulator types currently match |
 | `Iter.next(iter)` | `Option<T>` | The next value, moving the iterator on; `None` when done |
+| `Iter.reduce(iter, initial, fn)` | `T` | `initial` and the function's result have the element type |
 | `List.collect(iter)` | `List<T>` | Materializes all remaining values |
-| `Map.collect(iter)` | `Map<K, V>` | Input values are key-value pairs |
-| `Set.collect(iter)` | `Set` | Integer elements; removes duplicates |
-| `String.collect(iter)` | `String` | Input values are strings |
+| `Map.collect(iter)` | `Map<K, V>` | Takes an `Iter<(K, V)>` |
+| `Set.collect(iter)` | `Set` | Takes an `Iter<Int>`; removes duplicates |
+| `String.collect(iter)` | `String` | Takes an `Iter<String>` |
 
 ## Building Pipelines
 

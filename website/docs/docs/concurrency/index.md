@@ -85,6 +85,8 @@ Key points about message passing:
 - `receive` arms match the message like `case` arms, with patterns and `when` guards, and together must cover the actor's message type
 - You can spawn multiple actors and send messages to each independently
 
+`send` can take either argument from a pipe: `pid |> send(message)` passes the PID, and the slot pipe `message |2> send(pid)` passes the message.
+
 Receive arms can match on the message's shape. An arm that calls the actor again continues with new arguments; an arm that does not ends the actor:
 
 ```mesh
@@ -176,7 +178,7 @@ fn main() do
 end
 ```
 
-- **`link(pid)`** -- bidirectionally links two actors. If one dies, the other receives an exit signal.
+- **`link(pid)`** -- bidirectionally links two actors. If one ends abnormally (a panic or runtime error), the other ends too; a normal exit only removes the link. Exit signals never arrive as messages in an actor's own `receive`; only supervisors observe them.
 - **`Process.monitor(pid)`** -- creates a one-way monitor and returns its reference; it returns sentinel `0` outside actor context.
 - **`Process.demonitor(reference)`** -- removes a monitor and returns `0` on success or `1` outside actor context or when the reference is unknown.
 
@@ -252,6 +254,30 @@ Each `child` block configures how the supervisor manages that actor:
 If a child exceeds the restart limit, the supervisor itself shuts down, escalating the failure to its parent supervisor.
 
 When omitted, the strategy defaults to `one_for_one`, `max_restarts` to `3`, and `max_seconds` to `5`.
+
+### Runtime Errors and Panics
+
+A runtime error, such as `List.get` past the end of a list or `head` of an empty one, and a call to [`panic(message)`](/docs/stdlib/) end only the actor they happen in. The runtime prints `Mesh panic: message` to standard error, other actors keep running, and a supervised actor is restarted according to its `restart` policy:
+
+```mesh
+actor worker() do
+  receive do
+    0 -> panic("cannot handle 0")
+    n -> println("handled #{n}")
+  end
+  worker()
+end
+
+fn main() do
+  let pid = spawn(worker)
+  send(pid, 1)
+  send(pid, 0)
+  Timer.sleep(100)
+  println("main still running")
+end
+```
+
+This prints `handled 1`, then `Mesh panic: cannot handle 0` on standard error, then `main still running`. The same failure in `main` itself ends the program with exit status 101.
 
 ## Services (GenServer)
 
@@ -357,6 +383,8 @@ fn main() do
   println("${result}")
 end
 ```
+
+Arguments and replies are copied between the caller and the service, as actor messages are, so a reply stays valid after the service's state changes or the service stops.
 
 Service calls are synchronous and wait for a reply. Casts are asynchronous. Prefer a cast, a direct actor message, or a job when the caller must remain independent of the service's response time.
 
@@ -485,6 +513,26 @@ Each queued `Int` consumes eight bytes, so `bounded_bytes` uses the smaller of `
 | `Process.shutdown_requested()` | `Bool` | Read the process-wide shutdown flag |
 | `Process.request_shutdown()` | `Unit` | Set the shutdown flag programmatically |
 | `Process.exit(status)` | `Unit` | Exit the native process with a status code |
+
+`Process.whereis` returns an untyped `Pid`, which accepts any message, so a
+send through it does not tell the compiler what the actor receives. When an
+actor is reached only that way, give its pid a message type where it is
+spawned; otherwise the actor is error E0079:
+
+```mesh
+actor counter() do
+  receive do
+    n -> println("got #{n}")
+  end
+end
+
+fn main() do
+  let pid :: Pid<Int> = spawn(counter)
+  Process.register("counter", pid)
+  send(Process.whereis("counter"), 5)
+  Timer.sleep(50)
+end
+```
 
 HTTP servers observe the same shutdown flag: after shutdown is requested they stop accepting new connections and drain connections already accepted.
 
