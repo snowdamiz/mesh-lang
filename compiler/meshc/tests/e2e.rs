@@ -8006,3 +8006,46 @@ end
     let output = compile_multifile_and_run(&[("x.mpl", &x), ("y.mpl", &y), ("main.mpl", main)]);
     assert_eq!(output, "xy\n");
 }
+
+#[test]
+fn e2e_a_generic_function_takes_types_of_later_modules() {
+    // A bounded generic function called with a type from a module checked
+    // after it (and every type of `main`) did not find the type's impl:
+    // "cannot convert a value of type `Rect` to a string", or "Undefined
+    // variable 'area'" for a user interface.
+    let alpha = r##"pub interface Area do
+  fn area(self) -> Int
+end
+
+pub fn show_it<T>(x :: T) -> String where T: Display do
+  "<${x}>"
+end
+
+pub fn twice<T>(x :: T) -> Int where T: Area do
+  x.area() * 2
+end
+"##;
+    let zed = "pub struct Rect do\n  w :: Int\nend deriving(Display)\n";
+    let main = r##"from Alpha import show_it, twice, Area
+from Zed import Rect
+
+struct Square do
+  s :: Int
+end deriving(Display)
+
+impl Area for Square do
+  fn area(self) -> Int do
+    self.s * self.s
+  end
+end
+
+fn main() do
+  println(show_it(Rect { w: 5 }))
+  println(show_it(Square { s: 2 }))
+  println("${twice(Square { s: 3 })}")
+end
+"##;
+    let output =
+        compile_multifile_and_run(&[("alpha.mpl", alpha), ("zed.mpl", zed), ("main.mpl", main)]);
+    assert_eq!(output, "<Rect(5)>\n<Square(2)>\n18\n");
+}

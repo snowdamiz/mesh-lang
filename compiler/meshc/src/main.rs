@@ -1080,6 +1080,26 @@ pub(crate) fn prepare_project_build(
 
     let library_exports = collect_library_exports(&project.module_parses)?;
 
+    // A module is checked before the modules that come later, so its trait
+    // registry lacks their impls (it has its own and the earlier modules').
+    // Lowering specializes its generic functions for the types those modules
+    // use them at (`show_it(Rect)`, `where T: Display`, with `Rect` declared
+    // later), so the later modules' impls are added for it. (Adding an impl
+    // twice would make a lookup see two.)
+    let order = &project.compilation_order;
+    for (position, &id) in order.iter().enumerate() {
+        let later_impls: Vec<_> = order[position + 1..]
+            .iter()
+            .filter_map(|later| all_exports[later.0 as usize].as_ref())
+            .flat_map(|exports| exports.trait_impls.iter().cloned())
+            .collect();
+        if let Some(typeck) = all_typeck[id.0 as usize].as_mut() {
+            for impl_def in later_impls {
+                let _ = typeck.trait_registry.register_impl(impl_def);
+            }
+        }
+    }
+
     // Lower ALL modules to MIR and merge into a single module for codegen.
     let mut mir_modules = Vec::new();
     let mut entry_mir_idx = 0;
