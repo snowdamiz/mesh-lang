@@ -286,7 +286,7 @@ fn main() do
 end
 ```
 
-The runtime contains a short-circuiting `Iter.find` operation, but the current static `Iter` signature exposes its result as an opaque handle rather than `Option<T>`. Until that signature is typed, prefer `List.find` in Mesh source.
+`Iter.find(iter, predicate)` stops at the first element the predicate accepts and returns it as `Option<T>` (`None` when there is none).
 
 ### reduce
 
@@ -396,6 +396,7 @@ end
 | `Iter.sum(iter)` | `Int` | Integer elements only |
 | `Iter.any(iter, fn)` | `Bool` | Short-circuits on `true` |
 | `Iter.all(iter, fn)` | `Bool` | Short-circuits on `false` |
+| `Iter.find(iter, fn)` | `Option<T>` | First value the predicate accepts |
 | `Iter.reduce(iter, initial, fn)` | accumulator type | Element and accumulator types currently match |
 | `List.collect(iter)` | `List<T>` | Materializes all remaining values |
 | `Map.collect(iter)` | `Map<K, V>` | Input values are key-value pairs |
