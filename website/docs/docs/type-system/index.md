@@ -70,6 +70,8 @@ let number = identity(42)
 let text = identity("mesh")
 ```
 
+A `let` is generalized when its value is a literal, a name, a closure (`let id = fn x -> x end`) or a module's function (`let len = String.length`); each use of such a binding gets its own copy. A value that is computed, such as a call's result (`let f = make_identity()`), is computed once, so it has the one type its uses agree on, and using it at two types is a type error.
+
 Recursive functions and functions declared later in the same module are registered before their bodies are checked, so mutually recursive definitions can refer to one another.
 
 ### When to Annotate

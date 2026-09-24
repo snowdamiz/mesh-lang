@@ -782,6 +782,15 @@ impl InferCtx {
         }
     }
 
+    /// The scheme of a binding that is not generalized: its variables are
+    /// lowered to the current level, so a later `let` beside it does not
+    /// generalize them away from it either.
+    pub fn monomorphic(&mut self, ty: Ty) -> Scheme {
+        let level = self.current_level;
+        self.lower_levels(&ty, level);
+        Scheme::mono(self.resolve(ty))
+    }
+
     /// Collect type variables that can be generalized (level > current_level).
     fn collect_generalizable_vars(&mut self, ty: &Ty, out: &mut Vec<TyVar>) {
         match ty {

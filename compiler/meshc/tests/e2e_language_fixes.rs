@@ -4435,3 +4435,38 @@ end
 "##);
     assert_eq!(out, "6 16\n");
 }
+
+#[test]
+fn a_computed_function_value_has_one_type() {
+    // `let f = ident_fn()` was generalized like a closure literal: its use at
+    // String ran a closure built for no type (an empty line), as did
+    // `List.head([fn x -> x end])`, and `tag_with(1)` failed LLVM
+    // verification. A computed value gets the one type its uses fix.
+    let out = run(r##"fn ident_fn<B>() -> Fun(B) -> B do
+  fn b -> b end
+end
+
+fn tag_with<A, B>(a :: A) -> Fun(B) -> B do
+  fn b -> b end
+end
+
+fn main() do
+  let f = ident_fn()
+  println(f("x"))
+  let fs = [fn x -> x end]
+  let g = List.head(fs)
+  println(g("y"))
+  let h = Tuple.first((fn x -> x end, 1))
+  println(h("abc"))
+  let t = tag_with(1)
+  println(t("z"))
+end
+"##);
+    assert_eq!(out, "x\ny\nabc\nz\n");
+    // Used at two types, it is a type error, not an LLVM one.
+    let err = build_error(
+        "fn main() do\n  let flag = true\n  let f = if flag do fn x -> x end else fn y -> y end end\n  println(f(\"s\"))\n  println(\"#{f(3)}\")\nend\n",
+    );
+    assert!(err.contains("[E0001]"), "{err}");
+    assert!(!err.contains("LLVM"), "{err}");
+}

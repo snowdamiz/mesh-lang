@@ -7900,6 +7900,25 @@ fn infer_impl_def(
 }
 
 /// Infer a let binding: `let x = expr`
+/// Whether a `let` initializer is a value whose type may be generalized: a
+/// literal, a name, a closure or a module's function (`String.length`),
+/// which each use gets its own copy of. Anything computed is computed once,
+/// so it has one type: `let f = make_id()` generalized to `B -> B` ran a
+/// closure made for no type at all, and `let m = Map.new()` a map made for
+/// one kind of key.
+fn is_generalizable(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal(_)
+        | Expr::StringExpr(_)
+        | Expr::AtomLiteral(_)
+        | Expr::RegexExpr(_)
+        | Expr::NameRef(_)
+        | Expr::ClosureExpr(_) => true,
+        Expr::FieldAccess(fa) => matches!(fa.base(), Some(Expr::NameRef(_))),
+        _ => false,
+    }
+}
+
 fn infer_let_binding(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -7980,8 +7999,8 @@ fn infer_let_binding(
     let reads_unknown_field = bases
         .into_iter()
         .any(|base| is_type_var(&ctx.resolve(base)));
-    let scheme = if reads_unknown_field {
-        Scheme::mono(binding_ty)
+    let scheme = if reads_unknown_field || !is_generalizable(&init_expr) {
+        ctx.monomorphic(binding_ty)
     } else {
         ctx.generalize(binding_ty)
     };
