@@ -8913,12 +8913,38 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
                     span,
                 }
             } else {
-                TypeError::UnboundVariable { name, span }
+                let suggestion = did_you_mean(env, &name);
+                TypeError::UnboundVariable {
+                    name,
+                    span,
+                    suggestion,
+                }
             };
             ctx.errors.push(err.clone());
             Err(err)
         }
     }
+}
+
+/// A name in scope that `name` may be a misspelling of: at most two edits
+/// away (one for a short name), and of its kind (a constructor or type for
+/// an uppercase name, a variable or function otherwise).
+fn did_you_mean(env: &TypeEnv, name: &str) -> Option<String> {
+    let upper = name.starts_with(char::is_uppercase);
+    let candidates: Vec<String> = env
+        .names()
+        .filter(|candidate| {
+            candidate.as_str() != name
+                && candidate.starts_with(char::is_uppercase) == upper
+                && !candidate.starts_with("__")
+                && candidate
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        })
+        .cloned()
+        .collect();
+    let max_distance = if name.chars().count() <= 3 { 1 } else { 2 };
+    crate::diagnostics::find_closest_name(name, &candidates, max_distance)
 }
 
 /// Infer the type of a binary expression with trait-based operator dispatch.
@@ -13645,8 +13671,8 @@ fn infer_constructor_pattern(
     let ctor_scheme = match env.lookup(&lookup_name) {
         Some(scheme) => scheme.clone(),
         None => {
-            // Try to find in type registry for better error message.
             let err = TypeError::UnknownVariant {
+                suggestion: did_you_mean(env, &lookup_name),
                 name: lookup_name,
                 span: pat.syntax().text_range(),
             };

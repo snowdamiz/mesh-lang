@@ -86,6 +86,11 @@ impl TypeEnv {
         arities
     }
 
+    /// Every bound name, in every scope.
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.scopes.iter().flat_map(|scope| scope.keys())
+    }
+
     /// Every binding in every scope.
     pub fn schemes(&self) -> impl Iterator<Item = &Scheme> {
         self.scopes.iter().flat_map(|scope| scope.values())

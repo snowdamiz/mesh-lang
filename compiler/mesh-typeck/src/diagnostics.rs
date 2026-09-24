@@ -252,31 +252,28 @@ fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<String> {
 /// Generate a fix suggestion for non-type-mismatch errors.
 fn error_fix_suggestion(err: &TypeError, suggestions: Option<&[String]>) -> Option<String> {
     match err {
-        TypeError::UnboundVariable { name, .. } => {
-            if let Some(names) = suggestions {
-                if let Some(closest) = find_closest_name(name, names, 2) {
-                    return Some(format!("did you mean `{}`?", closest));
-                }
-            }
-            None
+        TypeError::UnboundVariable {
+            name, suggestion, ..
         }
+        | TypeError::UnknownVariant {
+            name, suggestion, ..
+        } => suggestion
+            .clone()
+            .or_else(|| find_closest_name(name, suggestions?, 2))
+            .map(|closest| format!("did you mean `{closest}`?")),
         TypeError::NotAFunction { .. } => {
             Some("did you mean to call it? Remove the argument list".to_string())
-        }
-        TypeError::UnknownVariant { name, .. } => {
-            if let Some(variants) = suggestions {
-                if let Some(closest) = find_closest_name(name, variants, 2) {
-                    return Some(format!("did you mean `{}`?", closest));
-                }
-            }
-            None
         }
         _ => None,
     }
 }
 
 /// Find the closest name in a list using Levenshtein distance.
-fn find_closest_name(target: &str, candidates: &[String], max_distance: usize) -> Option<String> {
+pub(crate) fn find_closest_name(
+    target: &str,
+    candidates: &[String],
+    max_distance: usize,
+) -> Option<String> {
     let mut best: Option<(usize, &str)> = None;
     for candidate in candidates {
         let dist = levenshtein_distance(target, candidate);
@@ -834,7 +831,7 @@ pub fn render_diagnostic(
             builder.finish()
         }
 
-        TypeError::UnboundVariable { name, span } => {
+        TypeError::UnboundVariable { name, span, .. } => {
             let msg = format!("undefined variable: {}", name);
             let range = clamp(text_range_to_range(*span));
 
@@ -1088,7 +1085,7 @@ pub fn render_diagnostic(
                 .finish()
         }
 
-        TypeError::UnknownVariant { name, span } => {
+        TypeError::UnknownVariant { name, span, .. } => {
             let msg = format!("unknown variant: {}", name);
             let range = clamp(text_range_to_range(*span));
 

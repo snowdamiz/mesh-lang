@@ -240,6 +240,7 @@ fn test_diag_unknown_variant() {
     let err = TypeError::UnknownVariant {
         name: "Triangle".to_string(),
         span: rowan::TextRange::new(42.into(), 54.into()),
+        suggestion: None,
     };
     let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0010"), "expected E0010 code: {}", output);

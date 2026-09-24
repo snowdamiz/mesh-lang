@@ -104,8 +104,13 @@ pub enum TypeError {
         arity: usize,
         span: TextRange,
     },
-    /// A variable is used but not defined in scope.
-    UnboundVariable { name: String, span: TextRange },
+    /// A variable is used but not defined in scope. `suggestion` is a name
+    /// in scope it may be a misspelling of.
+    UnboundVariable {
+        name: String,
+        span: TextRange,
+        suggestion: Option<String>,
+    },
     /// A non-function value is called as a function.
     NotAFunction { ty: Ty, span: TextRange },
     /// A type does not satisfy a required trait constraint.
@@ -158,7 +163,12 @@ pub enum TypeError {
     /// Manual continuity promotion is not part of the Mesh surface anymore.
     ManualContinuityPromotionDisabled { span: TextRange },
     /// A variant name was used in a pattern but does not exist.
-    UnknownVariant { name: String, span: TextRange },
+    /// `suggestion` is a known one it may be a misspelling of.
+    UnknownVariant {
+        name: String,
+        span: TextRange,
+        suggestion: Option<String>,
+    },
     /// Or-pattern alternatives bind different sets of variables.
     OrPatternBindingMismatch {
         expected_bindings: Vec<String>,

@@ -4295,3 +4295,19 @@ fn a_guard_may_call_a_module_qualified_function() {
     );
     assert_eq!(out, "long\n");
 }
+
+#[test]
+fn a_misspelled_name_suggests_the_one_in_scope() {
+    // The "did you mean" help existed, but the compiler never gave it the
+    // names in scope.
+    let err = build_error(
+        "fn main() do\n  let count = 3\n  println(\"#{cuont}\")\n  printn(\"x\")\nend\n",
+    );
+    assert!(err.contains("did you mean `count`?"), "{err}");
+    assert!(err.contains("did you mean `println`?"), "{err}");
+    let err = build_error(
+        "fn main() do\n  let r = case Some(1) do\n    Sme(n) -> n\n    None -> 0\n  end\n  println(\"#{r}\")\nend\n",
+    );
+    assert!(err.contains("unknown variant: Sme"), "{err}");
+    assert!(err.contains("did you mean `Some`?"), "{err}");
+}
