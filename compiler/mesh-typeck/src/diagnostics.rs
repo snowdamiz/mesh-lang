@@ -1612,7 +1612,7 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), range))
-                        .with_message("`break` can only be used inside a `while` loop")
+                        .with_message("`break` can only be used inside a `while` or `for` loop")
                         .with_color(Color::Red),
                 )
                 .with_help("move this `break` inside a loop body")
@@ -1629,7 +1629,7 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), range))
-                        .with_message("`continue` can only be used inside a `while` loop")
+                        .with_message("`continue` can only be used inside a `while` or `for` loop")
                         .with_color(Color::Red),
                 )
                 .with_help("move this `continue` inside a loop body")

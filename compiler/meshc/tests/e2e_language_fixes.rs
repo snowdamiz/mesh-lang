@@ -4267,3 +4267,10 @@ fn a_failed_match_names_its_function() {
     assert_eq!(out, "zero\n");
     assert_eq!(err, "Mesh panic in Main__f: non-exhaustive match\n");
 }
+
+#[test]
+fn break_outside_a_loop_names_both_loops() {
+    // It said `break` belongs inside a `while` loop; `for` loops take it too.
+    let err = build_error("fn main() do\n  break\nend\n");
+    assert!(err.contains("inside a `while` or `for` loop"), "{err}");
+}
