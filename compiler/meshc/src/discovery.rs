@@ -4,13 +4,12 @@
 //! directory, convert file paths to PascalCase module names, extract import
 //! declarations from parsed ASTs, and build a complete module dependency graph.
 
-use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
 use mesh_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
 use mesh_parser::ast::item::{Item, SourceFile};
 use mesh_parser::syntax_kind::SyntaxKind;
-use mesh_pkg::manifest::{Dependency, Manifest, DEFAULT_ENTRYPOINT};
+use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
 
 /// Convert a snake_case string to PascalCase.
 ///
@@ -172,46 +171,6 @@ fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>,
     })?;
     package_roots.sort();
     Ok(package_roots)
-}
-
-fn discover_path_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let manifest_path = project_root.join("mesh.toml");
-    if !manifest_path.is_file() {
-        return Ok(Vec::new());
-    }
-    let mut roots = Vec::new();
-    let mut visited = BTreeSet::new();
-    collect_path_dependency_roots(
-        project_root,
-        &Manifest::from_file(&manifest_path)?,
-        &mut visited,
-        &mut roots,
-    )?;
-    roots.sort();
-    Ok(roots)
-}
-
-fn collect_path_dependency_roots(
-    package_root: &Path,
-    manifest: &Manifest,
-    visited: &mut BTreeSet<PathBuf>,
-    roots: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    for (name, dependency) in &manifest.dependencies {
-        let Dependency::Path { path } = dependency else {
-            continue;
-        };
-        let root = package_root.join(path).canonicalize().map_err(|error| {
-            format!("Failed to resolve path dependency `{name}` ({path}): {error}")
-        })?;
-        if !visited.insert(root.clone()) {
-            continue;
-        }
-        let dependency_manifest = Manifest::from_file(&root.join("mesh.toml"))?;
-        roots.push(root.clone());
-        collect_path_dependency_roots(&root, &dependency_manifest, visited, roots)?;
-    }
-    Ok(())
 }
 
 fn discover_installed_package_roots_recursive(
@@ -413,7 +372,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
 
     // Phase 1b: Discover declared path dependencies and installed package
     // modules under .mesh/packages.
-    let mut package_roots = discover_path_dependency_roots(project_root)?;
+    let mut package_roots = mesh_pkg::manifest::path_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
         package_roots.extend(discover_installed_package_roots(&packages_dir)?);

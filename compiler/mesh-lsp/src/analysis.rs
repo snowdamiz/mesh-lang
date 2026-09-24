@@ -633,23 +633,31 @@ fn build_project_with_overlays(
         module_parses.push(parse);
     }
 
+    // Path dependencies and installed packages, as meshc finds them: a
+    // project using a path dependency had "module not found" in the editor.
+    let mut package_roots = mesh_pkg::manifest::path_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
-        for package_root in discover_installed_package_roots(&packages_dir)? {
-            let pkg_files = discover_mesh_files(&package_root)?;
-            for relative_path in &pkg_files {
-                let name = match path_to_module_name(relative_path) {
-                    Some(name) => name,
-                    None => continue,
-                };
+        package_roots.extend(discover_installed_package_roots(&packages_dir)?);
+    }
+    package_roots.sort();
+    package_roots.dedup();
+    for package_root in package_roots {
+        let pkg_files = discover_mesh_files(&package_root)?;
+        for relative_path in &pkg_files {
+            let name = match path_to_module_name(relative_path) {
+                Some(name) => name,
+                None => continue,
+            };
 
-                let full_path = package_root.join(relative_path);
-                let source = read_source_with_overlays(&full_path, overlays)?;
-                let parse = mesh_parser::parse(&source);
-                graph.add_module(name, relative_path.clone(), false);
-                module_sources.push(source);
-                module_parses.push(parse);
-            }
+            let full_path = package_root.join(relative_path);
+            let source = read_source_with_overlays(&full_path, overlays)?;
+            let parse = mesh_parser::parse(&source);
+            // The full path: a package file's relative path may equal a
+            // project file's, which the document is found by.
+            graph.add_module(name, full_path, false);
+            module_sources.push(source);
+            module_parses.push(parse);
         }
     }
 
@@ -2066,5 +2074,37 @@ mod tests {
                 src_start
             );
         }
+    }
+
+    #[test]
+    fn a_path_dependency_analyzes_cleanly() {
+        // The LSP found installed packages only: a module of a path
+        // dependency was "module not found" in the editor.
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path().join("consumer");
+        let library = tmp.path().join("library");
+        let main_path = project_dir.join("main.mpl");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::write(
+            project_dir.join("mesh.toml"),
+            "[package]\nname = \"consumer\"\nversion = \"1.0.0\"\n\n[dependencies]\nlibrary = { path = \"../library\" }\n",
+        )
+        .unwrap();
+        std::fs::write(library.join("mesh.toml"), package_manifest("library")).unwrap();
+        std::fs::write(
+            library.join("greeting.mpl"),
+            "pub fn message() -> String do\n  \"hello\"\nend\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &main_path,
+            "from Greeting import message\n\nfn main() do\n  println(message())\nend\n",
+        )
+        .unwrap();
+
+        let source = std::fs::read_to_string(&main_path).unwrap();
+        let result = analyze_document(&file_uri(&main_path), &source, &[]);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     }
 }
