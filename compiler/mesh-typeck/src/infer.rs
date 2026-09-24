@@ -2974,6 +2974,13 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                     iter(Ty::Tuple(vec![tv.clone(), uv.clone()])),
                 ),
             ),
+            // The next element, advancing the iterator: `None` once it is
+            // done. An iterator is a stateful handle, as a user `Iterator`'s
+            // `next` keeps its position somewhere that changes.
+            (
+                "next",
+                scheme(vec![t], vec![iter(tv.clone())], Ty::option(tv.clone())),
+            ),
             ("count", scheme(vec![t], vec![iter(tv.clone())], Ty::int())),
             ("sum", scheme(vec![], vec![iter(Ty::int())], Ty::int())),
             (
@@ -13116,6 +13123,18 @@ fn infer_field_access(
             ctx.errors.push(err.clone());
             return Err(err);
         }
+        // An `Iter<T>` pipeline's methods are the typed `Iter` functions
+        // (`it.next()` is `Iter.next(it)`): the untyped built-in `Iterator`
+        // impl of the handle behind it would otherwise answer.
+        let is_iter = matches!(&resolved_base, Ty::App(con, _) if matches!(con.as_ref(), Ty::Con(c) if c.name == "Iter"));
+        if is_iter {
+            if let Some(scheme) = stdlib_modules(ctx.test_builtins)
+                .get("Iter")
+                .and_then(|module| module.get(&field_name))
+            {
+                return Ok(ctx.instantiate(scheme));
+            }
+        }
         if let Some(ret_ty) = method_return_type(
             ctx,
             trait_registry,
@@ -13142,6 +13161,7 @@ fn infer_field_access(
                         "List" => Some("List"),
                         "Map" => Some("Map"),
                         "Set" => Some("Set"),
+                        "Iter" => Some("Iter"),
                         _ => None,
                     }
                 } else {

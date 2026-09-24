@@ -3528,6 +3528,11 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
+        // `Iter.next(iter)`: a pointer to an Option (see `box_next_scalar`).
+        self.known_functions.insert(
+            "mesh_iter_generic_next".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
         self.known_functions.insert(
             "mesh_list_any".to_string(),
             MirType::FnPtr(
@@ -8352,6 +8357,36 @@ impl<'a> Lowerer<'a> {
         })
     }
 
+    /// `Iter.next` hands back the element word as the `Some` payload, as
+    /// `List.find` does; a scalar payload is read through a pointer, so it
+    /// is boxed here.
+    fn box_next_scalar(&self, expr: MirExpr, range: TextRange) -> MirExpr {
+        let MirExpr::Call { func, args, ty } = expr else {
+            return expr;
+        };
+        let is_next =
+            matches!(func.as_ref(), MirExpr::Var(name, _) if name == "mesh_iter_generic_next");
+        let scalar = matches!(
+            self.get_ty(range),
+            Some(Ty::App(con, elems))
+                if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option")
+                    && matches!(elems.first(), Some(Ty::Con(tc)) if matches!(tc.name.as_str(), "Int" | "Float" | "Bool"))
+        );
+        let call = MirExpr::Call { func, args, ty };
+        if !is_next || !scalar {
+            return call;
+        }
+        let ty = call.ty().clone();
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "mesh_option_box_scalar".to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
+            )),
+            args: vec![call],
+            ty,
+        }
+    }
+
     fn adapt_uniform_callback_call(&mut self, expr: MirExpr, range: TextRange) -> MirExpr {
         let MirExpr::Call { func, mut args, ty } = expr else {
             return expr;
@@ -8622,6 +8657,7 @@ impl<'a> Lowerer<'a> {
             Expr::JsonExpr(json_expr) => self.lower_json_expr(json_expr),
         };
         let lowered = self.adapt_uniform_callback_call(lowered, expr.syntax().text_range());
+        let lowered = self.box_next_scalar(lowered, expr.syntax().text_range());
         self.discard_callback_result(lowered, expr.syntax().text_range())
     }
 
@@ -10394,7 +10430,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// The stdlib module whose function the method call `fa` names: the
-    /// receiver is a `String`, `Range`, `List`, `Map` or `Set` and the
+    /// receiver is a `String`, `Range`, `List`, `Map`, `Set` or `Iter` and the
     /// method is not a trait method (user functions are never methods).
     fn stdlib_method_module(&self, fa: &FieldAccess) -> Option<&'static str> {
         let base = fa.base()?;
@@ -10421,15 +10457,19 @@ impl<'a> Lowerer<'a> {
                 Ty::Con(tc) if tc.name == "List" => "List",
                 Ty::Con(tc) if tc.name == "Map" => "Map",
                 Ty::Con(tc) if tc.name == "Set" => "Set",
+                Ty::Con(tc) if tc.name == "Iter" => "Iter",
                 _ => return None,
             },
             _ => return None,
         };
         let method = fa.field()?.text().to_string();
-        if !self
-            .trait_registry
-            .find_method_traits(&method, receiver)
-            .is_empty()
+        // An `Iter` pipeline's methods are the `Iter` functions, whatever
+        // the built-in `Iterator` impl of the handle behind it says.
+        if module != "Iter"
+            && !self
+                .trait_registry
+                .find_method_traits(&method, receiver)
+                .is_empty()
         {
             return None;
         }
@@ -16720,6 +16760,7 @@ fn map_builtin_name(name: &str) -> String {
         "iter_any" => "mesh_iter_any".to_string(),
         "iter_all" => "mesh_iter_all".to_string(),
         "iter_find" => "mesh_iter_find".to_string(),
+        "iter_next" => "mesh_iter_generic_next".to_string(),
         "iter_reduce" => "mesh_iter_reduce".to_string(),
         // ── Phase 79: Collect terminal operations ────────────────────────
         "list_collect" => "mesh_list_collect".to_string(),

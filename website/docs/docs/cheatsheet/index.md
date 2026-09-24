@@ -437,7 +437,7 @@ Iter.from(list) |> Set.collect()
 Iter.from(strings) |> String.collect()
 ```
 
-`Iter.from` currently accepts lists only. `for...in` separately supports lists, maps, sets, ranges, and user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`.
+`Iter.from` currently accepts lists only. `for...in` separately supports lists, maps, sets, ranges, and user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`; take one element with `Iter.next(iter)` or `iter.next()`, also `-> Option<T>`.
 
 See [Iterators](/docs/iterators/) for details.
 

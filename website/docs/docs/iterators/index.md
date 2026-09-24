@@ -288,6 +288,21 @@ end
 
 `Iter.find(iter, predicate)` stops at the first element the predicate accepts and returns it as `Option<T>` (`None` when there is none).
 
+### next
+
+`Iter.next(iter)`, or `iter.next()`, takes one element: `Some(value)`, or `None` once the iterator is done. An iterator is a handle with a position, as a user-defined `Iterator` keeps its position somewhere that changes: each call moves it on, and a terminal operation afterwards sees only what is left.
+
+```mesh
+fn main() do
+  let words = Iter.from(["alpha", "beta", "gamma"])
+  case words.next() do
+    Some(first) -> println(first)
+    None -> println("empty")
+  end
+  println(Iter.count(words).to_string()) # 2
+end
+```
+
 ### reduce
 
 `Iter.reduce` folds all elements into a single value using an accumulator and a combining function:
@@ -398,6 +413,7 @@ end
 | `Iter.all(iter, fn)` | `Bool` | Short-circuits on `false` |
 | `Iter.find(iter, fn)` | `Option<T>` | First value the predicate accepts |
 | `Iter.reduce(iter, initial, fn)` | accumulator type | Element and accumulator types currently match |
+| `Iter.next(iter)` | `Option<T>` | The next value, moving the iterator on; `None` when done |
 | `List.collect(iter)` | `List<T>` | Materializes all remaining values |
 | `Map.collect(iter)` | `Map<K, V>` | Input values are key-value pairs |
 | `Set.collect(iter)` | `Set` | Integer elements; removes duplicates |

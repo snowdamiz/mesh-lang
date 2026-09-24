@@ -4899,3 +4899,30 @@ end
 "##;
     assert_eq!(run(source), "11 27 false 12 13 true 50 49\n");
 }
+
+#[test]
+fn an_iterator_steps_with_next() {
+    // Built-in iterators had no `next`: `Iter.next(it)` was "module `Iter`
+    // has no function `next`" and `it.next()` found an untyped method of the
+    // handle behind the pipeline.
+    let source = r##"
+fn main() do
+  let it = Iter.from([1, 2, 3]) |> Iter.map(fn x -> x * 10 end)
+  case Iter.next(it) do
+    Some(x) -> println("#{x}")
+    None -> println("none")
+  end
+  case it.next() do
+    Some(x) -> println("#{x + 1}")
+    None -> println("none")
+  end
+  let words = Iter.from(["a", "b"])
+  let first = words.next()
+  let second = Iter.next(words)
+  let third = words.next()
+  println("#{first} #{second} #{third} #{Iter.count(it)}")
+  println("#{Iter.from([1.5]) |> Iter.next()}")
+end
+"##;
+    assert_eq!(run(source), "10\n21\nSome(a) Some(b) None 1\nSome(1.5)\n");
+}
