@@ -137,45 +137,25 @@ pub fn position_to_offset_pub(source: &str, position: &Position) -> Option<usize
     position_to_offset(source, position)
 }
 
-/// Convert an LSP Position back to a byte offset in the source.
+/// Convert an LSP Position back to a byte offset in the source. A character
+/// past the end of its line is the line's end; a line past the end of the
+/// source has no offset.
 fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
-    let mut current_line = 0u32;
-    let mut line_start = 0usize;
-
-    for (i, ch) in source.char_indices() {
-        if current_line == position.line {
-            // Count UTF-16 code units from line_start to find character offset.
-            let line_text = &source[line_start..];
-            let mut utf16_offset = 0u32;
-            for (byte_idx, c) in line_text.char_indices() {
-                if utf16_offset >= position.character {
-                    return Some(line_start + byte_idx);
-                }
-                utf16_offset += c.len_utf16() as u32;
-            }
-            // Position is at or past end of line.
-            return Some(line_start + line_text.find('\n').unwrap_or(line_text.len()));
-        }
-        if ch == '\n' {
-            current_line += 1;
-            line_start = i + 1;
-        }
+    let mut line_start = 0;
+    for _ in 0..position.line {
+        line_start += source[line_start..].find('\n')? + 1;
     }
-
-    // If we're looking for a position on the last line (no trailing newline).
-    if current_line == position.line {
-        let line_text = &source[line_start..];
-        let mut utf16_offset = 0u32;
-        for (byte_idx, c) in line_text.char_indices() {
-            if utf16_offset >= position.character {
-                return Some(line_start + byte_idx);
-            }
-            utf16_offset += c.len_utf16() as u32;
+    let rest = &source[line_start..];
+    let line = &rest[..rest.find('\n').unwrap_or(rest.len())];
+    // Characters are UTF-16 code units.
+    let mut utf16 = 0u32;
+    for (byte_idx, c) in line.char_indices() {
+        if utf16 >= position.character {
+            return Some(line_start + byte_idx);
         }
-        return Some(source.len());
+        utf16 += c.len_utf16() as u32;
     }
-
-    None
+    Some(line_start + line.len())
 }
 
 /// Extract a TextRange span from a TypeError for diagnostic positioning.
@@ -2097,6 +2077,21 @@ mod tests {
             ),
             Some(8)
         );
+    }
+
+    #[test]
+    fn position_to_offset_stays_on_its_line() {
+        // A character past the end of a line counted on into the next lines.
+        let source = "ab\ncdef\né𝄞x\n";
+        let at = |line, character| position_to_offset(source, &Position { line, character });
+        assert_eq!(at(0, 10), Some(2));
+        assert_eq!(at(1, 2), Some(5));
+        // `é` is one UTF-16 unit, `𝄞` two.
+        assert_eq!(at(2, 1), Some(10));
+        assert_eq!(at(2, 3), Some(14));
+        assert_eq!(at(2, 9), Some(15));
+        assert_eq!(at(3, 0), Some(16));
+        assert_eq!(at(4, 0), None);
     }
 
     #[test]
