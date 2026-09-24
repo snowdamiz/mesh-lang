@@ -4402,3 +4402,22 @@ end
     assert_eq!(out, "main still running\n");
     assert!(err.contains("division by zero"), "{err}");
 }
+
+#[test]
+fn a_for_loop_runs_over_a_range_value() {
+    // `for i in r` with `r` a Range variable (not a `2..5` literal) panicked
+    // the compiler: "Runtime function 'Iterable__iter__Unknown' not declared".
+    let out = run(r##"fn span() -> Range = Range.new(1, 3)
+
+fn main() do
+  let r = 2..5
+  let xs = for i in r do
+    i
+  end
+  println("#{xs}")
+  println("#{for i in Range.new(2, 5) when i != 3 do i * 2 end}")
+  println("#{for i in span() do i end}")
+end
+"##);
+    assert_eq!(out, "[2, 3, 4]\n[4, 8]\n[1, 2]\n");
+}

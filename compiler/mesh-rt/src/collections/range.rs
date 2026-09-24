@@ -157,6 +157,12 @@ pub extern "C-unwind" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
     }
 }
 
+/// An iterator over a Range value: what `for i in r` runs for one.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_range_iter(range: *mut u8) -> *mut u8 {
+    unsafe { mesh_range_iter_new(range_start(range), range_end(range)) }
+}
+
 /// Advance the range iterator, returning Option (tag 0 = Some, tag 1 = None).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_range_iter_next(iter_ptr: *mut u8) -> *mut u8 {

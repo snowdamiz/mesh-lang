@@ -6430,6 +6430,7 @@ impl<'ctx> CodeGen<'ctx> {
             "Iterable__iter__List" => "mesh_list_iter_new",
             "Iterable__iter__Map" => "mesh_map_iter_new",
             "Iterable__iter__Set" => "mesh_set_iter_new",
+            "Iterable__iter__Range" => "mesh_range_iter",
             // Phase 78: Adapter iterator next dispatch
             "Iterator__next__MapAdapterIterator" => "mesh_iter_map_next",
             "Iterator__next__FilterAdapterIterator" => "mesh_iter_filter_next",

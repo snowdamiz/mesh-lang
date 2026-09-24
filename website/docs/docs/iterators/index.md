@@ -96,7 +96,7 @@ A value that directly implements `Iterator` can also appear on the right side of
 
 | Source | Binding |
 |--------|---------|
-| `start..end` | `Int`; the end is exclusive |
+| `start..end`, or a `Range` value (`let r = 1..5`, `Range.new(1, 5)`) | `Int`; the end is exclusive |
 | `List<T>` | `T` |
 | `Map<K, V>` | `{key, value}` destructuring, or one name for the key |
 | `Set` | `Int` |

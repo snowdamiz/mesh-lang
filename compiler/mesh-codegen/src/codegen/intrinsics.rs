@@ -3551,6 +3551,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_range_iter(range: ptr) -> ptr
+    module.add_function(
+        "mesh_range_iter",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     // mesh_range_iter_next(iter: ptr) -> ptr (MeshOption)
     module.add_function(
         "mesh_range_iter_next",
@@ -5057,6 +5063,7 @@ mod tests {
         assert!(module.get_function("mesh_set_iter_new").is_some());
         assert!(module.get_function("mesh_set_iter_next").is_some());
         assert!(module.get_function("mesh_range_iter_new").is_some());
+        assert!(module.get_function("mesh_range_iter").is_some());
         assert!(module.get_function("mesh_range_iter_next").is_some());
         assert!(module.get_function("mesh_iter_from").is_some());
 

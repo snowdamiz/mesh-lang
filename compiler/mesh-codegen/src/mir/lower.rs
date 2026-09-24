@@ -10942,9 +10942,14 @@ impl<'a> Lowerer<'a> {
     fn lower_for_in_iterator(&mut self, for_in: &ForInExpr, ty: &Ty, is_iterable: bool) -> MirExpr {
         let var_name = self.loop_var_name(for_in);
 
-        // Resolve the MIR type to get the impl name for mangling.
+        // Resolve the MIR type to get the impl name for mangling. A builtin
+        // handle type (`Range`) is a plain pointer in MIR: name it by its
+        // source type.
         let mir_ty = resolve_type(ty, self.registry);
-        let type_name = mir_type_to_impl_name(&mir_ty);
+        let type_name = match (mir_type_to_impl_name(&mir_ty), ty) {
+            (name, Ty::Con(tc)) if name == "Unknown" => tc.name.clone(),
+            (name, _) => name,
+        };
 
         // Determine iter_fn and next_fn names, and the element type.
         let (iter_fn, next_fn, elem_ty) = if is_iterable {

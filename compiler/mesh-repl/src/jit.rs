@@ -1705,6 +1705,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ),
         ("mesh_range_filter", mesh_rt::mesh_range_filter as *const ()),
         (
+            "mesh_range_iter",
+            mesh_rt::collections::range::mesh_range_iter as *const (),
+        ),
+        (
             "mesh_range_iter_new",
             mesh_rt::collections::range::mesh_range_iter_new as *const (),
         ),
