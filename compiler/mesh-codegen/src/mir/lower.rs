@@ -9405,6 +9405,17 @@ impl<'a> Lowerer<'a> {
         MirExpr::Call { func, args, ty }
     }
 
+    /// The source of the two arguments an `assert_eq`/`assert_ne` compares,
+    /// joined by `op`: `x + 1 == 2`.
+    fn compared_source(call: &CallExpr, op: &str) -> String {
+        let sides: Vec<String> = call
+            .args()
+            .iter()
+            .map(|arg| arg.syntax().text().to_string().trim().to_string())
+            .collect();
+        sides.join(&format!(" {op} "))
+    }
+
     fn lower_call_expr_unshaped(&mut self, call: &CallExpr) -> MirExpr {
         // `panic(message)`: the runtime raises it, and nothing runs after it.
         if let Some(Expr::NameRef(callee)) = call.callee() {
@@ -9695,7 +9706,9 @@ impl<'a> Lowerer<'a> {
                         };
                         let lhs_str = lhs;
                         let rhs_str = rhs;
-                        let src_lit = MirExpr::StringLit("assert_eq".to_string(), MirType::String);
+                        // "assert_eq failed: left == right", as written.
+                        let src_lit =
+                            MirExpr::StringLit(Self::compared_source(call, "=="), MirType::String);
                         let empty_str = MirExpr::StringLit(String::new(), MirType::String);
                         let fn_ty = MirType::FnPtr(
                             vec![
@@ -9738,7 +9751,8 @@ impl<'a> Lowerer<'a> {
                         };
                         let lhs_str = lhs;
                         let rhs_str = rhs;
-                        let src_lit = MirExpr::StringLit("assert_ne".to_string(), MirType::String);
+                        let src_lit =
+                            MirExpr::StringLit(Self::compared_source(call, "!="), MirType::String);
                         let empty_str = MirExpr::StringLit(String::new(), MirType::String);
                         let fn_ty = MirType::FnPtr(
                             vec![

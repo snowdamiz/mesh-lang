@@ -1617,8 +1617,8 @@ end
         stdout.contains("panicked: List.get: index 5 is out of bounds for a list of length 1"),
         "{stdout}\n{stderr}"
     );
-    assert!(stdout.contains("✓\u{1b}[0m raises"), "{stdout}");
-    assert!(stdout.contains("✓\u{1b}[0m after"), "{stdout}");
+    assert!(stdout.contains("✓ raises"), "{stdout}");
+    assert!(stdout.contains("✓ after"), "{stdout}");
     assert!(stdout.contains("2 failed"), "{stdout}");
     assert!(stdout.contains("2 passed"), "{stdout}");
     assert!(!stderr.contains("panicked at"), "{stderr}");
@@ -1707,4 +1707,47 @@ end
     assert!(stdout.contains("assert failed: false"), "{stdout}");
     assert!(stdout.contains("3 failed"), "{stdout}");
     assert!(stdout.contains("3 passed"), "{stdout}");
+}
+
+#[test]
+fn test_output_is_quiet_or_plain_as_asked() {
+    // `--quiet` still printed every test name, colors went into pipes (and
+    // NO_COLOR was ignored), a test's own output was glued to its
+    // "running:" prefix, and a failed assert_eq said "assert_eq failed:
+    // assert_eq".
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"output-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/output.test.mpl"),
+        "test(\"one\") do\n  println(\"hello from one\")\n  assert(true)\nend\n\ntest(\"two\") do\n  assert_eq(1 + 1, 3)\nend\n\ntest(\"three\") do\n  assert(true)\nend\n",
+    );
+    let run = |args: &[&str]| {
+        let output = Command::new(meshc_bin())
+            .args(args)
+            .arg(&project)
+            .output()
+            .expect("failed to run meshc test");
+        String::from_utf8_lossy(&output.stdout).to_string()
+    };
+
+    let quiet = run(&["test", "--quiet"]);
+    assert!(quiet.contains(".F."), "{quiet}");
+    assert!(!quiet.contains("✓"), "{quiet}");
+    assert!(quiet.contains("assert_eq failed: 1 + 1 == 3"), "{quiet}");
+    assert!(!quiet.contains('\u{1b}'), "{quiet}");
+
+    let plain = run(&["test"]);
+    assert!(plain.contains("hello from one\n  ✓ one\n"), "{plain}");
+    assert!(plain.contains("  ✗ two\n"), "{plain}");
+    assert!(
+        plain.contains("      left:  2\n      right: 3\n"),
+        "{plain}"
+    );
+    assert!(!plain.contains("running:"), "{plain}");
+    assert!(!plain.contains('\u{1b}'), "{plain}");
 }

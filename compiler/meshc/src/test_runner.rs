@@ -29,10 +29,21 @@ use mesh_pkg::manifest::{
 };
 use mesh_typeck::diagnostics::DiagnosticOptions;
 
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+/// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
+/// test binaries learn it through `MESH_TEST_COLOR`: their stdout is a pipe.
+fn use_color() -> bool {
+    use std::io::IsTerminal;
+    std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
+}
+
+/// (green, red, bold, reset), empty without color.
+fn palette() -> (&'static str, &'static str, &'static str, &'static str) {
+    if use_color() {
+        ("\x1b[32m", "\x1b[31m", "\x1b[1m", "\x1b[0m")
+    } else {
+        ("", "", "", "")
+    }
+}
 
 /// Summary of a test run.
 #[allow(dead_code)]
@@ -225,7 +236,7 @@ fn prepare_temp_test_project(
 /// Run tests from the current project, a project root, a test directory, or a specific test file.
 ///
 /// - `target`: optional project root, directory, or specific `*.test.mpl` file.
-/// - `quiet`: compact output (dots instead of per-file names).
+/// - `quiet`: compact output (a dot per passing test instead of its name).
 /// - `coverage`: currently unsupported and returns an explicit error.
 pub fn run_tests(
     target: Option<&Path>,
@@ -254,6 +265,7 @@ pub fn run_tests(
     let start = Instant::now();
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let (green, red, bold, reset) = palette();
 
     for test_file in &test_files {
         let rel = test_file.strip_prefix(project_dir).map_err(|_| {
@@ -277,20 +289,14 @@ pub fn run_tests(
         let bin_path = tmp_dir.path().join("test_bin");
 
         if let Err(e) = prepare_temp_test_project(&test_project, tmp_dir.path(), &preprocessed) {
-            if quiet {
-                print!("{RED}F{RESET}");
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-            } else {
-                println!("{RED}{BOLD}SETUP ERROR{RESET}: {label}");
-                println!("  {}", e);
-            }
+            println!("{red}{bold}SETUP ERROR{reset}: {label}");
+            println!("  {}", e);
             failed += 1;
             continue;
         }
 
         let diag_opts = DiagnosticOptions {
-            color: true,
+            color: use_color(),
             json: false,
         };
         let compile_result = crate::build(
@@ -305,20 +311,17 @@ pub fn run_tests(
         );
 
         if let Err(e) = compile_result {
-            if quiet {
-                print!("{RED}F{RESET}");
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-            } else {
-                println!("{RED}{BOLD}COMPILE ERROR{RESET}: {label}");
-                println!("  {}", e);
-            }
+            println!("{red}{bold}COMPILE ERROR{reset}: {label}");
+            println!("  {}", e);
             failed += 1;
             continue;
         }
 
-        // Execute the compiled binary
+        // Execute the compiled binary. It prints a line per test, or a `.`
+        // or `F` in quiet mode.
         let output = Command::new(&bin_path)
+            .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
+            .env("MESH_TEST_COLOR", if use_color() { "1" } else { "0" })
             .output()
             .map_err(|e| format!("Failed to execute '{}': {}", bin_path.display(), e))?;
 
@@ -331,24 +334,10 @@ pub fn run_tests(
         }
 
         if output.status.success() {
-            if quiet {
-                print!("{GREEN}.{RESET}");
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-            }
             passed += 1;
         } else {
-            if quiet {
-                print!("{RED}F{RESET}");
-                use std::io::Write;
-                std::io::stdout().flush().ok();
-            }
             failed += 1;
         }
-    }
-
-    if quiet {
-        println!(); // newline after dots
     }
 
     let elapsed = start.elapsed();
@@ -359,12 +348,12 @@ pub fn run_tests(
     let files = |n: usize| if n == 1 { "test file" } else { "test files" };
     if failed > 0 {
         println!(
-            "\n{RED}{BOLD}{failed} {} failed{RESET}, {passed} passed in {elapsed_secs:.2}s",
+            "\n{red}{bold}{failed} {} failed{reset}, {passed} passed in {elapsed_secs:.2}s",
             files(failed)
         );
     } else {
         println!(
-            "\n{GREEN}{BOLD}{passed} {} passed{RESET} in {elapsed_secs:.2}s",
+            "\n{green}{bold}{passed} {} passed{reset} in {elapsed_secs:.2}s",
             files(passed)
         );
     }

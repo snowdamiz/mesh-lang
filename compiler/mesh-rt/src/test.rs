@@ -38,11 +38,50 @@ use crate::string::MeshString;
 
 // ── ANSI color codes ─────────────────────────────────────────────────────────
 
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
+/// ANSI color codes, empty when the output is not for a color terminal:
+/// `meshc test` sets `MESH_TEST_COLOR` for the terminal it prints to (the
+/// test binary's own stdout is a pipe); run directly, the binary looks at
+/// its stdout. `NO_COLOR` turns colors off.
+struct Palette {
+    green: &'static str,
+    red: &'static str,
+    bold: &'static str,
+    reset: &'static str,
+}
+
+fn palette() -> &'static Palette {
+    static PALETTE: std::sync::OnceLock<Palette> = std::sync::OnceLock::new();
+    PALETTE.get_or_init(|| {
+        use std::io::IsTerminal;
+        let color = match std::env::var("MESH_TEST_COLOR").as_deref() {
+            Ok("1") => true,
+            Ok(_) => false,
+            Err(_) => std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal(),
+        };
+        if color {
+            Palette {
+                green: "\x1b[32m",
+                red: "\x1b[31m",
+                bold: "\x1b[1m",
+                reset: "\x1b[0m",
+            }
+        } else {
+            Palette {
+                green: "",
+                red: "",
+                bold: "",
+                reset: "",
+            }
+        }
+    })
+}
+
+/// `meshc test --quiet` (`MESH_TEST_QUIET=1`): a `.` or `F` per test
+/// instead of its name; failures are shown in the summary.
+fn quiet() -> bool {
+    static QUIET: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *QUIET.get_or_init(|| std::env::var("MESH_TEST_QUIET").as_deref() == Ok("1"))
+}
 
 // ── Per-process test state ────────────────────────────────────────────────────
 
@@ -50,7 +89,6 @@ thread_local! {
     static PASS_COUNT: Cell<i64> = Cell::new(0);
     static FAIL_COUNT: Cell<i64> = Cell::new(0);
     static CURRENT_TEST: RefCell<String> = RefCell::new(String::new());
-    static QUIET_MODE: Cell<bool> = Cell::new(false);
     /// Accumulates failure messages for the end-of-run `Failures:` reprint.
     static FAIL_MESSAGES: RefCell<Vec<String>> = RefCell::new(Vec::new());
     /// Pids of mock actors spawned during the run; drained by cleanup_actors.
@@ -103,21 +141,31 @@ fn record_failure(msg: &str) {
     if first {
         FAIL_COUNT.with(|c| c.set(c.get() + 1));
     }
-    if !QUIET_MODE.with(|q| q.get()) {
+    let Palette {
+        red, bold, reset, ..
+    } = palette();
+    // Every line of the message under the test's name.
+    let msg = msg.replace('\n', "\n    ");
+    if quiet() {
         if first {
-            println!("\r  {RED}✗{RESET} {name}");
+            print!("{red}F{reset}");
+            let _ = std::io::stdout().flush();
         }
-        println!("    {RED}{msg}{RESET}");
+    } else {
+        if first {
+            println!("  {red}✗{reset} {name}");
+        }
+        println!("    {red}{msg}{reset}");
     }
     FAIL_MESSAGES.with(|fm| {
         let mut messages = fm.borrow_mut();
-        let line = format!("    {RED}{msg}{RESET}");
+        let line = format!("    {red}{msg}{reset}");
         match messages.last_mut() {
             Some(entry) if !first => {
                 entry.push('\n');
                 entry.push_str(&line);
             }
-            _ => messages.push(format!("  {RED}{BOLD}✗{RESET} {name}\n{line}")),
+            _ => messages.push(format!("  {red}{bold}✗{reset} {name}\n{line}")),
         }
     });
 }
@@ -133,33 +181,29 @@ fn assertion_failed(msg: impl FnOnce() -> String) -> ! {
 
 // ── Public extern "C" functions ───────────────────────────────────────────────
 
-/// Called by the test harness immediately before each test body.
-///
-/// Stores the test name for subsequent `pass`/`fail_msg` calls and,
-/// in verbose mode, prints `"  running: <name>"` (no trailing newline)
-/// so that the pass/fail line can overwrite it with `\r`.
+/// Called by the test harness before each test: stores the test name for
+/// the pass/fail lines, printed when the test ends (output the test prints
+/// comes before its line).
 #[no_mangle]
 pub extern "C" fn mesh_test_begin(name: *const MeshString) {
     run_test_case_cleanup_hook();
     let name_str = unsafe { mesh_str(name) }.to_owned();
     CURRENT_TEST.with(|ct| *ct.borrow_mut() = name_str.clone());
     CURRENT_FAILED.with(|failed| failed.set(false));
-
-    if !QUIET_MODE.with(|q| q.get()) {
-        print!("  {DIM}running:{RESET} {name_str}");
-        let _ = std::io::stdout().flush();
-    }
 }
 
-/// Record the current test as passed: in verbose mode, overwrite the
-/// `running:` line with a green checkmark.
+/// Record the current test as passed: `✓ name`, or `.` in quiet mode.
 #[no_mangle]
 pub extern "C" fn mesh_test_pass() {
     PASS_COUNT.with(|c| c.set(c.get() + 1));
 
-    if !QUIET_MODE.with(|q| q.get()) {
+    let Palette { green, reset, .. } = palette();
+    if quiet() {
+        print!("{green}.{reset}");
+        let _ = std::io::stdout().flush();
+    } else {
         let name = CURRENT_TEST.with(|ct| ct.borrow().clone());
-        println!("\r  {GREEN}✓{RESET} {name}");
+        println!("  {green}✓{reset} {name}");
     }
 }
 
@@ -261,11 +305,20 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
 /// The harness (`Plan 03`) passes the elapsed time as milliseconds.
 #[no_mangle]
 pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
+    let Palette {
+        green,
+        red,
+        bold,
+        reset,
+    } = palette();
+    if quiet() {
+        println!();
+    }
     // Reprint accumulated failures at the bottom of the run.
     FAIL_MESSAGES.with(|fm| {
         let messages = fm.borrow();
         if !messages.is_empty() {
-            println!("\n{BOLD}Failures:{RESET}");
+            println!("\n{bold}Failures:{reset}");
             for msg in messages.iter() {
                 println!("{msg}");
             }
@@ -274,10 +327,10 @@ pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
 
     let elapsed = elapsed_ms as f64 / 1000.0;
     if failed > 0 {
-        println!("\n{RED}{BOLD}{failed} failed{RESET}, {passed} passed in {elapsed:.2}s");
+        println!("\n{red}{bold}{failed} failed{reset}, {passed} passed in {elapsed:.2}s");
         std::process::exit(1);
     } else {
-        println!("\n{GREEN}{BOLD}{passed} passed{RESET} in {elapsed:.2}s");
+        println!("\n{green}{bold}{passed} passed{reset} in {elapsed:.2}s");
         std::process::exit(0);
     }
 }

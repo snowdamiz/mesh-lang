@@ -499,15 +499,27 @@ meshc test tests
 meshc test tests/example.test.mpl
 ```
 
-The test runner discovers all files ending in `.test.mpl` under the requested target, compiles and executes each independently, and prints a per-test pass/fail summary:
+The test runner discovers all files ending in `.test.mpl` under the requested target, compiles and executes each independently, and prints a line per test, the failures again, and each file's count:
 
 ```
-test arithmetic is correct ... ok
-test string operations/length ... FAIL
-  assert_eq failed: expected 5, got 6
+  ✓ arithmetic is correct
+  ✗ string operations > length
+    assert_eq failed: String.length("hello") == 4
+      left:  5
+      right: 4
 
-2 tests, 1 failure
+Failures:
+  ✗ string operations > length
+    assert_eq failed: String.length("hello") == 4
+      left:  5
+      right: 4
+
+1 failed, 1 passed in 0.00s
+
+1 test file failed, 0 passed in 1.52s
 ```
+
+Output is colored on a terminal, unless `NO_COLOR` is set.
 
 For private implementation setup, a colocated `foo.test-support.mpl` fragment
 is merged into `foo.mpl` only in the temporary test project. Tests can import
@@ -517,7 +529,7 @@ for the exact naming and isolation rules.
 
 Exit code is non-zero if any test fails, making `meshc test` suitable for CI pipelines.
 
-Use compact dot output for a large suite:
+Use compact output for a large suite, a `.` per passing test and an `F` per failing one, with the failures listed after them:
 
 ```bash
 meshc test . --quiet

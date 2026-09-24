@@ -143,7 +143,14 @@ describe("string operations") do
 end
 ```
 
-Failed test output shows: `string operations/length ... FAIL`
+A failed test is marked `✗` with its group and name, followed by what failed:
+
+```
+  ✗ string operations > length
+    assert_eq failed: String.length("hello") == 4
+      left:  5
+      right: 4
+```
 
 ## Setup and Teardown
 
