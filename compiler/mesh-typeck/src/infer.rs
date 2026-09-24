@@ -253,6 +253,27 @@ impl TypeRegistry {
 
 // ── Per-function metadata for where-clause enforcement (03-04) ────────
 
+/// A node's range without the line breaks, spaces and comments at its ends,
+/// which the lossless tree gives it: an argument on a line of its own starts
+/// at the line break before it.
+fn significant_range(node: &mesh_parser::SyntaxNode) -> TextRange {
+    let mut tokens = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia());
+    match tokens.next() {
+        Some(first) => {
+            let end = tokens
+                .last()
+                .unwrap_or_else(|| first.clone())
+                .text_range()
+                .end();
+            TextRange::new(first.text_range().start(), end)
+        }
+        None => node.text_range(),
+    }
+}
+
 /// What a function with inferred parameter types needs of them (an
 /// operator's trait, being joinable), required of this call's arguments:
 /// checked once the calling function is done, or handed on to its own
@@ -10092,7 +10113,7 @@ fn infer_call_inner(
                                     arg,
                                     param_types[param_idx].clone(),
                                     ConstraintOrigin::FnArg {
-                                        call_site: call.syntax().text_range(),
+                                        call_site: significant_range(arg.syntax()),
                                         param_idx,
                                     },
                                     types,
@@ -10151,7 +10172,7 @@ fn infer_call_inner(
                 arg,
                 param_types[param_idx].clone(),
                 ConstraintOrigin::FnArg {
-                    call_site: call.syntax().text_range(),
+                    call_site: significant_range(arg.syntax()),
                     param_idx,
                 },
                 types,
@@ -10499,7 +10520,7 @@ fn infer_pipe(
                         arg,
                         param_types[param_idx].clone(),
                         ConstraintOrigin::FnArg {
-                            call_site: call.syntax().text_range(),
+                            call_site: significant_range(arg.syntax()),
                             param_idx,
                         },
                         types,
@@ -10861,7 +10882,7 @@ fn infer_slot_pipe(
                         arg,
                         param_types[param_idx].clone(),
                         ConstraintOrigin::FnArg {
-                            call_site: call.syntax().text_range(),
+                            call_site: significant_range(arg.syntax()),
                             param_idx,
                         },
                         types,

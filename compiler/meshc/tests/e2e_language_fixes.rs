@@ -4678,3 +4678,14 @@ fn interpolating_a_value_without_display_is_a_type_error() {
         "<1>\n"
     );
 }
+
+#[test]
+fn an_argument_error_points_at_the_argument() {
+    // It underlined the whole call, every line of a call written over
+    // several, and a multi-line argument started on the line before it.
+    let err = build_error(
+        "fn f(a :: Int, b :: String) -> Int do\n  a\nend\n\nfn main() do\n  let x = f(\n    1,\n    2\n  )\n  println(\"#{x + f(1, 3)}\")\nend\n",
+    );
+    assert!(err.contains("main.mpl:8:5"), "{err}");
+    assert!(err.contains("main.mpl:10:23"), "{err}");
+}

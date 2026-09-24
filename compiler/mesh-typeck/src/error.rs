@@ -19,6 +19,8 @@ use crate::ty::{Ty, TyVar};
 #[derive(Clone, Debug)]
 pub enum ConstraintOrigin {
     /// From a function argument: `foo(x)` where x's type must match param type.
+    /// `call_site` is the argument's span, or the call's when the constraint
+    /// is on the callee or an implicit argument.
     FnArg {
         call_site: TextRange,
         param_idx: usize,
