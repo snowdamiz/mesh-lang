@@ -6829,6 +6829,7 @@ fn check_annotation_types(
         }
         for (name, span) in names {
             if !is_known(&name, &ann) {
+                ctx.unknown_types.insert(name.clone());
                 ctx.errors.push(TypeError::UnknownType { name, span });
             }
         }
@@ -13154,6 +13155,12 @@ fn infer_field_access(
     // Err(NoSuchField) to trigger the retry mechanism in infer_call.
     // Only return Ok(fresh_var) for truly unresolved types (Ty::Var).
     match &resolved_base {
+        // A type already reported unknown has no fields to check.
+        Ty::Con(con) if ctx.unknown_types.contains(&con.name) => return Ok(ctx.fresh_var()),
+        Ty::App(head, _) if matches!(head.as_ref(), Ty::Con(con) if ctx.unknown_types.contains(&con.name)) =>
+        {
+            return Ok(ctx.fresh_var());
+        }
         Ty::Con(_) | Ty::App(_, _) => {
             let err = TypeError::NoSuchField {
                 ty: resolved_base,
@@ -13347,13 +13354,24 @@ fn infer_struct_literal(
     let struct_def = match type_registry.lookup_struct(&struct_name) {
         Some(def) => def.clone(),
         None => {
-            ctx.errors.push(TypeError::NotAStruct {
-                ty: Ty::Con(TyCon::new(&struct_name)),
-                span: sl
-                    .name_ref()
-                    .map(|nr| nr.syntax().text_range())
-                    .unwrap_or_else(|| sl.syntax().text_range()),
-            });
+            let span = sl
+                .name_ref()
+                .map(|nr| nr.syntax().text_range())
+                .unwrap_or_else(|| sl.syntax().text_range());
+            if is_known_type(&struct_name, type_registry) {
+                ctx.errors.push(TypeError::NotAStruct {
+                    ty: Ty::Con(TyCon::new(&struct_name)),
+                    span,
+                });
+            } else {
+                // Not in scope: declared nowhere, or private to another
+                // module (it said "`Secret` is not a struct").
+                ctx.unknown_types.insert(struct_name.clone());
+                ctx.errors.push(TypeError::UnknownType {
+                    name: struct_name.clone(),
+                    span,
+                });
+            }
             // Infer the field values anyway, for their own errors.
             for field in sl.fields() {
                 if let Some(value) = field.value() {

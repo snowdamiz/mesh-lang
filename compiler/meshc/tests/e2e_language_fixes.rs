@@ -2589,8 +2589,14 @@ end
 
 #[test]
 fn a_struct_literal_must_name_a_struct() {
+    // A name no type has is an unknown type; a type that is not a struct is
+    // not a struct.
     let err = build_error("fn main() do\n  let q = Nope { x: 4 }\n  println(\"x\")\nend\n");
-    assert!(err.contains("E0059") && err.contains(":2:11"), "{err}");
+    assert!(err.contains("E0069") && err.contains(":2:11"), "{err}");
+    let err = build_error(
+        "type Sh do\n  A\nend\n\nfn main() do\n  let q = Sh { x: 4 }\n  println(\"x\")\nend\n",
+    );
+    assert!(err.contains("E0059") && err.contains(":6:11"), "{err}");
 }
 
 #[test]
@@ -4784,4 +4790,12 @@ end
         err.contains("Map<Int, Int> does not implement Json"),
         "{err}"
     );
+}
+
+#[test]
+fn a_struct_literal_of_an_unknown_type_is_reported_once() {
+    // "`Nope` is not a struct", then "type Nope has no field x" for each use.
+    let err = build_error("fn main() do\n  let p = Nope { x: 1 }\n  println(\"#{p.x}\")\nend\n");
+    assert!(err.contains("unknown type `Nope`"), "{err}");
+    assert_eq!(err.matches("Error:").count(), 1, "{err}");
 }

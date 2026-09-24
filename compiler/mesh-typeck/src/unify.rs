@@ -140,6 +140,9 @@ pub struct InferCtx {
     pub local_variants: FxHashMap<String, String>,
     /// Type definitions registered before the main pass, which skips them.
     pub registered_items: FxHashSet<TextRange>,
+    /// Names reported as unknown types: a value said to be one is not
+    /// reported again, field by field.
+    pub unknown_types: FxHashSet<String>,
     /// Operators applied to values of a type not yet known, with the trait
     /// each needs: a generic function's own type parameter must be bounded
     /// by it (`where T: Ord`), checked when the function's body is done.
@@ -206,6 +209,7 @@ impl InferCtx {
             json_types: Default::default(),
             local_variants: Default::default(),
             registered_items: Default::default(),
+            unknown_types: Default::default(),
             operand_traits: Vec::new(),
             pending_fields: Vec::new(),
             concat_operands: Vec::new(),
