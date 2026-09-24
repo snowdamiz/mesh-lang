@@ -10459,6 +10459,8 @@ impl<'a> Lowerer<'a> {
         // key type's Eq; String keys from a list or an iterator
         // make a string-keyed map.
         if let Some(op) = runtime_name.strip_prefix("mesh_map_") {
+            // `Map.get` runs as `mesh_map_fetch`.
+            let op = if op == "fetch" { "get" } else { op };
             if let Some(Ty::Fun(params, ret)) = fn_ty.clone() {
                 let map_ty = match op {
                     "from_list" | "collect" => Some(ret.as_ref().clone()),

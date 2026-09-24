@@ -1639,7 +1639,11 @@ end
 end
 
 fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
-  let count = Map.get(state.counts, key)
+  let count = if Map.has_key(state.counts, key) do
+    Map.get(state.counts, key)
+  else
+    0
+  end
   let allowed = count < state.max_requests
   let next_counts = if allowed do
     Map.put(state.counts, key, count + 1)
@@ -2147,7 +2151,11 @@ end
 end
 
 fn check_limit_impl(state :: RateLimiterState, key :: String) ->(RateLimiterState, Bool) do
-  let count = Map.get(state.counts, key)
+  let count = if Map.has_key(state.counts, key) do
+    Map.get(state.counts, key)
+  else
+    0
+  end
   let allowed = count < state.max_requests
   let next_counts = if allowed do
     Map.put(state.counts, key, count + 1)

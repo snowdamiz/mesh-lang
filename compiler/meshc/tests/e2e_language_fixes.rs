@@ -4625,9 +4625,10 @@ fn map_get_of_a_missing_key_panics() {
             "{source}\n{err}"
         );
     }
+    // A key found by its type's Eq (a tuple here) is found by `Map.get` too.
     assert_eq!(
-        run("fn main() do\n  let m = %{\"a\" => 1}\n  println(\"#{Map.get(m, \"a\")}\")\nend\n"),
-        "1\n"
+        run("fn main() do\n  let m = %{\"a\" => 1}\n  let t = %{(1, 2) => 3}\n  println(\"#{Map.get(m, \"a\")} #{Map.get(t, (1, 2))}\")\nend\n"),
+        "1 3\n"
     );
 }
 
