@@ -8700,12 +8700,13 @@ fn infer_expr_here(
             fn_constraints,
         )?,
         Expr::StringExpr(se) => {
-            // Recurse into interpolation expressions so their types are recorded.
+            // Recurse into interpolation expressions so their types are
+            // recorded; each is shown with its Display.
             for child in se.syntax().children() {
                 if child.kind() == SyntaxKind::INTERPOLATION {
                     for inner in child.children() {
                         if let Some(inner_expr) = Expr::cast(inner) {
-                            let _ = infer_expr(
+                            if let Ok(ty) = infer_expr(
                                 ctx,
                                 env,
                                 &inner_expr,
@@ -8713,7 +8714,14 @@ fn infer_expr_here(
                                 type_registry,
                                 trait_registry,
                                 fn_constraints,
-                            );
+                            ) {
+                                let span = inner_expr.syntax().text_range();
+                                ctx.operand_traits.push((
+                                    ty,
+                                    "Display".to_string(),
+                                    ConstraintOrigin::Expr { span },
+                                ));
+                            }
                         }
                     }
                 }

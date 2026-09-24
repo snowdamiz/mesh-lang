@@ -4645,3 +4645,36 @@ fn a_bad_struct_field_leaves_the_value_typed() {
     assert!(err.contains("missing field b"), "{err}");
     assert!(!err.contains("E0059") && !err.contains("E0070"), "{err}");
 }
+
+#[test]
+fn interpolating_a_value_without_display_is_a_type_error() {
+    // A struct or sum value without Display printed its Debug form, and a
+    // closure or a Queue failed in codegen, with no location.
+    for (value, name) in [
+        ("Sq { s: 1 }", "Sq"),
+        ("A", "Sh"),
+        ("Queue.new()", "Queue"),
+        ("fn x -> x + 1 end", "(Int) -> Int"),
+    ] {
+        let err = build_error(&format!(
+            "struct Sq do\n  s :: Int\nend\n\ntype Sh do\n  A\n  B(Int)\nend\n\nfn main() do\n  let v = {value}\n  println(\"<#{{v}}>\")\nend\n"
+        ));
+        assert!(
+            err.contains(&format!("{name} does not implement Display")),
+            "{value}: {err}"
+        );
+        assert!(err.contains("main.mpl:12:15"), "{value}: {err}");
+    }
+    // In a generic function the type parameter needs the bound.
+    let err = build_error(
+        "fn show<T>(x :: T) -> String do\n  \"<#{x}>\"\nend\n\nfn main() do\n  println(show(1))\nend\n",
+    );
+    assert!(
+        err.contains("`T` is not known to implement Display"),
+        "{err}"
+    );
+    assert_eq!(
+        run("fn show<T>(x :: T) -> String where T: Display do\n  \"<#{x}>\"\nend\n\nfn main() do\n  println(show(1))\nend\n"),
+        "<1>\n"
+    );
+}
