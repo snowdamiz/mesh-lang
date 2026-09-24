@@ -4111,7 +4111,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // subsequent validation.
     let mut alias_defs_for_validation: Vec<(TypeAliasDef, TextRange)> = Vec::new();
 
-    for child in tree.syntax().descendants() {
+    for child in file_items(tree.syntax().clone(), import_ctx) {
         let range = child.text_range();
         match Item::cast(child.clone()) {
             Some(Item::TypeAliasDef(alias_def)) => {
@@ -4161,7 +4161,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     // Resolve struct field metadata before value-trait registration so affine
     // containment is known even through forward and transitive references.
-    for child in tree.syntax().descendants() {
+    for child in file_items(tree.syntax().clone(), import_ctx) {
         let Some(Item::StructDef(struct_def)) = Item::cast(child) else {
             continue;
         };
@@ -4204,7 +4204,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             fields,
         });
     }
-    for child in tree.syntax().descendants() {
+    for child in file_items(tree.syntax().clone(), import_ctx) {
         let Some(Item::SumTypeDef(sum_def)) = Item::cast(child) else {
             continue;
         };
@@ -6634,6 +6634,25 @@ fn parse_alias_type(node: &mesh_parser::SyntaxNode, _generic_params: &[String]) 
 }
 
 // ── Type Alias Validation (ALIAS-04) ──────────────────────────────────
+
+/// The nodes of a file whose types are its module's. In a project a
+/// `module ... do ... end` block is a module of its own (checked from the
+/// file with the rest masked), so the file's module skips it: a block's
+/// private struct was usable outside it without an import. A file checked
+/// alone keeps its blocks' types.
+fn file_items(
+    root: mesh_parser::SyntaxNode,
+    import_ctx: &ImportContext,
+) -> impl Iterator<Item = mesh_parser::SyntaxNode> {
+    let in_project = import_ctx.current_module.is_some();
+    root.descendants().filter(move |node| {
+        !in_project
+            || !node
+                .ancestors()
+                .skip(1)
+                .any(|ancestor| ancestor.kind() == SyntaxKind::MODULE_DEF)
+    })
+}
 
 /// Check whether a type name is known: a primitive, struct, sum type, or alias.
 fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {

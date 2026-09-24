@@ -4799,3 +4799,13 @@ fn a_struct_literal_of_an_unknown_type_is_reported_once() {
     assert!(err.contains("unknown type `Nope`"), "{err}");
     assert_eq!(err.matches("Error:").count(), 1, "{err}");
 }
+
+#[test]
+fn a_module_blocks_struct_stays_in_the_block() {
+    // A struct of a `module ... do ... end` block was a type of the file's
+    // module too, usable outside the block without an import, private or not.
+    let err = build_error(
+        "module Geometry do\n  struct Secret do\n    s :: Int\n  end\nend\n\nfn main() do\n  let s = Secret { s: 2 }\n  println(\"#{s.s}\")\nend\n",
+    );
+    assert!(err.contains("unknown type `Secret`"), "{err}");
+}
