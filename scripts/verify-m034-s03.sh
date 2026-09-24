@@ -233,16 +233,24 @@ version_from_archive_name() {
   printf '%s\n' "$version"
 }
 
+# stage_tarball ARCHIVE SOURCE NAME [EXTRA_FILE...]: the release packs the
+# runtime libraries beside meshc.
 stage_tarball() {
   local archive_path="$1"
   local source_path="$2"
   local binary_name="$3"
+  shift 3
   local tmpdir="$STAGE_ROOT/archive-${binary_name}"
+  local extra entries=("$binary_name")
 
   rm -rf "$tmpdir"
   mkdir -p "$tmpdir"
   cp "$source_path" "$tmpdir/$binary_name"
-  tar czf "$archive_path" -C "$tmpdir" "$binary_name"
+  for extra in "$@"; do
+    cp "$extra" "$tmpdir/"
+    entries+=("$(basename "$extra")")
+  done
+  tar czf "$archive_path" -C "$tmpdir" "${entries[@]}"
 }
 
 write_release_json() {
@@ -295,8 +303,9 @@ setup_local_release_assets() {
   MESHC_ARCHIVE="meshc-v${VERSION}-${TARGET}.tar.gz"
   MESHPKG_ARCHIVE="meshpkg-v${VERSION}-${TARGET}.tar.gz"
 
-  run_command tooling 05-build-tooling "cargo build -q -p mesh-rt -p meshc -p meshpkg" cargo build -q -p mesh-rt -p meshc -p meshpkg
+  run_command tooling 05-build-tooling "cargo build -q -p mesh-rt -p mesh-test-rt -p meshc -p meshpkg" cargo build -q -p mesh-rt -p mesh-test-rt -p meshc -p meshpkg
   [[ -f "$ROOT_DIR/target/debug/libmesh_rt.a" ]] || fail_phase "tooling" "mesh-rt static library was not built" "$LAST_LOG_PATH"
+  [[ -f "$ROOT_DIR/target/debug/libmesh_test_rt.a" ]] || fail_phase "tooling" "mesh-test-rt static library was not built" "$LAST_LOG_PATH"
   [[ -x "$MESHC_BIN" ]] || fail_phase "tooling" "meshc binary was not built" "$LAST_LOG_PATH"
   [[ -x "$MESHPKG_BIN" ]] || fail_phase "tooling" "meshpkg binary was not built" "$LAST_LOG_PATH"
 
@@ -306,7 +315,8 @@ setup_local_release_assets() {
   mkdir -p "$MISSING_MESHPKG_ROOT/api/releases" "$MISSING_MESHPKG_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}"
   mkdir -p "$MISSING_BINARY_ROOT/api/releases" "$MISSING_BINARY_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}"
 
-  stage_tarball "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHC_ARCHIVE}" "$MESHC_BIN" meshc
+  stage_tarball "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHC_ARCHIVE}" "$MESHC_BIN" meshc \
+    "$ROOT_DIR/target/debug/libmesh_rt.a" "$ROOT_DIR/target/debug/libmesh_test_rt.a"
   stage_tarball "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHPKG_ARCHIVE}" "$MESHPKG_BIN" meshpkg
 
   meshc_sha="$(sha256_of_file "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHC_ARCHIVE}")"
@@ -464,6 +474,8 @@ run_command install 06-install-good "sh website/docs/public/install.sh --yes aga
 
 [[ -x "$GOOD_HOME/.mesh/bin/meshc" ]] || fail_phase "install" "installed meshc was missing" "$LAST_LOG_PATH"
 [[ -x "$GOOD_HOME/.mesh/bin/meshpkg" ]] || fail_phase "install" "installed meshpkg was missing" "$LAST_LOG_PATH"
+[[ -f "$GOOD_HOME/.mesh/lib/libmesh_rt.a" ]] || fail_phase "install" "installed runtime library was missing" "$LAST_LOG_PATH"
+[[ -f "$GOOD_HOME/.mesh/lib/libmesh_test_rt.a" ]] || fail_phase "install" "installed test runtime library was missing" "$LAST_LOG_PATH"
 [[ -f "$GOOD_HOME/.mesh/version" ]] || fail_phase "install" "version file was not written" "$LAST_LOG_PATH"
 [[ "$(tr -d '\r\n' <"$GOOD_HOME/.mesh/version")" == "$VERSION" ]] || fail_phase "install" "version file did not match staged version" "$LAST_LOG_PATH"
 
@@ -477,8 +489,13 @@ rm -rf "$SMOKE_WORK_DIR"
 mkdir -p "$SMOKE_WORK_DIR"
 cp "$FIXTURE_DIR/mesh.toml" "$SMOKE_WORK_DIR/mesh.toml"
 cp "$FIXTURE_DIR/main.mpl" "$SMOKE_WORK_DIR/main.mpl"
+# An empty CARGO_TARGET_DIR keeps meshc from finding this checkout's runtime:
+# the build must link the runtime the installer put in ~/.mesh/lib.
+NO_CARGO_TARGET_DIR="$WORK_ROOT/no-cargo-target"
+mkdir -p "$NO_CARGO_TARGET_DIR"
 run_command build 09-hello-build "installed meshc build installer smoke fixture" \
-  env HOME="$GOOD_HOME" PATH="$GOOD_HOME/.mesh/bin:$PATH" "$GOOD_HOME/.mesh/bin/meshc" build "$SMOKE_WORK_DIR" --output "$RUN_DIR/installer-smoke.bin" --no-color
+  env -u MESH_RT_LIB_PATH HOME="$GOOD_HOME" PATH="$GOOD_HOME/.mesh/bin:$PATH" CARGO_TARGET_DIR="$NO_CARGO_TARGET_DIR" \
+    "$GOOD_HOME/.mesh/bin/meshc" build "$SMOKE_WORK_DIR" --output "$RUN_DIR/installer-smoke.bin" --no-color
 run_command runtime 10-hello-run "run installed hello binary" "$RUN_DIR/installer-smoke.bin"
 if [[ "$(tr -d '\r\n' <"$LAST_STDOUT_PATH")" != "hello" ]]; then
   fail_phase "runtime" "installer smoke binary printed unexpected output" "$LAST_LOG_PATH"

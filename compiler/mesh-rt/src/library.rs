@@ -237,7 +237,9 @@ fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> R
     if input.len() > MAX_BOUNDARY_BYTES || output.len() > MAX_BOUNDARY_BYTES {
         return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
     }
-    let callbacks = (*HOST_CALLBACKS.read()).ok_or(MESH_LIBRARY_ERR_NOT_INITIALIZED)?;
+    // No callbacks at all is a missing callback too, not status 2: a host's
+    // secure store answers 2 for "not found", which callers act on.
+    let callbacks = (*HOST_CALLBACKS.read()).ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;
     let callback = callbacks
         .callback(capability)
         .ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;

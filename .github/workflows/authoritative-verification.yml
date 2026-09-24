@@ -97,13 +97,14 @@ jobs:
           # keep their integration and snapshot tests beside the library, and
           # the runtime's own suite covers the distribution transport.
           cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
-          cargo test --locked -p mesh-rt --lib
+          cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
           # The examples and official packages are what users copy from.
           for path in examples packages mesh-slug; do
             ./target/debug/meshc lint "$path"
           done
-          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance
+          # e2e_library builds static and dynamic libraries and runs a C host.
+          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library
 
   docs-and-sites:
     name: Docs and sites build

@@ -6,12 +6,17 @@ set -eu
 
 REPO="hyperpush-org/mesh-lang"
 INSTALL_DIR="$HOME/.mesh/bin"
+LIB_DIR="$HOME/.mesh/lib"
 ENV_FILE="$HOME/.mesh/env"
 VERSION_FILE="$HOME/.mesh/version"
 MARKER="# Mesh compiler"
 RELEASE_API_URL="${MESH_INSTALL_RELEASE_API_URL:-https://api.github.com/repos/${REPO}/releases/latest}"
 RELEASE_BASE_URL="${MESH_INSTALL_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download}"
 DOWNLOAD_TIMEOUT_SEC="${MESH_INSTALL_DOWNLOAD_TIMEOUT_SEC:-120}"
+# A positive whole number of seconds, as install.ps1 accepts; else the default.
+case "$DOWNLOAD_TIMEOUT_SEC" in
+    '' | *[!0-9]* | 0*) DOWNLOAD_TIMEOUT_SEC=120 ;;
+esac
 STRICT_PROOF_MODE="${MESH_INSTALL_STRICT_PROOF:-0}"
 
 # --- Color output ---
@@ -373,6 +378,19 @@ install_binary() {
     mkdir -p "$INSTALL_DIR"
     mv "$_tmpdir/${_bin_name}" "$INSTALL_DIR/${_bin_name}"
     chmod +x "$INSTALL_DIR/${_bin_name}"
+
+    # meshc links programs against the runtime libraries shipped beside it.
+    if [ "$_bin_name" = "meshc" ]; then
+        for _lib in libmesh_rt.a libmesh_test_rt.a; do
+            if [ ! -f "$_tmpdir/$_lib" ]; then
+                say_red "error: $_lib was not found after extracting ${_archive}."
+                say_red "  archive: $_tmpdir/$_archive"
+                return 1
+            fi
+            mkdir -p "$LIB_DIR"
+            mv "$_tmpdir/$_lib" "$LIB_DIR/$_lib"
+        done
+    fi
 
     case "$(uname -s)" in
         Darwin)

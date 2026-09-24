@@ -282,6 +282,22 @@ pub(crate) fn archive_with_plan(
     finish_library_link(output, object_path, output_path, "Static library creation")
 }
 
+/// The name a host that links the library records for it: the file name
+/// alone, found through its rpath or library path, rather than the path the
+/// library was built at (`greeter/libgreeter.dylib` failed to load from any
+/// other directory).
+fn library_name_args(target: &LinkTarget, output_path: &Path) -> Vec<String> {
+    let file_name = output_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if target.is_apple() {
+        vec![format!("-Wl,-install_name,@rpath/{file_name}")]
+    } else {
+        vec![format!("-Wl,-soname,{file_name}")]
+    }
+}
+
 pub(crate) fn link_dynamic_with_plan(
     object_path: &Path,
     output_path: &Path,
@@ -321,6 +337,7 @@ pub(crate) fn link_dynamic_with_plan(
             .arg("-shared");
     }
     command.arg("-lm").arg("-o").arg(output_path);
+    command.args(library_name_args(&plan.target, output_path));
     if plan.target.needs_security_framework() {
         for framework in ["Security", "CoreFoundation"] {
             command.arg("-framework").arg(framework);
@@ -417,17 +434,22 @@ fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<Pa
 
     let mut searched_paths = Vec::new();
 
-    for target_dir in [find_workspace_target_dir()].iter().flatten() {
-        for candidate in mesh_rt_candidates(target_dir, target, profiles, runtime_flavor) {
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-            searched_paths.push(candidate);
+    let workspace_candidates = [find_workspace_target_dir()]
+        .into_iter()
+        .flatten()
+        .flat_map(|target_dir| mesh_rt_candidates(&target_dir, target, profiles, runtime_flavor));
+    for candidate in installed_mesh_rt_candidates(target, runtime_flavor)
+        .into_iter()
+        .chain(workspace_candidates)
+    {
+        if candidate.exists() {
+            return Ok(candidate);
         }
+        searched_paths.push(candidate);
     }
 
     let mut message = format!(
-        "Could not locate {} static library for target '{}'. Expected {}. Run `cargo build -p {}{}` first.",
+        "Could not locate {} static library for target '{}'. Expected {} in the `lib` directory beside the installed meshc; reinstall Mesh, or in a source checkout run `cargo build -p {}{}` first.",
         runtime_flavor.display_name(),
         target.display_triple(),
         target.runtime_filename(runtime_flavor),
@@ -446,6 +468,33 @@ fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<Pa
     }
 
     Err(message)
+}
+
+/// Where an installed toolchain keeps the runtime: `<prefix>/lib/` beside
+/// `<prefix>/bin/meshc`, as the installers lay it out (`~/.mesh/lib`). A
+/// runtime for another target goes in `<prefix>/lib/<triple>/`.
+fn installed_mesh_rt_candidates(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Vec<PathBuf> {
+    let Some(prefix) = std::env::current_exe()
+        .ok()
+        .map(|exe| std::fs::canonicalize(&exe).unwrap_or(exe))
+        .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()))
+    else {
+        return Vec::new();
+    };
+    installed_runtime_candidates_under(&prefix, target, runtime_flavor)
+}
+
+fn installed_runtime_candidates_under(
+    prefix: &Path,
+    target: &LinkTarget,
+    runtime_flavor: RuntimeFlavor,
+) -> Vec<PathBuf> {
+    let lib = prefix.join("lib");
+    let file = target.runtime_filename(runtime_flavor);
+    match target.requested_triple.as_deref() {
+        Some(triple) if triple != host_target_triple() => vec![lib.join(triple).join(file)],
+        _ => vec![lib.join(file)],
+    }
 }
 
 fn mesh_rt_candidates(
@@ -633,13 +682,24 @@ impl LinkTarget {
             return Ok(command);
         }
         if triple.contains("linux-android") {
-            let clang_name = format!("{triple}26-clang");
+            let clang_name = format!("{}26-clang", ndk_clang_triple(triple));
             return android_tool(&clang_name).map(Command::new);
         }
         let mut command = Command::new("cc");
         command.args(["-target", triple]);
         Ok(command)
     }
+}
+
+/// The NDK names its 32-bit ARM compiler `armv7a-...`, where Rust's triple
+/// says `armv7-` (or `thumbv7neon-`).
+fn ndk_clang_triple(triple: &str) -> String {
+    for rust_arch in ["armv7-", "thumbv7neon-"] {
+        if let Some(rest) = triple.strip_prefix(rust_arch) {
+            return format!("armv7a-{rest}");
+        }
+    }
+    triple.to_string()
 }
 
 fn android_tool(name: &str) -> Result<PathBuf, String> {
@@ -818,6 +878,55 @@ mod tests {
                 "{triple}"
             );
         }
+    }
+
+    #[test]
+    fn android_triples_name_the_ndk_compiler() {
+        assert_eq!(ndk_clang_triple("aarch64-linux-android"), "aarch64-linux-android");
+        assert_eq!(ndk_clang_triple("x86_64-linux-android"), "x86_64-linux-android");
+        assert_eq!(ndk_clang_triple("armv7-linux-androideabi"), "armv7a-linux-androideabi");
+        assert_eq!(ndk_clang_triple("thumbv7neon-linux-androideabi"), "armv7a-linux-androideabi");
+    }
+
+    #[test]
+    fn dynamic_libraries_are_named_by_file_not_build_path() {
+        let output = Path::new("greeter/libgreeter.dylib");
+        let apple = LinkTarget::detect(Some("aarch64-apple-darwin")).unwrap();
+        assert_eq!(
+            library_name_args(&apple, output),
+            ["-Wl,-install_name,@rpath/libgreeter.dylib"]
+        );
+        let linux = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        assert_eq!(
+            library_name_args(&linux, Path::new("out/libgreeter.so")),
+            ["-Wl,-soname,libgreeter.so"]
+        );
+    }
+
+    #[test]
+    fn installed_runtime_is_found_in_lib_beside_bin() {
+        let prefix = Path::new("/home/user/.mesh");
+        let host = LinkTarget::detect(None).unwrap();
+        assert_eq!(
+            installed_runtime_candidates_under(prefix, &host, RuntimeFlavor::Test),
+            vec![prefix
+                .join("lib")
+                .join(host.runtime_filename(RuntimeFlavor::Test))]
+        );
+
+        let named_host = LinkTarget::detect(Some(&host_target_triple())).unwrap();
+        assert_eq!(
+            installed_runtime_candidates_under(prefix, &named_host, RuntimeFlavor::Standard),
+            vec![prefix
+                .join("lib")
+                .join(host.runtime_filename(RuntimeFlavor::Standard))]
+        );
+
+        let cross = LinkTarget::detect(Some("aarch64-linux-android")).unwrap();
+        assert_eq!(
+            installed_runtime_candidates_under(prefix, &cross, RuntimeFlavor::Standard),
+            vec![prefix.join("lib/aarch64-linux-android/libmesh_rt.a")]
+        );
     }
 
     #[test]

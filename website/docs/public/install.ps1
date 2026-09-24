@@ -14,6 +14,7 @@ $ErrorActionPreference = 'Stop'
 $Repo = "hyperpush-org/mesh-lang"
 $MeshHome = "$env:USERPROFILE\.mesh"
 $BinDir = "$MeshHome\bin"
+$LibDir = "$MeshHome\lib"
 $VersionFile = "$MeshHome\version"
 
 # --- Color output ---
@@ -282,6 +283,18 @@ function Install-Binary {
 
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
         Copy-Item -Path $sourceBinary.FullName -Destination (Join-Path $BinDir "$BinaryName.exe") -Force
+
+        # meshc links programs against the runtime libraries shipped beside it.
+        if ($BinaryName -eq 'meshc') {
+            New-Item -ItemType Directory -Path $LibDir -Force | Out-Null
+            foreach ($lib in @('mesh_rt.lib', 'mesh_test_rt.lib')) {
+                $sourceLib = Get-ChildItem -Path $extractDir -Filter $lib -Recurse | Select-Object -First 1
+                if (-not $sourceLib) {
+                    Fail-Installer "error: $lib was not found after extracting $archive.`n  archive: $archivePath"
+                }
+                Copy-Item -Path $sourceLib.FullName -Destination (Join-Path $LibDir $lib) -Force
+            }
+        }
         $success = $true
     } finally {
         if ($success -and (Test-Path $tmpDir)) {

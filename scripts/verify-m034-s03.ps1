@@ -41,8 +41,12 @@ function Stop-LocalServer {
     }
 }
 
+# An empty target dir keeps meshc from finding this checkout's runtime: the
+# build must link the runtime the installer put in ~/.mesh/lib.
 function Get-InstalledBuildTargetDir {
-    return Join-Path $RootDir 'target'
+    $dir = Join-Path $WorkRoot 'no-cargo-target'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    return $dir
 }
 
 function Push-InstalledBuildEnvironment {
@@ -250,13 +254,20 @@ function New-ZipArchive {
     param(
         [string]$ArchivePath,
         [string]$SourcePath,
-        [string]$EntryName
+        [string]$EntryName,
+        [string[]]$ExtraPaths = @()
     )
 
     $tmpDir = Join-Path $StageRoot ("zip-" + [System.Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
     Copy-Item $SourcePath (Join-Path $tmpDir $EntryName)
-    Compress-Archive -Path (Join-Path $tmpDir $EntryName) -DestinationPath $ArchivePath -Force
+    $entries = @(Join-Path $tmpDir $EntryName)
+    foreach ($extra in $ExtraPaths) {
+        $entry = Join-Path $tmpDir (Split-Path $extra -Leaf)
+        Copy-Item $extra $entry
+        $entries += $entry
+    }
+    Compress-Archive -Path $entries -DestinationPath $ArchivePath -Force
     Remove-Item -Recurse -Force $tmpDir
 }
 
@@ -314,16 +325,20 @@ function Setup-LocalReleaseAssets {
     $script:MeshcArchive = "meshc-v$($script:Version)-$Target.zip"
     $script:MeshpkgArchive = "meshpkg-v$($script:Version)-$Target.zip"
 
-    Invoke-LoggedCommand -Phase 'tooling' -Label '03-build-tooling' -Display 'cargo build -q -p meshc -p meshpkg' -Command {
-        cargo build -q -p meshc -p meshpkg
+    Invoke-LoggedCommand -Phase 'tooling' -Label '03-build-tooling' -Display 'cargo build -q -p mesh-rt -p mesh-test-rt -p meshc -p meshpkg' -Command {
+        cargo build -q -p mesh-rt -p mesh-test-rt -p meshc -p meshpkg
     }
 
+    $runtimeLibs = @('mesh_rt.lib', 'mesh_test_rt.lib') | ForEach-Object { Join-Path $RootDir "target/debug/$_" }
+    foreach ($lib in $runtimeLibs) {
+        if (-not (Test-Path $lib)) { Fail-Phase 'tooling' "$lib was not built" $LastLogPath }
+    }
     if (-not (Test-Path $MeshcExe)) { Fail-Phase 'tooling' 'meshc.exe was not built' $LastLogPath }
     if (-not (Test-Path $MeshpkgExe)) { Fail-Phase 'tooling' 'meshpkg.exe was not built' $LastLogPath }
 
     New-Item -ItemType Directory -Path (Join-Path $GoodRoot 'api/releases'), (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)") -Force | Out-Null
 
-    New-ZipArchive -ArchivePath (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)/$($script:MeshcArchive)") -SourcePath $MeshcExe -EntryName 'meshc.exe'
+    New-ZipArchive -ArchivePath (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)/$($script:MeshcArchive)") -SourcePath $MeshcExe -EntryName 'meshc.exe' -ExtraPaths $runtimeLibs
     New-ZipArchive -ArchivePath (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)/$($script:MeshpkgArchive)") -SourcePath $MeshpkgExe -EntryName 'meshpkg.exe'
     $meshcSha = Get-Sha256 (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)/$($script:MeshcArchive)")
     $meshpkgSha = Get-Sha256 (Join-Path $GoodRoot "hyperpush-org/mesh-lang/releases/download/v$($script:Version)/$($script:MeshpkgArchive)")
@@ -727,6 +742,9 @@ try {
     $installedVersion = Join-Path $goodHome '.mesh/version'
     if (-not (Test-Path $installedMeshc)) { Fail-Phase 'install' 'installed meshc.exe was missing' $LastLogPath }
     if (-not (Test-Path $installedMeshpkg)) { Fail-Phase 'install' 'installed meshpkg.exe was missing' $LastLogPath }
+    foreach ($lib in @('mesh_rt.lib', 'mesh_test_rt.lib')) {
+        if (-not (Test-Path (Join-Path $goodHome ".mesh/lib/$lib"))) { Fail-Phase 'install' "installed $lib was missing" $LastLogPath }
+    }
     if (-not (Test-Path $installedVersion)) { Fail-Phase 'install' 'version file was not written' $LastLogPath }
     if ((Get-Content $installedVersion -Raw).Trim() -ne $Version) { Fail-Phase 'install' 'version file did not match staged version' $LastLogPath }
 

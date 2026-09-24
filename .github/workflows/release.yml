@@ -288,18 +288,21 @@ jobs:
         if: runner.os != 'Windows'
         run: strip target/${{ matrix.target }}/release/meshc
 
+      # meshc links every program against the runtime, and `meshc test`
+      # against the test runtime: the installers put both in ~/.mesh/lib.
       - name: Package (tar.gz)
         if: matrix.archive_ext == 'tar.gz'
         run: |
           tar czf "meshc-v${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" meshc
+            -C "target/${{ matrix.target }}/release" meshc libmesh_rt.a libmesh_test_rt.a
 
       - name: Package (zip)
         if: matrix.archive_ext == 'zip'
         shell: pwsh
         run: |
+          $release = "target/${{ matrix.target }}/release"
           Compress-Archive `
-            -Path "target/${{ matrix.target }}/release/meshc.exe" `
+            -Path "$release/meshc.exe", "$release/mesh_rt.lib", "$release/mesh_test_rt.lib" `
             -DestinationPath "meshc-v${{ steps.version.outputs.version }}-${{ matrix.target }}.zip"
 
       - name: Upload artifact
@@ -651,9 +654,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: echo "LLVM_SYS_211_PREFIX=$env:USERPROFILE\llvm" >> $env:GITHUB_ENV
-
-      - name: Build mesh-rt for smoke verifier
-        run: cargo build -q -p mesh-rt
 
       - name: Verify staged installer assets (Unix)
         if: runner.os != 'Windows'
