@@ -4597,3 +4597,35 @@ fn a_guard_compares_with_a_string_literal() {
     );
     assert_eq!(out, "b\n");
 }
+
+#[test]
+fn map_get_of_a_missing_key_panics() {
+    // It returned 0, 0.0 or a null string (a crash later, far from the
+    // cause); `Map.get` requires the key, as `List.get` requires the index.
+    for (source, value) in [
+        (
+            "let m = %{1 => 10}\n  println(\"#{Map.get(m, 2)}\")",
+            "Map.get",
+        ),
+        (
+            "let m = %{\"a\" => \"x\"}\n  println(Map.get(m, \"b\"))",
+            "Map.get",
+        ),
+        (
+            "let m = %{(1, 2) => 3}\n  println(\"#{Map.get(m, (2, 1))}\")",
+            "Map.get",
+        ),
+    ] {
+        let (code, out, err) = run_status(&format!("fn main() do\n  {source}\nend\n"), &[]);
+        assert_eq!(code, Some(101), "{source}\n{err}");
+        assert_eq!(out, "", "{source}");
+        assert!(
+            err.starts_with(&format!("Mesh panic: {value}: the key is not in the map")),
+            "{source}\n{err}"
+        );
+    }
+    assert_eq!(
+        run("fn main() do\n  let m = %{\"a\" => 1}\n  println(\"#{Map.get(m, \"a\")}\")\nend\n"),
+        "1\n"
+    );
+}

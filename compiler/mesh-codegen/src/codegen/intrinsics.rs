@@ -1744,6 +1744,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             0,
         ),
         (
+            "mesh_map_fetch_by",
+            vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
+            0,
+        ),
+        (
             "mesh_map_has_key_by",
             vec![ptr_type.into(), i64_type.into(), ptr_type.into()],
             2,
@@ -1875,6 +1880,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_map_put",
         ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_map_fetch",
+        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(

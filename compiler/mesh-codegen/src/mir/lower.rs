@@ -3601,6 +3601,10 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)),
         );
         self.known_functions.insert(
+            "mesh_map_fetch".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Int)),
+        );
+        self.known_functions.insert(
             "mesh_map_has_key".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Int], Box::new(MirType::Bool)),
         );
@@ -9911,7 +9915,11 @@ impl<'a> Lowerer<'a> {
         let args = if let MirExpr::Var(ref name, _) = callee {
             if matches!(
                 name.as_str(),
-                "mesh_map_put" | "mesh_map_get" | "mesh_map_has_key" | "mesh_map_delete"
+                "mesh_map_put"
+                    | "mesh_map_get"
+                    | "mesh_map_fetch"
+                    | "mesh_map_has_key"
+                    | "mesh_map_delete"
             ) && args.len() >= 2
             {
                 let key_ty = args[1].ty().clone();
@@ -13528,7 +13536,9 @@ impl<'a> Lowerer<'a> {
             "has_key" => MirType::Bool,
             _ => MirType::Ptr,
         };
-        let call = Self::call_named(&format!("mesh_map_{op}_by"), arg_tys, args, raw_ret);
+        // `get` is `Map.get`, which panics on a missing key.
+        let runtime_op = if op == "get" { "fetch" } else { op };
+        let call = Self::call_named(&format!("mesh_map_{runtime_op}_by"), arg_tys, args, raw_ret);
         let body = if op == "get" {
             match &ret_ty {
                 MirType::Int | MirType::Unit | MirType::Never => call,
@@ -16297,7 +16307,9 @@ fn map_builtin_name(name: &str) -> String {
         // Map operations
         "map_new" => "mesh_map_new".to_string(),
         "map_put" => "mesh_map_put".to_string(),
-        "map_get" => "mesh_map_get".to_string(),
+        // `Map.get` of a missing key panics (`mesh_map_get` reads it as 0,
+        // which the runtime's own callers rely on).
+        "map_get" => "mesh_map_fetch".to_string(),
         "map_has_key" => "mesh_map_has_key".to_string(),
         "map_delete" => "mesh_map_delete".to_string(),
         "map_size" => "mesh_map_size".to_string(),

@@ -122,7 +122,7 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 | `Set.union`, `Set.intersection`, `Set.difference` | Set algebra |
 | `Set.to_list`, `Set.from_list`, `Set.collect` | Convert integer sets |
 
-`Map.get` requires an existing key; call `Map.has_key` first when absence is normal.
+`Map.get` requires an existing key: a missing one is a runtime error, as `List.get` past the end is. Call `Map.has_key` first when absence is normal.
 
 ### Tuples, Ranges, and Queues
 

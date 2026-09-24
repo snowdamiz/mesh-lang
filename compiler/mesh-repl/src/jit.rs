@@ -1268,6 +1268,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_map_from_list_by",
             mesh_rt::collections::map::mesh_map_from_list_by as *const (),
         ),
+        (
+            "mesh_map_fetch",
+            mesh_rt::collections::map::mesh_map_fetch as *const (),
+        ),
+        (
+            "mesh_map_fetch_by",
+            mesh_rt::collections::map::mesh_map_fetch_by as *const (),
+        ),
         ("mesh_map_get", mesh_rt::mesh_map_get as *const ()),
         (
             "mesh_map_get_by",

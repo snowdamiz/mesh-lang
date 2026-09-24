@@ -208,6 +208,26 @@ pub extern "C-unwind" fn mesh_map_get_by(map: *mut u8, key: u64, key_eq: *mut u8
     }
 }
 
+/// `Map.get`: the value at `key`, which must be in the map. A missing key
+/// is a Mesh panic, as `List.get` past the end is (it read as 0).
+#[no_mangle]
+pub extern "C-unwind" fn mesh_map_fetch(map: *mut u8, key: u64) -> u64 {
+    mesh_map_fetch_by(map, key, ptr::null_mut())
+}
+
+/// `mesh_map_fetch` with keys compared by `key_eq` (see `KeyEq`).
+#[no_mangle]
+pub extern "C-unwind" fn mesh_map_fetch_by(map: *mut u8, key: u64, key_eq: *mut u8) -> u64 {
+    unsafe {
+        match find_key(map, key, key_eq_fn(key_eq)) {
+            Some(idx) => (*map_entries(map).add(idx))[1],
+            None => crate::panic::raise(format_args!(
+                "Map.get: the key is not in the map (check with Map.has_key)"
+            )),
+        }
+    }
+}
+
 /// Returns 1 if the key exists, 0 otherwise.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_map_has_key(map: *mut u8, key: u64) -> i8 {
