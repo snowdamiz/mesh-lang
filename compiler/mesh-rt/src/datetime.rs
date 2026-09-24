@@ -117,29 +117,33 @@ pub extern "C" fn mesh_datetime_to_unix_secs(ms: i64) -> i64 {
 /// DateTime.add(dt, n, unit) -> DateTime
 ///
 /// Supported units (atom literals without leading colon): ms, second, minute, hour, day, week
-/// Unknown unit panics with a clear message.
-/// n can be negative (equivalent to subtraction).
+/// An unknown unit, or a result outside the representable range, is a Mesh
+/// panic. n can be negative (equivalent to subtraction).
 #[no_mangle]
-pub extern "C" fn mesh_datetime_add(ms: i64, n: i64, unit: *const MeshString) -> i64 {
-    unsafe {
-        let unit_str = (*unit).as_str();
-        // Atom literals are lowered without the leading ':' (e.g. :day -> "day").
-        let delta = match unit_str {
-            "ms"     => TimeDelta::milliseconds(n),
-            "second" => TimeDelta::seconds(n),
-            "minute" => TimeDelta::minutes(n),
-            "hour"   => TimeDelta::hours(n),
-            "day"    => TimeDelta::days(n),
-            "week"   => TimeDelta::weeks(n),
-            other => panic!(
-                "DateTime.add: unknown unit {:?}; valid units are :ms, :second, :minute, :hour, :day, :week",
-                other
-            ),
-        };
-        let dt: DateTime<Utc> =
-            DateTime::from_timestamp_millis(ms).expect("DateTime.add: invalid ms timestamp");
-        (dt + delta).timestamp_millis()
-    }
+pub extern "C-unwind" fn mesh_datetime_add(ms: i64, n: i64, unit: *const MeshString) -> i64 {
+    // Atom literals are lowered without the leading ':' (e.g. :day -> "day").
+    let unit = unsafe { (*unit).as_str() };
+    let delta = match unit {
+        "ms" => Some(TimeDelta::milliseconds(n)),
+        "second" => TimeDelta::try_seconds(n),
+        "minute" => TimeDelta::try_minutes(n),
+        "hour" => TimeDelta::try_hours(n),
+        "day" => TimeDelta::try_days(n),
+        "week" => TimeDelta::try_weeks(n),
+        other => crate::panic::raise(format_args!(
+            "DateTime.add: unknown unit {other:?}; valid units are :ms, :second, \
+             :minute, :hour, :day, :week"
+        )),
+    };
+    DateTime::from_timestamp_millis(ms)
+        .zip(delta)
+        .and_then(|(dt, delta)| dt.checked_add_signed(delta))
+        .map(|dt: DateTime<Utc>| dt.timestamp_millis())
+        .unwrap_or_else(|| {
+            crate::panic::raise(format_args!(
+                "DateTime.add: adding {n} {unit} to {ms} ms is out of the supported range"
+            ))
+        })
 }
 
 /// DateTime.diff(dt1, dt2, unit) -> Float
@@ -148,23 +152,25 @@ pub extern "C" fn mesh_datetime_add(ms: i64, n: i64, unit: *const MeshString) ->
 /// Positive if dt1 is after dt2, negative if dt1 is before dt2.
 /// Supported units (atom literals without leading colon): ms, second, minute, hour, day, week
 #[no_mangle]
-pub extern "C" fn mesh_datetime_diff(dt1_ms: i64, dt2_ms: i64, unit: *const MeshString) -> f64 {
-    unsafe {
-        let unit_str = (*unit).as_str();
-        // Atom literals are lowered without the leading ':' (e.g. :day -> "day").
-        let delta_ms = (dt1_ms - dt2_ms) as f64;
-        match unit_str {
-            "ms"     => delta_ms,
-            "second" => delta_ms / 1_000.0,
-            "minute" => delta_ms / 60_000.0,
-            "hour"   => delta_ms / 3_600_000.0,
-            "day"    => delta_ms / 86_400_000.0,
-            "week"   => delta_ms / 604_800_000.0,
-            other => panic!(
-                "DateTime.diff: unknown unit {:?}; valid units are :ms, :second, :minute, :hour, :day, :week",
-                other
-            ),
-        }
+pub extern "C-unwind" fn mesh_datetime_diff(
+    dt1_ms: i64,
+    dt2_ms: i64,
+    unit: *const MeshString,
+) -> f64 {
+    // Atom literals are lowered without the leading ':' (e.g. :day -> "day").
+    let unit = unsafe { (*unit).as_str() };
+    let delta_ms = (dt1_ms as i128 - dt2_ms as i128) as f64;
+    match unit {
+        "ms" => delta_ms,
+        "second" => delta_ms / 1_000.0,
+        "minute" => delta_ms / 60_000.0,
+        "hour" => delta_ms / 3_600_000.0,
+        "day" => delta_ms / 86_400_000.0,
+        "week" => delta_ms / 604_800_000.0,
+        other => crate::panic::raise(format_args!(
+            "DateTime.diff: unknown unit {other:?}; valid units are :ms, :second, \
+             :minute, :hour, :day, :week"
+        )),
     }
 }
 

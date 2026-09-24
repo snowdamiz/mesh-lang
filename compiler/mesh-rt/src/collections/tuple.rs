@@ -7,14 +7,13 @@
 
 /// Return the element at `index` in the tuple. Panics if out of bounds.
 #[no_mangle]
-pub extern "C" fn mesh_tuple_nth(tuple: *mut u8, index: i64) -> u64 {
+pub extern "C-unwind" fn mesh_tuple_nth(tuple: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = *(tuple as *const u64);
         if index < 0 || index as u64 >= len {
-            panic!(
-                "mesh_tuple_nth: index {} out of bounds (len {})",
-                index, len
-            );
+            crate::panic::raise(format_args!(
+                "Tuple.nth: index {index} is out of bounds for a tuple of {len} elements"
+            ));
         }
         let data = (tuple as *const u64).add(1);
         *data.add(index as usize)

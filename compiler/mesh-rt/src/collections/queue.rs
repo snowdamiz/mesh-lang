@@ -69,7 +69,7 @@ pub extern "C" fn mesh_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
 ///
 /// Panics if the queue is empty.
 #[no_mangle]
-pub extern "C" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
     unsafe {
         let front = queue_front(queue);
         let back = queue_back(queue);
@@ -78,7 +78,7 @@ pub extern "C" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
         let (front, back) = normalize(front, back);
 
         if super::list::mesh_list_length(front) == 0 {
-            panic!("mesh_queue_pop: empty queue");
+            crate::panic::raise(format_args!("Queue.pop: the queue is empty"));
         }
 
         let element = super::list::mesh_list_head(front);
@@ -99,14 +99,14 @@ pub extern "C" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
 
 /// Peek at the front element without removing it. Panics if empty.
 #[no_mangle]
-pub extern "C" fn mesh_queue_peek(queue: *mut u8) -> u64 {
+pub extern "C-unwind" fn mesh_queue_peek(queue: *mut u8) -> u64 {
     unsafe {
         let front = queue_front(queue);
         let back = queue_back(queue);
         let (front, _) = normalize(front, back);
 
         if super::list::mesh_list_length(front) == 0 {
-            panic!("mesh_queue_peek: empty queue");
+            crate::panic::raise(format_args!("Queue.peek: the queue is empty"));
         }
 
         super::list::mesh_list_head(front)

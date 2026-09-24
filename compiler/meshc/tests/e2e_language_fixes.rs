@@ -4201,3 +4201,57 @@ fn a_name_defined_at_several_arities_is_not_a_value() {
     );
     assert!(err.contains("fn a0 -> area(a0) end"), "{err}");
 }
+
+#[test]
+fn a_runtime_error_is_a_mesh_panic_that_ends_only_its_actor() {
+    // `List.get` past the end, in an actor, aborted the whole process ("panic
+    // in a function that cannot unwind", then Rust's backtrace): runtime
+    // functions could not unwind. It now ends the actor alone, reported as
+    // the one-line Mesh panic.
+    let (code, out, err) = run_status(
+        r##"actor worker(n :: Int) do
+  receive do
+    i -> println("got #{List.get([1], i)}")
+  end
+end
+
+fn main() do
+  let pid = spawn(worker, 0)
+  send(pid, 5)
+  Timer.sleep(200)
+  println("main still running")
+end
+"##,
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "main still running\n");
+    assert_eq!(
+        err,
+        "Mesh panic: List.get: index 5 is out of bounds for a list of length 1\n"
+    );
+    // On the main thread it ends the program with status 101.
+    for (value, message) in [
+        ("List.head(List.tail([1]))", "List.head: the list is empty"),
+        (
+            "DateTime.to_unix_ms(DateTime.add(dt, 1, :year))",
+            "DateTime.add: unknown unit \"year\"",
+        ),
+        (
+            "DateTime.to_unix_ms(DateTime.add(dt, 9223372036854775807, :day))",
+            "DateTime.add: adding 9223372036854775807 day to 0 ms is out of the supported range",
+        ),
+    ] {
+        let source = format!(
+            "fn main() do\n  case DateTime.from_unix_ms(0) do\n    Ok(dt) -> println(\"#{{{value}}}\")\n    Err(e) -> println(e)\n  end\nend\n"
+        );
+        let (code, out, err) = run_status(&source, &[]);
+        assert_eq!(code, Some(101), "{value}\n{err}");
+        assert_eq!(out, "", "{value}");
+        assert!(
+            err.starts_with(&format!("Mesh panic: {message}")),
+            "{value}\n{err}"
+        );
+        assert_eq!(err.lines().count(), 1, "{value}\n{err}");
+    }
+}

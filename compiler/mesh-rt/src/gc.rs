@@ -99,6 +99,7 @@ static ARENA: Mutex<Option<Arena>> = Mutex::new(None);
 #[no_mangle]
 pub extern "C" fn mesh_rt_init() {
     crate::stack_overflow::install_for_current_thread();
+    crate::panic::install_hook();
     let mut guard = ARENA.lock().unwrap();
     if guard.is_none() {
         let mut arena = Arena::new();

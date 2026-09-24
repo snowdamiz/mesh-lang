@@ -152,11 +152,11 @@ pub extern "C" fn mesh_list_append(list: *mut u8, element: u64) -> *mut u8 {
 
 /// Return the first element. Panics if empty.
 #[no_mangle]
-pub extern "C" fn mesh_list_head(list: *mut u8) -> u64 {
+pub extern "C-unwind" fn mesh_list_head(list: *mut u8) -> u64 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("mesh_list_head: empty list");
+            crate::panic::raise(format_args!("List.head: the list is empty"));
         }
         *list_data(list)
     }
@@ -164,11 +164,11 @@ pub extern "C" fn mesh_list_head(list: *mut u8) -> u64 {
 
 /// Return the list without its first element, as a view. Panics if empty.
 #[no_mangle]
-pub extern "C" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("mesh_list_tail: empty list");
+            crate::panic::raise(format_args!("List.tail: the list is empty"));
         }
         alloc_view(list, 1, len - 1)
     }
@@ -176,11 +176,13 @@ pub extern "C" fn mesh_list_tail(list: *mut u8) -> *mut u8 {
 
 /// Get the element at `index`. Panics if out of bounds.
 #[no_mangle]
-pub extern "C" fn mesh_list_get(list: *mut u8, index: i64) -> u64 {
+pub extern "C-unwind" fn mesh_list_get(list: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = list_len(list);
         if index < 0 || index as u64 >= len {
-            panic!("mesh_list_get: index {} out of bounds (len {})", index, len);
+            crate::panic::raise(format_args!(
+                "List.get: index {index} is out of bounds for a list of length {len}"
+            ));
         }
         *list_data(list).add(index as usize)
     }
@@ -812,11 +814,11 @@ pub extern "C" fn mesh_list_drop(list: *mut u8, n: i64) -> *mut u8 {
 
 /// Return the last element of the list. Panics if empty.
 #[no_mangle]
-pub extern "C" fn mesh_list_last(list: *mut u8) -> u64 {
+pub extern "C-unwind" fn mesh_list_last(list: *mut u8) -> u64 {
     unsafe {
         let len = list_len(list);
         if len == 0 {
-            panic!("mesh_list_last: empty list");
+            crate::panic::raise(format_args!("List.last: the list is empty"));
         }
         *list_data(list).add(len as usize - 1)
     }

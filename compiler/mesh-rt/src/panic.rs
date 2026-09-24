@@ -38,6 +38,42 @@ pub extern "C-unwind" fn mesh_panic(
     }
 }
 
+/// Raise a Mesh panic from runtime code: a runtime function was given a
+/// value it cannot handle (`List.get` past the end). It unwinds as
+/// `mesh_panic` does, so an actor crashes alone; the runtime function
+/// raising it must be `extern "C-unwind"`.
+pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
+    panic!("Mesh panic: {message}")
+}
+
+/// Print a Mesh panic as its message alone: the default report's thread
+/// name and runtime source location say nothing about the Mesh program.
+/// Any other panic is a runtime bug and keeps the default report.
+pub(crate) fn install_hook() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        let default = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            match mesh_panic_message(info.payload()) {
+                Some(message) => {
+                    use std::io::Write;
+                    let _ = writeln!(std::io::stderr(), "{message}");
+                }
+                None => default(info),
+            }
+        }));
+    });
+}
+
+/// The message of a Mesh panic; `None` for any other panic payload.
+pub(crate) fn mesh_panic_message(payload: &(dyn std::any::Any + Send)) -> Option<&str> {
+    let message = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())?;
+    message.starts_with("Mesh panic").then_some(message)
+}
+
 /// Run the program's `main` function on the main thread.
 ///
 /// A Mesh panic there ends the process with status 101 once the panic hook

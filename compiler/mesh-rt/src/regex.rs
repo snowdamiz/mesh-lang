@@ -101,15 +101,15 @@ unsafe fn regex_from_handle(rx_ptr: *const u8) -> regex::Regex {
 /// Panics on compile error (the pattern is a compile-time literal, so errors
 /// should have been caught by the developer before shipping).
 #[no_mangle]
-pub extern "C" fn mesh_regex_from_literal(pattern: *const MeshString, flags_bits: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_regex_from_literal(
+    pattern: *const MeshString,
+    flags_bits: i64,
+) -> *mut u8 {
     unsafe {
         let pat = (*pattern).as_str();
         match cached_regex(pat, flags_bits) {
             Ok(_) => alloc_regex(pattern, flags_bits),
-            Err(e) => panic!(
-                "mesh_regex_from_literal: invalid regex pattern {:?}: {}",
-                pat, e
-            ),
+            Err(e) => crate::panic::raise(format_args!("invalid regex literal ~r/{pat}/: {e}")),
         }
     }
 }
