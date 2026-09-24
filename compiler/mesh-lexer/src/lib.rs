@@ -529,22 +529,26 @@ impl<'src> Lexer<'src> {
 
     /// Lex hex digits after `0x`/`0X`.
     fn lex_hex(&mut self, start: u32) -> Token {
-        self.cursor.advance(); // consume 'x'/'X'
-        self.cursor.eat_while(|c| c.is_ascii_hexdigit() || c == '_');
-        Token::new(TokenKind::IntLiteral, start, self.cursor.pos())
+        self.lex_radix_digits(start)
     }
 
     /// Lex binary digits after `0b`/`0B`.
     fn lex_binary(&mut self, start: u32) -> Token {
-        self.cursor.advance(); // consume 'b'/'B'
-        self.cursor.eat_while(|c| c == '0' || c == '1' || c == '_');
-        Token::new(TokenKind::IntLiteral, start, self.cursor.pos())
+        self.lex_radix_digits(start)
     }
 
     /// Lex octal digits after `0o`/`0O`.
     fn lex_octal(&mut self, start: u32) -> Token {
-        self.cursor.advance(); // consume 'o'/'O'
-        self.cursor.eat_while(|c| matches!(c, '0'..='7' | '_'));
+        self.lex_radix_digits(start)
+    }
+
+    /// The digits after a radix prefix. Every letter and digit belongs to
+    /// the literal, so `0b102` is one (invalid) literal the checker names
+    /// the bad digit of, not `0b10` followed by a stray `2`.
+    fn lex_radix_digits(&mut self, start: u32) -> Token {
+        self.cursor.advance(); // consume the radix letter
+        self.cursor
+            .eat_while(|c| c.is_ascii_alphanumeric() || c == '_');
         Token::new(TokenKind::IntLiteral, start, self.cursor.pos())
     }
 

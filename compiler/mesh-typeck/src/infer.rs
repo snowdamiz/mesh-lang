@@ -8866,6 +8866,15 @@ fn numeric_literal_error(kind: SyntaxKind, text: &str, negated: bool) -> Option<
             if digits.is_empty() {
                 return Some(format!("expected digits after `{prefix}`"));
             }
+            if let Some(bad) = digits.chars().find(|c| !c.is_digit(radix)) {
+                let kind = match radix {
+                    2 => "binary",
+                    8 => "octal",
+                    16 => "hexadecimal",
+                    _ => "decimal",
+                };
+                return Some(format!("invalid digit `{bad}` in {kind} literal `{text}`"));
+            }
             match u64::from_str_radix(&digits, radix) {
                 Ok(value) if value <= i64::MAX as u64 => None,
                 // `-9223372036854775808` is the smallest Int.

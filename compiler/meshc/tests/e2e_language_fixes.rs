@@ -4093,3 +4093,21 @@ fn a_heredoc_can_end_with_a_quote() {
     let source = "fn main() do\n  println(\"\"\"ends with quote\"\"\"\")\n  println(\"\"\"say \"hi\" twice\"\"\"\"\"\")\nend\n";
     assert_eq!(run(source), "ends with quote\"\nsay \"hi\" twice\"\"\"\n");
 }
+
+#[test]
+fn a_bad_digit_in_a_radix_literal_is_named() {
+    // `0b102` lexed as `0b10` then `2`: "expected a newline or `;`".
+    let err = build_error("fn main() do\n  let b = 0b102\n  let c = 0o8\n  let d = 0xfg\n  println(\"#{b} #{c} #{d}\")\nend\n");
+    assert!(
+        err.contains("invalid digit `2` in binary literal `0b102`"),
+        "{err}"
+    );
+    assert!(
+        err.contains("invalid digit `8` in octal literal `0o8`"),
+        "{err}"
+    );
+    assert!(
+        err.contains("invalid digit `g` in hexadecimal literal `0xfg`"),
+        "{err}"
+    );
+}
