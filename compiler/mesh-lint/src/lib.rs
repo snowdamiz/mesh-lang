@@ -448,6 +448,14 @@ end
     }
 
     #[test]
+    fn a_describe_with_bare_setup_parses() {
+        // `setup do` was a parse error: "expected a newline or `;` after the
+        // statement".
+        let source = "describe(\"g\") do\n  setup do\n    let x = 1\n  end\n  test(\"t\") do\n    assert(x == 1)\n  end\nend\n";
+        assert_eq!(findings(source), vec![]);
+    }
+
+    #[test]
     fn bool_comparison_flags_literals_only() {
         let source = "\
 fn f(flag, other) do

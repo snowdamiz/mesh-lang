@@ -892,6 +892,13 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             expressions::parse_assert_receive(p);
         }
 
+        // `setup do ... end` (a test file's describe block): a statement that
+        // is a name and a `do` block calls the name with it as a trailing
+        // closure, as `setup() do ... end` does.
+        SyntaxKind::IDENT if p.nth(1) == SyntaxKind::DO_KW => {
+            expressions::parse_bare_trailing_closure_call(p);
+        }
+
         SyntaxKind::RETURN_KW => {
             expressions::parse_return_expr(p);
         }

@@ -1618,6 +1618,17 @@ fn parse_param_ownership_modifier(p: &mut Parser) {
 
 // ── Trailing Closure ──────────────────────────────────────────────────
 
+/// `name do ... end` at the start of a statement: a CALL_EXPR of `name` with
+/// no argument list and a trailing closure.
+pub(crate) fn parse_bare_trailing_closure_call(p: &mut Parser) {
+    let call = p.open();
+    let name = p.open();
+    p.advance(); // IDENT
+    p.close(name, SyntaxKind::NAME_REF);
+    parse_trailing_closure(p);
+    p.close(call, SyntaxKind::CALL_EXPR);
+}
+
 /// Parse a trailing closure: `do [|params|] body end`
 ///
 /// Attached to the preceding CALL_EXPR as a TRAILING_CLOSURE child.

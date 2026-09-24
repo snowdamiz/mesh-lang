@@ -720,6 +720,14 @@ mod snapshot_tests {
     }
 
     #[test]
+    fn bare_setup_and_teardown_are_formatted() {
+        // `setup do` (no parentheses), as `meshc test` takes it, was a parse
+        // error: "expected a newline or `;` after the statement".
+        let src = "describe(\"g\") do\n  setup do\n    let x = 1\n  end\n  teardown do\n    println(\"done\")\n  end\n  test(\"t\") do\n    assert(x == 1)\n  end\nend\n";
+        assert_eq!(fmt(src), src);
+    }
+
+    #[test]
     fn snapshot_comment_preserved() {
         let result = fmt("# A comment\nfn foo() do\n1\nend");
         insta::assert_snapshot!(result, @r"
