@@ -1414,6 +1414,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_orm_build_update as *const (),
         ),
         ("mesh_panic", mesh_rt::mesh_panic as *const ()),
+        (
+            "mesh_panic_str",
+            mesh_rt::panic::mesh_panic_str as *const (),
+        ),
         ("mesh_pg_begin", mesh_rt::db::pg::mesh_pg_begin as *const ()),
         ("mesh_pg_cast", mesh_rt::db::expr::mesh_pg_cast as *const ()),
         ("mesh_pg_close", mesh_rt::db::pg::mesh_pg_close as *const ()),

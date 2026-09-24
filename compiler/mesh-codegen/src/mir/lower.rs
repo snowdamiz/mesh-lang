@@ -9398,6 +9398,30 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_call_expr_unshaped(&mut self, call: &CallExpr) -> MirExpr {
+        // `panic(message)`: the runtime raises it, and nothing runs after it.
+        if let Some(Expr::NameRef(callee)) = call.callee() {
+            if callee.text().as_deref() == Some("panic") && self.lookup_var("panic").is_none() {
+                let message = call
+                    .args()
+                    .first()
+                    .map(|arg| self.lower_expr(arg))
+                    .unwrap_or(MirExpr::Unit);
+                let raise = MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        "mesh_panic_str".to_string(),
+                        MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+                    )),
+                    args: vec![message],
+                    ty: MirType::Unit,
+                };
+                let unreachable = MirExpr::Panic {
+                    message: "unreachable".to_string(),
+                    file: "<panic>".to_string(),
+                    line: 0,
+                };
+                return MirExpr::Block(vec![raise, unreachable], MirType::Never);
+            }
+        }
         if let Some(metadata) = self
             .clustered_route_wrappers
             .get(&call.syntax().text_range())

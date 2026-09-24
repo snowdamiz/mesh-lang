@@ -3478,6 +3478,19 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         void_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_panic_str(message: ptr) -> ! (`panic(message)`)
+    let panic_str = module.add_function(
+        "mesh_panic_str",
+        void_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    panic_str.add_attribute(
+        inkwell::attributes::AttributeLoc::Function,
+        context.create_enum_attribute(
+            inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+            0,
+        ),
+    );
     let process_exit = module.add_function(
         "mesh_process_exit",
         void_type.fn_type(&[i64_type.into()], false),
@@ -5258,7 +5271,7 @@ mod tests {
         declare_intrinsics(&module);
 
         let noreturn_id = inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn");
-        for name in ["mesh_panic", "mesh_process_exit"] {
+        for name in ["mesh_panic", "mesh_panic_str", "mesh_process_exit"] {
             let function = get_intrinsic(&module, name);
             let attr = function
                 .get_enum_attribute(inkwell::attributes::AttributeLoc::Function, noreturn_id);

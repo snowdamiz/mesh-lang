@@ -325,6 +325,12 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
     );
 
+    // panic(String) -> Never -- ends the actor, or the program, with a Mesh panic
+    env.insert(
+        "panic".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Never)),
+    );
+
     // print(String) -> () -- prints a string without trailing newline
     env.insert(
         "print".into(),

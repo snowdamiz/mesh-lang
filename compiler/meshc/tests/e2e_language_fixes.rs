@@ -4519,3 +4519,39 @@ end
 "##);
     assert_eq!(out, "[20, 40, 60]\n[]\n");
 }
+
+#[test]
+fn panic_ends_the_actor_or_the_program() {
+    // The Mesh skill docs used `panic("...")`, which did not exist.
+    let (code, out, err) = run_status(
+        r##"fn parse_port(text :: String) -> Int do
+  case String.to_int(text) do
+    Some(port) -> port
+    None -> panic("not a port: #{text}")
+  end
+end
+
+actor worker(n :: Int) do
+  receive do
+    _ -> panic("deliberate crash")
+  end
+end
+
+fn main() do
+  println("#{parse_port("8080")}")
+  let pid = spawn(worker, 0)
+  send(pid, 1)
+  Timer.sleep(200)
+  println("#{parse_port("x")}")
+  println("unreachable")
+end
+"##,
+        &[],
+    );
+    assert_eq!(code, Some(101), "{err}");
+    assert_eq!(out, "8080\n");
+    assert_eq!(
+        err,
+        "Mesh panic: deliberate crash\nMesh panic: not a port: x\n"
+    );
+}

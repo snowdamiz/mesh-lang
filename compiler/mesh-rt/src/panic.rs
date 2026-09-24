@@ -46,6 +46,12 @@ pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
     panic!("Mesh panic: {message}")
 }
 
+/// `panic(message)`: end the actor, or the program with status 101.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_panic_str(message: *const crate::string::MeshString) -> ! {
+    raise(format_args!("{}", unsafe { (*message).as_str() }))
+}
+
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

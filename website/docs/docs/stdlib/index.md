@@ -31,6 +31,21 @@ String indexing is by Unicode code point rather than byte. `String.slice(text, s
 
 The `<>` operator concatenates two strings. `println(value)` writes to standard output with a newline, and `print(value)` writes without one.
 
+`panic(message)` stops with a runtime error: it ends the current actor (a supervisor can restart it), or the program with exit status 101 when called from `main`, printing `Mesh panic: message`. It never returns, so it fits any branch:
+
+```mesh
+fn parse_port(text :: String) -> Int do
+  case String.to_int(text) do
+    Some(port) -> port
+    None -> panic("not a port: #{text}")
+  end
+end
+
+fn main() do
+  println("${parse_port("8080")}")
+end
+```
+
 ## Input, Environment, and Files
 
 | Function | Returns | Description |
