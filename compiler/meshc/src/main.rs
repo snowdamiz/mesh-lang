@@ -1000,9 +1000,8 @@ pub(crate) fn prepare_project_build(
         // Build ImportContext from already-checked dependencies
         let mut import_ctx = build_import_context(&project.graph, &all_exports, parse, id);
 
-        // Thread current module name for display_prefix on locally-defined types.
-        // Multi-module builds set this so type errors show module-qualified names
-        // (e.g., "expected Geometry.Point, got Main.Point").
+        // Thread the current module's name (clustered route handlers are
+        // named with it).
         let module_name = &project.graph.get(id).name;
         import_ctx.current_module = Some(module_name.clone());
         import_ctx.test_builtins = test_builtins;

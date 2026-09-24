@@ -6035,12 +6035,9 @@ fn register_struct_def(
     }
 
     // Register a constructor function: StructName(field1, field2, ...) -> StructName
-    // If in multi-module mode, set display_prefix on the TyCon for error messages.
-    let tycon = if let Some(ref module) = ctx.current_module {
-        TyCon::with_module(&name, module.as_str())
-    } else {
-        TyCon::new(&name)
-    };
+    // Named as the module's own code names it (`Dog`, as in its annotations);
+    // importers see it with its module (`Geometry.Point`).
+    let tycon = TyCon::new(&name);
     let struct_ty = if generic_params.is_empty() {
         Ty::App(Box::new(Ty::Con(tycon)), vec![])
     } else {
@@ -13397,7 +13394,7 @@ fn infer_struct_literal(
 
     // Build the struct type with display_prefix if applicable.
     // Look up the env entry for this struct to preserve its display_prefix
-    // (set during import resolution or local struct registration).
+    // (set during import resolution).
     let tycon = match env.lookup(&struct_name) {
         Some(scheme) => match &scheme.ty {
             Ty::App(inner, _) => {

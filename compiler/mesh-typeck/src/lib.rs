@@ -66,8 +66,8 @@ pub struct ImportContext {
     pub all_trait_impls: Vec<TraitImplDef>,
 
     /// The name of the current module being type-checked (e.g., "Geometry").
-    /// None for single-file mode (backward compat). Used to set display_prefix
-    /// on locally-defined types in error messages.
+    /// None for single-file mode (backward compat). Used to name clustered
+    /// route handlers.
     pub current_module: Option<String>,
 
     /// Whether compiler-provided test-only builtins are available.

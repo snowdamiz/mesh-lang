@@ -105,7 +105,7 @@ pub struct InferCtx {
     /// Populated by infer_service_def with resolved helper function types.
     pub local_service_exports: FxHashMap<String, crate::ServiceExportInfo>,
     /// The name of the current module being type-checked (e.g., "Geometry").
-    /// None for single-file mode. Used to set display_prefix on locally-defined types.
+    /// None for single-file mode. Used to name clustered route handlers.
     pub current_module: Option<String>,
     /// Whether compiler-provided test-only builtins are available.
     pub test_builtins: bool,

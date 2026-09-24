@@ -3889,7 +3889,8 @@ end
     let err = build_error(
         "struct Q do\n  x :: Int\nend\n\nfn main() do\n  println(String.from(Q { x: 1 }))\nend\n",
     );
-    assert!(err.contains("Main.Q does not implement Display"), "{err}");
+    // The type as written (it said `Main.Q`).
+    assert!(err.contains("Error: Q does not implement Display"), "{err}");
 }
 
 #[test]
