@@ -29,7 +29,7 @@ pub fn install_for_current_thread() {
         INSTALL.call_once(|| {
             for signal in [libc::SIGSEGV, libc::SIGBUS] {
                 let mut action: libc::sigaction = std::mem::zeroed();
-                action.sa_sigaction = handler as usize;
+                action.sa_sigaction = handler as *const () as usize;
                 action.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK;
                 libc::sigemptyset(&mut action.sa_mask);
                 libc::sigaction(signal, &action, std::ptr::null_mut());
