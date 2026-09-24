@@ -4049,7 +4049,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         trait_registry.register_trait(trait_def.clone());
     }
     for impl_def in &import_ctx.all_trait_impls {
-        let _ = trait_registry.register_impl(impl_def.clone());
+        trait_registry.register_imported_impl(impl_def.clone());
     }
 
     // Pre-seed TypeRegistry and TypeEnv with imported struct definitions

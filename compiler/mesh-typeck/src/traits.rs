@@ -146,6 +146,16 @@ impl TraitRegistry {
         self.nominal.insert(name.to_string());
     }
 
+    /// Whether an impl for `impl_type` could match a type headed by
+    /// `head` (from `impl_head`); the lookups below check this before
+    /// unifying, which builds a whole inference context per impl.
+    fn may_match(&self, impl_type: &Ty, head: Option<&str>) -> bool {
+        match (head, impl_head(impl_type, &self.nominal)) {
+            (Some(head), Some(impl_head)) => head == impl_head,
+            _ => true,
+        }
+    }
+
     /// `ty` with its type parameters replaced by fresh variables.
     fn freshen(&self, ty: &Ty, ctx: &mut InferCtx) -> Ty {
         freshen_type_params_with_names(ty, ctx, &[], &self.nominal)
@@ -191,6 +201,22 @@ impl TraitRegistry {
     }
 
     pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<TypeError> {
+        self.register_impl_checking_overlap(impl_def, true)
+    }
+
+    /// An impl of a module checked earlier. Its own module compared it with
+    /// every impl before it, so it is not compared again: each module
+    /// re-registers every earlier module's impls, and comparing them all
+    /// against each other made checking a project quadratic.
+    pub fn register_imported_impl(&mut self, impl_def: ImplDef) {
+        let _ = self.register_impl_checking_overlap(impl_def, false);
+    }
+
+    fn register_impl_checking_overlap(
+        &mut self,
+        impl_def: ImplDef,
+        check_overlap: bool,
+    ) -> Vec<TypeError> {
         let mut impl_def = impl_def;
         let mut errors = Vec::new();
 
@@ -325,14 +351,24 @@ impl TraitRegistry {
         // Check for duplicate (structurally overlapping) impls before inserting.
         // For parameterized traits (e.g., From<Int> vs From<Float> for String),
         // two impls are only duplicates if both impl_type AND trait_type_args unify.
-        let nominal = self.nominal.clone();
+        // Every impl of the interface is compared, so first skip, cheaply,
+        // the ones headed by another type constructor.
+        let nominal = &self.nominal;
+        let new_head = impl_head(&impl_def.impl_type, nominal);
         let existing_impls = self.impls.entry(impl_def.trait_name.clone()).or_default();
-        for existing in existing_impls.iter() {
+        for existing in existing_impls.iter().filter(|_| check_overlap) {
+            if let (Some(new_head), Some(head)) =
+                (new_head, impl_head(&existing.impl_type, nominal))
+            {
+                if new_head != head {
+                    continue;
+                }
+            }
             let mut ctx = InferCtx::new();
             let freshened_existing =
-                freshen_type_params_with_names(&existing.impl_type, &mut ctx, &[], &nominal);
+                freshen_type_params_with_names(&existing.impl_type, &mut ctx, &[], nominal);
             let freshened_new =
-                freshen_type_params_with_names(&impl_def.impl_type, &mut ctx, &[], &nominal);
+                freshen_type_params_with_names(&impl_def.impl_type, &mut ctx, &[], nominal);
             if ctx
                 .unify(freshened_existing, freshened_new, ConstraintOrigin::Builtin)
                 .is_ok()
@@ -347,8 +383,8 @@ impl TraitRegistry {
                         .iter()
                         .zip(&impl_def.trait_type_args)
                     {
-                        let fa = freshen_type_params_with_names(a, &mut ctx, &[], &nominal);
-                        let fb = freshen_type_params_with_names(b, &mut ctx, &[], &nominal);
+                        let fa = freshen_type_params_with_names(a, &mut ctx, &[], nominal);
+                        let fb = freshen_type_params_with_names(b, &mut ctx, &[], nominal);
                         if ctx.unify(fa, fb, ConstraintOrigin::Builtin).is_err() {
                             args_match = false;
                             break;
@@ -490,7 +526,11 @@ impl TraitRegistry {
     /// impl whose type unifies with the query type.
     pub fn find_impl(&self, trait_name: &str, ty: &Ty) -> Option<&ImplDef> {
         let impls = self.impls.get(trait_name)?;
+        let head = impl_head(ty, &self.nominal);
         for impl_def in impls {
+            if !self.may_match(&impl_def.impl_type, head) {
+                continue;
+            }
             let mut ctx = InferCtx::new();
             let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
             let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
@@ -518,8 +558,11 @@ impl TraitRegistry {
             return self.find_impl(trait_name, impl_ty);
         }
         let impls = self.impls.get(trait_name)?;
+        let head = impl_head(impl_ty, &self.nominal);
         for impl_def in impls {
-            if impl_def.trait_type_args.len() != trait_type_args.len() {
+            if impl_def.trait_type_args.len() != trait_type_args.len()
+                || !self.may_match(&impl_def.impl_type, head)
+            {
                 continue;
             }
             let mut ctx = InferCtx::new();
@@ -590,8 +633,12 @@ impl TraitRegistry {
     /// in what they return, and a call picks one by that.
     pub fn impls_providing(&self, method_name: &str, ty: &Ty) -> Vec<(&ImplDef, Option<Ty>)> {
         let mut found = Vec::new();
+        let head = impl_head(ty, &self.nominal);
         for impl_list in self.impls.values() {
             for impl_def in impl_list {
+                if !self.may_match(&impl_def.impl_type, head) {
+                    continue;
+                }
                 let Some(method_sig) = impl_def.methods.get(method_name) else {
                     continue;
                 };
@@ -625,8 +672,12 @@ impl TraitRegistry {
     }
 
     pub fn resolve_trait_method(&self, method_name: &str, arg_ty: &Ty) -> Option<Ty> {
+        let head = impl_head(arg_ty, &self.nominal);
         for impl_list in self.impls.values() {
             for impl_def in impl_list {
+                if !self.may_match(&impl_def.impl_type, head) {
+                    continue;
+                }
                 if let Some(method_sig) = impl_def.methods.get(method_name) {
                     let mut ctx = InferCtx::new();
                     let query = import_vars(arg_ty, &mut ctx, &mut FxHashMap::default());
@@ -655,8 +706,12 @@ impl TraitRegistry {
     /// the named method and structurally matches the argument type. Returns
     /// a clone of the `ImplMethodSig` if found.
     pub fn find_method_sig(&self, method_name: &str, ty: &Ty) -> Option<ImplMethodSig> {
+        let head = impl_head(ty, &self.nominal);
         for impl_list in self.impls.values() {
             for impl_def in impl_list {
+                if !self.may_match(&impl_def.impl_type, head) {
+                    continue;
+                }
                 if let Some(method_sig) = impl_def.methods.get(method_name) {
                     let mut ctx = InferCtx::new();
                     let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
@@ -681,8 +736,12 @@ impl TraitRegistry {
     /// if the returned list has more than one element, the call is ambiguous.
     pub fn find_method_traits(&self, method_name: &str, ty: &Ty) -> Vec<String> {
         let mut trait_names = Vec::new();
+        let head = impl_head(ty, &self.nominal);
         for (trait_name, impl_list) in &self.impls {
             for impl_def in impl_list {
+                if !self.may_match(&impl_def.impl_type, head) {
+                    continue;
+                }
                 if impl_def.methods.contains_key(method_name) {
                     let mut ctx = InferCtx::new();
                     let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
@@ -776,6 +835,38 @@ fn import_vars(ty: &Ty, ctx: &mut InferCtx, map: &mut FxHashMap<TyVar, Ty>) -> T
             args.iter().map(|a| import_vars(a, ctx, map)).collect(),
         ),
         Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|e| import_vars(e, ctx, map)).collect()),
+    }
+}
+
+/// What a type is headed by, as far as unification can tell heads apart,
+/// or `None` when it could be anything (a type parameter, a variable):
+/// types with different heads never unify. Constructors that unify despite
+/// their names (see `InferCtx::unify`) share one: `Json` is `String`, every
+/// iterator handle and `Iter` is `Ptr`, and the untyped `Tuple` is a tuple,
+/// of any length since a tuple row matches several.
+fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
+    match ty {
+        Ty::Con(c) => {
+            let name = c.name.as_str();
+            let param = (name.len() == 1
+                && name.as_bytes()[0].is_ascii_uppercase()
+                && !nominal.contains(name))
+                || name.starts_with('\'');
+            if param {
+                return None;
+            }
+            Some(match name {
+                "Json" => "String",
+                "Tuple" => "(,)",
+                "Iter" | "Ptr" => "Ptr",
+                name if name.ends_with("Iterator") => "Ptr",
+                name => name,
+            })
+        }
+        Ty::App(con, _) => impl_head(con, nominal),
+        Ty::Tuple(_) => Some("(,)"),
+        Ty::Fun(..) => Some("->"),
+        Ty::Var(_) | Ty::Never => None,
     }
 }
 
@@ -1349,5 +1440,57 @@ mod tests {
 
         let struct_ret = registry.resolve_trait_method("add", &my_struct);
         assert_eq!(struct_ret, Some(my_struct));
+    }
+
+    #[test]
+    fn lookups_skip_impls_only_when_heads_cannot_unify() {
+        // Lookups and the duplicate check skip an impl headed by another
+        // constructor; constructors that unify despite their names must
+        // still meet.
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(make_display_trait());
+        let display = |impl_type: Ty, name: &str| ImplDef {
+            trait_name: "Display".to_string(),
+            trait_type_args: vec![],
+            impl_type,
+            impl_type_name: name.to_string(),
+            methods: display_method_sig(),
+            associated_types: FxHashMap::default(),
+        };
+        let con = |name: &str| Ty::Con(TyCon::new(name));
+        for (ty, name) in [
+            (Ty::string(), "String"),
+            (Ty::list(con("T")), "List"),
+            (Ty::Tuple(vec![con("A"), con("B")]), "Tuple"),
+            (con("Ptr"), "Ptr"),
+        ] {
+            assert!(
+                registry.register_impl(display(ty, name)).is_empty(),
+                "{name}"
+            );
+        }
+        let found = |ty: Ty| {
+            registry
+                .find_impl("Display", &ty)
+                .map(|imp| imp.impl_type_name.clone())
+        };
+        assert_eq!(found(con("Json")).as_deref(), Some("String"));
+        assert_eq!(found(Ty::list(Ty::int())).as_deref(), Some("List"));
+        assert_eq!(
+            found(Ty::Tuple(vec![Ty::int(), Ty::string()])).as_deref(),
+            Some("Tuple")
+        );
+        assert_eq!(found(con("Tuple")).as_deref(), Some("Tuple"));
+        assert_eq!(found(con("ListIterator")).as_deref(), Some("Ptr"));
+        assert_eq!(found(Ty::int()), None);
+
+        // A second impl for the same type is still a duplicate; one imported
+        // from a module checked earlier is not compared again.
+        let errors = registry.register_impl(display(Ty::string(), "String"));
+        assert!(
+            matches!(errors.as_slice(), [TypeError::DuplicateImpl { .. }]),
+            "{errors:?}"
+        );
+        registry.register_imported_impl(display(Ty::string(), "String"));
     }
 }
