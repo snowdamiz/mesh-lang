@@ -12676,8 +12676,15 @@ fn infer_field_access(
             }
 
             // A module without the function: say so, instead of
-            // "undefined variable" for the module's name.
-            let module_functions: Option<Vec<String>> = if env.is_local(&base_name) {
+            // "undefined variable" for the module's name. A type named like
+            // a module (`Int.tag()` for `impl Named for Int`) may provide
+            // the name as a static method, which the call resolves.
+            let static_method = trait_registry
+                .impls_with_static_method(&field_name)
+                .iter()
+                .any(|imp| imp.impl_type_name == base_name);
+            let module_functions: Option<Vec<String>> = if env.is_local(&base_name) || static_method
+            {
                 None
             } else if let Some(functions) = ctx.qualified_modules.get(&base_name) {
                 Some(functions.keys().cloned().collect())
