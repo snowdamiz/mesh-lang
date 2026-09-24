@@ -202,15 +202,17 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 /// Whether a runtime function may change the object at `ptr` in place (a
 /// collection growing into its spare room): the object is in the running
 /// actor's own heap, which no other thread writes and whose collector sees
-/// what is stored in it. An object of another heap (lent) or of the global
-/// arena is not. Off an actor (the runtime's own threads, unit tests) every
-/// object a thread handles is its own.
+/// what is stored in it, and nothing of that heap is lent out, so no other
+/// thread is reading it either. An object of another heap (lent) or of the
+/// global arena is not. Off an actor (a runtime thread running a callback,
+/// such as an HTTP stream's) nothing is: the object may be another actor's.
 pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
     use crate::actor::stack::get_current_pid;
     use crate::actor::GLOBAL_SCHEDULER;
 
     let Some(pid) = get_current_pid() else {
-        return true;
+        // Unit tests run off an actor and exercise the in-place paths.
+        return cfg!(test);
     };
     let owns = |cached: &CachedProcess| {
         let mut cached = cached.borrow_mut();
@@ -218,8 +220,8 @@ pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
             *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
         }
         let (_, process) = cached.as_ref()?;
-        let contains = process.lock().heap.contains_address(ptr);
-        Some(contains)
+        let mut process = process.lock();
+        Some(process.heap.contains_address(ptr) && !process.heap.has_loans())
     };
     CURRENT_PROCESS
         .try_with(owns)

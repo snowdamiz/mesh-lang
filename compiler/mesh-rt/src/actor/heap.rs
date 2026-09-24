@@ -502,6 +502,13 @@ impl ActorHeap {
         after > 0 && addr < self.page_ranges[after - 1].1
     }
 
+    /// Whether another actor or thread may be reading this heap's objects:
+    /// something here is lent to a borrower that is still alive.
+    pub(crate) fn has_loans(&mut self) -> bool {
+        self.lent.retain(Lent::is_live);
+        !self.lent.is_empty()
+    }
+
     /// True when `data` is the start of a live allocation of at least `size` bytes.
     pub(crate) fn is_live_allocation(&self, data: *const u8, size: usize) -> bool {
         self.live_allocation_size(data)
@@ -1566,7 +1573,9 @@ mod tests {
             heap.lend(&[7, 0]).is_none(),
             "plain integers borrow nothing"
         );
+        assert!(!heap.has_loans());
         let loan = heap.lend(&[7, interior]).expect("word points into heap");
+        assert!(heap.has_loans(), "nothing grows in place while lent");
 
         heap.collect(stack, stack);
         assert!(heap.is_live_allocation(outer, 32));
@@ -1577,6 +1586,7 @@ mod tests {
         assert_eq!(heap.total_bytes(), 2 * (GC_HEADER_SIZE + 32));
 
         drop(loan);
+        assert!(!heap.has_loans());
         heap.collect(stack, stack);
         assert!(heap.all_objects_head().is_null());
         assert!(heap.lent.is_empty());
