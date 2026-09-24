@@ -1881,10 +1881,11 @@ pub(crate) unsafe fn invoke_transaction_callback(
     conn_handle: u64,
 ) -> *mut u8 {
     let result = if env_ptr.is_null() {
-        let callback: extern "C" fn(u64) -> MeshResult = std::mem::transmute(fn_ptr);
+        let callback: extern "C-unwind" fn(u64) -> MeshResult = std::mem::transmute(fn_ptr);
         callback(conn_handle)
     } else {
-        let callback: extern "C" fn(*const u8, u64) -> MeshResult = std::mem::transmute(fn_ptr);
+        let callback: extern "C-unwind" fn(*const u8, u64) -> MeshResult =
+            std::mem::transmute(fn_ptr);
         callback(env_ptr, conn_handle)
     };
     alloc_result(result.tag, result.value) as *mut u8

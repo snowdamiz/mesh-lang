@@ -185,7 +185,7 @@ unsafe fn mesh_json_to_serde_value(json: *const MeshJson) -> serde_json::Value {
 /// - tag 0 (Ok): value = pointer to MeshJson
 /// - tag 1 (Err): value = pointer to MeshString error message
 #[no_mangle]
-pub extern "C" fn mesh_json_parse(input: *const MeshString) -> *mut MeshResult {
+pub extern "C-unwind" fn mesh_json_parse(input: *const MeshString) -> *mut MeshResult {
     unsafe {
         let text = (*input).as_str();
         match serde_json::from_str::<serde_json::Value>(text) {
@@ -208,7 +208,7 @@ pub extern "C" fn mesh_json_parse(input: *const MeshString) -> *mut MeshResult {
 ///
 /// `input` must be a valid non-null `*const MeshString`.
 #[no_mangle]
-pub extern "C" fn mesh_json_parse_raw(input: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_parse_raw(input: *const MeshString) -> *mut u8 {
     unsafe {
         let text = (*input).as_str();
         match serde_json::from_str::<serde_json::Value>(text) {
@@ -225,7 +225,7 @@ pub extern "C" fn mesh_json_parse_raw(input: *const MeshString) -> *mut u8 {
 
 /// Encode a MeshJson value to a JSON string.
 #[no_mangle]
-pub extern "C" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
     unsafe {
         let json_ptr = json as *const MeshJson;
         let val = mesh_json_to_serde_value(json_ptr);
@@ -238,7 +238,7 @@ pub extern "C" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
 
 /// Encode a Mesh string directly to a JSON string (with quotes).
 #[no_mangle]
-pub extern "C" fn mesh_json_encode_string(s: *const MeshString) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode_string(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let text = (*s).as_str();
         let val = serde_json::Value::String(text.to_string());
@@ -249,14 +249,14 @@ pub extern "C" fn mesh_json_encode_string(s: *const MeshString) -> *mut MeshStri
 
 /// Encode an integer to a JSON string.
 #[no_mangle]
-pub extern "C" fn mesh_json_encode_int(val: i64) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode_int(val: i64) -> *mut MeshString {
     let text = val.to_string();
     mesh_string_new(text.as_ptr(), text.len() as u64)
 }
 
 /// Encode a boolean to a JSON string.
 #[no_mangle]
-pub extern "C" fn mesh_json_encode_bool(val: i8) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode_bool(val: i8) -> *mut MeshString {
     let text = if val != 0 { "true" } else { "false" };
     mesh_string_new(text.as_ptr(), text.len() as u64)
 }
@@ -266,7 +266,7 @@ pub extern "C" fn mesh_json_encode_bool(val: i8) -> *mut MeshString {
 /// Assumes map keys are MeshString pointers and values are MeshString pointers.
 /// Produces a JSON object like `{"key1":"val1","key2":"val2"}`.
 #[no_mangle]
-pub extern "C" fn mesh_json_encode_map(map_ptr: *mut u8) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode_map(map_ptr: *mut u8) -> *mut MeshString {
     unsafe {
         let keys = map::mesh_map_keys(map_ptr);
         let vals = map::mesh_map_values(map_ptr);
@@ -290,7 +290,7 @@ pub extern "C" fn mesh_json_encode_map(map_ptr: *mut u8) -> *mut MeshString {
 /// Assumes list elements are MeshString pointers.
 /// Produces a JSON array like `["a","b","c"]`.
 #[no_mangle]
-pub extern "C" fn mesh_json_encode_list(list_ptr: *mut u8) -> *mut MeshString {
+pub extern "C-unwind" fn mesh_json_encode_list(list_ptr: *mut u8) -> *mut MeshString {
     unsafe {
         let len = list::mesh_list_length(list_ptr);
         let mut arr = Vec::with_capacity(len as usize);
@@ -309,25 +309,25 @@ pub extern "C" fn mesh_json_encode_list(list_ptr: *mut u8) -> *mut MeshString {
 
 /// Create a MeshJson Int from an i64.
 #[no_mangle]
-pub extern "C" fn mesh_json_from_int(val: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_from_int(val: i64) -> *mut u8 {
     alloc_json(JSON_INT, val as u64) as *mut u8
 }
 
 /// Create a MeshJson Float from an f64.
 #[no_mangle]
-pub extern "C" fn mesh_json_from_float(val: f64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_from_float(val: f64) -> *mut u8 {
     alloc_json(JSON_FLOAT, val.to_bits()) as *mut u8
 }
 
 /// Create a MeshJson Bool from an i8 (0 = false, non-zero = true).
 #[no_mangle]
-pub extern "C" fn mesh_json_from_bool(val: i8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_from_bool(val: i8) -> *mut u8 {
     alloc_json(JSON_BOOL, if val != 0 { 1 } else { 0 }) as *mut u8
 }
 
 /// Create a MeshJson Str from a MeshString.
 #[no_mangle]
-pub extern "C" fn mesh_json_from_string(s: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_from_string(s: *const MeshString) -> *mut u8 {
     alloc_json(JSON_STR, s as u64) as *mut u8
 }
 
@@ -336,14 +336,14 @@ pub extern "C" fn mesh_json_from_string(s: *const MeshString) -> *mut u8 {
 /// Create an empty JSON object.
 /// Uses string-typed map (KEY_TYPE_STR) so key lookups use content comparison.
 #[no_mangle]
-pub extern "C" fn mesh_json_object_new() -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_object_new() -> *mut u8 {
     let m = map::mesh_map_new_typed(1);
     alloc_json(JSON_OBJECT, m as u64) as *mut u8
 }
 
 /// Add a key-value pair to a JSON object. Returns a new JSON object.
 #[no_mangle]
-pub extern "C" fn mesh_json_object_put(obj: *mut u8, key: *mut u8, val: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_object_put(obj: *mut u8, key: *mut u8, val: *mut u8) -> *mut u8 {
     unsafe {
         let j = obj as *mut MeshJson;
         let m = (*j).value as *mut u8;
@@ -354,7 +354,7 @@ pub extern "C" fn mesh_json_object_put(obj: *mut u8, key: *mut u8, val: *mut u8)
 
 /// Get a value from a JSON object by key. Returns MeshResult (Ok/Err).
 #[no_mangle]
-pub extern "C" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mut u8 {
     unsafe {
         let j = obj as *mut MeshJson;
         if (*j).tag != JSON_OBJECT {
@@ -373,14 +373,14 @@ pub extern "C" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mut u8 {
 
 /// Create an empty JSON array.
 #[no_mangle]
-pub extern "C" fn mesh_json_array_new() -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_array_new() -> *mut u8 {
     let l = list::mesh_list_new();
     alloc_json(JSON_ARRAY, l as u64) as *mut u8
 }
 
 /// Append a value to a JSON array. Returns a new JSON array.
 #[no_mangle]
-pub extern "C" fn mesh_json_array_push(arr: *mut u8, val: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_array_push(arr: *mut u8, val: *mut u8) -> *mut u8 {
     unsafe {
         let j = arr as *mut MeshJson;
         let l = (*j).value as *mut u8;
@@ -392,7 +392,7 @@ pub extern "C" fn mesh_json_array_push(arr: *mut u8, val: *mut u8) -> *mut u8 {
 /// Extract an Int from a MeshJson value. Returns MeshResult.
 /// Coerces Float to Int if needed.
 #[no_mangle]
-pub extern "C" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
     unsafe {
         let j = json as *mut MeshJson;
         match (*j).tag {
@@ -417,7 +417,7 @@ pub extern "C" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
 /// Extract a Float from a MeshJson value. Returns MeshResult.
 /// Promotes Int to Float if needed.
 #[no_mangle]
-pub extern "C" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
     unsafe {
         let j = json as *mut MeshJson;
         match (*j).tag {
@@ -438,7 +438,7 @@ pub extern "C" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
 
 /// Extract a String from a MeshJson value. Returns MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
     unsafe {
         let j = json as *mut MeshJson;
         if (*j).tag == JSON_STR {
@@ -451,7 +451,7 @@ pub extern "C" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
 
 /// Extract a Bool from a MeshJson value. Returns MeshResult.
 #[no_mangle]
-pub extern "C" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
     unsafe {
         let j = json as *mut MeshJson;
         if (*j).tag == JSON_BOOL {
@@ -476,7 +476,7 @@ fn boxed_scalar_result<T>(value: T) -> *mut u8 {
 /// Public `Json.as_int` ABI. Unlike the internal deriving helper above, this
 /// boxes the scalar payload for ordinary Mesh `Result` pattern matching.
 #[no_mangle]
-pub extern "C" fn mesh_json_value_as_int(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_value_as_int(json: *mut u8) -> *mut u8 {
     unsafe {
         let result = mesh_json_as_int(json) as *mut MeshResult;
         if (*result).tag == 0 {
@@ -489,7 +489,7 @@ pub extern "C" fn mesh_json_value_as_int(json: *mut u8) -> *mut u8 {
 
 /// Public `Json.as_float` ABI.
 #[no_mangle]
-pub extern "C" fn mesh_json_value_as_float(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_value_as_float(json: *mut u8) -> *mut u8 {
     unsafe {
         let result = mesh_json_as_float(json) as *mut MeshResult;
         if (*result).tag == 0 {
@@ -502,7 +502,7 @@ pub extern "C" fn mesh_json_value_as_float(json: *mut u8) -> *mut u8 {
 
 /// Public `Json.as_bool` ABI.
 #[no_mangle]
-pub extern "C" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
     unsafe {
         let result = mesh_json_as_bool(json) as *mut MeshResult;
         if (*result).tag == 0 {
@@ -514,7 +514,7 @@ pub extern "C" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
     unsafe {
         let json = json as *mut MeshJson;
         if (*json).tag != JSON_ARRAY {
@@ -525,20 +525,20 @@ pub extern "C" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_json_is_null(json: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_json_is_null(json: *mut u8) -> i8 {
     unsafe { ((*(json as *const MeshJson)).tag == JSON_NULL) as i8 }
 }
 
 /// Return a MeshJson null value. Used for Option::None encoding.
 #[no_mangle]
-pub extern "C" fn mesh_json_null() -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_null() -> *mut u8 {
     alloc_json(JSON_NULL, 0) as *mut u8
 }
 
 /// Extract an element at the given index from a JSON array. Returns MeshResult.
 /// Ok(element) on success, Err(message) if not an array or index out of bounds.
 #[no_mangle]
-pub extern "C" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *mut u8 {
     unsafe {
         let j = json_arr as *mut MeshJson;
         if (*j).tag != JSON_ARRAY {
@@ -562,9 +562,9 @@ pub extern "C" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *mut u8 
 /// Convert a MeshList to a JSON array using a per-element callback.
 /// `elem_fn` converts each list element (u64) to a *mut MeshJson.
 #[no_mangle]
-pub extern "C" fn mesh_json_from_list(
+pub extern "C-unwind" fn mesh_json_from_list(
     list_ptr: *mut u8,
-    elem_fn: extern "C" fn(u64) -> *mut u8,
+    elem_fn: extern "C-unwind" fn(u64) -> *mut u8,
 ) -> *mut u8 {
     let len = list::mesh_list_length(list_ptr);
     let mut arr = list::mesh_list_builder_new(len);
@@ -579,9 +579,9 @@ pub extern "C" fn mesh_json_from_list(
 /// Convert a MeshMap to a JSON object using a per-value callback.
 /// Keys must be MeshString pointers. `val_fn` converts each value (u64) to a *mut MeshJson.
 #[no_mangle]
-pub extern "C" fn mesh_json_from_map(
+pub extern "C-unwind" fn mesh_json_from_map(
     map_ptr: *mut u8,
-    val_fn: extern "C" fn(u64) -> *mut u8,
+    val_fn: extern "C-unwind" fn(u64) -> *mut u8,
 ) -> *mut u8 {
     let keys_list = map::mesh_map_keys(map_ptr);
     let vals_list = map::mesh_map_values(map_ptr);
@@ -601,9 +601,9 @@ pub extern "C" fn mesh_json_from_map(
 /// `elem_fn` converts each *mut MeshJson to a *mut MeshResult.
 /// Returns MeshResult: Ok(MeshList) or Err on first element failure.
 #[no_mangle]
-pub extern "C" fn mesh_json_to_list(
+pub extern "C-unwind" fn mesh_json_to_list(
     json_arr: *mut u8,
-    elem_fn: extern "C" fn(*mut u8) -> *mut u8,
+    elem_fn: extern "C-unwind" fn(*mut u8) -> *mut u8,
 ) -> *mut u8 {
     unsafe {
         let j = json_arr as *mut MeshJson;
@@ -631,9 +631,9 @@ pub extern "C" fn mesh_json_to_list(
 /// Keys remain as MeshStrings. `val_fn` converts each *mut MeshJson to a *mut MeshResult.
 /// Returns MeshResult: Ok(MeshMap) or Err on first value failure.
 #[no_mangle]
-pub extern "C" fn mesh_json_to_map(
+pub extern "C-unwind" fn mesh_json_to_map(
     json_obj: *mut u8,
-    val_fn: extern "C" fn(*mut u8) -> *mut u8,
+    val_fn: extern "C-unwind" fn(*mut u8) -> *mut u8,
 ) -> *mut u8 {
     unsafe {
         let j = json_obj as *mut MeshJson;
@@ -1089,7 +1089,7 @@ mod tests {
         }
     }
 
-    extern "C" fn int_to_json(val: u64) -> *mut u8 {
+    extern "C-unwind" fn int_to_json(val: u64) -> *mut u8 {
         mesh_json_from_int(val as i64)
     }
 
@@ -1108,7 +1108,7 @@ mod tests {
         }
     }
 
-    extern "C" fn json_to_int_result(json: *mut u8) -> *mut u8 {
+    extern "C-unwind" fn json_to_int_result(json: *mut u8) -> *mut u8 {
         mesh_json_as_int(json)
     }
 

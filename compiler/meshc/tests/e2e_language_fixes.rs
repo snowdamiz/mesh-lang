@@ -4374,3 +4374,31 @@ fn an_arm_of_another_type_is_reported_at_the_arms() {
         assert!(at(first) && at(other), "{source}\n{spans:?}");
     }
 }
+
+#[test]
+fn a_panic_in_a_collection_callback_ends_only_its_actor() {
+    // The runtime called the closures of `List.map`, `filter`, `reduce` and
+    // the generated Eq/Display functions through `extern "C"` pointers:
+    // unwinding out of them was undefined behaviour that happened to work.
+    let (code, out, err) = run_status(
+        r##"actor worker(n :: Int) do
+  receive do
+    d ->
+      let total = List.reduce([1, 2], 0, fn acc, x -> acc + x / d end)
+      println("total #{total}")
+  end
+end
+
+fn main() do
+  let pid = spawn(worker, 0)
+  send(pid, 0)
+  Timer.sleep(200)
+  println("main still running")
+end
+"##,
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "main still running\n");
+    assert!(err.contains("division by zero"), "{err}");
+}

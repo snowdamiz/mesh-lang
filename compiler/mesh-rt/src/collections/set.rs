@@ -50,13 +50,13 @@ unsafe fn contains_elem(s: *const u8, elem: u64) -> bool {
 
 /// Create an empty set.
 #[no_mangle]
-pub extern "C" fn mesh_set_new() -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_new() -> *mut u8 {
     unsafe { alloc_set(0) }
 }
 
 /// Return a NEW set with the element added (no-op if already present).
 #[no_mangle]
-pub extern "C" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         if contains_elem(set, element) {
             // Already present -- return a copy.
@@ -83,7 +83,7 @@ pub extern "C" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
 
 /// Return a NEW set without the element.
 #[no_mangle]
-pub extern "C" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
     unsafe {
         let len = set_len(set) as usize;
         let data = set_data(set);
@@ -103,7 +103,7 @@ pub extern "C" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
 
 /// Returns 1 if the element is in the set, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
+pub extern "C-unwind" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
     unsafe {
         if contains_elem(set, element) {
             1
@@ -115,13 +115,13 @@ pub extern "C" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
 
 /// Return the number of elements in the set.
 #[no_mangle]
-pub extern "C" fn mesh_set_size(set: *mut u8) -> i64 {
+pub extern "C-unwind" fn mesh_set_size(set: *mut u8) -> i64 {
     unsafe { set_len(set) as i64 }
 }
 
 /// Whether two sets hold the same elements, in any order.
 #[no_mangle]
-pub extern "C" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
     unsafe {
         let len = set_len(a) as usize;
         if len != set_len(b) as usize {
@@ -135,8 +135,8 @@ pub extern "C" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
 /// Hash a set by its elements, each hashed by `hash` (`fn(slot) -> Int`),
 /// independently of their order.
 #[no_mangle]
-pub extern "C" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
-    type ElemHash = unsafe extern "C" fn(u64) -> i64;
+pub extern "C-unwind" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
+    type ElemHash = unsafe extern "C-unwind" fn(u64) -> i64;
     unsafe {
         let f: ElemHash = std::mem::transmute(hash);
         let (data, len) = (set_data(set), set_len(set));
@@ -147,7 +147,7 @@ pub extern "C" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
 
 /// Return a NEW set that is the union of `a` and `b`.
 #[no_mangle]
-pub extern "C" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         // Start with a copy of `a`, then add elements from `b`.
         let a_len = set_len(a) as usize;
@@ -188,7 +188,7 @@ pub extern "C" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Return a NEW set that is the intersection of `a` and `b`.
 #[no_mangle]
-pub extern "C" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = set_len(a) as usize;
         let result = alloc_set(a_len as u64);
@@ -212,7 +212,7 @@ pub extern "C" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
 /// Get the element at index i. Panics if out of bounds.
 /// Used by for-in codegen for indexed set iteration.
 #[no_mangle]
-pub extern "C" fn mesh_set_element_at(set: *mut u8, index: i64) -> u64 {
+pub extern "C-unwind" fn mesh_set_element_at(set: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = set_len(set);
         if index < 0 || index as u64 >= len {
@@ -231,8 +231,8 @@ pub extern "C" fn mesh_set_element_at(set: *mut u8, index: i64) -> u64 {
 /// `elem_to_str` is a bare function pointer `fn(u64) -> *mut u8` that converts
 /// each element to a MeshString pointer.
 #[no_mangle]
-pub extern "C" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) -> *mut u8 {
-    type ElemToStr = unsafe extern "C" fn(u64) -> *mut u8;
+pub extern "C-unwind" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) -> *mut u8 {
+    type ElemToStr = unsafe extern "C-unwind" fn(u64) -> *mut u8;
 
     unsafe {
         let len = set_len(set) as usize;
@@ -254,7 +254,7 @@ pub extern "C" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) -> *mut
 
 /// Return a NEW set containing elements in `a` that are NOT in `b`.
 #[no_mangle]
-pub extern "C" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = set_len(a) as usize;
         let a_data = set_data(a);
@@ -277,7 +277,7 @@ pub extern "C" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
 
 /// Convert a set to a list of its elements.
 #[no_mangle]
-pub extern "C" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
     unsafe {
         let len = set_len(set) as usize;
         let src = set_data(set);
@@ -291,7 +291,7 @@ pub extern "C" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
 
 /// Build a set from a list. Duplicates are removed via mesh_set_add.
 #[no_mangle]
-pub extern "C" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
         let (len, data) = super::list::list_slots(list);
         let mut set = mesh_set_new();
@@ -315,7 +315,7 @@ struct SetIterator {
 
 /// Create a new iterator handle for a set.
 #[no_mangle]
-pub extern "C" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
     unsafe {
         let size = mesh_set_size(set);
         let iter = mesh_gc_alloc_actor(
@@ -332,7 +332,7 @@ pub extern "C" fn mesh_set_iter_new(set: *mut u8) -> *mut u8 {
 
 /// Advance the set iterator, returning Option (tag 0 = Some, tag 1 = None).
 #[no_mangle]
-pub extern "C" fn mesh_set_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_iter_next(iter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let iter = iter_ptr as *mut SetIterator;
         if (*iter).index >= (*iter).size {

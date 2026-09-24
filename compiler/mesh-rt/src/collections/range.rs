@@ -21,7 +21,7 @@ unsafe fn range_end(r: *const u8) -> i64 {
 
 /// Create a new range `[start, end)`.
 #[no_mangle]
-pub extern "C" fn mesh_range_new(start: i64, end: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_range_new(start: i64, end: i64) -> *mut u8 {
     unsafe {
         let p = mesh_gc_alloc_actor(16, 8);
         *(p as *mut i64) = start;
@@ -32,7 +32,7 @@ pub extern "C" fn mesh_range_new(start: i64, end: i64) -> *mut u8 {
 
 /// Convert a range to a List of integers.
 #[no_mangle]
-pub extern "C" fn mesh_range_to_list(range: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_range_to_list(range: *mut u8) -> *mut u8 {
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
@@ -48,9 +48,13 @@ pub extern "C" fn mesh_range_to_list(range: *mut u8) -> *mut u8 {
 
 /// Apply a closure to each element of the range, returning a List.
 #[no_mangle]
-pub extern "C" fn mesh_range_map(range: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
-    type BareFn = unsafe extern "C" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+pub extern "C-unwind" fn mesh_range_map(
+    range: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
 
     unsafe {
         let start = range_start(range);
@@ -80,9 +84,13 @@ pub extern "C" fn mesh_range_map(range: *mut u8, fn_ptr: *mut u8, env_ptr: *mut 
 
 /// Filter elements of the range, returning a List of matching integers.
 #[no_mangle]
-pub extern "C" fn mesh_range_filter(range: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
-    type BareFn = unsafe extern "C" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
+pub extern "C-unwind" fn mesh_range_filter(
+    range: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
 
     unsafe {
         let start = range_start(range);
@@ -116,7 +124,7 @@ pub extern "C" fn mesh_range_filter(range: *mut u8, fn_ptr: *mut u8, env_ptr: *m
 /// largest Int (`-9223372036854775808..1`) has that many: saturated, not
 /// wrapped (or, in a debug runtime, an abort).
 #[no_mangle]
-pub extern "C" fn mesh_range_length(range: *mut u8) -> i64 {
+pub extern "C-unwind" fn mesh_range_length(range: *mut u8) -> i64 {
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
@@ -136,7 +144,7 @@ struct RangeIterator {
 
 /// Create a new iterator handle for a range [start, end).
 #[no_mangle]
-pub extern "C" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
     unsafe {
         let iter = mesh_gc_alloc_actor(
             std::mem::size_of::<RangeIterator>() as u64,
@@ -151,7 +159,7 @@ pub extern "C" fn mesh_range_iter_new(start: i64, end: i64) -> *mut u8 {
 
 /// Advance the range iterator, returning Option (tag 0 = Some, tag 1 = None).
 #[no_mangle]
-pub extern "C" fn mesh_range_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_range_iter_next(iter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let iter = iter_ptr as *mut RangeIterator;
         if (*iter).current >= (*iter).end {
@@ -200,7 +208,7 @@ mod tests {
         mesh_rt_init();
         let r = mesh_range_new(1, 4);
 
-        unsafe extern "C" fn double(x: u64) -> u64 {
+        unsafe extern "C-unwind" fn double(x: u64) -> u64 {
             x * 2
         }
 
@@ -216,7 +224,7 @@ mod tests {
         mesh_rt_init();
         let r = mesh_range_new(1, 6);
 
-        unsafe extern "C" fn is_even(x: u64) -> u64 {
+        unsafe extern "C-unwind" fn is_even(x: u64) -> u64 {
             if x % 2 == 0 {
                 1
             } else {

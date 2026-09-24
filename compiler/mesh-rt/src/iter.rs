@@ -41,7 +41,7 @@ pub const ITER_TAG_ZIP_ADAPTER: u8 = 15;
 /// Generic next() dispatch. Reads the type tag (first byte of the iterator
 /// handle) and delegates to the correct `_next` function.
 #[no_mangle]
-pub extern "C" fn mesh_iter_generic_next(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_generic_next(iter: *mut u8) -> *mut u8 {
     unsafe {
         let tag = *iter; // First byte is the type tag
         match tag {
@@ -63,10 +63,10 @@ pub extern "C" fn mesh_iter_generic_next(iter: *mut u8) -> *mut u8 {
 // ── Combinator Adapter Structs ──────────────────────────────────────────
 
 // Closure calling type aliases (proven from list.rs)
-type BareFn = unsafe extern "C" fn(u64) -> u64;
-type ClosureFn = unsafe extern "C" fn(*mut u8, u64) -> u64;
-type BareFn2 = unsafe extern "C" fn(u64, u64) -> u64;
-type ClosureFn2 = unsafe extern "C" fn(*mut u8, u64, u64) -> u64;
+type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
+type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
+type BareFn2 = unsafe extern "C-unwind" fn(u64, u64) -> u64;
+type ClosureFn2 = unsafe extern "C-unwind" fn(*mut u8, u64, u64) -> u64;
 
 // ── MapAdapter (tag=10) ─────────────────────────────────────────────────
 
@@ -81,7 +81,11 @@ struct MapAdapter {
 
 /// Create a lazy map adapter: Iter.map(source, fn_ptr, env_ptr).
 #[no_mangle]
-pub extern "C" fn mesh_iter_map(source: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_map(
+    source: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<MapAdapter>() as u64,
@@ -97,7 +101,7 @@ pub extern "C" fn mesh_iter_map(source: *mut u8, fn_ptr: *mut u8, env_ptr: *mut 
 
 /// Advance the map adapter: call source next(), apply fn, return mapped value.
 #[no_mangle]
-pub extern "C" fn mesh_iter_map_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_map_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut MapAdapter;
         let option = mesh_iter_generic_next((*adapter).source);
@@ -130,7 +134,11 @@ struct FilterAdapter {
 
 /// Create a lazy filter adapter: Iter.filter(source, fn_ptr, env_ptr).
 #[no_mangle]
-pub extern "C" fn mesh_iter_filter(source: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_filter(
+    source: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<FilterAdapter>() as u64,
@@ -147,7 +155,7 @@ pub extern "C" fn mesh_iter_filter(source: *mut u8, fn_ptr: *mut u8, env_ptr: *m
 /// Advance the filter adapter: loop calling source next() until predicate
 /// passes or source is exhausted.
 #[no_mangle]
-pub extern "C" fn mesh_iter_filter_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_filter_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut FilterAdapter;
         loop {
@@ -184,7 +192,7 @@ struct TakeAdapter {
 
 /// Create a lazy take adapter: Iter.take(source, n).
 #[no_mangle]
-pub extern "C" fn mesh_iter_take(source: *mut u8, n: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_take(source: *mut u8, n: i64) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<TakeAdapter>() as u64,
@@ -200,7 +208,7 @@ pub extern "C" fn mesh_iter_take(source: *mut u8, n: i64) -> *mut u8 {
 /// Advance the take adapter: return None if remaining <= 0, else delegate
 /// to source and decrement remaining.
 #[no_mangle]
-pub extern "C" fn mesh_iter_take_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_take_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut TakeAdapter;
         if (*adapter).remaining <= 0 {
@@ -224,7 +232,7 @@ struct SkipAdapter {
 
 /// Create a lazy skip adapter: Iter.skip(source, n).
 #[no_mangle]
-pub extern "C" fn mesh_iter_skip(source: *mut u8, n: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_skip(source: *mut u8, n: i64) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<SkipAdapter>() as u64,
@@ -241,7 +249,7 @@ pub extern "C" fn mesh_iter_skip(source: *mut u8, n: i64) -> *mut u8 {
 /// Advance the skip adapter: on first call, skip `n` elements from source,
 /// then delegate to source.
 #[no_mangle]
-pub extern "C" fn mesh_iter_skip_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_skip_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut SkipAdapter;
         if (*adapter).skipped == 0 {
@@ -272,7 +280,7 @@ struct EnumerateAdapter {
 
 /// Create a lazy enumerate adapter: Iter.enumerate(source).
 #[no_mangle]
-pub extern "C" fn mesh_iter_enumerate(source: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_enumerate(source: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<EnumerateAdapter>() as u64,
@@ -288,7 +296,7 @@ pub extern "C" fn mesh_iter_enumerate(source: *mut u8) -> *mut u8 {
 /// Advance the enumerate adapter: call source next(), if Some wrap in
 /// (index, value) pair, increment index.
 #[no_mangle]
-pub extern "C" fn mesh_iter_enumerate_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_enumerate_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut EnumerateAdapter;
         let option = mesh_iter_generic_next((*adapter).source);
@@ -316,7 +324,7 @@ struct ZipAdapter {
 
 /// Create a lazy zip adapter: Iter.zip(source_a, source_b).
 #[no_mangle]
-pub extern "C" fn mesh_iter_zip(source_a: *mut u8, source_b: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_zip(source_a: *mut u8, source_b: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = mesh_gc_alloc_actor(
             std::mem::size_of::<ZipAdapter>() as u64,
@@ -332,7 +340,7 @@ pub extern "C" fn mesh_iter_zip(source_a: *mut u8, source_b: *mut u8) -> *mut u8
 /// Advance the zip adapter: call next() on both sources. If either is None,
 /// return None. Otherwise return alloc_pair(a, b) wrapped in Some.
 #[no_mangle]
-pub extern "C" fn mesh_iter_zip_next(adapter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_zip_next(adapter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let adapter = adapter_ptr as *mut ZipAdapter;
         let opt_a = mesh_iter_generic_next((*adapter).source_a);
@@ -356,7 +364,7 @@ pub extern "C" fn mesh_iter_zip_next(adapter_ptr: *mut u8) -> *mut u8 {
 
 /// Iter.count(iter) -- count elements until exhausted.
 #[no_mangle]
-pub extern "C" fn mesh_iter_count(iter: *mut u8) -> i64 {
+pub extern "C-unwind" fn mesh_iter_count(iter: *mut u8) -> i64 {
     unsafe {
         let mut count: i64 = 0;
         loop {
@@ -373,7 +381,7 @@ pub extern "C" fn mesh_iter_count(iter: *mut u8) -> i64 {
 
 /// Iter.sum(iter) -- sum numeric (Int) elements until exhausted.
 #[no_mangle]
-pub extern "C" fn mesh_iter_sum(iter: *mut u8) -> i64 {
+pub extern "C-unwind" fn mesh_iter_sum(iter: *mut u8) -> i64 {
     unsafe {
         let mut sum: i64 = 0;
         loop {
@@ -391,7 +399,7 @@ pub extern "C" fn mesh_iter_sum(iter: *mut u8) -> i64 {
 /// Iter.any(iter, fn) -- return 1 if any element passes predicate, 0 otherwise.
 /// Short-circuits on first match.
 #[no_mangle]
-pub extern "C" fn mesh_iter_any(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_iter_any(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
     unsafe {
         loop {
             let option = mesh_iter_generic_next(iter);
@@ -417,7 +425,7 @@ pub extern "C" fn mesh_iter_any(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8
 /// Iter.all(iter, fn) -- return 1 if all elements pass predicate, 0 otherwise.
 /// Short-circuits on first non-match.
 #[no_mangle]
-pub extern "C" fn mesh_iter_all(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_iter_all(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
     unsafe {
         loop {
             let option = mesh_iter_generic_next(iter);
@@ -442,7 +450,11 @@ pub extern "C" fn mesh_iter_all(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8
 
 /// Iter.find(iter, fn) -- return Option: Some(elem) on first match, None if exhausted.
 #[no_mangle]
-pub extern "C" fn mesh_iter_find(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_iter_find(
+    iter: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
     unsafe {
         loop {
             let option = mesh_iter_generic_next(iter);
@@ -467,7 +479,7 @@ pub extern "C" fn mesh_iter_find(iter: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u
 
 /// Iter.reduce(iter, init, fn) -- fold with accumulator.
 #[no_mangle]
-pub extern "C" fn mesh_iter_reduce(
+pub extern "C-unwind" fn mesh_iter_reduce(
     iter: *mut u8,
     init: u64,
     fn_ptr: *mut u8,
@@ -503,7 +515,7 @@ pub extern "C" fn mesh_iter_reduce(
 /// the elements produced so far are often fresh objects referenced from
 /// nowhere else: a Rust `Vec` holding them is invisible to the collector.
 #[no_mangle]
-pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
     unsafe {
         let mut list = crate::collections::list::mesh_list_builder_new(0);
         loop {
@@ -521,14 +533,14 @@ pub extern "C" fn mesh_list_collect(iter: *mut u8) -> *mut u8 {
 /// Map.collect(iter) -- materialize iterator of (key, value) tuples into a Map.
 /// Expects each element to be a tuple pointer with layout { len: u64, key: u64, value: u64 }.
 #[no_mangle]
-pub extern "C" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_collect(iter: *mut u8) -> *mut u8 {
     mesh_map_collect_by(iter, 0, std::ptr::null_mut())
 }
 
 /// Map.collect(iter) variant for string keys -- materialize iterator of (key, value)
 /// tuples into a Map with string key_type (KEY_TYPE_STR = 1).
 #[no_mangle]
-pub extern "C" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
     mesh_map_collect_by(iter, 1, std::ptr::null_mut())
 }
 
@@ -536,7 +548,11 @@ pub extern "C" fn mesh_map_collect_string_keys(iter: *mut u8) -> *mut u8 {
 /// by `key_eq`, a `fn(u64, u64) -> i8` over two key slots; the compiler
 /// chooses from the key type.
 #[no_mangle]
-pub extern "C" fn mesh_map_collect_by(iter: *mut u8, key_type: i64, key_eq: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_collect_by(
+    iter: *mut u8,
+    key_type: i64,
+    key_eq: *mut u8,
+) -> *mut u8 {
     unsafe {
         let mut map = crate::collections::map::mesh_map_new_typed(key_type);
         loop {
@@ -558,7 +574,7 @@ pub extern "C" fn mesh_map_collect_by(iter: *mut u8, key_type: i64, key_eq: *mut
 /// Set.collect(iter) -- materialize iterator into a Set.
 /// Duplicates are handled automatically by mesh_set_add.
 #[no_mangle]
-pub extern "C" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
     unsafe {
         let mut set = mesh_set_new();
         loop {
@@ -577,7 +593,7 @@ pub extern "C" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
 /// String.collect(iter) -- materialize string iterator into a single concatenated String.
 /// Each yielded value is treated as a *const MeshString pointer (NOT an integer).
 #[no_mangle]
-pub extern "C" fn mesh_string_collect(iter: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_string_collect(iter: *mut u8) -> *mut u8 {
     unsafe {
         let mut result = mesh_string_new(std::ptr::null(), 0) as *mut u8;
         loop {

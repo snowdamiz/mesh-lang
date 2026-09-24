@@ -60,7 +60,7 @@ unsafe fn map_entries_mut(m: *mut u8) -> *mut [u64; 2] {
 /// A key type's Eq over two raw key slots (1 when equal), for keys that are
 /// not words or strings: tuples, lists, structs, sum values. The `_by`
 /// functions take one; a null pointer means "compare as the map's key_type".
-type KeyEq = unsafe extern "C" fn(u64, u64) -> i8;
+type KeyEq = unsafe extern "C-unwind" fn(u64, u64) -> i8;
 
 unsafe fn key_eq_fn(key_eq: *mut u8) -> Option<KeyEq> {
     (!key_eq.is_null()).then(|| std::mem::transmute::<*mut u8, KeyEq>(key_eq))
@@ -106,14 +106,14 @@ unsafe fn find_key(m: *const u8, key: u64, key_eq: Option<KeyEq>) -> Option<usiz
 
 /// Create an empty map (integer keys, backward compatible).
 #[no_mangle]
-pub extern "C" fn mesh_map_new() -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_new() -> *mut u8 {
     unsafe { alloc_map(0, KEY_TYPE_INT) }
 }
 
 /// Create an empty map with a specific key_type tag.
 /// key_type: 0 = Int, 1 = String.
 #[no_mangle]
-pub extern "C" fn mesh_map_new_typed(key_type: i64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_new_typed(key_type: i64) -> *mut u8 {
     unsafe { alloc_map(0, key_type as u64) }
 }
 
@@ -132,7 +132,7 @@ pub(crate) fn mesh_map_from_string_entries(entries: &[[u64; 2]]) -> *mut u8 {
 /// returns a new empty map with string key_type. Otherwise returns the map unchanged.
 /// Used by codegen to tag maps before the first string-key put.
 #[no_mangle]
-pub extern "C" fn mesh_map_tag_string(map: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_tag_string(map: *mut u8) -> *mut u8 {
     unsafe {
         if map_len(map) == 0 && map_key_type(map) != KEY_TYPE_STR {
             alloc_map(0, KEY_TYPE_STR)
@@ -144,13 +144,18 @@ pub extern "C" fn mesh_map_tag_string(map: *mut u8) -> *mut u8 {
 
 /// Return a NEW map with the key-value pair added (or updated).
 #[no_mangle]
-pub extern "C" fn mesh_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_put(map: *mut u8, key: u64, value: u64) -> *mut u8 {
     mesh_map_put_by(map, key, value, ptr::null_mut())
 }
 
 /// `mesh_map_put` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_put_by(map: *mut u8, key: u64, value: u64, key_eq: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_put_by(
+    map: *mut u8,
+    key: u64,
+    value: u64,
+    key_eq: *mut u8,
+) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let kt = map_key_type(map);
@@ -187,13 +192,13 @@ pub extern "C" fn mesh_map_put_by(map: *mut u8, key: u64, value: u64, key_eq: *m
 
 /// Get the value for a key. Returns 0 if not found.
 #[no_mangle]
-pub extern "C" fn mesh_map_get(map: *mut u8, key: u64) -> u64 {
+pub extern "C-unwind" fn mesh_map_get(map: *mut u8, key: u64) -> u64 {
     mesh_map_get_by(map, key, ptr::null_mut())
 }
 
 /// `mesh_map_get` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_get_by(map: *mut u8, key: u64, key_eq: *mut u8) -> u64 {
+pub extern "C-unwind" fn mesh_map_get_by(map: *mut u8, key: u64, key_eq: *mut u8) -> u64 {
     unsafe {
         if let Some(idx) = find_key(map, key, key_eq_fn(key_eq)) {
             (*map_entries(map).add(idx))[1]
@@ -205,25 +210,25 @@ pub extern "C" fn mesh_map_get_by(map: *mut u8, key: u64, key_eq: *mut u8) -> u6
 
 /// Returns 1 if the key exists, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn mesh_map_has_key(map: *mut u8, key: u64) -> i8 {
+pub extern "C-unwind" fn mesh_map_has_key(map: *mut u8, key: u64) -> i8 {
     mesh_map_has_key_by(map, key, ptr::null_mut())
 }
 
 /// `mesh_map_has_key` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_has_key_by(map: *mut u8, key: u64, key_eq: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_map_has_key_by(map: *mut u8, key: u64, key_eq: *mut u8) -> i8 {
     unsafe { find_key(map, key, key_eq_fn(key_eq)).is_some() as i8 }
 }
 
 /// Return a NEW map without the given key.
 #[no_mangle]
-pub extern "C" fn mesh_map_delete(map: *mut u8, key: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_delete(map: *mut u8, key: u64) -> *mut u8 {
     mesh_map_delete_by(map, key, ptr::null_mut())
 }
 
 /// `mesh_map_delete` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_delete_by(map: *mut u8, key: u64, key_eq: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_delete_by(map: *mut u8, key: u64, key_eq: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let kt = map_key_type(map);
@@ -263,7 +268,7 @@ pub extern "C" fn mesh_map_delete_by(map: *mut u8, key: u64, key_eq: *mut u8) ->
 
 /// Return the number of entries in the map.
 #[no_mangle]
-pub extern "C" fn mesh_map_size(map: *mut u8) -> i64 {
+pub extern "C-unwind" fn mesh_map_size(map: *mut u8) -> i64 {
     unsafe { map_len(map) as i64 }
 }
 
@@ -271,14 +276,19 @@ pub extern "C" fn mesh_map_size(map: *mut u8) -> i64 {
 /// Keys compare as the map compares them; `val_eq` is a bare
 /// `fn(u64, u64) -> i8` over two raw value slots.
 #[no_mangle]
-pub extern "C" fn mesh_map_eq(a: *mut u8, b: *mut u8, val_eq: *mut u8) -> i8 {
+pub extern "C-unwind" fn mesh_map_eq(a: *mut u8, b: *mut u8, val_eq: *mut u8) -> i8 {
     mesh_map_eq_by(a, b, val_eq, ptr::null_mut())
 }
 
 /// `mesh_map_eq` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_eq_by(a: *mut u8, b: *mut u8, val_eq: *mut u8, key_eq: *mut u8) -> i8 {
-    type ValEq = unsafe extern "C" fn(u64, u64) -> i8;
+pub extern "C-unwind" fn mesh_map_eq_by(
+    a: *mut u8,
+    b: *mut u8,
+    val_eq: *mut u8,
+    key_eq: *mut u8,
+) -> i8 {
+    type ValEq = unsafe extern "C-unwind" fn(u64, u64) -> i8;
 
     unsafe {
         if map_len(a) != map_len(b) {
@@ -300,8 +310,12 @@ pub extern "C" fn mesh_map_eq_by(a: *mut u8, b: *mut u8, val_eq: *mut u8, key_eq
 /// Hash a map by its entries, keys hashed by `key_hash` and values by
 /// `val_hash` (`fn(slot) -> Int`), independently of their order.
 #[no_mangle]
-pub extern "C" fn mesh_map_hash_by(map: *mut u8, key_hash: *mut u8, val_hash: *mut u8) -> i64 {
-    type SlotHash = unsafe extern "C" fn(u64) -> i64;
+pub extern "C-unwind" fn mesh_map_hash_by(
+    map: *mut u8,
+    key_hash: *mut u8,
+    val_hash: *mut u8,
+) -> i64 {
+    type SlotHash = unsafe extern "C-unwind" fn(u64) -> i64;
     unsafe {
         let (k, v): (SlotHash, SlotHash) =
             (std::mem::transmute(key_hash), std::mem::transmute(val_hash));
@@ -316,7 +330,7 @@ pub extern "C" fn mesh_map_hash_by(map: *mut u8, key_hash: *mut u8, val_hash: *m
 
 /// Return a List of all keys in the map.
 #[no_mangle]
-pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
@@ -330,7 +344,7 @@ pub extern "C" fn mesh_map_keys(map: *mut u8) -> *mut u8 {
 
 /// Return a List of all values in the map.
 #[no_mangle]
-pub extern "C" fn mesh_map_values(map: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_values(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
@@ -345,7 +359,7 @@ pub extern "C" fn mesh_map_values(map: *mut u8) -> *mut u8 {
 /// Get the key at index i (insertion order). Panics if out of bounds.
 /// Used by for-in codegen for indexed map iteration.
 #[no_mangle]
-pub extern "C" fn mesh_map_entry_key(map: *mut u8, index: i64) -> u64 {
+pub extern "C-unwind" fn mesh_map_entry_key(map: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = map_len(map);
         if index < 0 || index as u64 >= len {
@@ -362,7 +376,7 @@ pub extern "C" fn mesh_map_entry_key(map: *mut u8, index: i64) -> u64 {
 /// Get the value at index i (insertion order). Panics if out of bounds.
 /// Used by for-in codegen for indexed map iteration.
 #[no_mangle]
-pub extern "C" fn mesh_map_entry_value(map: *mut u8, index: i64) -> u64 {
+pub extern "C-unwind" fn mesh_map_entry_value(map: *mut u8, index: i64) -> u64 {
     unsafe {
         let len = map_len(map);
         if index < 0 || index as u64 >= len {
@@ -381,12 +395,12 @@ pub extern "C" fn mesh_map_entry_value(map: *mut u8, index: i64) -> u64 {
 /// `key_to_str` and `val_to_str` are bare function pointers `fn(u64) -> *mut u8`
 /// that convert keys and values to MeshString pointers respectively.
 #[no_mangle]
-pub extern "C" fn mesh_map_to_string(
+pub extern "C-unwind" fn mesh_map_to_string(
     map: *mut u8,
     key_to_str: *mut u8,
     val_to_str: *mut u8,
 ) -> *mut u8 {
-    type ElemToStr = unsafe extern "C" fn(u64) -> *mut u8;
+    type ElemToStr = unsafe extern "C-unwind" fn(u64) -> *mut u8;
 
     unsafe {
         let len = map_len(map) as usize;
@@ -415,13 +429,13 @@ pub extern "C" fn mesh_map_to_string(
 /// Merge two maps. All entries from `a` are included; entries from `b`
 /// overwrite duplicates from `a`. Returns a NEW merged map.
 #[no_mangle]
-pub extern "C" fn mesh_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_merge(a: *mut u8, b: *mut u8) -> *mut u8 {
     mesh_map_merge_by(a, b, ptr::null_mut())
 }
 
 /// `mesh_map_merge` with keys compared by `key_eq` (see `KeyEq`).
 #[no_mangle]
-pub extern "C" fn mesh_map_merge_by(a: *mut u8, b: *mut u8, key_eq: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_merge_by(a: *mut u8, b: *mut u8, key_eq: *mut u8) -> *mut u8 {
     unsafe {
         let a_len = map_len(a) as usize;
         let b_len = map_len(b) as usize;
@@ -452,7 +466,7 @@ pub extern "C" fn mesh_map_merge_by(a: *mut u8, b: *mut u8, key_eq: *mut u8) -> 
 
 /// Convert a map to a list of (key, value) 2-tuples.
 #[no_mangle]
-pub extern "C" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
     unsafe {
         let len = map_len(map) as usize;
         let entries = map_entries(map);
@@ -469,7 +483,7 @@ pub extern "C" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
 
 /// Build a map with Int keys from a list of (key, value) 2-tuples.
 #[no_mangle]
-pub extern "C" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
     mesh_map_from_list_by(list, KEY_TYPE_INT as i64, ptr::null_mut())
 }
 
@@ -477,7 +491,11 @@ pub extern "C" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
 /// `key_type` (0 Int, 1 String) or by `key_eq` (see `KeyEq`). The runtime
 /// cannot tell the key type from the values, so the compiler says it.
 #[no_mangle]
-pub extern "C" fn mesh_map_from_list_by(list: *mut u8, key_type: i64, key_eq: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_from_list_by(
+    list: *mut u8,
+    key_type: i64,
+    key_eq: *mut u8,
+) -> *mut u8 {
     unsafe {
         let len = super::list::mesh_list_length(list);
         let mut map = alloc_map(0, key_type as u64);
@@ -504,7 +522,7 @@ struct MapIterator {
 
 /// Create a new iterator handle for a map.
 #[no_mangle]
-pub extern "C" fn mesh_map_iter_new(map: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_iter_new(map: *mut u8) -> *mut u8 {
     unsafe {
         let size = mesh_map_size(map);
         let iter = crate::gc::mesh_gc_alloc_actor(
@@ -522,7 +540,7 @@ pub extern "C" fn mesh_map_iter_new(map: *mut u8) -> *mut u8 {
 /// Advance the map iterator, returning Option<(K, V)> (tag 0 = Some, tag 1 = None).
 /// The Some payload is a GC-allocated 2-tuple (key, value).
 #[no_mangle]
-pub extern "C" fn mesh_map_iter_next(iter_ptr: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_map_iter_next(iter_ptr: *mut u8) -> *mut u8 {
     unsafe {
         let iter = iter_ptr as *mut MapIterator;
         if (*iter).index >= (*iter).size {
