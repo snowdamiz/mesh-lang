@@ -162,7 +162,10 @@ impl LanguageServer for MeshBackend {
             None => return Ok(None),
         };
 
-        let type_info = analysis::type_at_position(&doc.source, &doc.analysis.typeck, &position);
+        // Positions are converted against the analyzed text (see
+        // `AnalysisResult::source`).
+        let type_info =
+            analysis::type_at_position(&doc.analysis.source, &doc.analysis.typeck, &position);
 
         match type_info {
             Some(ty_str) => Ok(Some(Hover {
@@ -195,28 +198,30 @@ impl LanguageServer for MeshBackend {
         };
 
         // Convert LSP position to byte offset.
-        let offset = match analysis::position_to_offset_pub(&doc.source, &position) {
+        let offset = match analysis::position_to_offset_pub(&doc.analysis.source, &position) {
             Some(o) => o,
             None => return Ok(None),
         };
 
         // Traverse the CST to find the definition.
         let root = doc.analysis.parse.syntax();
-        let def_range = match crate::definition::find_definition(&doc.source, &root, offset) {
-            Some(r) => r,
-            None => return Ok(None),
-        };
+        let def_range =
+            match crate::definition::find_definition(&doc.analysis.source, &root, offset) {
+                Some(r) => r,
+                None => return Ok(None),
+            };
 
         // Convert the definition range (in rowan tree coordinates) back to
         // source byte offsets, then to LSP positions.
         let start_tree: usize = def_range.start().into();
         let end_tree: usize = def_range.end().into();
         let start_source =
-            crate::definition::tree_to_source_offset(&doc.source, start_tree).unwrap_or(start_tree);
-        let end_source =
-            crate::definition::tree_to_source_offset(&doc.source, end_tree).unwrap_or(end_tree);
-        let start = analysis::offset_to_position(&doc.source, start_source);
-        let end = analysis::offset_to_position(&doc.source, end_source);
+            crate::definition::tree_to_source_offset(&doc.analysis.source, start_tree)
+                .unwrap_or(start_tree);
+        let end_source = crate::definition::tree_to_source_offset(&doc.analysis.source, end_tree)
+            .unwrap_or(end_tree);
+        let start = analysis::offset_to_position(&doc.analysis.source, start_source);
+        let end = analysis::offset_to_position(&doc.analysis.source, end_source);
 
         let location = Location {
             uri,
@@ -239,7 +244,7 @@ impl LanguageServer for MeshBackend {
         };
 
         let root = doc.analysis.parse.syntax();
-        let symbols = collect_symbols(&doc.source, &root);
+        let symbols = collect_symbols(&doc.analysis.source, &root);
 
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     }
@@ -254,7 +259,8 @@ impl LanguageServer for MeshBackend {
             None => return Ok(None),
         };
 
-        let items = crate::completion::compute_completions(&doc.source, &doc.analysis, &position);
+        let items =
+            crate::completion::compute_completions(&doc.analysis.source, &doc.analysis, &position);
 
         if items.is_empty() {
             Ok(None)
@@ -278,7 +284,7 @@ impl LanguageServer for MeshBackend {
         };
 
         Ok(crate::signature_help::compute_signature_help(
-            &doc.source,
+            &doc.analysis.source,
             &doc.analysis,
             &position,
         ))

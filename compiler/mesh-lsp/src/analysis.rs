@@ -30,6 +30,11 @@ pub struct AnalysisResult {
     pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
+    /// The text analyzed, which `parse` and `typeck` describe: the document,
+    /// or for a test file the program `meshc test` makes of it, which keeps
+    /// every line and column of the document but not its byte offsets.
+    /// Positions are converted against it.
+    pub source: String,
 }
 
 /// Analyze a Mesh document: parse, type-check, and produce diagnostics.
@@ -59,6 +64,7 @@ fn analyze_single_document(source: &str) -> AnalysisResult {
         diagnostics,
         parse,
         typeck,
+        source: source.to_string(),
     }
 }
 
@@ -394,6 +400,16 @@ fn analyze_project_document(
             return ProjectAnalysis::Failed(project_failure_analysis(source, error));
         }
     };
+    // A test file is not a module: `meshc test` compiles it on its own,
+    // with the project's modules to import and the test builtins.
+    let is_test_file = relative_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"));
+    if is_test_file {
+        return analyze_test_document(&project, source);
+    }
+
     let current_id = match project
         .graph
         .modules
@@ -495,6 +511,36 @@ fn analyze_project_document(
         diagnostics,
         parse: current_parse,
         typeck: current_typeck,
+        source: current_source,
+    })
+}
+
+/// A `.test.mpl` document, analyzed as the program `meshc test` makes of it.
+fn analyze_test_document(project: &ProjectAnalysisData, source: &str) -> ProjectAnalysis {
+    let program = match mesh_parser::test_harness::preprocess_test_source(source) {
+        Ok(program) => program,
+        Err(message) => return ProjectAnalysis::Failed(project_failure_analysis(source, message)),
+    };
+    let mut all_exports = vec![None; project.graph.module_count()];
+    for &id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let mut import_ctx = build_import_context(&project.graph, &all_exports, parse);
+        import_ctx.current_module = Some(project.graph.get(id).name.clone());
+        let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
+        all_exports[idx] = Some(mesh_typeck::collect_exports(parse, &typeck));
+    }
+    let parse = mesh_parser::parse(&program);
+    let mut import_ctx = build_import_context(&project.graph, &all_exports, &parse);
+    import_ctx.current_module = Some("Main".to_string());
+    import_ctx.test_builtins = true;
+    let typeck = mesh_typeck::check_with_imports(&parse, &import_ctx);
+    let diagnostics = diagnostics_from_parse_and_typeck(&program, &parse, &typeck);
+    ProjectAnalysis::Success(AnalysisResult {
+        diagnostics,
+        parse,
+        typeck,
+        source: program,
     })
 }
 
@@ -2109,6 +2155,41 @@ mod tests {
                 src_start
             );
         }
+    }
+
+    #[test]
+    fn a_test_file_is_analyzed_as_meshc_test_compiles_it() {
+        // It was analyzed as a plain module that was not in the project:
+        // `test`, `assert_eq` and its imports were errors in the editor.
+        let tmp = tempfile::tempdir().unwrap();
+        let project_dir = tmp.path().join("app");
+        std::fs::create_dir_all(project_dir.join("tests")).unwrap();
+        std::fs::write(project_dir.join("mesh.toml"), package_manifest("app")).unwrap();
+        std::fs::write(project_dir.join("main.mpl"), "fn main() do\nend\n").unwrap();
+        std::fs::write(
+            project_dir.join("greeting.mpl"),
+            "pub fn message() -> String do\n  \"hello\"\nend\n",
+        )
+        .unwrap();
+        let test_path = project_dir.join("tests/greeting.test.mpl");
+        let source = "from Greeting import message\n\ndescribe(\"greeting\") do\n  setup do\n    let expected = \"hello\"\n  end\n  test(\"says hello\") do\n    assert_eq(message(), expected)\n  end\nend\n";
+        std::fs::write(&test_path, source).unwrap();
+
+        let result = analyze_document(&file_uri(&test_path), source, &[]);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        // Hover converts positions against the analyzed program: line 8,
+        // `expected`, is a String there too.
+        let hover = type_at_position(&result.source, &result.typeck, &Position::new(7, 26));
+        assert_eq!(hover.as_deref(), Some("String"));
+
+        // An error is reported where it is in the test file.
+        let broken = source.replace(
+            "assert_eq(message(), expected)",
+            "assert_eq(message() + 1, expected)",
+        );
+        let result = analyze_document(&file_uri(&test_path), &broken, &[]);
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].range.start.line, 7);
     }
 
     #[test]

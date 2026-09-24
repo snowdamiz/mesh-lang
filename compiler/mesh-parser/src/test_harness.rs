@@ -2,7 +2,8 @@
 //!
 //! A `.test.mpl` file writes its tests as `test("label") do ... end` blocks,
 //! grouped by `describe` with `setup` and `teardown`. `meshc test` compiles
-//! it after `preprocess_test_source`.
+//! it after `preprocess_test_source`, and the language server analyzes it
+//! the same way.
 
 use std::ops::Range;
 
