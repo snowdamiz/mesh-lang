@@ -1245,6 +1245,14 @@ impl<'ctx> CodeGen<'ctx> {
         self.current_fn.expect("No current function during codegen")
     }
 
+    /// The current function's symbol, which a panic in it is reported by.
+    pub(crate) fn current_function_name(&self) -> String {
+        self.current_function()
+            .get_name()
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// Build an alloca in the function's entry block.
     ///
     /// In TCE functions, allocas inside the loop body would grow the stack

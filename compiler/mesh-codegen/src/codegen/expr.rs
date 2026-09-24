@@ -2708,8 +2708,9 @@ impl<'ctx> CodeGen<'ctx> {
             alloca
         };
 
-        // Compile pattern to decision tree
-        let tree = compile_match(scrutinee_ty, arms, "<unknown>", 0, &self.sum_type_defs);
+        // Compile pattern to decision tree. A failure names the function.
+        let fn_name = self.current_function_name();
+        let tree = compile_match(scrutinee_ty, arms, &fn_name, 0, &self.sum_type_defs);
 
         // Alloca for the match result
         let result_ty = self.llvm_type(ty);
@@ -2768,13 +2769,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
         }
 
-        let tree = compile::compile_match_columns(
-            &column_types,
-            arms,
-            "<unknown>",
-            0,
-            &self.sum_type_defs,
-        );
+        let fn_name = self.current_function_name();
+        let tree =
+            compile::compile_match_columns(&column_types, arms, &fn_name, 0, &self.sum_type_defs);
         let result_ty = self.llvm_type(ty);
         let result_alloca = self.build_entry_alloca(result_ty, "match_result")?;
         let merge_bb = self
@@ -4230,8 +4227,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(zero_bb);
-        let fn_name = function.get_name().to_string_lossy().into_owned();
-        self.codegen_panic("division by zero", &fn_name, 0)?;
+        self.codegen_panic("division by zero", &self.current_function_name(), 0)?;
 
         self.builder.position_at_end(ok_bb);
         let minus_one = int_ty.const_all_ones();

@@ -336,7 +336,8 @@ impl<'ctx> CodeGen<'ctx> {
             )?;
         } else {
             // Default: unreachable (exhaustive match guaranteed by type checker)
-            self.codegen_fail("non-exhaustive match in switch", "<unknown>", 0)?;
+            let fn_name = self.current_function_name();
+            self.codegen_fail("non-exhaustive match in switch", &fn_name, 0)?;
         }
 
         Ok(())

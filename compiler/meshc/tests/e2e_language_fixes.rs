@@ -4255,3 +4255,15 @@ end
         assert_eq!(err.lines().count(), 1, "{value}\n{err}");
     }
 }
+
+#[test]
+fn a_failed_match_names_its_function() {
+    // It said "Mesh panic in <unknown>".
+    let (code, out, err) = run_status(
+        "fn f(0) = \"zero\"\n\nfn main() do\n  println(f(0))\n  println(f(5))\nend\n",
+        &[],
+    );
+    assert_eq!(code, Some(101), "{err}");
+    assert_eq!(out, "zero\n");
+    assert_eq!(err, "Mesh panic in Main__f: non-exhaustive match\n");
+}
