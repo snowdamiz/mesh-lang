@@ -11249,6 +11249,29 @@ fn infer_for_in(
                     },
                 )?;
             }
+            // `{k, v}` takes a map's entries apart; this is not a map (the
+            // names were left unbound, and every use was undefined).
+            None if for_in.destructure_binding().is_some() => {
+                let (key, value) = (ctx.fresh_var(), ctx.fresh_var());
+                let span = for_in
+                    .iterable()
+                    .map(|e| e.syntax().text_range())
+                    .unwrap_or_else(|| for_in.syntax().text_range());
+                let _ = ctx.unify(
+                    Ty::map(key.clone(), value.clone()),
+                    iter_ty.clone(),
+                    ConstraintOrigin::Expr { span },
+                );
+                let names = for_in
+                    .destructure_binding()
+                    .map(|destr| destr.names())
+                    .unwrap_or_default();
+                for (name, ty) in names.iter().zip([key, value]) {
+                    if let Some(name) = name.text() {
+                        env.insert(name, Scheme::mono(ty));
+                    }
+                }
+            }
             None => {
                 let var_name = for_in
                     .binding_name()

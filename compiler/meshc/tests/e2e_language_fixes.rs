@@ -4701,3 +4701,14 @@ fn a_mismatch_of_two_collection_types_names_both_whole() {
         "{err}"
     );
 }
+
+#[test]
+fn map_destructuring_over_a_list_is_a_type_error() {
+    // `{k, v}` bound nothing over a list: "undefined variable: k", with
+    // "did you mean `_`?".
+    let err = build_error(
+        "fn main() do\n  for {k, v} in [1, 2, 3] do\n    println(\"#{k} #{v}\")\n  end\nend\n",
+    );
+    assert!(err.contains("expected Map<_, _>, found List<Int>"), "{err}");
+    assert!(!err.contains("undefined variable"), "{err}");
+}
