@@ -138,12 +138,30 @@ fn pass_through_arm(arm: &SyntaxNode, lints: &mut Vec<Lint>) {
     let (Some(pattern), Some(body)) = (arm.first_child(), arm.last_child()) else {
         return;
     };
-    if has_arrow && pattern != body && significant_text(&pattern) == significant_text(&body) {
+    if has_arrow
+        && pattern != body
+        && stands_for_its_value(&pattern)
+        && significant_text(&pattern) == significant_text(&body)
+    {
         lints.push(Lint {
             rule: "pass-through-arm",
             message: "this arm returns exactly what it matched; write the pattern alone".to_owned(),
             offset: arm.text_range().start().into(),
         });
+    }
+}
+
+/// Whether a pattern alone can be an arm's value, as the type checker
+/// accepts it (E0056 otherwise): names, literals and constructors of them.
+/// `(0, b) -> (0, b)` stays: `(0, b)` alone does not compile.
+fn stands_for_its_value(pattern: &SyntaxNode) -> bool {
+    match pattern.kind() {
+        SyntaxKind::IDENT_PAT | SyntaxKind::LITERAL_PAT => true,
+        SyntaxKind::CONSTRUCTOR_PAT => pattern
+            .children()
+            .filter(|child| mesh_parser::ast::pat::Pattern::cast(child.clone()).is_some())
+            .all(|child| stands_for_its_value(&child)),
+        _ => false,
     }
 }
 
@@ -399,6 +417,15 @@ fn g(r) do
   case r do
     Ok(value)
     Err(e) -> Err(String.length(e))
+  end
+end
+
+fn h(p) do
+  case p do
+    (0, b) -> (0, b)
+    [a] -> [a]
+    Some((x, y)) -> Some((x, y))
+    _ -> p
   end
 end
 ";
