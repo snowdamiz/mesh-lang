@@ -1,5 +1,5 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
 [E0013] Error: invalid guard: function calls not allowed in guards
@@ -7,7 +7,7 @@ expression: output
    │
  1 │ case x do n when f(n) -> n end
    │                 ──┬─
-   │                   ╰─── only comparisons, boolean ops, literals, and names allowed
+   │                   ╰─── not allowed in a guard
    │
-   │ Help: guards must be simple boolean expressions
+   │ Help: a guard is made of literals, names, comparisons, boolean operators, parentheses and named function calls
 ───╯

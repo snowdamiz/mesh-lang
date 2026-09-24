@@ -12176,14 +12176,14 @@ fn validate_guard_expr(expr: &Expr) -> Result<(), String> {
             Ok(())
         }
         Expr::CallExpr(call) => {
-            // Allow calls to builtins (functions referenced by name).
-            if let Some(callee) = call.callee() {
-                match callee {
-                    Expr::NameRef(_) => Ok(()),
-                    _ => Err("only named function calls allowed in guard".to_string()),
+            // Calls of functions by name, module-qualified or not
+            // (`valid(n)`, `String.length(s)`).
+            match call.callee() {
+                None | Some(Expr::NameRef(_)) => Ok(()),
+                Some(Expr::FieldAccess(fa)) if matches!(fa.base(), Some(Expr::NameRef(_))) => {
+                    Ok(())
                 }
-            } else {
-                Ok(())
+                Some(_) => Err("only named function calls allowed in guard".to_string()),
             }
         }
         _ => Err(format!("expression not allowed in guard")),

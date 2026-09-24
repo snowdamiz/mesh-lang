@@ -1205,10 +1205,13 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), range))
-                        .with_message("only comparisons, boolean ops, literals, and names allowed")
+                        .with_message("not allowed in a guard")
                         .with_color(Color::Red),
                 )
-                .with_help("guards must be simple boolean expressions")
+                .with_help(
+                    "a guard is made of literals, names, comparisons, boolean operators, \
+                     parentheses and named function calls",
+                )
                 .finish()
         }
 

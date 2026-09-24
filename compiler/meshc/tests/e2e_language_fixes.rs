@@ -4285,3 +4285,13 @@ fn tuples_of_different_lengths_are_a_type_mismatch() {
     );
     assert!(!err.contains("argument"), "{err}");
 }
+
+#[test]
+fn a_guard_may_call_a_module_qualified_function() {
+    // Guards allow named function calls, but `String.length(s)` was
+    // rejected as not one.
+    let out = run(
+        "fn main() do\n  let r = case \"hello\" do\n    s when String.length(s) > 3 -> \"long\"\n    _ -> \"short\"\n  end\n  println(r)\nend\n",
+    );
+    assert_eq!(out, "long\n");
+}
