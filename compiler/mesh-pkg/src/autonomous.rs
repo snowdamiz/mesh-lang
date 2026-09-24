@@ -1086,7 +1086,9 @@ template_revision = "v1"
             config.capacity.docker.as_mut().unwrap().env = vec![bad.to_string()];
             let errors = config.validate().expect_err(bad);
             assert!(
-                errors.iter().any(|error| error.contains("must be NAME=value")),
+                errors
+                    .iter()
+                    .any(|error| error.contains("must be NAME=value")),
                 "{bad}: {errors:?}"
             );
         }

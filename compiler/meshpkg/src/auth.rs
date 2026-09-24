@@ -56,11 +56,8 @@ fn write_token_to(path: &std::path::Path, token: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to write credentials: {}", e))?;
     // `mode` applies only to a new file; tighten one an older meshpkg wrote.
     #[cfg(unix)]
-    std::fs::set_permissions(
-        path,
-        std::os::unix::fs::PermissionsExt::from_mode(0o600),
-    )
-    .map_err(|e| format!("Failed to restrict credentials: {}", e))?;
+    std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+        .map_err(|e| format!("Failed to restrict credentials: {}", e))?;
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write credentials: {}", e))
 }

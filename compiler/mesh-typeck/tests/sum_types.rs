@@ -425,7 +425,8 @@ impl TyExt for Ty {
 #[test]
 fn sum_types_cannot_derive_row_or_schema() {
     for trait_name in ["Row", "Schema"] {
-        let src = format!("type Shape do\n  Circle(Int)\n  Square(Int)\nend deriving({trait_name})\n");
+        let src =
+            format!("type Shape do\n  Circle(Int)\n  Square(Int)\nend deriving({trait_name})\n");
         let result = check_source(&src);
         assert!(
             result.errors.iter().any(|error| matches!(

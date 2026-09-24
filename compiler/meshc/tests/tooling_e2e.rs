@@ -1707,7 +1707,12 @@ end
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stdout}{stderr}");
-    for line in ["closure got first", "closure got second", "named got hi", "2 passed"] {
+    for line in [
+        "closure got first",
+        "closure got second",
+        "named got hi",
+        "2 passed",
+    ] {
         assert!(stdout.contains(line), "missing {line:?}: {stdout}");
     }
     assert!(!stderr.contains("panicked"), "{stderr}");

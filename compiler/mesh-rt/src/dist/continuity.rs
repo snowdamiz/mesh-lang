@@ -316,11 +316,9 @@ fn parse_authority_config(
     };
     let promotion_epoch = match promotion_epoch.map(str::trim) {
         None | Some("") => 0,
-        Some(raw) => raw
-            .parse::<u64>()
-            .map_err(|_| {
-                format!("invalid {CONTINUITY_PROMOTION_EPOCH_ENV} `{raw}`: expected a whole number")
-            })?,
+        Some(raw) => raw.parse::<u64>().map_err(|_| {
+            format!("invalid {CONTINUITY_PROMOTION_EPOCH_ENV} `{raw}`: expected a whole number")
+        })?,
     };
     ContinuityAuthorityConfig {
         cluster_role,
@@ -3620,7 +3618,10 @@ mod tests {
         let role = parse_authority_config(Some("stanby"), None).unwrap_err();
         assert!(role.contains("MESH_CONTINUITY_ROLE `stanby`"), "{role}");
         let epoch = parse_authority_config(Some("standby"), Some("one")).unwrap_err();
-        assert!(epoch.contains("MESH_CONTINUITY_PROMOTION_EPOCH `one`"), "{epoch}");
+        assert!(
+            epoch.contains("MESH_CONTINUITY_PROMOTION_EPOCH `one`"),
+            "{epoch}"
+        );
     }
 
     #[test]

@@ -307,16 +307,17 @@ fn package_install_dir(
         .join(".mesh")
         .join("packages")
         .join(format!("{}@{}", name, version));
-    let parent = install_dir.parent().expect("package directory has a parent");
+    let parent = install_dir
+        .parent()
+        .expect("package directory has a parent");
     let leaf = name.rsplit('/').next().unwrap_or(name);
     if let Ok(entries) = std::fs::read_dir(parent) {
         for entry in entries.flatten() {
             let file_name = entry.file_name();
             let file_name = file_name.to_string_lossy();
             if file_name.starts_with(&format!("{leaf}@")) && entry.path() != install_dir {
-                std::fs::remove_dir_all(entry.path()).map_err(|e| {
-                    format!("Failed to remove {}: {}", entry.path().display(), e)
-                })?;
+                std::fs::remove_dir_all(entry.path())
+                    .map_err(|e| format!("Failed to remove {}: {}", entry.path().display(), e))?;
             }
         }
     }
@@ -345,7 +346,11 @@ mod tests {
     fn installing_a_version_removes_the_other_installed_versions() {
         let project = tempfile::tempdir().unwrap();
         let packages = project.path().join(".mesh/packages");
-        for dir in ["acme/widget@1.0.0", "acme/widget-extra@1.0.0", "widget@1.0.0"] {
+        for dir in [
+            "acme/widget@1.0.0",
+            "acme/widget-extra@1.0.0",
+            "widget@1.0.0",
+        ] {
             std::fs::create_dir_all(packages.join(dir)).unwrap();
         }
 

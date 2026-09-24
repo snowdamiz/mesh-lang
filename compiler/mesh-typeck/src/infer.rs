@@ -6735,7 +6735,10 @@ fn builtin_type_names(
         type_constructors(&scheme.ty, &mut names);
     }
     // Types only the standard library's modules mention, such as `Iter`.
-    for scheme in stdlib_modules(true).values().flat_map(|module| module.values()) {
+    for scheme in stdlib_modules(true)
+        .values()
+        .flat_map(|module| module.values())
+    {
         type_constructors(&scheme.ty, &mut names);
     }
     for ty in trait_registry.impl_types() {
@@ -7686,10 +7689,18 @@ fn with_self(ty: &Ty, impl_type: &Ty) -> Ty {
             args.iter().map(|arg| with_self(arg, impl_type)).collect(),
         ),
         Ty::Fun(params, ret) => Ty::Fun(
-            params.iter().map(|param| with_self(param, impl_type)).collect(),
+            params
+                .iter()
+                .map(|param| with_self(param, impl_type))
+                .collect(),
             Box::new(with_self(ret, impl_type)),
         ),
-        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|elem| with_self(elem, impl_type)).collect()),
+        Ty::Tuple(elems) => Ty::Tuple(
+            elems
+                .iter()
+                .map(|elem| with_self(elem, impl_type))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -8505,12 +8516,53 @@ fn validate_native_declaration(ctx: &mut InferCtx, function: &FnDef) {
 /// and C keywords, which the generated header could not declare.
 fn is_reserved_export_symbol(symbol: &str) -> bool {
     const C_KEYWORDS: &[&str] = &[
-        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
-        "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
-        "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch",
-        "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool", "_Complex",
-        "_Imaginary", "_Alignas", "_Alignof", "_Atomic", "_Generic", "_Noreturn",
-        "_Static_assert", "_Thread_local", "bool", "true", "false",
+        "auto",
+        "break",
+        "case",
+        "char",
+        "const",
+        "continue",
+        "default",
+        "do",
+        "double",
+        "else",
+        "enum",
+        "extern",
+        "float",
+        "for",
+        "goto",
+        "if",
+        "inline",
+        "int",
+        "long",
+        "register",
+        "restrict",
+        "return",
+        "short",
+        "signed",
+        "sizeof",
+        "static",
+        "struct",
+        "switch",
+        "typedef",
+        "union",
+        "unsigned",
+        "void",
+        "volatile",
+        "while",
+        "_Bool",
+        "_Complex",
+        "_Imaginary",
+        "_Alignas",
+        "_Alignof",
+        "_Atomic",
+        "_Generic",
+        "_Noreturn",
+        "_Static_assert",
+        "_Thread_local",
+        "bool",
+        "true",
+        "false",
     ];
     symbol == "main" || symbol.starts_with("mesh_library_") || C_KEYWORDS.contains(&symbol)
 }

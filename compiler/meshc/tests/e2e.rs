@@ -203,7 +203,10 @@ fn e2e_top_level_let_is_an_error() {
     let err = compile_expect_error(
         "let greeting = \"hello\"\n\nfn main() do\n  println(greeting)\nend\n",
     );
-    assert!(err.contains("E0080") && err.contains("let greeting"), "{err}");
+    assert!(
+        err.contains("E0080") && err.contains("let greeting"),
+        "{err}"
+    );
     assert!(!err.contains("Undefined variable"), "{err}");
 }
 

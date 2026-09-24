@@ -97,7 +97,9 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let mut request_line = String::new();
-            BufReader::new(&stream).read_line(&mut request_line).unwrap();
+            BufReader::new(&stream)
+                .read_line(&mut request_line)
+                .unwrap();
             (&stream)
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]")
                 .unwrap();
@@ -109,7 +111,10 @@ mod tests {
         assert!(results.is_empty());
         let request_line = server.join().unwrap();
         let target = request_line.split(' ').nth(1).unwrap();
-        assert!(target.starts_with("/api/v1/packages?search=a%26b"), "{target}");
+        assert!(
+            target.starts_with("/api/v1/packages?search=a%26b"),
+            "{target}"
+        );
         assert!(!target.contains('#') && !target.contains(" "), "{target}");
         assert_eq!(target.matches('=').count(), 1, "{target}");
     }

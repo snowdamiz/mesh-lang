@@ -525,13 +525,7 @@ fn collect_source_dependency_roots(
         }
         let dependency_manifest = Manifest::from_file(&root.join("mesh.toml"))?;
         roots.push(root.clone());
-        collect_source_dependency_roots(
-            project_root,
-            &root,
-            &dependency_manifest,
-            visited,
-            roots,
-        )?;
+        collect_source_dependency_roots(project_root, &root, &dependency_manifest, visited, roots)?;
     }
     Ok(())
 }

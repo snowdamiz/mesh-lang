@@ -473,7 +473,10 @@ fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<Pa
 /// Where an installed toolchain keeps the runtime: `<prefix>/lib/` beside
 /// `<prefix>/bin/meshc`, as the installers lay it out (`~/.mesh/lib`). A
 /// runtime for another target goes in `<prefix>/lib/<triple>/`.
-fn installed_mesh_rt_candidates(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Vec<PathBuf> {
+fn installed_mesh_rt_candidates(
+    target: &LinkTarget,
+    runtime_flavor: RuntimeFlavor,
+) -> Vec<PathBuf> {
     let Some(prefix) = std::env::current_exe()
         .ok()
         .map(|exe| std::fs::canonicalize(&exe).unwrap_or(exe))
@@ -882,10 +885,22 @@ mod tests {
 
     #[test]
     fn android_triples_name_the_ndk_compiler() {
-        assert_eq!(ndk_clang_triple("aarch64-linux-android"), "aarch64-linux-android");
-        assert_eq!(ndk_clang_triple("x86_64-linux-android"), "x86_64-linux-android");
-        assert_eq!(ndk_clang_triple("armv7-linux-androideabi"), "armv7a-linux-androideabi");
-        assert_eq!(ndk_clang_triple("thumbv7neon-linux-androideabi"), "armv7a-linux-androideabi");
+        assert_eq!(
+            ndk_clang_triple("aarch64-linux-android"),
+            "aarch64-linux-android"
+        );
+        assert_eq!(
+            ndk_clang_triple("x86_64-linux-android"),
+            "x86_64-linux-android"
+        );
+        assert_eq!(
+            ndk_clang_triple("armv7-linux-androideabi"),
+            "armv7a-linux-androideabi"
+        );
+        assert_eq!(
+            ndk_clang_triple("thumbv7neon-linux-androideabi"),
+            "armv7a-linux-androideabi"
+        );
     }
 
     #[test]
