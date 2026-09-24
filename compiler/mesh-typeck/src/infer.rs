@@ -354,12 +354,29 @@ fn wide_integer_module(ty: Ty) -> HashMap<String, Scheme> {
     module
 }
 
+type StdlibModules = HashMap<String, HashMap<String, Scheme>>;
+
+/// The stdlib module namespace registry, built once per thread. Every
+/// `String.length(x)` looks its function up here, and building the
+/// registry costs about as much as checking a small module.
+fn stdlib_modules(test_builtins: bool) -> std::rc::Rc<StdlibModules> {
+    thread_local! {
+        static MODULES: std::cell::RefCell<[Option<std::rc::Rc<StdlibModules>>; 2]> =
+            const { std::cell::RefCell::new([None, None]) };
+    }
+    MODULES.with(|modules| {
+        modules.borrow_mut()[test_builtins as usize]
+            .get_or_insert_with(|| std::rc::Rc::new(build_stdlib_modules(test_builtins)))
+            .clone()
+    })
+}
+
 /// Build the stdlib module namespace registry.
 ///
 /// Maps module names (e.g., "String", "IO", "Env") to their exported
 /// function names and type schemes. This is used by both `from X import y`
 /// and `X.y` resolution paths.
-fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme>> {
+fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     let mut modules: HashMap<String, HashMap<String, Scheme>> = HashMap::new();
 
     // ── String module ──────────────────────────────────────────────
