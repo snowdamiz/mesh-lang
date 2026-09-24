@@ -1,6 +1,6 @@
 [package]
 name = "mesh-test-rt"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Test-only runtime extensions for compiled Mesh test programs"
 

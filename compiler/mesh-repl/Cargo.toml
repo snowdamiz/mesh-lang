@@ -1,6 +1,6 @@
 [package]
 name = "mesh-repl"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Interactive REPL with LLVM JIT compilation for the Mesh language"
 
