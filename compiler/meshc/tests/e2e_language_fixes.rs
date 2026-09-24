@@ -4712,3 +4712,38 @@ fn map_destructuring_over_a_list_is_a_type_error() {
     assert!(err.contains("expected Map<_, _>, found List<Int>"), "{err}");
     assert!(!err.contains("undefined variable"), "{err}");
 }
+
+#[test]
+fn bulk_collection_builders_take_linear_time() {
+    // Each built its result one element at a time through a copying
+    // `append`, `put` or `add`: 100 000 elements took minutes.
+    let source = r##"
+fn main() do
+  let n = 100000
+  let xs = Range.to_list(0..n)
+  let doubled = Range.map(0..n, fn i -> i * 2 end)
+  let evens = Range.filter(0..n, fn i -> i % 2 == 0 end)
+  let s = Set.from_list(List.append(xs, 5))
+  let m = Map.from_list(List.zip(xs, doubled))
+  println("#{List.length(xs)} #{List.last(doubled)} #{List.length(evens)} #{Set.size(s)} #{Map.size(m)} #{Map.get(m, 99999)}")
+  let ms = Iter.from(xs) |> Iter.map(fn i -> (i % 1000, i) end) |> Map.collect()
+  let ss = Iter.from(xs) |> Iter.map(fn i -> i % 7 end) |> Set.collect()
+  let sm = Map.from_list([("a", 1), ("b", 2), ("a", 3)])
+  let tk = Map.from_list([((1, 2), "x"), ((1, 2), "y"), ((2, 1), "z")])
+  println("#{Map.size(ms)} #{Map.get(ms, 5)} #{Set.to_list(ss)} #{sm} #{Map.size(tk)} #{Map.get(tk, (1, 2))}")
+  let q = List.reduce(xs, Queue.new(), fn q, x -> Queue.push(q, x) end)
+  let (first, rest) = Queue.pop(q)
+  println("#{Queue.size(q)} #{first} #{Queue.peek(rest)} #{Queue.size(Queue.push(rest, 7))}")
+end
+"##;
+    let started = std::time::Instant::now();
+    assert_eq!(
+        run(source),
+        "100000 199998 50000 100000 100000 199998\n1000 99005 [0, 1, 2, 3, 4, 5, 6] %{a => 3, b => 2} 2 y\n100000 0 1 100000\n"
+    );
+    // Compiling included; the quadratic builders took minutes. A collection
+    // at every allocation (MESH_GC_STRESS) is slower than that.
+    if std::env::var_os("MESH_GC_STRESS").is_none() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    }
+}

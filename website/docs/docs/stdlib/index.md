@@ -124,6 +124,8 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 
 `Map.get` requires an existing key: a missing one is a runtime error, as `List.get` past the end is. Call `Map.has_key` first when absence is normal.
 
+Lists, maps and sets are immutable: `List.append`, `Map.put` and `Set.add` return a new collection, copying the one they are given, so adding thousands of elements one at a time takes quadratic time. Build a large collection in one pass instead, with `Map.from_list`, `Set.from_list`, `Range.to_list`, a `for` comprehension or an iterator's `collect`. `Queue.push` and `Queue.pop` take amortized constant time.
+
 ### Tuples, Ranges, and Queues
 
 | Function | Returns | Description |

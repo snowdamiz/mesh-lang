@@ -17,6 +17,14 @@ unsafe fn range_end(r: *const u8) -> i64 {
     *((r as *const i64).add(1))
 }
 
+/// A list builder with room for the range's elements (at most a million
+/// up front: the builder grows). Appending one element at a time copied
+/// the list each time, which took quadratic time.
+unsafe fn range_builder(start: i64, end: i64) -> *mut u8 {
+    let len = (end as i128 - start as i128).clamp(0, 1 << 20);
+    super::list::mesh_list_builder_new(len as i64)
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 /// Create a new range `[start, end)`.
@@ -36,10 +44,10 @@ pub extern "C-unwind" fn mesh_range_to_list(range: *mut u8) -> *mut u8 {
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
-        let mut list = super::list::mesh_list_new();
+        let mut list = range_builder(start, end);
         let mut i = start;
         while i < end {
-            list = super::list::mesh_list_append(list, i as u64);
+            list = super::list::mesh_list_builder_push(list, i as u64);
             i += 1;
         }
         list
@@ -59,14 +67,14 @@ pub extern "C-unwind" fn mesh_range_map(
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
-        let mut list = super::list::mesh_list_new();
+        let mut list = range_builder(start, end);
 
         if env_ptr.is_null() {
             let f: BareFn = std::mem::transmute(fn_ptr);
             let mut i = start;
             while i < end {
                 let result = f(i as u64);
-                list = super::list::mesh_list_append(list, result);
+                list = super::list::mesh_list_builder_push(list, result);
                 i += 1;
             }
         } else {
@@ -74,7 +82,7 @@ pub extern "C-unwind" fn mesh_range_map(
             let mut i = start;
             while i < end {
                 let result = f(env_ptr, i as u64);
-                list = super::list::mesh_list_append(list, result);
+                list = super::list::mesh_list_builder_push(list, result);
                 i += 1;
             }
         }
@@ -95,14 +103,14 @@ pub extern "C-unwind" fn mesh_range_filter(
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
-        let mut list = super::list::mesh_list_new();
+        let mut list = range_builder(start, end);
 
         if env_ptr.is_null() {
             let f: BareFn = std::mem::transmute(fn_ptr);
             let mut i = start;
             while i < end {
                 if f(i as u64) != 0 {
-                    list = super::list::mesh_list_append(list, i as u64);
+                    list = super::list::mesh_list_builder_push(list, i as u64);
                 }
                 i += 1;
             }
@@ -111,7 +119,7 @@ pub extern "C-unwind" fn mesh_range_filter(
             let mut i = start;
             while i < end {
                 if f(env_ptr, i as u64) != 0 {
-                    list = super::list::mesh_list_append(list, i as u64);
+                    list = super::list::mesh_list_builder_push(list, i as u64);
                 }
                 i += 1;
             }

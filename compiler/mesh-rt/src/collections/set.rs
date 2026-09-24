@@ -289,16 +289,60 @@ pub extern "C-unwind" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
     }
 }
 
-/// Build a set from a list. Duplicates are removed via mesh_set_add.
+/// Builds a set in place, for `from_list` and `collect`: `add` copies the
+/// set it is given, so adding one element at a time took quadratic time.
+/// Elements keep the order they first appear in; a hash index of their
+/// words (what a set compares) finds repeats. The set being built is a GC
+/// object held here, as `add`'s result was.
+pub(crate) struct SetBuilder {
+    set: *mut u8,
+    seen: std::collections::HashSet<u64>,
+}
+
+impl SetBuilder {
+    pub(crate) unsafe fn new() -> Self {
+        SetBuilder {
+            set: alloc_set(4),
+            seen: Default::default(),
+        }
+    }
+
+    pub(crate) unsafe fn add(&mut self, element: u64) {
+        if !self.seen.insert(element) {
+            return;
+        }
+        let len = set_len(self.set);
+        if len == *((self.set as *const u64).add(1)) {
+            let grown = alloc_set(len * 2);
+            ptr::copy_nonoverlapping(set_data(self.set), set_data_mut(grown), len as usize);
+            *(grown as *mut u64) = len;
+            self.set = grown;
+        }
+        *set_data_mut(self.set).add(len as usize) = element;
+        *(self.set as *mut u64) = len + 1;
+    }
+
+    /// The set, with no room to spare: every other set's capacity is its
+    /// length.
+    pub(crate) unsafe fn finish(self) -> *mut u8 {
+        let len = set_len(self.set);
+        let set = alloc_set(len);
+        ptr::copy_nonoverlapping(set_data(self.set), set_data_mut(set), len as usize);
+        *(set as *mut u64) = len;
+        set
+    }
+}
+
+/// Build a set from a list, without its repeats.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
     unsafe {
         let (len, data) = super::list::list_slots(list);
-        let mut set = mesh_set_new();
+        let mut set = SetBuilder::new();
         for i in 0..len {
-            set = mesh_set_add(set, *data.add(i));
+            set.add(*data.add(i));
         }
-        set
+        set.finish()
     }
 }
 

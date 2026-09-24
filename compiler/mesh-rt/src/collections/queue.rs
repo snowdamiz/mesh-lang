@@ -1,44 +1,36 @@
 //! GC-managed immutable FIFO Queue for the Mesh runtime.
 //!
-//! A MeshQueue is backed by two lists (front + back) for amortized O(1)
-//! push/pop. Layout is an opaque GC-allocated struct:
-//! `{ u64 front_ptr, u64 back_ptr }`.
-//!
-//! All operations return NEW queues (immutable semantics).
+//! A queue is `{ buffer, head, tail }` (three words): its elements are
+//! `buffer[head..tail]`, where `buffer` is a list whose length counts the
+//! slots written by the queues that share it. A push onto the newest queue
+//! of a buffer writes the next slot in place; a push onto an older queue,
+//! whose next slot another push took, or onto a full buffer copies the
+//! queue's own elements into a new buffer with room to spare. So a push is
+//! amortized O(1), and every queue keeps its elements (it used to append
+//! to a list, copying it: O(n) per push). A pop moves `head`.
 
+use super::list::{
+    list_slots, mesh_list_builder_new, mesh_list_builder_push, mesh_list_new, push_in_place,
+};
 use crate::gc::mesh_gc_alloc_actor;
 
 // ── Internal helpers ──────────────────────────────────────────────────
 
-/// Queue layout: { front: *mut u8 (list), back: *mut u8 (list) }
-const QUEUE_SIZE: usize = 16; // 2 pointers as u64
+/// Queue layout: { buffer: *mut u8 (list), head: u64, tail: u64 }
+const QUEUE_SIZE: u64 = 24;
 
-unsafe fn queue_front(q: *const u8) -> *mut u8 {
-    *(q as *const u64) as *mut u8
+unsafe fn fields(queue: *const u8) -> (*mut u8, u64, u64) {
+    let words = queue as *const u64;
+    (*words as *mut u8, *words.add(1), *words.add(2))
 }
 
-unsafe fn queue_back(q: *const u8) -> *mut u8 {
-    *((q as *const u64).add(1)) as *mut u8
-}
-
-unsafe fn alloc_queue(front: *mut u8, back: *mut u8) -> *mut u8 {
-    let p = mesh_gc_alloc_actor(QUEUE_SIZE as u64, 8);
-    *(p as *mut u64) = front as u64;
-    *((p as *mut u64).add(1)) = back as u64;
+unsafe fn alloc_queue(buffer: *mut u8, head: u64, tail: u64) -> *mut u8 {
+    let p = mesh_gc_alloc_actor(QUEUE_SIZE, 8);
+    let words = p as *mut u64;
+    *words = buffer as u64;
+    *words.add(1) = head;
+    *words.add(2) = tail;
     p
-}
-
-/// Transfer the back list to the front when front is empty.
-///
-/// Because our back list is built with `append` (chronological order),
-/// we transfer it directly (no reversal needed) to maintain FIFO order.
-unsafe fn normalize(front: *mut u8, back: *mut u8) -> (*mut u8, *mut u8) {
-    use super::list;
-    if list::mesh_list_length(front) == 0 && list::mesh_list_length(back) > 0 {
-        (back, list::mesh_list_new())
-    } else {
-        (front, back)
-    }
 }
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -46,21 +38,25 @@ unsafe fn normalize(front: *mut u8, back: *mut u8) -> (*mut u8, *mut u8) {
 /// Create an empty queue.
 #[no_mangle]
 pub extern "C" fn mesh_queue_new() -> *mut u8 {
-    unsafe {
-        let front = super::list::mesh_list_new();
-        let back = super::list::mesh_list_new();
-        alloc_queue(front, back)
-    }
+    unsafe { alloc_queue(mesh_list_new(), 0, 0) }
 }
 
 /// Push an element to the back of the queue. Returns a NEW queue.
 #[no_mangle]
 pub extern "C" fn mesh_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
     unsafe {
-        let front = queue_front(queue);
-        let new_back = super::list::mesh_list_append(queue_back(queue), element);
-        let (f, b) = normalize(front, new_back);
-        alloc_queue(f, b)
+        let (buffer, head, tail) = fields(queue);
+        let (written, data) = list_slots(buffer);
+        if tail == written as u64 && push_in_place(buffer, element) {
+            return alloc_queue(buffer, head, tail + 1);
+        }
+        let count = tail - head;
+        let mut fresh = mesh_list_builder_new(((count + 1) * 2) as i64);
+        for index in head..tail {
+            fresh = mesh_list_builder_push(fresh, *data.add(index as usize));
+        }
+        fresh = mesh_list_builder_push(fresh, element);
+        alloc_queue(fresh, 0, count + 1)
     }
 }
 
@@ -71,21 +67,12 @@ pub extern "C" fn mesh_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
     unsafe {
-        let front = queue_front(queue);
-        let back = queue_back(queue);
-
-        // Normalize if needed.
-        let (front, back) = normalize(front, back);
-
-        if super::list::mesh_list_length(front) == 0 {
+        let (buffer, head, tail) = fields(queue);
+        if head == tail {
             crate::panic::raise(format_args!("Queue.pop: the queue is empty"));
         }
-
-        let element = super::list::mesh_list_head(front);
-        let new_front = super::list::mesh_list_tail(front);
-        let (nf, nb) = normalize(new_front, back);
-        let new_queue = alloc_queue(nf, nb);
-
+        let element = *list_slots(buffer).1.add(head as usize);
+        let new_queue = alloc_queue(buffer, head + 1, tail);
         // Return the tuple `(element, new_queue)` in the runtime tuple layout
         // `{ u64 len, u64[len] }`, so `Tuple.first`, `Tuple.second` and
         // `let (front, rest) = ...` read it like any other tuple.
@@ -101,15 +88,11 @@ pub extern "C-unwind" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_queue_peek(queue: *mut u8) -> u64 {
     unsafe {
-        let front = queue_front(queue);
-        let back = queue_back(queue);
-        let (front, _) = normalize(front, back);
-
-        if super::list::mesh_list_length(front) == 0 {
+        let (buffer, head, tail) = fields(queue);
+        if head == tail {
             crate::panic::raise(format_args!("Queue.peek: the queue is empty"));
         }
-
-        super::list::mesh_list_head(front)
+        *list_slots(buffer).1.add(head as usize)
     }
 }
 
@@ -117,9 +100,8 @@ pub extern "C-unwind" fn mesh_queue_peek(queue: *mut u8) -> u64 {
 #[no_mangle]
 pub extern "C" fn mesh_queue_size(queue: *mut u8) -> i64 {
     unsafe {
-        let front_len = super::list::mesh_list_length(queue_front(queue));
-        let back_len = super::list::mesh_list_length(queue_back(queue));
-        front_len + back_len
+        let (_, head, tail) = fields(queue);
+        (tail - head) as i64
     }
 }
 
@@ -189,6 +171,36 @@ mod tests {
         let q2 = mesh_queue_push(q1, 1);
         assert_eq!(mesh_queue_size(q1), 0);
         assert_eq!(mesh_queue_size(q2), 1);
+    }
+
+    #[test]
+    fn test_queue_versions_keep_their_elements() {
+        // Pushes onto one queue share its buffer; each queue still sees only
+        // what was pushed onto it.
+        mesh_rt_init();
+        let q1 = mesh_queue_push(mesh_queue_new(), 1);
+        let q2 = mesh_queue_push(q1, 2);
+        let q3 = mesh_queue_push(q1, 3);
+        let q4 = mesh_queue_push(q2, 4);
+        assert_eq!(mesh_queue_size(q1), 1);
+        let drain = |mut q: *mut u8| {
+            let mut out = Vec::new();
+            while mesh_queue_is_empty(q) == 0 {
+                let pair = mesh_queue_pop(q);
+                unsafe {
+                    out.push(*((pair as *const u64).add(1)));
+                    q = *((pair as *const u64).add(2)) as *mut u8;
+                }
+            }
+            out
+        };
+        assert_eq!(drain(q2), vec![1, 2]);
+        assert_eq!(drain(q3), vec![1, 3]);
+        assert_eq!(drain(q4), vec![1, 2, 4]);
+        // A popped queue pushes after its own elements.
+        let rest = unsafe { *((mesh_queue_pop(q4) as *const u64).add(2)) as *mut u8 };
+        assert_eq!(drain(mesh_queue_push(rest, 5)), vec![2, 4, 5]);
+        assert_eq!(drain(q4), vec![1, 2, 4]);
     }
 
     #[test]

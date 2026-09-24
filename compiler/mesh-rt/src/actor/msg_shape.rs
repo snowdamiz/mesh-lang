@@ -35,7 +35,7 @@
 //! | `AGG` | n, (offset, node) × n | by-value aggregate |
 //! | `SUM` | n, (tag, fields, (offset, node) × fields) × n | by-value tagged union, tag byte first |
 //! | `JSON` | | pointer to a `MeshJson` tree |
-//! | `QUEUE` | elem | pointer to `{front list, back list}` |
+//! | `QUEUE` | elem | pointer to `{buffer list, head, tail}` |
 //! | `SHARED` | | a reference that cannot be copied by type |
 //! | `CLOSURE` | | by-value `{fn, env}`; `env` points to an environment |
 //!
@@ -391,14 +391,12 @@ impl Capture<'_> {
             }
             BOXED => self.value(container, self.operand(node, 0), 0),
             QUEUE => {
-                // A queue is two lists of the same element type.
-                for offset in [0, 8] {
-                    let Some(word) = self.read_word(container, offset) else {
-                        return;
-                    };
-                    if let Some(index) = self.list_of(word, self.operand(node, 0)) {
-                        self.relocs(container).push((offset, index));
-                    }
+                // A queue is a buffer list and two indices into it.
+                let Some(word) = self.read_word(container, 0) else {
+                    return;
+                };
+                if let Some(index) = self.list_of(word, self.operand(node, 0)) {
+                    self.relocs(container).push((0, index));
                 }
             }
             JSON => {

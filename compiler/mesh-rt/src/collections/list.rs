@@ -370,6 +370,20 @@ pub extern "C-unwind" fn mesh_list_builder_push(list: *mut u8, element: u64) -> 
     }
 }
 
+/// Write `element` after the last element of `list`, in place, if it is an
+/// owned list with room for it, and say whether it did. Only for a list no
+/// Mesh code sees (a queue's buffer): every other list is immutable.
+pub(crate) unsafe fn push_in_place(list: *mut u8, element: u64) -> bool {
+    let len = list_len(list);
+    let cap = list_cap(list);
+    if cap == VIEW || len >= cap {
+        return false;
+    }
+    *list_data_mut(list).add(len as usize) = element;
+    *(list as *mut u64) = len + 1;
+    true
+}
+
 /// Create a list from an array of u64 elements.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_list_from_array(data: *const u64, count: i64) -> *mut u8 {

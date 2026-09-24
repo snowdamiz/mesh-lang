@@ -501,6 +501,81 @@ pub extern "C-unwind" fn mesh_map_to_list(map: *mut u8) -> *mut u8 {
     }
 }
 
+/// Builds a map in place, for `from_list` and `collect`: `put` copies the
+/// map it is given, so adding one entry at a time took quadratic time. A
+/// repeated key keeps its first place and takes the last value, as with
+/// `put`. Int and String keys are found through a hash index, keys compared
+/// by `key_eq` by a scan.
+///
+/// The entries stay in the GC map held here (on the caller's stack), so a
+/// collection while `key_eq` or an iterator runs Mesh code still sees them.
+pub(crate) struct MapBuilder {
+    map: *mut u8,
+    key_eq: Option<KeyEq>,
+    ints: std::collections::HashMap<u64, usize>,
+    strings: std::collections::HashMap<Vec<u8>, usize>,
+}
+
+impl MapBuilder {
+    pub(crate) unsafe fn new(key_type: u64, key_eq: *mut u8) -> Self {
+        MapBuilder {
+            map: alloc_map(4, key_type),
+            key_eq: key_eq_fn(key_eq),
+            ints: Default::default(),
+            strings: Default::default(),
+        }
+    }
+
+    pub(crate) unsafe fn put(&mut self, key: u64, value: u64) {
+        use std::collections::hash_map::Entry;
+        let len = map_len(self.map) as usize;
+        let found = if self.key_eq.is_some() {
+            // ponytail: a scan per key, quadratic for keys with their own Eq;
+            // hashing them by the key type's Hash would make it linear.
+            find_key(self.map, key, self.key_eq)
+        } else if map_key_type(self.map) == KEY_TYPE_STR {
+            let bytes = (*(key as *const crate::string::MeshString)).as_bytes();
+            match self.strings.entry(bytes.to_vec()) {
+                Entry::Occupied(at) => Some(*at.get()),
+                Entry::Vacant(slot) => {
+                    slot.insert(len);
+                    None
+                }
+            }
+        } else {
+            match self.ints.entry(key) {
+                Entry::Occupied(at) => Some(*at.get()),
+                Entry::Vacant(slot) => {
+                    slot.insert(len);
+                    None
+                }
+            }
+        };
+        if let Some(index) = found {
+            (*map_entries_mut(self.map).add(index))[1] = value;
+            return;
+        }
+        if len as u64 == map_cap_raw(self.map) {
+            let grown = alloc_map(len as u64 * 2, map_key_type(self.map));
+            ptr::copy_nonoverlapping(map_entries(self.map), map_entries_mut(grown), len);
+            *(grown as *mut u64) = len as u64;
+            self.map = grown;
+        }
+        *map_entries_mut(self.map).add(len) = [key, value];
+        *(self.map as *mut u64) = len as u64 + 1;
+    }
+
+    /// The map, with no room to spare: every other map's capacity is its
+    /// length.
+    pub(crate) unsafe fn finish(self) -> *mut u8 {
+        let len = map_len(self.map);
+        let map = alloc_map(len, map_key_type(self.map));
+        ptr::copy_nonoverlapping(map_entries(self.map), map_entries_mut(map), len as usize);
+        *(map as *mut u64) = len;
+        map
+    }
+}
+
 /// Build a map with Int keys from a list of (key, value) 2-tuples.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_map_from_list(list: *mut u8) -> *mut u8 {
@@ -518,14 +593,13 @@ pub extern "C-unwind" fn mesh_map_from_list_by(
 ) -> *mut u8 {
     unsafe {
         let len = super::list::mesh_list_length(list);
-        let mut map = alloc_map(0, key_type as u64);
+        let mut map = MapBuilder::new(key_type as u64, key_eq);
         for i in 0..len {
-            let tuple_ptr = super::list::mesh_list_get(list, i) as *mut u8;
-            let key = *((tuple_ptr as *const u64).add(1)); // offset 1 = first tuple element
-            let val = *((tuple_ptr as *const u64).add(2)); // offset 2 = second tuple element
-            map = mesh_map_put_by(map, key, val, key_eq);
+            let tuple_ptr = super::list::mesh_list_get(list, i) as *const u64;
+            // A pair is `{ len, key, value }`.
+            map.put(*tuple_ptr.add(1), *tuple_ptr.add(2));
         }
-        map
+        map.finish()
     }
 }
 

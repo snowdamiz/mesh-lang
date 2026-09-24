@@ -18,7 +18,6 @@ use crate::collections::map::mesh_map_iter_next;
 
 use crate::collections::range::mesh_range_iter_next;
 use crate::collections::set::mesh_set_iter_next;
-use crate::collections::set::{mesh_set_add, mesh_set_new};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::option::{alloc_option, MeshOption};
 use crate::string::{mesh_string_concat, mesh_string_new, MeshString};
@@ -554,7 +553,7 @@ pub extern "C-unwind" fn mesh_map_collect_by(
     key_eq: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let mut map = crate::collections::map::mesh_map_new_typed(key_type);
+        let mut map = crate::collections::map::MapBuilder::new(key_type as u64, key_eq);
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
@@ -565,28 +564,27 @@ pub extern "C-unwind" fn mesh_map_collect_by(
             // Tuple layout: { u64 len=2, u64 key, u64 value }
             let key = *((tuple_ptr as *const u64).add(1));
             let val = *((tuple_ptr as *const u64).add(2));
-            map = crate::collections::map::mesh_map_put_by(map, key, val, key_eq);
+            map.put(key, val);
         }
-        map
+        map.finish()
     }
 }
 
 /// Set.collect(iter) -- materialize iterator into a Set.
-/// Duplicates are handled automatically by mesh_set_add.
+/// Repeated elements are kept once (`SetBuilder`).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
     unsafe {
-        let mut set = mesh_set_new();
+        let mut set = crate::collections::set::SetBuilder::new();
         loop {
             let option = mesh_iter_generic_next(iter);
             let opt_ref = option as *mut MeshOption;
             if (*opt_ref).tag == 1 {
                 break; // None
             }
-            let elem = (*opt_ref).value as u64;
-            set = mesh_set_add(set, elem);
+            set.add((*opt_ref).value as u64);
         }
-        set
+        set.finish()
     }
 }
 
