@@ -124,10 +124,16 @@ pub extern "C" fn mesh_int_to_string(val: i64) -> *mut MeshString {
 }
 
 /// Convert an f64 float to a GC-managed Mesh string. A whole number keeps
-/// its `.0` (`42.0`, never `42`) so a Float always reads as one.
+/// its `.0` (`42.0`, never `42`; `1.0e20`, never `1e20`) so a Float always
+/// reads as one.
 #[no_mangle]
 pub extern "C" fn mesh_float_to_string(val: f64) -> *mut MeshString {
-    let s = format!("{val:?}");
+    let mut s = format!("{val:?}");
+    if let Some(e) = s.find('e') {
+        if !s[..e].contains('.') {
+            s.insert_str(e, ".0");
+        }
+    }
     mesh_string_new(s.as_ptr(), s.len() as u64)
 }
 
@@ -466,6 +472,15 @@ mod tests {
         unsafe {
             let text = (*s).as_str();
             assert!(text.starts_with("3.14"), "got: {}", text);
+        }
+        // A Float reads as one in exponent form too (it printed `1e20`).
+        for (val, text) in [
+            (1.0e20, "1.0e20"),
+            (1.5e-7, "1.5e-7"),
+            (-2.0e300, "-2.0e300"),
+        ] {
+            let s = mesh_float_to_string(val);
+            assert_eq!(unsafe { (*s).as_str() }, text);
         }
     }
 
