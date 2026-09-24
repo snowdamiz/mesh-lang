@@ -3425,6 +3425,10 @@ impl<'a> Lowerer<'a> {
             "mesh_test_run_body".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
         );
+        self.known_functions.insert(
+            "mesh_test_end".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Unit)),
+        );
         // mesh_test_mock_actor(fn_ptr: ptr, env_ptr: ptr) -> i64
         self.known_functions.insert(
             "mesh_test_mock_actor".to_string(),
@@ -16242,6 +16246,7 @@ fn map_builtin_name(name: &str) -> String {
         "test_summary" => "mesh_test_summary".to_string(),
         "test_cleanup_actors" => "mesh_test_cleanup_actors".to_string(),
         "test_run_body" => "mesh_test_run_body".to_string(),
+        "test_end" => "mesh_test_end".to_string(),
         "test_mock_actor" => "mesh_test_mock_actor".to_string(),
         "test_install_in_memory_secure_store" => {
             "mesh_test_install_in_memory_secure_store".to_string()

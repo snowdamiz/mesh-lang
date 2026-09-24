@@ -111,9 +111,10 @@ the project tree.
 | `assert_ne(a, b)` | Passes if `a != b`; prints both values on failure |
 | `assert_raises(fn)` | Passes if calling `fn` raises a runtime error or fails an assertion |
 
-A failed assertion does not stop the test: the rest of its body still runs. A
-runtime error (a panic, such as `List.get` past the end or a division by zero)
-ends the test and fails it, and the run goes on with the next test.
+A failed assertion ends its test and fails it, as a runtime error (a panic,
+such as `List.get` past the end or a division by zero) does; the run goes on
+with the next test. Inside `assert_raises`, a failed assertion is the raise it
+expects.
 
 ```mesh
 test("assertions") do
@@ -164,7 +165,7 @@ describe("counter") do
 end
 ```
 
-`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it.
+`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. Values that `setup` binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
 
 ## In-memory secure store
 

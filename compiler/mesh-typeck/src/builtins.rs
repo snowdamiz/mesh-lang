@@ -2507,6 +2507,12 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![run_body_cb], unit_t.clone())),
     );
 
+    // test_end() -> Unit records the test's outcome.
+    env.insert(
+        "test_end".into(),
+        Scheme::mono(Ty::fun(vec![], unit_t.clone())),
+    );
+
     // test_begin(label: String) -> Unit
     env.insert(
         "test_begin".into(),

@@ -340,7 +340,7 @@ pub use string::{
 };
 pub use test::{
     mesh_test_assert, mesh_test_assert_eq, mesh_test_assert_ne, mesh_test_assert_raises,
-    mesh_test_begin, mesh_test_cleanup_actors, mesh_test_fail_count, mesh_test_fail_msg,
-    mesh_test_mock_actor, mesh_test_pass, mesh_test_pass_count, mesh_test_run_body,
-    mesh_test_summary,
+    mesh_test_begin, mesh_test_cleanup_actors, mesh_test_end, mesh_test_fail_count,
+    mesh_test_fail_msg, mesh_test_mock_actor, mesh_test_pass, mesh_test_pass_count,
+    mesh_test_run_body, mesh_test_summary,
 };

@@ -2152,6 +2152,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_test_fail_count",
             mesh_rt::test::mesh_test_fail_count as *const (),
         ),
+        ("mesh_test_end", mesh_rt::test::mesh_test_end as *const ()),
         (
             "mesh_test_fail_msg",
             mesh_rt::test::mesh_test_fail_msg as *const (),

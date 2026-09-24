@@ -1567,6 +1567,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         test_run_body_ty,
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_test_end() -> void
+    module.add_function(
+        "mesh_test_end",
+        void_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // mesh_test_mock_actor(fn_ptr: ptr, env_ptr: ptr) -> i64
     let test_mock_actor_ty = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);

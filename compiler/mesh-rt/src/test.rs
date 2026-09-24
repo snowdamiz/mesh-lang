@@ -20,12 +20,14 @@
 //! `FAIL_MESSAGES`. `mesh_test_summary` reprints all failures in a
 //! `Failures:` section before the final count line.
 //!
-//! ## assert_raises mechanism
+//! ## Failures
 //!
-//! `mesh_test_assert_raises` uses a flag-based mechanism to detect whether
-//! a closure "raised" (i.e., triggered a failing assertion). This avoids
-//! panicking through `extern "C"` closures, which aborts in Rust 1.73+.
-//! See the `IN_ASSERT_RAISES` / `ASSERT_RAISES_TRIGGERED` thread-locals.
+//! A failed assertion records its message and unwinds out of the test, or
+//! out of its body when a teardown follows (`TestFailed`); the runner
+//! catches it, as it catches a panic. A test counts once, however many of
+//! its steps fail.
+//! Inside `assert_raises`, a failed assertion only unwinds: it is the
+//! "raise" the closure was expected to do.
 
 use std::cell::{Cell, RefCell};
 use std::io::Write as _;
@@ -54,20 +56,15 @@ thread_local! {
     /// Pids of mock actors spawned during the run; drained by cleanup_actors.
     static MOCK_ACTOR_PIDS: RefCell<Vec<i64>> = RefCell::new(Vec::new());
 
-    // ── assert_raises flag-based mechanism ───────────────────────────────────
-    //
-    // When mesh_test_assert_raises calls a closure, it sets IN_ASSERT_RAISES.
-    // mesh_test_assert checks this flag:
-    //   - If IN_ASSERT_RAISES is true: set ASSERT_RAISES_TRIGGERED = true and
-    //     return normally (do NOT record a failure or panic).
-    //   - If IN_ASSERT_RAISES is false: record failure normally and return.
-    //
-    // This avoids panicking through extern "C" closures (which would abort in
-    // Rust 1.73+). Test bodies do not early-exit on failure; all assertions
-    // in a body run to completion.
+    /// Set while `assert_raises` runs its closure: a failed assertion there
+    /// is the expected raise, not a test failure.
     static IN_ASSERT_RAISES: Cell<bool> = Cell::new(false);
-    static ASSERT_RAISES_TRIGGERED: Cell<bool> = Cell::new(false);
+    /// Whether the current test has failed (a step's assertion or panic).
+    static CURRENT_FAILED: Cell<bool> = Cell::new(false);
 }
+
+/// The unwinding payload of a failed assertion, already recorded.
+struct TestFailed;
 
 static TEST_CASE_CLEANUP_HOOK: RwLock<Option<fn()>> = RwLock::new(None);
 
@@ -98,16 +95,40 @@ unsafe fn mesh_str<'a>(s: *const MeshString) -> &'a str {
     (*s).as_str()
 }
 
-/// Helper: create a Rust `String` failure message and forward it to
-/// `mesh_test_fail_msg` via a temporary `MeshString` on the stack.
-///
-/// This is used by the assert helpers to avoid duplicating the
-/// fail-msg accumulation / print logic.
-fn fail_with(msg: &str) {
-    // We need a MeshString to pass to mesh_test_fail_msg.
-    // Allocate one from the GC so the pointer remains valid.
-    let ms = crate::string::mesh_string_new(msg.as_ptr(), msg.len() as u64);
-    unsafe { mesh_test_fail_msg(ms) };
+/// Record a failure of the current test: the first one counts the test as
+/// failed and marks it `✗`; each one prints its message.
+fn record_failure(msg: &str) {
+    let name = CURRENT_TEST.with(|ct| ct.borrow().clone());
+    let first = !CURRENT_FAILED.with(|failed| failed.replace(true));
+    if first {
+        FAIL_COUNT.with(|c| c.set(c.get() + 1));
+    }
+    if !QUIET_MODE.with(|q| q.get()) {
+        if first {
+            println!("\r  {RED}✗{RESET} {name}");
+        }
+        println!("    {RED}{msg}{RESET}");
+    }
+    FAIL_MESSAGES.with(|fm| {
+        let mut messages = fm.borrow_mut();
+        let line = format!("    {RED}{msg}{RESET}");
+        match messages.last_mut() {
+            Some(entry) if !first => {
+                entry.push('\n');
+                entry.push_str(&line);
+            }
+            _ => messages.push(format!("  {RED}{BOLD}✗{RESET} {name}\n{line}")),
+        }
+    });
+}
+
+/// A failed assertion: the test fails, or, inside `assert_raises`, the
+/// closure has raised. Either way it ends the step that is running.
+fn assertion_failed(msg: impl FnOnce() -> String) -> ! {
+    if !IN_ASSERT_RAISES.with(|f| f.get()) {
+        record_failure(&msg());
+    }
+    std::panic::resume_unwind(Box::new(TestFailed))
 }
 
 // ── Public extern "C" functions ───────────────────────────────────────────────
@@ -122,6 +143,7 @@ pub extern "C" fn mesh_test_begin(name: *const MeshString) {
     run_test_case_cleanup_hook();
     let name_str = unsafe { mesh_str(name) }.to_owned();
     CURRENT_TEST.with(|ct| *ct.borrow_mut() = name_str.clone());
+    CURRENT_FAILED.with(|failed| failed.set(false));
 
     if !QUIET_MODE.with(|q| q.get()) {
         print!("  {DIM}running:{RESET} {name_str}");
@@ -129,9 +151,7 @@ pub extern "C" fn mesh_test_begin(name: *const MeshString) {
     }
 }
 
-/// Called by the test harness after the test body returns without panicking.
-///
-/// Increments `PASS_COUNT` and, in verbose mode, overwrites the
+/// Record the current test as passed: in verbose mode, overwrite the
 /// `running:` line with a green checkmark.
 #[no_mangle]
 pub extern "C" fn mesh_test_pass() {
@@ -143,40 +163,17 @@ pub extern "C" fn mesh_test_pass() {
     }
 }
 
-/// Called when an assertion fails (or when the test harness catches a panic
-/// from one of the assert helpers).
-///
-/// Increments `FAIL_COUNT`, prints the failure inline (verbose mode), and
-/// accumulates the failure message for the end-of-run `Failures:` section.
+/// `test_fail_msg(msg)` (what `assert_receive` expands to on a miss): fail
+/// the current test with `msg`.
 #[no_mangle]
-pub unsafe extern "C" fn mesh_test_fail_msg(msg: *const MeshString) {
-    FAIL_COUNT.with(|c| c.set(c.get() + 1));
-    let msg_str = mesh_str(msg).to_owned();
-    let name = CURRENT_TEST.with(|ct| ct.borrow().clone());
-
-    if !QUIET_MODE.with(|q| q.get()) {
-        println!("\r  {RED}✗{RESET} {name}");
-        println!("    {RED}{msg_str}{RESET}");
-    }
-
-    let entry = format!("  {RED}{BOLD}✗{RESET} {name}\n    {RED}{msg_str}{RESET}");
-    FAIL_MESSAGES.with(|fm| fm.borrow_mut().push(entry));
+pub unsafe extern "C-unwind" fn mesh_test_fail_msg(msg: *const MeshString) {
+    assertion_failed(|| mesh_str(msg).to_owned())
 }
 
-/// Assert that `cond` is non-zero.
-///
-/// On failure, records the failure message (unless inside `assert_raises`).
-///
-/// Note: this function does NOT panic on failure. Panicking through
-/// `extern "C"` Mesh closures is undefined behaviour (hard abort in Rust
-/// 1.73+). Instead, failures are recorded via the fail-count / FAIL_MESSAGES
-/// state; test bodies continue running after a failed assert.
-///
-/// When called from inside `mesh_test_assert_raises`, the failure is
-/// silently intercepted: `ASSERT_RAISES_TRIGGERED` is set and no failure
-/// is recorded, allowing `assert_raises` to verify that the closure "raised".
+/// Assert that `cond` is non-zero; a failure ends the test (see
+/// `assertion_failed`).
 #[no_mangle]
-pub unsafe extern "C" fn mesh_test_assert(
+pub unsafe extern "C-unwind" fn mesh_test_assert(
     cond: i8,
     expr_src: *const MeshString,
     _file: *const u8,
@@ -184,24 +181,14 @@ pub unsafe extern "C" fn mesh_test_assert(
     _line: i64,
 ) {
     if cond == 0 {
-        if IN_ASSERT_RAISES.with(|f| f.get()) {
-            // We are inside an assert_raises closure. Signal that a raise
-            // occurred without recording it as a test failure.
-            ASSERT_RAISES_TRIGGERED.with(|f| f.set(true));
-            return;
-        }
-        let src = mesh_str(expr_src);
-        let msg = format!("assert failed: {src}");
-        fail_with(&msg);
+        assertion_failed(|| format!("assert failed: {}", mesh_str(expr_src)));
     }
 }
 
 /// Assert that `lhs` and `rhs` (already converted to strings by the lowerer)
 /// are equal. Fails with an `expected`/`actual` diagnostic.
-///
-/// Does NOT panic on failure (see `mesh_test_assert` for rationale).
 #[no_mangle]
-pub unsafe extern "C" fn mesh_test_assert_eq(
+pub unsafe extern "C-unwind" fn mesh_test_assert_eq(
     lhs: *const MeshString,
     rhs: *const MeshString,
     expr_src: *const MeshString,
@@ -212,21 +199,16 @@ pub unsafe extern "C" fn mesh_test_assert_eq(
     let l = mesh_str(lhs);
     let r = mesh_str(rhs);
     if l != r {
-        if IN_ASSERT_RAISES.with(|f| f.get()) {
-            ASSERT_RAISES_TRIGGERED.with(|f| f.set(true));
-            return;
-        }
-        let src = mesh_str(expr_src);
-        let msg = format!("assert_eq failed: {src}\n  left:  {l}\n  right: {r}");
-        fail_with(&msg);
+        assertion_failed(|| {
+            let src = mesh_str(expr_src);
+            format!("assert_eq failed: {src}\n  left:  {l}\n  right: {r}")
+        });
     }
 }
 
 /// Assert that `lhs` and `rhs` are NOT equal. Fails when they are equal.
-///
-/// Does NOT panic on failure (see `mesh_test_assert` for rationale).
 #[no_mangle]
-pub unsafe extern "C" fn mesh_test_assert_ne(
+pub unsafe extern "C-unwind" fn mesh_test_assert_ne(
     lhs: *const MeshString,
     rhs: *const MeshString,
     expr_src: *const MeshString,
@@ -237,59 +219,35 @@ pub unsafe extern "C" fn mesh_test_assert_ne(
     let l = mesh_str(lhs);
     let r = mesh_str(rhs);
     if l == r {
-        if IN_ASSERT_RAISES.with(|f| f.get()) {
-            ASSERT_RAISES_TRIGGERED.with(|f| f.set(true));
-            return;
-        }
-        let src = mesh_str(expr_src);
-        let msg = format!("assert_ne failed: {src}\n  both sides equal: {l}");
-        fail_with(&msg);
+        assertion_failed(|| {
+            let src = mesh_str(expr_src);
+            format!("assert_ne failed: {src}\n  both sides equal: {l}")
+        });
     }
 }
 
 /// Assert that calling the closure `fn_ptr(env_ptr)` raises: panics (a
-/// failed match, `List.get` past the end) or fails an assertion.
-///
-/// Asserts do not panic, so a failing one is noticed by flag:
-/// 1. Set `IN_ASSERT_RAISES = true` before calling the closure.
-/// 2. `mesh_test_assert` (and eq/ne variants) check this flag: when true they
-///    set `ASSERT_RAISES_TRIGGERED = true` and return without recording failure.
-/// 3. After the closure returns or panics, check `ASSERT_RAISES_TRIGGERED`.
-///    - If it panicked or triggered → passes (the closure raised as expected).
-///    - Otherwise → records a test failure.
+/// failed match, `List.get` past the end) or fails an assertion, which
+/// inside it only unwinds (`IN_ASSERT_RAISES`).
 ///
 /// The closure ABI matches the Mesh runtime closure convention:
 /// `extern "C" fn(*const u8) -> i64`.
 #[no_mangle]
-pub unsafe extern "C" fn mesh_test_assert_raises(
+pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
     fn_ptr: *const u8,
     env_ptr: *const u8,
     _file: *const u8,
     _file_len: i64,
     _line: i64,
 ) {
-    // Save previous state in case of nested assert_raises calls.
-    let prev_in_raises = IN_ASSERT_RAISES.with(|f| f.get());
-    let prev_triggered = ASSERT_RAISES_TRIGGERED.with(|f| f.get());
-
-    IN_ASSERT_RAISES.with(|f| f.set(true));
-    ASSERT_RAISES_TRIGGERED.with(|f| f.set(false));
-
-    // A panic raises too.
-    let panicked = call_catching_panic(fn_ptr, env_ptr).is_err();
-
-    let triggered = panicked || ASSERT_RAISES_TRIGGERED.with(|f| f.get());
-
-    // Restore previous state.
+    // Nested assert_raises calls restore the outer state.
+    let prev_in_raises = IN_ASSERT_RAISES.with(|f| f.replace(true));
+    let raised = call_catching_panic(fn_ptr, env_ptr).is_err();
     IN_ASSERT_RAISES.with(|f| f.set(prev_in_raises));
-    ASSERT_RAISES_TRIGGERED.with(|f| f.set(prev_triggered));
 
-    if !triggered {
-        // The closure returned normally without triggering any assertion failure.
-        let msg = "assert_raises failed: expression did not raise";
-        fail_with(msg);
+    if !raised {
+        assertion_failed(|| "assert_raises failed: expression did not raise".to_string());
     }
-    // If triggered: the closure raised as expected — no failure to record.
 }
 
 /// Print the run summary and exit the process with the appropriate code.
@@ -358,9 +316,10 @@ pub extern "C" fn mesh_test_fail_count() -> i64 {
 }
 
 /// Call a Mesh closure, catching a panic that unwinds out of it (a failed
-/// match, division by zero, `List.get` past the end) and returning its
-/// message. The panic hook leaves reporting it to the caller.
-unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(), String> {
+/// assertion, a failed match, `List.get` past the end). `Err(None)` is a
+/// failed assertion, already recorded; `Err(Some(message))` a panic. The
+/// panic hook leaves reporting a panic to the caller.
+unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(), Option<String>> {
     let f: extern "C-unwind" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
     crate::panic::quietly(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -368,46 +327,35 @@ unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(
         }))
     })
     .map_err(|payload| {
-        crate::panic::mesh_panic_message(&*payload)
-            .unwrap_or("Mesh panic: the runtime failed (reported above)")
-            .to_string()
+        if payload.is::<TestFailed>() {
+            return None;
+        }
+        Some(
+            crate::panic::mesh_panic_message(&*payload)
+                .unwrap_or("Mesh panic: the runtime failed (reported above)")
+                .to_string(),
+        )
     })
 }
 
-/// Run a test body closure and record the pass/fail outcome.
-///
-/// The test harness calls this for every `test(...)` block. The closure
-/// ABI matches the Mesh runtime closure convention:
-/// `extern "C" fn(*const u8) -> i64`.
-///
-/// Outcome detection uses the fail-count snapshot approach:
-/// - Record `FAIL_COUNT` before calling the closure.
-/// - Call the closure (any assert failures increment `FAIL_COUNT` directly).
-/// - After the closure returns, if `FAIL_COUNT` increased → a test failure
-///   was recorded; otherwise call `mesh_test_pass()`.
-///
-/// Asserts record failures without panicking, so all assertions in a test
-/// body run even after one fails. A panic ends the body: it fails the test,
-/// and the run goes on with the next one.
+/// Run a test (the harness calls this with a closure), or its body when a
+/// teardown follows: a failed assertion or a panic fails the test.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_test_run_body(fn_ptr: *const u8, env_ptr: *const u8) {
-    let fail_before = FAIL_COUNT.with(|c| c.get());
-
-    let outcome = call_catching_panic(fn_ptr, env_ptr);
-    run_test_case_cleanup_hook();
-    if let Err(message) = outcome {
+    if let Err(Some(message)) = call_catching_panic(fn_ptr, env_ptr) {
         // "panicked in f: ...", "panicked: List.get: ..."
         let detail = message.strip_prefix("Mesh panic").unwrap_or(&message);
-        fail_with(&format!("panicked{detail}"));
+        record_failure(&format!("panicked{detail}"));
     }
+}
 
-    let fail_after = FAIL_COUNT.with(|c| c.get());
-    if fail_after == fail_before {
+/// End the current test: it passed unless a step failed.
+#[no_mangle]
+pub extern "C" fn mesh_test_end() {
+    run_test_case_cleanup_hook();
+    if !CURRENT_FAILED.with(|failed| failed.get()) {
         mesh_test_pass();
     }
-    // If fail_after > fail_before: a failure was already recorded by an assert
-    // helper; mesh_test_fail_msg already incremented FAIL_COUNT. No extra
-    // counting needed here.
 }
 
 /// Spawn a mock actor whose body is the given closure.

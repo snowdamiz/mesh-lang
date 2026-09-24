@@ -390,9 +390,10 @@ struct TestBlock {
 /// Preprocess a .test.mpl source file into a valid Mesh program.
 ///
 /// Transforms:
-/// - `test("label") do body end` → `fn __test_body_N() do body end`
+/// - `test("label") do body end` → `fn __test_body_N() do body end`, with
+///   the setup and teardown of an enclosing describe
 /// - `describe("group") do setup/teardown/test blocks end` → grouped tests
-/// - Generates `fn main() do test_begin/test_run_body/test_summary ... end`
+/// - Generates `fn main() do test_begin/test_run_body/test_end/test_summary ... end`
 ///
 /// The output is standard Mesh that the compiler accepts.
 pub fn preprocess_test_source(source: &str) -> String {
@@ -410,41 +411,35 @@ pub fn preprocess_test_source(source: &str) -> String {
     // that aren't test/describe blocks.
     emit_non_test_items(source, &mut out);
 
-    // Emit one function per test block.
+    // Emit a function for each test: its setup, then its body. A teardown
+    // runs after the body whether the body passed or not, so then the body
+    // runs as a step of its own; both see what the setup binds. Lines are
+    // copied as written: indenting them would change multi-line strings.
     for (i, block) in blocks.iter().enumerate() {
-        out.push_str(&format!("fn __test_body_{}() do\n", i));
+        out.push_str(&format!("fn __test_body_{i}() do\n"));
         if let Some(ref setup) = block.setup_body {
-            out.push_str("  # setup\n");
-            for line in transform_assert_receive(setup).lines() {
-                out.push_str("  ");
-                out.push_str(line);
-                out.push('\n');
-            }
+            out.push_str(&transform_assert_receive(setup));
         }
-        for line in transform_assert_receive(&block.body).lines() {
-            out.push_str("  ");
-            out.push_str(line);
-            out.push('\n');
-        }
-        if let Some(ref teardown) = block.teardown_body {
-            out.push_str("  # teardown\n");
-            for line in transform_assert_receive(teardown).lines() {
-                out.push_str("  ");
-                out.push_str(line);
-                out.push('\n');
+        match block.teardown_body {
+            Some(ref teardown) => {
+                out.push_str("test_run_body(fn() do\n");
+                out.push_str(&transform_assert_receive(&block.body));
+                out.push_str("end)\ntest_run_body(fn() do\n");
+                out.push_str(&transform_assert_receive(teardown));
+                out.push_str("end)\n");
             }
+            None => out.push_str(&transform_assert_receive(&block.body)),
         }
         out.push_str("end\n\n");
     }
 
-    // Emit fn main() harness.
+    // Emit fn main() harness; `test_end` counts the test once.
     out.push_str("fn main() do\n");
     for (i, block) in blocks.iter().enumerate() {
         // Escape double-quotes in the label for the Mesh string literal.
         let escaped_label = block.label.replace('\\', "\\\\").replace('"', "\\\"");
         out.push_str(&format!(
-            "  test_cleanup_actors()\n  test_begin(\"{}\")\n  test_run_body(fn() do __test_body_{}() end)\n",
-            escaped_label, i
+            "  test_cleanup_actors()\n  test_begin(\"{escaped_label}\")\n  test_run_body(fn() do __test_body_{i}() end)\n  test_end()\n"
         ));
     }
     // Pass 0 for elapsed_ms; accurate timing is cosmetic and can be added later.

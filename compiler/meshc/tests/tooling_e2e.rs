@@ -1623,3 +1623,88 @@ end
     assert!(stdout.contains("2 passed"), "{stdout}");
     assert!(!stderr.contains("panicked at"), "{stderr}");
 }
+
+#[test]
+fn test_a_failed_assertion_ends_its_test() {
+    // A failed assertion let its test run on and counted as one failed test
+    // each ("2 failed, 0 passed" for one test), a failing setup still ran
+    // the body, and a multi-line string in a test gained the indentation
+    // of the generated function.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"failing-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/steps.test.mpl"),
+        r#"test("stops") do
+  assert_eq(1, 2)
+  println("AFTER FIRST FAILURE")
+  assert_eq(3, 4)
+end
+
+describe("broken setup") do
+  setup do
+    assert(false)
+  end
+
+  teardown do
+    println("TEARDOWN AFTER BROKEN SETUP")
+  end
+
+  test("body") do
+    println("BODY RAN")
+  end
+end
+
+describe("resources") do
+  setup do
+    let resource = "R1"
+  end
+
+  teardown do
+    println("TEARDOWN SAW #{resource}")
+  end
+
+  test("fails") do
+    assert_eq(resource, "R2")
+  end
+end
+
+test("raises") do
+  assert_raises(fn() do
+    assert(false)
+  end)
+  println("AFTER RAISES")
+end
+
+test("multi-line string") do
+  let s = "a
+b"
+  assert_eq(s, "a\nb")
+end
+
+test("passes") do
+  assert(true)
+end
+"#,
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "{stdout}");
+    assert!(!stdout.contains("AFTER FIRST FAILURE"), "{stdout}");
+    assert!(!stdout.contains("BODY RAN"), "{stdout}");
+    // A teardown runs after its test's body, failed or not, and sees what
+    // the setup bound; a failed setup leaves nothing to tear down.
+    assert!(stdout.contains("TEARDOWN SAW R1"), "{stdout}");
+    assert!(!stdout.contains("TEARDOWN AFTER BROKEN SETUP"), "{stdout}");
+    assert!(stdout.contains("AFTER RAISES"), "{stdout}");
+    assert!(stdout.contains("assert failed: false"), "{stdout}");
+    assert!(stdout.contains("3 failed"), "{stdout}");
+    assert!(stdout.contains("3 passed"), "{stdout}");
+}
