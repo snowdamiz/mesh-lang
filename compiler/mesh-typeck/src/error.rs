@@ -429,6 +429,9 @@ pub enum TypeError {
         available: Vec<String>,
         span: TextRange,
     },
+    /// An `impl` for a type that takes type parameters (`impl Show for
+    /// Box` with `struct Box<T>`), which is not supported.
+    GenericImplTarget { name: String, span: TextRange },
     /// A bare reference to a fn defined at more than one arity, which
     /// names no single function.
     OverloadedFunctionValue {
@@ -991,6 +994,12 @@ impl fmt::Display for TypeError {
             TypeError::InvalidLiteral { reason, .. } => write!(f, "{reason}"),
             TypeError::NoSuchModuleFunction { module, name, .. } => {
                 write!(f, "module `{module}` has no function `{name}`")
+            }
+            TypeError::GenericImplTarget { name, .. } => {
+                write!(
+                    f,
+                    "an `impl` for the generic type `{name}` is not supported"
+                )
             }
             TypeError::OverloadedFunctionValue { name, arities, .. } => {
                 write!(f, "`{name}` is defined at {}", arity_list(arities))

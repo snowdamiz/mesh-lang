@@ -167,6 +167,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidConcat { .. } => "E0073",
         TypeError::NoSuchModuleFunction { .. } => "E0074",
         TypeError::OverloadedFunctionValue { .. } => "E0075",
+        TypeError::GenericImplTarget { .. } => "E0076",
     }
 }
 
@@ -592,6 +593,7 @@ pub fn render_json_diagnostic(
                 | TypeError::InvalidConcat { span, .. }
                 | TypeError::NoSuchModuleFunction { span, .. }
                 | TypeError::OverloadedFunctionValue { span, .. }
+                | TypeError::GenericImplTarget { span, .. }
                 | TypeError::UnsupportedDerive { span, .. }
                 | TypeError::MissingDerivePrerequisite { span, .. }
                 | TypeError::NonSerializableField { span, .. }
@@ -2278,6 +2280,23 @@ pub fn render_diagnostic(
                 report = report.with_help(format!("`{module}` has {}", available.join(", ")));
             }
             report.finish()
+        }
+        TypeError::GenericImplTarget { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(error.to_string())
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message(format!("`{name}` takes type parameters"))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "implement it for a type without type parameters, such as a struct \
+                     holding the `{name}` you mean"
+                ))
+                .finish()
         }
         TypeError::OverloadedFunctionValue {
             name,

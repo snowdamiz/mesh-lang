@@ -385,6 +385,8 @@ fn main() do
 end
 ```
 
+An `impl` is for a type without type parameters: one for a generic type (`impl Greeter for Box` with `struct Box<T>`, or `for List<Int>`) is not supported and is reported at its header. Derived traits (`deriving(...)`) do cover generic types.
+
 Interfaces can be generic and can declare required associated types. An interface method with a body is a default method; an implementation may omit it:
 
 ```mesh

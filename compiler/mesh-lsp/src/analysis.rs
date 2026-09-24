@@ -254,6 +254,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::InvalidConcat { span, .. }
         | TypeError::NoSuchModuleFunction { span, .. }
         | TypeError::OverloadedFunctionValue { span, .. }
+        | TypeError::GenericImplTarget { span, .. }
         | TypeError::ResourceViolation { span, .. } => Some(*span),
     }
 }

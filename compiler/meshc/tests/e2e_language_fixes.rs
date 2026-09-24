@@ -4555,3 +4555,28 @@ end
         "Mesh panic: deliberate crash\nMesh panic: not a port: x\n"
     );
 }
+
+#[test]
+fn an_impl_for_a_generic_type_is_reported_at_its_header() {
+    // `impl Describe for Box` (with `struct Box<T>`) was accepted, and then
+    // no `Box<Int>` had the method; `impl ... for List<Int>` was a parse
+    // error at `<` ("expected `do`") and one about the unclosed body.
+    let interface = "interface Describe do\n  fn describe(self) -> String\nend\n\n";
+    let err = build_error(&format!(
+        "{interface}struct Box<T> do\n  value :: T\nend\n\nimpl Describe for Box do\n  fn describe(self) -> String do\n    \"a box\"\n  end\nend\n\nfn main() do\n  println(Box {{ value: 1 }}.describe())\nend\n"
+    ));
+    assert!(err.contains("[E0076]"), "{err}");
+    assert!(err.contains("`Box` takes type parameters"), "{err}");
+    let err = build_error(&format!(
+        "{interface}impl Describe for Option do\n  fn describe(self) -> String do\n    \"an option\"\n  end\nend\n\nfn main() do\n  println(\"x\")\nend\n"
+    ));
+    assert!(err.contains("[E0076]"), "{err}");
+    let err = build_error(&format!(
+        "{interface}impl Describe for List<Int> do\n  fn describe(self) -> String do\n    \"a list\"\n  end\nend\n\nfn main() do\n  println(\"x\")\nend\n"
+    ));
+    assert!(
+        err.contains("an `impl` for a type with type arguments is not supported"),
+        "{err}"
+    );
+    assert_eq!(err.matches("Error").count(), 1, "{err}");
+}

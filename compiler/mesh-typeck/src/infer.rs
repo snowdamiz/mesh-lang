@@ -6729,6 +6729,21 @@ fn check_impl_header(
                 span: ty.text_range(),
             });
         }
+        // Registered for the bare type, the impl was accepted but no value
+        // (`Box<Int>`, `Option<Int>`) ever had its methods.
+        let generic = matches!(ty.text(), "List" | "Map" | "Set")
+            || type_registry
+                .lookup_struct(ty.text())
+                .is_some_and(|info| !info.generic_params.is_empty())
+            || type_registry
+                .lookup_sum_type(ty.text())
+                .is_some_and(|info| !info.generic_params.is_empty());
+        if generic {
+            ctx.errors.push(TypeError::GenericImplTarget {
+                name: ty.text().to_string(),
+                span: ty.text_range(),
+            });
+        }
     }
 }
 

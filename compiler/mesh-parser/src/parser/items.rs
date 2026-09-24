@@ -5,6 +5,7 @@
 //! (pub keyword) and type annotations.
 
 use crate::syntax_kind::SyntaxKind;
+use mesh_common::span::Span;
 
 use super::expressions::{parse_fn_clause_param_list, parse_param_list};
 use super::{MarkOpened, Parser};
@@ -1186,6 +1187,31 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
         } else {
             p.error("expected type name");
         }
+    }
+
+    // `impl Show for List<Int>`: an impl for a generic type is not
+    // supported. Say so at the type arguments, and read on (it said
+    // "expected `do`", then that the impl body was not closed).
+    if !p.has_error() && p.at(SyntaxKind::LT) {
+        let start = p.current_span().start;
+        let args = p.open();
+        p.advance(); // <
+        while !matches!(
+            p.current(),
+            SyntaxKind::GT | SyntaxKind::DO_KW | SyntaxKind::EOF
+        ) {
+            parse_type(p);
+            if !p.eat(SyntaxKind::COMMA) {
+                break;
+            }
+        }
+        let end = p.current_span().end;
+        p.eat(SyntaxKind::GT);
+        p.close(args, SyntaxKind::ERROR_NODE);
+        p.token_error_at(
+            "an `impl` for a type with type arguments is not supported",
+            Span::new(start, end),
+        );
     }
 
     // Optional where clause.
