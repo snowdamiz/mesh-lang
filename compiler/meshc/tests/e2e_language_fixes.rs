@@ -4274,3 +4274,14 @@ fn break_outside_a_loop_names_both_loops() {
     let err = build_error("fn main() do\n  break\nend\n");
     assert!(err.contains("inside a `while` or `for` loop"), "{err}");
 }
+
+#[test]
+fn tuples_of_different_lengths_are_a_type_mismatch() {
+    // `let (a, b) = (1, 2, 3)` said "expected 2 argument(s), found 3".
+    let err = build_error("fn main() do\n  let (a, b) = (1, 2, 3)\n  println(\"#{a}\")\nend\n");
+    assert!(
+        err.contains("expected (_, _), found (Int, Int, Int)"),
+        "{err}"
+    );
+    assert!(!err.contains("argument"), "{err}");
+}

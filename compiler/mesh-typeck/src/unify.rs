@@ -711,9 +711,11 @@ impl InferCtx {
             // Tuple types -- unify element-wise.
             (Ty::Tuple(e1), Ty::Tuple(e2)) => {
                 if e1.len() != e2.len() {
-                    let err = TypeError::ArityMismatch {
-                        expected: e1.len(),
-                        found: e2.len(),
+                    // Tuples of different lengths are different types: not
+                    // "expected 2 argument(s)".
+                    let err = TypeError::Mismatch {
+                        expected: self.resolve(Ty::Tuple(e1)),
+                        found: self.resolve(Ty::Tuple(e2)),
                         origin,
                     };
                     self.errors.push(err.clone());
