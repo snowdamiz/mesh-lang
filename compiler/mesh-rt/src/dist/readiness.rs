@@ -35,13 +35,12 @@ fn gate(name: &str, ready: bool, reason: &str) -> ReadinessGate {
 }
 
 fn autonomous_requested() -> bool {
-    std::env::var("MESH_CLUSTER_MODE")
-        .is_ok_and(|value| value.trim().eq_ignore_ascii_case("autonomous"))
-        || super::autonomous::embedded_autonomous_config()
-            .is_some_and(|config| config.enabled && config.features.protocol_two)
+    super::node::autonomous_mode_requested()
 }
 
-fn local_roles() -> NodeRoles {
+/// The roles `MESH_ROLES` gives this node (default `gateway,worker`), in
+/// any case.
+pub(crate) fn local_roles() -> NodeRoles {
     let roles = std::env::var("MESH_ROLES").unwrap_or_else(|_| "gateway,worker".to_string());
     NodeRoles::new(
         roles

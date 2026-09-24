@@ -1453,7 +1453,9 @@ pub(crate) fn runtime_snapshot_chunk_bytes() -> usize {
     std::env::var("MESH_CONTINUITY_SNAPSHOT_CHUNK_BYTES")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value >= 128)
+        // The bounds the manifest's `snapshot_chunk_bytes` has: a chunk must
+        // fit in one transport frame.
+        .filter(|value| (128..16 * 1024 * 1024).contains(value))
         .unwrap_or_else(|| {
             runtime_continuity_config()
                 .snapshot_chunk_bytes

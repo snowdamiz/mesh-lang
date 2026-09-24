@@ -2822,7 +2822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_exit_propagation_normal_delivers_message() {
+    fn test_exit_propagation_normal_is_ignored_without_trap_exit() {
         let sched = Scheduler::new(1);
         let pid_a = create_test_process(&sched);
         let pid_b = create_test_process(&sched);
@@ -2842,9 +2842,8 @@ mod tests {
             "Normal exit should not crash linked process"
         );
 
-        // Should have received an exit signal message.
-        let msg = proc_b.lock().mailbox.pop().unwrap();
-        assert_eq!(msg.buffer.type_tag, link::EXIT_SIGNAL_TAG);
+        // Nor get a message: its receive would read the signal as its own.
+        assert!(proc_b.lock().mailbox.pop().is_none());
     }
 
     #[test]

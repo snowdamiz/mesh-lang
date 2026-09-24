@@ -32,8 +32,11 @@ pub struct StartupWorkRegistration {
     pub runtime_registration_name: String,
 }
 
+/// `default_replicas` is the count for `HTTP.clustered(handler)` without one:
+/// the manifest's `[cluster].default_replicas`.
 pub fn prepare_clustered_route_handler_plan<'a>(
     typecks: impl IntoIterator<Item = &'a TypeckResult>,
+    default_replicas: u32,
 ) -> Result<Vec<DeclaredHandlerPlanEntry>, String> {
     let mut planned_routes = BTreeMap::<String, u64>::new();
 
@@ -47,7 +50,12 @@ pub fn prepare_clustered_route_handler_plan<'a>(
                 );
             }
 
-            let replication_count = u64::from(metadata.replication_count.value);
+            let replication_count = u64::from(match metadata.replication_count.source {
+                mesh_typeck::ClusteredRouteReplicationCountSource::Default => default_replicas,
+                mesh_typeck::ClusteredRouteReplicationCountSource::Explicit => {
+                    metadata.replication_count.value
+                }
+            });
             if replication_count == 0 {
                 return Err(format!(
                     "clustered route handler `{runtime_registration_name}` lowered with invalid replication count 0"
@@ -545,7 +553,7 @@ end
             typeck.errors
         );
 
-        let plan = prepare_clustered_route_handler_plan([&typeck])
+        let plan = prepare_clustered_route_handler_plan([&typeck], 2)
             .expect("identical clustered route wrappers should dedupe cleanly");
 
         assert_eq!(
@@ -586,7 +594,7 @@ end
             "handle_list_todos",
         );
 
-        let error = prepare_clustered_route_handler_plan([&defaulted, &explicit])
+        let error = prepare_clustered_route_handler_plan([&defaulted, &explicit], 2)
             .expect_err("conflicting imported route counts must fail closed");
 
         assert!(

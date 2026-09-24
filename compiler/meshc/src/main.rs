@@ -1046,9 +1046,17 @@ pub(crate) fn prepare_project_build(
 
     reject_duplicate_pub_functions(&project, &all_exports)?;
 
+    // `@cluster` and `HTTP.clustered` without a count take the manifest's
+    // `[cluster].default_replicas`.
+    let default_replicas = manifest
+        .as_ref()
+        .and_then(|manifest| manifest.autonomous_cluster.as_ref())
+        .map_or(mesh_pkg::DEFAULT_CLUSTER_REPLICATION_COUNT, |cluster| {
+            cluster.default_replicas
+        });
     let source_cluster_declarations =
         collect_source_cluster_declarations(&project.graph, &project.module_parses);
-    let clustered_execution_plan = if !source_cluster_declarations.is_empty() {
+    let mut clustered_execution_plan = if !source_cluster_declarations.is_empty() {
         let surface =
             build_clustered_export_surface(&project.graph, &project.module_parses, &all_exports);
         match validate_cluster_declarations_with_source(&source_cluster_declarations, &surface) {
@@ -1061,8 +1069,14 @@ pub(crate) fn prepare_project_build(
     } else {
         Vec::new()
     };
+    for entry in &mut clustered_execution_plan {
+        if entry.replication_count.source == mesh_pkg::ClusteredReplicationCountSource::Default {
+            entry.replication_count.value = default_replicas;
+        }
+    }
     let clustered_route_handler_plan = mesh_codegen::prepare_clustered_route_handler_plan(
         all_typeck.iter().filter_map(|typeck| typeck.as_ref()),
+        default_replicas,
     )?;
 
     let inferred_export_names: HashSet<String> = all_exports

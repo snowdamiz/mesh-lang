@@ -1063,12 +1063,11 @@ pub fn consensus_node_id_for_stable_id(stable_id: &str) -> Result<ConsensusNodeI
 }
 
 fn consensus_environment(node_name: &str) -> Result<Option<MeshConsensusEnvironment>, String> {
-    let autonomous = std::env::var("MESH_CLUSTER_MODE")
-        .is_ok_and(|value| value.trim().eq_ignore_ascii_case("autonomous"));
-    let controller = std::env::var("MESH_ROLES")
-        .unwrap_or_default()
-        .split(',')
-        .any(|role| role.trim().eq_ignore_ascii_case("controller"));
+    // The same mode and roles the rest of the runtime reads: a controller
+    // enabled by its embedded manifest alone never started consensus.
+    let autonomous = super::node::autonomous_mode_requested();
+    let controller =
+        super::readiness::local_roles().contains(super::telemetry::NodeRoles::CONTROLLER);
     if !autonomous || !controller {
         return Ok(None);
     }

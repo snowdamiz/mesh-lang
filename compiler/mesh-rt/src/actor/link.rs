@@ -202,9 +202,12 @@ pub fn encode_down_signal(
 /// Propagate exit signals to all linked processes.
 ///
 /// For each linked PID:
-/// - Normal exit: deliver exit signal as a regular message (no crash).
-/// - Error/Killed exit: if the linked process has `trap_exit = true`, deliver
-///   as a regular message. Otherwise, mark the linked process as
+/// - A process with `trap_exit = true` (a supervisor) gets the signal as a
+///   message, whatever the reason.
+/// - Otherwise a normal or shutdown exit is dropped: the process's own
+///   `receive` would read the signal as one of its messages (a supervised
+///   worker printed "got 2", its supervisor's pid, as `main` ended).
+/// - Otherwise an abnormal exit marks the linked process
 ///   `Exited(Linked(exiting_pid, reason))`.
 ///
 /// Returns the set of linked PIDs so the caller can wake Waiting processes.
@@ -234,7 +237,7 @@ where
 
             let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
 
-            if is_non_crashing || proc.trap_exit {
+            if proc.trap_exit {
                 // Deliver as a regular message -- the process does not crash.
                 let buffer = MessageBuffer::new(signal_data.clone(), EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });
@@ -245,7 +248,7 @@ where
                         woken.push(*linked_pid);
                     }
                 }
-            } else {
+            } else if !is_non_crashing {
                 // Crash the linked process with a Linked exit reason.
                 proc.mark_exited(ExitReason::Linked(exiting_pid, Box::new(reason.clone())));
             }
@@ -308,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normal_exit_delivers_message_no_crash() {
+    fn test_normal_exit_is_ignored_by_a_process_not_trapping_exits() {
         let (pid_a, _proc_a) = make_process();
         let (pid_b, proc_b) = make_process();
 
@@ -327,15 +330,29 @@ mod tests {
             }
         });
 
-        // Process B should NOT have crashed.
+        // Process B neither crashes nor gets a message its receive would
+        // misread; only the link is gone.
         let b = proc_b.lock();
         assert!(
             !matches!(b.state, ProcessState::Exited(_)),
             "Normal exit should not crash linked process"
         );
+        assert!(b.mailbox.pop().is_none());
+        assert!(!b.links.contains(&pid_a));
+    }
 
-        // But it should have received an exit signal message.
-        let msg = b.mailbox.pop().unwrap();
+    #[test]
+    fn test_normal_exit_reaches_a_process_trapping_exits() {
+        let (pid_a, _proc_a) = make_process();
+        let (pid_b, proc_b) = make_process();
+        proc_b.lock().trap_exit = true;
+
+        let proc_b_clone = Arc::clone(&proc_b);
+        propagate_exit(pid_a, &ExitReason::Normal, HashSet::from([pid_b]), |pid| {
+            (pid == pid_b).then(|| Arc::clone(&proc_b_clone))
+        });
+
+        let msg = proc_b.lock().mailbox.pop().unwrap();
         assert_eq!(msg.buffer.type_tag, EXIT_SIGNAL_TAG);
     }
 
@@ -499,8 +516,9 @@ mod tests {
         let (pid_a, _proc_a) = make_process();
         let (pid_b, proc_b) = make_process();
 
-        // Set B to Waiting state.
+        // Set B to Waiting state; it traps exits, so the signal wakes it.
         proc_b.lock().state = ProcessState::Waiting;
+        proc_b.lock().trap_exit = true;
 
         let linked = {
             let mut s = HashSet::new();
@@ -580,7 +598,7 @@ mod tests {
     }
 
     #[test]
-    fn test_shutdown_exit_delivers_message_no_crash() {
+    fn test_shutdown_exit_is_ignored_by_a_process_not_trapping_exits() {
         let (pid_a, _proc_a) = make_process();
         let (pid_b, proc_b) = make_process();
 
@@ -599,16 +617,14 @@ mod tests {
             }
         });
 
-        // Process B should NOT have crashed (Shutdown is non-crashing like Normal).
+        // Process B should NOT have crashed (Shutdown is non-crashing like
+        // Normal), nor get a message.
         let b = proc_b.lock();
         assert!(
             !matches!(b.state, ProcessState::Exited(_)),
             "Shutdown exit should not crash linked process"
         );
-
-        // But it should have received an exit signal message.
-        let msg = b.mailbox.pop().unwrap();
-        assert_eq!(msg.buffer.type_tag, EXIT_SIGNAL_TAG);
+        assert!(b.mailbox.pop().is_none());
     }
 
     #[test]

@@ -306,15 +306,21 @@ fn parse_authority_config(
 ) -> Result<ContinuityAuthorityConfig, String> {
     let cluster_role = match role.map(str::trim) {
         None | Some("") => ContinuityClusterRole::Primary,
-        Some("primary") => ContinuityClusterRole::Primary,
-        Some("standby") => ContinuityClusterRole::Standby,
-        Some(other) => return Err(format!("invalid continuity role {other}")),
+        Some(role) if role.eq_ignore_ascii_case("primary") => ContinuityClusterRole::Primary,
+        Some(role) if role.eq_ignore_ascii_case("standby") => ContinuityClusterRole::Standby,
+        Some(other) => {
+            return Err(format!(
+                "invalid {CONTINUITY_ROLE_ENV} `{other}`: expected primary or standby"
+            ))
+        }
     };
     let promotion_epoch = match promotion_epoch.map(str::trim) {
         None | Some("") => 0,
         Some(raw) => raw
             .parse::<u64>()
-            .map_err(|_| format!("invalid continuity promotion epoch {raw}"))?,
+            .map_err(|_| {
+                format!("invalid {CONTINUITY_PROMOTION_EPOCH_ENV} `{raw}`: expected a whole number")
+            })?,
     };
     ContinuityAuthorityConfig {
         cluster_role,
@@ -1290,14 +1296,23 @@ impl Default for ContinuityRegistry {
 
 static CONTINUITY_REGISTRY: OnceLock<ContinuityRegistry> = OnceLock::new();
 
-fn init_continuity_registry() -> ContinuityRegistry {
-    let authority = parse_authority_config(
+/// The continuity role and promotion epoch the environment asks for.
+pub(crate) fn authority_config_from_env() -> Result<ContinuityAuthorityConfig, String> {
+    parse_authority_config(
         std::env::var(CONTINUITY_ROLE_ENV).ok().as_deref(),
         std::env::var(CONTINUITY_PROMOTION_EPOCH_ENV)
             .ok()
             .as_deref(),
     )
-    .unwrap_or_default();
+}
+
+fn init_continuity_registry() -> ContinuityRegistry {
+    // A mistyped role must not quietly make a standby a primary.
+    // `Node.start_from_env` reports this before any node starts.
+    let authority = authority_config_from_env().unwrap_or_else(|error| {
+        eprintln!("mesh: {error}");
+        std::process::exit(1);
+    });
     ContinuityRegistry::new_with_authority(authority)
 }
 
@@ -3590,6 +3605,22 @@ mod tests {
             completed.declared_handler_runtime_name(),
             "Api.Todos.handle_list_todos"
         );
+    }
+
+    #[test]
+    fn continuity_authority_rejects_what_it_cannot_read() {
+        let standby = parse_authority_config(Some(" Standby "), Some("2")).unwrap();
+        assert_eq!(standby.cluster_role, ContinuityClusterRole::Standby);
+        assert_eq!(standby.promotion_epoch, 2);
+        assert_eq!(
+            parse_authority_config(None, None).unwrap().cluster_role,
+            ContinuityClusterRole::Primary
+        );
+
+        let role = parse_authority_config(Some("stanby"), None).unwrap_err();
+        assert!(role.contains("MESH_CONTINUITY_ROLE `stanby`"), "{role}");
+        let epoch = parse_authority_config(Some("standby"), Some("one")).unwrap_err();
+        assert!(epoch.contains("MESH_CONTINUITY_PROMOTION_EPOCH `one`"), "{epoch}");
     }
 
     #[test]

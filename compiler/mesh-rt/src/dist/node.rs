@@ -2110,9 +2110,15 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                         continue; // Already dead, skip
                                     }
                                     proc.links.remove(&from_pid);
+                                    // As `link::propagate_exit`: only a process
+                                    // that traps exits gets the signal as a
+                                    // message; another ignores a normal exit.
                                     let is_non_crashing =
                                         matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
-                                    if is_non_crashing || proc.trap_exit {
+                                    if is_non_crashing && !proc.trap_exit {
+                                        continue;
+                                    }
+                                    if proc.trap_exit {
                                         let signal_data =
                                             link::encode_exit_signal(from_pid, &reason);
                                         let buffer =
@@ -5203,7 +5209,10 @@ const TLS_CA_DER_B64_ENV: &str = "MESH_TLS_CA_DER_B64";
 const TLS_CERT_DER_B64_ENV: &str = "MESH_TLS_CERT_DER_B64";
 const TLS_KEY_DER_B64_ENV: &str = "MESH_TLS_KEY_DER_B64";
 
-fn autonomous_mode_requested() -> bool {
+/// Whether this node runs in autonomous mode: `MESH_CLUSTER_MODE=autonomous`,
+/// the legacy `MESH_AUTONOMOUS_MODE`, or an embedded manifest that enables it.
+/// Every part of the runtime asks here, so they agree.
+pub(crate) fn autonomous_mode_requested() -> bool {
     std::env::var("MESH_CLUSTER_MODE")
         .is_ok_and(|value| value.trim().eq_ignore_ascii_case("autonomous"))
         || std::env::var("MESH_AUTONOMOUS_MODE")

@@ -510,10 +510,7 @@ fn unix_millis() -> u64 {
 }
 
 fn controller_role_enabled() -> bool {
-    std::env::var("MESH_ROLES")
-        .unwrap_or_default()
-        .split(',')
-        .any(|role| role.trim().eq_ignore_ascii_case("controller"))
+    super::readiness::local_roles().contains(super::telemetry::NodeRoles::CONTROLLER)
 }
 
 fn capacity_worker_environment(

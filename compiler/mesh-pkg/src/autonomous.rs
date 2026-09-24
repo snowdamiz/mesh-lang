@@ -889,7 +889,20 @@ impl AutonomousClusterConfig {
                     Some(docker)
                         if !docker.image.trim().is_empty()
                             && !docker.pool.trim().is_empty()
-                            && !docker.template_revision.trim().is_empty() => {}
+                            && !docker.template_revision.trim().is_empty() =>
+                    {
+                        // The driver writes each entry to the worker's env
+                        // file as it is; a bare name would fail every create.
+                        let malformed = docker.env.iter().find(|entry| {
+                            !entry.split_once('=').is_some_and(|(name, _)| !name.trim().is_empty())
+                                || entry.contains(['\n', '\r', '\0'])
+                        });
+                        if let Some(entry) = malformed {
+                            errors.push(format!(
+                                "[cluster.capacity.docker].env entry `{entry}` must be NAME=value; pass a controller variable through with MESH_CAPACITY_WORKER_ENV_ALLOWLIST"
+                            ));
+                        }
+                    }
                     _ => errors.push("the Docker capacity driver requires image, pool, and template_revision".to_string()),
                 },
                 Some(CapacityDriverKind::Fly) => match &self.capacity.fly {
@@ -1064,6 +1077,19 @@ template_revision = "v1"
         );
 
         assert_eq!(config.validate(), Ok(()));
+
+        let mut config = config;
+        let docker = config.capacity.docker.as_mut().unwrap();
+        docker.env = vec!["PORT=8080".to_string(), "EMPTY=".to_string()];
+        assert_eq!(config.validate(), Ok(()));
+        for bad in ["DATABASE_URL", "=value", "A=b\nC=d"] {
+            config.capacity.docker.as_mut().unwrap().env = vec![bad.to_string()];
+            let errors = config.validate().expect_err(bad);
+            assert!(
+                errors.iter().any(|error| error.contains("must be NAME=value")),
+                "{bad}: {errors:?}"
+            );
+        }
     }
 
     #[test]

@@ -390,12 +390,7 @@ pub(crate) fn refresh_local_routing_telemetry() {
 }
 
 fn roles_from_env() -> NodeRoles {
-    let roles = std::env::var("MESH_ROLES").unwrap_or_else(|_| "gateway,worker".to_string());
-    NodeRoles::new(
-        roles.split(',').any(|role| role.trim() == "controller"),
-        roles.split(',').any(|role| role.trim() == "gateway"),
-        roles.split(',').any(|role| role.trim() == "worker"),
-    )
+    crate::dist::readiness::local_roles()
 }
 
 fn state_from_env(_node_id: &str) -> NodeLifecycleState {
@@ -414,6 +409,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
         .and_then(|raw| raw.parse().ok())
+        .filter(|value| *value > 0)
         .unwrap_or(default)
 }
 
@@ -470,11 +466,16 @@ fn configured_routing() -> super::autonomous::RuntimeRoutingConfig {
 /// precedence over embedded manifest values.
 pub fn runtime_routing_policy() -> RoutingPolicy {
     let configured = configured_routing();
+    // A report must outlive the interval to the next one, as the manifest
+    // requires; overrides that break that would leave every node stale.
+    let interval = runtime_load_report_interval().as_millis() as u64;
+    let ttl = env_u64("MESH_LOAD_REPORT_TTL_MS", configured.load_report_ttl_millis);
     RoutingPolicy {
-        load_report_ttl: Duration::from_millis(env_u64(
-            "MESH_LOAD_REPORT_TTL_MS",
-            configured.load_report_ttl_millis,
-        )),
+        load_report_ttl: Duration::from_millis(if ttl > interval {
+            ttl
+        } else {
+            interval.saturating_mul(2)
+        }),
         target_inflight: env_u32("MESH_ROUTING_TARGET_INFLIGHT", configured.target_inflight),
         target_queue_wait: Duration::from_millis(env_u64(
             "MESH_ROUTING_TARGET_QUEUE_WAIT_MS",

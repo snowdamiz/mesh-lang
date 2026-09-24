@@ -97,6 +97,7 @@ where
     if plan.status.mode == BootstrapMode::Standalone {
         return Ok(plan.status);
     }
+    crate::dist::continuity::authority_config_from_env()?;
 
     let node_name = plan.status.node_name.clone();
     let result = start_node(&node_name, &plan.cookie);
