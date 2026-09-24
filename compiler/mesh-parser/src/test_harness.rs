@@ -17,7 +17,9 @@ use crate::{SyntaxKind, SyntaxNode};
 ///   `setup` lines run first, so what they bind is in scope for the tests and
 ///   the teardown; each `test` in it becomes
 ///   `if __case == I do test_run_body(fn() do ... end) end`; a `teardown`
-///   becomes a closure run after the test, whether the test passed or not.
+///   becomes a closure run after the test, whether the test passed or not. A
+///   `describe` in it becomes `if __case >= I && __case < J do`, over the
+///   cases of its tests, which see both setups and run both teardowns.
 /// - `assert_receive PATTERN[, TIMEOUT]` becomes a `receive` on its line.
 /// - A `fn main()` is appended that runs each test (`test_begin`,
 ///   `test_run_body`, `test_end`) and then `test_summary`.
@@ -47,55 +49,18 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
             "describe" => {
                 let d = describes;
                 describes += 1;
-                let group = call.label("describe");
-                let mut cases = 0;
-                let mut teardown = false;
-                for stmt in call.block.children() {
-                    let Some(inner) = BlockCall::of(&stmt) else {
-                        continue;
-                    };
-                    match inner.name.as_str() {
-                        "setup" if cases > 0 => {
-                            return Err(format!(
-                                "line {}: `setup` must come before the tests of its describe",
-                                line_of(source, inner.header.start)
-                            ));
-                        }
-                        "setup" => inner.rewrite(&mut edits, "", ""),
-                        "teardown" if teardown => {
-                            return Err(format!(
-                                "line {}: a describe has one `teardown`",
-                                line_of(source, inner.header.start)
-                            ));
-                        }
-                        "teardown" => {
-                            teardown = true;
-                            inner.rewrite(&mut edits, "let __teardown = fn() do", "end");
-                        }
-                        "test" => {
-                            inner.rewrite(
-                                &mut edits,
-                                &format!("if __case == {cases} do test_run_body(fn() do"),
-                                "end) end",
-                            );
-                            tests.push((
-                                format!("{group} > {}", inner.label("unnamed")),
-                                format!("__test_describe_{d}({cases})"),
-                            ));
-                            cases += 1;
-                        }
-                        _ => {}
-                    }
-                }
-                let end = if teardown {
-                    "test_run_body(__teardown) end"
-                } else {
-                    "end"
+                let mut group = Group {
+                    source,
+                    function: d,
+                    cases: 0,
+                    edits: &mut edits,
+                    tests: &mut tests,
                 };
+                let teardown = group.describe(&call, &call.label("describe"))?;
                 call.rewrite(
                     &mut edits,
                     &format!("fn __test_describe_{d}(__case :: Int) do"),
-                    end,
+                    teardown_end(teardown),
                 );
             }
             _ => continue,
@@ -134,6 +99,80 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
     out.push_str("  test_summary(test_pass_count(), test_fail_count(), 0)\n");
     out.push_str("end\n");
     Ok(out)
+}
+
+/// The tests of one top-level `describe`: cases of one function.
+struct Group<'a> {
+    source: &'a str,
+    /// The `__test_describe_N` function's N.
+    function: usize,
+    /// Cases numbered so far.
+    cases: usize,
+    edits: &'a mut Vec<(Range<usize>, String)>,
+    tests: &'a mut Vec<(String, String)>,
+}
+
+impl Group<'_> {
+    /// Rewrite the setup, teardown, tests and nested describes of the
+    /// describe `call`, labelled `label`, and say whether it has a teardown.
+    fn describe(&mut self, call: &BlockCall, label: &str) -> Result<bool, String> {
+        let mut teardown = false;
+        let mut has_tests = false;
+        for stmt in call.block.children() {
+            let Some(inner) = BlockCall::of(&stmt) else {
+                continue;
+            };
+            let line = line_of(self.source, inner.header.start);
+            match inner.name.as_str() {
+                "setup" if has_tests => {
+                    return Err(format!(
+                        "line {line}: `setup` must come before the tests of its describe"
+                    ));
+                }
+                "setup" => inner.rewrite(self.edits, "", ""),
+                "teardown" if teardown => {
+                    return Err(format!("line {line}: a describe has one `teardown`"));
+                }
+                "teardown" => {
+                    teardown = true;
+                    inner.rewrite(self.edits, "let __teardown = fn() do", "end");
+                }
+                "test" => {
+                    has_tests = true;
+                    let case = self.cases;
+                    inner.rewrite(
+                        self.edits,
+                        &format!("if __case == {case} do test_run_body(fn() do"),
+                        "end) end",
+                    );
+                    self.tests.push((
+                        format!("{label} > {}", inner.label("unnamed")),
+                        format!("__test_describe_{}({case})", self.function),
+                    ));
+                    self.cases += 1;
+                }
+                "describe" => {
+                    has_tests = true;
+                    let first = self.cases;
+                    let nested = format!("{label} > {}", inner.label("describe"));
+                    let teardown = self.describe(&inner, &nested)?;
+                    let header = format!("if __case >= {first} && __case < {} do", self.cases);
+                    inner.rewrite(self.edits, &header, teardown_end(teardown));
+                }
+                _ => {}
+            }
+        }
+        Ok(teardown)
+    }
+}
+
+/// A describe's `end`: its teardown runs after the test.
+fn teardown_end(teardown: bool) -> &'static str {
+    if teardown {
+        "test_run_body(__teardown) end"
+    } else {
+        "end"
+    }
 }
 
 /// A `name(...) do ... end` or `name do ... end` statement, as `test`,
@@ -334,6 +373,31 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("test_begin(\"two\")"), "{out}");
+    }
+
+    #[test]
+    fn preprocess_test_source_nests_describes() {
+        // A describe in a describe was left as it was: `test` was undefined.
+        let source = "describe(\"outer\") do\n  setup do\n    let x = 1\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\n  describe(\"inner\") do\n    teardown do\n      println(\"t\")\n    end\n    test(\"b\") do\n      assert(x == 1)\n    end\n    test(\"c\") do\n      assert(true)\n    end\n  end\nend\n";
+
+        let out = preprocess_test_source(source).unwrap();
+
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[7], "  if __case >= 1 && __case < 3 do", "{out}");
+        assert_eq!(lines[8], "    let __teardown = fn() do", "{out}");
+        assert_eq!(lines[13], "    end) end", "{out}");
+        assert_eq!(lines[17], "  test_run_body(__teardown) end", "{out}");
+        assert_eq!(lines[18], "end", "{out}");
+        for (label, case) in [
+            ("outer > a", 0),
+            ("outer > inner > b", 1),
+            ("outer > inner > c", 2),
+        ] {
+            let run = format!(
+                "test_begin(\"{label}\")\n  test_run_body(fn() do __test_describe_0({case}) end)"
+            );
+            assert!(out.contains(&run), "{out}");
+        }
     }
 
     #[test]

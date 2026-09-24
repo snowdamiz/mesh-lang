@@ -1808,3 +1808,33 @@ fn test_a_file_of_describes_runs() {
     assert!(output.status.success(), "{stdout}{stderr}");
     assert!(stdout.contains("2 passed"), "{stdout}");
 }
+
+#[test]
+fn test_nested_describes_run() {
+    // A describe in a describe was left as written: "Undefined variable
+    // 'test'". Its tests see the outer setup and run both teardowns.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"nested-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/nested.test.mpl"),
+        "describe(\"outer\") do\n  setup do\n    let base = 40\n  end\n  teardown do\n    println(\"OUTER DOWN\")\n  end\n  test(\"a\") do\n    assert_eq(base, 40)\n  end\n  describe(\"inner\") do\n    setup do\n      let more = base + 2\n    end\n    teardown do\n      println(\"INNER DOWN #{more}\")\n    end\n    test(\"b\") do\n      assert_eq(more, 42)\n    end\n  end\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}{stderr}");
+    assert!(stdout.contains("✓ outer > a"), "{stdout}");
+    assert!(
+        stdout.contains("INNER DOWN 42\nOUTER DOWN\n  ✓ outer > inner > b"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("2 passed"), "{stdout}");
+}
