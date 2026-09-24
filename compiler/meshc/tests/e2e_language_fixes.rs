@@ -4630,3 +4630,17 @@ fn map_get_of_a_missing_key_panics() {
         "1\n"
     );
 }
+
+#[test]
+fn a_bad_struct_field_leaves_the_value_typed() {
+    // After `S { a: "s", b: 1 }`, `s` had no type: an update of it and a
+    // field read of that reported E0059 and E0070 too, and an unknown field
+    // hid a missing one.
+    let err = build_error(
+        "struct S do\n  a :: Int\n  b :: Int\nend\n\nfn main() do\n  let s = S { a: \"s\", b: 1 }\n  let t = %{s | b: \"x\"}\n  let u = S { c: 1, a: 2 }\n  println(\"#{t.a} #{u.a}\")\nend\n",
+    );
+    assert_eq!(err.matches("[E0001]").count(), 2, "{err}");
+    assert!(err.contains("unknown field c"), "{err}");
+    assert!(err.contains("missing field b"), "{err}");
+    assert!(!err.contains("E0059") && !err.contains("E0070"), "{err}");
+}

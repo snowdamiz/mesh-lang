@@ -13327,13 +13327,14 @@ fn infer_struct_literal(
             Some(n) => n,
             None => continue,
         };
+        // A field's error is reported and the literal keeps its type: its
+        // uses are checked as the struct's, not reported again as unknown.
         if provided_fields.contains(&field_name) {
-            let err = TypeError::DuplicateField {
+            ctx.errors.push(TypeError::DuplicateField {
                 field_name,
                 span: field.syntax().text_range(),
-            };
-            ctx.errors.push(err.clone());
-            return Err(err);
+            });
+            continue;
         }
 
         // Find expected field type.
@@ -13346,19 +13347,18 @@ fn infer_struct_literal(
         let expected_ty = match expected_ty {
             Some(ty) => ty,
             None => {
-                let err = TypeError::UnknownField {
+                ctx.errors.push(TypeError::UnknownField {
                     struct_name: struct_name.clone(),
                     field_name: field_name.clone(),
                     span: field.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
+                });
+                continue;
             }
         };
 
-        // Infer field value.
+        // Infer field value (a mismatch is recorded by `unify`).
         if let Some(value) = field.value() {
-            let value_ty = infer_expr(
+            if let Ok(value_ty) = infer_expr(
                 ctx,
                 env,
                 &value,
@@ -13366,14 +13366,15 @@ fn infer_struct_literal(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?;
-            ctx.unify(
-                expected_ty,
-                value_ty,
-                ConstraintOrigin::Annotation {
-                    annotation_span: field.syntax().text_range(),
-                },
-            )?;
+            ) {
+                let _ = ctx.unify(
+                    expected_ty,
+                    value_ty,
+                    ConstraintOrigin::Annotation {
+                        annotation_span: field.syntax().text_range(),
+                    },
+                );
+            }
         }
 
         provided_fields.push(field_name);
@@ -13382,13 +13383,11 @@ fn infer_struct_literal(
     // Check for missing fields.
     for (field_name, _) in &struct_def.fields {
         if !provided_fields.contains(field_name) {
-            let err = TypeError::MissingField {
+            ctx.errors.push(TypeError::MissingField {
                 struct_name: struct_name.clone(),
                 field_name: field_name.clone(),
                 span: sl.syntax().text_range(),
-            };
-            ctx.errors.push(err.clone());
-            return Err(err);
+            });
         }
     }
 
@@ -13481,13 +13480,13 @@ fn infer_struct_update(
             Some(n) => n,
             None => continue,
         };
+        // As in a struct literal, a field's error leaves the update typed.
         if updated.contains(&field_name) {
-            let err = TypeError::DuplicateField {
+            ctx.errors.push(TypeError::DuplicateField {
                 field_name,
                 span: field.syntax().text_range(),
-            };
-            ctx.errors.push(err.clone());
-            return Err(err);
+            });
+            continue;
         }
         updated.push(field_name.clone());
 
@@ -13501,19 +13500,18 @@ fn infer_struct_update(
         let expected_ty = match expected_ty {
             Some(ty) => ty,
             None => {
-                let err = TypeError::UnknownField {
+                ctx.errors.push(TypeError::UnknownField {
                     struct_name: struct_name.clone(),
                     field_name: field_name.clone(),
                     span: field.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
+                });
+                continue;
             }
         };
 
         // Infer the override value and unify with expected field type.
         if let Some(value) = field.value() {
-            let value_ty = infer_expr(
+            if let Ok(value_ty) = infer_expr(
                 ctx,
                 env,
                 &value,
@@ -13521,14 +13519,15 @@ fn infer_struct_update(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?;
-            ctx.unify(
-                expected_ty,
-                value_ty,
-                ConstraintOrigin::Annotation {
-                    annotation_span: field.syntax().text_range(),
-                },
-            )?;
+            ) {
+                let _ = ctx.unify(
+                    expected_ty,
+                    value_ty,
+                    ConstraintOrigin::Annotation {
+                        annotation_span: field.syntax().text_range(),
+                    },
+                );
+            }
         }
     }
 
