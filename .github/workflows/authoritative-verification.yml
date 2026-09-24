@@ -47,6 +47,21 @@ jobs:
           bash scripts/verify-no-sidecar-files.sh --diff-range "$range"
           bash scripts/verify-whitespace.sh --diff-range "$range"
 
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
   rust-core:
     name: Rust core build and smoke
     runs-on: ubuntu-24.04
@@ -99,9 +114,11 @@ jobs:
           cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
-          # The examples and official packages are what users copy from.
+          # The examples and official packages are what users copy from: lint
+          # them and keep them formatted.
           for path in examples packages mesh-slug; do
             ./target/debug/meshc lint "$path"
+            ./target/debug/meshc fmt --check "$path"
           done
           # e2e_library builds static and dynamic libraries and runs a C host.
           cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library
