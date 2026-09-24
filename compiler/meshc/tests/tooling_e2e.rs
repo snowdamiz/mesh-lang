@@ -1568,3 +1568,58 @@ fn test_lsp_subcommand_exists() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn test_a_panicking_test_fails_alone() {
+    // A panic in a test body (division by zero, `List.get` past the end)
+    // unwound out of the runner and ended the file: the test was never
+    // marked failed and the tests after it never ran. `assert_raises` did
+    // not see a panic either.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"panicking-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/panics.test.mpl"),
+        r#"fn zero() = 0
+
+test("divides") do
+  assert(10 / zero() == 1)
+end
+
+test("indexes") do
+  assert(List.get([1], 5) == 1)
+end
+
+test("raises") do
+  assert_raises(fn() do
+    List.head(List.tail([1]))
+  end)
+end
+
+test("after") do
+  assert(true)
+end
+"#,
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", project.to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stdout}\n{stderr}");
+    assert!(stdout.contains("division by zero"), "{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("panicked: List.get: index 5 is out of bounds for a list of length 1"),
+        "{stdout}\n{stderr}"
+    );
+    assert!(stdout.contains("✓\u{1b}[0m raises"), "{stdout}");
+    assert!(stdout.contains("✓\u{1b}[0m after"), "{stdout}");
+    assert!(stdout.contains("2 failed"), "{stdout}");
+    assert!(stdout.contains("2 passed"), "{stdout}");
+    assert!(!stderr.contains("panicked at"), "{stderr}");
+}

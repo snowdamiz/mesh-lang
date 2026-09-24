@@ -109,7 +109,11 @@ the project tree.
 | `assert(expr)` | Passes if `expr` is true; prints expression source and value on failure |
 | `assert_eq(a, b)` | Passes if `a == b`; prints expected and actual on failure |
 | `assert_ne(a, b)` | Passes if `a != b`; prints both values on failure |
-| `assert_raises(fn)` | Passes if calling `fn` raises a runtime error |
+| `assert_raises(fn)` | Passes if calling `fn` raises a runtime error or fails an assertion |
+
+A failed assertion does not stop the test: the rest of its body still runs. A
+runtime error (a panic, such as `List.get` past the end or a division by zero)
+ends the test and fails it, and the run goes on with the next test.
 
 ```mesh
 test("assertions") do

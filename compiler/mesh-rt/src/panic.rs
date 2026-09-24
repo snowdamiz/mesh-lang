@@ -40,10 +40,15 @@ pub extern "C-unwind" fn mesh_panic(
 
 /// Raise a Mesh panic from runtime code: a runtime function was given a
 /// value it cannot handle (`List.get` past the end). It unwinds as
-/// `mesh_panic` does, so an actor crashes alone; the runtime function
-/// raising it must be `extern "C-unwind"`.
+/// `mesh_panic` does, so an actor crashes alone and a test fails alone; the
+/// runtime function raising it must be `extern "C-unwind"`.
 pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
     panic!("Mesh panic: {message}")
+}
+
+thread_local! {
+    /// Set while the test runner runs a test body: it reports the panic.
+    static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Print a Mesh panic as its message alone: the default report's thread
@@ -55,10 +60,11 @@ pub(crate) fn install_hook() {
         let default = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             match mesh_panic_message(info.payload()) {
-                Some(message) => {
+                Some(message) if !QUIET.with(|quiet| quiet.get()) => {
                     use std::io::Write;
                     let _ = writeln!(std::io::stderr(), "{message}");
                 }
+                Some(_) => {}
                 None => default(info),
             }
         }));
@@ -72,6 +78,14 @@ pub(crate) fn mesh_panic_message(payload: &(dyn std::any::Any + Send)) -> Option
         .map(String::as_str)
         .or_else(|| payload.downcast_ref::<&str>().copied())?;
     message.starts_with("Mesh panic").then_some(message)
+}
+
+/// Run `f` with Mesh panics left for the caller to report.
+pub(crate) fn quietly<T>(f: impl FnOnce() -> T) -> T {
+    let previous = QUIET.with(|quiet| quiet.replace(true));
+    let result = f();
+    QUIET.with(|quiet| quiet.set(previous));
+    result
 }
 
 /// Run the program's `main` function on the main thread.

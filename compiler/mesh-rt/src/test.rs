@@ -247,20 +247,16 @@ pub unsafe extern "C" fn mesh_test_assert_ne(
     }
 }
 
-/// Assert that calling the closure `fn_ptr(env_ptr)` raises (i.e., triggers a
-/// failing assertion inside the closure body).
+/// Assert that calling the closure `fn_ptr(env_ptr)` raises: panics (a
+/// failed match, `List.get` past the end) or fails an assertion.
 ///
-/// This uses a flag-based mechanism rather than panic/catch_unwind, because
-/// Mesh closures are compiled with `extern "C"` ABI and panicking through an
-/// `extern "C"` boundary causes an abort in Rust 1.73+.
-///
-/// Mechanism:
+/// Asserts do not panic, so a failing one is noticed by flag:
 /// 1. Set `IN_ASSERT_RAISES = true` before calling the closure.
 /// 2. `mesh_test_assert` (and eq/ne variants) check this flag: when true they
 ///    set `ASSERT_RAISES_TRIGGERED = true` and return without recording failure.
-/// 3. After the closure returns, check `ASSERT_RAISES_TRIGGERED`.
-///    - If triggered → passes (the closure "raised" as expected).
-///    - If not triggered → records a test failure.
+/// 3. After the closure returns or panics, check `ASSERT_RAISES_TRIGGERED`.
+///    - If it panicked or triggered → passes (the closure raised as expected).
+///    - Otherwise → records a test failure.
 ///
 /// The closure ABI matches the Mesh runtime closure convention:
 /// `extern "C" fn(*const u8) -> i64`.
@@ -279,10 +275,10 @@ pub unsafe extern "C" fn mesh_test_assert_raises(
     IN_ASSERT_RAISES.with(|f| f.set(true));
     ASSERT_RAISES_TRIGGERED.with(|f| f.set(false));
 
-    let f: extern "C" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
-    f(env_ptr);
+    // A panic raises too.
+    let panicked = call_catching_panic(fn_ptr, env_ptr).is_err();
 
-    let triggered = ASSERT_RAISES_TRIGGERED.with(|f| f.get());
+    let triggered = panicked || ASSERT_RAISES_TRIGGERED.with(|f| f.get());
 
     // Restore previous state.
     IN_ASSERT_RAISES.with(|f| f.set(prev_in_raises));
@@ -361,6 +357,23 @@ pub extern "C" fn mesh_test_fail_count() -> i64 {
     FAIL_COUNT.with(|c| c.get())
 }
 
+/// Call a Mesh closure, catching a panic that unwinds out of it (a failed
+/// match, division by zero, `List.get` past the end) and returning its
+/// message. The panic hook leaves reporting it to the caller.
+unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(), String> {
+    let f: extern "C-unwind" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
+    crate::panic::quietly(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            f(env_ptr);
+        }))
+    })
+    .map_err(|payload| {
+        crate::panic::mesh_panic_message(&*payload)
+            .unwrap_or("Mesh panic: the runtime failed (reported above)")
+            .to_string()
+    })
+}
+
 /// Run a test body closure and record the pass/fail outcome.
 ///
 /// The test harness calls this for every `test(...)` block. The closure
@@ -373,16 +386,20 @@ pub extern "C" fn mesh_test_fail_count() -> i64 {
 /// - After the closure returns, if `FAIL_COUNT` increased → a test failure
 ///   was recorded; otherwise call `mesh_test_pass()`.
 ///
-/// This avoids panicking through `extern "C"` closures (which aborts in
-/// Rust 1.73+). The trade-off is that all assertions in a test body run to
-/// completion even after a failure (no early-exit on first assert failure).
+/// Asserts record failures without panicking, so all assertions in a test
+/// body run even after one fails. A panic ends the body: it fails the test,
+/// and the run goes on with the next one.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_test_run_body(fn_ptr: *const u8, env_ptr: *const u8) {
     let fail_before = FAIL_COUNT.with(|c| c.get());
 
-    let f: extern "C" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
-    f(env_ptr);
+    let outcome = call_catching_panic(fn_ptr, env_ptr);
     run_test_case_cleanup_hook();
+    if let Err(message) = outcome {
+        // "panicked in f: ...", "panicked: List.get: ..."
+        let detail = message.strip_prefix("Mesh panic").unwrap_or(&message);
+        fail_with(&format!("panicked{detail}"));
+    }
 
     let fail_after = FAIL_COUNT.with(|c| c.get());
     if fail_after == fail_before {
