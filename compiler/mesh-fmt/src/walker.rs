@@ -45,7 +45,9 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
     let kind = node.kind();
     match kind {
         SyntaxKind::SOURCE_FILE => walk_source_file(node),
-        SyntaxKind::FN_DEF => walk_fn_def(node),
+        SyntaxKind::FN_DEF | SyntaxKind::INTERFACE_METHOD => walk_fn_def(node),
+        SyntaxKind::LITERAL_PAT => walk_literal_pat(node),
+        SyntaxKind::STRUCT_UPDATE_EXPR => walk_struct_update(node),
         SyntaxKind::LET_BINDING => walk_let_binding(node),
         SyntaxKind::IF_EXPR => walk_if_expr(node),
         SyntaxKind::CASE_EXPR => walk_case_expr(node),
@@ -112,7 +114,6 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::VISIBILITY
         | SyntaxKind::WILDCARD_PAT
         | SyntaxKind::IDENT_PAT
-        | SyntaxKind::LITERAL_PAT
         | SyntaxKind::TUPLE_PAT
         | SyntaxKind::STRUCT_PAT
         | SyntaxKind::CONSTRUCTOR_PAT
@@ -128,7 +129,6 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::TRAIT_BOUND
         | SyntaxKind::OPTION_TYPE
         | SyntaxKind::RESULT_TYPE
-        | SyntaxKind::INTERFACE_METHOD
         | SyntaxKind::VARIANT_FIELD
         | SyntaxKind::AFTER_CLAUSE
         | SyntaxKind::STRATEGY_CLAUSE
@@ -1478,6 +1478,12 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                                     SyntaxKind::STRUCT_LITERAL
                                         | SyntaxKind::MAP_LITERAL
                                         | SyntaxKind::PIPE_EXPR
+                                        // Block constructs keep their lines.
+                                        | SyntaxKind::IF_EXPR
+                                        | SyntaxKind::CASE_EXPR
+                                        | SyntaxKind::FOR_IN_EXPR
+                                        | SyntaxKind::WHILE_EXPR
+                                        | SyntaxKind::RECEIVE_EXPR
                                 )
                             );
 
@@ -1656,24 +1662,55 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
     }
 
     // Parenthesized: collect name parts and emit one per indented line. A
-    // comment stays after the name it follows, not as a name of its own.
+    // comment stays after the name it follows, not as a name of its own; one
+    // on a line of its own stays on its own line, before the next name.
+    // Trivia attaches forward: a comment ending a line starts the NAME node
+    // of the next name.
     let mut leading: Vec<FormatIR> = Vec::new();
-    let mut names: Vec<(FormatIR, Vec<FormatIR>)> = Vec::new();
+    // (own-line comments before, name, comments after)
+    let mut names: Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)> = Vec::new();
+    let trailing = |names: &mut Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)>,
+                    leading: &mut Vec<FormatIR>,
+                    comment: FormatIR| match names.last_mut() {
+        Some((_, _, comments)) => comments.push(comment),
+        None => leading.push(comment),
+    };
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {}
                 SyntaxKind::COMMA | SyntaxKind::NEWLINE => {}
-                kind if kind.is_trivia() => match names.last_mut() {
-                    Some((_, comments)) => comments.push(inline_comment(&tok)),
-                    None => leading.push(inline_comment(&tok)),
-                },
+                kind if kind.is_trivia() => {
+                    trailing(&mut names, &mut leading, inline_comment(&tok));
+                }
                 _ => {
-                    names.push((ir::text(tok.text()), Vec::new()));
+                    names.push((Vec::new(), ir::text(tok.text()), Vec::new()));
                 }
             },
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
+                let mut before = Vec::new();
+                let mut own_line = false;
+                let mut name = None;
+                for element in n.children_with_tokens() {
+                    let NodeOrToken::Token(tok) = element else {
+                        continue;
+                    };
+                    match tok.kind() {
+                        SyntaxKind::NEWLINE => own_line = true,
+                        SyntaxKind::WHITESPACE => {}
+                        kind if kind.is_trivia() && own_line => before.push(inline_comment(&tok)),
+                        kind if kind.is_trivia() => {
+                            trailing(&mut names, &mut leading, inline_comment(&tok))
+                        }
+                        _ => name = Some(ir::text(tok.text())),
+                    }
+                }
+                if let Some(name) = name {
+                    names.push((before, name, Vec::new()));
+                }
+            }
             NodeOrToken::Node(n) => {
-                names.push((walk_node(&n), Vec::new()));
+                names.push((Vec::new(), walk_node(&n), Vec::new()));
             }
         }
     }
@@ -1685,7 +1722,11 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         inner_parts.push(comment);
     }
     inner_parts.push(ir::hardline());
-    for (i, (name, comments)) in names.iter().enumerate() {
+    for (i, (before, name, comments)) in names.iter().enumerate() {
+        for comment in before {
+            inner_parts.push(comment.clone());
+            inner_parts.push(ir::hardline());
+        }
         inner_parts.push(name.clone());
         if i < names.len() - 1 {
             inner_parts.push(ir::text(","));
@@ -1909,6 +1950,11 @@ fn walk_type_alias_def(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("="));
                     parts.push(sp());
                 }
+                // A tuple type's commas: `(A, B)`.
+                SyntaxKind::COMMA => {
+                    parts.push(ir::text(","));
+                    parts.push(sp());
+                }
                 SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
@@ -1926,6 +1972,53 @@ fn walk_type_alias_def(node: &SyntaxNode) -> FormatIR {
         }
     }
 
+    ir::concat(parts)
+}
+
+// ── Literal pattern and struct update ──────────────────────────────
+
+/// A literal pattern, as one token: `-1`, not `- 1`.
+fn walk_literal_pat(node: &SyntaxNode) -> FormatIR {
+    ir::concat(
+        node.children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia())
+            .map(|token| ir::text(token.text()))
+            .collect(),
+    )
+}
+
+/// `%{base | field: value, other: value}`.
+fn walk_struct_update(node: &SyntaxNode) -> FormatIR {
+    let mut parts = vec![ir::text("%{")];
+    let mut fields = 0;
+    for element in node.children_with_tokens() {
+        match element {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::BAR => {
+                    parts.push(sp());
+                    parts.push(ir::text("|"));
+                    parts.push(sp());
+                }
+                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
+                    parts.push(inline_comment(&tok));
+                    parts.push(sp());
+                }
+                _ => {}
+            },
+            NodeOrToken::Node(n) => {
+                if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD {
+                    if fields > 0 {
+                        parts.push(ir::text(","));
+                        parts.push(sp());
+                    }
+                    fields += 1;
+                }
+                parts.push(walk_node(&n));
+            }
+        }
+    }
+    parts.push(ir::text("}"));
     ir::concat(parts)
 }
 

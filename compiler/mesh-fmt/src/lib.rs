@@ -696,6 +696,19 @@ mod snapshot_tests {
     }
 
     #[test]
+    fn layouts_are_kept() {
+        // An import-list comment moved to the next name, `(A,B)` in an
+        // alias, a default method's body flattened, `- 1` in a pattern,
+        // `% { p | x: 2 }`, and a closure whose body is one `if` collapsed.
+        let src = "from Util import (\n  helper, # the helper\n  other\n)\n\ntype Pair<A, B> = (A, B)\n\ninterface Named do\n  fn name(self) -> String\n\n  fn label(self) -> String do\n    let n = self.name()\n    \"name=\" <> n\n  end\nend\n\nfn sign(n :: Int) -> String do\n  case n do\n    -1 -> \"minus one\"\n    _ -> \"other\"\n  end\nend\n\nstruct P do\n  x :: Int\nend\n\nfn main() do\n  let p = P { x: 1 }\n  let q = %{p | x: 2}\n  let abs = fn m do\n    if m > 0 do\n      m\n    else\n      0 - m\n    end\n  end\n  println(\"#{q.x} #{abs(-3)}\")\nend\n";
+        assert_eq!(fmt(src), src);
+        assert_eq!(
+            fmt("fn f(p) do\n  % { p | x: 2 }\nend\n"),
+            "fn f(p) do\n  %{p | x: 2}\nend\n"
+        );
+    }
+
+    #[test]
     fn assert_receive_is_formatted() {
         // Test files using it were refused: "source contains parse errors".
         let src = "test(\"receive\") do\n  send(self(), 42)\n  assert_receive 42, 500\n  assert_receive (a, _)\nend\n";

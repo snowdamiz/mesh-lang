@@ -1186,10 +1186,10 @@ fn report_accounts(accounts :: List<AccountMeta>, index :: Int, report :: Instru
       |> pubkey_string()
     report_accounts(accounts,
       index + 1,
-      % { report | account_keys: report.account_keys
+      %{report | account_keys: report.account_keys
         |> List.append(key), signer_keys: report.signer_keys
         |> append_if(account.signer, key), writable_keys: report.writable_keys
-        |> append_if(account.writable, key) })
+        |> append_if(account.writable, key)})
   end
 end
 
@@ -1349,10 +1349,10 @@ end
 fn collect_account(report :: JupiterInstructionReport, account :: AccountMeta) -> JupiterInstructionReport do
   let key = account.pubkey
     |> pubkey_string()
-  % { report | account_keys: report.account_keys
+  %{report | account_keys: report.account_keys
     |> append_unique(key), signer_keys: report.signer_keys
     |> append_unique_if(account.signer, key), writable_keys: report.writable_keys
-    |> append_unique_if(account.writable, key) }
+    |> append_unique_if(account.writable, key)}
 end
 
 fn append_unique_if(values :: List<String>, include :: Bool, value :: String) -> List<String> do
@@ -1375,9 +1375,9 @@ fn collect_accounts(report :: JupiterInstructionReport, accounts :: List<Account
 end
 
 fn collect_instruction(report :: JupiterInstructionReport, instruction :: Instruction) -> JupiterInstructionReport do
-  % { report | instruction_count: report.instruction_count + 1, data_bytes: report.data_bytes + Bytes.length(instruction.data), program_ids: report.program_ids
+  %{report | instruction_count: report.instruction_count + 1, data_bytes: report.data_bytes + Bytes.length(instruction.data), program_ids: report.program_ids
     |> append_unique(instruction.program_id
-      |> pubkey_string()) }
+      |> pubkey_string())}
     |> collect_accounts(instruction.accounts, 0)
 end
 
