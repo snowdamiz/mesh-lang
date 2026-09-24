@@ -981,6 +981,8 @@ pub(crate) fn prepare_project_build(
         }
     }
 
+    reject_duplicate_type_names(&project)?;
+
     // Type-check ALL modules in topological order (Phase 39)
     let module_count = project.graph.module_count();
     let mut all_exports: Vec<Option<mesh_typeck::ExportedSymbols>> =
@@ -1155,6 +1157,93 @@ pub(crate) fn prepare_project_build(
 /// types (an `Int` returned where a `String` was expected becomes a wild pointer).
 ///
 /// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
+/// Reject a struct, sum type, interface, actor, service or supervisor name
+/// that more than one module defines, public or not. These names are one
+/// namespace across a project: the type checker took two `State` structs
+/// for one type and codegen emitted one of them, so `Z.run_z()` showed its
+/// `State` laid out as `A`'s, and a module's `spawn(worker)` could start
+/// another module's `worker`.
+fn reject_duplicate_type_names(project: &discovery::ProjectData) -> Result<(), String> {
+    use mesh_parser::ast::item::Item;
+
+    // A struct or sum type copied verbatim into several modules (a private
+    // helper) is one layout, so its definitions are compared by their
+    // tokens; code (actors, services) may call each module's own functions.
+    let fingerprint = |item: &Item| -> Option<String> {
+        if !matches!(item, Item::StructDef(_) | Item::SumTypeDef(_)) {
+            return None;
+        }
+        let tokens: Vec<String> = item
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia() && token.kind() != SyntaxKind::PUB_KW)
+            .map(|token| token.text().to_string())
+            .collect();
+        Some(tokens.join(" "))
+    };
+    let mut owners: std::collections::BTreeMap<
+        String,
+        Vec<(
+            &'static str,
+            &mesh_common::module_graph::ModuleInfo,
+            Option<String>,
+        )>,
+    > = Default::default();
+    for &id in &project.compilation_order {
+        let module = project.graph.get(id);
+        for item in project.module_parses[id.0 as usize].tree().items() {
+            let (kind, name) = match &item {
+                Item::StructDef(def) => ("struct", def.name().and_then(|n| n.text())),
+                Item::SumTypeDef(def) => ("type", def.name().and_then(|n| n.text())),
+                Item::InterfaceDef(def) => ("interface", def.name().and_then(|n| n.text())),
+                Item::ActorDef(def) => ("actor", def.name().and_then(|n| n.text())),
+                Item::ServiceDef(def) => ("service", def.name().and_then(|n| n.text())),
+                Item::SupervisorDef(def) => ("supervisor", def.name().and_then(|n| n.text())),
+                _ => continue,
+            };
+            if let Some(name) = name {
+                owners
+                    .entry(name)
+                    .or_default()
+                    .push((kind, module, fingerprint(&item)));
+            }
+        }
+    }
+
+    let mut conflicted = false;
+    for (name, defs) in &owners {
+        let first = defs[0].1.name.as_str();
+        if defs.iter().all(|(_, module, _)| module.name == first) {
+            // One module (a duplicate there is the type checker's E0068).
+            continue;
+        }
+        if defs[0].2.is_some() && defs.iter().all(|(_, _, print)| *print == defs[0].2) {
+            continue;
+        }
+        conflicted = true;
+        eprintln!("error: `{name}` is defined in more than one module:");
+        for (kind, module, _) in defs {
+            eprintln!(
+                "  - {kind} in `{}` ({})",
+                module.name,
+                module.path.display()
+            );
+        }
+        eprintln!(
+            "note: struct, type, interface, actor, service and supervisor names share one \
+             namespace across the project, private ones too, so these definitions would be \
+             taken for one (a struct or type defined identically in each is fine)."
+        );
+        eprintln!("help: rename all but one of them.");
+    }
+
+    if conflicted {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+    Ok(())
+}
+
 fn reject_duplicate_pub_functions(
     project: &discovery::ProjectData,
     all_exports: &[Option<mesh_typeck::ExportedSymbols>],

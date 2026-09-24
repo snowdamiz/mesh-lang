@@ -1005,6 +1005,8 @@ from Geometry import (
 
 Glob imports are not supported. Private names cannot be imported.
 
+A few kinds of names are shared by every module of a project: public functions, and structs, sum types, interfaces, actors, services and supervisors, private ones included. Two modules cannot define the same one; the build names both definitions. A struct or sum type defined identically in several modules (a private helper copied into each) is fine.
+
 You can define a module explicitly with `module ... do ... end` and export declarations with `pub`:
 
 ```mesh

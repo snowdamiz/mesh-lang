@@ -7954,3 +7954,55 @@ end
         compile_multifile_and_run(&[("geo.mpl", geo), ("other.mpl", other), ("main.mpl", main)]);
     assert_eq!(output, "12 12 3 10\n1 1 2\n7 106\n12 6 6\n");
 }
+
+#[test]
+fn e2e_a_type_two_modules_define_differently_is_an_error() {
+    // Private structs, actors and services of one name in two modules were
+    // taken for one: `Z.run_z()` showed its `State` laid out as `A`'s
+    // ("State(4366917664)"), and a module's `spawn(worker)` could start
+    // another module's `worker`.
+    let a = r##"struct State do
+  count :: Int
+end deriving(Display)
+
+pub fn run_a() -> String do
+  "${State { count: 41 }}"
+end
+"##;
+    let z = r##"struct State do
+  label :: String
+end deriving(Display)
+
+pub fn run_z() -> String do
+  "${State { label: "zed" }}"
+end
+"##;
+    let main =
+        "import A\nimport Z\n\nfn main() do\n  println(A.run_a())\n  println(Z.run_z())\nend\n";
+    let err = compile_multifile_expect_error(&[("a.mpl", a), ("z.mpl", z), ("main.mpl", main)]);
+    assert!(
+        err.contains("`State` is defined in more than one module"),
+        "{err}"
+    );
+    assert!(
+        err.contains("struct in `A`") && err.contains("struct in `Z`"),
+        "{err}"
+    );
+    let worker = "actor worker() do\n  receive do\n    n -> println(\"${n}\")\n  end\nend\n\npub fn start() -> Pid<Int> do\n  spawn(worker)\nend\n";
+    let main = format!(
+        "import A\n\n{}\nfn main() do\n  send(A.start(), 1)\nend\n",
+        &worker[..worker.find("pub fn").unwrap()]
+    );
+    let err = compile_multifile_expect_error(&[("a.mpl", worker), ("main.mpl", &main)]);
+    assert!(
+        err.contains("`worker` is defined in more than one module"),
+        "{err}"
+    );
+    // A struct defined identically in each module is one layout: fine.
+    let pair = "struct Pair do\n  a :: Int\n  b :: String\nend\n\n";
+    let x = format!("{pair}pub fn x_pair() -> String do\n  Pair {{ a: 1, b: \"x\" }}.b\nend\n");
+    let y = format!("{pair}pub fn y_pair() -> String do\n  Pair {{ a: 2, b: \"y\" }}.b\nend\n");
+    let main = "import X\nimport Y\n\nfn main() do\n  println(X.x_pair() <> Y.y_pair())\nend\n";
+    let output = compile_multifile_and_run(&[("x.mpl", &x), ("y.mpl", &y), ("main.mpl", main)]);
+    assert_eq!(output, "xy\n");
+}
