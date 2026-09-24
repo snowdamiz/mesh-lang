@@ -4588,3 +4588,12 @@ fn assert_receive_outside_a_test_is_undefined() {
     let err = build_error("fn main() do\n  assert_receive 42, 500\nend\n");
     assert!(err.contains("[E0077]"), "{err}");
 }
+
+#[test]
+fn a_guard_compares_with_a_string_literal() {
+    // "invalid guard: expression not allowed in guard"; an Int literal worked.
+    let out = run(
+        "fn main() do\n  let r = case \"b\" do\n    t when t == \"zzzz\" -> \"long\"\n    t when t == \"b\" -> \"b\"\n    _ -> \"other\"\n  end\n  println(r)\nend\n",
+    );
+    assert_eq!(out, "b\n");
+}

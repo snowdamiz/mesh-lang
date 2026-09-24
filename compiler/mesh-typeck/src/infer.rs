@@ -12224,6 +12224,15 @@ fn format_abstract_pat(pat: &AbsPat) -> String {
 fn validate_guard_expr(expr: &Expr) -> Result<(), String> {
     match expr {
         Expr::Literal(_) | Expr::NameRef(_) | Expr::AtomLiteral(_) | Expr::RegexExpr(_) => Ok(()),
+        // A string literal (`t when t == "a"`); an interpolation is code.
+        Expr::StringExpr(string)
+            if !string
+                .syntax()
+                .children()
+                .any(|child| child.kind() == SyntaxKind::INTERPOLATION) =>
+        {
+            Ok(())
+        }
         Expr::BinaryExpr(bin) => {
             // Allow comparisons and boolean ops.
             if let Some(op) = bin.op() {
