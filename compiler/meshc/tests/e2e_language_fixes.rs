@@ -4470,3 +4470,52 @@ end
     assert!(err.contains("[E0001]"), "{err}");
     assert!(!err.contains("LLVM"), "{err}");
 }
+
+#[test]
+fn a_for_loop_runs_over_a_user_iterator() {
+    // A struct implementing `Iterator` on the right of `in` panicked the
+    // compiler: "Found StructValue ... but expected PointerValue". Its
+    // `next` returns the `Option` by value, not a runtime option pointer.
+    let out = run(r##"service Feed do
+  fn init(items :: List<Int>) -> List<Int> do
+    items
+  end
+
+  call Pop() :: Int? do |items|
+    case items do
+      [] -> (items, None)
+      _ -> (List.tail(items), Some(List.head(items)))
+    end
+  end
+end
+
+struct Stream do
+  pid :: Pid
+end
+
+impl Iterator for Stream do
+  type Item = Int
+  fn next(self) -> Int? do
+    Feed.pop(self.pid)
+  end
+end
+
+struct Empty do
+  n :: Int
+end
+
+impl Iterator for Empty do
+  type Item = String
+  fn next(self) -> String? do
+    None
+  end
+end
+
+fn main() do
+  let stream = Stream { pid: Feed.start([2, 4, 6]) }
+  println("#{for x in stream do x * 10 end}")
+  println("#{for s in Empty { n: 0 } do s end}")
+end
+"##);
+    assert_eq!(out, "[20, 40, 60]\n[]\n");
+}

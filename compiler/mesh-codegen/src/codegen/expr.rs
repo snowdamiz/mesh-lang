@@ -6484,16 +6484,18 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .basic()
                 .ok_or_else(|| format!("{} returned void", iter_fn))?;
-            result.into_pointer_value()
+            result
         } else {
-            // Direct Iterator: the expression IS the iterator.
-            collection_val.into_pointer_value()
+            // Direct Iterator: the expression IS the iterator (a runtime
+            // handle, or a user struct passed to its `next` by value).
+            collection_val
         };
 
         // Step 3: Store iterator in alloca.
+        let iter_ty = iter_val.get_type();
         let iter_alloca = self
             .builder
-            .build_alloca(ptr_ty, "iter_alloca")
+            .build_alloca(iter_ty, "iter_alloca")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_store(iter_alloca, iter_val)
@@ -6539,29 +6541,42 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(header_bb);
         let iter_loaded = self
             .builder
-            .build_load(ptr_ty, iter_alloca, "iter_loaded")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+            .build_load(iter_ty, iter_alloca, "iter_loaded")
+            .map_err(|e| e.to_string())?;
 
         // Call Iterator__next__TypeName(iter) or mesh_*_iter_next(iter).
         let next_func = self
             .resolve_iterator_fn(next_fn)
             .unwrap_or_else(|| get_intrinsic(&self.module, next_fn));
-        let next_result = self
+        let next_value = self
             .builder
             .build_call(next_func, &[iter_loaded.into()], "next_result")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| format!("{} returned void", next_fn))?
-            .into_pointer_value();
+            .ok_or_else(|| format!("{} returned void", next_fn))?;
 
         // Option is MeshOption { tag: u8, value: *mut u8 }.
         // tag 0 = Some, tag 1 = None.
-        // GEP to tag field (index 0).
-        let mesh_option_ty = self
-            .context
-            .struct_type(&[i8_ty.into(), ptr_ty.into()], false);
+        // A runtime iterator returns a pointer to one. A user `next` returns
+        // its `Option` by value, `{ i8, ptr }` with a scalar payload boxed,
+        // which is spilled to read it the same way.
+        let (next_result, mesh_option_ty, boxed_payload) = match next_value {
+            BasicValueEnum::StructValue(option) => {
+                let option_ty = option.get_type();
+                let slot = self.build_entry_alloca(option_ty.into(), "next_option")?;
+                self.builder
+                    .build_store(slot, option)
+                    .map_err(|e| e.to_string())?;
+                (slot, option_ty, true)
+            }
+            other => (
+                other.into_pointer_value(),
+                self.context
+                    .struct_type(&[i8_ty.into(), ptr_ty.into()], false),
+                false,
+            ),
+        };
         let tag_ptr = self
             .builder
             .build_struct_gep(mesh_option_ty, next_result, 0, "tag_ptr")
@@ -6602,7 +6617,22 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Convert from raw pointer to typed element.
         // For Int: ptr -> i64 via ptrtoint. For String/Ptr types: ptr -> ptr (no conversion).
+        // A boxed payload holds the value itself behind the pointer.
         let typed_elem: BasicValueEnum<'ctx> = match elem_ty {
+            _ if boxed_payload
+                && !matches!(
+                    elem_ty,
+                    MirType::Ptr | MirType::String | MirType::Pid(_) | MirType::Tuple(_)
+                ) =>
+            {
+                self.builder
+                    .build_load(
+                        self.llvm_type(elem_ty),
+                        raw_value.into_pointer_value(),
+                        "unboxed_elem",
+                    )
+                    .map_err(|e| e.to_string())?
+            }
             MirType::Int => {
                 let as_int = self
                     .builder
