@@ -174,6 +174,39 @@ fn e2e_pattern_match() {
     assert_eq!(output, "zero\none\nother\n");
 }
 
+/// Atoms match as patterns (in `case` and `receive`), compare with `==`,
+/// print as their names, and key maps. `:ok ->` was a parse error and
+/// `a == :ok` had no Eq.
+#[test]
+fn e2e_atoms() {
+    let source = read_fixture("atoms.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(
+        output,
+        "matched ok\nmatched error\nother\nequal: true, different: false\nshown: ready\nmap: 1\nstopped by atom\n"
+    );
+}
+
+/// A `case` or `receive` guard is any `Bool` expression, arithmetic and
+/// negative literals included, as a function clause's guard is.
+#[test]
+fn e2e_guard_expressions() {
+    let source = read_fixture("guard_expressions.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "big\nsmall\nnegative\nover 7\n");
+}
+
+/// A `let` outside a function makes no global: a function naming it failed
+/// to compile with "Undefined variable". It is error E0080.
+#[test]
+fn e2e_top_level_let_is_an_error() {
+    let err = compile_expect_error(
+        "let greeting = \"hello\"\n\nfn main() do\n  println(greeting)\nend\n",
+    );
+    assert!(err.contains("E0080") && err.contains("let greeting"), "{err}");
+    assert!(!err.contains("Undefined variable"), "{err}");
+}
+
 /// SC2: Closures with captured variables.
 #[test]
 fn e2e_closures() {

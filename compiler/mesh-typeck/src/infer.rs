@@ -1990,20 +1990,6 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
             },
         );
     }
-    http_mod.insert(
-        "get".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::string()],
-            Ty::result(Ty::string(), Ty::string()),
-        )),
-    );
-    http_mod.insert(
-        "post".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::string(), Ty::string()],
-            Ty::result(Ty::string(), Ty::string()),
-        )),
-    );
     // Phase 51: Method-specific routing
     http_mod.insert(
         "on_get".to_string(),
@@ -2743,10 +2729,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
 
     // ── Process module (Phase 67) ───────────────────────────────────
     let mut process_mod = HashMap::new();
-    // Process.monitor: fn(Int) -> Int  (target_pid -> monitor ref)
+    // Process.monitor: fn(Pid) -> Int  (target pid -> monitor ref)
     process_mod.insert(
         "monitor".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
+        Scheme::mono(Ty::fun(vec![Ty::untyped_pid()], Ty::int())),
     );
     // Process.demonitor: fn(Int) -> Int  (monitor_ref -> 0 on success)
     process_mod.insert(
@@ -3431,7 +3417,10 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         // Repo.one(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Map<String,String>, String>)
         repo_mod.insert(
             "one".to_string(),
-            Scheme::mono(Ty::fun(vec![pool_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![pool_t.clone(), ptr_t.clone()],
+                Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
+            )),
         );
         // Repo.get(PoolHandle, String, String) -> Result<Map<String,String>, String>  (pool, table, id)
         repo_mod.insert(
@@ -3452,12 +3441,18 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
         // Repo.count(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Int, String>)
         repo_mod.insert(
             "count".to_string(),
-            Scheme::mono(Ty::fun(vec![pool_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![pool_t.clone(), ptr_t.clone()],
+                Ty::result(Ty::int(), Ty::string()),
+            )),
         );
         // Repo.exists(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Bool, String>)
         repo_mod.insert(
             "exists".to_string(),
-            Scheme::mono(Ty::fun(vec![pool_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![pool_t.clone(), ptr_t.clone()],
+                Ty::result(Ty::bool(), Ty::string()),
+            )),
         );
         // Repo.insert(PoolHandle, String, Map<String,String>) -> Result<Map<String,String>, String>  (pool, table, fields_map)
         repo_mod.insert(
@@ -3483,12 +3478,17 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.update(PoolHandle, String, String, Ptr) -> Ptr  (pool, table, id, fields_map -> Result<Map<String,String>, String>)
+        // Repo.update(PoolHandle, String, String, Map<String,String>) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "update".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
-                ptr_t.clone(),
+                vec![
+                    pool_t.clone(),
+                    Ty::string(),
+                    Ty::string(),
+                    Ty::map(Ty::string(), Ty::string()),
+                ],
+                Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
         // Repo.delete(PoolHandle, String, String) -> Result<Map<String,String>, String>  (pool, table, id)
@@ -3573,7 +3573,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
             )),
         );
         // ── Phase 109: Upsert, RETURNING, Subquery ────────────────────────
-        // Repo.insert_or_update(PoolHandle, String, Map<String,String>, List<String>, List<String>) -> Ptr
+        // Repo.insert_or_update(PoolHandle, String, Map<String,String>, List<String>, List<String>) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "insert_or_update".to_string(),
             Scheme::mono(Ty::fun(
@@ -3584,7 +3584,7 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                     Ty::list(Ty::string()),
                     Ty::list(Ty::string()),
                 ],
-                ptr_t.clone(),
+                Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
         // Repo.insert_or_update_expr(PoolHandle, String, Map<String,String>, List<String>, Map<String,Ptr>) -> Result<Map<String,String>, String>
@@ -3601,39 +3601,43 @@ fn stdlib_modules(test_builtins: bool) -> HashMap<String, HashMap<String, Scheme
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.delete_where_returning(PoolHandle, String, Ptr) -> Ptr
+        // Repo.delete_where_returning(PoolHandle, String, Ptr) -> Result<List<Map<String,String>>, String>
         repo_mod.insert(
             "delete_where_returning".to_string(),
             Scheme::mono(Ty::fun(
                 vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-                ptr_t.clone(),
+                Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
             )),
         );
         // ── Phase 99: Repo Changeset Operations ────────────────────────
-        // Repo.insert_changeset(PoolHandle, String, Ptr) -> Ptr  (pool, table, changeset -> Result<Map, Changeset>)
+        // Repo.insert_changeset(PoolHandle, String, Changeset) -> Result<Map<String,String>, Changeset>
         repo_mod.insert(
             "insert_changeset".to_string(),
             Scheme::mono(Ty::fun(
                 vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-                ptr_t.clone(),
+                Ty::result(Ty::map(Ty::string(), Ty::string()), ptr_t.clone()),
             )),
         );
-        // Repo.update_changeset(PoolHandle, String, String, Ptr) -> Ptr  (pool, table, id, changeset -> Result<Map, Changeset>)
+        // Repo.update_changeset(PoolHandle, String, String, Changeset) -> Result<Map<String,String>, Changeset>
         repo_mod.insert(
             "update_changeset".to_string(),
             Scheme::mono(Ty::fun(
                 vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
-                ptr_t.clone(),
+                Ty::result(Ty::map(Ty::string(), Ty::string()), ptr_t.clone()),
             )),
         );
         // ── Phase 100: Repo Preloading ───────────────────────────────────
-        // Repo.preload(PoolHandle, Ptr, Ptr, Ptr) -> Ptr
-        // (pool, rows: List<Map>, associations: List<String>, rel_meta: List<String>) -> Result<List<Map>, String>
+        // Repo.preload(pool, rows, associations, relationship_meta) -> Result<List<Map>, String>
         repo_mod.insert(
             "preload".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), ptr_t.clone(), ptr_t.clone(), ptr_t.clone()],
-                ptr_t.clone(),
+                vec![
+                    pool_t.clone(),
+                    Ty::list(Ty::map(Ty::string(), Ty::string())),
+                    Ty::list(Ty::string()),
+                    Ty::list(Ty::string()),
+                ],
+                Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
             )),
         );
         modules.insert("Repo".to_string(), repo_mod);
@@ -4507,6 +4511,13 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         {
             ctx.errors
                 .push(TypeError::HttpClusteredOutsideRouteHandlerPosition { span: wrapper_span });
+        }
+    }
+
+    for (actor, msg_ty, span) in std::mem::take(&mut ctx.actor_message_types) {
+        if matches!(ctx.resolve(msg_ty), Ty::Var(_)) {
+            ctx.errors
+                .push(TypeError::ActorMessageTypeUnknown { actor, span });
         }
     }
 
@@ -5451,8 +5462,7 @@ fn infer_multi_clause_fn(
 
         if let Some(guard_clause) = clause.guard() {
             if let Some(guard_expr) = guard_clause.expr() {
-                // For multi-clause function guards: accept arbitrary Bool expressions.
-                // Do NOT call validate_guard_expr -- just type-check and verify Bool.
+                // A guard is any `Bool` expression.
                 let guard_ty = infer_expr(
                     ctx,
                     env,
@@ -6724,6 +6734,10 @@ fn builtin_type_names(
     for scheme in env.schemes() {
         type_constructors(&scheme.ty, &mut names);
     }
+    // Types only the standard library's modules mention, such as `Iter`.
+    for scheme in stdlib_modules(true).values().flat_map(|module| module.values()) {
+        type_constructors(&scheme.ty, &mut names);
+    }
     for ty in trait_registry.impl_types() {
         type_constructors(ty, &mut names);
     }
@@ -7137,10 +7151,10 @@ fn register_sum_type_def(
         return;
     }
 
-    // Schema is only supported on structs, not sum types.
-    if derive_list.iter().any(|t| t == "Schema") {
+    // Row and Schema map struct fields to columns; a sum type has none.
+    for trait_name in derive_list.iter().filter(|t| *t == "Row" || *t == "Schema") {
         ctx.errors.push(TypeError::UnsupportedDerive {
-            trait_name: "Schema".to_string(),
+            trait_name: trait_name.clone(),
             type_name: name.clone(),
             span: deriving_span(sum_def.syntax()),
         });
@@ -7662,6 +7676,24 @@ fn resolve_self_assoc_type(
 /// An impl's registry entry from its signatures alone. A method without a
 /// return annotation has no return type here; `infer_impl_def` fills it in
 /// from the body.
+/// `ty` with `Self` as the implementing type: in an impl, `-> Self` is the
+/// type the impl is for.
+fn with_self(ty: &Ty, impl_type: &Ty) -> Ty {
+    match ty {
+        Ty::Con(tc) if tc.name == "Self" => impl_type.clone(),
+        Ty::App(con, args) => Ty::App(
+            Box::new(with_self(con, impl_type)),
+            args.iter().map(|arg| with_self(arg, impl_type)).collect(),
+        ),
+        Ty::Fun(params, ret) => Ty::Fun(
+            params.iter().map(|param| with_self(param, impl_type)).collect(),
+            Box::new(with_self(ret, impl_type)),
+        ),
+        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|elem| with_self(elem, impl_type)).collect()),
+        other => other.clone(),
+    }
+}
+
 fn impl_signature(
     ctx: &mut InferCtx,
     impl_: &AstImplDef,
@@ -7727,6 +7759,7 @@ fn impl_signature(
                     resolve_self_assoc_type(&ann, &assoc_types)
                         .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
                         .or_else(|| resolve_type_name(&ann))
+                        .map(|ty| with_self(&ty, &impl_type))
                 });
                 match (&mut param_types, declared) {
                     (Some(tys), Some(ty)) if !ty.has_type_vars() => tys.push(ty),
@@ -7746,6 +7779,7 @@ fn impl_signature(
                     .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
                     .or_else(|| resolve_type_name(&ann))
             })
+            .map(|ty| with_self(&ty, &impl_type))
             .filter(|ty| !ty.has_type_vars());
         methods.insert(
             method_name,
@@ -7860,6 +7894,7 @@ fn infer_impl_def(
             resolve_self_assoc_type(&ann, &assoc_types)
                 .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
                 .or_else(|| resolve_type_name(&ann))
+                .map(|ty| with_self(&ty, &impl_type))
         });
 
         // Also infer the method body to check it type-checks.
@@ -7892,6 +7927,7 @@ fn infer_impl_def(
                                 resolve_self_assoc_type(&ann, &assoc_types)
                                     .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
                                     .or_else(|| resolve_type_name(&ann))
+                                    .map(|ty| with_self(&ty, &impl_type))
                             })
                             .unwrap_or_else(|| ctx.fresh_var());
                         env.insert(name_text, Scheme::mono(param_ty.clone()));
@@ -8465,6 +8501,20 @@ fn validate_native_declaration(ctx: &mut InferCtx, function: &FnDef) {
     }
 }
 
+/// Symbols an export cannot take: the host ABI the runtime defines, `main`,
+/// and C keywords, which the generated header could not declare.
+fn is_reserved_export_symbol(symbol: &str) -> bool {
+    const C_KEYWORDS: &[&str] = &[
+        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
+        "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
+        "restrict", "return", "short", "signed", "sizeof", "static", "struct", "switch",
+        "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool", "_Complex",
+        "_Imaginary", "_Alignas", "_Alignof", "_Atomic", "_Generic", "_Noreturn",
+        "_Static_assert", "_Thread_local", "bool", "true", "false",
+    ];
+    symbol == "main" || symbol.starts_with("mesh_library_") || C_KEYWORDS.contains(&symbol)
+}
+
 fn is_c_identifier(symbol: &str) -> bool {
     let mut bytes = symbol.bytes();
     bytes
@@ -8544,6 +8594,10 @@ fn validate_export_declaration(ctx: &mut InferCtx, function: &FnDef) {
         .unwrap_or_default();
     if !is_c_identifier(&symbol) {
         reject("exported symbol must be a non-empty C identifier");
+    } else if is_reserved_export_symbol(&symbol) {
+        reject(
+            "exported symbol is reserved: `main`, C keywords, and `mesh_library_*` (the host ABI) cannot be exported",
+        );
     }
     if function.return_type().is_none() {
         reject("exported functions require an explicit return type");
@@ -8813,7 +8867,12 @@ fn infer_expr_here(
             trait_registry,
             fn_constraints,
         )?,
-        Expr::IndexExpr(_) => ctx.fresh_var(),
+        Expr::IndexExpr(index) => {
+            ctx.errors.push(TypeError::IndexingUnsupported {
+                span: index.syntax().text_range(),
+            });
+            ctx.fresh_var()
+        }
         // Loop expressions.
         Expr::WhileExpr(w) => infer_while(
             ctx,
@@ -9984,6 +10043,17 @@ fn infer_call(
         && env
             .lookup("default")
             .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
+    if let Some(ty) = infer_node_spawn(
+        ctx,
+        env,
+        call,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )? {
+        return Ok(ty);
+    }
     let ty = infer_call_inner(
         ctx,
         env,
@@ -9998,6 +10068,66 @@ fn infer_call(
             .push((ty.clone(), call.syntax().text_range()));
     }
     Ok(ty)
+}
+
+/// `Node.spawn(node, actor, args...)` and `Node.spawn_link(...)`, typed as a
+/// local `spawn` is: the node name is a `String`, the actor takes the
+/// arguments, and the call returns the actor's `Pid<M>`. `None` for any
+/// other call.
+fn infer_node_spawn(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    call: &CallExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Option<Ty>, TypeError> {
+    let Some(Expr::FieldAccess(callee)) = call.callee() else {
+        return Ok(None);
+    };
+    let is_node = matches!(callee.base(), Some(Expr::NameRef(ref base)) if base.text().as_deref() == Some("Node"))
+        && env.lookup("Node").is_none();
+    let field = callee.field().map(|field| field.text().to_string());
+    if !is_node || !matches!(field.as_deref(), Some("spawn" | "spawn_link")) {
+        return Ok(None);
+    }
+    let args: Vec<Expr> = call
+        .arg_list()
+        .map(|list| list.args().collect())
+        .unwrap_or_default();
+    if args.len() < 2 {
+        return Ok(None);
+    }
+    let mut arg_types = Vec::new();
+    for arg in &args {
+        arg_types.push(infer_expr(
+            ctx,
+            env,
+            arg,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?);
+    }
+    let node_origin = ConstraintOrigin::FnArg {
+        call_site: args[0].syntax().text_range(),
+        param_idx: 0,
+    };
+    ctx.unify(arg_types[0].clone(), Ty::string(), node_origin)?;
+    let pid = Ty::pid(ctx.fresh_var());
+    let actor = Ty::Fun(arg_types[2..].to_vec(), Box::new(pid.clone()));
+    let actor_origin = ConstraintOrigin::FnArg {
+        call_site: args[1].syntax().text_range(),
+        param_idx: 1,
+    };
+    ctx.unify(arg_types[1].clone(), actor, actor_origin)?;
+    types.insert(
+        callee.syntax().text_range(),
+        Ty::Fun(arg_types, Box::new(pid.clone())),
+    );
+    Ok(Some(pid))
 }
 
 fn infer_call_inner(
@@ -12072,6 +12202,12 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                             ty: AbsLitKind::String,
                         }
                     }
+                    // An atom is its name at run time; like a string, it
+                    // takes a catch-all arm to be exhaustive.
+                    SyntaxKind::ATOM_LITERAL => AbsPat::Literal {
+                        value: token.text().trim_start_matches(':').to_string(),
+                        ty: AbsLitKind::String,
+                    },
                     _ => AbsPat::Wildcard,
                 }
             } else {
@@ -12301,86 +12437,6 @@ fn format_abstract_pat(pat: &AbsPat) -> String {
     }
 }
 
-// ── Guard Expression Validation (04-04) ────────────────────────────────
-
-/// Validate that a guard expression only uses allowed constructs:
-/// comparisons, boolean operators, literals, and name references.
-///
-/// Guards must be simple boolean expressions. Function calls, assignments,
-/// and other complex expressions are disallowed.
-fn validate_guard_expr(expr: &Expr) -> Result<(), String> {
-    match expr {
-        Expr::Literal(_) | Expr::NameRef(_) | Expr::AtomLiteral(_) | Expr::RegexExpr(_) => Ok(()),
-        // A string literal (`t when t == "a"`); an interpolation is code.
-        Expr::StringExpr(string)
-            if !string
-                .syntax()
-                .children()
-                .any(|child| child.kind() == SyntaxKind::INTERPOLATION) =>
-        {
-            Ok(())
-        }
-        Expr::BinaryExpr(bin) => {
-            // Allow comparisons and boolean ops.
-            if let Some(op) = bin.op() {
-                match op.kind() {
-                    SyntaxKind::EQ_EQ
-                    | SyntaxKind::NOT_EQ
-                    | SyntaxKind::LT
-                    | SyntaxKind::GT
-                    | SyntaxKind::LT_EQ
-                    | SyntaxKind::GT_EQ
-                    | SyntaxKind::AND_KW
-                    | SyntaxKind::OR_KW
-                    | SyntaxKind::AMP_AMP
-                    | SyntaxKind::PIPE_PIPE => {}
-                    _ => {
-                        return Err(format!("operator `{}` not allowed in guard", op.text()));
-                    }
-                }
-            }
-            if let Some(lhs) = bin.lhs() {
-                validate_guard_expr(&lhs)?;
-            }
-            if let Some(rhs) = bin.rhs() {
-                validate_guard_expr(&rhs)?;
-            }
-            Ok(())
-        }
-        Expr::UnaryExpr(un) => {
-            // Allow `not` / `!`
-            if let Some(op) = un.op() {
-                match op.kind() {
-                    SyntaxKind::BANG | SyntaxKind::NOT_KW => {}
-                    _ => {
-                        return Err(format!("operator `{}` not allowed in guard", op.text()));
-                    }
-                }
-            }
-            if let Some(operand) = un.operand() {
-                validate_guard_expr(&operand)?;
-            }
-            Ok(())
-        }
-        Expr::TupleExpr(_) => {
-            // Allow parenthesized grouping.
-            Ok(())
-        }
-        Expr::CallExpr(call) => {
-            // Calls of functions by name, module-qualified or not
-            // (`valid(n)`, `String.length(s)`).
-            match call.callee() {
-                None | Some(Expr::NameRef(_)) => Ok(()),
-                Some(Expr::FieldAccess(fa)) if matches!(fa.base(), Some(Expr::NameRef(_))) => {
-                    Ok(())
-                }
-                Some(_) => Err("only named function calls allowed in guard".to_string()),
-            }
-        }
-        _ => Err(format!("expression not allowed in guard")),
-    }
-}
-
 /// Infer the type of a case/match expression.
 ///
 /// After type-checking all arms, runs exhaustiveness and redundancy analysis.
@@ -12442,18 +12498,8 @@ fn infer_case(
         arm_has_guard.push(has_guard);
         arm_spans.push(arm.syntax().text_range());
 
-        // Validate and type-check guard if present.
+        // A guard is any `Bool` expression, as a function clause's is.
         if let Some(guard_expr) = arm.guard() {
-            // Validate guard uses only allowed constructs.
-            if let Err(reason) = validate_guard_expr(&guard_expr) {
-                let err = TypeError::InvalidGuardExpression {
-                    reason,
-                    span: guard_expr.syntax().text_range(),
-                };
-                ctx.errors.push(err);
-            }
-
-            // Type-check the guard -- it must be Bool.
             let guard_ty = infer_expr(
                 ctx,
                 env,
@@ -13842,6 +13888,7 @@ fn infer_pattern(
                     SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW => Ty::bool(),
                     SyntaxKind::NIL_KW => Ty::Tuple(vec![]),
                     SyntaxKind::STRING_START => Ty::string(),
+                    SyntaxKind::ATOM_LITERAL => Ty::Con(TyCon::new("Atom")),
                     _ => ctx.fresh_var(),
                 }
             } else {
@@ -14041,6 +14088,7 @@ fn infer_rebuilt_pattern(
             Some(SyntaxKind::FLOAT_LITERAL) => Ty::float(),
             Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => Ty::bool(),
             Some(SyntaxKind::STRING_START) => Ty::string(),
+            Some(SyntaxKind::ATOM_LITERAL) => Ty::Con(TyCon::new("Atom")),
             _ => Ty::Tuple(vec![]),
         }),
         Pattern::Wildcard(_) => Ok(not_a_value(ctx, "`_` names no value".to_string())),
@@ -14383,6 +14431,31 @@ fn infer_actor_def(
 
     env.pop_scope();
 
+    // A receive arm that uses the message it binds needs the message's type
+    // from somewhere in the module; without one it would read every message
+    // as `()`. A binding the arm never reads does no harm.
+    let uses_message = actor_def.syntax().descendants().any(|arm| {
+        if arm.kind() != SyntaxKind::RECEIVE_ARM {
+            return false;
+        }
+        let bound: Vec<String> = arm
+            .descendants()
+            .filter(|node| node.kind() == SyntaxKind::IDENT_PAT)
+            .map(|node| node.text().to_string().trim().to_string())
+            .collect();
+        arm.descendants().any(|node| {
+            node.kind() == SyntaxKind::NAME_REF && bound.contains(&node.text().to_string())
+        })
+    });
+    if uses_message {
+        let span = actor_def
+            .name()
+            .map(|name| name.syntax().text_range())
+            .unwrap_or_else(|| actor_def.syntax().text_range());
+        ctx.actor_message_types
+            .push((actor_name.clone(), msg_ty.clone(), span));
+    }
+
     // The actor function type: (StateTypes...) -> Pid<M>
     let pid_ty = Ty::pid(msg_ty);
     let fn_ty = Ty::Fun(param_types, Box::new(pid_ty.clone()));
@@ -14414,9 +14487,9 @@ fn infer_supervisor_def(
     env: &mut TypeEnv,
     sup_def: &SupervisorDef,
     types: &mut FxHashMap<TextRange, Ty>,
-    _type_registry: &TypeRegistry,
-    _trait_registry: &TraitRegistry,
-    _fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     let sup_name = sup_def
         .name()
@@ -14491,47 +14564,32 @@ fn infer_supervisor_def(
 
                 if text == "start" {
                     found_start = true;
-                    // Validate that the start expression references a spawn call.
-                    // Walk forward to find SPAWN_KW -- if it's there, the start fn returns Pid.
-                    // If no SPAWN_KW is found before the next key or end, the start fn
-                    // may not return Pid. We check for the spawn keyword as evidence.
-                    let mut j = i + 1;
-                    let mut has_spawn = false;
-                    while j < tokens.len() {
-                        if tokens[j].kind() == SyntaxKind::SPAWN_KW {
-                            has_spawn = true;
-                            break;
+                    // The start value is the child spec's only expression: a
+                    // function that spawns the child and returns its pid.
+                    // Unchecked, a misspelled actor in it compiled and crashed.
+                    if let Some(start) = block.children().find_map(Expr::cast) {
+                        if let Ok(start_ty) = infer_expr(
+                            ctx,
+                            env,
+                            &start,
+                            types,
+                            type_registry,
+                            trait_registry,
+                            fn_constraints,
+                        ) {
+                            let expected = Ty::Fun(vec![], Box::new(Ty::pid(ctx.fresh_var())));
+                            if ctx
+                                .unify(start_ty.clone(), expected, ConstraintOrigin::Builtin)
+                                .is_err()
+                            {
+                                let found = ctx.resolve(start_ty);
+                                ctx.errors.push(TypeError::InvalidChildStart {
+                                    child_name: child_name.clone(),
+                                    found,
+                                    span: start.syntax().text_range(),
+                                });
+                            }
                         }
-                        // Stop at next key boundary.
-                        if tokens[j].text() == "restart" || tokens[j].text() == "shutdown" {
-                            break;
-                        }
-                        j += 1;
-                    }
-
-                    if !has_spawn {
-                        // Find the span of the start value for error reporting.
-                        // Skip "start" and ":" to find the expression start.
-                        let mut val_start = i + 1;
-                        while val_start < tokens.len()
-                            && tokens[val_start].kind() == SyntaxKind::COLON
-                        {
-                            val_start += 1;
-                        }
-                        let span = if val_start < j && val_start < tokens.len() {
-                            // Span from first value token to last before next key.
-                            let start = tokens[val_start].text_range().start();
-                            let end = tokens[(j - 1).min(tokens.len() - 1)].text_range().end();
-                            TextRange::new(start, end)
-                        } else {
-                            tokens[i].text_range()
-                        };
-
-                        ctx.errors.push(TypeError::InvalidChildStart {
-                            child_name: child_name.clone(),
-                            found: Ty::Con(crate::ty::TyCon::new("unknown")),
-                            span,
-                        });
                     }
                 } else if text == "restart" {
                     // Validate restart type.
@@ -15284,12 +15342,6 @@ fn infer_receive(
         arm_spans.push(arm.syntax().text_range());
 
         if let Some(guard_expr) = arm.guard() {
-            if let Err(reason) = validate_guard_expr(&guard_expr) {
-                ctx.errors.push(TypeError::InvalidGuardExpression {
-                    reason,
-                    span: guard_expr.syntax().text_range(),
-                });
-            }
             let guard_ty = infer_expr(
                 ctx,
                 env,
@@ -15697,7 +15749,12 @@ fn infer_bare_method_call(
         return Ok(None);
     };
     let args = call.args();
-    let is_method_name = env.lookup(&name).is_none() || ctx.trait_method_fns.contains(&name);
+    // The test DSL's names are global builtins, and too common to take from
+    // every program: an interface method called `describe` wins over them.
+    const TEST_DSL_NAMES: &[&str] = &["test", "describe", "setup", "teardown"];
+    let is_method_name = env.lookup(&name).is_none()
+        || ctx.trait_method_fns.contains(&name)
+        || TEST_DSL_NAMES.contains(&name.as_str());
     if env.is_local(&name) || !is_method_name {
         return Ok(None);
     }

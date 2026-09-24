@@ -419,3 +419,21 @@ impl TyExt for Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new(name))), vec![inner])
     }
 }
+
+/// `Row` and `Schema` map struct fields to columns; a sum type has none.
+/// `deriving(Row)` on a sum type was accepted.
+#[test]
+fn sum_types_cannot_derive_row_or_schema() {
+    for trait_name in ["Row", "Schema"] {
+        let src = format!("type Shape do\n  Circle(Int)\n  Square(Int)\nend deriving({trait_name})\n");
+        let result = check_source(&src);
+        assert!(
+            result.errors.iter().any(|error| matches!(
+                error,
+                TypeError::UnsupportedDerive { trait_name: found, .. } if found == trait_name
+            )),
+            "{trait_name}: {:?}",
+            result.errors
+        );
+    }
+}

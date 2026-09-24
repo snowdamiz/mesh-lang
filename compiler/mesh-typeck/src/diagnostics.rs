@@ -128,7 +128,6 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NonExhaustiveMatch { .. } => "E0012",
         TypeError::RedundantArm { .. } => "W0001",
         TypeError::NonExhaustiveClauses { .. } => "W0003",
-        TypeError::InvalidGuardExpression { .. } => "E0013",
         TypeError::SendTypeMismatch { .. } => "E0014",
         TypeError::SelfOutsideActor { .. } => "E0015",
         TypeError::SpawnNonFunction { .. } => "E0016",
@@ -192,6 +191,9 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::OverloadedFunctionValue { .. } => "E0075",
         TypeError::GenericImplTarget { .. } => "E0076",
         TypeError::AssertReceiveOutsideTest { .. } => "E0077",
+        TypeError::IndexingUnsupported { .. } => "E0078",
+        TypeError::ActorMessageTypeUnknown { .. } => "E0079",
+        TypeError::TopLevelLet { .. } => "E0080",
     }
 }
 
@@ -570,7 +572,6 @@ pub fn render_json_diagnostic(
                 | TypeError::NoSuchMethod { span, .. }
                 | TypeError::AmbiguousMethod { span, .. }
                 | TypeError::OrPatternBindingMismatch { span, .. }
-                | TypeError::InvalidGuardExpression { span, .. }
                 | TypeError::SendTypeMismatch { span, .. }
                 | TypeError::SelfOutsideActor { span }
                 | TypeError::SpawnNonFunction { span, .. }
@@ -615,6 +616,9 @@ pub fn render_json_diagnostic(
                 | TypeError::UnknownInterface { span, .. }
                 | TypeError::InvalidLiteral { span, .. }
                 | TypeError::InvalidConcat { span, .. }
+                | TypeError::IndexingUnsupported { span }
+                | TypeError::ActorMessageTypeUnknown { span, .. }
+                | TypeError::TopLevelLet { span, .. }
                 | TypeError::NoSuchModuleFunction { span, .. }
                 | TypeError::OverloadedFunctionValue { span, .. }
                 | TypeError::GenericImplTarget { span, .. }
@@ -1225,26 +1229,6 @@ pub fn render_diagnostic(
                 .finish()
         }
 
-        TypeError::InvalidGuardExpression { reason, span } => {
-            let msg = format!("invalid guard: {}", reason);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("not allowed in a guard")
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "a guard is made of literals, names, comparisons, boolean operators, \
-                     parentheses and named function calls",
-                )
-                .finish()
-        }
-
         TypeError::SendTypeMismatch {
             expected,
             found,
@@ -1597,10 +1581,12 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), span))
-                        .with_message(format!("`{}` is not a derivable trait", trait_name))
+                        .with_message(format!("`{}` cannot be derived here", trait_name))
                         .with_color(Color::Red),
                 )
-                .with_help("only Eq, Ord, Display, Debug, Hash, Json, and Row are derivable")
+                .with_help(
+                    "structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
+                )
                 .finish()
         }
 
@@ -2260,7 +2246,12 @@ pub fn render_diagnostic(
                         .with_message(label)
                         .with_color(Color::Red),
                 )
-                .with_help("give the result a type: `let x :: Int = value.convert()`")
+                .with_help(format!(
+                    "give the result a type: `let x :: {} = value.{method}()`",
+                    candidates
+                        .first()
+                        .map_or_else(|| "Int".to_string(), |ty| ty.to_string())
+                ))
                 .finish()
         }
         TypeError::DuplicateDefinition { kind, name, span } => {
@@ -2384,6 +2375,54 @@ pub fn render_diagnostic(
                         .with_color(Color::Red),
                 )
                 .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
+                .finish()
+        }
+        TypeError::TopLevelLet { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("`let {name}` outside a function is not supported"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("a module has no global bindings")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
+                ))
+                .finish()
+        }
+        TypeError::ActorMessageTypeUnknown { actor, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("cannot tell what type of message `{actor}` receives"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("only untyped `Pid`s reach this actor")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`"
+                ))
+                .finish()
+        }
+        TypeError::IndexingUnsupported { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message("`value[index]` indexing is not supported")
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("no indexing syntax")
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`",
+                )
                 .finish()
         }
         TypeError::InvalidLiteral { reason, span } => {

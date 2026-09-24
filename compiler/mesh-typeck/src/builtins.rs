@@ -2922,6 +2922,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         (Ty::int(), "Int"),
         (Ty::float(), "Float"),
         (Ty::string(), "String"),
+        (Ty::Con(TyCon::new("Atom")), "Atom"),
         (Ty::bool(), "Bool"),
     ] {
         let mut methods = FxHashMap::default();
@@ -3189,6 +3190,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         (Ty::int(), "Int"),
         (Ty::float(), "Float"),
         (Ty::string(), "String"),
+        (Ty::Con(TyCon::new("Atom")), "Atom"),
         (Ty::bool(), "Bool"),
     ] {
         let mut methods = FxHashMap::default();
@@ -3306,6 +3308,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         (Ty::int(), "Int"),
         (Ty::float(), "Float"),
         (Ty::string(), "String"),
+        (Ty::Con(TyCon::new("Atom")), "Atom"),
         (Ty::bool(), "Bool"),
     ] {
         let mut methods = FxHashMap::default();
@@ -3347,6 +3350,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         (Ty::int(), "Int"),
         (Ty::float(), "Float"),
         (Ty::string(), "String"),
+        (Ty::Con(TyCon::new("Atom")), "Atom"),
         (Ty::bool(), "Bool"),
     ] {
         let mut methods = FxHashMap::default();

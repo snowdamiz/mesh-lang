@@ -101,6 +101,7 @@ impl LiteralPat {
                         | SyntaxKind::FALSE_KW
                         | SyntaxKind::NIL_KW
                         | SyntaxKind::STRING_START
+                        | SyntaxKind::ATOM_LITERAL
                 )
             })
     }

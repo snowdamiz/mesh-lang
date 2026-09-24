@@ -2244,8 +2244,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 // Runtime functions returning i64 for pointer values (e.g., map_get
-                // returning a string pointer as u64) need inttoptr conversion.
-                if matches!(ty, MirType::String | MirType::Ptr | MirType::Pid(_)) {
+                // returning a string pointer as u64) need inttoptr conversion. A
+                // `Pid` is an i64 itself.
+                if matches!(ty, MirType::String | MirType::Ptr) {
                     if let BasicValueEnum::IntValue(iv) = result {
                         if iv.get_type().get_bit_width() == 64 {
                             let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());

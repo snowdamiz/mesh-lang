@@ -1026,6 +1026,43 @@ pub(crate) fn prepare_project_build(
             eprint!("{}", rendered);
         }
 
+        // Nothing evaluates a `let` outside a function: a function naming one
+        // failed to compile with "Undefined variable". (The REPL runs its
+        // bindings inside each evaluation instead.)
+        for let_ in parse.syntax().descendants().filter(|node| {
+            node.kind() == mesh_parser::SyntaxKind::LET_BINDING
+                && !node.ancestors().any(|ancestor| {
+                    use mesh_parser::SyntaxKind as K;
+                    matches!(
+                        ancestor.kind(),
+                        K::FN_DEF
+                            | K::ACTOR_DEF
+                            | K::SERVICE_DEF
+                            | K::SUPERVISOR_DEF
+                            | K::IMPL_DEF
+                            | K::INTERFACE_DEF
+                            | K::CLOSURE_EXPR
+                            | K::TRAILING_CLOSURE
+                    )
+                })
+        }) {
+            has_type_errors = true;
+            let name = let_
+                .children()
+                .find(|child| child.kind() == mesh_parser::SyntaxKind::NAME)
+                .map_or_else(|| "_".to_string(), |name| name.text().to_string());
+            let error = mesh_typeck::error::TypeError::TopLevelLet {
+                name,
+                span: let_.text_range(),
+            };
+            eprint!(
+                "{}",
+                mesh_typeck::diagnostics::render_diagnostic(
+                    &error, source, &file_name, diag_opts, None,
+                )
+            );
+        }
+
         // Report warnings
         for warning in &typeck.warnings {
             let rendered = mesh_typeck::diagnostics::render_diagnostic(

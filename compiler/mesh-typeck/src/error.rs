@@ -192,8 +192,6 @@ pub enum TypeError {
     },
     /// A match arm is redundant (unreachable given prior arms).
     RedundantArm { arm_index: usize, span: TextRange },
-    /// A guard expression uses disallowed constructs.
-    InvalidGuardExpression { reason: String, span: TextRange },
     /// Sending a message of wrong type to a typed Pid<M>.
     SendTypeMismatch {
         expected: Ty,
@@ -444,6 +442,13 @@ pub enum TypeError {
         arities: Vec<usize>,
         span: TextRange,
     },
+    /// `value[index]`: Mesh has no indexing syntax.
+    IndexingUnsupported { span: TextRange },
+    /// Nothing in the module tells the type of the messages an actor
+    /// receives (it is sent to only through untyped `Pid`s).
+    ActorMessageTypeUnknown { actor: String, span: TextRange },
+    /// A `let` outside any function: it makes no global.
+    TopLevelLet { name: String, span: TextRange },
     /// `<>` or `++` on values that are neither strings nor lists.
     InvalidConcat {
         op: &'static str,
@@ -658,9 +663,6 @@ impl fmt::Display for TypeError {
             TypeError::RedundantArm { arm_index, .. } => {
                 write!(f, "redundant match arm at index {}", arm_index)
             }
-            TypeError::InvalidGuardExpression { reason, .. } => {
-                write!(f, "invalid guard expression: {}", reason)
-            }
             TypeError::SendTypeMismatch {
                 expected, found, ..
             } => {
@@ -787,7 +789,7 @@ impl fmt::Display for TypeError {
             } => {
                 write!(
                     f,
-                    "cannot derive `{}` for `{}` -- only Eq, Ord, Display, Debug, Hash, Json, and Row are derivable",
+                    "cannot derive `{}` for `{}` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
                     trait_name, type_name
                 )
             }
@@ -1017,6 +1019,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::InvalidConcat { op, ty, .. } => {
                 write!(f, "`{op}` joins strings or lists, not `{ty}`")
+            }
+            TypeError::IndexingUnsupported { .. } => {
+                write!(f, "`value[index]` indexing is not supported")
+            }
+            TypeError::ActorMessageTypeUnknown { actor, .. } => {
+                write!(f, "cannot tell what type of message `{actor}` receives")
+            }
+            TypeError::TopLevelLet { name, .. } => {
+                write!(f, "`let {name}` outside a function is not supported")
             }
             TypeError::UnknownFieldOwner { field, .. } => {
                 write!(f, "cannot tell which type has the field `{field}`")

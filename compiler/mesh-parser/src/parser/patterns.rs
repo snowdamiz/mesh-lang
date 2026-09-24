@@ -114,7 +114,7 @@ fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
             Some(p.close(m, SyntaxKind::LITERAL_PAT))
         }
 
-        SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NIL_KW => {
+        SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NIL_KW | SyntaxKind::ATOM_LITERAL => {
             let m = p.open();
             p.advance();
             Some(p.close(m, SyntaxKind::LITERAL_PAT))

@@ -224,17 +224,6 @@ fn test_diag_redundant_arm_is_warning() {
 }
 
 #[test]
-fn test_diag_invalid_guard_expression() {
-    let src = "case x do n when f(n) -> n end";
-    let err = TypeError::InvalidGuardExpression {
-        reason: "function calls not allowed in guards".to_string(),
-        span: rowan::TextRange::new(16.into(), 20.into()),
-    };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn test_diag_unknown_variant() {
     let src = "type Shape do Circle(Float) end\ncase s do Triangle(a) -> a end";
     let err = TypeError::UnknownVariant {
@@ -450,4 +439,22 @@ fn test_diag_ambiguous_method_help_text() {
     };
     let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     insta::assert_snapshot!(output);
+}
+
+/// `xs[i]` used to type-check as an unknown type and compile to `()`.
+#[test]
+fn diag_indexing_is_unsupported() {
+    let src = "fn main() do\n  let xs = [1, 2, 3]\n  let x = xs[1]\n  x\nend\n";
+    let result = check_source(src);
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|error| matches!(error, TypeError::IndexingUnsupported { .. })),
+        "{:?}",
+        result.errors
+    );
+    let rendered = render_first_error(src);
+    assert!(rendered.contains("E0078"), "{rendered}");
+    assert!(rendered.contains("List.get(list, index)"), "{rendered}");
 }

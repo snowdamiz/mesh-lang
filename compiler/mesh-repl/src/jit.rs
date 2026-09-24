@@ -2416,6 +2416,13 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     }
     full_source.push_str(input);
 
+    // A `let` runs inside each evaluation's wrapper function (a top-level
+    // binding makes no global), so check it there.
+    let is_binding = input.trim_start().starts_with("let ");
+    if is_binding {
+        full_source = session.wrap_expression(&format!("{input}\n  ()")).0;
+    }
+
     // Parse to check for syntax errors
     let parse = mesh_parser::parse(&full_source);
     if !parse.ok() {
@@ -2437,11 +2444,11 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     // Extract the definition name for display
     let def_name = extract_definition_name(input);
 
-    // Extract the type of the definition for display
-    let type_info = if let Some(ref result_ty) = typeck.result_type {
-        format!("{}", result_ty)
-    } else {
-        String::new()
+    // Extract the type of the definition for display (a binding's result is
+    // its wrapper function, not the binding).
+    let type_info = match typeck.result_type {
+        Some(ref result_ty) if !is_binding => format!("{}", result_ty),
+        _ => String::new(),
     };
 
     // Store the definition for future inputs

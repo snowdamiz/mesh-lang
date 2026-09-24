@@ -257,3 +257,16 @@ fn test_unify_pid_typed_different_msg() {
         "Pid<Int> should not unify with Pid<String>"
     );
 }
+
+/// `Process.monitor` takes the actor's `Pid`; it was typed `(Int) -> Int`, so
+/// the documented `Process.monitor(pid)` did not type-check.
+#[test]
+fn process_monitor_takes_a_pid() {
+    let result = check_source(
+        "actor worker() do\n  receive do\n    n -> n + 1\n  end\nend\n\nfn main() do\n  let pid = spawn(worker)\n  let reference = Process.monitor(pid)\n  Process.demonitor(reference)\nend\n",
+    );
+    assert_no_errors(&result);
+
+    let result = check_source("fn main() do\n  Process.monitor(\"worker\")\nend\n");
+    assert!(!result.errors.is_empty());
+}

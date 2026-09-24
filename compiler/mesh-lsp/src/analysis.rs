@@ -178,7 +178,6 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         TypeError::NonExhaustiveMatch { span, .. } => Some(*span),
         TypeError::NonExhaustiveClauses { span, .. } => Some(*span),
         TypeError::RedundantArm { span, .. } => Some(*span),
-        TypeError::InvalidGuardExpression { span, .. } => Some(*span),
         TypeError::SendTypeMismatch { span, .. } => Some(*span),
         TypeError::SelfOutsideActor { span, .. } => Some(*span),
         TypeError::SpawnNonFunction { span, .. } => Some(*span),
@@ -238,6 +237,9 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::UnknownInterface { span, .. }
         | TypeError::InvalidLiteral { span, .. }
         | TypeError::InvalidConcat { span, .. }
+        | TypeError::IndexingUnsupported { span }
+        | TypeError::ActorMessageTypeUnknown { span, .. }
+        | TypeError::TopLevelLet { span, .. }
         | TypeError::NoSuchModuleFunction { span, .. }
         | TypeError::OverloadedFunctionValue { span, .. }
         | TypeError::GenericImplTarget { span, .. }

@@ -12731,7 +12731,8 @@ impl<'a> Lowerer<'a> {
                 }
             }
             Ty::Con(tc) => match tc.name.as_str() {
-                "Int" | "Float" | "Bool" | "String" => hardware(lhs, rhs),
+                // An atom is its name at run time.
+                "Int" | "Float" | "Bool" | "String" | "Atom" => hardware(lhs, rhs),
                 "Unit" => always(lhs, rhs),
                 "List" => {
                     let callback = MirExpr::Var(
@@ -13156,7 +13157,7 @@ impl<'a> Lowerer<'a> {
             "Int" => by("mesh_hash_int", MirType::Int, value),
             "Float" => by("mesh_hash_float", MirType::Float, value),
             "Bool" => by("mesh_hash_bool", MirType::Bool, value),
-            "String" => by("mesh_hash_string", MirType::String, value),
+            "String" | "Atom" => by("mesh_hash_string", MirType::String, value),
             "List" | "Set" => {
                 let cb = callback(self, &arg(0));
                 let f = if name == "List" {
@@ -16980,6 +16981,8 @@ fn literal_pattern_value(lit: &mesh_parser::ast::pat::LiteralPat) -> Option<MirL
         SyntaxKind::TRUE_KW => MirLiteral::Bool(true),
         SyntaxKind::FALSE_KW => MirLiteral::Bool(false),
         SyntaxKind::STRING_START => MirLiteral::String(extract_simple_string_content(lit.syntax())),
+        // Atoms are their names at run time, as `:ok` in an expression is.
+        SyntaxKind::ATOM_LITERAL => MirLiteral::String(text.trim_start_matches(':').to_string()),
         _ => return None,
     })
 }

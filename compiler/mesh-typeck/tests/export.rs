@@ -17,6 +17,10 @@ fn export_declaration_rejects_unstable_abi_shapes() {
         "@export(\"mesh_echo\")\npub fn echo(request :: String) -> Bytes!String do\n  Ok(Bytes.from_utf8(request))\nend\n",
         "@export(\"mesh_echo\")\npub fn echo(request :: Bytes) -> Bytes do\n  request\nend\n",
         "@export(\"mesh-echo\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        // Symbols the host ABI, the C entry point, or C itself already own.
+        "@export(\"mesh_library_init\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        "@export(\"main\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        "@export(\"static\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
     ] {
         let parsed = mesh_parser::parse(source);
         let result = check(&parsed);

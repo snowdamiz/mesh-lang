@@ -213,3 +213,35 @@ fn test_trait_method_call() {
     let result = check_source(&format!("{interface}Printable.to_string(42)"));
     assert_result_type(&result, Ty::string());
 }
+
+/// In an impl, `-> Self` is the implementing type: it was left as `Self`,
+/// so the body (`Size { ... }`) mismatched and callers saw a type `Self`
+/// with no fields.
+#[test]
+fn impl_method_self_is_the_implementing_type() {
+    let result = check_source(
+        "interface Growable do\n  fn grow(self) -> Self\nend\n\nstruct Size do\n  n :: Int\nend\n\nimpl Growable for Size do\n  fn grow(self) -> Self do\n    Size { n: self.n + 1 }\n  end\nend\n\nfn main() do\n  let s = Size { n: 1 }\n  s.grow().n\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+/// `Iter<T>` is the pipeline type `Iter.*` returns; naming it in an
+/// annotation was E0069 "unknown type".
+#[test]
+fn iter_is_a_known_type_in_annotations() {
+    let result = check_source(
+        "fn evens(xs :: List<Int>) -> Iter<Int> do\n  Iter.filter(Iter.from(xs), fn x -> x % 2 == 0 end)\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+/// `describe`, `test`, `setup` and `teardown` are test-DSL builtins in every
+/// file; a bare call of an interface method with one of those names reached
+/// the builtin ("expected 2 argument(s), found 1").
+#[test]
+fn interface_methods_may_share_a_test_dsl_name() {
+    let result = check_source(
+        "interface Describe do\n  fn describe(self) -> String\nend\n\nstruct P do\n  x :: Int\nend\n\nimpl Describe for P do\n  fn describe(self) -> String do\n    \"p\"\n  end\nend\n\nfn main() do\n  let p = P { x: 1 }\n  describe(p)\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}

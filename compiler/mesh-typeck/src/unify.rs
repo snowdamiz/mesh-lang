@@ -156,6 +156,10 @@ pub struct InferCtx {
     /// The builtin `default()` calls of the function being inferred, with
     /// the type each builds (checked when the function is done).
     pub default_calls: Vec<(Ty, TextRange)>,
+    /// Each actor whose `receive` binds its message, with the message type
+    /// and the actor's name: sends anywhere in the module may fix the type,
+    /// so it is checked when the module is done.
+    pub actor_message_types: Vec<(String, Ty, TextRange)>,
     /// Method calls that several impls could answer, to be decided by the
     /// type their context gives the result (checked when the function is done).
     pub impl_choices: Vec<ImplChoice>,
@@ -214,6 +218,7 @@ impl InferCtx {
             pending_fields: Vec::new(),
             concat_operands: Vec::new(),
             default_calls: Vec::new(),
+            actor_message_types: Vec::new(),
             impl_choices: Vec::new(),
             trait_method_fns: FxHashSet::default(),
             overloaded_fn_names: FxHashSet::default(),
