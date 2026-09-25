@@ -546,13 +546,6 @@ impl StructDef {
 
 ast_node!(ResourceModifier, RESOURCE_MODIFIER);
 
-impl ResourceModifier {
-    /// The contextual `resource` identifier token.
-    pub fn resource_token(&self) -> Option<SyntaxToken> {
-        child_token(&self.syntax, SyntaxKind::IDENT)
-    }
-}
-
 ast_node!(StructField, STRUCT_FIELD);
 
 impl StructField {
@@ -706,13 +699,6 @@ impl LetBinding {
 
 ast_node!(Visibility, VISIBILITY);
 
-impl Visibility {
-    /// The `pub` keyword token.
-    pub fn pub_kw(&self) -> Option<SyntaxToken> {
-        child_token(&self.syntax, SyntaxKind::PUB_KW)
-    }
-}
-
 // ── Block ────────────────────────────────────────────────────────────────
 
 ast_node!(Block, BLOCK);
@@ -827,11 +813,6 @@ impl InterfaceMethod {
 ast_node!(ImplDef, IMPL_DEF);
 
 impl ImplDef {
-    /// The trait path being implemented.
-    pub fn trait_path(&self) -> Option<Path> {
-        child_node(&self.syntax)
-    }
-
     /// The implemented interface's name: `Show` in `impl Show for T` and in
     /// the module-qualified `impl Fmt.Show for T`.
     pub fn interface_name(&self) -> Option<SyntaxToken> {
@@ -893,21 +874,6 @@ impl AssocTypeBinding {
     /// The associated type name (e.g., "Item").
     pub fn name(&self) -> Option<Name> {
         child_node(&self.syntax)
-    }
-
-    /// The concrete type node bound to this associated type.
-    ///
-    /// For `type Item = Int`, this returns the SyntaxNode containing the type
-    /// expression after the `=` sign. The node will typically be an IDENT token
-    /// or a more complex type expression (generic application, etc.).
-    pub fn type_node(&self) -> Option<SyntaxNode> {
-        // The type expression follows the EQ token. Look for a child that is
-        // not NAME, not a keyword token, and not EQ -- it will be the type ref.
-        // In practice, parse_type emits IDENT tokens (and optional GENERIC_ARG_LIST).
-        // The simplest approach: return any child node that isn't NAME.
-        self.syntax
-            .children()
-            .find(|n| n.kind() != SyntaxKind::NAME)
     }
 }
 
