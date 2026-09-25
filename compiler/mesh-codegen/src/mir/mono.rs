@@ -151,248 +151,29 @@ mod library_tests {
     }
 }
 
-/// Recursively collect function names referenced in an expression.
+/// The function names an expression refers to: every variable (a callee
+/// included), each closure's function, a supervisor's child start functions
+/// and a `for` loop's iterator functions.
 fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
-    match expr {
-        MirExpr::Call { func, args, .. } => {
-            if let MirExpr::Var(name, _) = func.as_ref() {
-                refs.push(name.clone());
-            }
-            collect_function_refs(func, refs);
-            for arg in args {
-                collect_function_refs(arg, refs);
-            }
-        }
-        MirExpr::ClosureCall { closure, args, .. } => {
-            collect_function_refs(closure, refs);
-            for arg in args {
-                collect_function_refs(arg, refs);
-            }
-        }
-        MirExpr::MakeClosure {
-            fn_name, captures, ..
-        } => {
-            refs.push(fn_name.clone());
-            for cap in captures {
-                collect_function_refs(cap, refs);
-            }
-        }
-        MirExpr::ResourceMove { value, .. }
-        | MirExpr::ResourceBorrow { value, .. }
-        | MirExpr::ResourceDrop { value, .. }
-        | MirExpr::ResourceDestroy { value, .. } => {
-            collect_function_refs(value, refs);
-        }
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            collect_function_refs(lhs, refs);
-            collect_function_refs(rhs, refs);
-        }
-        MirExpr::UnaryOp { operand, .. } => {
-            collect_function_refs(operand, refs);
-        }
-        MirExpr::If {
-            cond,
-            then_body,
-            else_body,
-            ..
-        } => {
-            collect_function_refs(cond, refs);
-            collect_function_refs(then_body, refs);
-            collect_function_refs(else_body, refs);
-        }
-        MirExpr::Let { value, body, .. } => {
-            collect_function_refs(value, refs);
-            collect_function_refs(body, refs);
-        }
-        MirExpr::Block(exprs, _) => {
-            for e in exprs {
-                collect_function_refs(e, refs);
-            }
-        }
-        MirExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            collect_function_refs(scrutinee, refs);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_function_refs(guard, refs);
-                }
-                collect_function_refs(&arm.body, refs);
-            }
-        }
-        MirExpr::StructLit { fields, .. } => {
-            for (_, val) in fields {
-                collect_function_refs(val, refs);
-            }
-        }
-        MirExpr::StructUpdate {
-            base, overrides, ..
-        } => {
-            collect_function_refs(base, refs);
-            for (_, val) in overrides {
-                collect_function_refs(val, refs);
-            }
-        }
-        MirExpr::FieldAccess { object, .. } => {
-            collect_function_refs(object, refs);
-        }
-        MirExpr::ConstructVariant { fields, .. } => {
-            for f in fields {
-                collect_function_refs(f, refs);
-            }
-        }
-        MirExpr::Return(val) => {
-            collect_function_refs(val, refs);
-        }
-        MirExpr::Var(name, _) => {
-            // Variable references to known functions also count.
-            refs.push(name.clone());
-        }
-        MirExpr::IntLit(_, _)
-        | MirExpr::FloatLit(_, _)
-        | MirExpr::BoolLit(_, _)
-        | MirExpr::StringLit(_, _)
-        | MirExpr::Panic { .. }
-        | MirExpr::Unit => {}
-        // Actor primitives
-        MirExpr::ActorSpawn {
-            func,
-            args,
-            terminate_callback,
-            ..
-        } => {
-            collect_function_refs(func, refs);
-            for arg in args {
-                collect_function_refs(arg, refs);
-            }
-            if let Some(cb) = terminate_callback {
-                collect_function_refs(cb, refs);
-            }
-        }
-        MirExpr::ActorSend {
-            target, message, ..
-        } => {
-            collect_function_refs(target, refs);
-            collect_function_refs(message, refs);
-        }
-        MirExpr::ActorReceive {
-            arms,
-            timeout_ms,
-            timeout_body,
-            ..
-        } => {
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_function_refs(guard, refs);
-                }
-                collect_function_refs(&arm.body, refs);
-            }
-            if let Some(tm) = timeout_ms {
-                collect_function_refs(tm, refs);
-            }
-            if let Some(tb) = timeout_body {
-                collect_function_refs(tb, refs);
-            }
-        }
-        MirExpr::ActorSelf { .. } => {}
-        MirExpr::Shaped { value, .. } => collect_function_refs(value, refs),
-        MirExpr::ActorLink { target, .. } => {
-            collect_function_refs(target, refs);
-        }
-        MirExpr::ListLit { elements, .. } => {
-            for elem in elements {
-                collect_function_refs(elem, refs);
-            }
-        }
-        MirExpr::SupervisorStart { children, .. } => {
-            // Each child spec references a start function by name.
-            for child in children {
-                if !child.start_fn.is_empty() {
-                    refs.push(child.start_fn.clone());
+    for node in expr.descendants() {
+        match node {
+            MirExpr::Var(name, _) => refs.push(name.clone()),
+            MirExpr::MakeClosure { fn_name, .. } => refs.push(fn_name.clone()),
+            MirExpr::SupervisorStart { children, .. } => refs.extend(
+                children
+                    .iter()
+                    .filter(|child| !child.start_fn.is_empty())
+                    .map(|child| child.start_fn.clone()),
+            ),
+            MirExpr::ForInIterator {
+                next_fn, iter_fn, ..
+            } => {
+                refs.push(next_fn.clone());
+                if !iter_fn.is_empty() {
+                    refs.push(iter_fn.clone());
                 }
             }
-        }
-        // Loop primitives
-        MirExpr::While { cond, body, .. } => {
-            collect_function_refs(cond, refs);
-            collect_function_refs(body, refs);
-        }
-        MirExpr::Break | MirExpr::Continue => {}
-        MirExpr::ForInRange {
-            start,
-            end,
-            filter,
-            body,
-            ..
-        } => {
-            collect_function_refs(start, refs);
-            collect_function_refs(end, refs);
-            if let Some(f) = filter {
-                collect_function_refs(f, refs);
-            }
-            collect_function_refs(body, refs);
-        }
-        MirExpr::ForInList {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            collect_function_refs(collection, refs);
-            if let Some(f) = filter {
-                collect_function_refs(f, refs);
-            }
-            collect_function_refs(body, refs);
-        }
-        MirExpr::ForInMap {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            collect_function_refs(collection, refs);
-            if let Some(f) = filter {
-                collect_function_refs(f, refs);
-            }
-            collect_function_refs(body, refs);
-        }
-        MirExpr::ForInSet {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            collect_function_refs(collection, refs);
-            if let Some(f) = filter {
-                collect_function_refs(f, refs);
-            }
-            collect_function_refs(body, refs);
-        }
-        MirExpr::ForInIterator {
-            iterator,
-            filter,
-            body,
-            next_fn,
-            iter_fn,
-            ..
-        } => {
-            collect_function_refs(iterator, refs);
-            if let Some(f) = filter {
-                collect_function_refs(f, refs);
-            }
-            collect_function_refs(body, refs);
-            // Mark the next() function as reachable.
-            refs.push(next_fn.clone());
-            // Mark the iter() function as reachable (if Iterable path).
-            if !iter_fn.is_empty() {
-                refs.push(iter_fn.clone());
-            }
-        }
-        // TCE: TailCall args may reference functions.
-        MirExpr::TailCall { args, .. } => {
-            for arg in args {
-                collect_function_refs(arg, refs);
-            }
+            _ => {}
         }
     }
 }

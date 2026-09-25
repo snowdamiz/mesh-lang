@@ -974,6 +974,9 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// `expression` with `cleanup` run before each way out of it: a return,
+    /// a panic, a tail call, and a `break` or `continue` of a loop outside it
+    /// (`loop_depth` counts the loops inside it around the current point).
     fn cleanup_before_exits(
         &mut self,
         expression: MirExpr,
@@ -1007,335 +1010,6 @@ impl<'a> Lowerer<'a> {
             MirExpr::Continue if loop_depth == 0 => {
                 MirExpr::Block(vec![cleanup.clone(), MirExpr::Continue], MirType::Never)
             }
-            MirExpr::If {
-                cond,
-                then_body,
-                else_body,
-                ty,
-            } => MirExpr::If {
-                cond: Box::new(self.cleanup_before_exits(*cond, cleanup, loop_depth)),
-                then_body: Box::new(self.cleanup_before_exits(*then_body, cleanup, loop_depth)),
-                else_body: Box::new(self.cleanup_before_exits(*else_body, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::Let {
-                name,
-                ty,
-                value,
-                body,
-            } => MirExpr::Let {
-                name,
-                ty,
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth)),
-            },
-            MirExpr::Block(expressions, ty) => MirExpr::Block(
-                expressions
-                    .into_iter()
-                    .map(|item| self.cleanup_before_exits(item, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            ),
-            MirExpr::Match {
-                scrutinee,
-                arms,
-                ty,
-            } => MirExpr::Match {
-                scrutinee: Box::new(self.cleanup_before_exits(*scrutinee, cleanup, loop_depth)),
-                arms: arms
-                    .into_iter()
-                    .map(|arm| MirMatchArm {
-                        pattern: arm.pattern,
-                        guard: arm
-                            .guard
-                            .map(|guard| self.cleanup_before_exits(guard, cleanup, loop_depth)),
-                        body: self.cleanup_before_exits(arm.body, cleanup, loop_depth),
-                    })
-                    .collect(),
-                ty,
-            },
-            MirExpr::ActorReceive {
-                arms,
-                timeout_ms,
-                timeout_body,
-                ty,
-            } => MirExpr::ActorReceive {
-                arms: arms
-                    .into_iter()
-                    .map(|arm| MirMatchArm {
-                        pattern: arm.pattern,
-                        guard: arm
-                            .guard
-                            .map(|guard| self.cleanup_before_exits(guard, cleanup, loop_depth)),
-                        body: self.cleanup_before_exits(arm.body, cleanup, loop_depth),
-                    })
-                    .collect(),
-                timeout_ms: timeout_ms.map(|timeout| {
-                    Box::new(self.cleanup_before_exits(*timeout, cleanup, loop_depth))
-                }),
-                timeout_body: timeout_body
-                    .map(|body| Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth))),
-                ty,
-            },
-            MirExpr::While { cond, body, ty } => MirExpr::While {
-                cond: Box::new(self.cleanup_before_exits(*cond, cleanup, loop_depth + 1)),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                ty,
-            },
-            MirExpr::ForInRange {
-                var,
-                start,
-                end,
-                filter,
-                body,
-                ty,
-            } => MirExpr::ForInRange {
-                var,
-                start: Box::new(self.cleanup_before_exits(*start, cleanup, loop_depth)),
-                end: Box::new(self.cleanup_before_exits(*end, cleanup, loop_depth)),
-                filter: filter.map(|filter| {
-                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
-                }),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                ty,
-            },
-            MirExpr::ForInList {
-                var,
-                collection,
-                filter,
-                body,
-                elem_ty,
-                body_ty,
-                ty,
-            } => MirExpr::ForInList {
-                var,
-                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
-                filter: filter.map(|filter| {
-                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
-                }),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                elem_ty,
-                body_ty,
-                ty,
-            },
-            MirExpr::ForInMap {
-                key_var,
-                val_var,
-                collection,
-                filter,
-                body,
-                key_ty,
-                val_ty,
-                body_ty,
-                ty,
-            } => MirExpr::ForInMap {
-                key_var,
-                val_var,
-                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
-                filter: filter.map(|filter| {
-                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
-                }),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                key_ty,
-                val_ty,
-                body_ty,
-                ty,
-            },
-            MirExpr::ForInSet {
-                var,
-                collection,
-                filter,
-                body,
-                elem_ty,
-                body_ty,
-                ty,
-            } => MirExpr::ForInSet {
-                var,
-                collection: Box::new(self.cleanup_before_exits(*collection, cleanup, loop_depth)),
-                filter: filter.map(|filter| {
-                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
-                }),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                elem_ty,
-                body_ty,
-                ty,
-            },
-            MirExpr::ForInIterator {
-                var,
-                iterator,
-                filter,
-                body,
-                elem_ty,
-                body_ty,
-                next_fn,
-                iter_fn,
-                ty,
-            } => MirExpr::ForInIterator {
-                var,
-                iterator: Box::new(self.cleanup_before_exits(*iterator, cleanup, loop_depth)),
-                filter: filter.map(|filter| {
-                    Box::new(self.cleanup_before_exits(*filter, cleanup, loop_depth + 1))
-                }),
-                body: Box::new(self.cleanup_before_exits(*body, cleanup, loop_depth + 1)),
-                elem_ty,
-                body_ty,
-                next_fn,
-                iter_fn,
-                ty,
-            },
-            MirExpr::BinOp { op, lhs, rhs, ty } => MirExpr::BinOp {
-                op,
-                lhs: Box::new(self.cleanup_before_exits(*lhs, cleanup, loop_depth)),
-                rhs: Box::new(self.cleanup_before_exits(*rhs, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::UnaryOp { op, operand, ty } => MirExpr::UnaryOp {
-                op,
-                operand: Box::new(self.cleanup_before_exits(*operand, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::Call { func, args, ty } => MirExpr::Call {
-                func: Box::new(self.cleanup_before_exits(*func, cleanup, loop_depth)),
-                args: args
-                    .into_iter()
-                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            },
-            MirExpr::ClosureCall { closure, args, ty } => MirExpr::ClosureCall {
-                closure: Box::new(self.cleanup_before_exits(*closure, cleanup, loop_depth)),
-                args: args
-                    .into_iter()
-                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            },
-            MirExpr::StructLit { name, fields, ty } => MirExpr::StructLit {
-                name,
-                fields: fields
-                    .into_iter()
-                    .map(|(field, value)| {
-                        (field, self.cleanup_before_exits(value, cleanup, loop_depth))
-                    })
-                    .collect(),
-                ty,
-            },
-            MirExpr::StructUpdate {
-                base,
-                overrides,
-                resource_overrides,
-                ty,
-            } => MirExpr::StructUpdate {
-                base: Box::new(self.cleanup_before_exits(*base, cleanup, loop_depth)),
-                overrides: overrides
-                    .into_iter()
-                    .map(|(field, value)| {
-                        (field, self.cleanup_before_exits(value, cleanup, loop_depth))
-                    })
-                    .collect(),
-                resource_overrides,
-                ty,
-            },
-            MirExpr::FieldAccess { object, field, ty } => MirExpr::FieldAccess {
-                object: Box::new(self.cleanup_before_exits(*object, cleanup, loop_depth)),
-                field,
-                ty,
-            },
-            MirExpr::ConstructVariant {
-                type_name,
-                variant,
-                fields,
-                ty,
-            } => MirExpr::ConstructVariant {
-                type_name,
-                variant,
-                fields: fields
-                    .into_iter()
-                    .map(|field| self.cleanup_before_exits(field, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            },
-            MirExpr::MakeClosure {
-                fn_name,
-                captures,
-                ty,
-            } => MirExpr::MakeClosure {
-                fn_name,
-                captures: captures
-                    .into_iter()
-                    .map(|capture| self.cleanup_before_exits(capture, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            },
-            MirExpr::ResourceMove { value, ty, source } => MirExpr::ResourceMove {
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                ty,
-                source,
-            },
-            MirExpr::ResourceBorrow { value, ty } => MirExpr::ResourceBorrow {
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::ResourceDrop {
-                value,
-                resource_ty,
-                destructor,
-            } => MirExpr::ResourceDrop {
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                resource_ty,
-                destructor,
-            },
-            MirExpr::ResourceDestroy {
-                value,
-                resource_ty,
-                destructor,
-            } => MirExpr::ResourceDestroy {
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                resource_ty,
-                destructor,
-            },
-            MirExpr::ActorSpawn {
-                func,
-                args,
-                priority,
-                terminate_callback,
-                ty,
-            } => MirExpr::ActorSpawn {
-                func: Box::new(self.cleanup_before_exits(*func, cleanup, loop_depth)),
-                args: args
-                    .into_iter()
-                    .map(|argument| self.cleanup_before_exits(argument, cleanup, loop_depth))
-                    .collect(),
-                priority,
-                terminate_callback: terminate_callback.map(|callback| {
-                    Box::new(self.cleanup_before_exits(*callback, cleanup, loop_depth))
-                }),
-                ty,
-            },
-            MirExpr::ActorSend {
-                target,
-                message,
-                ty,
-            } => MirExpr::ActorSend {
-                target: Box::new(self.cleanup_before_exits(*target, cleanup, loop_depth)),
-                message: Box::new(self.cleanup_before_exits(*message, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::Shaped { value, shape } => MirExpr::Shaped {
-                value: Box::new(self.cleanup_before_exits(*value, cleanup, loop_depth)),
-                shape,
-            },
-            MirExpr::ActorLink { target, ty } => MirExpr::ActorLink {
-                target: Box::new(self.cleanup_before_exits(*target, cleanup, loop_depth)),
-                ty,
-            },
-            MirExpr::ListLit { elements, ty } => MirExpr::ListLit {
-                elements: elements
-                    .into_iter()
-                    .map(|element| self.cleanup_before_exits(element, cleanup, loop_depth))
-                    .collect(),
-                ty,
-            },
             MirExpr::TailCall { args, ty } => {
                 let mut evaluated = Vec::with_capacity(args.len());
                 let mut tail_args = Vec::with_capacity(args.len());
@@ -1366,7 +1040,71 @@ impl<'a> Lowerer<'a> {
                 }
                 result
             }
-            other => other,
+            mut other => {
+                // A loop's condition, filter and body run inside it; a range's
+                // bounds and a collection before it.
+                let inside = loop_depth + 1;
+                let mut rewrite = |child: &mut MirExpr, depth: usize| {
+                    let taken = std::mem::replace(child, MirExpr::Unit);
+                    *child = self.cleanup_before_exits(taken, cleanup, depth);
+                };
+                match &mut other {
+                    MirExpr::While { cond, body, .. } => {
+                        rewrite(cond, inside);
+                        rewrite(body, inside);
+                    }
+                    MirExpr::ForInRange {
+                        start,
+                        end,
+                        filter,
+                        body,
+                        ..
+                    } => {
+                        rewrite(start, loop_depth);
+                        rewrite(end, loop_depth);
+                        if let Some(filter) = filter {
+                            rewrite(filter, inside);
+                        }
+                        rewrite(body, inside);
+                    }
+                    MirExpr::ForInList {
+                        collection,
+                        filter,
+                        body,
+                        ..
+                    }
+                    | MirExpr::ForInMap {
+                        collection,
+                        filter,
+                        body,
+                        ..
+                    }
+                    | MirExpr::ForInSet {
+                        collection,
+                        filter,
+                        body,
+                        ..
+                    }
+                    | MirExpr::ForInIterator {
+                        iterator: collection,
+                        filter,
+                        body,
+                        ..
+                    } => {
+                        rewrite(collection, loop_depth);
+                        if let Some(filter) = filter {
+                            rewrite(filter, inside);
+                        }
+                        rewrite(body, inside);
+                    }
+                    _ => {
+                        for child in other.children_mut() {
+                            rewrite(child, loop_depth);
+                        }
+                    }
+                }
+                other
+            }
         }
     }
 
@@ -17734,55 +17472,47 @@ fn builtin_call(name: &str, params: &[MirType], ret: &MirType, args: Vec<MirExpr
     }
 }
 
+/// The variables a pattern binds.
+fn pattern_names<'a>(pattern: &'a MirPattern, names: &mut Vec<&'a str>) {
+    match pattern {
+        MirPattern::Var(name, _) => names.push(name),
+        MirPattern::As { inner, name, .. } => {
+            names.push(name);
+            pattern_names(inner, names);
+        }
+        MirPattern::Constructor { fields, .. } => {
+            fields.iter().for_each(|field| pattern_names(field, names))
+        }
+        MirPattern::Tuple(items) | MirPattern::Or(items) => {
+            items.iter().for_each(|item| pattern_names(item, names))
+        }
+        MirPattern::ListCons { head, tail, .. } => {
+            pattern_names(head, names);
+            pattern_names(tail, names);
+        }
+        _ => {}
+    }
+}
+
 /// Every name `expr` binds: `let`s, loop variables and pattern variables.
 fn collect_bound_names(expr: &MirExpr, bound: &mut HashSet<String>) {
-    fn pattern_names(pattern: &MirPattern, bound: &mut HashSet<String>) {
-        match pattern {
-            MirPattern::Var(name, _) => {
-                bound.insert(name.clone());
-            }
-            MirPattern::As { inner, name, .. } => {
-                bound.insert(name.clone());
-                pattern_names(inner, bound);
-            }
-            MirPattern::Constructor { fields, .. } => {
-                fields.iter().for_each(|f| pattern_names(f, bound))
-            }
-            MirPattern::Tuple(items) | MirPattern::Or(items) => {
-                items.iter().for_each(|p| pattern_names(p, bound))
-            }
-            MirPattern::ListCons { head, tail, .. } => {
-                pattern_names(head, bound);
-                pattern_names(tail, bound);
-            }
-            _ => {}
-        }
-    }
-    let mut expr = expr.clone();
-    let mut stack = vec![&mut expr];
-    while let Some(node) = stack.pop() {
-        match &*node {
-            MirExpr::Let { name, .. } => {
-                bound.insert(name.clone());
-            }
+    for node in expr.descendants() {
+        let mut names = Vec::new();
+        match node {
+            MirExpr::Let { name, .. } => names.push(name.as_str()),
             MirExpr::ForInRange { var, .. }
             | MirExpr::ForInList { var, .. }
             | MirExpr::ForInSet { var, .. }
-            | MirExpr::ForInIterator { var, .. } => {
-                bound.insert(var.clone());
-            }
+            | MirExpr::ForInIterator { var, .. } => names.push(var),
             MirExpr::ForInMap {
                 key_var, val_var, ..
-            } => {
-                bound.insert(key_var.clone());
-                bound.insert(val_var.clone());
-            }
+            } => names.extend([key_var.as_str(), val_var.as_str()]),
             MirExpr::Match { arms, .. } | MirExpr::ActorReceive { arms, .. } => arms
                 .iter()
-                .for_each(|arm| pattern_names(&arm.pattern, bound)),
+                .for_each(|arm| pattern_names(&arm.pattern, &mut names)),
             _ => {}
         }
-        stack.extend(node.children_mut());
+        bound.extend(names.into_iter().map(str::to_string));
     }
 }
 
@@ -18268,8 +17998,59 @@ mod tests {
     use mesh_typeck::{ImportContext, ModuleExports};
 
     /// Helper to parse and type-check a Mesh source, then lower to MIR.
+    /// Whether any expression in `expression` (itself included) is `is`.
+    fn contains(expression: &MirExpr, is: impl Fn(&MirExpr) -> bool) -> bool {
+        expression.descendants().into_iter().any(is)
+    }
+
+    /// Whether `expression` calls a function whose name `named` accepts.
+    fn calls_where(expression: &MirExpr, named: impl Fn(&str) -> bool) -> bool {
+        contains(expression, |node| {
+            matches!(node, MirExpr::Call { func, .. }
+                if matches!(func.as_ref(), MirExpr::Var(name, _) if named(name)))
+        })
+    }
+
+    /// Whether `expression` calls the function named `target`.
+    fn calls(expression: &MirExpr, target: &str) -> bool {
+        calls_where(expression, |name| name == target)
+    }
+
+    /// How many times `expression` names the variable `target`.
+    fn var_refs(expression: &MirExpr, target: &str) -> usize {
+        expression
+            .descendants()
+            .into_iter()
+            .filter(|node| matches!(node, MirExpr::Var(name, _) if name == target))
+            .count()
+    }
+
+    /// How many resource drops of the variable `target` `expression` has.
+    fn drops_of(expression: &MirExpr, target: &str) -> usize {
+        expression
+            .descendants()
+            .into_iter()
+            .filter(|node| {
+                matches!(node, MirExpr::ResourceDrop { value, .. }
+                    if matches!(value.as_ref(), MirExpr::Var(name, _) if name == target))
+            })
+            .count()
+    }
+
+    /// The destructor of the first resource drop in `expression`.
+    fn first_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
+        expression
+            .descendants()
+            .into_iter()
+            .find_map(|node| match node {
+                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
+                _ => None,
+            })
+    }
+
     fn lower(source: &str) -> MirModule {
         let parse = mesh_parser::parse(source);
+        assert!(parse.errors().is_empty(), "{:?}", parse.errors());
         let typeck = mesh_typeck::check(&parse);
         let empty_pub_fns = HashSet::new();
         // Ignore type errors for MIR lowering tests -- we test lowering, not typeck.
@@ -18726,30 +18507,13 @@ mod tests {
              end",
         );
 
-        fn count_drops(expression: &MirExpr) -> usize {
-            match expression {
-                MirExpr::ResourceDrop { value, .. } if matches!(value.as_ref(), MirExpr::Var(name, _) if name == "secret") => {
-                    1
-                }
-                MirExpr::ResourceDrop { value, .. } => count_drops(value),
-                MirExpr::Let { value, body, .. } => count_drops(value) + count_drops(body),
-                MirExpr::Block(expressions, _) => expressions.iter().map(count_drops).sum(),
-                MirExpr::If {
-                    then_body,
-                    else_body,
-                    ..
-                } => count_drops(then_body) + count_drops(else_body),
-                _ => 0,
-            }
-        }
-
         let normal = mir
             .functions
             .iter()
             .find(|function| function.name == "normal")
             .unwrap();
         assert_eq!(
-            count_drops(&normal.body),
+            drops_of(&normal.body, "secret"),
             1,
             "normal body: {:?}",
             normal.body
@@ -18761,7 +18525,7 @@ mod tests {
             .find(|function| function.name == "early")
             .unwrap();
         assert_eq!(
-            count_drops(&early.body),
+            drops_of(&early.body, "secret"),
             2,
             "one cleanup is required on each reachable exit path: {:?}",
             early.body
@@ -18782,45 +18546,9 @@ mod tests {
             .iter()
             .find(|function| function.name == "try_init")
             .unwrap();
-        fn count_drops(expression: &MirExpr) -> usize {
-            match expression {
-                MirExpr::ResourceDrop { value, .. } if matches!(value.as_ref(), MirExpr::Var(name, _) if name == "secret") => {
-                    1
-                }
-                MirExpr::ResourceDrop { value, .. } => count_drops(value),
-                MirExpr::Let { value, body, .. } => count_drops(value) + count_drops(body),
-                MirExpr::Block(expressions, _) => expressions.iter().map(count_drops).sum(),
-                MirExpr::If {
-                    cond,
-                    then_body,
-                    else_body,
-                    ..
-                } => count_drops(cond) + count_drops(then_body) + count_drops(else_body),
-                MirExpr::Match {
-                    scrutinee, arms, ..
-                } => {
-                    count_drops(scrutinee)
-                        + arms
-                            .iter()
-                            .map(|arm| {
-                                arm.guard.as_ref().map(count_drops).unwrap_or_default()
-                                    + count_drops(&arm.body)
-                            })
-                            .sum::<usize>()
-                }
-                MirExpr::Return(value)
-                | MirExpr::ResourceMove { value, .. }
-                | MirExpr::ResourceBorrow { value, .. }
-                | MirExpr::ResourceDestroy { value, .. } => count_drops(value),
-                MirExpr::Call { func, args, .. } => {
-                    count_drops(func) + args.iter().map(count_drops).sum::<usize>()
-                }
-                _ => 0,
-            }
-        }
 
         assert_eq!(
-            count_drops(&function.body),
+            drops_of(&function.body, "secret"),
             2,
             "the still-owned parameter needs one drop on the ? error path and one on success: {:?}",
             function.body
@@ -18894,18 +18622,7 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
-        let destructor = find_destructor(&discard.body).expect("expected automatic drop");
+        let destructor = first_destructor(&discard.body).expect("expected automatic drop");
         match destructor {
             MirResourceDestructor::Aggregate(fields) => {
                 assert_eq!(fields.len(), 1, "drop plan: {destructor:?}");
@@ -18928,19 +18645,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         assert!(matches!(
-            find_destructor(&discard.body),
+            first_destructor(&discard.body),
             Some(MirResourceDestructor::SumVariants(variants))
                 if matches!(variants.as_slice(), [variant]
                     if variant.tag == 0
@@ -18965,19 +18671,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         assert!(matches!(
-            find_destructor(&discard.body),
+            first_destructor(&discard.body),
             Some(MirResourceDestructor::SumVariants(variants))
                 if matches!(variants.as_slice(), [variant]
                     if variant.tag == 0
@@ -18998,19 +18693,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         assert!(matches!(
-            find_destructor(&discard.body),
+            first_destructor(&discard.body),
             Some(MirResourceDestructor::SumVariants(variants))
                 if matches!(variants.as_slice(), [variant]
                     if variant.tag == 1
@@ -19030,19 +18714,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         let MirResourceDestructor::SumVariants(variants) =
-            find_destructor(&discard.body).expect("resource result drop")
+            first_destructor(&discard.body).expect("resource result drop")
         else {
             panic!(
                 "expected variant-aware result destruction: {:?}",
@@ -19073,19 +18746,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         assert!(matches!(
-            find_destructor(&discard.body),
+            first_destructor(&discard.body),
             Some(MirResourceDestructor::SumVariants(variants))
                 if matches!(variants.as_slice(), [variant]
                     if variant.tag == 0
@@ -19113,19 +18775,8 @@ mod tests {
             .find(|function| function.name == "discard")
             .unwrap();
 
-        fn find_destructor(expression: &MirExpr) -> Option<&MirResourceDestructor> {
-            match expression {
-                MirExpr::ResourceDrop { destructor, .. } => Some(destructor),
-                MirExpr::Let { value, body, .. } => {
-                    find_destructor(value).or_else(|| find_destructor(body))
-                }
-                MirExpr::Block(expressions, _) => expressions.iter().find_map(find_destructor),
-                _ => None,
-            }
-        }
-
         let MirResourceDestructor::SumVariants(variants) =
-            find_destructor(&discard.body).expect("custom sum resource drop")
+            first_destructor(&discard.body).expect("custom sum resource drop")
         else {
             panic!(
                 "expected a variant-aware sum destructor: {:?}",
@@ -19357,15 +19008,14 @@ mod tests {
             .find(|function| function.name == "destroy_now")
             .unwrap();
 
-        fn has_destroy(expression: &MirExpr) -> bool {
-            match expression {
-                MirExpr::ResourceDestroy { .. } => true,
-                MirExpr::Let { value, body, .. } => has_destroy(value) || has_destroy(body),
-                MirExpr::Block(expressions, _) => expressions.iter().any(has_destroy),
-                _ => false,
-            }
-        }
-        assert!(has_destroy(&function.body), "body: {:?}", function.body);
+        assert!(
+            contains(&function.body, |node| matches!(
+                node,
+                MirExpr::ResourceDestroy { .. }
+            )),
+            "body: {:?}",
+            function.body
+        );
     }
 
     #[test]
@@ -19378,7 +19028,7 @@ mod tests {
             .iter()
             .find(|function| function.name == "join")
             .expect("join function");
-        assert!(find_call_to(&function.body, "mesh_secret_concat"));
+        assert!(calls(&function.body, "mesh_secret_concat"));
     }
 
     #[test]
@@ -19452,25 +19102,6 @@ end
             .iter()
             .find(|func| func.name == "build")
             .expect("expected build function to lower");
-        fn count_var_refs(expr: &MirExpr, target: &str) -> usize {
-            match expr {
-                MirExpr::Var(name, _) => usize::from(name == target),
-                MirExpr::Call { func, args, .. } => {
-                    count_var_refs(func, target)
-                        + args
-                            .iter()
-                            .map(|arg| count_var_refs(arg, target))
-                            .sum::<usize>()
-                }
-                MirExpr::Block(exprs, _) => {
-                    exprs.iter().map(|expr| count_var_refs(expr, target)).sum()
-                }
-                MirExpr::Let { value, body, .. } => {
-                    count_var_refs(value, target) + count_var_refs(body, target)
-                }
-                _ => 0,
-            }
-        }
         assert!(
             has_call_to(&build.body, "mesh_http_route_get"),
             "expected lowered route registration call, got {:?}",
@@ -19482,7 +19113,7 @@ end
             build.body
         );
         assert_eq!(
-            count_var_refs(&build.body, shim_name),
+            var_refs(&build.body, shim_name),
             2,
             "expected both direct and pipe routes to reference the same shim: {:?}",
             build.body
@@ -19552,24 +19183,9 @@ end
         let main = main.unwrap();
 
         // The body should contain a concat call somewhere.
-        fn has_concat_call(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::Call { func, .. } => {
-                    if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == "mesh_string_concat" {
-                            return true;
-                        }
-                    }
-                    false
-                }
-                MirExpr::Block(exprs, _) => exprs.iter().any(has_concat_call),
-                MirExpr::Let { value, body, .. } => has_concat_call(value) || has_concat_call(body),
-                _ => false,
-            }
-        }
 
         assert!(
-            has_concat_call(&main.body),
+            calls(&main.body, "mesh_string_concat"),
             "Expected mesh_string_concat call in interpolated string body: {:?}",
             main.body
         );
@@ -19580,7 +19196,7 @@ end
         let source = r#"
 fn main() do
   let y = 10
-  let inc = fn(x :: Int) -> Int do x + y end
+  let inc = fn(x :: Int) -> x + y end
   inc
 end
 "#;
@@ -19674,16 +19290,11 @@ end
         let main = main.unwrap();
 
         // Check body has ActorSpawn somewhere
-        fn has_actor_spawn(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::ActorSpawn { .. } => true,
-                MirExpr::Let { value, body, .. } => has_actor_spawn(value) || has_actor_spawn(body),
-                MirExpr::Block(exprs, _) => exprs.iter().any(has_actor_spawn),
-                _ => false,
-            }
-        }
         assert!(
-            has_actor_spawn(&main.body),
+            contains(&main.body, |node| matches!(
+                node,
+                MirExpr::ActorSpawn { .. }
+            )),
             "Expected ActorSpawn in main body: {:?}",
             main.body
         );
@@ -19956,26 +19567,8 @@ end
         assert!(main_fn.is_some(), "Expected mesh_main function");
         let main_fn = main_fn.unwrap();
 
-        fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
-            match expr {
-                MirExpr::Call { func, .. } => {
-                    if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == target {
-                            return true;
-                        }
-                    }
-                    false
-                }
-                MirExpr::Let { value, body, .. } => {
-                    find_mangled_call(value, target) || find_mangled_call(body, target)
-                }
-                MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_mangled_call(e, target)),
-                _ => false,
-            }
-        }
-
         assert!(
-            find_mangled_call(&main_fn.body, "Greetable__greet__Point"),
+            calls(&main_fn.body, "Greetable__greet__Point"),
             "Expected call to Greetable__greet__Point in main body, got: {:?}",
             main_fn.body
         );
@@ -20010,27 +19603,9 @@ end
         assert!(main_fn.is_some(), "Expected mesh_main function");
         let main_fn = main_fn.unwrap();
 
-        fn find_mangled_call(expr: &MirExpr, target: &str) -> bool {
-            match expr {
-                MirExpr::Call { func, .. } => {
-                    if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == target {
-                            return true;
-                        }
-                    }
-                    false
-                }
-                MirExpr::Let { value, body, .. } => {
-                    find_mangled_call(value, target) || find_mangled_call(body, target)
-                }
-                MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_mangled_call(e, target)),
-                _ => false,
-            }
-        }
-
         // a + b with impl Add for Vec2 should become Call to Add__add__Vec2.
         assert!(
-            find_mangled_call(&main_fn.body, "Add__add__Vec2"),
+            calls(&main_fn.body, "Add__add__Vec2"),
             "Expected call to Add__add__Vec2 in main body, got: {:?}",
             main_fn.body
         );
@@ -20052,17 +19627,11 @@ end
         assert!(main_fn.is_some());
         let main_fn = main_fn.unwrap();
 
-        fn has_binop_add(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::BinOp { op: BinOp::Add, .. } => true,
-                MirExpr::Let { value, body, .. } => has_binop_add(value) || has_binop_add(body),
-                MirExpr::Block(exprs, _) => exprs.iter().any(has_binop_add),
-                _ => false,
-            }
-        }
-
         assert!(
-            has_binop_add(&main_fn.body),
+            contains(&main_fn.body, |node| matches!(
+                node,
+                MirExpr::BinOp { op: BinOp::Add, .. }
+            )),
             "Expected BinOp::Add for Int + Int, got: {:?}",
             main_fn.body
         );
@@ -20081,26 +19650,10 @@ fn main() do bar(42) end
         let mir = lower(source);
 
         // No Panic nodes should appear in a normal program.
-        fn has_panic(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::Panic { .. } => true,
-                MirExpr::Let { value, body, .. } => has_panic(value) || has_panic(body),
-                MirExpr::Block(exprs, _) => exprs.iter().any(has_panic),
-                MirExpr::Call { func, args, .. } => has_panic(func) || args.iter().any(has_panic),
-                MirExpr::BinOp { lhs, rhs, .. } => has_panic(lhs) || has_panic(rhs),
-                MirExpr::If {
-                    cond,
-                    then_body,
-                    else_body,
-                    ..
-                } => has_panic(cond) || has_panic(then_body) || has_panic(else_body),
-                _ => false,
-            }
-        }
 
         for func in &mir.functions {
             assert!(
-                !has_panic(&func.body),
+                !contains(&func.body, |node| matches!(node, MirExpr::Panic { .. })),
                 "Normal program should not have Panic nodes, but found one in '{}': {:?}",
                 func.name,
                 func.body
@@ -20125,44 +19678,6 @@ fn main() do bar(42) end
     // ── End-to-end trait codegen integration tests (19-04) ────────────
 
     /// Recursive helper to find a Call to a specific function name anywhere in a MirExpr tree.
-    fn find_call_to(expr: &MirExpr, target: &str) -> bool {
-        match expr {
-            MirExpr::Call { func, args, .. } => {
-                let func_match = if let MirExpr::Var(name, _) = func.as_ref() {
-                    name == target
-                } else {
-                    false
-                };
-                func_match
-                    || find_call_to(func, target)
-                    || args.iter().any(|a| find_call_to(a, target))
-            }
-            MirExpr::Let { value, body, .. } => {
-                find_call_to(value, target) || find_call_to(body, target)
-            }
-            MirExpr::Block(exprs, _) => exprs.iter().any(|e| find_call_to(e, target)),
-            MirExpr::If {
-                cond,
-                then_body,
-                else_body,
-                ..
-            } => {
-                find_call_to(cond, target)
-                    || find_call_to(then_body, target)
-                    || find_call_to(else_body, target)
-            }
-            MirExpr::BinOp { lhs, rhs, .. } => {
-                find_call_to(lhs, target) || find_call_to(rhs, target)
-            }
-            MirExpr::Match {
-                scrutinee, arms, ..
-            } => {
-                find_call_to(scrutinee, target)
-                    || arms.iter().any(|a| find_call_to(&a.body, target))
-            }
-            _ => false,
-        }
-    }
 
     #[test]
     fn test_secure_store_builtin_lowers_to_runtime_symbol() {
@@ -20178,7 +19693,7 @@ fn main() do bar(42) end
             .iter()
             .find(|function| function.name == "mesh_main")
             .expect("expected main function");
-        assert!(find_call_to(
+        assert!(calls(
             &main.body,
             "mesh_test_install_in_memory_secure_store"
         ));
@@ -20199,7 +19714,7 @@ fn main() do bar(42) end
             .find(|function| function.name == "mesh_main")
             .expect("expected main function");
         assert!(
-            find_call_to(&main.body, "mesh_test_set_push_token"),
+            calls(&main.body, "mesh_test_set_push_token"),
             "{:?}",
             main.body
         );
@@ -20250,7 +19765,7 @@ end
             .find(|f| f.name == "mesh_main")
             .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "Greetable__greet__Greeter"),
+            calls(&main_fn.body, "Greetable__greet__Greeter"),
             "Expected call to Greetable__greet__Greeter in main body, got: {:?}",
             main_fn.body
         );
@@ -20404,11 +19919,11 @@ end
             .find(|f| f.name == "mesh_main")
             .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "Speakable__speak__Dog"),
+            calls(&main_fn.body, "Speakable__speak__Dog"),
             "Expected call to Speakable__speak__Dog in main body"
         );
         assert!(
-            find_call_to(&main_fn.body, "Speakable__speak__Cat"),
+            calls(&main_fn.body, "Speakable__speak__Cat"),
             "Expected call to Speakable__speak__Cat in main body"
         );
     }
@@ -20826,26 +20341,10 @@ end
         let mir = lower(source);
 
         // No Panic nodes should appear in a normal program.
-        fn has_panic(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::Panic { .. } => true,
-                MirExpr::Let { value, body, .. } => has_panic(value) || has_panic(body),
-                MirExpr::Block(exprs, _) => exprs.iter().any(has_panic),
-                MirExpr::Call { func, args, .. } => has_panic(func) || args.iter().any(has_panic),
-                MirExpr::BinOp { lhs, rhs, .. } => has_panic(lhs) || has_panic(rhs),
-                MirExpr::If {
-                    cond,
-                    then_body,
-                    else_body,
-                    ..
-                } => has_panic(cond) || has_panic(then_body) || has_panic(else_body),
-                _ => false,
-            }
-        }
 
         for func in &mir.functions {
             assert!(
-                !has_panic(&func.body),
+                !contains(&func.body, |node| matches!(node, MirExpr::Panic { .. })),
                 "Normal trait program should not have Panic nodes, found in '{}': {:?}",
                 func.name,
                 func.body
@@ -21089,11 +20588,7 @@ end
         let check_fn = check_fn.unwrap();
         // `<` compares through the type's generated three-way `__cmp_Point`,
         // which is what calls the Ord impl.
-        assert!(
-            find_call_to(&check_fn.body, "__cmp_Point"),
-            "{:?}",
-            check_fn.body
-        );
+        assert!(calls(&check_fn.body, "__cmp_Point"), "{:?}", check_fn.body);
         let cmp_fn = mir
             .functions
             .iter()
@@ -21280,11 +20775,7 @@ end
             mir.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
         let check_fn = check_fn.unwrap();
-        assert!(
-            find_call_to(&check_fn.body, "__cmp_Color"),
-            "{:?}",
-            check_fn.body
-        );
+        assert!(calls(&check_fn.body, "__cmp_Color"), "{:?}", check_fn.body);
         let cmp_fn = mir
             .functions
             .iter()
@@ -21370,21 +20861,8 @@ end
             .find(|f| f.name == "Hash__hash__Point")
             .unwrap();
         // Body should contain a mesh_hash_combine call (chaining two field hashes).
-        fn has_combine(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::Call { func, args, .. } => {
-                    if let MirExpr::Var(name, _) = func.as_ref() {
-                        if name == "mesh_hash_combine" {
-                            return true;
-                        }
-                    }
-                    args.iter().any(has_combine) || has_combine(func)
-                }
-                _ => false,
-            }
-        }
         assert!(
-            has_combine(&hash_fn.body),
+            calls(&hash_fn.body, "mesh_hash_combine"),
             "Hash body should contain mesh_hash_combine for multi-field struct"
         );
     }
@@ -21434,17 +20912,8 @@ end
         // A struct key is compared by Point's Eq: the put goes through a typed
         // wrapper passing the key Eq callback (it used to store the key's hash,
         // so two keys with one hash collided and Map.keys returned hashes).
-        fn calls_typed_put(expr: &MirExpr) -> bool {
-            match expr {
-                MirExpr::Call { func, args, .. } => {
-                    matches!(func.as_ref(), MirExpr::Var(name, _) if name.starts_with("__map_put_"))
-                        || args.iter().any(calls_typed_put)
-                }
-                MirExpr::Let { value, body, .. } => calls_typed_put(value) || calls_typed_put(body),
-                _ => false,
-            }
-        }
-        assert!(calls_typed_put(&main_fn.unwrap().body));
+        assert!(calls_where(&main_fn.unwrap().body, |name| name
+            .starts_with("__map_put_")));
         let wrapper = mir
             .functions
             .iter()
@@ -22093,7 +21562,7 @@ end
             .find(|f| f.name == "mesh_main")
             .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "Display__to_string__Point"),
+            calls(&main_fn.body, "Display__to_string__Point"),
             "Expected call to Display__to_string__Point in main body (method dot-syntax), got: {:?}",
             main_fn.body
         );
@@ -22209,7 +21678,7 @@ end
             .find(|f| f.name == "mesh_main")
             .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "Greeter__greet__Person"),
+            calls(&main_fn.body, "Greeter__greet__Person"),
             "Expected call to Greeter__greet__Person in main body (dot-syntax with args), got: {:?}",
             main_fn.body
         );
@@ -22279,7 +21748,7 @@ end
             .find(|f| f.name == "mesh_main")
             .expect("Expected mesh_main function");
         assert!(
-            find_call_to(&main_fn.body, "mesh_string_length"),
+            calls(&main_fn.body, "mesh_string_length"),
             "Expected call to mesh_string_length in main body (module-qualified preserved), got: {:?}",
             main_fn.body
         );

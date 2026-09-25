@@ -544,12 +544,12 @@ pub enum MirExpr {
     },
 }
 
-impl MirExpr {
-    /// The expressions directly inside this one, for passes that rewrite
-    /// every sub-expression (match arm guards and bodies included).
-    pub fn children_mut(&mut self) -> Vec<&mut MirExpr> {
-        let mut children: Vec<&mut MirExpr> = Vec::new();
-        match self {
+/// The expressions directly inside `$expr`, borrowed shared or (with `mut`)
+/// mutably: `children` and `children_mut` are the one list.
+macro_rules! child_exprs {
+    ($expr:expr, $child:ty, $iter:ident, $as_ref:ident, $as_deref:ident $(, $mut:tt)?) => {{
+        let mut children: Vec<$child> = Vec::new();
+        match $expr {
             MirExpr::IntLit(..)
             | MirExpr::FloatLit(..)
             | MirExpr::BoolLit(..)
@@ -568,11 +568,11 @@ impl MirExpr {
             MirExpr::UnaryOp { operand, .. } => children.push(operand),
             MirExpr::Call { func, args, .. } => {
                 children.push(func);
-                children.extend(args.iter_mut());
+                children.extend(args.$iter());
             }
             MirExpr::ClosureCall { closure, args, .. } => {
                 children.push(closure);
-                children.extend(args.iter_mut());
+                children.extend(args.$iter());
             }
             MirExpr::If {
                 cond,
@@ -591,28 +591,28 @@ impl MirExpr {
             MirExpr::Block(exprs, _)
             | MirExpr::ListLit {
                 elements: exprs, ..
-            } => children.extend(exprs.iter_mut()),
+            } => children.extend(exprs.$iter()),
             MirExpr::Match {
                 scrutinee, arms, ..
             } => {
                 children.push(scrutinee);
                 for arm in arms {
-                    children.extend(arm.guard.as_mut());
-                    children.push(&mut arm.body);
+                    children.extend(arm.guard.$as_ref());
+                    children.push(&$($mut)? arm.body);
                 }
             }
             MirExpr::StructLit { fields, .. } => {
-                children.extend(fields.iter_mut().map(|(_, value)| value))
+                children.extend(fields.$iter().map(|(_, value)| value))
             }
             MirExpr::StructUpdate {
                 base, overrides, ..
             } => {
                 children.push(base);
-                children.extend(overrides.iter_mut().map(|(_, value)| value));
+                children.extend(overrides.$iter().map(|(_, value)| value));
             }
             MirExpr::FieldAccess { object, .. } => children.push(object),
-            MirExpr::ConstructVariant { fields, .. } => children.extend(fields.iter_mut()),
-            MirExpr::MakeClosure { captures, .. } => children.extend(captures.iter_mut()),
+            MirExpr::ConstructVariant { fields, .. } => children.extend(fields.$iter()),
+            MirExpr::MakeClosure { captures, .. } => children.extend(captures.$iter()),
             MirExpr::ResourceMove { value, .. }
             | MirExpr::ResourceBorrow { value, .. }
             | MirExpr::ResourceDrop { value, .. }
@@ -626,8 +626,8 @@ impl MirExpr {
                 ..
             } => {
                 children.push(func);
-                children.extend(args.iter_mut());
-                children.extend(terminate_callback.as_deref_mut());
+                children.extend(args.$iter());
+                children.extend(terminate_callback.$as_deref());
             }
             MirExpr::ActorSend {
                 target, message, ..
@@ -642,18 +642,18 @@ impl MirExpr {
                 ..
             } => {
                 for arm in arms {
-                    children.extend(arm.guard.as_mut());
-                    children.push(&mut arm.body);
+                    children.extend(arm.guard.$as_ref());
+                    children.push(&$($mut)? arm.body);
                 }
-                children.extend(timeout_ms.as_deref_mut());
-                children.extend(timeout_body.as_deref_mut());
+                children.extend(timeout_ms.$as_deref());
+                children.extend(timeout_body.$as_deref());
             }
             MirExpr::ActorLink { target, .. } => children.push(target),
             MirExpr::While { cond, body, .. } => {
                 children.push(cond);
                 children.push(body);
             }
-            MirExpr::TailCall { args, .. } => children.extend(args.iter_mut()),
+            MirExpr::TailCall { args, .. } => children.extend(args.$iter()),
             MirExpr::ForInRange {
                 start,
                 end,
@@ -663,7 +663,7 @@ impl MirExpr {
             } => {
                 children.push(start);
                 children.push(end);
-                children.extend(filter.as_deref_mut());
+                children.extend(filter.$as_deref());
                 children.push(body);
             }
             MirExpr::ForInList {
@@ -691,11 +691,36 @@ impl MirExpr {
                 ..
             } => {
                 children.push(collection);
-                children.extend(filter.as_deref_mut());
+                children.extend(filter.$as_deref());
                 children.push(body);
             }
         }
         children
+    }};
+}
+
+impl MirExpr {
+    /// The expressions directly inside this one (match arm guards and
+    /// bodies included).
+    pub fn children(&self) -> Vec<&MirExpr> {
+        child_exprs!(self, &MirExpr, iter, as_ref, as_deref)
+    }
+
+    /// The expressions directly inside this one, for passes that rewrite
+    /// every sub-expression (match arm guards and bodies included).
+    pub fn children_mut(&mut self) -> Vec<&mut MirExpr> {
+        child_exprs!(self, &mut MirExpr, iter_mut, as_mut, as_deref_mut, mut)
+    }
+
+    /// This expression and every one inside it.
+    pub fn descendants(&self) -> Vec<&MirExpr> {
+        let mut all = vec![self];
+        let mut next = 0;
+        while let Some(expr) = all.get(next).copied() {
+            all.extend(expr.children());
+            next += 1;
+        }
+        all
     }
 
     /// Get the type of this expression.
