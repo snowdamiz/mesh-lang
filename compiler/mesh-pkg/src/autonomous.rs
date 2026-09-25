@@ -953,6 +953,222 @@ template_revision = "v1"
             .any(|error| error.contains("horizontal autoscaling requires")));
     }
 
+    const PRODUCTION: &str = r#"
+mode = "autonomous"
+default_replicas = 2
+durability = "strict"
+
+[controllers]
+voters = 3
+
+[autoscaling]
+enabled = true
+managed_roles = ["worker"]
+min_nodes = 2
+max_nodes = 5
+scale_up_window = "30s"
+scale_down_window = "10m"
+max_unavailable = 1
+
+[capacity]
+driver = "docker"
+
+[capacity.docker]
+image = "mesh-worker@sha256:abc"
+pool = "workers"
+template_revision = "v1"
+"#;
+
+    /// Each setting the runtime cannot honour is refused, naming it.
+    #[test]
+    fn every_setting_the_runtime_cannot_honour_is_refused() {
+        type Change = fn(&mut AutonomousClusterConfig);
+        let cases: &[(Change, &str)] = &[
+            (
+                |c| c.default_replicas = 0,
+                "default_replicas must be between",
+            ),
+            (|c| c.controllers.voters = 0, "voters must be positive"),
+            (
+                |c| c.controllers.autoscale = true,
+                "autoscale must be false",
+            ),
+            (|c| c.controllers.voters = 4, "odd voter count"),
+            (
+                |c| c.controllers.voters = 2,
+                "at least three production voters",
+            ),
+            (
+                |c| c.scheduler.min_workers = 0,
+                "min_workers must be positive",
+            ),
+            (
+                |c| c.scheduler.target_runnable_per_worker = f64::NAN,
+                "positive finite number",
+            ),
+            (
+                |c| c.scheduler.scale_down_window = c.scheduler.scale_up_window,
+                "[cluster.scheduler].scale_down_window",
+            ),
+            (
+                |c| c.autoscaling.min_nodes = 0,
+                "min_nodes must be positive",
+            ),
+            (
+                |c| c.autoscaling.target_inflight_per_node = 0,
+                "step bounds must be positive",
+            ),
+            (
+                |c| c.autoscaling.max_unavailable = 2,
+                "max_unavailable must be smaller",
+            ),
+            (
+                |c| c.autoscaling.managed_roles = vec![ManagedRole::Worker, ManagedRole::Worker],
+                "must contain unique roles",
+            ),
+            (
+                |c| c.roles.worker = false,
+                "managed worker role is disabled",
+            ),
+            (
+                |c| {
+                    c.roles.gateway = false;
+                    c.autoscaling.managed_roles = vec![ManagedRole::Gateway, ManagedRole::Worker];
+                },
+                "managed gateway role is disabled",
+            ),
+            (
+                |c| c.routing.algorithm = RoutingAlgorithm::Static,
+                "requires routing.algorithm",
+            ),
+            (
+                |c| c.routing.max_queued_bytes_per_node = ByteSize::from_bytes(0),
+                "byte bounds must be positive",
+            ),
+            (
+                |c| c.routing.retry_budget_percent = 101,
+                "must not exceed 100",
+            ),
+            (
+                |c| c.routing.load_report_interval = c.routing.load_report_ttl,
+                "load_report_ttl must be longer",
+            ),
+            (
+                |c| c.continuity.tombstone_retention = c.continuity.terminal_retention,
+                "tombstone_retention must be longer",
+            ),
+            (
+                |c| c.continuity.max_terminal_records = 0,
+                "record and disk bounds must be positive",
+            ),
+            (
+                |c| {
+                    c.continuity.snapshot_chunk_bytes =
+                        ByteSize::from_bytes(DEFAULT_TRANSPORT_FRAME_BYTES)
+                },
+                "snapshot_chunk_bytes must be positive and below",
+            ),
+            (
+                |c| c.default_replicas = 6,
+                "exceeds maximum eligible node capacity",
+            ),
+            (
+                |c| c.capacity.drain_timeout = HumanDuration::from_millis(0),
+                "timeouts must be positive",
+            ),
+            (
+                |c| c.capacity.driver = None,
+                "requires [cluster.capacity].driver",
+            ),
+            (
+                |c| c.capacity.driver = Some(CapacityDriverKind::Process),
+                "requires a typed command and working_directory",
+            ),
+            (
+                |c| c.capacity.docker.as_mut().unwrap().image = " ".to_string(),
+                "requires image, pool, and template_revision",
+            ),
+        ];
+        for (change, expected) in cases {
+            let mut config = parse_config(PRODUCTION);
+            change(&mut config);
+            let errors = config.validate().expect_err(expected);
+            assert!(
+                errors.iter().any(|error| error.contains(expected)),
+                "{expected}: {errors:?}"
+            );
+        }
+
+        // A process driver with a command and a directory is enough.
+        let mut config = parse_config(PRODUCTION);
+        config.capacity.driver = Some(CapacityDriverKind::Process);
+        config.capacity.process = Some(ProcessDriverConfig {
+            command: vec!["./worker".to_string()],
+            working_directory: PathBuf::from("/srv"),
+        });
+        assert_eq!(config.validate(), Ok(()));
+    }
+
+    /// A manifest's cluster table is written back as it was read, in the
+    /// largest unit that divides each value.
+    #[test]
+    fn a_cluster_config_round_trips_through_toml() {
+        let mut config = parse_config(PRODUCTION);
+        config.routing.load_report_interval = HumanDuration::from_millis(1_500);
+        config.continuity.terminal_retention = HumanDuration::from_millis(2 * 3_600_000);
+        config.continuity.tombstone_retention = HumanDuration::from_millis(3 * 86_400_000);
+        config.continuity.max_disk_bytes = ByteSize::from_bytes(3 << 40);
+        config.routing.max_queued_bytes_per_node = ByteSize::from_bytes(1_000);
+        let written = toml::to_string(&config).unwrap();
+        for unit in [
+            "\"1500ms\"",
+            "\"2h\"",
+            "\"3d\"",
+            "\"3TiB\"",
+            "\"1000B\"",
+            "\"10m\"",
+        ] {
+            assert!(written.contains(unit), "{unit} in {written}");
+        }
+        assert_eq!(parse_config(&written), config);
+        assert_eq!(
+            config.autoscaling.scale_up_window.as_duration(),
+            Duration::from_secs(30)
+        );
+    }
+
+    /// A manifest with an empty cluster table takes every default, and the
+    /// defaults are a configuration the runtime accepts.
+    #[test]
+    fn the_default_cluster_config_is_valid() {
+        let config = parse_config("");
+        assert_eq!(config.controllers, ControllerConfig::default());
+        assert_eq!(config.autoscaling, AutoscalingConfig::default());
+        assert_eq!(config.validate(), Ok(()));
+    }
+
+    #[test]
+    fn durations_and_sizes_name_what_is_wrong_with_them() {
+        for (raw, expected) in [
+            ("5", "expected an integer followed by ms"),
+            ("99999999999999999999s", "exceeds the supported range"),
+            ("999999999999999999d", "exceeds the supported range"),
+        ] {
+            assert!(parse_duration(raw).unwrap_err().contains(expected), "{raw}");
+        }
+        for (raw, expected) in [
+            ("5", "expected an integer followed by B"),
+            ("-5B", "fractional, signed"),
+            ("99999999999999999999B", "exceeds the supported range"),
+            ("99999999999TiB", "exceeds the supported range"),
+        ] {
+            assert!(
+                parse_byte_size(raw).unwrap_err().contains(expected),
+                "{raw}"
+            );
+        }
+    }
+
     #[test]
     fn production_autonomous_config_accepts_typed_docker_driver() {
         let config = parse_config(
