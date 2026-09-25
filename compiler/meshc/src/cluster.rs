@@ -17,7 +17,7 @@ use serde_json::json;
 #[derive(Subcommand, Debug)]
 pub enum ClusterCommand {
     /// Show runtime-owned membership and authority for a clustered node.
-    Status(ClusterStatusArgs),
+    Status(ClusterRuntimeArgs),
     /// Show the complete runtime-owned operator snapshot for a clustered node.
     Snapshot(ClusterRuntimeArgs),
     /// Show runtime-owned continuity status for one request key, or list recent continuity records.
@@ -90,9 +90,8 @@ pub struct ClusterDrainArgs {
 
 #[derive(Args, Debug)]
 pub struct ClusterControlAuthorization {
-    /// Owner-only file containing the shared data-plane cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
+    #[command(flatten)]
+    pub query: ClusterQueryArgs,
 
     /// Owner-only file containing the operator signing key (defaults to MESH_OPERATOR_KEY)
     #[arg(long, value_name = "PATH")]
@@ -113,6 +112,14 @@ pub struct ClusterControlAuthorization {
     /// Explicit monotonic sequence for automation; defaults to current microseconds
     #[arg(long)]
     pub sequence: Option<u64>,
+}
+
+/// How every cluster command reaches its node and reports.
+#[derive(Args, Debug)]
+pub struct ClusterQueryArgs {
+    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
+    #[arg(long, value_name = "PATH")]
+    pub cookie_file: Option<PathBuf>,
 
     /// Query timeout in milliseconds
     #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
@@ -128,17 +135,8 @@ pub struct ClusterRuntimeArgs {
     /// Cluster node to inspect (name@host:port)
     pub target: String,
 
-    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
-
-    /// Query timeout in milliseconds
-    #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
-    pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub query: ClusterQueryArgs,
 }
 
 #[derive(Args, Debug)]
@@ -149,35 +147,8 @@ pub struct ClusterExplainArgs {
     /// Retained continuity request or operation key
     pub request_key: String,
 
-    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
-
-    /// Query timeout in milliseconds
-    #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
-    pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct ClusterStatusArgs {
-    /// Cluster node to inspect (name@host:port)
-    pub target: String,
-
-    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
-
-    /// Query timeout in milliseconds
-    #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
-    pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub query: ClusterQueryArgs,
 }
 
 #[derive(Args, Debug)]
@@ -192,17 +163,8 @@ pub struct ClusterContinuityArgs {
     #[arg(long)]
     pub limit: Option<usize>,
 
-    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
-
-    /// Query timeout in milliseconds
-    #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
-    pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub query: ClusterQueryArgs,
 }
 
 #[derive(Args, Debug)]
@@ -214,17 +176,8 @@ pub struct ClusterDiagnosticsArgs {
     #[arg(long)]
     pub limit: Option<usize>,
 
-    /// Owner-only file containing the shared cluster cookie (defaults to MESH_CLUSTER_COOKIE)
-    #[arg(long, value_name = "PATH")]
-    pub cookie_file: Option<PathBuf>,
-
-    /// Query timeout in milliseconds
-    #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
-    pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
+    #[command(flatten)]
+    pub query: ClusterQueryArgs,
 }
 
 pub fn run_cluster_command(command: ClusterCommand) -> Result<(), String> {
@@ -280,7 +233,7 @@ fn run_control(
     authorization: ClusterControlAuthorization,
     action: OperatorControlAction,
 ) -> Result<(), String> {
-    let cookie = cluster_cookie(authorization.cookie_file.as_deref())?;
+    let cookie = cluster_cookie(authorization.query.cookie_file.as_deref())?;
     let operator_key = secret_from_file_or_env(
         authorization.operator_key_file.as_deref(),
         "MESH_OPERATOR_KEY",
@@ -310,10 +263,14 @@ fn run_control(
         },
         &operator_key,
     )?;
-    let outcome =
-        query_operator_control_remote(&target, &cookie, request, timeout(authorization.timeout_ms))
-            .map_err(|error| error.to_string())?;
-    if authorization.json {
+    let outcome = query_operator_control_remote(
+        &target,
+        &cookie,
+        request,
+        timeout(authorization.query.timeout_ms),
+    )
+    .map_err(|error| error.to_string())?;
+    if authorization.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&outcome).expect("serialize cluster control outcome json")
@@ -336,14 +293,14 @@ fn run_control(
 }
 
 fn runtime_snapshot(args: &ClusterRuntimeArgs) -> Result<OperatorRuntimeSnapshot, String> {
-    let cookie = cluster_cookie(args.cookie_file.as_deref())?;
-    query_operator_runtime_remote(&args.target, &cookie, timeout(args.timeout_ms))
+    let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
+    query_operator_runtime_remote(&args.target, &cookie, timeout(args.query.timeout_ms))
         .map_err(|error| error.to_string())
 }
 
 fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&snapshot)
@@ -411,7 +368,7 @@ fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
 
 fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -445,7 +402,7 @@ fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {
 
 fn run_pressure(args: ClusterRuntimeArgs) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -499,7 +456,7 @@ fn run_pressure(args: ClusterRuntimeArgs) -> Result<(), String> {
 
 fn run_routing(args: ClusterRuntimeArgs) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -561,7 +518,7 @@ fn run_routing(args: ClusterRuntimeArgs) -> Result<(), String> {
 
 fn run_scaling(args: ClusterRuntimeArgs) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -632,8 +589,8 @@ fn run_scaling(args: ClusterRuntimeArgs) -> Result<(), String> {
 }
 
 fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
-    let cookie = cluster_cookie(args.cookie_file.as_deref())?;
-    let query_timeout = timeout(args.timeout_ms);
+    let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
+    let query_timeout = timeout(args.query.timeout_ms);
     let record = query_operator_continuity_status_remote(
         &args.target,
         &cookie,
@@ -643,7 +600,7 @@ fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     let runtime = query_operator_runtime_remote(&args.target, &cookie, query_timeout)
         .map_err(|error| error.to_string())?;
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -671,13 +628,13 @@ fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_status(args: ClusterStatusArgs) -> Result<(), String> {
-    let cookie = cluster_cookie(args.cookie_file.as_deref())?;
-    let timeout = timeout(args.timeout_ms);
+fn run_status(args: ClusterRuntimeArgs) -> Result<(), String> {
+    let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
+    let timeout = timeout(args.query.timeout_ms);
     let snapshot = query_operator_status_remote(&args.target, &cookie, timeout)
         .map_err(|error| error.to_string())?;
 
-    if args.json {
+    if args.query.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -729,14 +686,14 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
         );
     }
 
-    let cookie = cluster_cookie(args.cookie_file.as_deref())?;
-    let timeout = timeout(args.timeout_ms);
+    let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
+    let timeout = timeout(args.query.timeout_ms);
 
     if let Some(request_key) = args.request_key.as_deref() {
         let record =
             query_operator_continuity_status_remote(&args.target, &cookie, request_key, timeout)
                 .map_err(|error| error.to_string())?;
-        if args.json {
+        if args.query.json {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
@@ -754,7 +711,7 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
 
     let list = query_operator_continuity_list_remote(&args.target, &cookie, args.limit, timeout)
         .map_err(|error| error.to_string())?;
-    if args.json {
+    if args.query.json {
         let records: Vec<_> = list.records.iter().map(continuity_record_json).collect();
         println!(
             "{}",
@@ -801,12 +758,12 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
 }
 
 fn run_diagnostics(args: ClusterDiagnosticsArgs) -> Result<(), String> {
-    let cookie = cluster_cookie(args.cookie_file.as_deref())?;
-    let timeout = timeout(args.timeout_ms);
+    let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
+    let timeout = timeout(args.query.timeout_ms);
     let snapshot = query_operator_diagnostics_remote(&args.target, &cookie, args.limit, timeout)
         .map_err(|error| error.to_string())?;
 
-    if args.json {
+    if args.query.json {
         let entries: Vec<_> = snapshot
             .entries
             .iter()
