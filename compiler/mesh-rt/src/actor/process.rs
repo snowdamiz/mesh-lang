@@ -22,7 +22,9 @@ use super::mailbox::Mailbox;
 /// Unique identifier for an actor process.
 ///
 /// PIDs are assigned sequentially from a global atomic counter, guaranteeing
-/// uniqueness within a single runtime instance.
+/// uniqueness within a single runtime instance. 0 is never a process: it is
+/// what a lookup that finds none and a spawn that failed return, and a send
+/// to it goes nowhere.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProcessId(pub u64);
 
@@ -33,7 +35,7 @@ impl ProcessId {
     /// creation and node_id fields. In practice the counter will never
     /// reach 2^40 (~1 trillion), but the mask is defensive.
     pub fn next() -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
         ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_00FF_FFFF_FFFF)
     }
 
