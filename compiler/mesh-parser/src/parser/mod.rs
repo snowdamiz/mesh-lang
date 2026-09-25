@@ -303,6 +303,22 @@ impl<'src> Parser<'src> {
 
     /// Whether the line ends here (a newline follows, significant or not) or
     /// the enclosing block does.
+    /// The kinds of the tokens ahead with every new line, also those that
+    /// are insignificant inside brackets; comments left out.
+    pub(crate) fn raw_kinds_ahead(&self) -> impl Iterator<Item = SyntaxKind> + '_ {
+        self.tokens
+            .get(self.pos..)
+            .into_iter()
+            .flatten()
+            .filter(|token| {
+                !matches!(
+                    token.kind,
+                    TokenKind::Comment | TokenKind::DocComment | TokenKind::ModuleDocComment
+                )
+            })
+            .map(|token| SyntaxKind::from(token.kind.clone()))
+    }
+
     pub(crate) fn at_line_end(&self) -> bool {
         let next = self.tokens[self.pos..].iter().find(|token| {
             !matches!(

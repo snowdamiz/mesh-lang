@@ -1051,7 +1051,9 @@ fn parse_arm_body(p: &mut Parser) {
         } else {
             p.error("expected `end` to close arm `do` block");
         }
-    } else if p.at(SyntaxKind::NEWLINE) {
+    } else if p.at_line_end() {
+        // A new line, also an insignificant one: a case inside brackets
+        // (`f(case x do ... end)`) has statement bodies too.
         parse_arm_block_body(p);
     } else {
         expr(p);
@@ -1105,9 +1107,16 @@ fn parse_arm_block_body(p: &mut Parser) {
 /// qualifies.
 fn at_match_arm_head(p: &Parser) -> bool {
     let mut depth = 0u32;
-    let mut k = 0;
-    loop {
-        match p.nth(k) {
+    // A head is one line, brackets aside. The raw tokens show where the line
+    // ends even inside brackets, where new lines are insignificant and a scan
+    // would run on into the next line (`h(y)` then `_ -> 0`).
+    for kind in p
+        .raw_kinds_ahead()
+        .skip_while(|kind| *kind == SyntaxKind::NEWLINE)
+    {
+        match kind {
+            SyntaxKind::NEWLINE if depth == 0 => return false,
+            SyntaxKind::NEWLINE => {}
             SyntaxKind::ARROW | SyntaxKind::WHEN_KW if depth == 0 => return true,
             SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::L_BRACE => depth += 1,
             // `field: pattern` inside a struct pattern.
@@ -1134,8 +1143,8 @@ fn at_match_arm_head(p: &Parser) -> bool {
             | SyntaxKind::MINUS => {}
             _ => return false,
         }
-        k += 1;
     }
+    false
 }
 
 // ── Closure Expression ────────────────────────────────────────────────

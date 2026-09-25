@@ -1583,6 +1583,8 @@ fn less_common_forms_parse_without_errors() {
         "fn f() do\n  g(1, 2,)\nend",
         "fn f(p) do\n  case p do\n    Point { x: 0, y } ->\n      y\n    _ -> 0\n  end\nend",
         "fn f(x) do\n  case x do\n    1 ->\n      g(\n        2\n      )\n    _ -> 0\n  end\nend",
+        "fn f(v) do\n  g(case v do\n    1 ->\n      let y = 2\n      h(y)\n    other ->\n      other\n  end)\nend",
+        "fn f(v) do\n  [case v do\n    Point { x: 0 } ->\n      1\n    Point { x: 1, y } -> y\n  end]\nend",
         "fn f() do\n  fn 0 -> 1 | n when n > 0 -> n | _ -> 0 end\nend",
         "fn f() do\n  fn 0 -> 1 | -1 -> 2 | n -> n end\nend",
         "fn f([]) = 0",
