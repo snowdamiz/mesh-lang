@@ -19,6 +19,11 @@
 //! - [`error`]: Type error types with provenance tracking
 //! - [`infer`]: Algorithm J inference engine
 
+// A `TypeError` is built once per reported error while the checker's hot
+// path returns `Ok`, so boxing it would cost every signature for nothing;
+// several inference passes thread their state through many parameters.
+#![allow(clippy::result_large_err, clippy::too_many_arguments)]
+
 pub mod builtins;
 pub mod diagnostics;
 pub mod env;
@@ -341,45 +346,42 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
     let mut exports = ExportedSymbols::default();
 
     for item in tree.items() {
-        match item {
-            Item::FnDef(fn_def) => {
-                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                    // Look up the function's inferred type from the typeck result
-                    let range = fn_def.syntax().text_range();
-                    if let Some(ty) = typeck.types.get(&range) {
-                        if fn_def.visibility().is_some() {
-                            // Each arity of an overloaded name is its own function.
-                            let export_name = if typeck.overloaded_fn_names.contains(&name) {
-                                let arity = fn_def
-                                    .param_list()
-                                    .map(|pl| pl.params().count())
-                                    .unwrap_or(0);
-                                format!("{}__{}", name, arity)
-                            } else {
-                                name
-                            };
-                            exports
-                                .functions
-                                .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
-                            exports.function_ownership.insert(
-                                export_name,
-                                fn_def
-                                    .param_list()
-                                    .map(|parameters| {
-                                        parameters
-                                            .params()
-                                            .map(|parameter| parameter.ownership())
-                                            .collect()
-                                    })
-                                    .unwrap_or_default(),
-                            );
+        if let Item::FnDef(fn_def) = item {
+            if let Some(name) = fn_def.name().and_then(|n| n.text()) {
+                // Look up the function's inferred type from the typeck result
+                let range = fn_def.syntax().text_range();
+                if let Some(ty) = typeck.types.get(&range) {
+                    if fn_def.visibility().is_some() {
+                        // Each arity of an overloaded name is its own function.
+                        let export_name = if typeck.overloaded_fn_names.contains(&name) {
+                            let arity = fn_def
+                                .param_list()
+                                .map(|pl| pl.params().count())
+                                .unwrap_or(0);
+                            format!("{}__{}", name, arity)
                         } else {
-                            exports.private_names.insert(name);
-                        }
+                            name
+                        };
+                        exports
+                            .functions
+                            .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
+                        exports.function_ownership.insert(
+                            export_name,
+                            fn_def
+                                .param_list()
+                                .map(|parameters| {
+                                    parameters
+                                        .params()
+                                        .map(|parameter| parameter.ownership())
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        );
+                    } else {
+                        exports.private_names.insert(name);
                     }
                 }
             }
-            _ => {}
         }
     }
 

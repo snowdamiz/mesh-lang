@@ -4016,7 +4016,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     // Pre-seed with imported sum type definitions
     for mod_exports in import_ctx.module_exports.values() {
-        for (_name, sum_type_def) in &mod_exports.sum_type_defs {
+        for sum_type_def in mod_exports.sum_type_defs.values() {
             type_registry.register_sum_type(sum_type_def.clone());
             register_variant_constructors(
                 &mut ctx,
@@ -4034,7 +4034,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // ("Types.UserId") so that annotations like `:: Types.UserId` resolve
     // correctly when the annotation parser emits a qualified key.
     for (mod_namespace, mod_exports) in &import_ctx.module_exports {
-        for (_name, alias_info) in &mod_exports.type_aliases {
+        for alias_info in mod_exports.type_aliases.values() {
             // Unqualified: `UserId`
             type_registry.register_alias(alias_info.clone());
             // Qualified: `Types.UserId`
@@ -5956,7 +5956,7 @@ fn infer_item(
         Item::ServiceDef(service_def) => infer_service_def(
             ctx,
             env,
-            &service_def,
+            service_def,
             types,
             type_registry,
             trait_registry,
@@ -6131,7 +6131,7 @@ fn register_struct_def(
         let base_ty = Ty::Con(TyCon::new(&name));
         let param_tys: Vec<Ty> = generic_params
             .iter()
-            .map(|p| Ty::Con(TyCon::new(&format!("'{p}"))))
+            .map(|p| Ty::Con(TyCon::new(format!("'{p}"))))
             .collect();
         Ty::App(Box::new(base_ty), param_tys)
     };
@@ -6517,7 +6517,7 @@ fn is_row_mappable(ty: &Ty) -> bool {
         Ty::App(base, args) => {
             if let Ty::Con(con) = base.as_ref() {
                 if con.name == "Option" {
-                    args.first().map_or(false, |t| is_row_mappable(t))
+                    args.first().is_some_and(is_row_mappable)
                 } else {
                     false
                 }
@@ -7144,7 +7144,7 @@ fn register_sum_type_def(
         let base_ty = Ty::Con(TyCon::new(&name));
         let param_tys: Vec<Ty> = generic_params
             .iter()
-            .map(|p| Ty::Con(TyCon::new(&format!("'{p}"))))
+            .map(|p| Ty::Con(TyCon::new(format!("'{p}"))))
             .collect();
         Ty::App(Box::new(base_ty), param_tys)
     };
@@ -7406,7 +7406,7 @@ fn interface_trait_def(
         let self_assoc: FxHashMap<String, Ty> = iface
             .assoc_types()
             .filter_map(|assoc| assoc.name().and_then(|n| n.text()))
-            .map(|name| (name.clone(), Ty::Con(TyCon::new(&format!("Self.{name}")))))
+            .map(|name| (name.clone(), Ty::Con(TyCon::new(format!("Self.{name}")))))
             .collect();
         let return_type = method.return_type().and_then(|ann| {
             resolve_self_assoc_type(&ann, &self_assoc)
@@ -7681,7 +7681,7 @@ fn impl_signature(
             gal.children_with_tokens()
                 .filter_map(|t| t.into_token())
                 .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| name_to_type(&t.text().to_string()))
+                .map(|t| name_to_type(t.text()))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -8869,7 +8869,7 @@ fn infer_expr_here(
         Expr::ListLiteral(lit) => infer_list_literal(
             ctx,
             env,
-            &lit,
+            lit,
             types,
             type_registry,
             trait_registry,
@@ -8896,7 +8896,7 @@ fn infer_expr_here(
         Expr::ForInExpr(for_in) => infer_for_in(
             ctx,
             env,
-            &for_in,
+            for_in,
             types,
             type_registry,
             trait_registry,
@@ -10059,7 +10059,7 @@ fn infer_call(
     let builtin_default = matches!(call.callee(), Some(Expr::NameRef(ref name)) if name.text().as_deref() == Some("default"))
         && call
             .arg_list()
-            .map_or(true, |list| list.args().next().is_none())
+            .is_none_or(|list| list.args().next().is_none())
         && env
             .lookup("default")
             .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
@@ -11432,28 +11432,20 @@ fn infer_for_in(
     };
 
     // Check if iterable is a DotDot range.
-    let is_range = if let Some(iterable) = for_in.iterable() {
-        if let Expr::BinaryExpr(ref bin) = iterable {
-            let is_dot_dot = bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT);
-            if is_dot_dot {
-                let origin = ConstraintOrigin::BinOp {
-                    op_span: bin.syntax().text_range(),
-                };
-                if let Some(lhs) = bin.lhs() {
-                    if let Some(lhs_ty) = types.get(&lhs.syntax().text_range()) {
-                        ctx.unify(Ty::int(), lhs_ty.clone(), origin.clone())?;
-                    }
-                }
-                if let Some(rhs) = bin.rhs() {
-                    if let Some(rhs_ty) = types.get(&rhs.syntax().text_range()) {
-                        ctx.unify(Ty::int(), rhs_ty.clone(), origin)?;
-                    }
+    // A range, `a..b`: both ends are integers.
+    let is_range = if let Some(Expr::BinaryExpr(ref bin)) = for_in.iterable() {
+        let is_dot_dot = bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT);
+        if is_dot_dot {
+            let origin = ConstraintOrigin::BinOp {
+                op_span: bin.syntax().text_range(),
+            };
+            for end in [bin.lhs(), bin.rhs()].into_iter().flatten() {
+                if let Some(end_ty) = types.get(&end.syntax().text_range()) {
+                    ctx.unify(Ty::int(), end_ty.clone(), origin.clone())?;
                 }
             }
-            is_dot_dot
-        } else {
-            false
         }
+        is_dot_dot
     } else {
         false
     };
@@ -12137,7 +12129,7 @@ fn infer_block(
     // block child and therefore was not visited above.
     if let Some(tail) = block.tail_expr() {
         let tail_range = tail.syntax().text_range();
-        let already_processed = processed_ranges.iter().any(|r| *r == tail_range);
+        let already_processed = processed_ranges.contains(&tail_range);
 
         if !already_processed {
             match infer_expr(
@@ -14820,19 +14812,6 @@ fn to_snake_case(name: &str) -> String {
     result
 }
 
-/// Infer the type of a service definition.
-///
-/// Services define a typed client-server abstraction. The type checker:
-/// 1. Infers init function return type and unifies with state type variable.
-/// 2. For each call handler: validates state param, infers reply type from
-///    annotation, ensures body returns (new_state, reply) tuple.
-/// 3. For each cast handler: validates state param, ensures body returns new_state.
-/// 4. Registers module-qualified helper functions (ServiceName.method_name).
-///
-/// The service is registered as a module with:
-/// - start(init_args...) -> Pid<Unit>
-/// - Per call handler: snake_name(pid, args...) -> reply_ty
-/// - Per cast handler: snake_name(pid, args...) -> Unit
 /// Where a handler body's type is checked: the body's last expression, or the
 /// whole body when it is empty.
 fn body_origin(body: Option<Block>) -> ConstraintOrigin {
@@ -14850,6 +14829,19 @@ fn body_origin(body: Option<Block>) -> ConstraintOrigin {
     }
 }
 
+/// Infer the type of a service definition.
+///
+/// Services define a typed client-server abstraction. The type checker:
+/// 1. Infers init function return type and unifies with state type variable.
+/// 2. For each call handler: validates state param, infers reply type from
+///    annotation, ensures body returns (new_state, reply) tuple.
+/// 3. For each cast handler: validates state param, ensures body returns new_state.
+/// 4. Registers module-qualified helper functions (ServiceName.method_name).
+///
+/// The service is registered as a module with:
+/// - start(init_args...) -> Pid<Unit>
+/// - Per call handler: snake_name(pid, args...) -> reply_ty
+/// - Per cast handler: snake_name(pid, args...) -> Unit
 fn infer_service_def(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -15760,7 +15752,7 @@ fn infer_try_expr(
                             if err_is_concrete && fn_err_is_concrete {
                                 if trait_registry.has_impl_with_type_args(
                                     "From",
-                                    &[err_resolved.clone()],
+                                    std::slice::from_ref(&err_resolved),
                                     &fn_err_resolved,
                                 ) {
                                     // From impl exists -- type check passes. Remove the

@@ -43,7 +43,7 @@ fn assert_result_type(result: &TypeckResult, expected: Ty) {
 /// Assert that the result contains an error matching the given predicate.
 fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(
-        result.errors.iter().any(|e| pred(e)),
+        result.errors.iter().any(pred),
         "expected error matching `{}`, got errors: {:?}",
         desc,
         result.errors

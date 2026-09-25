@@ -24,7 +24,7 @@ fn check_source(src: &str) -> TypeckResult {
 /// Assert that the result contains an error matching the given predicate.
 fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(
-        result.errors.iter().any(|e| pred(e)),
+        result.errors.iter().any(pred),
         "expected error matching `{}`, got errors: {:?}",
         desc,
         result.errors
@@ -126,7 +126,7 @@ fn test_extra_assoc_type_binding() {
 }
 
 /// 5. Self.Item resolution in return type -- method returning Self.Item
-/// resolves to the concrete bound type.
+///    resolves to the concrete bound type.
 #[test]
 fn test_self_item_return_type() {
     let result = check_source(

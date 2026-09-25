@@ -337,7 +337,7 @@ impl TraitRegistry {
             }
 
             // Check for extra associated types.
-            for (name, _) in &impl_def.associated_types {
+            for name in impl_def.associated_types.keys() {
                 if !trait_def.associated_types.iter().any(|a| &a.name == name) {
                     errors.push(TypeError::ExtraAssocType {
                         trait_name: impl_def.trait_name.clone(),
@@ -689,10 +689,10 @@ impl TraitRegistry {
                         // Resolve the return type through the temp context
                         // in case it contains freshened vars that were bound
                         // during unification.
-                        return match &method_sig.return_type {
-                            Some(ret_ty) => Some(ctx.resolve(ret_ty.clone())),
-                            None => None,
-                        };
+                        return method_sig
+                            .return_type
+                            .as_ref()
+                            .map(|ret_ty| ctx.resolve(ret_ty.clone()));
                     }
                 }
             }

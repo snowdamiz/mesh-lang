@@ -333,28 +333,28 @@ fn find_type_name_in_column(matrix: &PatternMatrix, row: &[Pat], col: usize) -> 
 /// Check if a column contains bool literal patterns.
 fn check_column_for_bool(matrix: &PatternMatrix, row: &[Pat], col: usize) -> bool {
     for mrow in &matrix.rows {
-        if col < mrow.len() {
-            if matches!(
+        if col < mrow.len()
+            && matches!(
                 &mrow[col],
                 Pat::Literal {
                     ty: LitKind::Bool,
                     ..
                 }
-            ) {
-                return true;
-            }
+            )
+        {
+            return true;
         }
     }
-    if col < row.len() {
-        if matches!(
+    if col < row.len()
+        && matches!(
             &row[col],
             Pat::Literal {
                 ty: LitKind::Bool,
                 ..
             }
-        ) {
-            return true;
-        }
+        )
+    {
+        return true;
     }
     false
 }
@@ -865,7 +865,12 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                 };
                 let type_info = vec![scrutinee_type.clone()];
 
-                if is_useful_inner(&matrix, &[ctor_pat.clone()], &type_info, registry) {
+                if is_useful_inner(
+                    &matrix,
+                    std::slice::from_ref(&ctor_pat),
+                    &type_info,
+                    registry,
+                ) {
                     let refined = refine_row(&matrix, vec![ctor_pat], &type_info, registry, 4);
                     missing.push(refined.into_iter().next().unwrap_or(Pat::Wildcard));
                 }
@@ -888,7 +893,12 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                 };
                 let type_info = vec![scrutinee_type.clone()];
 
-                if is_useful_inner(&matrix, &[lit_pat.clone()], &type_info, registry) {
+                if is_useful_inner(
+                    &matrix,
+                    std::slice::from_ref(&lit_pat),
+                    &type_info,
+                    registry,
+                ) {
                     missing.push(lit_pat);
                 }
             }
@@ -1410,7 +1420,7 @@ mod tests {
         let cons = ctor(CONS, LIST, vec![wildcard(), wildcard()]);
         let registry = empty_registry();
         assert_eq!(
-            check_exhaustiveness(&[cons.clone()], &list_type_info(), &registry),
+            check_exhaustiveness(std::slice::from_ref(&cons), &list_type_info(), &registry),
             Some(vec![ctor(NIL, "", vec![])])
         );
         // case xs do h :: t -> ... | _ -> ... end   is exhaustive and arm 1 is useful

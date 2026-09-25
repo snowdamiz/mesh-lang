@@ -41,7 +41,7 @@ fn assert_no_warnings(result: &TypeckResult) {
 /// Assert that the result contains an error matching the given predicate.
 fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(
-        result.errors.iter().any(|e| pred(e)),
+        result.errors.iter().any(pred),
         "expected error matching `{}`, got errors: {:?}",
         desc,
         result.errors
@@ -51,7 +51,7 @@ fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, d
 /// Assert that the result contains a warning matching the given predicate.
 fn assert_has_warning<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(
-        result.warnings.iter().any(|e| pred(e)),
+        result.warnings.iter().any(pred),
         "expected warning matching `{}`, got warnings: {:?}",
         desc,
         result.warnings

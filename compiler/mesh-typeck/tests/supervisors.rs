@@ -22,7 +22,7 @@ fn assert_no_errors(result: &TypeckResult) {
 
 fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, desc: &str) {
     assert!(
-        result.errors.iter().any(|e| pred(e)),
+        result.errors.iter().any(pred),
         "expected error matching `{}`, got errors: {:?}",
         desc,
         result.errors

@@ -332,12 +332,8 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
         return m;
     }
 
-    let mut prev = vec![0usize; n + 1];
+    let mut prev: Vec<usize> = (0..=n).collect();
     let mut curr = vec![0usize; n + 1];
-
-    for j in 0..=n {
-        prev[j] = j;
-    }
 
     for i in 1..=m {
         curr[0] = i;
@@ -1531,7 +1527,7 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), span))
-                        .with_message(format!("{}", first_impl))
+                        .with_message(first_impl.to_string())
                         .with_color(Color::Red),
                 )
                 .with_help("remove one of the conflicting impl blocks")
