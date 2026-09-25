@@ -534,12 +534,6 @@ pub extern "C" fn mesh_actor_send_shaped(
     }
 }
 
-/// Detach a message from the sending actor's heap before it is queued.
-///
-/// What `shape` describes at `buffer.data[base..]` is copied into the buffer;
-/// references it cannot describe are lent by the heaps that own them. Outside
-/// an actor there is no heap to detach from, and such callers only hold
-/// static or arena data.
 /// Pacing for a wait on the main thread, which is not a coroutine and so
 /// polls its mailbox instead of yielding to the scheduler.
 ///
@@ -591,6 +585,12 @@ pub(crate) fn pin_closure_env(env: *mut u8) {
     std::mem::forget(lend_closure_env(env));
 }
 
+/// Detach a message from the sending actor's heap before it is queued.
+///
+/// What `shape` describes at `buffer.data[base..]` is copied into the buffer;
+/// references it cannot describe are lent by the heaps that own them. Outside
+/// an actor there is no heap to detach from, and such callers only hold
+/// static or arena data.
 pub(crate) fn detach_from_sender(
     sched: &Scheduler,
     buffer: &mut MessageBuffer,
