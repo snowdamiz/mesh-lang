@@ -25,23 +25,18 @@ use crate::native::ResolvedNativeBinding;
 /// - `"my_cool_lib"` -> `"MyCoolLib"`
 pub fn to_pascal_case(s: &str) -> String {
     s.split('_')
-        .filter(|part| !part.is_empty())
-        .map(|part| {
+        .filter_map(|part| {
             let mut chars = part.chars();
-            match chars.next() {
-                Some(c) => {
-                    let upper: String = c.to_uppercase().collect();
-                    upper + chars.as_str()
-                }
-                None => String::new(),
-            }
+            let first = chars.next()?;
+            Some(first.to_uppercase().chain(chars).collect::<String>())
         })
         .collect()
 }
 
 /// Convert a relative file path to a PascalCase module name.
 ///
-/// Returns `None` for `main.mpl` in the project root (the entry point).
+/// Returns `None` for `main.mpl` in the project root (the entry point), and
+/// for a path with a name that is not UTF-8.
 ///
 /// # Convention
 ///
@@ -52,34 +47,24 @@ pub fn to_pascal_case(s: &str) -> String {
 /// - `main.mpl` -> `None`
 pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
     let stem = relative_path.file_stem()?.to_str()?;
-    let parent = relative_path.parent();
-
-    // Check if this is main.mpl at the project root
-    let parent_is_empty = match parent {
-        None => true,
-        Some(p) => p.as_os_str().is_empty() || p == Path::new("."),
-    };
-
-    if stem == "main" && parent_is_empty {
+    // A directory whose name is not UTF-8 names no module.
+    let directories = relative_path
+        .parent()
+        .into_iter()
+        .flat_map(Path::components)
+        .filter_map(|component| match component {
+            Component::Normal(name) => Some(name.to_str()),
+            _ => None,
+        })
+        .collect::<Option<Vec<&str>>>()?;
+    if stem == "main" && directories.is_empty() {
         return None;
     }
-
-    // Collect directory components
-    let mut parts: Vec<String> = Vec::new();
-
-    if let Some(parent_path) = parent {
-        for component in parent_path.components() {
-            if let Component::Normal(os_str) = component {
-                if let Some(s) = os_str.to_str() {
-                    parts.push(to_pascal_case(s));
-                }
-            }
-        }
-    }
-
-    // Add the file stem
-    parts.push(to_pascal_case(stem));
-
+    let parts: Vec<String> = directories
+        .into_iter()
+        .chain([stem])
+        .map(to_pascal_case)
+        .collect();
     Some(parts.join("."))
 }
 
@@ -1068,6 +1053,142 @@ from Baz.Qux import { name1, name2 }
     }
 
     // ── build_project tests ──────────────────────────────────────────────
+
+    #[test]
+    fn module_names_come_from_the_path() {
+        assert_eq!(to_pascal_case("my__cool_"), "MyCool");
+        assert_eq!(
+            path_to_module_name(Path::new("./net/http_client.mpl")).as_deref(),
+            Some("Net.HttpClient")
+        );
+        assert_eq!(
+            path_to_module_name(Path::new("lib/main.mpl")).as_deref(),
+            Some("Lib.Main")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let dir = std::ffi::OsStr::from_bytes(b"\xff");
+            assert_eq!(path_to_module_name(&Path::new(dir).join("x.mpl")), None);
+        }
+    }
+
+    #[test]
+    fn an_entrypoint_outside_the_project_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        for entry in ["../main.mpl", "/main.mpl"] {
+            let error = build_project_with_entrypoint(tmp.path(), Path::new(entry))
+                .err()
+                .unwrap();
+            assert!(
+                error.contains("must stay within project"),
+                "{entry}: {error}"
+            );
+        }
+    }
+
+    /// A native binding is a module of its own, unless it is a file of the
+    /// project already; one named like another file's module is refused.
+    #[test]
+    fn native_bindings_join_the_project_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("app");
+        fs::create_dir_all(root.join("bindings")).unwrap();
+        fs::write(root.join("main.mpl"), "fn main() do\n  1\nend\n").unwrap();
+        fs::write(
+            root.join("bindings/own.mpl"),
+            "pub fn own() -> Int do\n  1\nend\n",
+        )
+        .unwrap();
+        let dependency = tmp.path().join("dep");
+        fs::create_dir_all(dependency.join("bindings")).unwrap();
+        fs::write(
+            dependency.join("bindings/own.mpl"),
+            "pub fn other() -> Int do\n  2\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            dependency.join("bindings/extra.mpl"),
+            "pub fn extra() -> Int do\n  3\nend\n",
+        )
+        .unwrap();
+        let binding = |package_root: &Path, relative: &str| ResolvedNativeBinding {
+            package: "p".to_string(),
+            path: package_root.join(relative),
+            relative_path: PathBuf::from(relative),
+        };
+        let build = |bindings: &[ResolvedNativeBinding]| {
+            super::build_project(
+                &root,
+                Path::new(DEFAULT_ENTRYPOINT),
+                bindings,
+                false,
+                &read_file,
+            )
+        };
+
+        let project = build(&[
+            binding(&root, "bindings/own.mpl"),
+            binding(&dependency, "bindings/extra.mpl"),
+        ])
+        .unwrap();
+        let names: Vec<&str> = project
+            .graph
+            .modules
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(names, ["Bindings.Own", "Main", "Bindings.Extra"]);
+
+        let error = build(&[binding(&dependency, "bindings/own.mpl")])
+            .err()
+            .unwrap();
+        assert!(
+            error.contains("Native binding module `Bindings.Own`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_private_module_block_is_not_imported_from_another_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("shapes.mpl"),
+            "module Inner do\n  pub fn f() -> Int do\n    1\n  end\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("main.mpl"),
+            "import Inner\n\nfn main() do\n  1\nend\n",
+        )
+        .unwrap();
+        let error = build_project(root).err().unwrap();
+        assert!(error.contains("is private to"), "{error}");
+    }
+
+    /// Using an interface adds a dependency on the module defining it,
+    /// unless that module already depends on the user: a cycle would
+    /// follow, and the order is right already.
+    #[test]
+    fn using_an_interface_adds_no_edge_that_would_close_a_cycle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("greeting.mpl"),
+            "import Numbers\n\npub interface Greet do\n  fn greet(self) -> String\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("numbers.mpl"),
+            "impl Greet for Int do\n  fn greet(self) -> String do\n    \"hi\"\n  end\nend\n",
+        )
+        .unwrap();
+        fs::write(root.join("main.mpl"), "fn main() do\n  1\nend\n").unwrap();
+        let (graph, order) = build_module_graph(root).unwrap();
+        let position = |name: &str| order.iter().position(|id| graph.get(*id).name == name);
+        assert!(position("Numbers") < position("Greeting"));
+    }
 
     #[test]
     fn test_build_project_simple() {
