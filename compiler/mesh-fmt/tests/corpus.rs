@@ -29,7 +29,14 @@ fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
 fn every_repository_source_formats_losslessly_and_idempotently() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files = Vec::new();
-    for dir in ["tests", "examples", "benchmarks", "packages", "mesh-slug", "scripts"] {
+    for dir in [
+        "tests",
+        "examples",
+        "benchmarks",
+        "packages",
+        "mesh-slug",
+        "scripts",
+    ] {
         sources(&root.join(dir), &mut files);
     }
     assert!(files.len() > 200, "found only {} sources", files.len());

@@ -175,7 +175,11 @@ fn trim_or_empty(value: Option<&str>) -> String {
     value.map(str::trim).unwrap_or_default().to_string()
 }
 
-fn has_cluster_hint(discovery_seed: &str, explicit_node_name: &str, explicit_node_host: &str) -> bool {
+fn has_cluster_hint(
+    discovery_seed: &str,
+    explicit_node_name: &str,
+    explicit_node_host: &str,
+) -> bool {
     !discovery_seed.is_empty()
         || !explicit_node_name.trim().is_empty()
         || !explicit_node_host.trim().is_empty()

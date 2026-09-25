@@ -1048,5 +1048,4 @@ template_revision = "v1"
             .iter()
             .any(|error| error.contains("must include the worker role")));
     }
-
 }

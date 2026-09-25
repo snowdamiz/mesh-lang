@@ -10490,7 +10490,11 @@ impl<'a> Lowerer<'a> {
         let table_op = runtime_name
             .strip_prefix("mesh_map_")
             .map(|op| ("map", "Map", op))
-            .or_else(|| runtime_name.strip_prefix("mesh_set_").map(|op| ("set", "Set", op)));
+            .or_else(|| {
+                runtime_name
+                    .strip_prefix("mesh_set_")
+                    .map(|op| ("set", "Set", op))
+            });
         if let Some((collection, type_name, op)) = table_op {
             // `Map.get` runs as `mesh_map_fetch`.
             let op = if op == "fetch" { "get" } else { op };
@@ -12774,7 +12778,12 @@ impl<'a> Lowerer<'a> {
                             let (eq, hash) = self.key_callbacks(elem);
                             Self::call_named(
                                 "mesh_set_eq_by",
-                                vec![MirType::Ptr, MirType::Ptr, eq.ty().clone(), hash.ty().clone()],
+                                vec![
+                                    MirType::Ptr,
+                                    MirType::Ptr,
+                                    eq.ty().clone(),
+                                    hash.ty().clone(),
+                                ],
                                 vec![lhs, rhs, eq, hash],
                                 MirType::Bool,
                             )
@@ -13768,7 +13777,12 @@ impl<'a> Lowerer<'a> {
             vec![queue()],
             MirType::Ptr,
         );
-        let front = Self::call_named("mesh_queue_peek", vec![MirType::Ptr], vec![queue()], elem_mir);
+        let front = Self::call_named(
+            "mesh_queue_peek",
+            vec![MirType::Ptr],
+            vec![queue()],
+            elem_mir,
+        );
         let tuple = Self::call_named(
             "__mesh_make_tuple",
             vec![MirType::Int; 2],

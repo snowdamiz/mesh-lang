@@ -2892,7 +2892,10 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         for (name, scheme) in [
             // `a -> Iter<b>`: the source's type settles `b` at the call
             // (`settle_iter_source`).
-            ("from", scheme(vec![t, u], vec![tv.clone()], iter(uv.clone()))),
+            (
+                "from",
+                scheme(vec![t, u], vec![tv.clone()], iter(uv.clone())),
+            ),
             (
                 "map",
                 scheme(
@@ -10117,10 +10120,14 @@ fn settle_iter_source(
         return Ok(());
     }
     let element = match ctx.resolve(source.clone()) {
-        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") && args.len() == 2 => {
+        Ty::App(con, args)
+            if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") && args.len() == 2 =>
+        {
             Ty::Tuple(args)
         }
-        Ty::App(con, mut args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Set") && args.len() == 1 => {
+        Ty::App(con, mut args)
+            if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Set") && args.len() == 1 =>
+        {
             args.remove(0)
         }
         Ty::Con(tc) if tc.name == "Range" => Ty::int(),

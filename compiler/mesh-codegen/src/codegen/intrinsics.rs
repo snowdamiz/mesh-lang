@@ -4762,19 +4762,51 @@ pub fn get_intrinsic<'ctx>(module: &Module<'ctx>, name: &str) -> FunctionValue<'
 fn set_by_declarations<'ctx>(
     ptr_type: inkwell::types::PointerType<'ctx>,
     i64_type: inkwell::types::IntType<'ctx>,
-) -> Vec<(&'static str, Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>>, u8)> {
+) -> Vec<(
+    &'static str,
+    Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>>,
+    u8,
+)> {
     let callbacks = [ptr_type.into(), ptr_type.into()];
     let with = |args: &[inkwell::types::BasicMetadataTypeEnum<'ctx>]| {
         args.iter().chain(&callbacks).copied().collect::<Vec<_>>()
     };
     vec![
-        ("mesh_set_add_by", with(&[ptr_type.into(), i64_type.into()]), 1),
-        ("mesh_set_remove_by", with(&[ptr_type.into(), i64_type.into()]), 1),
-        ("mesh_set_contains_by", with(&[ptr_type.into(), i64_type.into()]), 2),
-        ("mesh_set_union_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
-        ("mesh_set_intersection_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
-        ("mesh_set_difference_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
-        ("mesh_set_eq_by", with(&[ptr_type.into(), ptr_type.into()]), 2),
+        (
+            "mesh_set_add_by",
+            with(&[ptr_type.into(), i64_type.into()]),
+            1,
+        ),
+        (
+            "mesh_set_remove_by",
+            with(&[ptr_type.into(), i64_type.into()]),
+            1,
+        ),
+        (
+            "mesh_set_contains_by",
+            with(&[ptr_type.into(), i64_type.into()]),
+            2,
+        ),
+        (
+            "mesh_set_union_by",
+            with(&[ptr_type.into(), ptr_type.into()]),
+            1,
+        ),
+        (
+            "mesh_set_intersection_by",
+            with(&[ptr_type.into(), ptr_type.into()]),
+            1,
+        ),
+        (
+            "mesh_set_difference_by",
+            with(&[ptr_type.into(), ptr_type.into()]),
+            1,
+        ),
+        (
+            "mesh_set_eq_by",
+            with(&[ptr_type.into(), ptr_type.into()]),
+            2,
+        ),
         ("mesh_set_from_list_by", with(&[ptr_type.into()]), 1),
         ("mesh_set_collect_by", with(&[ptr_type.into()]), 1),
     ]

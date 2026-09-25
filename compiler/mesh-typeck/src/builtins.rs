@@ -3699,7 +3699,8 @@ mod tests {
 /// The `Set` and `Queue` module functions, by name, over any element type:
 /// `Set.add(Set<T>, T) -> Set<T>`, `Queue.pop(Queue<T>) -> (T, Queue<T>)`.
 #[allow(clippy::type_complexity)]
-pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'static str, Scheme)>) {
+pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'static str, Scheme)>)
+{
     let generic = |t_var: TyVar, ty: Ty| Scheme {
         vars: vec![t_var],
         ty,
@@ -3709,15 +3710,36 @@ pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'
     let set_t = Ty::set(t.clone());
     let set_fns = [
         ("new", Ty::fun(vec![], set_t.clone())),
-        ("add", Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone())),
-        ("remove", Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone())),
-        ("contains", Ty::fun(vec![set_t.clone(), t.clone()], Ty::bool())),
+        (
+            "add",
+            Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone()),
+        ),
+        (
+            "remove",
+            Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone()),
+        ),
+        (
+            "contains",
+            Ty::fun(vec![set_t.clone(), t.clone()], Ty::bool()),
+        ),
         ("size", Ty::fun(vec![set_t.clone()], Ty::int())),
-        ("union", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-        ("intersection", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-        ("difference", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+        (
+            "union",
+            Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone()),
+        ),
+        (
+            "intersection",
+            Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone()),
+        ),
+        (
+            "difference",
+            Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone()),
+        ),
         ("to_list", Ty::fun(vec![set_t.clone()], Ty::list(t.clone()))),
-        ("from_list", Ty::fun(vec![Ty::list(t.clone())], set_t.clone())),
+        (
+            "from_list",
+            Ty::fun(vec![Ty::list(t.clone())], set_t.clone()),
+        ),
         ("collect", Ty::fun(vec![Ty::iter(t.clone())], set_t.clone())),
     ];
     let queue_var = TyVar(93100);
@@ -3725,10 +3747,16 @@ pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'
     let queue_t = Ty::queue(t.clone());
     let queue_fns = [
         ("new", Ty::fun(vec![], queue_t.clone())),
-        ("push", Ty::fun(vec![queue_t.clone(), t.clone()], queue_t.clone())),
+        (
+            "push",
+            Ty::fun(vec![queue_t.clone(), t.clone()], queue_t.clone()),
+        ),
         (
             "pop",
-            Ty::fun(vec![queue_t.clone()], Ty::Tuple(vec![t.clone(), queue_t.clone()])),
+            Ty::fun(
+                vec![queue_t.clone()],
+                Ty::Tuple(vec![t.clone(), queue_t.clone()]),
+            ),
         ),
         ("peek", Ty::fun(vec![queue_t.clone()], t.clone())),
         ("size", Ty::fun(vec![queue_t.clone()], Ty::int())),

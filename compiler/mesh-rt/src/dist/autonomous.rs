@@ -18,8 +18,8 @@ use super::scaling::{
     Autoscaler, CapacityDriver, CapacityReconcileOutcome, CapacityReconciler,
     CommittedDesiredCapacity, ControlLogEntry, ControlMutation, ControlPlaneCommitter, ControlTerm,
     DesiredCapacity, DesiredRevision, DockerCapacityDriver, DockerDriverConfig,
-    DockerEnvironmentFileMount, ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety, ScalingDecision,
-    ScalingSample,
+    DockerEnvironmentFileMount, ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety,
+    ScalingDecision, ScalingSample,
 };
 use sha2::{Digest, Sha256};
 

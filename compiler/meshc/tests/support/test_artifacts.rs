@@ -36,7 +36,9 @@ pub fn ensure_mesh_rt_staticlib() {
     static BUILD_ONCE: OnceLock<()> = OnceLock::new();
     BUILD_ONCE.get_or_init(|| {
         let mut command = Command::new("cargo");
-        command.current_dir(repo_root()).args(["build", "-p", "mesh-rt"]);
+        command
+            .current_dir(repo_root())
+            .args(["build", "-p", "mesh-rt"]);
         for (name, _) in std::env::vars_os() {
             let name = name.to_string_lossy();
             if name.contains("RUSTFLAGS")

@@ -279,7 +279,11 @@ pub extern "C-unwind" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
 
 /// `mesh_set_from_list` with elements compared by `eq` and hashed by `hash`.
 #[no_mangle]
-pub extern "C-unwind" fn mesh_set_from_list_by(list: *mut u8, eq: *mut u8, hash: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_set_from_list_by(
+    list: *mut u8,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
     unsafe {
         let keys = keys(eq, hash);
         let (len, data) = super::list::list_slots(list);

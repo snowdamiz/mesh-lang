@@ -252,9 +252,10 @@ pub use dist::scaling::{
     CommittedDesiredCapacity, ControlLogEntry, ControlMutation, ControlPlaneCommitter, ControlTerm,
     ControllerQuorum, DesiredCapacity, DesiredRevision, DockerCapacityDriver, DockerDriverConfig,
     DockerEnvironmentFileMount, DrainCandidate, DrainPhase, DrainProgress, DriverOperation,
-    DriverOperationState, DurableControlLog, FakeCapacityDriver, LocalScalingDecision, LocalScalingPolicy, LocalSchedulerAutoscaler,
-    ObservedCapacityNode, ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety,
-    ScalingAction, ScalingDecision, ScalingPolicy, ScalingSample,
+    DriverOperationState, DurableControlLog, FakeCapacityDriver, LocalScalingDecision,
+    LocalScalingPolicy, LocalSchedulerAutoscaler, ObservedCapacityNode, ProcessCapacityDriver,
+    ProcessDriverConfig, ReconcileNodeSafety, ScalingAction, ScalingDecision, ScalingPolicy,
+    ScalingSample,
 };
 pub use dist::telemetry::{
     global_admission_controller, runtime_telemetry, AdmissionController, AdmissionLimits,
