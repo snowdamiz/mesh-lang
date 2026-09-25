@@ -202,3 +202,22 @@ fn more(xs, pid, m) do
 end
 
 fn cons_param(_ :: rest) = rest # cons param
+
+module Blocks #= module =# do
+  fn a() = 1 #= after =# + 2
+end
+
+struct Boxed #= struct =# do
+  a :: Int
+end
+
+@cluster(#= count =# 3)
+fn clustered() do
+  g(1 #= one =#, 2)
+end
+
+impl Show for #= impl =# Boxed do
+  fn show(self) -> String do
+    "boxed"
+  end
+end

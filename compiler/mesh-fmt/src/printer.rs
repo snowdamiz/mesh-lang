@@ -98,6 +98,12 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
                     col = indent;
                     line_indent = indent;
                 }
+                // A block comment keeps a space from the code after it
+                // (`#= why =# x`); nothing else ends in `=#`.
+                if out.ends_with("=#") && !s.starts_with([' ', ')', ']', '}', ',']) {
+                    out.push(' ');
+                    col += 1;
+                }
                 last_text_began_line = col == line_indent;
                 out.push_str(s);
                 col += s.len();
