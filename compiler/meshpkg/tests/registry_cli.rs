@@ -420,3 +420,106 @@ fn login_and_publish_upload_the_package_with_the_token() {
         assert!(error["error"].as_str().unwrap().contains(message));
     }
 }
+
+/// A native package publishes its bindings and its archives, each archive
+/// checked against the SHA-256 the manifest declares; a member that is
+/// missing, a directory, reached through a link, or does not match is
+/// refused before anything is uploaded.
+#[test]
+fn publish_packs_native_members_and_refuses_bad_ones() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let dir = project.path();
+    let archive = b"!<arch>\nnot really an archive\n";
+    let archive_sha = format!("{:x}", Sha256::digest(archive));
+    std::fs::create_dir_all(dir.join("bindings")).unwrap();
+    std::fs::create_dir_all(dir.join("native/x86_64-unknown-linux-gnu")).unwrap();
+    std::fs::write(
+        dir.join("bindings/math.mpl"),
+        "@native(\"math_add\")\npub fn add(a :: Int, b :: Int) -> Int\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("native/x86_64-unknown-linux-gnu/libmath.a"),
+        archive,
+    )
+    .unwrap();
+    let manifest = |binding: &str, sha: &str| {
+        format!(
+            "[package]\nname = \"acme/math\"\nversion = \"0.1.0\"\n\n[native]\nabi = 1\nbindings = [\"{binding}\"]\n\n[[native.libraries]]\ntarget = \"x86_64-unknown-linux-gnu\"\npath = \"native/x86_64-unknown-linux-gnu/libmath.a\"\nsha256 = \"{sha}\"\n"
+        )
+    };
+    let login = meshpkg(&["login", "--token", "secret-token"], dir, home.path());
+    assert!(login.status.success(), "{}", text(&login));
+
+    std::fs::write(
+        dir.join("mesh.toml"),
+        manifest("bindings/math.mpl", &archive_sha),
+    )
+    .unwrap();
+    let registry = Registry::serve(vec![(
+        "POST",
+        "/api/v1/packages".to_string(),
+        201,
+        Vec::new(),
+    )]);
+    let output = meshpkg(&["publish", "--registry", &registry.url], dir, home.path());
+    assert!(output.status.success(), "{}", text(&output));
+    let body = registry.requests()[0].body.clone();
+    let mut members: Vec<String> = tar::Archive::new(flate2::read::GzDecoder::new(body.as_slice()))
+        .entries()
+        .unwrap()
+        .map(|entry| entry.unwrap().path().unwrap().display().to_string())
+        .collect();
+    members.sort();
+    assert!(
+        members.contains(&"bindings/math.mpl".to_string())
+            && members.contains(&"native/x86_64-unknown-linux-gnu/libmath.a".to_string()),
+        "{members:?}"
+    );
+
+    // Publishing refuses any link among the package's sources; one under a
+    // hidden directory, which that walk skips, reaches the declared-member
+    // check.
+    std::fs::create_dir_all(dir.join(".linked")).unwrap();
+    std::fs::create_dir_all(dir.join("bindings/dir.mpl")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dir.join("bindings/math.mpl"), dir.join(".linked/math.mpl"))
+        .unwrap();
+    let wrong_sha = "0".repeat(64);
+    let mut refusals = vec![
+        (
+            manifest("bindings/math.mpl", &wrong_sha),
+            "SHA-256 mismatch for native archive",
+        ),
+        (
+            manifest("bindings/missing.mpl", &archive_sha),
+            "does not exist or cannot be read",
+        ),
+        (
+            manifest("bindings/dir.mpl", &archive_sha),
+            "must be a file inside",
+        ),
+    ];
+    if cfg!(unix) {
+        refusals.push((
+            manifest(".linked/math.mpl", &archive_sha),
+            "must not contain a symbolic link",
+        ));
+    }
+    for (manifest, message) in refusals {
+        std::fs::write(dir.join("mesh.toml"), &manifest).unwrap();
+        let output = meshpkg(&["publish", "--registry", &registry.url], dir, home.path());
+        assert!(!output.status.success(), "{message}");
+        assert!(
+            text(&output).contains(message),
+            "{message}: {}",
+            text(&output)
+        );
+    }
+    assert_eq!(
+        registry.requests().len(),
+        1,
+        "a refused package was uploaded"
+    );
+}
