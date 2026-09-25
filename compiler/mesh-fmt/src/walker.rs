@@ -93,6 +93,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
+        SyntaxKind::DESTRUCTURE_BINDING => walk_destructure_binding(node),
         SyntaxKind::STRUCT_LITERAL | SyntaxKind::STRUCT_PAT | SyntaxKind::JSON_EXPR => {
             walk_braced_fields(node)
         }
@@ -441,13 +442,8 @@ fn walk_if_expr(node: &SyntaxNode) -> FormatIR {
                         let body = walk_block_body(&n);
                         parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                     }
-                    SyntaxKind::ELSE_BRANCH => {
-                        parts.push(walk_node(&n));
-                    }
-                    _ => {
-                        // Condition expression.
-                        parts.push(walk_node(&n));
-                    }
+                    // The condition and the else branch.
+                    _ => parts.push(walk_node(&n)),
                 }
             }
         }
@@ -479,11 +475,9 @@ fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
                     let body = walk_block_body(&n);
                     parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                 }
-                SyntaxKind::IF_EXPR => {
-                    parts.push(sp());
-                    parts.push(walk_node(&n));
-                }
+                // `else if`.
                 _ => {
+                    parts.push(sp());
                     parts.push(walk_node(&n));
                 }
             },
@@ -575,16 +569,8 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
                         let body = walk_block_body(&n);
                         parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                     }
-                    SyntaxKind::NAME => {
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::DESTRUCTURE_BINDING => {
-                        parts.push(walk_destructure_binding(&n));
-                    }
-                    _ => {
-                        // Iterable expression and filter expression.
-                        parts.push(walk_node(&n));
-                    }
+                    // The binding, the iterable and the filter.
+                    _ => parts.push(walk_node(&n)),
                 }
             }
         }
