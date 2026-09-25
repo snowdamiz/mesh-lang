@@ -368,7 +368,7 @@ end
 
     #[test]
     fn idempotent_closure_expr() {
-        assert_idempotent("closure expression", "let f = fn (x) -> x + 1 end");
+        assert_idempotent("closure expression", "let f = fn(x) -> x + 1 end");
     }
 
     #[test]

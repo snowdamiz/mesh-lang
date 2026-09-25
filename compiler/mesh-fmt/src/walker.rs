@@ -1433,7 +1433,11 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                         // Check if this is a bare param list (no parens) or parenthesized.
                         let has_parens = n.elements().any(|c| c.kind() == SyntaxKind::L_PAREN);
                         if has_parens {
-                            // Parenthesized: use standard paren list formatting.
+                            // `fn(x)`, spelled like the function type `fn(Int)`.
+                            if matches!(parts.as_slice(), [.., FormatIR::Text(f), FormatIR::Text(s)] if f == "fn" && s == " ")
+                            {
+                                parts.pop();
+                            }
                             parts.push(walk_paren_list(&n));
                             parts.push(sp());
                         } else {
@@ -2720,6 +2724,14 @@ mod tests {
     }
 
     #[test]
+    fn a_closure_is_spelled_like_a_function_type() {
+        assert_eq!(
+            fmt("fn main() do\nlet f = fn (x, y) -> x end\nlet g = fn x -> x end\nfn () do 1 end\nend"),
+            "fn main() do\n  let f = fn(x, y) -> x end\n  let g = fn x -> x end\n  fn() do 1 end\nend\n"
+        );
+    }
+
+    #[test]
     fn fields_separated_by_new_lines_get_commas() {
         assert_eq!(
             fmt("case p do\nPoint {\nx\ny: 0\n} -> x\nend"),
@@ -2903,7 +2915,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            "fn foo() do\n  Ok(rows\n    |> List.map(fn (row) do\n      Organization {\n        id: Map.get(row, \"id\"),\n        name: Map.get(row, \"name\"),\n        slug: Map.get(row, \"slug\"),\n        created_at: Map.get(row, \"created_at\")\n      }\n    end))\nend\n"
+            "fn foo() do\n  Ok(rows\n    |> List.map(fn(row) do\n      Organization {\n        id: Map.get(row, \"id\"),\n        name: Map.get(row, \"name\"),\n        slug: Map.get(row, \"slug\"),\n        created_at: Map.get(row, \"created_at\")\n      }\n    end))\nend\n"
         );
     }
 

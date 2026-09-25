@@ -21,7 +21,7 @@ fn slugify_core(str :: String, sep :: String) -> String do
   let lower = String.to_lower(str)
   let replaced = Regex.replace(~r/[^a-z0-9]+/, lower, sep)
   let parts = String.split(replaced, sep)
-  let non_empty = List.filter(parts, fn (p) -> String.length(p) > 0 end)
+  let non_empty = List.filter(parts, fn(p) -> String.length(p) > 0 end)
   String.join(non_empty, sep)
 end
 
