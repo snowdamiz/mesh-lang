@@ -1,7 +1,7 @@
 use mesh_common::{module_graph::ModuleGraph, span::Span};
-use mesh_parser::ast::item::{ClusteredDeclSyntax, Item};
+use mesh_parser::ast::item::Item;
 use serde::{Deserialize, Deserializer};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
@@ -126,37 +126,6 @@ impl NativePackage {
 
 pub const DEFAULT_ENTRYPOINT: &str = "main.mpl";
 
-/// The narrow public clustered-handler boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusteredDeclarationKind {
-    ServiceCall,
-    ServiceCast,
-    Work,
-}
-
-impl ClusteredDeclarationKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ClusteredDeclarationKind::ServiceCall => "service_call",
-            ClusteredDeclarationKind::ServiceCast => "service_cast",
-            ClusteredDeclarationKind::Work => "work",
-        }
-    }
-}
-
-impl fmt::Display for ClusteredDeclarationKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Compiler-known executable metadata for one declared clustered target.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusteredExecutableSurfaceInfo {
-    pub runtime_registration_name: String,
-    pub executable_symbol: Option<String>,
-}
-
 pub const DEFAULT_CLUSTER_REPLICATION_COUNT: u32 = 2;
 
 /// Whether a clustered declaration used the default replication count or an explicit source value.
@@ -204,111 +173,22 @@ impl fmt::Display for ClusteredReplicationCount {
     }
 }
 
-/// Source spelling used for a clustered declaration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SourceClusteredDeclarationSyntax {
-    Decorator,
-}
-
-impl SourceClusteredDeclarationSyntax {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SourceClusteredDeclarationSyntax::Decorator => "`@cluster` decorator",
-        }
-    }
-}
-
-impl fmt::Display for SourceClusteredDeclarationSyntax {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl From<ClusteredDeclSyntax> for SourceClusteredDeclarationSyntax {
-    fn from(value: ClusteredDeclSyntax) -> Self {
-        match value {
-            ClusteredDeclSyntax::SourceDecorator => SourceClusteredDeclarationSyntax::Decorator,
-        }
-    }
-}
-
-/// Provenance for a clustered declaration discovered in source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusteredDeclarationProvenance {
-    pub module_name: String,
-    pub file: PathBuf,
-    pub span: Span,
-    pub syntax: SourceClusteredDeclarationSyntax,
-}
-
-/// One clustered declaration collected from source code.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceClusteredDeclaration {
-    pub kind: ClusteredDeclarationKind,
-    pub target: String,
-    pub replication_count: ClusteredReplicationCount,
-    pub provenance: ClusteredDeclarationProvenance,
-}
-
-/// Validated clustered execution metadata that survives manifest checking.
+/// A clustered function to run on the cluster.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClusteredExecutionMetadata {
-    pub kind: ClusteredDeclarationKind,
-    pub source_target: String,
+    /// `Module.function`.
     pub runtime_registration_name: String,
     pub executable_symbol: String,
     pub replication_count: ClusteredReplicationCount,
-    pub origin: ClusteredDeclarationOrigin,
 }
 
-/// Minimal compiler-known clustered boundary used by both meshc and mesh-lsp.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ClusteredExportSurface {
-    pub work_functions: BTreeMap<String, ClusteredExecutableSurfaceInfo>,
-    pub ambiguous_work_functions: BTreeSet<String>,
-    pub private_work_functions: BTreeSet<String>,
-    pub service_call_handlers: BTreeMap<String, ClusteredExecutableSurfaceInfo>,
-    pub service_cast_handlers: BTreeMap<String, ClusteredExecutableSurfaceInfo>,
-    pub service_start_helpers: BTreeSet<String>,
-}
-
-/// Where a clustered declaration came from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClusteredDeclarationOrigin {
-    Source(ClusteredDeclarationProvenance),
-}
-
-impl ClusteredDeclarationOrigin {
-    pub fn provenance(&self) -> Option<&ClusteredDeclarationProvenance> {
-        match self {
-            ClusteredDeclarationOrigin::Source(provenance) => Some(provenance),
-        }
-    }
-}
-
-impl fmt::Display for ClusteredDeclarationOrigin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ClusteredDeclarationOrigin::Source(provenance) => {
-                write!(f, "a source {}", provenance.syntax)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ClusteredDeclarationEntry {
-    kind: ClusteredDeclarationKind,
-    target: String,
-    origin: ClusteredDeclarationOrigin,
-    replication_count: ClusteredReplicationCount,
-}
-
-/// One fail-closed clustered declaration validation issue.
+/// An `@cluster` decorator on a function that cannot run on the cluster.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClusteredDeclarationError {
-    pub origin: ClusteredDeclarationOrigin,
-    pub kind: ClusteredDeclarationKind,
+    /// The decorated function's file, relative to the project root.
+    pub file: PathBuf,
+    /// The decorator's span.
+    pub span: Span,
     pub target: String,
     pub replication_count: ClusteredReplicationCount,
     pub reason: String,
@@ -318,8 +198,8 @@ impl fmt::Display for ClusteredDeclarationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "clustered declaration `{}` for `{}` from {} with replication count {} is invalid: {}",
-            self.kind, self.target, self.origin, self.replication_count, self.reason
+            "the source `@cluster` decorator on `{}` with replication count {} is invalid: {}",
+            self.target, self.replication_count, self.reason
         )
     }
 }
@@ -711,360 +591,70 @@ impl Manifest {
     }
 }
 
-/// Collect source-level clustered declarations from parsed function items.
-pub fn collect_source_cluster_declarations(
+/// Plan the project's `@cluster` functions. Each must be a public function
+/// its module defines once, and be declared once.
+pub fn plan_cluster_declarations(
     graph: &ModuleGraph,
     parses: &[mesh_parser::Parse],
-) -> Vec<SourceClusteredDeclaration> {
-    let mut declarations = Vec::new();
+) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
+    let mut plan = Vec::new();
+    let mut issues = Vec::new();
 
-    for (module_info, parse) in graph.modules.iter().zip(parses.iter()) {
-        let tree = parse.tree();
-        for item in tree.items() {
-            let Item::FnDef(fn_def) = item else {
-                continue;
-            };
+    for (module_info, parse) in graph.modules.iter().zip(parses) {
+        let functions: Vec<_> = parse
+            .tree()
+            .items()
+            .filter_map(|item| match item {
+                Item::FnDef(fn_def) => {
+                    let name = fn_def.name()?.text()?;
+                    Some((fn_def, name))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut declared = BTreeSet::new();
+
+        for (fn_def, name) in &functions {
             let Some(decl) = fn_def.clustered_decl() else {
                 continue;
             };
-            if decl.kind() != mesh_parser::ast::item::ClusteredDeclKind::Work {
-                continue;
-            }
-            let Some(name) = fn_def.name().and_then(|name| name.text()) else {
+            let target = format!("{}.{}", module_info.name, name);
+            let replication_count = decl.explicit_replica_count().map_or_else(
+                ClusteredReplicationCount::defaulted,
+                ClusteredReplicationCount::explicit,
+            );
+            let public_definitions = functions
+                .iter()
+                .filter(|(other, other_name)| other_name == name && other.visibility().is_some())
+                .count();
+            let reason = if !declared.insert(name) {
+                "target is declared more than once via source clustered declarations"
+            } else if fn_def.visibility().is_none() {
+                "target resolves to a private function; declare a `pub fn` clustered work entrypoint"
+            } else if public_definitions > 1 {
+                "target resolves to multiple public functions with the same source name; overloaded clustered work entrypoints are unsupported"
+            } else {
+                plan.push(ClusteredExecutionMetadata {
+                    runtime_registration_name: target,
+                    executable_symbol: name.clone(),
+                    replication_count,
+                });
                 continue;
             };
-
-            declarations.push(SourceClusteredDeclaration {
-                kind: ClusteredDeclarationKind::Work,
-                target: format!("{}.{}", module_info.name, name),
-                replication_count: decl
-                    .explicit_replica_count()
-                    .map(ClusteredReplicationCount::explicit)
-                    .unwrap_or_else(ClusteredReplicationCount::defaulted),
-                provenance: ClusteredDeclarationProvenance {
-                    module_name: module_info.name.clone(),
-                    file: module_info.path.clone(),
-                    span: decl.declaration_span(),
-                    syntax: decl.syntax_style().into(),
-                },
-            });
-        }
-    }
-
-    declarations
-}
-
-/// Build the compiler-known clustered export surface for public work functions
-/// and service-generated call/cast helpers.
-pub fn build_clustered_export_surface(
-    graph: &ModuleGraph,
-    parses: &[mesh_parser::Parse],
-    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-) -> ClusteredExportSurface {
-    let mut surface = ClusteredExportSurface::default();
-
-    for (idx, parse) in parses.iter().enumerate() {
-        let module_id = mesh_common::module_graph::ModuleId(idx as u32);
-        let module_name = &graph.get(module_id).name;
-        let tree = parse.tree();
-        let mut public_fn_counts: HashMap<String, usize> = HashMap::new();
-
-        for item in tree.items() {
-            if let Item::FnDef(fn_def) = &item {
-                if fn_def.visibility().is_some() {
-                    if let Some(name) = fn_def.name().and_then(|name| name.text()) {
-                        *public_fn_counts.entry(name).or_insert(0) += 1;
-                    }
-                }
-            }
-        }
-
-        for item in tree.items() {
-            if let Item::FnDef(fn_def) = item {
-                let Some(name) = fn_def.name().and_then(|name| name.text()) else {
-                    continue;
-                };
-                let qualified = format!("{}.{}", module_name, name);
-                if fn_def.visibility().is_some() {
-                    if public_fn_counts.get(&name).copied().unwrap_or(0) > 1 {
-                        surface.ambiguous_work_functions.insert(qualified);
-                    } else {
-                        surface.work_functions.insert(
-                            qualified.clone(),
-                            ClusteredExecutableSurfaceInfo {
-                                runtime_registration_name: qualified,
-                                executable_symbol: Some(name),
-                            },
-                        );
-                    }
-                } else {
-                    surface.private_work_functions.insert(qualified);
-                }
-            }
-        }
-
-        let Some(exports) = all_exports.get(idx).and_then(|exports| exports.as_ref()) else {
-            continue;
-        };
-
-        for (service_name, service_info) in &exports.service_defs {
-            for method in &service_info.method_exports {
-                let target = format!("{}.{}.{}", module_name, service_name, method.method_name);
-                match method.kind {
-                    mesh_typeck::ServiceMethodExportKind::Start => {
-                        surface.service_start_helpers.insert(target);
-                    }
-                    mesh_typeck::ServiceMethodExportKind::Call => {
-                        surface.service_call_handlers.insert(
-                            target.clone(),
-                            ClusteredExecutableSurfaceInfo {
-                                runtime_registration_name: target,
-                                executable_symbol: Some(method.generated_name.clone()),
-                            },
-                        );
-                    }
-                    mesh_typeck::ServiceMethodExportKind::Cast => {
-                        surface.service_cast_handlers.insert(
-                            target.clone(),
-                            ClusteredExecutableSurfaceInfo {
-                                runtime_registration_name: target,
-                                executable_symbol: Some(method.generated_name.clone()),
-                            },
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    surface
-}
-
-/// Validate source-declared clustered handlers against the compiler-known export surface.
-pub fn validate_cluster_declarations_with_source(
-    source_declarations: &[SourceClusteredDeclaration],
-    surface: &ClusteredExportSurface,
-) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
-    if source_declarations.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut entries = Vec::with_capacity(source_declarations.len());
-    let mut issues = Vec::new();
-    let mut seen_targets = BTreeSet::new();
-
-    for declaration in source_declarations {
-        if !seen_targets.insert(declaration.target.clone()) {
-            issues.push(source_duplicate_error(declaration));
-            continue;
-        }
-
-        let origin = ClusteredDeclarationOrigin::Source(declaration.provenance.clone());
-        entries.push(ClusteredDeclarationEntry {
-            kind: declaration.kind,
-            target: declaration.target.clone(),
-            origin,
-            replication_count: declaration.replication_count,
-        });
-    }
-
-    match validate_cluster_declaration_entries(&entries, surface) {
-        Ok(metadata) if issues.is_empty() => Ok(metadata),
-        Ok(_) => Err(issues),
-        Err(mut validation_issues) => {
-            issues.append(&mut validation_issues);
-            Err(issues)
-        }
-    }
-}
-
-fn source_duplicate_error(declaration: &SourceClusteredDeclaration) -> ClusteredDeclarationError {
-    ClusteredDeclarationError {
-        origin: ClusteredDeclarationOrigin::Source(declaration.provenance.clone()),
-        kind: declaration.kind,
-        target: declaration.target.clone(),
-        replication_count: declaration.replication_count,
-        reason: "target is declared more than once via source clustered declarations".to_string(),
-    }
-}
-
-fn validate_cluster_declaration_entries(
-    entries: &[ClusteredDeclarationEntry],
-    surface: &ClusteredExportSurface,
-) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
-    let mut issues = Vec::new();
-    let mut metadata = Vec::with_capacity(entries.len());
-
-    for entry in entries {
-        if let Some(reason) = validate_declaration_shape(entry.kind, &entry.target) {
             issues.push(ClusteredDeclarationError {
-                origin: entry.origin.clone(),
-                kind: entry.kind,
-                target: entry.target.clone(),
-                replication_count: entry.replication_count,
-                reason,
+                file: module_info.path.clone(),
+                span: decl.declaration_span(),
+                target,
+                replication_count,
+                reason: reason.to_string(),
             });
-            continue;
-        }
-
-        match entry.kind {
-            ClusteredDeclarationKind::Work => {
-                if let Some(executable) = surface.work_functions.get(&entry.target) {
-                    match clustered_execution_metadata(entry, executable, "public work function") {
-                        Ok(planned) => metadata.push(planned),
-                        Err(issue) => issues.push(issue),
-                    }
-                    continue;
-                }
-
-                let reason = if surface.ambiguous_work_functions.contains(&entry.target) {
-                    "target resolves to multiple public functions with the same source name; overloaded clustered work entrypoints are unsupported".to_string()
-                } else if surface.private_work_functions.contains(&entry.target) {
-                    "target resolves to a private function; declare a `pub fn` clustered work entrypoint".to_string()
-                } else if surface.service_call_handlers.contains_key(&entry.target) {
-                    "target resolves to a service call handler; declare it as `service_call` instead of `work`".to_string()
-                } else if surface.service_cast_handlers.contains_key(&entry.target) {
-                    "target resolves to a service cast handler; declare it as `service_cast` instead of `work`".to_string()
-                } else if surface.service_start_helpers.contains(&entry.target) {
-                    "target resolves to a service start helper; only public work functions belong to the `work` boundary".to_string()
-                } else {
-                    "no public clustered work function matches this target".to_string()
-                };
-
-                issues.push(ClusteredDeclarationError {
-                    origin: entry.origin.clone(),
-                    kind: entry.kind,
-                    target: entry.target.clone(),
-                    replication_count: entry.replication_count,
-                    reason,
-                });
-            }
-            ClusteredDeclarationKind::ServiceCall => {
-                if let Some(executable) = surface.service_call_handlers.get(&entry.target) {
-                    match clustered_execution_metadata(entry, executable, "service call handler") {
-                        Ok(planned) => metadata.push(planned),
-                        Err(issue) => issues.push(issue),
-                    }
-                    continue;
-                }
-
-                let reason = if surface.service_cast_handlers.contains_key(&entry.target) {
-                    "target resolves to a service cast handler, not a service call handler"
-                        .to_string()
-                } else if surface.service_start_helpers.contains(&entry.target) {
-                    "target resolves to a service start helper; only call handlers are valid `service_call` targets"
-                        .to_string()
-                } else {
-                    "no exported service call handler matches this target".to_string()
-                };
-
-                issues.push(ClusteredDeclarationError {
-                    origin: entry.origin.clone(),
-                    kind: entry.kind,
-                    target: entry.target.clone(),
-                    replication_count: entry.replication_count,
-                    reason,
-                });
-            }
-            ClusteredDeclarationKind::ServiceCast => {
-                if let Some(executable) = surface.service_cast_handlers.get(&entry.target) {
-                    match clustered_execution_metadata(entry, executable, "service cast handler") {
-                        Ok(planned) => metadata.push(planned),
-                        Err(issue) => issues.push(issue),
-                    }
-                    continue;
-                }
-
-                let reason = if surface.service_call_handlers.contains_key(&entry.target) {
-                    "target resolves to a service call handler, not a service cast handler"
-                        .to_string()
-                } else if surface.service_start_helpers.contains(&entry.target) {
-                    "target resolves to a service start helper; only cast handlers are valid `service_cast` targets"
-                        .to_string()
-                } else {
-                    "no exported service cast handler matches this target".to_string()
-                };
-
-                issues.push(ClusteredDeclarationError {
-                    origin: entry.origin.clone(),
-                    kind: entry.kind,
-                    target: entry.target.clone(),
-                    replication_count: entry.replication_count,
-                    reason,
-                });
-            }
         }
     }
 
     if issues.is_empty() {
-        Ok(metadata)
+        Ok(plan)
     } else {
         Err(issues)
-    }
-}
-
-fn clustered_execution_metadata(
-    entry: &ClusteredDeclarationEntry,
-    executable: &ClusteredExecutableSurfaceInfo,
-    matched_kind: &str,
-) -> Result<ClusteredExecutionMetadata, ClusteredDeclarationError> {
-    let registration_name = executable.runtime_registration_name.trim();
-    if registration_name.is_empty() {
-        return Err(ClusteredDeclarationError {
-            origin: entry.origin.clone(),
-            kind: entry.kind,
-            target: entry.target.clone(),
-            replication_count: entry.replication_count,
-            reason: format!(
-                "target resolves to an exported {matched_kind}, but execution planning could not derive a runtime registration name"
-            ),
-        });
-    }
-
-    let Some(executable_symbol) = executable
-        .executable_symbol
-        .as_deref()
-        .map(str::trim)
-        .filter(|symbol| !symbol.is_empty())
-    else {
-        return Err(ClusteredDeclarationError {
-            origin: entry.origin.clone(),
-            kind: entry.kind,
-            target: entry.target.clone(),
-            replication_count: entry.replication_count,
-            reason: format!(
-                "target resolves to an exported {matched_kind}, but execution planning could not derive a runtime-executable symbol or wrapper"
-            ),
-        });
-    };
-
-    Ok(ClusteredExecutionMetadata {
-        kind: entry.kind,
-        source_target: entry.target.clone(),
-        runtime_registration_name: registration_name.to_string(),
-        executable_symbol: executable_symbol.to_string(),
-        replication_count: entry.replication_count,
-        origin: entry.origin.clone(),
-    })
-}
-
-fn validate_declaration_shape(kind: ClusteredDeclarationKind, target: &str) -> Option<String> {
-    let segments: Vec<&str> = target.split('.').collect();
-    let has_blank_segment = segments.iter().any(|segment| segment.is_empty());
-    if has_blank_segment {
-        return Some("target must not contain empty path segments".to_string());
-    }
-
-    match kind {
-        ClusteredDeclarationKind::Work if segments.len() < 2 => {
-            Some("work targets must use `<ModulePath>.<function>`".to_string())
-        }
-        ClusteredDeclarationKind::ServiceCall | ClusteredDeclarationKind::ServiceCast
-            if segments.len() < 3 =>
-        {
-            Some("service handler targets must use `<ModulePath>.<Service>.<method>`".to_string())
-        }
-        _ => None,
     }
 }
 
@@ -1074,309 +664,75 @@ mod tests {
     use std::str::FromStr;
     use std::{fs, path::PathBuf};
 
-    use mesh_typeck::{
-        ExportedSymbols, ServiceExportInfo, ServiceMethodExport, ServiceMethodExportKind,
-    };
-
-    fn cluster_surface() -> ClusteredExportSurface {
-        let mut surface = ClusteredExportSurface::default();
-        surface.work_functions.insert(
-            "Work.handle_submit".to_string(),
-            ClusteredExecutableSurfaceInfo {
-                runtime_registration_name: "Work.handle_submit".to_string(),
-                executable_symbol: Some("handle_submit".to_string()),
-            },
-        );
-        surface
-            .private_work_functions
-            .insert("Work.hidden_submit".to_string());
-        surface.service_call_handlers.insert(
-            "Services.Jobs.submit".to_string(),
-            ClusteredExecutableSurfaceInfo {
-                runtime_registration_name: "Services.Jobs.submit".to_string(),
-                executable_symbol: Some("__service_jobs_call_submit".to_string()),
-            },
-        );
-        surface.service_cast_handlers.insert(
-            "Services.Jobs.reset".to_string(),
-            ClusteredExecutableSurfaceInfo {
-                runtime_registration_name: "Services.Jobs.reset".to_string(),
-                executable_symbol: Some("__service_jobs_cast_reset".to_string()),
-            },
-        );
-        surface
-            .service_start_helpers
-            .insert("Services.Jobs.start".to_string());
-        surface
-    }
-
-    fn source_work_declaration(
-        target: &str,
-        replication_count: ClusteredReplicationCount,
-        syntax: SourceClusteredDeclarationSyntax,
-    ) -> SourceClusteredDeclaration {
-        SourceClusteredDeclaration {
-            kind: ClusteredDeclarationKind::Work,
-            target: target.to_string(),
-            replication_count,
-            provenance: ClusteredDeclarationProvenance {
-                module_name: "Work".to_string(),
-                file: PathBuf::from("work.mpl"),
-                span: Span::new(0, 8),
-                syntax,
-            },
-        }
-    }
-
-    #[test]
-    fn collect_source_cluster_decorators_capture_counts_and_provenance() {
+    /// Plans the `@cluster` functions of one module, `Work`.
+    fn plan_work(
+        source: &str,
+    ) -> Result<Vec<ClusteredExecutionMetadata>, Vec<ClusteredDeclarationError>> {
         let mut graph = ModuleGraph::new();
         graph.add_module("Work".to_string(), "work.mpl".into(), false);
-        let parses = vec![mesh_parser::parse(
-            "@cluster pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n\n@cluster(3) pub fn handle_retry(payload :: String) -> String do\n  payload\nend\n",
-        )];
+        let parse = mesh_parser::parse(source);
+        assert!(parse.errors().is_empty());
+        plan_cluster_declarations(&graph, &[parse])
+    }
 
-        let declarations = collect_source_cluster_declarations(&graph, &parses);
+    #[test]
+    fn cluster_decorators_plan_public_functions_with_their_counts() {
+        let plan = plan_work(
+            "@cluster pub fn handle_submit() -> Int do\n  1\nend\n\n@cluster(3) pub fn handle_retry() -> Int do\n  2\nend\n\npub fn local_only() -> Int do\n  3\nend\n",
+        )
+        .expect("public clustered work should plan");
 
-        assert_eq!(declarations.len(), 2);
-        assert_eq!(declarations[0].target, "Work.handle_submit");
         assert_eq!(
-            declarations[0].replication_count,
-            ClusteredReplicationCount::defaulted()
+            plan,
+            [
+                ClusteredExecutionMetadata {
+                    runtime_registration_name: "Work.handle_submit".to_string(),
+                    executable_symbol: "handle_submit".to_string(),
+                    replication_count: ClusteredReplicationCount::defaulted(),
+                },
+                ClusteredExecutionMetadata {
+                    runtime_registration_name: "Work.handle_retry".to_string(),
+                    executable_symbol: "handle_retry".to_string(),
+                    replication_count: ClusteredReplicationCount::explicit(3),
+                },
+            ]
         );
-        assert_eq!(declarations[0].provenance.file, PathBuf::from("work.mpl"));
-        assert_eq!(
-            declarations[0].provenance.syntax,
-            SourceClusteredDeclarationSyntax::Decorator
-        );
-        let span = declarations[0].provenance.span;
-        assert!(span.start < span.end);
+        assert_eq!(plan_work("fn main() do\n  1\nend\n"), Ok(Vec::new()));
+    }
 
-        assert_eq!(declarations[1].target, "Work.handle_retry");
+    #[test]
+    fn cluster_decorators_on_functions_that_cannot_run_are_refused_where_they_are() {
+        let source = "@cluster(3) fn hidden() -> Int do\n  1\nend\n\n@cluster pub fn twice() -> Int do\n  1\nend\n\n@cluster pub fn twice() -> Int do\n  2\nend\n";
+        let issues = plan_work(source).expect_err("these cannot run on the cluster");
+
+        let reasons: Vec<_> = issues
+            .iter()
+            .map(|issue| (issue.target.as_str(), issue.reason.as_str()))
+            .collect();
+        assert_eq!(reasons.len(), 3, "{reasons:?}");
+        assert_eq!(reasons[0].0, "Work.hidden");
+        assert!(reasons[0].1.contains("private function"));
+        assert_eq!(reasons[1].0, "Work.twice");
+        assert!(reasons[1]
+            .1
+            .contains("overloaded clustered work entrypoints"));
+        assert!(reasons[2].1.contains("more than once"));
+
+        let hidden = &issues[0];
+        assert_eq!(hidden.file, PathBuf::from("work.mpl"));
         assert_eq!(
-            declarations[1].replication_count,
+            &source[hidden.span.start as usize..hidden.span.end as usize],
+            "@cluster(3)"
+        );
+        assert_eq!(
+            hidden.replication_count,
             ClusteredReplicationCount::explicit(3)
         );
-        assert_eq!(
-            declarations[1].provenance.syntax,
-            SourceClusteredDeclarationSyntax::Decorator
-        );
-
-        assert!(parses[0].errors().is_empty());
-    }
-
-    #[test]
-    fn cluster_validation_preserves_source_count_and_origin() {
-        let metadata = validate_cluster_declarations_with_source(
-            &[source_work_declaration(
-                "Work.handle_submit",
-                ClusteredReplicationCount::explicit(3),
-                SourceClusteredDeclarationSyntax::Decorator,
-            )],
-            &cluster_surface(),
-        )
-        .expect("source-only clustered work should validate");
-
-        assert_eq!(metadata.len(), 1);
-        assert_eq!(metadata[0].source_target, "Work.handle_submit");
-        assert_eq!(metadata[0].runtime_registration_name, "Work.handle_submit");
-        assert_eq!(
-            metadata[0].replication_count,
-            ClusteredReplicationCount::explicit(3)
-        );
-        let ClusteredDeclarationOrigin::Source(provenance) = &metadata[0].origin;
-        assert_eq!(provenance.file, PathBuf::from("work.mpl"));
-        assert_eq!(provenance.span, Span::new(0, 8));
-        assert_eq!(
-            provenance.syntax,
-            SourceClusteredDeclarationSyntax::Decorator
-        );
-    }
-
-    #[test]
-    fn cluster_validation_rejects_duplicate_source_declarations_with_provenance() {
-        let issues = validate_cluster_declarations_with_source(
-            &[
-                source_work_declaration(
-                    "Work.handle_submit",
-                    ClusteredReplicationCount::defaulted(),
-                    SourceClusteredDeclarationSyntax::Decorator,
-                ),
-                source_work_declaration(
-                    "Work.handle_submit",
-                    ClusteredReplicationCount::defaulted(),
-                    SourceClusteredDeclarationSyntax::Decorator,
-                ),
-            ],
-            &cluster_surface(),
-        )
-        .expect_err("duplicate source declarations should fail");
-
-        assert_eq!(issues.len(), 1);
-        assert_eq!(
-            issues[0].replication_count,
-            ClusteredReplicationCount::defaulted()
-        );
-        assert!(issues[0].reason.contains("more than once"), "{}", issues[0]);
-        let ClusteredDeclarationOrigin::Source(provenance) = &issues[0].origin;
-        assert_eq!(provenance.file, PathBuf::from("work.mpl"));
-        assert_eq!(
-            provenance.syntax,
-            SourceClusteredDeclarationSyntax::Decorator
-        );
-    }
-
-    #[test]
-    fn cluster_validation_rejects_ambiguous_source_work() {
-        let mut surface = cluster_surface();
-        surface
-            .ambiguous_work_functions
-            .insert("Work.handle_submit".to_string());
-        surface.work_functions.remove("Work.handle_submit");
-
-        let issues = validate_cluster_declarations_with_source(
-            &[source_work_declaration(
-                "Work.handle_submit",
-                ClusteredReplicationCount::defaulted(),
-                SourceClusteredDeclarationSyntax::Decorator,
-            )],
-            &surface,
-        )
-        .expect_err("ambiguous source declaration should fail");
-
-        assert_eq!(issues.len(), 1);
-        assert_eq!(
-            issues[0].replication_count,
-            ClusteredReplicationCount::defaulted()
-        );
         assert!(
-            issues[0]
-                .reason
-                .contains("overloaded clustered work entrypoints"),
-            "{}",
-            issues[0]
-        );
-        assert!(matches!(
-            issues[0].origin,
-            ClusteredDeclarationOrigin::Source(_)
-        ));
-    }
-
-    #[test]
-    fn cluster_validation_rejects_private_source_work_with_count_context() {
-        let issues = validate_cluster_declarations_with_source(
-            &[source_work_declaration(
-                "Work.hidden_submit",
-                ClusteredReplicationCount::defaulted(),
-                SourceClusteredDeclarationSyntax::Decorator,
-            )],
-            &cluster_surface(),
-        )
-        .expect_err("private source declaration should fail");
-
-        assert_eq!(issues.len(), 1);
-        assert_eq!(
-            issues[0].replication_count,
-            ClusteredReplicationCount::defaulted()
-        );
-        assert!(
-            issues[0].reason.contains("private function"),
-            "{}",
-            issues[0]
-        );
-        assert!(matches!(
-            issues[0].origin,
-            ClusteredDeclarationOrigin::Source(_)
-        ));
-    }
-
-    #[test]
-    fn shared_export_surface_captures_work_and_service_handlers() {
-        let mut graph = ModuleGraph::new();
-        graph.add_module("Work".to_string(), "work.mpl".into(), false);
-        graph.add_module("Services".to_string(), "services.mpl".into(), false);
-
-        let parses = vec![
-            mesh_parser::parse(
-                "pub fn handle_submit(payload :: String) -> String do\n  payload\nend\n\npub fn handle_submit(payload :: String, retries :: Int) -> String do\n  payload\nend\n\nfn hidden_submit(payload :: String) -> String do\n  payload\nend\n",
+            hidden.to_string().starts_with(
+                "the source `@cluster` decorator on `Work.hidden` with replication count 3 (explicit) is invalid:"
             ),
-            mesh_parser::parse(""),
-        ];
-
-        let mut service_exports = ExportedSymbols::default();
-        service_exports.service_defs.insert(
-            "Jobs".to_string(),
-            ServiceExportInfo {
-                name: "Jobs".to_string(),
-                helpers: Default::default(),
-                methods: vec![],
-                method_exports: vec![
-                    ServiceMethodExport {
-                        method_name: "start".to_string(),
-                        generated_name: "__service_jobs_start".to_string(),
-                        kind: ServiceMethodExportKind::Start,
-                    },
-                    ServiceMethodExport {
-                        method_name: "submit".to_string(),
-                        generated_name: "__service_jobs_call_submit".to_string(),
-                        kind: ServiceMethodExportKind::Call,
-                    },
-                    ServiceMethodExport {
-                        method_name: "reset".to_string(),
-                        generated_name: "__service_jobs_cast_reset".to_string(),
-                        kind: ServiceMethodExportKind::Cast,
-                    },
-                ],
-            },
-        );
-        let all_exports = vec![Some(ExportedSymbols::default()), Some(service_exports)];
-
-        let surface = build_clustered_export_surface(&graph, &parses, &all_exports);
-
-        assert!(surface
-            .ambiguous_work_functions
-            .contains("Work.handle_submit"));
-        assert!(surface
-            .private_work_functions
-            .contains("Work.hidden_submit"));
-        assert_eq!(
-            surface.service_call_handlers["Services.Jobs.submit"].executable_symbol,
-            Some("__service_jobs_call_submit".to_string())
-        );
-        assert_eq!(
-            surface.service_cast_handlers["Services.Jobs.reset"].runtime_registration_name,
-            "Services.Jobs.reset"
-        );
-        assert!(surface
-            .service_start_helpers
-            .contains("Services.Jobs.start"));
-    }
-
-    #[test]
-    fn source_validation_rejects_malformed_target_with_default_count_context() {
-        let err = validate_cluster_declarations_with_source(
-            &[source_work_declaration(
-                "handle_submit",
-                ClusteredReplicationCount::defaulted(),
-                SourceClusteredDeclarationSyntax::Decorator,
-            )],
-            &cluster_surface(),
-        )
-        .expect_err("bad work target shape should fail");
-
-        assert_eq!(err.len(), 1);
-        assert!(matches!(
-            err[0].origin,
-            ClusteredDeclarationOrigin::Source(_)
-        ));
-        assert_eq!(
-            err[0].replication_count,
-            ClusteredReplicationCount::defaulted()
-        );
-        assert!(
-            err[0].reason.contains("<ModulePath>.<function>"),
-            "{}",
-            err[0]
+            "{hidden}"
         );
     }
 

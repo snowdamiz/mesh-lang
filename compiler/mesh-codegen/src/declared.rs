@@ -7,8 +7,6 @@ use crate::mir::{MirExpr, MirFunction, MirModule, MirType};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclaredHandlerKind {
     Work,
-    ServiceCall,
-    ServiceCast,
     Route,
 }
 
@@ -112,14 +110,6 @@ pub fn prepare_declared_runtime_handlers(
                 &entry.runtime_registration_name,
                 &entry.executable_symbol,
             )?,
-            DeclaredHandlerKind::ServiceCall | DeclaredHandlerKind::ServiceCast => {
-                generate_declared_service_wrapper(
-                    mir,
-                    entry.kind,
-                    &entry.runtime_registration_name,
-                    &entry.executable_symbol,
-                )?
-            }
             DeclaredHandlerKind::Route => validate_declared_route_wrapper(
                 mir,
                 &entry.runtime_registration_name,
@@ -252,89 +242,6 @@ fn validate_declared_route_wrapper(
     }
 }
 
-fn generate_declared_service_wrapper(
-    mir: &mut MirModule,
-    kind: DeclaredHandlerKind,
-    runtime_registration_name: &str,
-    executable_symbol: &str,
-) -> Result<String, String> {
-    let helper = mir
-        .functions
-        .iter()
-        .find(|func| func.name == executable_symbol)
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "declared service target `{runtime_registration_name}` has no lowered helper `{executable_symbol}`"
-            )
-        })?;
-
-    if helper.params.is_empty() {
-        return Err(format!(
-            "declared service target `{runtime_registration_name}` must lower to a helper with a pid parameter"
-        ));
-    }
-
-    let (_service_name, helper_kind) = parse_service_helper_name(executable_symbol).ok_or_else(|| {
-        format!(
-            "declared service target `{runtime_registration_name}` lowered to unexpected helper `{executable_symbol}`"
-        )
-    })?;
-
-    match (kind, helper_kind.as_str()) {
-        (DeclaredHandlerKind::ServiceCall, "call")
-        | (DeclaredHandlerKind::ServiceCast, "cast") => {}
-        (DeclaredHandlerKind::ServiceCall, other) => {
-            return Err(format!(
-                "declared service_call target `{runtime_registration_name}` lowered to `{other}` helper `{executable_symbol}`"
-            ))
-        }
-        (DeclaredHandlerKind::ServiceCast, other) => {
-            return Err(format!(
-                "declared service_cast target `{runtime_registration_name}` lowered to `{other}` helper `{executable_symbol}`"
-            ))
-        }
-        (DeclaredHandlerKind::Work | DeclaredHandlerKind::Route, _) => unreachable!(),
-    }
-
-    let wrapper_name = declared_service_wrapper_name(kind, runtime_registration_name);
-    if mir.functions.iter().any(|func| func.name == wrapper_name) {
-        return Ok(wrapper_name);
-    }
-
-    let wrapper_param_types = helper
-        .params
-        .iter()
-        .map(|(_, ty)| ty.clone())
-        .collect::<Vec<_>>();
-    let wrapper_args = helper
-        .params
-        .iter()
-        .map(|(name, ty)| MirExpr::Var(name.clone(), ty.clone()))
-        .collect::<Vec<_>>();
-
-    let body = MirExpr::Call {
-        func: Box::new(MirExpr::Var(
-            helper.name.clone(),
-            MirType::FnPtr(wrapper_param_types, Box::new(helper.return_type.clone())),
-        )),
-        args: wrapper_args,
-        ty: helper.return_type.clone(),
-    };
-
-    mir.functions.push(MirFunction {
-        name: wrapper_name.clone(),
-        params: helper.params.clone(),
-        return_type: helper.return_type.clone(),
-        body,
-        is_closure_fn: false,
-        captures: Vec::new(),
-        has_tail_calls: false,
-    });
-
-    Ok(wrapper_name)
-}
-
 pub fn declared_route_wrapper_name(runtime_registration_name: &str) -> String {
     format!(
         "__declared_route_{}",
@@ -345,22 +252,6 @@ pub fn declared_route_wrapper_name(runtime_registration_name: &str) -> String {
 fn declared_work_wrapper_name(runtime_registration_name: &str) -> String {
     format!(
         "__declared_work_{}",
-        sanitize_runtime_name(runtime_registration_name)
-    )
-}
-
-fn declared_service_wrapper_name(
-    kind: DeclaredHandlerKind,
-    runtime_registration_name: &str,
-) -> String {
-    let kind_prefix = match kind {
-        DeclaredHandlerKind::ServiceCall => "call",
-        DeclaredHandlerKind::ServiceCast => "cast",
-        DeclaredHandlerKind::Work | DeclaredHandlerKind::Route => unreachable!(),
-    };
-    format!(
-        "__declared_service_{}_{}",
-        kind_prefix,
         sanitize_runtime_name(runtime_registration_name)
     )
 }
@@ -376,27 +267,6 @@ fn sanitize_runtime_name(runtime_registration_name: &str) -> String {
             }
         })
         .collect()
-}
-
-fn parse_service_helper_name(symbol: &str) -> Option<(String, String)> {
-    let rest = symbol.strip_prefix("__service_")?;
-    let (service_name, suffix) = rest.rsplit_once('_')?;
-    if suffix == "start" {
-        return Some((service_name.to_string(), "start".to_string()));
-    }
-    let (service_name, kind_and_method) = rest
-        .split_once("_call_")
-        .map(|(svc, method)| (svc.to_string(), format!("call:{method}")))
-        .or_else(|| {
-            rest.split_once("_cast_")
-                .map(|(svc, method)| (svc.to_string(), format!("cast:{method}")))
-        })?;
-    let helper_kind = if kind_and_method.starts_with("call:") {
-        "call"
-    } else {
-        "cast"
-    };
-    Some((service_name, helper_kind.to_string()))
 }
 
 #[cfg(test)]
@@ -473,37 +343,6 @@ mod tests {
             route_module_exports(imported_module, &[imported_handler]),
         );
         mesh_typeck::check_with_imports(&parse, &import_ctx)
-    }
-
-    #[test]
-    fn startup_work_registrations_filter_out_service_handlers() {
-        let registrations = prepare_startup_work_registrations(&[
-            DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::Work,
-                runtime_registration_name: "Work.handle_submit".to_string(),
-                executable_symbol: "handle_submit".to_string(),
-                replication_count: 2,
-            },
-            DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::ServiceCall,
-                runtime_registration_name: "Services.Jobs.submit".to_string(),
-                executable_symbol: "__service_jobs_call_submit".to_string(),
-                replication_count: 3,
-            },
-            DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::ServiceCast,
-                runtime_registration_name: "Services.Jobs.reset".to_string(),
-                executable_symbol: "__service_jobs_cast_reset".to_string(),
-                replication_count: 4,
-            },
-        ]);
-
-        assert_eq!(
-            registrations,
-            vec![StartupWorkRegistration {
-                runtime_registration_name: "Work.handle_submit".to_string(),
-            }]
-        );
     }
 
     #[test]
@@ -823,38 +662,6 @@ end
         assert!(
             error.contains(
                 "declared work target `Work.handle_submit` has no lowered function `missing_handle_submit`"
-            ),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
-    fn declared_service_handlers_reject_helper_kind_mismatch() {
-        let mut mir = empty_module();
-        mir.functions.push(MirFunction {
-            name: "__service_jobs_cast_reset".to_string(),
-            params: vec![("__pid".to_string(), MirType::Int)],
-            return_type: MirType::Unit,
-            body: MirExpr::Unit,
-            is_closure_fn: false,
-            captures: Vec::new(),
-            has_tail_calls: false,
-        });
-
-        let error = prepare_declared_runtime_handlers(
-            &mut mir,
-            &[DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::ServiceCall,
-                runtime_registration_name: "Services.Jobs.submit".to_string(),
-                executable_symbol: "__service_jobs_cast_reset".to_string(),
-                replication_count: 2,
-            }],
-        )
-        .expect_err("call declarations must reject cast helpers");
-
-        assert!(
-            error.contains(
-                "declared service_call target `Services.Jobs.submit` lowered to `cast` helper"
             ),
             "unexpected error: {error}"
         );

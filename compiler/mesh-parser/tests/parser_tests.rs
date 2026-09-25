@@ -6,8 +6,7 @@
 use insta::assert_snapshot;
 use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, ForInExpr, IfExpr, Literal, MatchArm};
 use mesh_parser::ast::item::{
-    ClusteredDeclKind, ClusteredDeclSyntax, FnDef, LetBinding, Param, ParamOwnership, SourceFile,
-    StructDef, SumTypeDef,
+    FnDef, LetBinding, Param, ParamOwnership, SourceFile, StructDef, SumTypeDef,
 };
 use mesh_parser::ast::pat::{AsPat, ConstructorPat, OrPat, Pattern};
 use mesh_parser::SyntaxKind;
@@ -2555,8 +2554,6 @@ fn cluster_decorator_ast_accessor_stays_source_only() {
         .clustered_decl()
         .expect("@cluster marker should be present");
 
-    assert_eq!(decl.kind(), ClusteredDeclKind::Work);
-    assert_eq!(decl.syntax_style(), ClusteredDeclSyntax::SourceDecorator);
     assert_eq!(decl.explicit_replica_count(), Some(3));
 }
 
@@ -2601,8 +2598,6 @@ fn parser_cluster_decorator_ast_accessor_present_for_pub_fn() {
         .expect("@cluster marker should be present");
     let span = decl.declaration_span();
 
-    assert_eq!(decl.kind(), ClusteredDeclKind::Work);
-    assert_eq!(decl.syntax_style(), ClusteredDeclSyntax::SourceDecorator);
     assert_eq!(decl.explicit_replica_count(), None);
     assert!(decl.explicit_replica_count_token().is_none());
     assert_eq!((span.start, span.end), (0, 8));
@@ -2625,8 +2620,6 @@ fn parser_cluster_decorator_ast_accessor_present_for_counted_def() {
         .expect("@cluster marker should be present");
     let span = decl.declaration_span();
 
-    assert_eq!(decl.kind(), ClusteredDeclKind::Work);
-    assert_eq!(decl.syntax_style(), ClusteredDeclSyntax::SourceDecorator);
     assert_eq!(
         decl.explicit_replica_count_token()
             .map(|t| t.text().to_string()),

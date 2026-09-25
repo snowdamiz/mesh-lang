@@ -11,14 +11,10 @@ use std::path::{Path, PathBuf};
 use rowan::TextRange;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
 
-use mesh_common::module_graph::{ModuleGraph, ModuleId};
-use mesh_pkg::manifest::{
-    build_clustered_export_surface, collect_source_cluster_declarations, resolve_entrypoint,
-    validate_cluster_declarations_with_source, ClusteredDeclarationError, Manifest,
-};
+use mesh_common::module_graph::ModuleId;
+use mesh_pkg::manifest::{plan_cluster_declarations, resolve_entrypoint, Manifest};
 use mesh_pkg::project::{
-    build_import_context, build_project, check_project, single_source_project, CheckedProject,
-    ProjectData,
+    build_import_context, build_project, check_project, single_source_project, ProjectData,
 };
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
@@ -328,10 +324,7 @@ fn analyze_project_document(
 /// same text), and, when the project has no other errors, its clustered
 /// declarations'.
 fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult {
-    let CheckedProject {
-        typeck: mut all_typeck,
-        exports: all_exports,
-    } = check_project(project, false);
+    let mut all_typeck = check_project(project, false).typeck;
     let has_project_errors = project
         .module_parses
         .iter()
@@ -361,17 +354,17 @@ fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult
         diagnostics_from_parse_and_typeck(&current_source, &current_parse, &current_typeck);
 
     if !has_project_errors {
-        let source_cluster_declarations =
-            collect_source_cluster_declarations(&project.graph, &project.module_parses);
-        if let Some(cluster_diagnostics) = cluster_diagnostics(
-            &source_cluster_declarations,
-            &project.graph,
-            &project.module_parses,
-            &all_exports,
-            path,
-            &current_source,
-        ) {
-            diagnostics.extend(cluster_diagnostics);
+        if let Err(issues) = plan_cluster_declarations(&project.graph, &project.module_parses) {
+            // Each `@cluster` decorator in this file that cannot run.
+            diagnostics.extend(issues.into_iter().filter(|issue| &issue.file == path).map(
+                |issue| Diagnostic {
+                    range: Range::new(
+                        offset_to_position(&current_source, issue.span.start as usize),
+                        offset_to_position(&current_source, issue.span.end as usize),
+                    ),
+                    ..project_diagnostic(issue.to_string())
+                },
+            ));
         }
     }
 
@@ -412,74 +405,6 @@ fn project_diagnostic(message: impl Into<String>) -> Diagnostic {
         message: message.into(),
         ..Default::default()
     }
-}
-
-fn cluster_diagnostics(
-    source_cluster_declarations: &[mesh_pkg::manifest::SourceClusteredDeclaration],
-    graph: &ModuleGraph,
-    parses: &[mesh_parser::Parse],
-    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-    current_relative_path: &Path,
-    current_source: &str,
-) -> Option<Vec<Diagnostic>> {
-    if source_cluster_declarations.is_empty() {
-        return None;
-    }
-
-    let surface = build_clustered_export_surface(graph, parses, all_exports);
-    match validate_cluster_declarations_with_source(source_cluster_declarations, &surface) {
-        Ok(_) => None,
-        Err(issues) => Some(
-            issues
-                .into_iter()
-                .filter_map(|issue| {
-                    clustered_declaration_diagnostic(issue, current_relative_path, current_source)
-                })
-                .collect(),
-        ),
-    }
-}
-
-fn clustered_issue_range(source: &str, span: mesh_common::span::Span) -> std::ops::Range<usize> {
-    if source.is_empty() {
-        return 0..0;
-    }
-
-    let mut start = (span.start as usize).min(source.len() - 1);
-    let mut end = (span.end as usize).min(source.len());
-    if end <= start {
-        end = (start + 1).min(source.len());
-    }
-    start = start.min(end.saturating_sub(1));
-    start..end
-}
-
-fn clustered_declaration_diagnostic(
-    issue: ClusteredDeclarationError,
-    current_relative_path: &Path,
-    current_source: &str,
-) -> Option<Diagnostic> {
-    let range = match issue.origin.provenance() {
-        Some(provenance) => {
-            if provenance.file != current_relative_path {
-                return None;
-            }
-            let span = clustered_issue_range(current_source, provenance.span);
-            Range::new(
-                offset_to_position(current_source, span.start),
-                offset_to_position(current_source, span.end),
-            )
-        }
-        None => Range::new(Position::new(0, 0), Position::new(0, 0)),
-    };
-
-    Some(Diagnostic {
-        range,
-        severity: Some(DiagnosticSeverity::ERROR),
-        source: Some("mesh".to_string()),
-        message: issue.to_string(),
-        ..Default::default()
-    })
 }
 
 fn read_source_with_overlays(
@@ -575,7 +500,9 @@ mod tests {
             .collect()
     }
 
-    fn entry_module(graph: &ModuleGraph) -> &mesh_common::module_graph::ModuleInfo {
+    fn entry_module(
+        graph: &mesh_common::module_graph::ModuleGraph,
+    ) -> &mesh_common::module_graph::ModuleInfo {
         graph
             .modules
             .iter()

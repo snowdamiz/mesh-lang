@@ -47,8 +47,7 @@ use mesh_parser::ast::expr::{FieldAccess, NameRef};
 use mesh_parser::ast::AstNode;
 use mesh_parser::syntax_kind::SyntaxKind;
 use mesh_pkg::manifest::{
-    build_clustered_export_surface, collect_source_cluster_declarations, resolve_entrypoint,
-    validate_cluster_declarations_with_source, ClusteredDeclarationError,
+    plan_cluster_declarations, resolve_entrypoint, ClusteredDeclarationError,
     ClusteredExecutionMetadata, Manifest,
 };
 
@@ -795,17 +794,7 @@ fn prepare_declared_handler_plan(
     let mut plan = entries
         .iter()
         .map(|entry| mesh_codegen::DeclaredHandlerPlanEntry {
-            kind: match entry.kind {
-                mesh_pkg::manifest::ClusteredDeclarationKind::Work => {
-                    mesh_codegen::DeclaredHandlerKind::Work
-                }
-                mesh_pkg::manifest::ClusteredDeclarationKind::ServiceCall => {
-                    mesh_codegen::DeclaredHandlerKind::ServiceCall
-                }
-                mesh_pkg::manifest::ClusteredDeclarationKind::ServiceCast => {
-                    mesh_codegen::DeclaredHandlerKind::ServiceCast
-                }
-            },
+            kind: mesh_codegen::DeclaredHandlerKind::Work,
             runtime_registration_name: entry.runtime_registration_name.clone(),
             executable_symbol: entry.executable_symbol.clone(),
             replication_count: entry.replication_count.value as u64,
@@ -996,21 +985,14 @@ pub(crate) fn prepare_project_build(
         .map_or(mesh_pkg::DEFAULT_CLUSTER_REPLICATION_COUNT, |cluster| {
             cluster.default_replicas
         });
-    let source_cluster_declarations =
-        collect_source_cluster_declarations(&project.graph, &project.module_parses);
-    let mut clustered_execution_plan = if !source_cluster_declarations.is_empty() {
-        let surface =
-            build_clustered_export_surface(&project.graph, &project.module_parses, &all_exports);
-        match validate_cluster_declarations_with_source(&source_cluster_declarations, &surface) {
-            Ok(metadata) => metadata,
+    let mut clustered_execution_plan =
+        match plan_cluster_declarations(&project.graph, &project.module_parses) {
+            Ok(plan) => plan,
             Err(issues) => {
-                emit_clustered_declaration_diagnostics(&manifest_path, &issues, diag_opts);
+                emit_clustered_declaration_diagnostics(dir, &project, &issues, diag_opts);
                 return Err("Compilation failed due to errors above.".to_string());
             }
-        }
-    } else {
-        Vec::new()
-    };
+        };
     for entry in &mut clustered_execution_plan {
         if entry.replication_count.source == mesh_pkg::ClusteredReplicationCountSource::Default {
             entry.replication_count.value = default_replicas;
@@ -1422,38 +1404,6 @@ fn collect_inferred_fn_usage_types(
     usage
 }
 
-fn clustered_issue_file_and_span(
-    manifest_path: &Path,
-    issue: &ClusteredDeclarationError,
-) -> (String, Option<String>, Option<std::ops::Range<usize>>) {
-    let Some(provenance) = issue.origin.provenance() else {
-        return (manifest_path.display().to_string(), None, None);
-    };
-
-    let project_root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
-    let file_path = project_root.join(&provenance.file);
-    let file_name = file_path.display().to_string();
-    let source = std::fs::read_to_string(&file_path).ok();
-    let span = source
-        .as_ref()
-        .map(|source| clustered_issue_range(source, provenance.span));
-    (file_name, source, span)
-}
-
-fn clustered_issue_range(source: &str, span: mesh_common::span::Span) -> std::ops::Range<usize> {
-    if source.is_empty() {
-        return 0..0;
-    }
-
-    let mut start = (span.start as usize).min(source.len() - 1);
-    let mut end = (span.end as usize).min(source.len());
-    if end <= start {
-        end = (start + 1).min(source.len());
-    }
-    start = start.min(end.saturating_sub(1));
-    start..end
-}
-
 fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
     let offset = offset.min(source.len());
     let prefix = &source[..offset];
@@ -1466,58 +1416,52 @@ fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
 }
 
 fn emit_clustered_declaration_diagnostics(
-    manifest_path: &Path,
+    dir: &Path,
+    project: &mesh_pkg::project::ProjectData,
     issues: &[ClusteredDeclarationError],
     diag_opts: &DiagnosticOptions,
 ) {
     for issue in issues {
-        let (file_name, source, span) = clustered_issue_file_and_span(manifest_path, issue);
+        let file_name = dir.join(&issue.file).display().to_string();
+        let span = issue.span.start as usize..issue.span.end as usize;
 
         if diag_opts.json {
-            let spans = span
-                .as_ref()
-                .map(|span| {
-                    vec![serde_json::json!({
-                        "start": span.start,
-                        "end": span.end,
-                        "label": issue.reason
-                    })]
-                })
-                .unwrap_or_default();
             let json_diag = serde_json::json!({
                 "code": "CFG0001",
                 "severity": "error",
                 "message": issue.to_string(),
                 "file": file_name,
-                "spans": spans,
+                "spans": [{"start": span.start, "end": span.end, "label": issue.reason}],
                 "fix": null
             });
             eprintln!("{}", json_diag);
             continue;
         }
 
-        if let (Some(source), Some(span)) = (source.as_ref(), span.as_ref()) {
-            use ariadne::{Config, Label, Report, ReportKind, Source};
-
-            let config = if diag_opts.color {
-                Config::default()
-            } else {
-                Config::default().with_color(false)
-            }
-            .with_index_type(ariadne::IndexType::Byte);
-            let (line, col) = offset_to_line_col(source, span.start);
-            eprintln!("error: {}", issue);
-            eprintln!("  --> {}:{}:{}", file_name, line, col);
-            let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, span.clone())
-                .with_message("Invalid clustered declaration")
-                .with_config(config)
-                .with_label(Label::new(span.clone()).with_message(&issue.reason))
-                .finish()
-                .eprint(Source::from(source.as_str()));
+        use ariadne::{Config, Label, Report, ReportKind, Source};
+        // The source the decorator was parsed from.
+        let (_, source) = project
+            .graph
+            .modules
+            .iter()
+            .zip(&project.module_sources)
+            .find(|(module, _)| module.path == issue.file)
+            .expect("an `@cluster` decorator is in a module of the project");
+        let config = if diag_opts.color {
+            Config::default()
         } else {
-            eprintln!("error: {}", issue);
-            eprintln!("  --> {}", file_name);
+            Config::default().with_color(false)
         }
+        .with_index_type(ariadne::IndexType::Byte);
+        let (line, col) = offset_to_line_col(source, span.start);
+        eprintln!("error: {}", issue);
+        eprintln!("  --> {}:{}:{}", file_name, line, col);
+        let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, span.clone())
+            .with_message("Invalid clustered declaration")
+            .with_config(config)
+            .with_label(Label::new(span).with_message(&issue.reason))
+            .finish()
+            .eprint(Source::from(source.as_str()));
     }
 }
 

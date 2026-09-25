@@ -155,22 +155,6 @@ pub struct ExportedSymbols {
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 }
 
-/// Kind of executable helper exported for a service method.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceMethodExportKind {
-    Start,
-    Call,
-    Cast,
-}
-
-/// One exported service helper and its runtime-callable symbol.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServiceMethodExport {
-    pub method_name: String,
-    pub generated_name: String,
-    pub kind: ServiceMethodExportKind,
-}
-
 /// Information about an exported service, containing the helper function
 /// signatures and method mappings needed by importing modules.
 #[derive(Debug, Default, Clone)]
@@ -184,8 +168,6 @@ pub struct ServiceExportInfo {
     /// Method names with their generated function names for MIR resolution.
     /// Maps (method_name, generated_fn_name), e.g., ("start", "__service_counter_start").
     pub methods: Vec<(String, String)>,
-    /// Richer exported service helper metadata for clustered execution planning.
-    pub method_exports: Vec<ServiceMethodExport>,
 }
 
 pub const DEFAULT_CLUSTERED_ROUTE_REPLICATION_COUNT: u32 = 2;

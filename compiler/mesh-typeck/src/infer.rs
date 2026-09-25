@@ -15082,7 +15082,7 @@ fn infer_service_def(
 
     // ── Build service export info for cross-module export ──────────────
     {
-        use crate::{ServiceExportInfo, ServiceMethodExport, ServiceMethodExportKind};
+        use crate::ServiceExportInfo;
         use rustc_hash::FxHashMap as FxMap;
 
         let name_lower = service_name.to_lowercase();
@@ -15090,21 +15090,16 @@ fn infer_service_def(
             name: service_name.clone(),
             helpers: FxMap::default(),
             methods: Vec::new(),
-            method_exports: Vec::new(),
         };
 
         // Start helper
         let resolved_start = ctx.resolve(start_fn_ty.clone());
         info.helpers
             .insert("start".to_string(), Scheme::mono(resolved_start));
-        let start_generated_name = format!("__service_{}_start", name_lower);
-        info.methods
-            .push(("start".to_string(), start_generated_name.clone()));
-        info.method_exports.push(ServiceMethodExport {
-            method_name: "start".to_string(),
-            generated_name: start_generated_name,
-            kind: ServiceMethodExportKind::Start,
-        });
+        info.methods.push((
+            "start".to_string(),
+            format!("__service_{}_start", name_lower),
+        ));
 
         // Call handler helpers
         for (variant_name, param_types, reply_ty) in &call_handler_info {
@@ -15116,18 +15111,8 @@ fn infer_service_def(
             let resolved_fn = ctx.resolve(fn_ty);
             info.helpers
                 .insert(snake_name.clone(), Scheme::mono(resolved_fn));
-            let generated_name = format!(
-                "__service_{}_call_{}",
-                name_lower,
-                to_snake_case(variant_name)
-            );
-            info.methods
-                .push((snake_name.clone(), generated_name.clone()));
-            info.method_exports.push(ServiceMethodExport {
-                method_name: snake_name,
-                generated_name,
-                kind: ServiceMethodExportKind::Call,
-            });
+            let generated_name = format!("__service_{name_lower}_call_{snake_name}");
+            info.methods.push((snake_name, generated_name));
         }
 
         // Cast handler helpers
@@ -15139,18 +15124,8 @@ fn infer_service_def(
             let resolved_fn = ctx.resolve(fn_ty);
             info.helpers
                 .insert(snake_name.clone(), Scheme::mono(resolved_fn));
-            let generated_name = format!(
-                "__service_{}_cast_{}",
-                name_lower,
-                to_snake_case(variant_name)
-            );
-            info.methods
-                .push((snake_name.clone(), generated_name.clone()));
-            info.method_exports.push(ServiceMethodExport {
-                method_name: snake_name,
-                generated_name,
-                kind: ServiceMethodExportKind::Cast,
-            });
+            let generated_name = format!("__service_{name_lower}_cast_{snake_name}");
+            info.methods.push((snake_name, generated_name));
         }
 
         ctx.local_service_exports.insert(service_name.clone(), info);

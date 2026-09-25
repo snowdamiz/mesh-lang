@@ -17,13 +17,9 @@ pub use autonomous::{
 };
 pub use lockfile::{LockedPackage, Lockfile};
 pub use manifest::{
-    build_clustered_export_surface, collect_source_cluster_declarations,
-    validate_cluster_declarations_with_source, ClusteredDeclarationError, ClusteredDeclarationKind,
-    ClusteredDeclarationOrigin, ClusteredDeclarationProvenance, ClusteredExecutableSurfaceInfo,
-    ClusteredExecutionMetadata, ClusteredExportSurface, ClusteredReplicationCount,
-    ClusteredReplicationCountSource, Dependency, Manifest, NativeLibrary, NativePackage, Package,
-    SourceClusteredDeclaration, SourceClusteredDeclarationSyntax,
-    DEFAULT_CLUSTER_REPLICATION_COUNT,
+    plan_cluster_declarations, ClusteredDeclarationError, ClusteredExecutionMetadata,
+    ClusteredReplicationCount, ClusteredReplicationCountSource, Dependency, Manifest,
+    NativeLibrary, NativePackage, Package, DEFAULT_CLUSTER_REPLICATION_COUNT,
 };
 pub use native::{
     resolve_native_archives, resolve_native_bindings, ResolvedNativeArchive, ResolvedNativeBinding,

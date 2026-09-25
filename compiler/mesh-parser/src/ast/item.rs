@@ -95,16 +95,6 @@ impl Item {
 
 // ── Function Definition ──────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusteredDeclKind {
-    Work,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusteredDeclSyntax {
-    SourceDecorator,
-}
-
 #[derive(Debug, Clone)]
 pub struct ClusteredDecl {
     syntax: SyntaxNode,
@@ -143,14 +133,6 @@ fn parse_u32_literal_text(text: &str) -> Option<u32> {
 }
 
 impl ClusteredDecl {
-    pub fn syntax_style(&self) -> ClusteredDeclSyntax {
-        ClusteredDeclSyntax::SourceDecorator
-    }
-
-    pub fn kind(&self) -> ClusteredDeclKind {
-        ClusteredDeclKind::Work
-    }
-
     pub fn explicit_replica_count_token(&self) -> Option<SyntaxToken> {
         self.syntax
             .children_with_tokens()
