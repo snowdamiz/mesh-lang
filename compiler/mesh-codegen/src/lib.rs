@@ -236,27 +236,9 @@ pub fn lower_to_mir_module(
     Ok(module)
 }
 
-/// Lower a parsed and type-checked Mesh program to MIR without monomorphization.
-///
-/// Use this when lowering multiple modules that will be merged before
-/// monomorphization (which requires reachability analysis from the entry point).
-///
-/// # Errors
-///
-/// Returns an error string if MIR lowering fails.
-pub fn lower_to_mir_raw(
-    parse: &mesh_parser::Parse,
-    typeck: &mesh_typeck::TypeckResult,
-    module_name: &str,
-    pub_fns: &HashSet<String>,
-    inferred_fn_usage_types: &HashMap<String, Vec<mesh_typeck::ty::Ty>>,
-) -> Result<mir::MirModule, String> {
-    let module = lower_to_mir(parse, typeck, module_name, pub_fns, inferred_fn_usage_types)?;
-    Ok(module)
-}
-
-/// `lower_to_mir_raw` for one module of a project, with the project's other
-/// modules (whose interfaces' default methods its impls may inherit).
+/// Lower one module of a project to MIR without monomorphization, which
+/// needs the merged program's entry point; the project's other modules are
+/// there for the default methods its impls may inherit.
 pub fn lower_module_to_mir_raw<'a>(
     parse: &'a mesh_parser::Parse,
     typeck: &'a mesh_typeck::TypeckResult,
@@ -275,63 +257,9 @@ pub fn lower_module_to_mir_raw<'a>(
     )
 }
 
-/// Compile a parsed and type-checked Mesh program to an object file.
-///
-/// This is the main entry point for code generation. It:
-/// 1. Lowers the AST to MIR
-/// 2. Monomorphizes generic code
-/// 3. Generates LLVM IR
-/// 4. Optionally optimizes
-/// 5. Emits an object file
-///
-/// # Arguments
-///
-/// * `parse` - The parsed Mesh source
-/// * `typeck` - The type-checked results
-/// * `output` - Path to write the object file
-/// * `opt_level` - Optimization level (0 = none, 2 = default)
-/// * `target_triple` - Optional target triple; None = host default
-///
-/// # Errors
-///
-/// Returns an error string if compilation fails at any stage.
-pub fn compile_to_object(
-    parse: &mesh_parser::Parse,
-    typeck: &mesh_typeck::TypeckResult,
-    output: &Path,
-    opt_level: u8,
-    target_triple: Option<&str>,
-) -> Result<(), String> {
-    let mir = lower_to_mir_module(parse, typeck)?;
-
-    let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
-    codegen.compile(&mir)?;
-
-    if opt_level > 0 {
-        codegen.run_optimization_passes(opt_level)?;
-    }
-
-    codegen.emit_object(output)?;
-    Ok(())
-}
-
-/// Compile a parsed and type-checked Mesh program to LLVM IR text.
-///
-/// Similar to `compile_to_object` but emits human-readable LLVM IR (.ll file)
-/// instead of a binary object file. Useful for debugging and inspection.
-///
-/// # Arguments
-///
-/// * `parse` - The parsed Mesh source
-/// * `typeck` - The type-checked results
-/// * `output` - Path to write the .ll file
-/// * `target_triple` - Optional target triple; None = host default
-///
-/// # Errors
-///
-/// Returns an error string if compilation fails at any stage.
-pub fn compile_to_llvm_ir(
+/// A single-module program's LLVM IR, written to `output`, for the tests.
+#[cfg(test)]
+fn compile_to_llvm_ir(
     parse: &mesh_parser::Parse,
     typeck: &mesh_typeck::TypeckResult,
     output: &Path,
@@ -344,93 +272,6 @@ pub fn compile_to_llvm_ir(
     codegen.compile(&mir)?;
 
     codegen.emit_llvm_ir(output)?;
-    Ok(())
-}
-
-/// Compile a parsed and type-checked Mesh program to a native binary.
-///
-/// This is the full compilation pipeline: lower to MIR, generate LLVM IR,
-/// optimize, emit object file, and link with mesh-rt to produce a native
-/// executable.
-///
-/// # Arguments
-///
-/// * `parse` - The parsed Mesh source
-/// * `typeck` - The type-checked results
-/// * `output` - Path to write the final executable
-/// * `opt_level` - Optimization level (0 = none, 2 = default)
-/// * `target_triple` - Optional target triple; None = host default
-/// * `rt_lib_path` - Optional path to the Mesh runtime static library; None = auto-detect
-///
-/// # Errors
-///
-/// Returns an error string if compilation or linking fails.
-pub fn compile_to_binary(
-    parse: &mesh_parser::Parse,
-    typeck: &mesh_typeck::TypeckResult,
-    output: &Path,
-    opt_level: u8,
-    target_triple: Option<&str>,
-    rt_lib_path: Option<&Path>,
-) -> Result<(), String> {
-    let obj_path = output.with_extension("o");
-    build_trace::set_compile_context(output, &obj_path, target_triple);
-    let link_plan = link::prepare_link(target_triple, rt_lib_path)?;
-
-    let result: Result<(), String> = (|| -> Result<(), String> {
-        build_trace::set_stage("lower-to-mir");
-        let mir = lower_to_mir_module(parse, typeck)?;
-
-        build_trace::set_stage("pre-llvm-init");
-        let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
-
-        build_trace::set_stage("compile-llvm-module");
-        codegen.compile(&mir)?;
-
-        if opt_level > 0 {
-            build_trace::set_stage("run-optimization-passes");
-            codegen.run_optimization_passes(opt_level)?;
-        }
-
-        build_trace::mark_object_emission_started();
-        codegen.emit_object(&obj_path)?;
-        build_trace::mark_object_emitted(&obj_path);
-
-        link::link_with_plan(&obj_path, output, &link_plan)?;
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            build_trace::mark_success();
-            Ok(())
-        }
-        Err(error) => {
-            build_trace::record_error(&error);
-            Err(error)
-        }
-    }
-}
-
-/// Compile a parsed and type-checked Mesh program (verify-only pipeline).
-///
-/// Compiles through the full LLVM IR generation to verify correctness, but
-/// does not emit any files. Useful for testing.
-///
-/// # Errors
-///
-/// Returns an error string if compilation fails at any stage.
-pub fn compile(
-    parse: &mesh_parser::Parse,
-    typeck: &mesh_typeck::TypeckResult,
-) -> Result<(), String> {
-    let mir = lower_to_mir_module(parse, typeck)?;
-
-    let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "mesh_module", 0, None)?;
-    codegen.compile(&mir)?;
-
     Ok(())
 }
 
