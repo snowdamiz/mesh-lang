@@ -1054,6 +1054,55 @@ from Baz.Qux import { name1, name2 }
 
     // ── build_project tests ──────────────────────────────────────────────
 
+    /// Each module is checked with the exports of those it imports, and a
+    /// `let` outside every function is an error, named when it has a name.
+    #[test]
+    fn a_project_is_checked_module_by_module() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("geo.mpl"),
+            "pub fn area(r :: Int) -> Int do\n  r * r\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("main.mpl"),
+            "import Geo\nimport Missing\n\nlet limit = 3\nlet (a, b) = (1, 2)\n\nfn main() do\n  let inner = Geo.area(2)\n  println(\"#{inner}\")\nend\n",
+        )
+        .unwrap();
+        let project = build_project(root).unwrap();
+        let checked = check_project(&project, false);
+
+        let main = project.graph.resolve("Main").unwrap().0 as usize;
+        let geo = project.graph.resolve("Geo").unwrap().0 as usize;
+        assert!(checked.exports[geo]
+            .as_ref()
+            .unwrap()
+            .functions
+            .contains_key("area"));
+        let top_level: Vec<&str> = checked.typeck[main]
+            .as_ref()
+            .unwrap()
+            .errors
+            .iter()
+            .filter_map(|error| match error {
+                mesh_typeck::error::TypeError::TopLevelLet { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(top_level, ["limit", "_"]);
+
+        let context = build_import_context(
+            &project.graph,
+            &checked.exports,
+            &project.module_parses[main],
+        );
+        assert!(context.module_exports.contains_key("Geo"));
+        assert!(!context.module_exports.contains_key("Missing"));
+        assert!(context.project_modules.iter().any(|name| name == "Geo"));
+        assert!(!context.project_modules.iter().any(|name| name == "Main"));
+    }
+
     #[test]
     fn module_names_come_from_the_path() {
         assert_eq!(to_pascal_case("my__cool_"), "MyCool");
@@ -1147,6 +1196,31 @@ from Baz.Qux import { name1, name2 }
             error.contains("Native binding module `Bindings.Own`"),
             "{error}"
         );
+        // A binding at a package's root `main.mpl` names no module.
+        fs::write(
+            dependency.join("main.mpl"),
+            "pub fn m() -> Int do\n  1\nend\n",
+        )
+        .unwrap();
+        let error = build(&[binding(&dependency, "main.mpl")]).err().unwrap();
+        assert!(
+            error.contains("Cannot determine native binding module name"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_module_block_named_like_a_file_module_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("geo.mpl"), "pub fn area() -> Int do\n  1\nend\n").unwrap();
+        fs::write(
+            root.join("main.mpl"),
+            "module Geo do\nend\n\nfn main() do\n  1\nend\n",
+        )
+        .unwrap();
+        let error = build_project(root).err().unwrap();
+        assert!(error.contains("Module `Geo` declared in"), "{error}");
     }
 
     #[test]
@@ -1188,6 +1262,27 @@ from Baz.Qux import { name1, name2 }
         let (graph, order) = build_module_graph(root).unwrap();
         let position = |name: &str| order.iter().position(|id| graph.get(*id).name == name);
         assert!(position("Numbers") < position("Greeting"));
+    }
+
+    #[test]
+    fn using_an_interface_orders_its_module_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("zeta.mpl"),
+            "pub interface Greet do\n  fn greet(self) -> String\nend\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("alpha.mpl"),
+            "impl Greet for Int do\n  fn greet(self) -> String do\n    \"hi\"\n  end\nend\n",
+        )
+        .unwrap();
+        fs::write(root.join("main.mpl"), "fn main() do\n  1\nend\n").unwrap();
+        let (graph, order) = build_module_graph(root).unwrap();
+        let position = |name: &str| order.iter().position(|id| graph.get(*id).name == name);
+        // Discovered after `Alpha`, `Zeta` comes first only through the edge.
+        assert!(position("Zeta") < position("Alpha"));
     }
 
     #[test]
