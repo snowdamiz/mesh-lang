@@ -76,6 +76,11 @@ struct S do # struct
   b :: Int
 end deriving(Eq) # deriving
 
+type Color do
+  Red; Green # variants on one line
+end deriving(Eq, # first trait
+  Show)
+
 type Shape do # sum
   Circle(Float) # circle
   Dot
@@ -182,6 +187,16 @@ fn more(xs, pid, m) do
     Some(1 | 2) -> 1 # or
     (a, b) as pair -> a # as
     -1 -> 2 # negative
+  end
+  let e = %{"a" => # value
+    1}
+  for {k, # key
+    v} in m do
+    k
+  end
+  case p do
+    P { x, # pattern field
+      y } -> x
   end
   return # bare return
 end
