@@ -632,7 +632,7 @@ fn parse_struct_def_tail(p: &mut Parser, m: MarkOpened) {
     // Parse fields and relationship declarations.
     if !p.has_error() {
         loop {
-            p.eat_newlines();
+            p.eat_separators();
 
             if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
@@ -993,7 +993,7 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
     // Parse method signatures and associated type declarations.
     if !p.has_error() {
         loop {
-            p.eat_newlines();
+            p.eat_separators();
 
             if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
@@ -1341,7 +1341,7 @@ pub(crate) fn parse_sum_type_def(p: &mut Parser) {
     // Parse variant definitions.
     if !p.has_error() {
         loop {
-            p.eat_newlines();
+            p.eat_separators();
 
             if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
