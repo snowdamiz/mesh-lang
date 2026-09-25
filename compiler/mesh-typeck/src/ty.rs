@@ -348,19 +348,14 @@ impl Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new("Set"))), vec![inner])
     }
 
-    /// Create an unparameterized `Set` type (opaque pointer).
-    pub fn set_untyped() -> Ty {
-        Ty::Con(TyCon::new("Set"))
-    }
-
     /// Create a `Range` type.
     pub fn range() -> Ty {
         Ty::Con(TyCon::new("Range"))
     }
 
     /// Create a `Queue` type.
-    pub fn queue() -> Ty {
-        Ty::Con(TyCon::new("Queue"))
+    pub fn queue(inner: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new("Queue"))), vec![inner])
     }
 
     /// Create a named struct type with optional type arguments.

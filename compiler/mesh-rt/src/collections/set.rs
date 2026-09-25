@@ -1,14 +1,24 @@
 //! GC-managed immutable Set for the Mesh runtime.
 //!
-//! A set's elements are uniform 8-byte words, compared as words, kept in
-//! the order they were added. The storage (a table that small sets copy on a
-//! change and large ones grow in place, with a hash index) is in
-//! [`super::table`].
+//! A set's elements are uniform 8-byte words, kept in the order they were
+//! added. The storage (a table that small sets copy on a change and large
+//! ones grow in place, with a hash index) is in [`super::table`].
+//!
+//! Elements compare as words, or, through the `_by` functions, by the
+//! element type's Eq and Hash, which compiled code passes for elements that
+//! are not words (strings, tuples, structs, ...).
 //!
 //! All operations return a NEW set (immutable semantics): a value never sees
 //! a change made after it.
 
 use super::table::{self, Keys};
+use std::ptr;
+
+/// How a set's elements compare: by `eq` and hashed by `hash` (bare
+/// function pointers, null for none), else as words.
+unsafe fn keys(eq: *mut u8, hash: *mut u8) -> Keys {
+    Keys::new(false, eq, hash)
+}
 
 /// The live elements, in order, as a table of their own.
 unsafe fn elements(set: *mut u8) -> (*const u64, usize) {
@@ -16,9 +26,9 @@ unsafe fn elements(set: *mut u8) -> (*const u64, usize) {
     (table::entry::<1>(compact, 0), table::len(compact))
 }
 
-unsafe fn contains(set: *mut u8, element: u64) -> bool {
+unsafe fn contains(set: *mut u8, element: u64, keys: &Keys) -> bool {
     let (table, n, _) = table::state::<1>(set);
-    table::find::<1>(table, n, element, &Keys::WORDS).is_some()
+    table::find::<1>(table, n, element, keys).is_some()
 }
 
 /// The live elements of a set, in order, without allocating: for message
@@ -36,6 +46,14 @@ pub(crate) unsafe fn set_from_elements(elements: &[u64]) -> *mut u8 {
     table::table_from::<1>(&entries, 0)
 }
 
+unsafe fn add(set: *mut u8, element: u64, keys: &Keys) -> *mut u8 {
+    if contains(set, element, keys) {
+        set
+    } else {
+        table::put::<1>(set, [element], keys)
+    }
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 /// Create an empty set.
@@ -47,25 +65,52 @@ pub extern "C-unwind" fn mesh_set_new() -> *mut u8 {
 /// Return a NEW set with the element added (the set itself if it holds it).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_add(set: *mut u8, element: u64) -> *mut u8 {
-    unsafe {
-        if contains(set, element) {
-            set
-        } else {
-            table::put::<1>(set, [element], &Keys::WORDS)
-        }
-    }
+    mesh_set_add_by(set, element, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_add` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_add_by(
+    set: *mut u8,
+    element: u64,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
+    unsafe { add(set, element, &keys(eq, hash)) }
 }
 
 /// Return a NEW set without the element.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_remove(set: *mut u8, element: u64) -> *mut u8 {
-    unsafe { table::delete::<1>(set, element, &Keys::WORDS) }
+    mesh_set_remove_by(set, element, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_remove` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_remove_by(
+    set: *mut u8,
+    element: u64,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
+    unsafe { table::delete::<1>(set, element, &keys(eq, hash)) }
 }
 
 /// Returns 1 if the element is in the set, 0 otherwise.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_contains(set: *mut u8, element: u64) -> i8 {
-    unsafe { contains(set, element) as i8 }
+    mesh_set_contains_by(set, element, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_contains` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_contains_by(
+    set: *mut u8,
+    element: u64,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> i8 {
+    unsafe { contains(set, element, &keys(eq, hash)) as i8 }
 }
 
 /// Return the number of elements in the set.
@@ -77,12 +122,19 @@ pub extern "C-unwind" fn mesh_set_size(set: *mut u8) -> i64 {
 /// Whether two sets hold the same elements, in any order.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_eq(a: *mut u8, b: *mut u8) -> i8 {
+    mesh_set_eq_by(a, b, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_eq` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_eq_by(a: *mut u8, b: *mut u8, eq: *mut u8, hash: *mut u8) -> i8 {
     unsafe {
         if table::size::<1>(a) != table::size::<1>(b) {
             return 0;
         }
+        let keys = keys(eq, hash);
         let (data, len) = elements(a);
-        (0..len).all(|i| contains(b, *data.add(i))) as i8
+        (0..len).all(|i| contains(b, *data.add(i), &keys)) as i8
     }
 }
 
@@ -103,24 +155,32 @@ pub extern "C-unwind" fn mesh_set_hash_by(set: *mut u8, hash: *mut u8) -> i64 {
 /// `b`'s that are not in `a`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_union(a: *mut u8, b: *mut u8) -> *mut u8 {
+    mesh_set_union_by(a, b, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_union` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_union_by(
+    a: *mut u8,
+    b: *mut u8,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
     unsafe {
+        let keys = keys(eq, hash);
         let (data, len) = elements(b);
-        let mut result = a;
-        for i in 0..len {
-            result = mesh_set_add(result, *data.add(i));
-        }
-        result
+        (0..len).fold(a, |result, i| add(result, *data.add(i), &keys))
     }
 }
 
 /// The elements of `a` that are (`keep`) or are not in `b`, in `a`'s order.
-unsafe fn filter_by(a: *mut u8, b: *mut u8, keep: bool) -> *mut u8 {
+unsafe fn filter_by(a: *mut u8, b: *mut u8, keep: bool, keys: &Keys) -> *mut u8 {
     let (data, len) = elements(a);
     let mut result = mesh_set_new();
     for i in 0..len {
         let element = *data.add(i);
-        if contains(b, element) == keep {
-            result = table::put::<1>(result, [element], &Keys::WORDS);
+        if contains(b, element, keys) == keep {
+            result = table::put::<1>(result, [element], keys);
         }
     }
     result
@@ -129,7 +189,18 @@ unsafe fn filter_by(a: *mut u8, b: *mut u8, keep: bool) -> *mut u8 {
 /// Return a NEW set that is the intersection of `a` and `b`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_intersection(a: *mut u8, b: *mut u8) -> *mut u8 {
-    unsafe { filter_by(a, b, true) }
+    mesh_set_intersection_by(a, b, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_intersection` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_intersection_by(
+    a: *mut u8,
+    b: *mut u8,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
+    unsafe { filter_by(a, b, true, &keys(eq, hash)) }
 }
 
 /// Get the element at index i. Panics if out of bounds.
@@ -173,7 +244,18 @@ pub extern "C-unwind" fn mesh_set_to_string(set: *mut u8, elem_to_str: *mut u8) 
 /// Return a NEW set containing elements in `a` that are NOT in `b`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_difference(a: *mut u8, b: *mut u8) -> *mut u8 {
-    unsafe { filter_by(a, b, false) }
+    mesh_set_difference_by(a, b, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_difference` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_difference_by(
+    a: *mut u8,
+    b: *mut u8,
+    eq: *mut u8,
+    hash: *mut u8,
+) -> *mut u8 {
+    unsafe { filter_by(a, b, false, &keys(eq, hash)) }
 }
 
 /// Convert a set to a list of its elements.
@@ -192,13 +274,16 @@ pub extern "C-unwind" fn mesh_set_to_list(set: *mut u8) -> *mut u8 {
 /// Build a set from a list, without its repeats; `add` grows it in place.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_from_list(list: *mut u8) -> *mut u8 {
+    mesh_set_from_list_by(list, ptr::null_mut(), ptr::null_mut())
+}
+
+/// `mesh_set_from_list` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_from_list_by(list: *mut u8, eq: *mut u8, hash: *mut u8) -> *mut u8 {
     unsafe {
+        let keys = keys(eq, hash);
         let (len, data) = super::list::list_slots(list);
-        let mut set = mesh_set_new();
-        for i in 0..len {
-            set = mesh_set_add(set, *data.add(i));
-        }
-        set
+        (0..len).fold(mesh_set_new(), |set, i| add(set, *data.add(i), &keys))
     }
 }
 

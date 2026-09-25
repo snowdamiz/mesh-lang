@@ -46,9 +46,9 @@ A quick reference for Mesh syntax. For details, see the full guides linked in ea
 | Tuple | `(1, "one")`; type `(Int, String)` |
 | `List<T>` | `[1, 2, 3]` |
 | `Map<K, V>` | `%{"key" => "value"}` |
-| `Set` | `Set.new()` (integer values) |
+| `Set<T>` | `Set.new()`, `Set.from_list(["a", "b"])` |
 | `Range` | `Range.new(0, 10)` or `0..10` |
-| `Queue` | `Queue.new()` (integer values) |
+| `Queue<T>` | `Queue.new()` |
 | `Pid<M>` | returned by `spawn(...)` |
 | `Option<T>` | `Some(42)`, `None` (shorthand: `Int?`, `(Int, String)?`) |
 | `Result<T, E>` | `Ok(42)`, `Err("fail")` (shorthand: `Int!String`, `(Int, Int)!String`) |
@@ -458,7 +458,7 @@ See [Type System -- From/Into](/docs/type-system/#from-into-conversion) for deta
 ## Iterators
 
 ```mesh
-# Create a lazy iterator from a List<T>
+# Create a lazy iterator from a list, map, set, or range
 let iter = Iter.from([1, 2, 3, 4, 5])
 
 # Lazy combinators (chained with pipe operator)
@@ -483,7 +483,7 @@ Iter.from(list) |> Set.collect()
 Iter.from(strings) |> String.collect()
 ```
 
-`Iter.from` currently accepts lists only. `for...in` separately supports lists, maps, sets, ranges, and user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`; take one element with `Iter.next(iter)` or `iter.next()`, also `-> Option<T>`.
+`Iter.from` takes a list, a map (its `(key, value)` pairs), a set, or a range. `for...in` also takes user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`; take one element with `Iter.next(iter)` or `iter.next()`, also `-> Option<T>`.
 
 See [Iterators](/docs/iterators/) for details.
 

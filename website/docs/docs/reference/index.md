@@ -108,8 +108,8 @@ typed scalar accessors.
 | `Result<T, E>` / `T!E` | `Ok(T)` or `Err(E)`; for example `(Int, Int)!String` |
 | `List<T>` | Immutable list |
 | `Map<K, V>` | Immutable map |
-| `Set` | Immutable set of `Int` values |
-| `Queue` | Immutable queue of `Int` values |
+| `Set<T>` | Immutable set of unique values |
+| `Queue<T>` | Immutable first-in, first-out queue |
 | `Range` | End-exclusive integer range |
 | `(A, B)` | Tuple type |
 | `Fun(A, B) -> R` | Function type |

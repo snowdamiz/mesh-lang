@@ -117,7 +117,7 @@ end
 
 ## Eager Collections
 
-Lists and maps are polymorphic. Sets and queues currently store `Int` values. Collection updates are immutable: keep the returned collection.
+Lists, maps, sets, and queues hold values of any type: `List<T>`, `Map<K, V>`, `Set<T>`, `Queue<T>`. Set elements and map keys compare by their type's `Eq` (strings by content, tuples and structs field by field). Collection updates are immutable: keep the returned collection.
 
 ### Lists
 
@@ -143,9 +143,9 @@ Lists and maps are polymorphic. Sets and queues currently store `Int` values. Co
 | `Map.new`, `Map.put`, `Map.get`, `Map.delete`, `Map.has_key`, `Map.size` | Core map operations |
 | `Map.keys`, `Map.values`, `Map.merge` | Inspect or combine maps |
 | `Map.to_list`, `Map.from_list`, `Map.collect` | Convert `(key, value)` tuples |
-| `Set.new`, `Set.add`, `Set.remove`, `Set.contains`, `Set.size` | Core integer-set operations |
+| `Set.new`, `Set.add`, `Set.remove`, `Set.contains`, `Set.size` | Core set operations |
 | `Set.union`, `Set.intersection`, `Set.difference` | Set algebra |
-| `Set.to_list`, `Set.from_list`, `Set.collect` | Convert integer sets |
+| `Set.to_list`, `Set.from_list`, `Set.collect` | Convert sets to and from lists and iterators |
 
 `Map.get` requires an existing key: a missing one is a runtime error, as `List.get` past the end is. Call `Map.has_key` first when absence is normal.
 
@@ -164,14 +164,14 @@ Lists, maps and sets are immutable: `List.append`, `List.concat` (`++`), `Map.pu
 | `Range.to_list(range)` | `List<Int>` | Materialize a range |
 | `Range.map(range, fn)` | `List<Int>` | Map its integers |
 | `Range.filter(range, predicate)` | `List<Int>` | Retain matching integers |
-| `Queue.new()` | `Queue` | Create an empty integer FIFO |
-| `Queue.push(queue, value)` | `Queue` | Return a queue with a value appended |
-| `Queue.pop(queue)` | `(Int, Queue)` | Return `(front_value, remaining_queue)` |
-| `Queue.peek(queue)` | `Int` | Read the front value |
+| `Queue.new()` | `Queue<T>` | Create an empty FIFO |
+| `Queue.push(queue, value)` | `Queue<T>` | Return a queue with a value appended |
+| `Queue.pop(queue)` | `(T, Queue<T>)` | Return `(front_value, remaining_queue)` |
+| `Queue.peek(queue)` | `T` | Read the front value |
 | `Queue.size(queue)` | `Int` | Count queued values |
 | `Queue.is_empty(queue)` | `Bool` | Test for an empty queue |
 
-A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, such as an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(Int, Queue)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
+A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, such as an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(T, Queue<T>)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
 
 `Queue.pop` and `Queue.peek` require a non-empty queue.
 

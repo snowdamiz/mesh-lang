@@ -60,10 +60,8 @@ pub extern "C" fn mesh_queue_push(queue: *mut u8, element: u64) -> *mut u8 {
     }
 }
 
-/// Pop an element from the front. Returns a tuple-like struct:
-/// `{ u64 element, u64 new_queue_ptr }` (16 bytes, GC-allocated).
-///
-/// Panics if the queue is empty.
+/// The queue without its front element (`Queue.pop` pairs it with
+/// `mesh_queue_peek`'s element). Panics if the queue is empty.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
     unsafe {
@@ -71,16 +69,7 @@ pub extern "C-unwind" fn mesh_queue_pop(queue: *mut u8) -> *mut u8 {
         if head == tail {
             crate::panic::raise(format_args!("Queue.pop: the queue is empty"));
         }
-        let element = *list_slots(buffer).1.add(head as usize);
-        let new_queue = alloc_queue(buffer, head + 1, tail);
-        // Return the tuple `(element, new_queue)` in the runtime tuple layout
-        // `{ u64 len, u64[len] }`, so `Tuple.first`, `Tuple.second` and
-        // `let (front, rest) = ...` read it like any other tuple.
-        let result = mesh_gc_alloc_actor(24, 8);
-        *(result as *mut u64) = 2;
-        *((result as *mut u64).add(1)) = element;
-        *((result as *mut u64).add(2)) = new_queue as u64;
-        result
+        alloc_queue(buffer, head + 1, tail)
     }
 }
 
@@ -137,20 +126,14 @@ mod tests {
         let q = mesh_queue_push(q, 30);
         assert_eq!(mesh_queue_size(q), 3);
 
-        // Pop should return elements in FIFO order, as the tuple
-        // `{ len: 2, element, queue }`.
-        let result = mesh_queue_pop(q);
-        unsafe {
-            assert_eq!(*(result as *const u64), 2);
-            let elem = *((result as *const u64).add(1));
-            let new_q = *((result as *const u64).add(2)) as *mut u8;
-            assert_eq!(elem, 10);
-            assert_eq!(mesh_queue_size(new_q), 2);
-
-            let result2 = mesh_queue_pop(new_q);
-            let elem2 = *((result2 as *const u64).add(1));
-            assert_eq!(elem2, 20);
-        }
+        // Peek and pop take elements in FIFO order.
+        assert_eq!(mesh_queue_peek(q), 10);
+        let rest = mesh_queue_pop(q);
+        assert_eq!(mesh_queue_size(rest), 2);
+        assert_eq!(mesh_queue_peek(rest), 20);
+        assert_eq!(mesh_queue_peek(mesh_queue_pop(rest)), 30);
+        // The queue popped from still holds its elements.
+        assert_eq!(mesh_queue_size(q), 3);
     }
 
     #[test]
@@ -186,11 +169,8 @@ mod tests {
         let drain = |mut q: *mut u8| {
             let mut out = Vec::new();
             while mesh_queue_is_empty(q) == 0 {
-                let pair = mesh_queue_pop(q);
-                unsafe {
-                    out.push(*((pair as *const u64).add(1)));
-                    q = *((pair as *const u64).add(2)) as *mut u8;
-                }
+                out.push(mesh_queue_peek(q));
+                q = mesh_queue_pop(q);
             }
             out
         };
@@ -198,7 +178,7 @@ mod tests {
         assert_eq!(drain(q3), vec![1, 3]);
         assert_eq!(drain(q4), vec![1, 2, 4]);
         // A popped queue pushes after its own elements.
-        let rest = unsafe { *((mesh_queue_pop(q4) as *const u64).add(2)) as *mut u8 };
+        let rest = mesh_queue_pop(q4);
         assert_eq!(drain(mesh_queue_push(rest, 5)), vec![2, 4, 5]);
         assert_eq!(drain(q4), vec![1, 2, 4]);
     }
@@ -208,10 +188,6 @@ mod tests {
         mesh_rt_init();
         let q = mesh_queue_new();
         let q = mesh_queue_push(q, 1);
-        let result = mesh_queue_pop(q);
-        unsafe {
-            let new_q = *((result as *const u64).add(2)) as *mut u8;
-            assert_eq!(mesh_queue_is_empty(new_q), 1);
-        }
+        assert_eq!(mesh_queue_is_empty(mesh_queue_pop(q)), 1);
     }
 }

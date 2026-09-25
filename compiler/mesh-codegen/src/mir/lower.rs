@@ -95,7 +95,6 @@ fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
             }
             None
         }
-        Ty::Con(con) if con.name == "Set" => Some(Ty::int()),
         _ => None,
     }
 }
@@ -9967,7 +9966,7 @@ impl<'a> Lowerer<'a> {
 
         // For Map functions that take a key argument (put, get, has_key, delete),
         // String keys wrap the map argument in mesh_map_tag_string(). Keys that
-        // are neither words nor strings use typed wrappers (`resolve_map_by`).
+        // are neither words nor strings use typed wrappers (`resolve_table_by`).
         let args = if let MirExpr::Var(ref name, _) = callee {
             if matches!(
                 name.as_str(),
@@ -10446,22 +10445,7 @@ impl<'a> Lowerer<'a> {
             }
         }
         let receiver = self.get_ty(base.syntax().text_range())?;
-        let module = match receiver {
-            Ty::Con(tc) => match tc.name.as_str() {
-                "String" => "String",
-                "Range" => "Range",
-                "Set" => "Set",
-                _ => return None,
-            },
-            Ty::App(con, _) => match con.as_ref() {
-                Ty::Con(tc) if tc.name == "List" => "List",
-                Ty::Con(tc) if tc.name == "Map" => "Map",
-                Ty::Con(tc) if tc.name == "Set" => "Set",
-                Ty::Con(tc) if tc.name == "Iter" => "Iter",
-                _ => return None,
-            },
-            _ => return None,
-        };
+        let module = mesh_typeck::infer::method_module(receiver)?;
         let method = fa.field()?.text().to_string();
         // An `Iter` pipeline's methods are the `Iter` functions, whatever
         // the built-in `Iterator` impl of the handle behind it says.
@@ -10503,17 +10487,21 @@ impl<'a> Lowerer<'a> {
         // Map keys that are not words or strings compare by the
         // key type's Eq; String keys from a list or an iterator
         // make a string-keyed map.
-        if let Some(op) = runtime_name.strip_prefix("mesh_map_") {
+        let table_op = runtime_name
+            .strip_prefix("mesh_map_")
+            .map(|op| ("map", "Map", op))
+            .or_else(|| runtime_name.strip_prefix("mesh_set_").map(|op| ("set", "Set", op)));
+        if let Some((collection, type_name, op)) = table_op {
             // `Map.get` runs as `mesh_map_fetch`.
             let op = if op == "fetch" { "get" } else { op };
             if let Some(Ty::Fun(params, ret)) = fn_ty.clone() {
-                let map_ty = match op {
+                let table_ty = match op {
                     "from_list" | "collect" => Some(ret.as_ref().clone()),
                     _ => params.first().cloned(),
                 };
-                let key = map_ty.as_ref().and_then(|ty| match ty {
+                let key = table_ty.as_ref().and_then(|ty| match ty {
                     Ty::App(con, args)
-                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") =>
+                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == type_name) =>
                     {
                         args.first().cloned()
                     }
@@ -10521,10 +10509,43 @@ impl<'a> Lowerer<'a> {
                 });
                 if let Some(key) = key {
                     let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
-                    if let Some(helper) = self.resolve_map_by(op, &params, &ret, &key, string) {
+                    if let Some(helper) =
+                        self.resolve_table_by(collection, op, &params, &ret, &key, string)
+                    {
                         let ty = self.known_functions[&helper].clone();
                         return MirExpr::Var(helper, ty);
                     }
+                }
+            }
+        }
+        // `Iter.from` starts the iterator of its source's collection type.
+        if runtime_name == "mesh_iter_from" {
+            let source = match &fn_ty {
+                Some(Ty::Fun(params, _)) => params.first(),
+                _ => None,
+            };
+            let constructor = match source {
+                Some(Ty::App(con, _)) => match con.as_ref() {
+                    Ty::Con(tc) if tc.name == "Map" => Some("mesh_map_iter_new"),
+                    Ty::Con(tc) if tc.name == "Set" => Some("mesh_set_iter_new"),
+                    _ => None,
+                },
+                Some(Ty::Con(tc)) if tc.name == "Range" => Some("mesh_range_iter"),
+                _ => None,
+            };
+            if let Some(constructor) = constructor {
+                return MirExpr::Var(
+                    constructor.to_string(),
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                );
+            }
+        }
+        if runtime_name == "mesh_queue_pop" {
+            if let Some(Ty::Fun(_, ret)) = &fn_ty {
+                if let Ty::Tuple(elems) = ret.as_ref() {
+                    let helper = self.resolve_queue_pop(&elems[0]);
+                    let ty = self.known_functions[&helper].clone();
+                    return MirExpr::Var(helper, ty);
                 }
             }
         }
@@ -12730,19 +12751,9 @@ impl<'a> Lowerer<'a> {
                                 Box::new(MirType::Bool),
                             ),
                         );
-                        match args.first().filter(|key| Self::map_key_needs_eq(key)) {
+                        match args.first().filter(|key| Self::key_needs_eq("map", key)) {
                             Some(key) => {
-                                let key_eq = MirExpr::Var(
-                                    self.resolve_eq_callback(key),
-                                    MirType::FnPtr(
-                                        vec![MirType::Int, MirType::Int],
-                                        Box::new(MirType::Bool),
-                                    ),
-                                );
-                                let key_hash = MirExpr::Var(
-                                    self.resolve_hash_callback(key),
-                                    MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
-                                );
+                                let (key_eq, key_hash) = self.key_callbacks(key);
                                 Self::call_named(
                                     "mesh_map_eq_by",
                                     vec![MirType::Ptr; 5],
@@ -12758,12 +12769,23 @@ impl<'a> Lowerer<'a> {
                             ),
                         }
                     }
-                    "Set" => Self::call_named(
-                        "mesh_set_eq",
-                        vec![MirType::Ptr, MirType::Ptr],
-                        vec![lhs, rhs],
-                        MirType::Bool,
-                    ),
+                    "Set" => match args.first() {
+                        Some(elem) if Self::key_needs_eq("set", elem) => {
+                            let (eq, hash) = self.key_callbacks(elem);
+                            Self::call_named(
+                                "mesh_set_eq_by",
+                                vec![MirType::Ptr, MirType::Ptr, eq.ty().clone(), hash.ty().clone()],
+                                vec![lhs, rhs, eq, hash],
+                                MirType::Bool,
+                            )
+                        }
+                        _ => Self::call_named(
+                            "mesh_set_eq",
+                            vec![MirType::Ptr, MirType::Ptr],
+                            vec![lhs, rhs],
+                            MirType::Bool,
+                        ),
+                    },
                     _ => {
                         self.ensure_instantiation_traits(ty);
                         let f =
@@ -12804,12 +12826,6 @@ impl<'a> Lowerer<'a> {
                     );
                     Self::call_named("mesh_map_eq", ptr3, vec![lhs, rhs, callback], MirType::Bool)
                 }
-                "Set" => Self::call_named(
-                    "mesh_set_eq",
-                    vec![MirType::Ptr, MirType::Ptr],
-                    vec![lhs, rhs],
-                    MirType::Bool,
-                ),
                 name => {
                     let f = format!("Eq__eq__{name}");
                     if self.known_functions.contains_key(&f)
@@ -13574,38 +13590,59 @@ impl<'a> Lowerer<'a> {
         name
     }
 
-    /// Whether a map with keys of type `key` compares them by the key type's
-    /// Eq: keys that are neither words nor strings.
-    fn map_key_needs_eq(key: &Ty) -> bool {
-        !matches!(key, Ty::Var(_))
-            && !matches!(key, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "Float" | "String" | "Atom"))
+    /// Whether a map or set with keys of type `key` compares them by the key
+    /// type's Eq: keys that are not words, nor strings in a map (a map's tag
+    /// can say its keys are strings; a set's cannot).
+    fn key_needs_eq(collection: &str, key: &Ty) -> bool {
+        let by_word = |name: &str| match name {
+            "Int" | "Bool" | "Float" => true,
+            "String" | "Atom" => collection == "map",
+            _ => false,
+        };
+        !matches!(key, Ty::Var(_)) && !matches!(key, Ty::Con(tc) if by_word(&tc.name))
     }
 
-    /// A typed wrapper for map operation `op` (`put`, `get`, ...) of type
-    /// `params -> ret` over keys of type `key`, when the runtime needs to be
-    /// told how to compare them: by the key type's Eq (`mesh_map_<op>_by`),
-    /// or as strings when a map is built from a list or an iterator. `None`
-    /// when the plain runtime function already compares correctly.
-    fn resolve_map_by(
+    /// A typed wrapper for operation `op` of a map (`put`, `get`, ...) or set
+    /// (`add`, `contains`, ...), of type `params -> ret` over keys (a set's
+    /// elements) of type `key`, when the runtime needs to be told how to
+    /// compare them: by the key type's Eq (`mesh_<collection>_<op>_by`), or,
+    /// for a map built from a list or an iterator, as strings. `None` when the
+    /// plain runtime function already compares correctly.
+    fn resolve_table_by(
         &mut self,
+        collection: &str,
         op: &str,
         params: &[Ty],
         ret: &Ty,
         key: &Ty,
         string: bool,
     ) -> Option<String> {
-        let by_eq = Self::map_key_needs_eq(key);
+        let is_map = collection == "map";
+        let by_eq = Self::key_needs_eq(collection, key);
         let builds = matches!(op, "from_list" | "collect");
-        if !(by_eq || (string && builds))
-            || !matches!(
+        let supported = if is_map {
+            matches!(
                 op,
                 "put" | "get" | "has_key" | "delete" | "merge" | "from_list" | "collect"
             )
-        {
+        } else {
+            matches!(
+                op,
+                "add"
+                    | "remove"
+                    | "contains"
+                    | "union"
+                    | "intersection"
+                    | "difference"
+                    | "from_list"
+                    | "collect"
+            )
+        };
+        if !supported || !(by_eq || (is_map && string && builds)) {
             return None;
         }
         let name = format!(
-            "__map_{op}_{}",
+            "__{collection}_{op}_{}",
             Self::ty_specialization_component(&Ty::Fun(params.to_vec(), Box::new(ret.clone())))
         );
         if self.known_functions.contains_key(&name) {
@@ -13617,15 +13654,10 @@ impl<'a> Lowerer<'a> {
             name.clone(),
             MirType::FnPtr(param_tys.clone(), Box::new(ret_ty.clone())),
         );
-        let slot_fn = MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool));
-        let hash_fn = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int));
-        // The key type's Eq and Hash (the runtime indexes large maps by the
-        // hash); no callbacks: the runtime compares by the map's key type.
+        // The key type's Eq and Hash (the runtime indexes large tables by the
+        // hash); no callbacks: the runtime compares by the table's key type.
         let (key_eq, key_hash) = if by_eq {
-            (
-                MirExpr::Var(self.resolve_eq_callback(key), slot_fn.clone()),
-                MirExpr::Var(self.resolve_hash_callback(key), hash_fn),
-            )
+            self.key_callbacks(key)
         } else {
             (
                 MirExpr::IntLit(0, MirType::Ptr),
@@ -13646,17 +13678,20 @@ impl<'a> Lowerer<'a> {
                 vec![arg(0), slot(1), slot(2)],
                 vec![MirType::Ptr, MirType::Int, MirType::Int],
             ),
-            "get" | "has_key" | "delete" => {
+            "get" | "has_key" | "delete" | "add" | "remove" | "contains" => {
                 (vec![arg(0), slot(1)], vec![MirType::Ptr, MirType::Int])
             }
-            "merge" => (vec![arg(0), arg(1)], vec![MirType::Ptr, MirType::Ptr]),
-            _ => (
+            "merge" | "union" | "intersection" | "difference" => {
+                (vec![arg(0), arg(1)], vec![MirType::Ptr, MirType::Ptr])
+            }
+            _ if is_map => (
                 vec![
                     arg(0),
                     MirExpr::IntLit(if string { 1 } else { 0 }, MirType::Int),
                 ],
                 vec![MirType::Ptr, MirType::Int],
             ),
+            _ => (vec![arg(0)], vec![MirType::Ptr]),
         };
         args.push(key_eq);
         arg_tys.push(MirType::Ptr);
@@ -13664,12 +13699,17 @@ impl<'a> Lowerer<'a> {
         arg_tys.push(MirType::Ptr);
         let raw_ret = match op {
             "get" => MirType::Int,
-            "has_key" => MirType::Bool,
+            "has_key" | "contains" => MirType::Bool,
             _ => MirType::Ptr,
         };
         // `get` is `Map.get`, which panics on a missing key.
         let runtime_op = if op == "get" { "fetch" } else { op };
-        let call = Self::call_named(&format!("mesh_map_{runtime_op}_by"), arg_tys, args, raw_ret);
+        let call = Self::call_named(
+            &format!("mesh_{collection}_{runtime_op}_by"),
+            arg_tys,
+            args,
+            raw_ret,
+        );
         let body = if op == "get" {
             match &ret_ty {
                 MirType::Int | MirType::Unit | MirType::Never => call,
@@ -13690,6 +13730,64 @@ impl<'a> Lowerer<'a> {
             .collect();
         self.push_helper_fn(&name, fn_params, ret_ty, body);
         Some(name)
+    }
+
+    /// The `fn(slot, slot) -> Bool` Eq and `fn(slot) -> Int` Hash callbacks
+    /// a table's `_by` runtime functions take for keys of type `key`.
+    fn key_callbacks(&mut self, key: &Ty) -> (MirExpr, MirExpr) {
+        (
+            MirExpr::Var(
+                self.resolve_eq_callback(key),
+                MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
+            ),
+            MirExpr::Var(
+                self.resolve_hash_callback(key),
+                MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Int)),
+            ),
+        )
+    }
+
+    /// `Queue.pop` for elements of type `elem_ty`: `(front, rest)`, built
+    /// here so the element takes a tuple field's form (an aggregate of one
+    /// word inline), not the queue slot's (always boxed).
+    fn resolve_queue_pop(&mut self, elem_ty: &Ty) -> String {
+        let name = format!("__queue_pop_{}", Self::ty_specialization_component(elem_ty));
+        if self.known_functions.contains_key(&name) {
+            return name;
+        }
+        let elem_mir = self.binding_type(elem_ty);
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        let queue = || MirExpr::Var("__queue".to_string(), MirType::Ptr);
+        // The rest first: it is what panics on an empty queue.
+        let rest = Self::call_named(
+            "mesh_queue_pop",
+            vec![MirType::Ptr],
+            vec![queue()],
+            MirType::Ptr,
+        );
+        let front = Self::call_named("mesh_queue_peek", vec![MirType::Ptr], vec![queue()], elem_mir);
+        let tuple = Self::call_named(
+            "__mesh_make_tuple",
+            vec![MirType::Int; 2],
+            vec![front, MirExpr::Var("__rest".to_string(), MirType::Ptr)],
+            MirType::Ptr,
+        );
+        let body = MirExpr::Let {
+            name: "__rest".to_string(),
+            ty: MirType::Ptr,
+            value: Box::new(rest),
+            body: Box::new(tuple),
+        };
+        self.push_helper_fn(
+            &name,
+            vec![("__queue".to_string(), MirType::Ptr)],
+            MirType::Ptr,
+            body,
+        );
+        name
     }
 
     /// `List.contains` for elements of type `elem_ty`: the runtime scan
@@ -14465,7 +14563,8 @@ impl<'a> Lowerer<'a> {
             Some(Ty::App(_, args)) if args.len() == 2 => {
                 let (key, value) = (args[0].clone(), args[1].clone());
                 let map_ty = map_ty.clone().unwrap();
-                self.resolve_map_by(
+                self.resolve_table_by(
+                    "map",
                     "put",
                     &[map_ty.clone(), key.clone(), value],
                     &map_ty,

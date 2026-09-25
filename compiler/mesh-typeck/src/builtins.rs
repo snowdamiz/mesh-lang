@@ -1404,16 +1404,14 @@ pub fn register_builtins(
     // Type constructors for collection types (bare names).
     env.insert("List".into(), Scheme::mono(Ty::list_untyped()));
     env.insert("Map".into(), Scheme::mono(Ty::map_untyped()));
-    env.insert("Set".into(), Scheme::mono(Ty::set_untyped()));
+    env.insert("Set".into(), Scheme::mono(Ty::Con(TyCon::new("Set"))));
     env.insert("Range".into(), Scheme::mono(Ty::range()));
-    env.insert("Queue".into(), Scheme::mono(Ty::queue()));
+    env.insert("Queue".into(), Scheme::mono(Ty::Con(TyCon::new("Queue"))));
 
     // Use opaque types (untyped) for non-list collection function signatures.
     // At the LLVM level these are all pointers; type safety is checked by Mesh's type system.
     let map_t = Ty::map_untyped();
-    let set_t = Ty::set_untyped();
     let range_t = Ty::range();
-    let queue_t = Ty::queue();
 
     // ── Polymorphic List functions ──────────────────────────────────────
     // List functions use TyVar(91000) for T and TyVar(91001) for U
@@ -1762,49 +1760,15 @@ pub fn register_builtins(
         );
     }
 
-    // ── Set module functions ──────────────────────────────────────────
+    // ── Set and Queue module functions (`set_add`, `queue_push`, ...) ──
 
-    env.insert(
-        "set_new".into(),
-        Scheme::mono(Ty::fun(vec![], set_t.clone())),
-    );
-    env.insert(
-        "set_add".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
-    );
-    env.insert(
-        "set_remove".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
-    );
-    env.insert(
-        "set_contains".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], Ty::bool())),
-    );
-    env.insert(
-        "set_size".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::int())),
-    );
-    env.insert(
-        "set_union".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    env.insert(
-        "set_intersection".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    // Phase 47: difference, to_list, from_list
-    env.insert(
-        "set_difference".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    env.insert(
-        "set_to_list".into(),
-        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::list(Ty::int()))),
-    );
-    env.insert(
-        "set_from_list".into(),
-        Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], set_t.clone())),
-    );
+    let (set_fns, queue_fns) = set_and_queue_functions();
+    for (name, scheme) in set_fns {
+        env.insert(format!("set_{name}"), scheme);
+    }
+    for (name, scheme) in queue_fns {
+        env.insert(format!("queue_{name}"), scheme);
+    }
 
     // ── Tuple module functions ────────────────────────────────────────
 
@@ -1856,36 +1820,6 @@ pub fn register_builtins(
     env.insert(
         "range_length".into(),
         Scheme::mono(Ty::fun(vec![range_t.clone()], Ty::int())),
-    );
-
-    // ── Queue module functions ────────────────────────────────────────
-
-    env.insert(
-        "queue_new".into(),
-        Scheme::mono(Ty::fun(vec![], queue_t.clone())),
-    );
-    env.insert(
-        "queue_push".into(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone(), Ty::int()], queue_t.clone())),
-    );
-    env.insert(
-        "queue_pop".into(),
-        Scheme::mono(Ty::fun(
-            vec![queue_t.clone()],
-            Ty::Tuple(vec![Ty::int(), queue_t.clone()]),
-        )),
-    );
-    env.insert(
-        "queue_peek".into(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
-    );
-    env.insert(
-        "queue_size".into(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
-    );
-    env.insert(
-        "queue_is_empty".into(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())),
     );
 
     // ── Standard library: JSON functions (Phase 8 Plan 04) ────────────
@@ -2802,9 +2736,9 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         });
     }
 
-    // impl Iterable for Set (untyped -- Set stores Int elements)
+    // impl Iterable for Set<T>
     {
-        let set_t = Ty::Con(TyCon::new("Set"));
+        let set_t = Ty::set(Ty::Con(TyCon::new("'T")));
         let mut methods = FxHashMap::default();
         methods.insert(
             "iter".to_string(),
@@ -2816,7 +2750,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             },
         );
         let mut assoc_types = FxHashMap::default();
-        assoc_types.insert("Item".to_string(), Ty::int());
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("'T")));
         assoc_types.insert("Iter".to_string(), Ty::Con(TyCon::new("SetIterator")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterable".to_string(),
@@ -2841,7 +2775,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             },
         );
         let mut assoc_types = FxHashMap::default();
-        assoc_types.insert("Item".to_string(), Ty::int());
+        assoc_types.insert("Item".to_string(), Ty::Con(TyCon::new("'T")));
         let _ = registry.register_impl(ImplDef {
             trait_name: "Iterator".to_string(),
             trait_type_args: vec![],
@@ -2972,12 +2906,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         ),
         (Ty::map_untyped(), "Map", &["Eq", "Debug"]),
         (Ty::map(param("'K"), param("'V")), "Map", &["Eq", "Debug"]),
-        (Ty::set_untyped(), "Set", &["Eq", "Debug"]),
-        (
-            Ty::App(Box::new(param("Set")), vec![param("'T")]),
-            "Set",
-            &["Eq", "Debug"],
-        ),
+        (Ty::set(param("'T")), "Set", &["Eq", "Debug"]),
         (Ty::list_untyped(), "List", &["Debug"]),
         (Ty::list(param("'T")), "List", &["Debug"]),
     ];
@@ -3266,7 +3195,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         });
     }
     {
-        let set_t = Ty::Con(TyCon::new("Set"));
+        let set_t = Ty::set(Ty::Con(TyCon::new("'T")));
         let mut methods = FxHashMap::default();
         methods.insert(
             "to_string".to_string(),
@@ -3765,4 +3694,54 @@ mod tests {
         let traits = trait_registry.find_method_traits("default", &Ty::int());
         assert!(traits.contains(&"Default".to_string()));
     }
+}
+
+/// The `Set` and `Queue` module functions, by name, over any element type:
+/// `Set.add(Set<T>, T) -> Set<T>`, `Queue.pop(Queue<T>) -> (T, Queue<T>)`.
+#[allow(clippy::type_complexity)]
+pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'static str, Scheme)>) {
+    let generic = |t_var: TyVar, ty: Ty| Scheme {
+        vars: vec![t_var],
+        ty,
+    };
+    let set_var = TyVar(93000);
+    let t = Ty::Var(set_var);
+    let set_t = Ty::set(t.clone());
+    let set_fns = [
+        ("new", Ty::fun(vec![], set_t.clone())),
+        ("add", Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone())),
+        ("remove", Ty::fun(vec![set_t.clone(), t.clone()], set_t.clone())),
+        ("contains", Ty::fun(vec![set_t.clone(), t.clone()], Ty::bool())),
+        ("size", Ty::fun(vec![set_t.clone()], Ty::int())),
+        ("union", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+        ("intersection", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+        ("difference", Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
+        ("to_list", Ty::fun(vec![set_t.clone()], Ty::list(t.clone()))),
+        ("from_list", Ty::fun(vec![Ty::list(t.clone())], set_t.clone())),
+        ("collect", Ty::fun(vec![Ty::iter(t.clone())], set_t.clone())),
+    ];
+    let queue_var = TyVar(93100);
+    let t = Ty::Var(queue_var);
+    let queue_t = Ty::queue(t.clone());
+    let queue_fns = [
+        ("new", Ty::fun(vec![], queue_t.clone())),
+        ("push", Ty::fun(vec![queue_t.clone(), t.clone()], queue_t.clone())),
+        (
+            "pop",
+            Ty::fun(vec![queue_t.clone()], Ty::Tuple(vec![t.clone(), queue_t.clone()])),
+        ),
+        ("peek", Ty::fun(vec![queue_t.clone()], t.clone())),
+        ("size", Ty::fun(vec![queue_t.clone()], Ty::int())),
+        ("is_empty", Ty::fun(vec![queue_t.clone()], Ty::bool())),
+    ];
+    (
+        set_fns
+            .into_iter()
+            .map(|(name, ty)| (name, generic(set_var, ty)))
+            .collect(),
+        queue_fns
+            .into_iter()
+            .map(|(name, ty)| (name, generic(queue_var, ty)))
+            .collect(),
+    )
 }

@@ -5074,3 +5074,111 @@ fn struct_pattern_errors_and_coverage() {
     );
     assert!(refutable.contains("must match every value"), "{refutable}");
 }
+
+// ── Generic sets and queues ────────────────────────────────────────────
+
+/// Sets hold any element type: strings compare by content, compound
+/// elements by their type's Eq and Hash, and every operation, conversion,
+/// iteration and comparison agrees on it, also past the size where a set
+/// is indexed.
+#[test]
+fn sets_hold_any_element_type() {
+    let output = run(r##"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let words = Set.new() |> Set.add("b") |> Set.add("a") |> Set.add("b")
+  let copy = Set.add(Set.new(), String.concat("a", ""))
+  println("#{Set.size(words)} #{Set.contains(words, "a")} #{Set.contains(copy, "a")} #{Set.contains(words, "c")}")
+  println("#{words}")
+  println("#{Set.to_list(Set.remove(words, "b"))}")
+  let pairs = Set.from_list([(1, "one"), (2, "two"), (1, "one")])
+  println("#{Set.size(pairs)} #{Set.contains(pairs, (2, "two"))} #{Set.contains(pairs, (2, "zwei"))}")
+  let points = Set.new() |> Set.add(Point { x: 1, y: 2 }) |> Set.add(Point { x: 1, y: 2 })
+  println("#{Set.size(points)}")
+  let many = List.reduce(Range.to_list(0..40), Set.new(), fn acc, i -> Set.add(acc, "k#{i % 25}") end)
+  println("#{Set.size(many)} #{Set.contains(many, "k24")} #{Set.contains(many, "k25")}")
+  let evens = Set.from_list(["k0", "k2", "k4"])
+  println("#{Set.size(Set.intersection(many, evens))} #{Set.size(Set.difference(many, evens))} #{Set.size(Set.union(evens, Set.from_list(["z"])))}")
+  println("#{Set.from_list(["x", "y"]) == Set.from_list(["y", String.concat("x", "")])}")
+  let floats = Iter.from([1.5, 2.5, 1.5]) |> Set.collect()
+  println("#{Set.size(floats)}")
+  let collected = Iter.from(["q", "q", "r"]) |> Set.collect()
+  for w in collected do
+    println(w)
+  end
+  println("#{words.contains("a")} #{words.size()}")
+end
+"##);
+    assert_eq!(
+        output,
+        "2 true true false\n#{b, a}\n[a]\n2 true false\n1\n25 true false\n3 22 4\ntrue\n2\nq\nr\ntrue 2\n"
+    );
+}
+
+/// A queue holds any element type, and `Queue.pop` gives it back as the
+/// first element of its tuple, small structs included.
+#[test]
+fn queues_hold_any_element_type() {
+    let output = run(r##"
+struct Id do
+  n :: Int
+end
+
+fn main() do
+  let q = Queue.new() |> Queue.push("first") |> Queue.push("second")
+  let (front, rest) = Queue.pop(q)
+  println("#{front} #{Queue.peek(rest)} #{Queue.size(q)} #{Queue.size(rest)}")
+  let ids = Queue.push(Queue.new(), Id { n: 7 })
+  let (id, empty) = Queue.pop(ids)
+  println("#{id.n} #{Queue.is_empty(empty)}")
+  let pairs = Queue.push(Queue.new(), (1.5, "x"))
+  let ((f, s), _) = Queue.pop(pairs)
+  println("#{f} #{s} #{q.size()}")
+end
+"##);
+    assert_eq!(output, "first second 2 1\n7 true\n1.5 x 2\n");
+}
+
+/// A generic type named without arguments in an annotation takes inferred
+/// ones: `xs :: List` is `List<_>`.
+#[test]
+fn bare_generic_annotations_infer_their_arguments() {
+    let output = run(r##"
+fn count(xs :: List) -> Int do
+  List.length(xs)
+end
+
+fn members(s :: Set) -> Int do
+  Set.size(s)
+end
+
+fn main() do
+  let m :: Map = %{"a" => 1}
+  println("#{count([1, 2]) + count(["a"])} #{members(Set.from_list(["x"]))} #{Map.get(m, "a")}")
+end
+"##);
+    assert_eq!(output, "3 1 1\n");
+}
+
+/// `Iter.from` iterates over any built-in collection: a list's elements, a
+/// map's `(key, value)` pairs, a set's elements, a range's integers.
+#[test]
+fn iter_from_takes_any_collection() {
+    let output = run(r##"
+fn main() do
+  println("#{Iter.from(0..5) |> Iter.map(fn x -> x * 2 end) |> List.collect()}")
+  let m = %{"a" => 1, "b" => 2}
+  println("#{Iter.from(m) |> Iter.map(fn ((k, v)) -> "#{k}=#{v}" end) |> List.collect()}")
+  println("#{Map.get(Iter.from(m) |> Map.collect(), "b")}")
+  let s = Set.from_list(["x", "y"])
+  println("#{Iter.from(s) |> Iter.map(fn w -> w <> "!" end) |> List.collect()}")
+  println("#{1..4 |> Iter.from() |> Iter.sum()}")
+  println("#{Iter.from([3, 4]) |> Iter.count()}")
+end
+"##);
+    assert_eq!(output, "[0, 2, 4, 6, 8]\n[a=1, b=2]\n2\n[x!, y!]\n6\n2\n");
+}

@@ -1827,7 +1827,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             ],
             2,
         ),
-    ] {
+    ]
+    .into_iter()
+    .chain(set_by_declarations(ptr_type, i64_type))
+    {
         let params: Vec<inkwell::types::BasicMetadataTypeEnum> = params;
         let fn_type = match returns_ptr {
             1 => ptr_type.fn_type(&params, false),
@@ -4751,6 +4754,30 @@ pub fn get_intrinsic<'ctx>(module: &Module<'ctx>, name: &str) -> FunctionValue<'
     module
         .get_function(name)
         .unwrap_or_else(|| panic!("Runtime function '{}' not declared", name))
+}
+
+/// The set operations that compare elements by an element-type Eq
+/// callback and hash them by its Hash callback (both null: as words), as
+/// `(name, params, returns)` with returns 1 for a pointer, 2 for a Bool.
+fn set_by_declarations<'ctx>(
+    ptr_type: inkwell::types::PointerType<'ctx>,
+    i64_type: inkwell::types::IntType<'ctx>,
+) -> Vec<(&'static str, Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>>, u8)> {
+    let callbacks = [ptr_type.into(), ptr_type.into()];
+    let with = |args: &[inkwell::types::BasicMetadataTypeEnum<'ctx>]| {
+        args.iter().chain(&callbacks).copied().collect::<Vec<_>>()
+    };
+    vec![
+        ("mesh_set_add_by", with(&[ptr_type.into(), i64_type.into()]), 1),
+        ("mesh_set_remove_by", with(&[ptr_type.into(), i64_type.into()]), 1),
+        ("mesh_set_contains_by", with(&[ptr_type.into(), i64_type.into()]), 2),
+        ("mesh_set_union_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
+        ("mesh_set_intersection_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
+        ("mesh_set_difference_by", with(&[ptr_type.into(), ptr_type.into()]), 1),
+        ("mesh_set_eq_by", with(&[ptr_type.into(), ptr_type.into()]), 2),
+        ("mesh_set_from_list_by", with(&[ptr_type.into()]), 1),
+        ("mesh_set_collect_by", with(&[ptr_type.into()]), 1),
+    ]
 }
 
 #[cfg(test)]

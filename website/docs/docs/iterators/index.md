@@ -9,14 +9,12 @@ Mesh provides lazy iterator adapters for composing list transformations as pipel
 
 The two entry points have different scopes:
 
-- `Iter.from(list)` accepts a `List<T>` and starts a lazy pipeline of type `Iter<T>`.
-- `for value in source` accepts built-in lists, maps, sets, ranges, and user-defined `Iterable` or `Iterator` values.
-
-Do not use `Iter.from(map)` or `Iter.from(set)`; those are not part of the current typed API.
+- `Iter.from(source)` starts a lazy pipeline over a built-in collection: a `List<T>` or `Set<T>` gives an `Iter<T>`, a `Map<K, V>` an `Iter<(K, V)>` of its entries, and a `Range` an `Iter<Int>`.
+- `for value in source` accepts the same collections and user-defined `Iterable` or `Iterator` values.
 
 ## Creating Iterators
 
-Use `Iter.from()` to create an iterator from a list:
+Use `Iter.from()` to create an iterator from a collection:
 
 ```mesh
 fn main() do
@@ -439,7 +437,7 @@ end
 
 | Operation | Result | Notes |
 |-----------|--------|-------|
-| `Iter.from(list)` | `Iter<T>` | `list` must be `List<T>` |
+| `Iter.from(source)` | `Iter<T>` | `source` is a `List<T>`, `Set<T>`, `Map<K, V>` (`T` is `(K, V)`), or `Range` (`T` is `Int`) |
 | `Iter.map(iter, fn)` | `Iter<U>` | Transforms each value with a `(T) -> U` function |
 | `Iter.filter(iter, fn)` | `Iter<T>` | Predicate must return `Bool` |
 | `Iter.take(iter, n)` | `Iter<T>` | Stops after at most `n` values |

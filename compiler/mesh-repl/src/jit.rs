@@ -1943,6 +1943,42 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_service_reply_shaped as *const (),
         ),
         ("mesh_set_add", mesh_rt::mesh_set_add as *const ()),
+        (
+            "mesh_set_add_by",
+            mesh_rt::collections::set::mesh_set_add_by as *const (),
+        ),
+        (
+            "mesh_set_remove_by",
+            mesh_rt::collections::set::mesh_set_remove_by as *const (),
+        ),
+        (
+            "mesh_set_contains_by",
+            mesh_rt::collections::set::mesh_set_contains_by as *const (),
+        ),
+        (
+            "mesh_set_union_by",
+            mesh_rt::collections::set::mesh_set_union_by as *const (),
+        ),
+        (
+            "mesh_set_intersection_by",
+            mesh_rt::collections::set::mesh_set_intersection_by as *const (),
+        ),
+        (
+            "mesh_set_difference_by",
+            mesh_rt::collections::set::mesh_set_difference_by as *const (),
+        ),
+        (
+            "mesh_set_eq_by",
+            mesh_rt::collections::set::mesh_set_eq_by as *const (),
+        ),
+        (
+            "mesh_set_from_list_by",
+            mesh_rt::collections::set::mesh_set_from_list_by as *const (),
+        ),
+        (
+            "mesh_set_collect_by",
+            mesh_rt::iter::mesh_set_collect_by as *const (),
+        ),
         ("mesh_set_collect", mesh_rt::mesh_set_collect as *const ()),
         ("mesh_set_contains", mesh_rt::mesh_set_contains as *const ()),
         (

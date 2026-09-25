@@ -124,9 +124,9 @@ Mesh has the following core types:
 | `(A, B)` | Tuple | `(1, "one")` |
 | `List<T>` | Immutable sequence | `[1, 2, 3]` |
 | `Map<K, V>` | Immutable key-value collection | `%{"a" => 1}` |
-| `Set` | Immutable unique collection of `Int` values | `Set.new()` |
+| `Set<T>` | Immutable collection of unique values | `Set.new()` |
 | `Range` | Integer range value | `Range.new(0, 10)` |
-| `Queue` | Immutable queue of `Int` values | `Queue.new()` |
+| `Queue<T>` | Immutable first-in, first-out queue | `Queue.new()` |
 | `Pid<M>` | Actor identity accepting messages of type `M` | returned by `spawn(...)` |
 | `Option<T>` | Optional value | `Some(42)`, `None`; shorthand `Int?` |
 | `Result<T, E>` | Success or failure | `Ok(42)`, `Err("failed")`; shorthand `Int!String` |

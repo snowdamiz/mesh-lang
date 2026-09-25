@@ -44,8 +44,10 @@ test('public docs cover the current Mesh surface', () => {
   assert.doesNotMatch(`${gettingStarted}\n${clusteredExample}`, /\.\/(?:hello_mesh|hello_cluster|hello)\b/)
   assert.match(typeSystem, /type Pair<A, B> = \(A, B\)/)
   assert.doesNotMatch(`${typeSystem}\n${languageBasics}`, /Type aliases (?:are not generic|in v13\.0 are non-generic)/)
-  assert.doesNotMatch(iterators, /Iter\.from\(\).*works with lists, maps, and sets/)
-  assert.doesNotMatch(`${typeSystem}\n${languageBasics}\n${iterators}`, /\bSet<T>/)
+  // Sets and queues are generic, and Iter.from takes any built-in collection.
+  assert.match(typeSystem, /\bSet<T>/)
+  assert.match(typeSystem, /\bQueue<T>/)
+  assert.match(iterators, /`Iter\.from\(source\)`.*`Map<K, V>`/)
   assert.match(languageBasics, /Unicode alphabetic code point/)
   assert.match(languageBasics, /Reserved keywords are exact ASCII words/)
   assert.match(reference, /Unicode alphanumeric code point/)

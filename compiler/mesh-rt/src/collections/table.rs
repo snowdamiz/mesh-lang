@@ -62,6 +62,8 @@ pub(crate) struct Keys {
 }
 
 impl Keys {
+    /// Keys compared and hashed as words.
+    #[cfg(test)]
     pub(crate) const WORDS: Keys = Keys {
         string: false,
         eq: None,

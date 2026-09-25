@@ -20,9 +20,9 @@ Mesh has a static Hindley-Milner-style type system with local and function infer
 | `(A, B)` | Tuple |
 | `Fun(A, B) -> R` | Function |
 | `List<T>`, `Map<K, V>` | Parametric collections |
-| `Set` | Immutable set of `Int` values |
+| `Set<T>` | Immutable set of unique values |
 | `Range` | Integer range value |
-| `Queue` | Immutable queue of `Int` values |
+| `Queue<T>` | Immutable first-in, first-out queue |
 | `Option<T>` / `T?` | Optional value |
 | `Result<T, E>` / `T!E` | Success or failure |
 | `Pid<M>` | Actor identity whose mailbox accepts `M` |

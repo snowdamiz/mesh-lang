@@ -577,7 +577,13 @@ pub extern "C-unwind" fn mesh_map_collect_by(
 /// Repeated elements are kept once.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
-    use crate::collections::set::{mesh_set_add, mesh_set_new};
+    mesh_set_collect_by(iter, std::ptr::null_mut(), std::ptr::null_mut())
+}
+
+/// `mesh_set_collect` with elements compared by `eq` and hashed by `hash`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_set_collect_by(iter: *mut u8, eq: *mut u8, hash: *mut u8) -> *mut u8 {
+    use crate::collections::set::{mesh_set_add_by, mesh_set_new};
     unsafe {
         let mut set = mesh_set_new();
         loop {
@@ -586,7 +592,7 @@ pub extern "C-unwind" fn mesh_set_collect(iter: *mut u8) -> *mut u8 {
             if (*opt_ref).tag == 1 {
                 break; // None
             }
-            set = mesh_set_add(set, (*opt_ref).value as u64);
+            set = mesh_set_add_by(set, (*opt_ref).value as u64, eq, hash);
         }
         set
     }

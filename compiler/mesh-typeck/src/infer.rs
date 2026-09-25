@@ -359,6 +359,30 @@ type StdlibModules = HashMap<String, HashMap<String, Scheme>>;
 /// The stdlib module namespace registry, built once per thread. Every
 /// `String.length(x)` looks its function up here, and building the
 /// registry costs about as much as checking a small module.
+/// The standard-library module whose functions are methods of values of
+/// type `ty`: `"hello".length()` is `String.length("hello")`.
+pub fn method_module(ty: &Ty) -> Option<&'static str> {
+    match ty {
+        Ty::Con(tc) => match tc.name.as_str() {
+            "String" => Some("String"),
+            "Range" => Some("Range"),
+            _ => None,
+        },
+        Ty::App(con, _) => match con.as_ref() {
+            Ty::Con(tc) => match tc.name.as_str() {
+                "List" => Some("List"),
+                "Map" => Some("Map"),
+                "Set" => Some("Set"),
+                "Queue" => Some("Queue"),
+                "Iter" => Some("Iter"),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn stdlib_modules(test_builtins: bool) -> std::rc::Rc<StdlibModules> {
     thread_local! {
         static MODULES: std::cell::RefCell<[Option<std::rc::Rc<StdlibModules>>; 2]> =
@@ -1684,54 +1708,16 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     modules.insert("Map".to_string(), map_mod);
 
-    let set_t = Ty::set_untyped();
-    let mut set_mod = HashMap::new();
-    set_mod.insert(
-        "new".to_string(),
-        Scheme::mono(Ty::fun(vec![], set_t.clone())),
-    );
-    set_mod.insert(
-        "add".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
-    );
-    set_mod.insert(
-        "remove".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], set_t.clone())),
-    );
-    set_mod.insert(
-        "contains".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), Ty::int()], Ty::bool())),
-    );
-    set_mod.insert(
-        "size".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::int())),
-    );
-    set_mod.insert(
-        "union".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    set_mod.insert(
-        "intersection".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    // Phase 47: difference, to_list, from_list
-    set_mod.insert(
-        "difference".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone(), set_t.clone()], set_t.clone())),
-    );
-    set_mod.insert(
-        "to_list".to_string(),
-        Scheme::mono(Ty::fun(vec![set_t.clone()], Ty::list(Ty::int()))),
-    );
-    set_mod.insert(
-        "from_list".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::list(Ty::int())], set_t.clone())),
-    );
-    // Phase 79: Set.collect(iter) -> Set
-    set_mod.insert(
-        "collect".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::iter(Ty::int())], set_t.clone())),
-    );
+    // Sets and queues hold any element type.
+    let (set_fns, queue_fns) = crate::builtins::set_and_queue_functions();
+    let set_mod: HashMap<String, Scheme> = set_fns
+        .into_iter()
+        .map(|(name, scheme)| (name.to_string(), scheme))
+        .collect();
+    let queue_mod: HashMap<String, Scheme> = queue_fns
+        .into_iter()
+        .map(|(name, scheme)| (name.to_string(), scheme))
+        .collect();
     modules.insert("Set".to_string(), set_mod);
 
     let mut tuple_mod = HashMap::new();
@@ -1786,35 +1772,6 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     modules.insert("Range".to_string(), range_mod);
 
-    let queue_t = Ty::queue();
-    let mut queue_mod = HashMap::new();
-    queue_mod.insert(
-        "new".to_string(),
-        Scheme::mono(Ty::fun(vec![], queue_t.clone())),
-    );
-    queue_mod.insert(
-        "push".to_string(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone(), Ty::int()], queue_t.clone())),
-    );
-    queue_mod.insert(
-        "pop".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![queue_t.clone()],
-            Ty::Tuple(vec![Ty::int(), queue_t.clone()]),
-        )),
-    );
-    queue_mod.insert(
-        "peek".to_string(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
-    );
-    queue_mod.insert(
-        "size".to_string(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::int())),
-    );
-    queue_mod.insert(
-        "is_empty".to_string(),
-        Scheme::mono(Ty::fun(vec![queue_t.clone()], Ty::bool())),
-    );
     modules.insert("Queue".to_string(), queue_mod);
 
     // ── JSON module (Phase 8 Plan 04) ─────────────────────────────────
@@ -2933,10 +2890,9 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         };
         let predicate = Ty::fun(vec![tv.clone()], Ty::bool());
         for (name, scheme) in [
-            (
-                "from",
-                scheme(vec![t], vec![Ty::list(tv.clone())], iter(tv.clone())),
-            ),
+            // `a -> Iter<b>`: the source's type settles `b` at the call
+            // (`settle_iter_source`).
+            ("from", scheme(vec![t, u], vec![tv.clone()], iter(uv.clone()))),
             (
                 "map",
                 scheme(
@@ -10139,6 +10095,44 @@ fn infer_call(
     Ok(ty)
 }
 
+/// `Iter.from(source)` iterates over a list's elements, a map's `(key,
+/// value)` pairs, a set's elements or a range's integers: `source`'s type
+/// decides the element type of the `Iter` the call returns (`ret`). A source
+/// of no known collection type is a list.
+fn settle_iter_source(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    callee: &Expr,
+    source: &Ty,
+    ret: &Ty,
+    origin: &ConstraintOrigin,
+) -> Result<(), TypeError> {
+    let Expr::FieldAccess(fa) = callee else {
+        return Ok(());
+    };
+    let is_iter_from = fa.field().is_some_and(|f| f.text() == "from")
+        && matches!(fa.base(), Some(Expr::NameRef(base)) if base.text().as_deref() == Some("Iter"))
+        && env.lookup("Iter").is_none();
+    if !is_iter_from {
+        return Ok(());
+    }
+    let element = match ctx.resolve(source.clone()) {
+        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Map") && args.len() == 2 => {
+            Ty::Tuple(args)
+        }
+        Ty::App(con, mut args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Set") && args.len() == 1 => {
+            args.remove(0)
+        }
+        Ty::Con(tc) if tc.name == "Range" => Ty::int(),
+        _ => {
+            let element = ctx.fresh_var();
+            ctx.unify(source.clone(), Ty::list(element.clone()), origin.clone())?;
+            element
+        }
+    };
+    ctx.unify(ret.clone(), Ty::iter(element), origin.clone())
+}
+
 /// `Node.spawn(node, actor, args...)` and `Node.spawn_link(...)`, typed as a
 /// local `spawn` is: the node name is a `String`, the actor takes the
 /// arguments, and the call returns the actor's `Pid<M>`. `None` for any
@@ -10429,6 +10423,9 @@ fn infer_call_inner(
     if let (Some(index), Some(tuple_ty)) = (accessor, arg_types.first()) {
         let element = tuple_element_type(ctx, tuple_ty, index, origin.clone())?;
         ctx.unify(ret_var.clone(), element, origin.clone())?;
+    }
+    if let Some(source) = arg_types.first() {
+        settle_iter_source(ctx, env, &callee_expr, source, &ret_var, &origin)?;
     }
 
     if is_http_route_registration_callee(&callee_expr) {
@@ -10799,6 +10796,7 @@ fn infer_pipe(
                 let element = tuple_element_type(ctx, &lhs_ty, index, origin.clone())?;
                 ctx.unify(ret_var.clone(), element, origin.clone())?;
             }
+            settle_iter_source(ctx, env, &callee_expr, &lhs_ty, &ret_var, &origin)?;
 
             // Record type for the CallExpr node so MIR lowering can resolve it.
             let resolved_call = ctx.resolve(ret_var.clone());
@@ -11669,7 +11667,6 @@ fn extract_collection_elem_type(ty: &Ty) -> CollectionType {
         Ty::Con(tc) => match tc.name.as_str() {
             "List" => CollectionType::List(Ty::int()),
             "Map" => CollectionType::Map(Ty::int(), Ty::int()),
-            "Set" => CollectionType::Set(Ty::int()),
             _ => CollectionType::Unknown,
         },
         _ => CollectionType::Unknown,
@@ -13344,25 +13341,7 @@ fn infer_field_access(
         // After trait method resolution fails, check if the method name
         // matches a stdlib module function for the receiver type.
         // e.g. "hello".length() -> String.length(str), my_list.length() -> List.length(list)
-        let module_name = match &resolved_base {
-            t if *t == Ty::string() => Some("String"),
-            t if *t == Ty::range() => Some("Range"),
-            t if *t == Ty::set_untyped() => Some("Set"),
-            Ty::App(con, _) => {
-                if let Ty::Con(c) = con.as_ref() {
-                    match c.name.as_str() {
-                        "List" => Some("List"),
-                        "Map" => Some("Map"),
-                        "Set" => Some("Set"),
-                        "Iter" => Some("Iter"),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
+        let module_name = method_module(&resolved_base);
         if let Some(mod_name) = module_name {
             let modules = stdlib_modules(ctx.test_builtins);
             if let Some(mod_fns) = modules.get(mod_name) {
