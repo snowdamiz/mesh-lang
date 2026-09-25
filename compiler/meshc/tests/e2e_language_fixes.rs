@@ -4926,6 +4926,7 @@ end
 "##;
     assert_eq!(run(source), "10\n21\nSome(a) Some(b) None 1\nSome(1.5)\n");
 }
+
 // ── Struct patterns ────────────────────────────────────────────────────
 
 /// `Point { x: 0, y }` matches a struct by its fields: `field: pattern`

@@ -3460,6 +3460,7 @@ fn list_patterns_match_fixed_lengths() {
 end"
     ));
 }
+
 /// `Point { x, y: 0 }` is a struct pattern: a field alone binds its name,
 /// `field: pattern` matches the field, and the struct may be qualified.
 #[test]
