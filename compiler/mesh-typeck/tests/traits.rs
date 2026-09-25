@@ -328,3 +328,28 @@ fn an_imported_functions_requirements_hold_for_its_callers() {
     let fine = check("println(show(1))\n  println(Util.show_where(b.n))");
     assert!(fine.errors.is_empty(), "{:?}", fine.errors);
 }
+
+/// A named function passed as a value requires of whatever its parameters
+/// become what a call of it would: its where-clause and the bounds its body
+/// infers. Passed to `apply` or `List.map`, or bound with `let` and
+/// called, `show_block` interpolated a `Box` with no `Display`, or code
+/// generation failed with no location.
+/// A parameter that shadows the function is a value of its own.
+#[test]
+fn a_function_used_as_a_value_keeps_its_requirements() {
+    let prelude = "struct Box do\n  n :: Int\nend\n\nfn show_block(x) do\n  \"#{x}\"\nend\n\nfn show_where<T>(x :: T) -> String where T: Display do\n  \"shown\"\nend\n\nfn apply(f, x) do\n  f(x)\nend\n\n";
+    for body in [
+        "apply(show_block, b)",
+        "apply(show_where, b)",
+        "List.map([b], show_block)",
+        "show_where(b)",
+        "let f = show_block\n  f(b)",
+        "let f = show_block\n  let g = f\n  g(b)",
+    ] {
+        let src = format!("{prelude}fn main() do\n  let b = Box {{ n: 1 }}\n  {body}\nend\n");
+        assert_has_error(&check_source(&src), box_lacks_display, body);
+    }
+    let shadowed = format!("{prelude}fn g(show_block, b) do\n  show_block(b)\nend\n\nfn main() do\n  g(fn(x) -> x.n end, Box {{ n: 1 }})\nend\n");
+    let result = check_source(&shadowed);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}

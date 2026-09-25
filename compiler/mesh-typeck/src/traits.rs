@@ -771,29 +771,6 @@ impl TraitRegistry {
         let impl_def = self.find_impl(trait_name, impl_ty)?;
         impl_def.associated_types.get(assoc_name).cloned()
     }
-
-    /// Check where-clause constraints: verify that a concrete type satisfies
-    /// all required trait bounds.
-    pub fn check_where_constraints(
-        &self,
-        constraints: &[(String, String)], // (type_param_name, trait_name)
-        type_args: &FxHashMap<String, Ty>,
-        origin: ConstraintOrigin,
-    ) -> Vec<TypeError> {
-        let mut errors = Vec::new();
-        for (param_name, trait_name) in constraints {
-            if let Some(concrete_ty) = type_args.get(param_name) {
-                if !self.has_impl(trait_name, concrete_ty) {
-                    errors.push(TypeError::TraitNotSatisfied {
-                        ty: concrete_ty.clone(),
-                        trait_name: trait_name.clone(),
-                        origin: origin.clone(),
-                    });
-                }
-            }
-        }
-        errors
-    }
 }
 
 /// Replace `Self` in an interface signature with the implementing type.

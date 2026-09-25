@@ -44,6 +44,35 @@ pub struct EarlyReturn {
     pub try_operand: Option<Ty>,
 }
 
+/// A deferred check a generalized binding's value leaves on the variables
+/// its scheme generalizes: `let show = fn x -> "#{x}" end` needs Display of
+/// `x`'s type. Each instance of the scheme requires it of its own variables
+/// (see `InferCtx::instantiate`), as a function's inferred bounds are
+/// required of each call's arguments.
+#[derive(Clone, Debug)]
+pub enum SchemeRequirement {
+    /// An operand's trait (see `InferCtx::operand_traits`).
+    Trait(Ty, String, ConstraintOrigin),
+    /// An operand of `<>` or `++` (see `InferCtx::concat_operands`).
+    Concat(Ty, &'static str, TextRange),
+}
+
+/// The first of `vars` that occurs in `ty`, a resolved type.
+fn first_of(ty: &Ty, vars: &[TyVar]) -> Option<TyVar> {
+    match ty {
+        Ty::Var(var) => vars.contains(var).then_some(*var),
+        Ty::Con(_) | Ty::Never => None,
+        Ty::App(con, args) => {
+            first_of(con, vars).or_else(|| args.iter().find_map(|arg| first_of(arg, vars)))
+        }
+        Ty::Fun(params, ret) => params
+            .iter()
+            .find_map(|param| first_of(param, vars))
+            .or_else(|| first_of(ret, vars)),
+        Ty::Tuple(elems) => elems.iter().find_map(|elem| first_of(elem, vars)),
+    }
+}
+
 /// The inference context -- owns the unification table, level state, and errors.
 ///
 /// All type inference happens through this context. It creates fresh type
@@ -129,6 +158,9 @@ pub struct InferCtx {
     /// standing for it, the trait, the associated type's name and the
     /// receiver. Lowering binds the variable in each specialization.
     pub assoc_projections: Vec<(Ty, String, String, Ty)>,
+    /// What generalized bindings' values require of the variables their
+    /// schemes generalize, by one such variable (see `SchemeRequirement`).
+    pub scheme_requirements: FxHashMap<TyVar, Vec<SchemeRequirement>>,
     /// A generic function's body can fix an associated type (`c.first() + 1`
     /// makes `T.Item` an Int). Each instance of the function then requires it
     /// of its receiver: (required type, trait, associated type name, the
@@ -212,6 +244,7 @@ impl InferCtx {
             where_bounds: Vec::new(),
             rigid_params: Vec::new(),
             assoc_projections: Vec::new(),
+            scheme_requirements: FxHashMap::default(),
             projection_requirements: Vec::new(),
             json_types: Default::default(),
             local_variants: Default::default(),
@@ -902,7 +935,69 @@ impl InferCtx {
         }
         self.assoc_projections.extend(instances);
 
+        // What the binding's value requires of its variables, required of
+        // this instance's.
+        for var in &scheme.vars {
+            for requirement in self
+                .scheme_requirements
+                .get(var)
+                .cloned()
+                .unwrap_or_default()
+            {
+                match requirement {
+                    SchemeRequirement::Trait(ty, trait_name, origin) => {
+                        let ty = self.apply_substitution(&ty, &substitution);
+                        self.operand_traits.push((ty, trait_name, origin));
+                    }
+                    SchemeRequirement::Concat(ty, op, span) => {
+                        let ty = self.apply_substitution(&ty, &substitution);
+                        self.concat_operands.push((ty, op, span));
+                    }
+                }
+            }
+        }
+
         self.apply_substitution(&scheme.ty, &substitution)
+    }
+
+    /// Hands what was required, since the marks `traits_from` and
+    /// `concat_from`, of the variables `vars` a binding's scheme generalizes
+    /// to the scheme's instances (see `SchemeRequirement`). Checked on the
+    /// generalized variables themselves, which no use ever fixes, it could
+    /// never fail.
+    pub fn generalize_requirements(
+        &mut self,
+        vars: &[TyVar],
+        traits_from: usize,
+        concat_from: usize,
+    ) {
+        if vars.is_empty() {
+            return;
+        }
+        let traits = self.operand_traits.split_off(traits_from);
+        for (ty, trait_name, origin) in traits {
+            let ty = self.resolve(ty);
+            match first_of(&ty, vars) {
+                Some(var) => self
+                    .scheme_requirements
+                    .entry(var)
+                    .or_default()
+                    .push(SchemeRequirement::Trait(ty, trait_name, origin)),
+                None => self.operand_traits.push((ty, trait_name, origin)),
+            }
+        }
+        let concat = self.concat_operands.split_off(concat_from);
+        for (ty, op, span) in concat {
+            let ty = self.resolve(ty);
+            match first_of(&ty, vars) {
+                Some(var) => self
+                    .scheme_requirements
+                    .entry(var)
+                    .or_default()
+                    .push(SchemeRequirement::Concat(ty, op, span)),
+                None => self.concat_operands.push((ty, op, span)),
+            }
+        }
     }
 
     /// Apply a substitution map to a type.

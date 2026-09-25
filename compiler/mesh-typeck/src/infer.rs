@@ -12,9 +12,9 @@
 
 use mesh_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
-    ForInExpr, IfExpr, JsonExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, ReceiveExpr,
-    ReturnExpr, SelfExpr, SendExpr, SpawnExpr, StructLiteral, StructUpdate, TryExpr, TupleExpr,
-    UnaryExpr, WhileExpr,
+    ForInExpr, IfExpr, JsonExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr,
+    ReceiveExpr, ReturnExpr, SelfExpr, SendExpr, SlotPipeExpr, SpawnExpr, StructLiteral,
+    StructUpdate, TryExpr, TupleExpr, UnaryExpr, WhileExpr,
 };
 use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef as AstImplDef, InterfaceDef, Item, LetBinding, ServiceDef,
@@ -370,7 +370,6 @@ fn finish_fn_body(
             .entry(env_key.to_string())
             .or_insert_with(|| FnConstraints {
                 where_constraints: Vec::new(),
-                type_params: FxHashMap::default(),
                 param_type_param_names: vec![None; param_types.len()],
                 inferred_bounds: Vec::new(),
                 concat_params: Vec::new(),
@@ -384,29 +383,93 @@ fn finish_fn_body(
     ctx.rigid_params = enclosing.rigid_params;
 }
 
-/// What a function with inferred parameter types needs of them (an
-/// operator's trait, being joinable), required of this call's arguments:
-/// checked once the calling function is done, or handed on to its own
-/// callers when an argument's type is open there too.
-fn require_inferred_bounds(
+/// What a function requires of its arguments beyond their types (its
+/// where-clause, the traits its body needs of parameters it leaves open,
+/// being joinable), required of `params`: a call's argument types, or the
+/// parameter types of the function used as a value. Checked once the
+/// enclosing function is done, or handed on to its own callers when a type
+/// is open there too. `span` is the call's, or the function value's.
+fn require_constraints(
     ctx: &mut InferCtx,
     constraints: &FnConstraints,
-    arg_types: &[Ty],
-    origin: &ConstraintOrigin,
-    call_range: TextRange,
+    params: &[Ty],
+    span: TextRange,
 ) {
+    let origin = ConstraintOrigin::FnArg {
+        call_site: span,
+        param_idx: 0,
+    };
     for (index, trait_name) in &constraints.inferred_bounds {
-        if let Some(arg) = arg_types.get(*index) {
+        if let Some(param) = params.get(*index) {
             ctx.operand_traits
-                .push((arg.clone(), trait_name.clone(), origin.clone()));
+                .push((param.clone(), trait_name.clone(), origin.clone()));
+        }
+    }
+    for (type_param, trait_name) in &constraints.where_constraints {
+        for (param, name) in params.iter().zip(&constraints.param_type_param_names) {
+            if name.as_ref() == Some(type_param) {
+                ctx.operand_traits
+                    .push((param.clone(), trait_name.clone(), origin.clone()));
+            }
         }
     }
     for (index, op) in &constraints.concat_params {
-        if let Some(arg) = arg_types.get(*index) {
-            let arg = ctx.resolve(arg.clone());
-            ctx.concat_operands.push((arg, op, call_range));
+        if let Some(param) = params.get(*index) {
+            let param = ctx.resolve(param.clone());
+            ctx.concat_operands.push((param, op, span));
         }
     }
+}
+
+/// The name `fn_constraints` keeps a function's requirements under: its
+/// own, its arity's (`name__N`) for an overloaded one the call at
+/// `call_range` resolved, `Module.name` for an imported module's. `None`
+/// for a local variable, which is no such function.
+fn constraints_key(
+    ctx: &InferCtx,
+    env: &TypeEnv,
+    callee: &Expr,
+    call_range: TextRange,
+) -> Option<String> {
+    let resolved = |name: String| {
+        ctx.overloaded_call_targets
+            .get(&call_range)
+            .cloned()
+            .unwrap_or(name)
+    };
+    match callee {
+        Expr::NameRef(name_ref) => {
+            let name = name_ref.text()?;
+            (!env.is_local(&name)).then(|| resolved(name))
+        }
+        Expr::FieldAccess(fa) => {
+            let Some(Expr::NameRef(module)) = fa.base() else {
+                return None;
+            };
+            Some(format!(
+                "{}.{}",
+                module.text()?,
+                resolved(fa.field()?.text().to_string())
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Whether `expr` is what a call calls: `f` in `f(x)` and `x |> f`. A
+/// call checks its callee's requirements against its arguments
+/// (`check_call`); a function used any other way is a value.
+fn is_called(expr: &Expr) -> bool {
+    let Some(parent) = expr.syntax().parent() else {
+        return false;
+    };
+    let called = match parent.kind() {
+        SyntaxKind::CALL_EXPR => CallExpr::cast(parent).and_then(|call| call.callee()),
+        SyntaxKind::PIPE_EXPR => PipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
+        SyntaxKind::SLOT_PIPE_EXPR => SlotPipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
+        _ => None,
+    };
+    called.is_some_and(|called| called.syntax() == expr.syntax())
 }
 
 /// What a function requires of a call's arguments beyond their types (see
@@ -415,9 +478,6 @@ fn require_inferred_bounds(
 pub struct FnConstraints {
     /// Where-clause constraints: (type_param_name, trait_name).
     where_constraints: Vec<(String, String)>,
-    /// Type parameter names mapped to their inference type variables. Empty
-    /// once exported: another module's variables mean nothing to a caller.
-    type_params: FxHashMap<String, Ty>,
     /// For each function parameter (by index), the type parameter name it
     /// was annotated with (if any). Used to resolve type params from call-site
     /// argument types after instantiation + unification.
@@ -428,26 +488,6 @@ pub struct FnConstraints {
     inferred_bounds: Vec<(usize, String)>,
     /// Parameters, by index, that the body joins with `<>` or `++`.
     concat_params: Vec<(usize, &'static str)>,
-}
-
-impl FnConstraints {
-    /// The type parameters bound to what a call gives them: the argument
-    /// types at the parameters they annotate, else what inference made of them.
-    fn type_args(&self, ctx: &mut InferCtx, arg_types: &[Ty]) -> FxHashMap<String, Ty> {
-        let mut type_args = FxHashMap::default();
-        for (name, arg) in self.param_type_param_names.iter().zip(arg_types) {
-            if let Some(name) = name {
-                type_args.insert(name.clone(), ctx.resolve(arg.clone()));
-            }
-        }
-        for (name, ty) in &self.type_params {
-            if !type_args.contains_key(name) {
-                let ty = ctx.resolve(ty.clone());
-                type_args.insert(name.clone(), ty);
-            }
-        }
-        type_args
-    }
 }
 
 // ── Standard Library Module Resolution (Phase 8) ──────────────────────
@@ -4702,19 +4742,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         clustered_route_wrappers: ctx.clustered_route_wrappers,
         discarded_callback_results: ctx.discarded_callback_results,
         function_ownership: ownership.function_ownership,
-        fn_constraints: fn_constraints
-            .into_iter()
-            .map(|(name, constraints)| {
-                let type_params = FxHashMap::default();
-                (
-                    name,
-                    FnConstraints {
-                        type_params,
-                        ..constraints
-                    },
-                )
-            })
-            .collect(),
+        fn_constraints,
         assoc_projections,
     }
 }
@@ -5466,13 +5494,12 @@ fn infer_multi_clause_fn(
     });
 
     // Store fn constraints if any.
-    if !where_constraints.is_empty() || !type_params.is_empty() {
+    if !where_constraints.is_empty() {
         let param_type_param_names: Vec<Option<String>> = (0..arity).map(|_| None).collect();
         fn_constraints.insert(
             env_key.clone(),
             FnConstraints {
                 where_constraints: where_constraints.clone(),
-                type_params: type_params.clone(),
                 param_type_param_names,
                 inferred_bounds: Vec::new(),
                 concat_params: Vec::new(),
@@ -8150,6 +8177,8 @@ fn infer_let_binding(
 
     ctx.enter_level();
     let pending_before = ctx.pending_fields.len();
+    let traits_before = ctx.operand_traits.len();
+    let concat_before = ctx.concat_operands.len();
 
     let init_expr = let_.initializer().ok_or_else(incomplete)?;
 
@@ -8209,18 +8238,13 @@ fn infer_let_binding(
     } else {
         ctx.generalize(binding_ty)
     };
+    // What the value requires of a type the scheme generalizes (`let f =
+    // show`, when `show` needs Display of its parameter) is required of
+    // each use's instance.
+    ctx.generalize_requirements(&scheme.vars, traits_before, concat_before);
 
     if let Some(name) = let_.name() {
         if let Some(name_text) = name.text() {
-            // Propagate where-clause constraints if RHS is a NameRef
-            // to a constrained function (fixes TSND-01 soundness bug).
-            if let Expr::NameRef(ref name_ref) = init_expr {
-                if let Some(source_name) = name_ref.text() {
-                    if let Some(source_constraints) = fn_constraints.get(&source_name).cloned() {
-                        fn_constraints.insert(name_text.clone(), source_constraints);
-                    }
-                }
-            }
             env.insert(name_text, scheme);
         }
     } else if let Some(pat) = let_.pattern() {
@@ -8403,12 +8427,11 @@ fn infer_fn_def(
         }
     }
 
-    if !where_constraints.is_empty() || !type_params.is_empty() {
+    if !where_constraints.is_empty() {
         fn_constraints.insert(
             env_key.clone(),
             FnConstraints {
                 where_constraints: where_constraints.clone(),
-                type_params: type_params.clone(),
                 param_type_param_names,
                 inferred_bounds: Vec::new(),
                 concat_params: Vec::new(),
@@ -9083,6 +9106,18 @@ fn infer_expr_here(
 
     let resolved = ctx.resolve(ty.clone());
     types.insert(expr.syntax().text_range(), resolved.clone());
+
+    // A function used as a value (`apply(show, x)`), not called: whatever
+    // its parameters turn out to be must meet its requirements.
+    if matches!(expr, Expr::NameRef(_) | Expr::FieldAccess(_)) && !is_called(expr) {
+        let span = expr.syntax().text_range();
+        if let (Some(constraints), Ty::Fun(params, _)) = (
+            constraints_key(ctx, env, expr, span).and_then(|key| fn_constraints.get(&key)),
+            &resolved,
+        ) {
+            require_constraints(ctx, constraints, params, span);
+        }
+    }
 
     Ok(ty)
 }
@@ -10579,78 +10614,10 @@ fn check_call(
         }
     }
 
-    // What the callee requires of its arguments: the bounds its body infers
-    // of them, and its where-clause, checked against the argument types
-    // unification has settled. An overloaded callee's are its arity's
-    // (`name__N`), an imported module's function's under `Module.name`.
-    let callee_name = |name: String| {
-        ctx.overloaded_call_targets
-            .get(&call_range)
-            .cloned()
-            .unwrap_or(name)
-    };
-    let key = match callee_expr {
-        Expr::NameRef(name_ref) => name_ref.text().map(callee_name),
-        Expr::FieldAccess(fa) => match (fa.base(), fa.field()) {
-            (Some(Expr::NameRef(module)), Some(field)) => module
-                .text()
-                .map(|module| format!("{module}.{}", callee_name(field.text().to_string()))),
-            _ => None,
-        },
-        _ => None,
-    };
-    let constraints = key.and_then(|key| fn_constraints.get(&key));
-    if let Some(constraints) = constraints {
-        require_inferred_bounds(ctx, constraints, &arg_types, &origin, call_range);
-        if !constraints.where_constraints.is_empty() {
-            let type_args = constraints.type_args(ctx, &arg_types);
-            let errors = trait_registry.check_where_constraints(
-                &constraints.where_constraints,
-                &type_args,
-                origin.clone(),
-            );
-            ctx.errors.extend(errors.clone());
-            if let Some(first_err) = errors.into_iter().next() {
-                return Err(first_err);
-            }
-        }
-    }
-
-    // Check constraints on function-typed ARGUMENTS (higher-order case).
-    // When apply(show, 42) is called, show has fn_constraints but f inside
-    // apply's body does not. Check show's constraints HERE at the outer call site
-    // where unification has connected type variables to concrete argument types.
-    for ((arg, _), arg_ty) in args.iter().zip(&arg_types) {
-        let Expr::NameRef(name_ref) = arg else {
-            continue;
-        };
-        let Some(arg_constraints) = name_ref.text().and_then(|name| fn_constraints.get(&name))
-        else {
-            continue;
-        };
-        if arg_constraints.where_constraints.is_empty() {
-            continue;
-        }
-        let Ty::Fun(param_tys, _) = ctx.resolve(arg_ty.clone()) else {
-            continue;
-        };
-        let type_args = arg_constraints.type_args(ctx, &param_tys);
-        // Only the constraints whose type is known by now.
-        let checkable: Vec<(String, String)> = arg_constraints
-            .where_constraints
-            .iter()
-            .filter(|(param, _)| {
-                type_args
-                    .get(param)
-                    .is_some_and(|ty| !matches!(ty, Ty::Var(_)))
-            })
-            .cloned()
-            .collect();
-        if !checkable.is_empty() {
-            let errors =
-                trait_registry.check_where_constraints(&checkable, &type_args, origin.clone());
-            ctx.errors.extend(errors);
-        }
+    if let Some(constraints) =
+        constraints_key(ctx, env, callee_expr, call_range).and_then(|key| fn_constraints.get(&key))
+    {
+        require_constraints(ctx, constraints, &arg_types, call_range);
     }
 
     Ok(ret_var)
