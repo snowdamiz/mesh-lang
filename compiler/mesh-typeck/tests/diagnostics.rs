@@ -394,19 +394,23 @@ fn test_json_one_line() {
 }
 
 #[test]
-fn test_not_a_function_fix_suggestion() {
-    // Directly construct a NotAFunction error to test the fix suggestion.
-    let src = "let x = 42\nx(1)";
-    let err = TypeError::NotAFunction {
-        ty: mesh_typeck::ty::Ty::int(),
-        span: rowan::TextRange::new(11.into(), 15.into()),
+fn test_calling_a_value_is_not_a_function() {
+    let src = "fn main() do\n  let x = 42\n  x(1)\nend\n";
+    let parse = mesh_parser::parse(src);
+    let result = mesh_typeck::check(&parse);
+    let err = result
+        .errors
+        .iter()
+        .find(|error| matches!(error, TypeError::NotAFunction { .. }))
+        .unwrap_or_else(|| panic!("{:?}", result.errors));
+    let TypeError::NotAFunction { ty, span } = err else {
+        unreachable!()
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
-    assert!(
-        output.contains("did you mean to call it"),
-        "expected fix suggestion for not-a-function: {}",
-        output
-    );
+    assert_eq!(ty.to_string(), "Int");
+    assert_eq!(&src[span.start().into()..span.end().into()], "x");
+    let output = render_diagnostic(err, src, "test.mpl", &opts(), None);
+    assert!(output.contains("type Int is not callable"), "{output}");
+    assert!(output.contains("remove the parentheses"), "{output}");
 }
 
 // ── Phase 32 AmbiguousMethod Diagnostic Tests ──────────────────────

@@ -2,10 +2,12 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0001] Error: expected Int, found (Int) -> _
+[E0005] Error: type Int is not callable
    ╭─[ test.mpl:2:1 ]
    │
  2 │ x(1)
-   │ ──┬─
-   │   ╰─── argument 1 has type (Int) -> _, expected Int
+   │ ┬
+   │ ╰── Int is not a function
+   │
+   │ Help: only functions can be called; remove the parentheses to use the value
 ───╯

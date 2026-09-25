@@ -10402,8 +10402,9 @@ fn infer_call_inner(
             arg_types.push(arg_ty);
         }
     } else {
-        // Preserve the useful non-function diagnostic by inferring the arguments before
-        // reporting that the callee cannot be called.
+        // The arguments' own errors come first; then the callee, which is a
+        // value that cannot be called (unless an earlier error left it
+        // `Never`, which is callable as anything).
         for arg in &args {
             arg_types.push(infer_expr(
                 ctx,
@@ -10414,6 +10415,15 @@ fn infer_call_inner(
                 trait_registry,
                 fn_constraints,
             )?);
+        }
+        let callee_ty = ctx.resolve(callee_ty);
+        if callee_ty != Ty::Never {
+            let err = TypeError::NotAFunction {
+                ty: callee_ty,
+                span: significant_range(callee_expr.syntax()),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
         }
         let expected_fn_ty = Ty::Fun(arg_types.clone(), Box::new(ret_var.clone()));
         ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;

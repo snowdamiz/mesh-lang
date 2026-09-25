@@ -274,9 +274,9 @@ fn error_fix_suggestion(err: &TypeError, suggestions: Option<&[String]>) -> Opti
             .clone()
             .or_else(|| find_closest_name(name, suggestions?, 2))
             .map(|closest| format!("did you mean `{closest}`?")),
-        TypeError::NotAFunction { .. } => {
-            Some("did you mean to call it? Remove the argument list".to_string())
-        }
+        TypeError::NotAFunction { .. } => Some(
+            "only functions can be called; remove the parentheses to use the value".to_string(),
+        ),
         _ => None,
     }
 }
