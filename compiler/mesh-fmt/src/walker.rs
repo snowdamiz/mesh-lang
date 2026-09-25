@@ -144,31 +144,35 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
 
 // ── Source file (top-level) ────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SourceFileItemKind {
-    CommentBlock,
-    Import,
-    Other,
-}
-
-fn classify_source_file_node(node: &SyntaxNode) -> SourceFileItemKind {
-    match node.kind() {
-        SyntaxKind::IMPORT_DECL | SyntaxKind::FROM_IMPORT_DECL => SourceFileItemKind::Import,
-        _ => SourceFileItemKind::Other,
-    }
-}
-
 struct SourceFileItem {
-    kind: SourceFileItemKind,
     ir: FormatIR,
-    /// A comment block written directly above the next item.
-    attached_to_next: bool,
+    /// On the line after the previous item, with no blank line between.
+    joins_previous: bool,
+}
+
+/// Whether `next` goes on the line after `prev` with no blank line between:
+/// imports are one block, and so are the clauses of a function the source
+/// wrote together.
+fn items_join(prev: &SyntaxNode, next: &SyntaxNode, blank_line: bool) -> bool {
+    let import = |n: &SyntaxNode| {
+        matches!(
+            n.kind(),
+            SyntaxKind::IMPORT_DECL | SyntaxKind::FROM_IMPORT_DECL
+        )
+    };
+    let fn_name = |n: &SyntaxNode| {
+        (n.kind() == SyntaxKind::FN_DEF)
+            .then(|| n.children().find(|c| c.kind() == SyntaxKind::NAME))
+            .flatten()
+            .map(|name| name.text().to_string())
+    };
+    (import(prev) && import(next))
+        || (!blank_line && fn_name(prev).is_some() && fn_name(prev) == fn_name(next))
 }
 
 fn flush_pending_source_comments(
     pending_comments: &mut Vec<FormatIR>,
     items: &mut Vec<SourceFileItem>,
-    attached_to_next: bool,
 ) {
     if pending_comments.is_empty() {
         return;
@@ -183,15 +187,16 @@ fn flush_pending_source_comments(
     }
 
     items.push(SourceFileItem {
-        kind: SourceFileItemKind::CommentBlock,
         ir: ir::concat(parts),
-        attached_to_next,
+        joins_previous: false,
     });
 }
 
 fn walk_source_file(node: &SyntaxNode) -> FormatIR {
     let mut items: Vec<SourceFileItem> = Vec::new();
     let mut pending_comments: Vec<FormatIR> = Vec::new();
+    // The declaration just before, when no comment block came after it.
+    let mut prev_node: Option<SyntaxNode> = None;
     // Line breaks since the last comment or item: two or more is a blank line.
     let mut newlines = 0;
 
@@ -220,10 +225,10 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
                                     flush_pending_source_comments(
                                         &mut pending_comments,
                                         &mut items,
-                                        false,
                                     );
                                 }
                                 pending_comments.push(ir::text(tok.text()));
+                                prev_node = None;
                             }
                         }
                         newlines = 0;
@@ -233,39 +238,37 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
             }
             NodeOrToken::Node(n) => {
                 // A comment block directly above a declaration stays attached to it.
-                flush_pending_source_comments(&mut pending_comments, &mut items, newlines <= 1);
+                let joins_previous = if pending_comments.is_empty() {
+                    prev_node
+                        .as_ref()
+                        .is_some_and(|prev| items_join(prev, &n, newlines > 1))
+                } else {
+                    newlines <= 1
+                };
+                flush_pending_source_comments(&mut pending_comments, &mut items);
                 items.push(SourceFileItem {
-                    kind: classify_source_file_node(&n),
                     ir: walk_node(&n),
-                    attached_to_next: false,
+                    joins_previous,
                 });
+                prev_node = Some(n);
                 newlines = 0;
             }
         }
     }
 
-    flush_pending_source_comments(&mut pending_comments, &mut items, false);
+    flush_pending_source_comments(&mut pending_comments, &mut items);
 
-    if items.is_empty() {
-        FormatIR::Empty
-    } else {
-        let mut parts = Vec::new();
-        let mut prev: Option<(SourceFileItemKind, bool)> = None;
-
-        for item in items {
-            if let Some((prev_kind, prev_attached)) = prev {
+    let mut parts = Vec::new();
+    for (i, item) in items.into_iter().enumerate() {
+        if i > 0 {
+            parts.push(ir::hardline());
+            if !item.joins_previous {
                 parts.push(ir::hardline());
-                let imports = prev_kind == SourceFileItemKind::Import
-                    && item.kind == SourceFileItemKind::Import;
-                if !prev_attached && !imports {
-                    parts.push(ir::hardline());
-                }
             }
-            prev = Some((item.kind, item.attached_to_next));
-            parts.push(item.ir);
         }
-        ir::concat(parts)
+        parts.push(item.ir);
     }
+    ir::concat(parts)
 }
 
 // ── Function definition ──────────────────────────────────────────────
@@ -2700,6 +2703,19 @@ mod tests {
                 "let p = Point {{\n  name: \"{}\",\n  y: 2\n}}\n",
                 "a".repeat(90)
             )
+        );
+    }
+
+    #[test]
+    fn the_clauses_of_a_function_stay_together() {
+        assert_eq!(
+            fmt("fn fib(0) = 0\nfn fib(1) = 1\nfn fib(n) = fib(n - 1) + fib(n - 2)\nfn g() = 1\n"),
+            "fn fib(0) = 0\nfn fib(1) = 1\nfn fib(n) = fib(n - 1) + fib(n - 2)\n\nfn g() = 1\n"
+        );
+        // Unless the source put a blank line between them.
+        assert_eq!(
+            fmt("fn h(0) = 0\n\nfn h(n) = n # n\nfn h2() = 1\n"),
+            "fn h(0) = 0\n\nfn h(n) = n # n\n\nfn h2() = 1\n"
         );
     }
 
