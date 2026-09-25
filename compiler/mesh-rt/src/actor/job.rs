@@ -28,7 +28,7 @@ use crate::string::mesh_string_new;
 
 use super::heap::MessageBuffer;
 use super::link::EXIT_SIGNAL_TAG;
-use super::process::{Message, ProcessId, ProcessState};
+use super::process::{Message, ProcessId};
 use super::stack;
 use super::GLOBAL_SCHEDULER;
 
@@ -201,15 +201,11 @@ fn send_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
     let target = ProcessId(caller_pid);
     if let Some(proc_arc) = sched.get_process(target) {
         buffer.addressed_to(&proc_arc);
-        let mut proc = proc_arc.lock();
+        let proc = proc_arc.lock();
         proc.mailbox.push(Message { buffer });
 
         // Wake if waiting.
-        if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
-            let worker = proc.worker;
-            drop(proc);
-            sched.wake_worker(worker, target);
-        }
+        sched.wake_if_waiting(target, proc);
     }
 }
 

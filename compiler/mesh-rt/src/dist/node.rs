@@ -2027,7 +2027,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         if msg.len() >= 25 {
                             use crate::actor::heap::MessageBuffer;
                             use crate::actor::link;
-                            use crate::actor::process::{Message, ProcessId, ProcessState};
+                            use crate::actor::process::{Message, ProcessId};
 
                             let monitored_pid =
                                 ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
@@ -2050,12 +2050,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                     link::encode_down_signal(monitor_ref, monitored_pid, &reason);
                                 let buffer = MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
                                 mon_proc.mailbox.push(Message { buffer });
-                                if matches!(mon_proc.state, ProcessState::Waiting) {
-                                    if mon_proc.set_live_state(ProcessState::Ready) {
-                                        drop(mon_proc);
-                                        sched.wake_process(monitoring_pid);
-                                    }
-                                }
+                                sched.wake_if_waiting(monitoring_pid, mon_proc);
                             }
                         }
                     }
@@ -2124,12 +2119,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                         let buffer =
                                             MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
                                         proc.mailbox.push(Message { buffer });
-                                        if matches!(proc.state, ProcessState::Waiting) {
-                                            if proc.set_live_state(ProcessState::Ready) {
-                                                drop(proc);
-                                                sched.wake_process(to_pid);
-                                            }
-                                        }
+                                        sched.wake_if_waiting(to_pid, proc);
                                     } else {
                                         proc.mark_exited(ExitReason::Linked(
                                             from_pid,
@@ -2214,7 +2204,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
                         if msg.len() >= 18 {
                             use crate::actor::heap::MessageBuffer;
-                            use crate::actor::process::{Message, ProcessState};
+                            use crate::actor::process::Message;
 
                             let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
                             let status = msg[9];
@@ -2236,14 +2226,9 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
 
                                 let sched = crate::actor::global_scheduler();
                                 if let Some(proc_arc) = sched.get_process(requester_pid) {
-                                    let mut proc = proc_arc.lock();
+                                    let proc = proc_arc.lock();
                                     proc.mailbox.push(reply_msg);
-                                    if matches!(proc.state, ProcessState::Waiting) {
-                                        if proc.set_live_state(ProcessState::Ready) {
-                                            drop(proc);
-                                            sched.wake_process(requester_pid);
-                                        }
-                                    }
+                                    sched.wake_if_waiting(requester_pid, proc);
                                 }
                             }
                         }
@@ -3038,12 +3023,7 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
                 proc.mailbox.push(Message { buffer });
             }
 
-            if matches!(proc.state, ProcessState::Waiting) {
-                if proc.set_live_state(ProcessState::Ready) {
-                    drop(proc);
-                    sched.wake_process(*local_pid);
-                }
-            }
+            sched.wake_if_waiting(*local_pid, proc);
         }
     }
 
@@ -3120,21 +3100,16 @@ fn deliver_node_event(
     sched: &crate::actor::Scheduler,
 ) {
     use crate::actor::heap::MessageBuffer;
-    use crate::actor::process::{Message, ProcessState};
+    use crate::actor::process::Message;
 
     let data = node_name.as_bytes().to_vec();
     let buffer = MessageBuffer::new(data, type_tag);
     let msg = Message { buffer };
 
     if let Some(proc_arc) = sched.get_process(target_pid) {
-        let mut proc = proc_arc.lock();
+        let proc = proc_arc.lock();
         proc.mailbox.push(msg);
-        if matches!(proc.state, ProcessState::Waiting) {
-            if proc.set_live_state(ProcessState::Ready) {
-                drop(proc);
-                sched.wake_process(target_pid);
-            }
-        }
+        sched.wake_if_waiting(target_pid, proc);
     }
 }
 

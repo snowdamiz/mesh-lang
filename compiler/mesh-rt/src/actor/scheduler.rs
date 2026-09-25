@@ -531,6 +531,22 @@ impl Scheduler {
         }
     }
 
+    /// Make `pid` Ready if it is Waiting and have its worker resume it.
+    /// `process` is `pid`'s process, locked; the lock is released.
+    pub fn wake_if_waiting(
+        &self,
+        pid: ProcessId,
+        mut process: parking_lot::MutexGuard<'_, Process>,
+    ) {
+        if matches!(process.state, ProcessState::Waiting)
+            && process.set_live_state(ProcessState::Ready)
+        {
+            let worker = process.worker;
+            drop(process);
+            self.wake_worker(worker, pid);
+        }
+    }
+
     /// `wake_worker` for a caller that has already let go of the process lock.
     pub fn wake_process(&self, pid: ProcessId) {
         let worker = self

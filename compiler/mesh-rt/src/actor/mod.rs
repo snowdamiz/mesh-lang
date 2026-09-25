@@ -108,14 +108,7 @@ impl<T> CooperativeSender<T> {
             return Ok(());
         };
         if let Some(process) = scheduler.get_process(pid) {
-            let mut process = process.lock();
-            if matches!(process.state, ProcessState::Waiting) {
-                if process.set_live_state(ProcessState::Ready) {
-                    let worker = process.worker;
-                    drop(process);
-                    scheduler.wake_worker(worker, pid);
-                }
-            }
+            scheduler.wake_if_waiting(pid, process.lock());
         }
         Ok(())
     }
@@ -659,7 +652,7 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
     // Look up the target process and push message.
     if let Some(proc_arc) = sched.get_process(pid) {
         msg.buffer.addressed_to(&proc_arc);
-        let mut proc = proc_arc.lock();
+        let proc = proc_arc.lock();
         if let Err(error) = proc.mailbox.try_push(msg) {
             return match error {
                 MailboxPushError::Full => 2,
@@ -668,14 +661,7 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
         }
 
         // If the target is Waiting, wake it up.
-        if matches!(proc.state, ProcessState::Waiting) {
-            if proc.set_live_state(ProcessState::Ready) {
-                // Signal the scheduler to re-enqueue this process.
-                let worker = proc.worker;
-                drop(proc);
-                sched.wake_worker(worker, pid);
-            }
-        }
+        sched.wake_if_waiting(pid, proc);
         0
     } else {
         1
@@ -883,13 +869,7 @@ where
         None // infinite wait
     };
     if let Some(deadline) = deadline {
-        if timer_wake_sender()
-            .try_send(TimerWake {
-                deadline,
-                pid: my_pid,
-            })
-            .is_err()
-        {
+        if !wake_at(my_pid, deadline) {
             // Match Timer.sleep's bounded fallback when the timer queue is full.
             std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
         }
@@ -1008,14 +988,7 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
             let timer = timers.pop().expect("timer was present");
             let scheduler = global_scheduler();
             if let Some(process) = scheduler.get_process(timer.pid) {
-                let mut process = process.lock();
-                if matches!(process.state, ProcessState::Waiting) {
-                    if process.set_live_state(ProcessState::Ready) {
-                        let worker = process.worker;
-                        drop(process);
-                        scheduler.wake_worker(worker, timer.pid);
-                    }
-                }
+                scheduler.wake_if_waiting(timer.pid, process.lock());
             }
         }
     }
@@ -1053,10 +1026,7 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
         if let Some(process) = scheduler.get_process(pid) {
             process.lock().set_live_state(ProcessState::Waiting);
         }
-        if timer_wake_sender()
-            .try_send(TimerWake { deadline, pid })
-            .is_err()
-        {
+        if !wake_at(pid, deadline) {
             // Fail boundedly without stranding the actor. Saturating the timer
             // queue is exceptional; this fallback blocks only the current worker.
             if let Some(process) = scheduler.get_process(pid) {
@@ -1069,6 +1039,14 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
         // A mailbox send may wake a sleeping actor early. Re-arm for the
         // remaining monotonic duration without consuming that message.
     }
+}
+
+/// Have the timer reactor make `pid` Ready at `deadline` if it is Waiting
+/// then. `false` when the timer queue is full.
+pub(crate) fn wake_at(pid: ProcessId, deadline: std::time::Instant) -> bool {
+    timer_wake_sender()
+        .try_send(TimerWake { deadline, pid })
+        .is_ok()
 }
 
 /// Schedule a message to be sent to `target_pid` after `ms` milliseconds.
@@ -1699,13 +1677,7 @@ fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
             proc.mailbox.push(Message { buffer });
 
             // Wake if Waiting.
-            if matches!(proc.state, ProcessState::Waiting) {
-                if proc.set_live_state(ProcessState::Ready) {
-                    let worker = proc.worker;
-                    drop(proc);
-                    sched.wake_worker(worker, pid);
-                }
-            }
+            sched.wake_if_waiting(pid, proc);
         } else {
             // Terminate immediately.
             proc.mark_exited(reason);
