@@ -56,8 +56,8 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
     Ok(formatted)
 }
 
-/// Every token but whitespace, with the trailing blanks the printer trims and
-/// without trailing commas, which the formatter may drop (`import (a, b,)`),
+/// Every token but whitespace, with the trailing blanks the printer trims, a
+/// comment after a `|>` taken as before it, and without trailing commas, which the formatter may drop (`import (a, b,)`),
 /// without semicolons: a statement separated by `;` goes on its own line, and
 /// without the commas between the fields of a struct literal or pattern or a
 /// `json` literal, where a new line may separate fields instead.
@@ -72,7 +72,7 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
                 )
             })
     };
-    let tokens: Vec<_> = parse
+    let mut tokens: Vec<_> = parse
         .syntax()
         .descendants_with_tokens()
         .filter_map(|element| element.into_token())
@@ -87,17 +87,32 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
         })
         .map(|token| (token.kind(), token.text().trim_end().to_owned()))
         .collect();
+    // A pipeline's steps start their lines (`|> step`), so a comment after a
+    // `|>` that ended a line ends the line before instead: the same place.
+    for i in 1..tokens.len() {
+        if tokens[i - 1].0 == SyntaxKind::PIPE
+            && matches!(tokens[i].0, SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT)
+        {
+            tokens.swap(i - 1, i);
+        }
+    }
     let closes = |kind| {
         matches!(
             kind,
             SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE
         )
     };
+    // A trailing comma is the last before a closing bracket, comments aside.
+    let comment = |kind| matches!(kind, SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT);
     tokens
         .iter()
         .enumerate()
         .filter(|(i, (kind, _))| {
-            !(*kind == SyntaxKind::COMMA && tokens.get(i + 1).is_some_and(|next| closes(next.0)))
+            !(*kind == SyntaxKind::COMMA
+                && tokens[i + 1..]
+                    .iter()
+                    .find(|next| !comment(next.0))
+                    .is_some_and(|next| closes(next.0)))
         })
         .map(|(_, token)| token.clone())
         .collect()

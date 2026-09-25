@@ -17,16 +17,19 @@ use rowan::NodeOrToken;
 
 use crate::ir::{self, FormatIR};
 
-/// The CST keeps WHITESPACE tokens so its offsets match the source. The
-/// formatter derives all spacing itself, so it walks every element but those.
+/// The CST keeps WHITESPACE and NEWLINE tokens so its offsets match the
+/// source. The formatter derives all spacing and line breaks itself, so it
+/// walks every element but those (the source file alone counts new lines,
+/// for the blank lines it keeps).
 trait Elements {
     fn elements(&self) -> impl Iterator<Item = SyntaxElement>;
 }
 
 impl Elements for SyntaxNode {
     fn elements(&self) -> impl Iterator<Item = SyntaxElement> {
-        self.children_with_tokens()
-            .filter(|element| element.kind() != SyntaxKind::WHITESPACE)
+        self.children_with_tokens().filter(|element| {
+            !matches!(element.kind(), SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE)
+        })
     }
 }
 
@@ -195,7 +198,10 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
     // Line breaks since the last comment or item: two or more is a blank line.
     let mut newlines = 0;
 
-    for child in node.elements() {
+    for child in node
+        .children_with_tokens()
+        .filter(|element| element.kind() != SyntaxKind::WHITESPACE)
+    {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
@@ -295,10 +301,17 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::text("when"));
                         parts.push(sp());
                     }
-                    SyntaxKind::NEWLINE => {}
-                    SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                        parts.push(sp());
-                        parts.push(inline_comment(&tok));
+                    // A comment after a decorator on its own line: one that
+                    // ends the decorator's line stays there.
+                    SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT
+                        if matches!(parts.last(), Some(FormatIR::Hardline)) =>
+                    {
+                        if ends_a_line_of_code(&tok) {
+                            parts.pop();
+                            parts.push(sp());
+                        }
+                        parts.push(ir::text(tok.text()));
+                        parts.push(ir::hardline());
                     }
                     _ => {
                         add_token_with_context(&tok, &mut parts);
@@ -409,7 +422,6 @@ fn walk_let_binding(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("="));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -449,7 +461,6 @@ fn walk_if_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::hardline());
                     parts.push(ir::text("end"));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -489,7 +500,6 @@ fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::hardline());
                     parts.push(ir::text("end"));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -533,7 +543,6 @@ fn walk_while_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::hardline());
                     parts.push(ir::text("end"));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -586,7 +595,6 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::hardline());
                     parts.push(ir::text("end"));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -676,7 +684,7 @@ fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(sp());
                     parts.push(ir::text("do"));
                 }
-                SyntaxKind::END_KW | SyntaxKind::NEWLINE => {}
+                SyntaxKind::END_KW => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     push_comment(&mut arms, &tok);
                 }
@@ -733,10 +741,8 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("when"));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    parts.push(sp());
-                    parts.push(inline_comment(&tok));
+                    add_token_with_context(&tok, &mut parts);
                 }
                 _ => {
                     add_token_with_context(&tok, &mut parts);
@@ -787,7 +793,7 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
                     }
                     parts.push(ir::text("|"));
                 }
-                SyntaxKind::END_KW | SyntaxKind::NEWLINE => {}
+                SyntaxKind::END_KW => {}
                 _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => match n.kind() {
@@ -815,7 +821,6 @@ fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => {
                 match tok.kind() {
-                    SyntaxKind::NEWLINE => {}
                     // Range operator `..` has no surrounding spaces.
                     SyntaxKind::DOT_DOT => {
                         parts.push(ir::text(".."));
@@ -847,7 +852,6 @@ fn walk_unary_expr(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::NOT_KW => {
                     parts.push(ir::text("not"));
                     parts.push(sp());
@@ -942,7 +946,6 @@ fn walk_call_expr(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -966,7 +969,7 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 // Statements separated by `;` go on lines of their own.
-                SyntaxKind::NEWLINE | SyntaxKind::SEMICOLON => {}
+                SyntaxKind::SEMICOLON => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
                     push_comment(&mut stmts, &tok);
                 }
@@ -1049,7 +1052,6 @@ fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::space());
                     }
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, parts);
                 }
@@ -1094,9 +1096,9 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                     past_do = true;
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    if past_do {
+                    // One that ends the header's line (`do # why`) stays there.
+                    if past_do && !(inner_items.is_empty() && ends_a_line_of_code(&tok)) {
                         push_comment(&mut inner_items, &tok);
                     } else {
                         parts.push(sp());
@@ -1138,7 +1140,6 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                     for block_child in n.elements() {
                         match block_child {
                             NodeOrToken::Token(t) => match t.kind() {
-                                SyntaxKind::NEWLINE => {}
                                 SyntaxKind::COMMENT
                                 | SyntaxKind::DOC_COMMENT
                                 | SyntaxKind::MODULE_DOC_COMMENT => {
@@ -1260,7 +1261,7 @@ fn walk_schema_option(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
-                if kind == SyntaxKind::EOF || kind == SyntaxKind::NEWLINE {
+                if kind == SyntaxKind::EOF {
                     continue;
                 }
                 if kind == SyntaxKind::COMMENT
@@ -1318,7 +1319,6 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                     in_body = true;
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     if in_body {
                         push_comment(&mut fields, &tok);
@@ -1403,11 +1403,9 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
 
     // Detect whether this closure uses do/end body form.
     let has_do = node.elements().any(|c| c.kind() == SyntaxKind::DO_KW);
-
-    // Detect whether this is a multi-clause closure (has CLOSURE_CLAUSE children).
-    let _has_clauses = node
-        .children()
-        .any(|c| c.kind() == SyntaxKind::CLOSURE_CLAUSE);
+    // A comment after `->` ends its line: the body goes on the next one, and
+    // `end` on its own.
+    let mut broken = false;
 
     for child in node.elements() {
         match child {
@@ -1426,11 +1424,10 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                         parts.push(sp());
                     }
                     SyntaxKind::END_KW => {
-                        if has_do {
-                            // do/end closures: end is on its own line for multi-stmt,
-                            // or with a space for single-stmt.
-                            // (Handled by the BLOCK formatting below.)
-                        } else {
+                        if broken {
+                            parts.push(ir::hardline());
+                        } else if !has_do {
+                            // A do/end body places its `end` itself (below).
                             parts.push(sp());
                         }
                         parts.push(ir::text("end"));
@@ -1438,12 +1435,12 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::DO_KW => {
                         parts.push(ir::text("do"));
                     }
-                    SyntaxKind::NEWLINE => {}
                     SyntaxKind::BAR => {
                         // BAR between inline first clause and a CLOSURE_CLAUSE
                         // is handled by the CLOSURE_CLAUSE formatter; skip here.
                     }
                     _ => {
+                        broken |= !has_do && tok.kind() == SyntaxKind::COMMENT;
                         add_token_with_context(&tok, &mut parts);
                     }
                 }
@@ -1498,6 +1495,10 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                             parts.push(sp());
                         }
                     }
+                    SyntaxKind::BLOCK if broken => {
+                        let body = walk_block_body(&n);
+                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    }
                     SyntaxKind::BLOCK => {
                         // Arrow body: single expression inline.
                         let body = walk_block_body(&n);
@@ -1533,7 +1534,6 @@ fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("->"));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1578,7 +1578,6 @@ fn walk_bare_param_list(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text(","));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1603,7 +1602,6 @@ fn walk_return_expr(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::RETURN_KW => {
                     parts.push(ir::text("return"));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1630,7 +1628,7 @@ fn walk_path(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::EOF | SyntaxKind::NEWLINE => {}
+                SyntaxKind::EOF => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
                     if !parts.is_empty() {
                         parts.push(sp());
@@ -1679,7 +1677,7 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {}
-                SyntaxKind::COMMA | SyntaxKind::NEWLINE => {}
+                SyntaxKind::COMMA => {}
                 kind if kind.is_trivia() => {
                     trailing(&mut names, &mut leading, inline_comment(&tok));
                 }
@@ -1768,7 +1766,6 @@ fn walk_from_import_decl(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("import"));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1790,7 +1787,6 @@ fn walk_string_expr(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1810,7 +1806,6 @@ fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1835,7 +1830,6 @@ fn walk_field_access(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::DOT => {
                     parts.push(ir::text("."));
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1859,7 +1853,6 @@ fn walk_index_expr(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
                 SyntaxKind::R_BRACKET => parts.push(ir::text("]")),
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -1897,7 +1890,6 @@ fn walk_impl_def(node: &SyntaxNode) -> FormatIR {
                     has_block = true;
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::IDENT => {
                     parts.push(ir::text(tok.text()));
                 }
@@ -1955,7 +1947,6 @@ fn walk_type_alias_def(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text(","));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2047,7 +2038,6 @@ fn walk_spawn_send_link(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text(","));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2090,7 +2080,6 @@ fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2152,7 +2141,6 @@ fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2196,7 +2184,6 @@ fn walk_terminate_clause(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                 }
                 SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2222,66 +2209,72 @@ fn walk_terminate_clause(node: &SyntaxNode) -> FormatIR {
 
 fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     let mut prefix_parts = Vec::new();
-    let mut fields = Vec::new();
+    // Each field and each comment on a line of its own is a line; a comment
+    // that ends a field's line stays after that field and its comma.
+    let mut lines: Vec<(Option<FormatIR>, Option<SyntaxToken>)> = Vec::new();
     let mut saw_l_brace = false;
 
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::L_BRACE => {
-                    saw_l_brace = true;
-                }
-                SyntaxKind::R_BRACE | SyntaxKind::COMMA | SyntaxKind::NEWLINE => {}
-                _ => {
-                    if !saw_l_brace {
-                        prefix_parts.push(ir::text(tok.text()));
+                SyntaxKind::L_BRACE => saw_l_brace = true,
+                SyntaxKind::R_BRACE | SyntaxKind::COMMA => {}
+                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT if saw_l_brace => {
+                    match lines.last_mut() {
+                        Some((Some(_), comment @ None)) if ends_a_line_of_code(&tok) => {
+                            *comment = Some(tok)
+                        }
+                        _ => lines.push((None, Some(tok))),
                     }
                 }
+                _ => add_token_with_context(&tok, &mut prefix_parts),
             },
-            NodeOrToken::Node(n) => {
-                if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD {
-                    fields.push(walk_node(&n));
-                } else {
-                    prefix_parts.push(walk_node(&n));
-                }
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD => {
+                lines.push((Some(walk_node(&n)), None))
             }
+            NodeOrToken::Node(n) => prefix_parts.push(walk_node(&n)),
         }
     }
 
-    if fields.is_empty() {
+    let fields = lines.iter().filter(|(field, _)| field.is_some()).count();
+    let commented = lines.iter().any(|(_, comment)| comment.is_some());
+    if !commented && fields < 2 {
         prefix_parts.push(ir::text(" {"));
         prefix_parts.push(sp());
-        prefix_parts.push(ir::text("}"));
-        return ir::concat(prefix_parts);
-    }
-
-    if fields.len() == 1 {
-        prefix_parts.push(ir::text(" {"));
-        prefix_parts.push(sp());
-        prefix_parts.push(fields.remove(0));
-        prefix_parts.push(sp());
+        if let Some((Some(field), _)) = lines.pop() {
+            prefix_parts.push(field);
+            prefix_parts.push(sp());
+        }
         prefix_parts.push(ir::text("}"));
         return ir::group(ir::concat(prefix_parts));
     }
 
     let mut parts = prefix_parts;
     parts.push(ir::text(" {"));
-
     let mut inner_parts = Vec::new();
-    let field_count = fields.len();
-    inner_parts.push(ir::hardline());
-    for (i, field) in fields.into_iter().enumerate() {
-        inner_parts.push(field);
-        if i + 1 < field_count {
-            inner_parts.push(ir::text(","));
-            inner_parts.push(ir::hardline());
+    let mut seen = 0;
+    for (field, comment) in lines {
+        inner_parts.push(ir::hardline());
+        if let Some(field) = field {
+            inner_parts.push(field);
+            seen += 1;
+            if seen < fields {
+                inner_parts.push(ir::text(","));
+            }
+        }
+        if let Some(comment) = comment {
+            if inner_parts
+                .last()
+                .is_some_and(|last| !matches!(last, FormatIR::Hardline))
+            {
+                inner_parts.push(sp());
+            }
+            inner_parts.push(inline_comment(&comment));
         }
     }
-
     parts.push(ir::indent(ir::concat(inner_parts)));
     parts.push(ir::hardline());
     parts.push(ir::text("}"));
-
     ir::concat(parts)
 }
 
@@ -2340,10 +2333,14 @@ fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
                     inner.push(ir::text(","));
                 }
             }
-            NodeOrToken::Token(tok)
-                if tok.kind().is_trivia() && tok.kind() != SyntaxKind::NEWLINE =>
-            {
-                inner.push(sp());
+            // A comment after code ends that line; one on a line of its own
+            // keeps one.
+            NodeOrToken::Token(tok) if tok.kind().is_trivia() => {
+                inner.push(if ends_a_line_of_code(&tok) {
+                    sp()
+                } else {
+                    ir::space()
+                });
                 inner.push(inline_comment(&tok));
             }
             // `json`, the braces, commas and newlines are re-emitted around the fields.
@@ -2375,7 +2372,6 @@ fn walk_map_literal(node: &SyntaxNode) -> FormatIR {
                         parts.push(ir::text(","));
                         parts.push(ir::space());
                     }
-                    SyntaxKind::NEWLINE => {}
                     _ => add_token_with_context(&tok, &mut parts),
                 },
             }
@@ -2402,7 +2398,6 @@ fn walk_map_entry(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text(":"));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2425,37 +2420,20 @@ fn walk_list_literal(node: &SyntaxNode) -> FormatIR {
 /// per line between the delimiters, each keeping its trailing comment.
 fn walk_delimited_items(node: &SyntaxNode, open: &str, close: &str) -> FormatIR {
     let mut items: Vec<FormatIR> = Vec::new();
-    // Inside delimiters a comment that ends a line is stored at the start of
-    // the next element; that element joins with a plain space, so the comment
-    // stays on the line it ends.
-    let mut joined_by_space: Vec<bool> = Vec::new();
     for child in node.elements() {
         match child {
-            NodeOrToken::Node(n) => {
-                joined_by_space.push(
-                    n.first_token().is_some_and(|t| {
-                        t.kind() == SyntaxKind::COMMENT && ends_a_line_of_code(&t)
-                    }),
-                );
-                items.push(walk_node(&n));
-            }
+            NodeOrToken::Node(n) => items.push(walk_node(&n)),
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::COMMA => match items.last_mut() {
                     Some(last) => {
                         let item = std::mem::replace(last, FormatIR::Empty);
                         *last = ir::concat(vec![item, ir::text(",")]);
                     }
-                    None => {
-                        joined_by_space.push(false);
-                        items.push(ir::text(","));
-                    }
+                    None => items.push(ir::text(",")),
                 },
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => match items.last_mut() {
                     Some(last) if ends_a_line_of_code(&tok) => append_comment(last, &tok),
-                    _ => {
-                        joined_by_space.push(false);
-                        items.push(inline_comment(&tok));
-                    }
+                    _ => items.push(inline_comment(&tok)),
                 },
                 // The delimiters, whitespace and newlines are re-emitted.
                 _ => {}
@@ -2467,9 +2445,9 @@ fn walk_delimited_items(node: &SyntaxNode, open: &str, close: &str) -> FormatIR 
     }
     let softline = || ir::if_break(FormatIR::Empty, ir::hardline());
     let mut inner = vec![softline()];
-    for (index, (item, by_space)) in items.into_iter().zip(joined_by_space).enumerate() {
+    for (index, item) in items.into_iter().enumerate() {
         if index > 0 {
-            inner.push(if by_space { sp() } else { ir::space() });
+            inner.push(ir::space());
         }
         inner.push(item);
     }
@@ -2497,7 +2475,6 @@ fn walk_assoc_type_binding(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("="));
                     parts.push(sp());
                 }
-                SyntaxKind::NEWLINE => {}
                 _ => {
                     add_token_with_context(&tok, &mut parts);
                 }
@@ -2520,7 +2497,6 @@ fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
                     push_comment(&mut items, &tok);
                 }
@@ -2573,17 +2549,11 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
-                if kind == SyntaxKind::EOF || kind == SyntaxKind::NEWLINE {
+                if kind == SyntaxKind::EOF {
                     continue;
                 }
-                if kind == SyntaxKind::COMMENT
-                    || kind == SyntaxKind::DOC_COMMENT
-                    || kind == SyntaxKind::MODULE_DOC_COMMENT
-                {
-                    if !parts.is_empty() {
-                        parts.push(sp());
-                    }
-                    parts.push(inline_comment(&tok));
+                if kind.is_trivia() {
+                    add_token_with_context(&tok, &mut parts);
                     continue;
                 }
                 let closes_angles = angles && kind == SyntaxKind::GT;
@@ -2724,14 +2694,15 @@ fn append_comment(line: &mut FormatIR, comment: &SyntaxToken) {
 
 fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
     let kind = tok.kind();
-    if kind == SyntaxKind::EOF || kind == SyntaxKind::NEWLINE {
-        return;
-    }
     if kind == SyntaxKind::COMMENT
         || kind == SyntaxKind::DOC_COMMENT
         || kind == SyntaxKind::MODULE_DOC_COMMENT
     {
-        if !parts.is_empty() {
+        // After a list's breakable space the comment starts the line the
+        // space breaks into; after a space it needs no other.
+        if !matches!(parts.last(), None | Some(FormatIR::Space))
+            && !matches!(parts.last(), Some(FormatIR::Text(text)) if text == " ")
+        {
             parts.push(sp());
         }
         parts.push(inline_comment(tok));

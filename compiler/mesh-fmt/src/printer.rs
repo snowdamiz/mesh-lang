@@ -66,6 +66,10 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
     let mut col: usize = 0;
     // Set by `LineEnd`: the next text must start on a new line.
     let mut line_ended = false;
+    // Where the current line's text starts, and whether the last text began
+    // the line (a comment on a line of its own) rather than followed code.
+    let mut line_indent: usize = 0;
+    let mut last_text_began_line = false;
     let mut stack: Vec<PrintCmd> = vec![PrintCmd {
         indent: 0,
         mode: Mode::Break,
@@ -81,12 +85,20 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
                     if s.trim().is_empty() {
                         continue; // a separator space; the pending newline replaces it
                     }
+                    // Code that a comment ending a line of code cut off continues
+                    // its statement, one level in; a closing bracket or `end`
+                    // lines up with its opening.
+                    let closes = s.starts_with([')', ']', '}']) || s == "end";
+                    let continues = !last_text_began_line && !closes;
+                    let indent = cmd.indent + if continues { config.indent_size } else { 0 };
                     line_ended = false;
                     trim_line_end(&mut out);
                     out.push('\n');
-                    out.push_str(&" ".repeat(cmd.indent));
-                    col = cmd.indent;
+                    out.push_str(&" ".repeat(indent));
+                    col = indent;
+                    line_indent = indent;
                 }
+                last_text_began_line = col == line_indent;
                 out.push_str(s);
                 col += s.len();
             }
@@ -105,6 +117,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
                     let indent_str = " ".repeat(cmd.indent);
                     out.push_str(&indent_str);
                     col = cmd.indent;
+                    line_indent = cmd.indent;
                 }
             },
 
@@ -115,6 +128,7 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
                 let indent_str = " ".repeat(cmd.indent);
                 out.push_str(&indent_str);
                 col = cmd.indent;
+                line_indent = cmd.indent;
             }
 
             FormatIR::Indent(child) => {

@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 
 use mesh_fmt::{format_source, try_format, FormatConfig};
 
+#[path = "../../mesh-lint/tests/support/docs_examples.rs"]
+mod docs_examples;
+
 fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -59,6 +62,25 @@ fn every_repository_source_formats_losslessly_and_idempotently() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+/// Every Mesh example in the docs formats losslessly and idempotently too:
+/// they use constructs no repository source does.
+#[test]
+fn every_docs_example_formats_losslessly_and_idempotently() {
+    let config = FormatConfig::default();
+    let mut problems = Vec::new();
+    for (file, line, source) in docs_examples::examples() {
+        match try_format(&source, &config) {
+            Err(reason) => problems.push(format!("{file}:{line}: {reason}")),
+            Ok(formatted) => {
+                if format_source(&formatted, &config) != formatted {
+                    problems.push(format!("{file}:{line}: formatting again changes it"));
+                }
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
 /// Statements continued across lines by an operator or `=` format as one
 /// statement, and formatting them again changes nothing.
 #[test]
@@ -72,6 +94,69 @@ fn continued_statements_format_losslessly() {
         assert_eq!(format_source(&formatted, &config), formatted, "{formatted}");
         println!("{formatted}");
     }
+}
+
+/// Every source and docs example with a comment at the end of each line
+/// formats losslessly and idempotently: a line may end inside any construct,
+/// and its comment has to stay there.
+#[test]
+fn trailing_comments_on_every_line_format_losslessly() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    for dir in ["tests", "examples", "packages", "mesh-slug"] {
+        sources(&root.join(dir), &mut files);
+    }
+    let mut programs: Vec<(String, String)> = files
+        .iter()
+        .map(|file| {
+            (
+                file.display().to_string(),
+                std::fs::read_to_string(file).unwrap(),
+            )
+        })
+        .collect();
+    programs.extend(
+        docs_examples::examples()
+            .into_iter()
+            .map(|(file, line, source)| (format!("{file}:{line}"), source)),
+    );
+    let config = FormatConfig::default();
+    let (mut checked, mut problems) = (0, Vec::new());
+    for (name, source) in programs {
+        let commented: String = source
+            .lines()
+            .map(|line| {
+                if line.trim().is_empty() {
+                    "\n".to_string()
+                } else {
+                    format!("{line} # c\n")
+                }
+            })
+            .collect();
+        // A line inside a string or a heredoc changes the program; skip what
+        // no longer parses.
+        if !mesh_parser::parse(&source).errors().is_empty()
+            || !mesh_parser::parse(&commented).errors().is_empty()
+        {
+            continue;
+        }
+        checked += 1;
+        match try_format(&commented, &config) {
+            Err(reason) => problems.push(format!("{name}: {reason}")),
+            Ok(formatted) => {
+                if format_source(&formatted, &config) != formatted {
+                    problems.push(format!("{name}: formatting again changes it"));
+                }
+            }
+        }
+    }
+    assert!(checked > 300, "checked only {checked}");
+    assert!(
+        problems.is_empty(),
+        "{} problems:\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
 }
 
 /// A comment may sit after any token of any construct; the formatter keeps

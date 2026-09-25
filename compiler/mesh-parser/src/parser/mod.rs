@@ -197,6 +197,13 @@ impl<'src> Parser<'src> {
     ///
     /// The node kind is initially `TOMBSTONE` and gets patched by `close()`.
     pub(crate) fn open(&mut self) -> MarkOpened {
+        // Trivia before the node's first token (a comment, a new line inside
+        // brackets) belongs to the enclosing node: in the node it would come
+        // before the node's own opening token (`[`, `{`, a name). The root
+        // holds everything.
+        if !self.events.is_empty() {
+            self.skip_trivia();
+        }
         let mark = MarkOpened {
             index: self.events.len(),
         };
@@ -251,12 +258,17 @@ impl<'src> Parser<'src> {
     /// trivia tokens and then for the significant token itself.
     ///
     /// Updates delimiter depth when consuming `(`, `)`, `[`, `]`, `{`, `}`.
-    pub(crate) fn advance(&mut self) {
-        // Emit Advance events for any trivia tokens we skip over.
+    /// Emit Advance events for the trivia tokens before the next significant
+    /// one.
+    fn skip_trivia(&mut self) {
         while self.pos < self.tokens.len() && self.should_skip(&self.tokens[self.pos].kind) {
             self.events.push(Event::Advance);
             self.pos += 1;
         }
+    }
+
+    pub(crate) fn advance(&mut self) {
+        self.skip_trivia();
 
         // Emit Advance for the significant token.
         if self.pos < self.tokens.len() {

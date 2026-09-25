@@ -423,7 +423,10 @@ mod tests {
         let source = "run() do\n  1\nend\ndescribe(\"g\") do\n  let x = 1\n  run() do\n    x\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\nend";
         let out = preprocess_test_source(source).unwrap();
         assert!(out.starts_with("run() do\n  1\nend\n"), "{out}");
-        assert!(out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"), "{out}");
+        assert!(
+            out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"),
+            "{out}"
+        );
         assert!(out.contains("  end) end\nend\n\nfn main() do"), "{out}");
     }
 
@@ -431,6 +434,9 @@ mod tests {
     fn preprocess_test_source_refuses_a_second_teardown() {
         let source = "describe(\"g\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\n  test(\"a\") do\n    assert(true)\n  end\nend\n";
         let err = preprocess_test_source(source).unwrap_err();
-        assert!(err.starts_with("line 5: a describe has one `teardown`"), "{err}");
+        assert!(
+            err.starts_with("line 5: a describe has one `teardown`"),
+            "{err}"
+        );
     }
 }

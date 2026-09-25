@@ -1,5 +1,6 @@
 ---
 source: compiler/mesh-parser/tests/parser_tests.rs
+assertion_line: 503
 expression: "parse_and_debug(\"foo(\\n  1,\\n  2\\n)\")"
 ---
 SOURCE_FILE@0..15
@@ -8,14 +9,14 @@ SOURCE_FILE@0..15
       IDENT@0..3 "foo"
     ARG_LIST@3..15
       L_PAREN@3..4 "("
-      LITERAL@4..8
-        NEWLINE@4..5 "\n"
-        WHITESPACE@5..7 "  "
+      NEWLINE@4..5 "\n"
+      WHITESPACE@5..7 "  "
+      LITERAL@7..8
         INT_LITERAL@7..8 "1"
       COMMA@8..9 ","
-      LITERAL@9..13
-        NEWLINE@9..10 "\n"
-        WHITESPACE@10..12 "  "
+      NEWLINE@9..10 "\n"
+      WHITESPACE@10..12 "  "
+      LITERAL@12..13
         INT_LITERAL@12..13 "2"
       NEWLINE@13..14 "\n"
       R_PAREN@14..15 ")"
