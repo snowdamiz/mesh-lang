@@ -1529,6 +1529,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::db::expr::mesh_pg_tsvector_matches as *const (),
         ),
         ("mesh_pg_uuid", mesh_rt::db::expr::mesh_pg_uuid as *const ()),
+        ("mesh_pid_to_string", mesh_rt::mesh_pid_to_string as *const ()),
         (
             "mesh_pool_close",
             mesh_rt::db::pool::mesh_pool_close as *const (),

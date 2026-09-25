@@ -906,7 +906,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         match lhs_ty {
-            MirType::Int => self.codegen_int_binop(op, lhs_val, rhs_val),
+            // A PID is its integer.
+            MirType::Int | MirType::Pid(_) => self.codegen_int_binop(op, lhs_val, rhs_val),
             MirType::Float => self.codegen_float_binop(op, lhs_val, rhs_val),
             MirType::Bool => self.codegen_bool_binop(op, lhs_val, rhs_val),
             _ => Err(format!("Unsupported binop type: {:?}", lhs_ty)),

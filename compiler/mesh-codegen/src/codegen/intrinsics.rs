@@ -109,6 +109,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_pid_to_string(pid: i64) -> ptr
+    module.add_function(
+        "mesh_pid_to_string",
+        int_to_string_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_float_to_string(val: f64) -> ptr
     let float_to_string_ty = ptr_type.fn_type(&[f64_type.into()], false);
     module.add_function(

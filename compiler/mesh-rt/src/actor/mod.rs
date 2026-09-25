@@ -323,6 +323,14 @@ pub extern "C" fn mesh_actor_self() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+/// A PID as `"#{pid}"` shows it: `<0.12>` for a local process, and
+/// `<node.local.creation>` for a remote one.
+#[no_mangle]
+pub extern "C" fn mesh_pid_to_string(pid: u64) -> *mut crate::string::MeshString {
+    let text = ProcessId(pid).to_string();
+    crate::string::mesh_string_new(text.as_ptr(), text.len() as u64)
+}
+
 /// Decrement the current actor's reduction counter and yield if exhausted.
 ///
 /// This function is inserted by the Mesh compiler at loop back-edges and

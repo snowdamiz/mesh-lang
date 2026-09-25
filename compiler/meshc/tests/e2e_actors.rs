@@ -428,3 +428,97 @@ fn actors_with_args() {
         output
     );
 }
+
+/// PIDs compare as equal only to themselves and show as `<0.N>`; no
+/// process is PID 0, which is what looking up an absent name returns.
+#[test]
+fn pids_compare_and_show_themselves() {
+    let output = compile_and_run_with_timeout(
+        r##"actor worker() do
+  receive do
+    msg -> println(msg)
+  end
+end
+
+fn main() do
+  let a = spawn(worker)
+  let b = spawn(worker)
+  send(a, "a done")
+  send(b, "b done")
+  println("same=#{a == a} different=#{a == b}")
+  println("absent=#{Process.whereis("nobody")}")
+  println("shown=#{String.starts_with("#{a}", "<0.")}")
+end
+"##,
+        30,
+    );
+    assert!(output.contains("same=true different=false"), "{output}");
+    assert!(output.contains("absent=<0.0>"), "{output}");
+    assert!(output.contains("shown=true"), "{output}");
+}
+
+/// What a node that nobody else joins can do with the distribution
+/// primitives, as the documentation describes: start once, fail to reach
+/// an absent peer, keep a global registry, and report a remote spawn that
+/// cannot happen with PID 0.
+#[test]
+fn node_primitives_on_a_lone_node() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let source = r##"actor worker(prefix :: String) do
+  receive do
+    msg -> println("#{prefix}: #{msg}")
+  end
+end
+
+actor coordinator(absent :: String) do
+  let spawned = Node.spawn(absent, worker, "remote")
+  send(spawned, "unheard")
+  println("spawn=#{spawned}")
+  let linked = Node.spawn_link(absent, worker, "linked")
+  send(linked, "unheard")
+  println("spawn_link=#{linked}")
+end
+
+fn main() do
+  println("self_before=[#{Node.self()}]")
+  let name = "lone@127.0.0.1:PORT"
+  let cookie = "a-development-cookie-0123456789"
+  println("start=#{Node.start(name, cookie)}")
+  println("start_again=#{Node.start(name, cookie)}")
+  println("self_is_name=#{Node.self() == name}")
+  println("connect=#{Node.connect("absent@127.0.0.1:1")}")
+  println("nodes=#{List.length(Node.list())}")
+  let pid = spawn(worker, "local")
+  send(pid, "hello")
+  println("register=#{Global.register("lone_worker", pid)}")
+  println("found=#{Global.whereis("lone_worker") == pid}")
+  println("unregister=#{Global.unregister("lone_worker")}")
+  println("unregister_again=#{Global.unregister("lone_worker")}")
+  spawn(coordinator, "absent@127.0.0.1:1")
+  Timer.sleep(300)
+end
+"##
+    .replace("PORT", &port.to_string());
+    let output = compile_and_run_with_timeout(&source, 60);
+    for expected in [
+        "self_before=[]",
+        "start=0",
+        "start_again=-1",
+        "self_is_name=true",
+        "connect=-2",
+        "nodes=0",
+        "local: hello",
+        "register=0",
+        "found=true",
+        "unregister=0",
+        "unregister_again=1",
+        "spawn=<0.0>",
+        "spawn_link=<0.0>",
+    ] {
+        assert!(output.contains(expected), "{expected} in:\n{output}");
+    }
+}

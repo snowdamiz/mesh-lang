@@ -12442,6 +12442,9 @@ impl<'a> Lowerer<'a> {
             )
         };
         let ptr3 = vec![MirType::Ptr, MirType::Ptr, MirType::Ptr];
+        if is_pid(ty) {
+            return hardware(lhs, rhs);
+        }
         match ty {
             Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
             // A type nothing fixed (`None == None`, `Ok(1) == Ok(1)`'s error
@@ -13675,6 +13678,14 @@ impl<'a> Lowerer<'a> {
     /// decides how it prints: collections, tuples, unit and instantiated
     /// generic sum types. `debug` prefers the type's `inspect`.
     fn display_by_type(&mut self, expr: &MirExpr, ty: &Ty, debug: bool) -> Option<MirExpr> {
+        if is_pid(ty) {
+            return Some(Self::call_named(
+                "mesh_pid_to_string",
+                vec![expr.ty().clone()],
+                vec![expr.clone()],
+                MirType::String,
+            ));
+        }
         let unit = |expr: &MirExpr| {
             MirExpr::Block(
                 vec![
@@ -17336,6 +17347,15 @@ fn builtin_call(name: &str, params: &[MirType], ret: &MirType, args: Vec<MirExpr
         )),
         args,
         ty: ret.clone(),
+    }
+}
+
+/// Whether `ty` is a process's PID, typed or not: an integer at run time.
+fn is_pid(ty: &Ty) -> bool {
+    match ty {
+        Ty::Con(con) => con.name == "Pid",
+        Ty::App(con, _) => matches!(con.as_ref(), Ty::Con(con) if con.name == "Pid"),
+        _ => false,
     }
 }
 
