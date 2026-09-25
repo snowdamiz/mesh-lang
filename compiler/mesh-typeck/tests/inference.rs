@@ -292,3 +292,17 @@ fn test_unit_callback_still_checks_parameters() {
         "Mismatch (callback parameter String against Int)",
     );
 }
+
+/// A generic type named without its arguments takes inferred ones: `List`
+/// in an annotation is `List<_>`, not a type that no value has.
+#[test]
+fn test_bare_generic_annotation_infers_its_arguments() {
+    let result = check_source(
+        "fn count(xs :: List) -> Int do\n  List.length(xs)\nend\n\
+         fn first(o :: Option) -> Bool do\n  case o do\n    Some(_) -> true\n    None -> false\n  end\nend\n\
+         let m :: Map = %{\"a\" => 1}\n\
+         let n = count([1, 2]) + count([\"a\"])\n\
+         first(Some(n))",
+    );
+    assert_result_type(&result, Ty::bool());
+}

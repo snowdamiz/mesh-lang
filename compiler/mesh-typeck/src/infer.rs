@@ -16328,7 +16328,7 @@ fn resolve_type_name_str(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option
 
 /// Resolve a type annotation using the type registry (supports struct types, aliases).
 fn resolve_type_annotation(
-    _ctx: &mut InferCtx,
+    ctx: &mut InferCtx,
     ann: &mesh_parser::ast::item::TypeAnnotation,
     type_registry: &TypeRegistry,
 ) -> Option<Ty> {
@@ -16348,7 +16348,56 @@ fn resolve_type_annotation(
         return None;
     }
     let ty = parse_type_tokens(&tokens, &mut start);
-    Some(resolve_alias(ty, type_registry))
+    let ty = resolve_alias(ty, type_registry);
+    Some(infer_missing_type_args(ctx, ty, type_registry))
+}
+
+/// A generic type named without its arguments, as in `xs :: List`, takes
+/// arguments to be inferred: `List<_>`. (It was the unrelated bare type,
+/// which no value has.) An untyped `Pid` is a type of its own.
+fn infer_missing_type_args(ctx: &mut InferCtx, ty: Ty, type_registry: &TypeRegistry) -> Ty {
+    match ty {
+        Ty::Con(tc) => {
+            let arity = match tc.name.as_str() {
+                "List" | "Set" | "Queue" | "Iter" | "Option" => 1,
+                "Map" | "Result" => 2,
+                name => type_registry
+                    .lookup_struct(name)
+                    .map(|def| def.generic_params.len())
+                    .or_else(|| {
+                        type_registry
+                            .lookup_sum_type(name)
+                            .map(|def| def.generic_params.len())
+                    })
+                    .unwrap_or(0),
+            };
+            if arity == 0 {
+                return Ty::Con(tc);
+            }
+            let args = (0..arity).map(|_| ctx.fresh_var()).collect();
+            Ty::App(Box::new(Ty::Con(tc)), args)
+        }
+        Ty::App(con, args) => Ty::App(
+            con,
+            args.into_iter()
+                .map(|arg| infer_missing_type_args(ctx, arg, type_registry))
+                .collect(),
+        ),
+        Ty::Fun(params, ret) => Ty::Fun(
+            params
+                .into_iter()
+                .map(|param| infer_missing_type_args(ctx, param, type_registry))
+                .collect(),
+            Box::new(infer_missing_type_args(ctx, *ret, type_registry)),
+        ),
+        Ty::Tuple(elems) => Ty::Tuple(
+            elems
+                .into_iter()
+                .map(|elem| infer_missing_type_args(ctx, elem, type_registry))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 /// Collect significant tokens (IDENT, LT, GT, COMMA, QUESTION, BANG,
