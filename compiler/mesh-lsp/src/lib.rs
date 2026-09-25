@@ -17,6 +17,7 @@ pub mod completion;
 pub mod definition;
 pub mod server;
 pub mod signature_help;
+mod syntax;
 
 use tower_lsp::{LspService, Server};
 
@@ -30,6 +31,6 @@ pub async fn run_server() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| MeshBackend::new(client));
+    let (service, socket) = LspService::new(MeshBackend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }

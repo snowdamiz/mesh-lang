@@ -551,7 +551,7 @@ mod tests {
     /// Verify that the server advertises the expected capabilities.
     #[tokio::test]
     async fn server_capabilities() {
-        let (service, _) = tower_lsp::LspService::new(|client| MeshBackend::new(client));
+        let (service, _) = tower_lsp::LspService::new(MeshBackend::new);
         let server = service.inner();
         let result = server
             .initialize(InitializeParams::default())

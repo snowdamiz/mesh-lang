@@ -12,6 +12,9 @@ use mesh_parser::SyntaxNode;
 use mesh_typeck::ty::Ty;
 
 use crate::analysis::AnalysisResult;
+use crate::syntax::{
+    field_access_parts, first_ident_text, module_items, name_child_text, param_name,
+};
 
 /// Compute signature help at the given LSP position.
 ///
@@ -40,7 +43,7 @@ pub fn compute_signature_help(
     let callee_name = extract_callee_name(&call_expr, &arg_list)?;
 
     // Step 5: Look up function type from TypeckResult.
-    let fn_type = resolve_callee_type(&callee_name, &call_expr, &analysis.typeck)?;
+    let fn_type = resolve_callee_type(&call_expr, &analysis.typeck)?;
 
     // Steps 6-7: Build SignatureInformation.
     let sig_info = build_signature_info(&root, &callee_name, &fn_type)?;
@@ -106,28 +109,14 @@ fn extract_callee_name(call_expr: &SyntaxNode, arg_list: &SyntaxNode) -> Option<
                 // Simple call: `add(x, y)` -- NAME_REF contains the IDENT.
                 return first_ident_text(&child);
             }
+            // Qualified call: `Module.func(x)`, or a method call:
+            // `expr.method(args)`.
             SyntaxKind::FIELD_ACCESS => {
-                // Qualified call: `Module.func(x)` or method call: `expr.method(args)`.
-                // Extract the method/function name from the NAME child.
-                let name_part = child
-                    .children()
-                    .find(|n| n.kind() == SyntaxKind::NAME)
-                    .and_then(|n| first_ident_text(&n));
-
-                let base_part = child
-                    .children()
-                    .find(|n| n.kind() == SyntaxKind::NAME_REF)
-                    .and_then(|n| first_ident_text(&n));
-
-                match (base_part, name_part) {
-                    (Some(base), Some(name)) => {
-                        return Some(format!("{}.{}", base, name));
-                    }
-                    (_, Some(name)) => {
-                        return Some(name);
-                    }
-                    _ => {}
-                }
+                return match field_access_parts(&child) {
+                    (Some(base), Some(field)) => Some(format!("{base}.{field}")),
+                    (None, field) => field,
+                    (Some(_), None) => None,
+                };
             }
             _ => {
                 // Try to extract an IDENT token directly from this node.
@@ -141,144 +130,42 @@ fn extract_callee_name(call_expr: &SyntaxNode, arg_list: &SyntaxNode) -> Option<
     None
 }
 
-/// Resolve the callee's function type from the TypeckResult.
-///
-/// Tries multiple strategies:
-/// A. Look up the callee node's text range directly.
-/// B. Look up NAME_REF/FIELD_ACCESS children of the CALL_EXPR.
-/// C. Iterate all entries looking for a Ty::Fun matching the callee range.
-fn resolve_callee_type(
-    _callee_name: &str,
-    call_expr: &SyntaxNode,
-    typeck: &mesh_typeck::TypeckResult,
-) -> Option<Ty> {
-    let arg_list_range = call_expr
+/// Resolve the callee's function type from the TypeckResult: the first
+/// function type recorded for the callee or a node inside it, in tree order.
+/// Only the callee: an argument can be a closure, whose type is a function
+/// too.
+fn resolve_callee_type(call_expr: &SyntaxNode, typeck: &mesh_typeck::TypeckResult) -> Option<Ty> {
+    let callee = call_expr
         .children()
-        .find(|n| n.kind() == SyntaxKind::ARG_LIST)
-        .map(|n| n.text_range());
-
-    // Strategy A: Look up the callee (non-ARG_LIST child) range directly.
-    for child in call_expr.children() {
-        if let Some(al_range) = arg_list_range {
-            if child.text_range() == al_range {
-                continue;
-            }
-        }
-        if let Some(ty) = typeck.types.get(&child.text_range()) {
-            if matches!(ty, Ty::Fun(_, _)) {
-                return Some(ty.clone());
-            }
-        }
-    }
-
-    // Strategy B: Search NAME_REF / FIELD_ACCESS children and their sub-nodes.
-    for child in call_expr.children() {
-        match child.kind() {
-            SyntaxKind::NAME_REF | SyntaxKind::FIELD_ACCESS => {
-                // Try the child itself.
-                if let Some(ty) = typeck.types.get(&child.text_range()) {
-                    if matches!(ty, Ty::Fun(_, _)) {
-                        return Some(ty.clone());
-                    }
-                }
-                // Try sub-children.
-                for sub in child.children() {
-                    if let Some(ty) = typeck.types.get(&sub.text_range()) {
-                        if matches!(ty, Ty::Fun(_, _)) {
-                            return Some(ty.clone());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Strategy C: Iterate all entries for a Ty::Fun overlapping the callee range.
-    let call_range = call_expr.text_range();
-    for (range, ty) in &typeck.types {
-        if matches!(ty, Ty::Fun(_, _)) && call_range.contains_range(*range) {
-            // Make sure it's not the call result range itself.
-            if *range != call_range {
-                return Some(ty.clone());
-            }
-        }
-    }
-
-    None
+        .find(|child| child.kind() != SyntaxKind::ARG_LIST)?;
+    callee
+        .descendants()
+        .find_map(|node| match typeck.types.get(&node.text_range()) {
+            Some(ty @ Ty::Fun(..)) => Some(ty.clone()),
+            _ => None,
+        })
 }
 
-/// Find parameter names for a user-defined function from the CST.
-///
-/// Searches the SOURCE_FILE for a FN_DEF with a matching NAME, then extracts
-/// parameter names from its PARAM_LIST -> PARAM children.
+/// Find parameter names for a user-defined function from the CST: a
+/// top-level `fn`, or for `Module.f` the `fn f` in that module's body.
 fn find_fn_def_param_names(root: &SyntaxNode, callee_name: &str) -> Option<Vec<String>> {
-    // For qualified names like "Module.func", use the last segment.
     let fn_name = callee_name.rsplit('.').next().unwrap_or(callee_name);
-
-    // Search top-level functions.
-    for child in root.children() {
-        if child.kind() == SyntaxKind::FN_DEF {
-            if name_child_text(&child).as_deref() == Some(fn_name) {
-                return Some(extract_param_names(&child));
-            }
-        }
-        // Also search inside MODULE_DEF blocks.
-        if child.kind() == SyntaxKind::MODULE_DEF {
-            for module_child in child.children() {
-                if module_child.kind() == SyntaxKind::BLOCK {
-                    for block_child in module_child.children() {
-                        if block_child.kind() == SyntaxKind::FN_DEF {
-                            if name_child_text(&block_child).as_deref() == Some(fn_name) {
-                                return Some(extract_param_names(&block_child));
-                            }
-                        }
-                    }
-                }
-                // Direct children of MODULE_DEF (not in BLOCK).
-                if module_child.kind() == SyntaxKind::FN_DEF {
-                    if name_child_text(&module_child).as_deref() == Some(fn_name) {
-                        return Some(extract_param_names(&module_child));
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract parameter names from a FN_DEF node.
-fn extract_param_names(fn_def: &SyntaxNode) -> Vec<String> {
-    let mut names = Vec::new();
-    for child in fn_def.children() {
-        if child.kind() == SyntaxKind::PARAM_LIST {
-            for param in child.children() {
-                if param.kind() == SyntaxKind::PARAM {
-                    if let Some(name) = param_name(&param) {
-                        names.push(name);
-                    }
-                }
-            }
-        }
-    }
-    names
-}
-
-/// Extract the name from a PARAM node.
-fn param_name(param: &SyntaxNode) -> Option<String> {
-    for token_or_node in param.children_with_tokens() {
-        match token_or_node {
-            rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
-                return Some(t.text().to_string());
-            }
-            rowan::NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                return first_ident_text(&n);
-            }
-            _ => {}
-        }
-    }
-    None
+    let is_named = |item: &SyntaxNode| {
+        item.kind() == SyntaxKind::FN_DEF && name_child_text(item).as_deref() == Some(fn_name)
+    };
+    let function = match callee_name.rsplit_once('.') {
+        Some((module, _)) => module_items(root, module).find(is_named),
+        None => root.children().find(is_named),
+    }?;
+    Some(
+        function
+            .children()
+            .filter(|child| child.kind() == SyntaxKind::PARAM_LIST)
+            .flat_map(|list| list.children())
+            .filter(|param| param.kind() == SyntaxKind::PARAM)
+            .filter_map(|param| param_name(&param))
+            .collect(),
+    )
 }
 
 /// Build the SignatureInformation from the function type and optional param names.
@@ -291,30 +178,24 @@ fn build_signature_info(
         Ty::Fun(params, ret) => {
             let param_names = find_fn_def_param_names(root, callee_name);
 
-            let param_infos: Vec<ParameterInformation> = params
+            let param_labels: Vec<String> = params
                 .iter()
                 .enumerate()
-                .map(|(i, ty)| {
-                    let label = match param_names.as_ref().and_then(|names| names.get(i)) {
-                        Some(name) => format!("{}: {}", name, ty),
-                        None => format!("{}", ty),
-                    };
-                    ParameterInformation {
-                        label: ParameterLabel::Simple(label),
-                        documentation: None,
-                    }
+                .map(
+                    |(i, ty)| match param_names.as_ref().and_then(|names| names.get(i)) {
+                        Some(name) => format!("{name}: {ty}"),
+                        None => format!("{ty}"),
+                    },
+                )
+                .collect();
+            let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret);
+            let param_infos = param_labels
+                .into_iter()
+                .map(|label| ParameterInformation {
+                    label: ParameterLabel::Simple(label),
+                    documentation: None,
                 })
                 .collect();
-
-            let param_labels: Vec<String> = param_infos
-                .iter()
-                .map(|p| match &p.label {
-                    ParameterLabel::Simple(s) => s.clone(),
-                    _ => String::new(),
-                })
-                .collect();
-
-            let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret,);
 
             Some(SignatureInformation {
                 label,
@@ -327,28 +208,6 @@ fn build_signature_info(
     }
 }
 
-/// Get the text of the NAME child of a definition node.
-fn name_child_text(node: &SyntaxNode) -> Option<String> {
-    for child in node.children() {
-        if child.kind() == SyntaxKind::NAME {
-            return first_ident_text(&child);
-        }
-    }
-    None
-}
-
-/// Get the text of the first IDENT token in a node.
-fn first_ident_text(node: &SyntaxNode) -> Option<String> {
-    for token in node.children_with_tokens() {
-        if let rowan::NodeOrToken::Token(t) = token {
-            if t.kind() == SyntaxKind::IDENT {
-                return Some(t.text().to_string());
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,6 +218,33 @@ mod tests {
         let analysis = crate::analysis::analyze_document("file:///test.mpl", source, &[]);
         let position = Position { line, character };
         compute_signature_help(source, &analysis, &position)
+    }
+
+    /// Signature help at the end of `line`'s `marker`.
+    fn sig_help_after(source: &str, marker: &str) -> Option<SignatureHelp> {
+        let at = source.find(marker).unwrap() + marker.len();
+        let line = source[..at].matches('\n').count() as u32;
+        let character = (at - source[..at].rfind('\n').map_or(0, |nl| nl + 1)) as u32;
+        sig_help_at(source, line, character)
+    }
+
+    fn label(help: &SignatureHelp) -> &str {
+        &help.signatures[0].label
+    }
+
+    #[test]
+    fn signature_help_is_the_callees_not_a_closure_arguments() {
+        let source = "fn apply(f, x :: Int) -> Int do\n  f(x)\nend\n\nfn main() do\n  apply(fn(y) -> y + 1 end, 2)\nend\n";
+        let help = sig_help_after(source, "apply(fn(y) -> y + 1 end, ").unwrap();
+        assert!(label(&help).starts_with("apply(f: "), "{}", label(&help));
+        assert_eq!(help.active_parameter, Some(1));
+    }
+
+    #[test]
+    fn signature_help_names_a_module_functions_parameters() {
+        let source = "import Geo\n\nmodule Geo do\n  pub fn area(w :: Int, h :: Int) -> Int do\n    w * h\n  end\nend\n\nfn area(a :: Int) -> Int do\n  a\nend\n\nfn main() do\n  Geo.area(1, 2)\nend\n";
+        let help = sig_help_after(source, "Geo.area(").unwrap();
+        assert_eq!(label(&help), "Geo.area(w: Int, h: Int) -> Int");
     }
 
     #[test]

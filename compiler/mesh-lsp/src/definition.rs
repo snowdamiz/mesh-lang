@@ -12,15 +12,10 @@
 //! The CST keeps whitespace as WHITESPACE tokens, so rowan `TextRange` offsets
 //! are source byte offsets. The two conversion functions below only bounds-check.
 
+use crate::syntax::{field_access_parts, first_ident_text, module_items};
 use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 use rowan::TextRange;
-
-/// Known built-in module names that have no source definition.
-const BUILTIN_MODULES: &[&str] = &[
-    "IO", "String", "List", "Map", "Set", "Queue", "Int", "Float", "Bool", "Http", "Request",
-    "Response", "Json", "Job", "File", "Math", "Result", "Option",
-];
 
 /// Convert a source byte offset to a rowan tree offset.
 ///
@@ -56,32 +51,16 @@ pub fn find_definition(source: &str, root: &SyntaxNode, source_offset: usize) ->
 
     match parent_kind {
         SyntaxKind::NAME_REF => {
-            let name_text = token.text().to_string();
-            // Check if it's a built-in module reference (e.g., IO, String).
-            if BUILTIN_MODULES.contains(&name_text.as_str()) {
-                return None;
-            }
-            find_variable_or_function_def(root, &parent, &name_text)
+            // A standard library module has no definition in the source, so
+            // none is found for it.
+            find_variable_or_function_def(&parent, token.text())
         }
-        SyntaxKind::NAME => {
-            // If the identifier is in a NAME node that is a child of FIELD_ACCESS,
-            // this might be a qualified name like Module.function -- resolve the
-            // field within the module.
-            let grandparent = parent.parent()?;
-            if grandparent.kind() == SyntaxKind::FIELD_ACCESS {
-                let name_text = token.text().to_string();
-                // Find the base (first child NAME_REF of the FIELD_ACCESS).
-                let base_ref = grandparent
-                    .children()
-                    .find(|c| c.kind() == SyntaxKind::NAME_REF)?;
-                let base_text = first_ident_text(&base_ref)?;
-                if BUILTIN_MODULES.contains(&base_text.as_str()) {
-                    return None;
-                }
-                // Look for a MODULE_DEF with that base name, then find the function inside.
-                return find_in_module(root, &base_text, &name_text);
-            }
-            None
+        // `Module.function`: the function in that module's body.
+        SyntaxKind::FIELD_ACCESS if token.kind() == SyntaxKind::IDENT => {
+            let (Some(module), Some(function)) = field_access_parts(&parent) else {
+                return None;
+            };
+            find_in_module(root, &module, &function)
         }
         _ => {
             // The token might be an IDENT inside a TYPE_ANNOTATION or other context.
@@ -100,14 +79,8 @@ pub fn find_definition(source: &str, root: &SyntaxNode, source_offset: usize) ->
 
 /// Check whether a node is in a type annotation context.
 fn is_in_type_context(node: &SyntaxNode) -> bool {
-    let mut current = Some(node.clone());
-    while let Some(n) = current {
-        if n.kind() == SyntaxKind::TYPE_ANNOTATION {
-            return true;
-        }
-        current = n.parent();
-    }
-    false
+    node.ancestors()
+        .any(|ancestor| ancestor.kind() == SyntaxKind::TYPE_ANNOTATION)
 }
 
 /// Find a variable or function definition for a NAME_REF node.
@@ -118,11 +91,7 @@ fn is_in_type_context(node: &SyntaxNode) -> bool {
 /// - PARAM with a matching NAME/IDENT
 ///
 /// At the top level (SOURCE_FILE), searches all definitions.
-fn find_variable_or_function_def(
-    _root: &SyntaxNode,
-    name_ref_node: &SyntaxNode,
-    name: &str,
-) -> Option<TextRange> {
+fn find_variable_or_function_def(name_ref_node: &SyntaxNode, name: &str) -> Option<TextRange> {
     // Walk up the tree from the reference.
     let mut current = name_ref_node.parent()?;
 
@@ -138,14 +107,8 @@ fn find_variable_or_function_def(
                     return None;
                 }
             }
-            SyntaxKind::FN_DEF => {
-                // Check function parameters.
-                if let Some(range) = search_params_for_name(&current, name) {
-                    return Some(range);
-                }
-            }
-            SyntaxKind::CLOSURE_EXPR => {
-                // Check closure parameters.
+            // A function's or a closure's parameters.
+            SyntaxKind::FN_DEF | SyntaxKind::CLOSURE_EXPR => {
                 if let Some(range) = search_params_for_name(&current, name) {
                     return Some(range);
                 }
@@ -153,10 +116,7 @@ fn find_variable_or_function_def(
             _ => {}
         }
 
-        current = match current.parent() {
-            Some(p) => p,
-            None => return None,
-        };
+        current = current.parent()?;
     }
 }
 
@@ -179,33 +139,19 @@ fn search_block_for_def(
             break;
         }
 
-        match child.kind() {
-            SyntaxKind::LET_BINDING => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            SyntaxKind::FN_DEF => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            SyntaxKind::ACTOR_DEF => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            SyntaxKind::SERVICE_DEF => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            SyntaxKind::MODULE_DEF => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            _ => {}
+        let defines = matches!(
+            child.kind(),
+            SyntaxKind::LET_BINDING
+                | SyntaxKind::FN_DEF
+                | SyntaxKind::ACTOR_DEF
+                | SyntaxKind::SERVICE_DEF
+                | SyntaxKind::MODULE_DEF
+        );
+        if let Some(range) = defines
+            .then(|| name_child_if_matches(&child, name))
+            .flatten()
+        {
+            return Some(range);
         }
     }
 
@@ -214,99 +160,55 @@ fn search_block_for_def(
 
 /// Search parameter list of a FN_DEF or CLOSURE_EXPR for a matching name.
 fn search_params_for_name(fn_node: &SyntaxNode, name: &str) -> Option<TextRange> {
-    for child in fn_node.children() {
-        if child.kind() == SyntaxKind::PARAM_LIST {
-            for param in child.children() {
-                if param.kind() == SyntaxKind::PARAM {
-                    // PARAM contains an IDENT token (or NAME node).
-                    for token_or_node in param.children_with_tokens() {
-                        match token_or_node {
-                            rowan::NodeOrToken::Token(t)
-                                if t.kind() == SyntaxKind::IDENT && t.text() == name =>
-                            {
-                                return Some(t.text_range());
-                            }
-                            rowan::NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                                if first_ident_text(&n).as_deref() == Some(name) {
-                                    return Some(n.text_range());
-                                }
-                            }
-                            _ => {}
-                        }
+    fn_node
+        .children()
+        .filter(|child| child.kind() == SyntaxKind::PARAM_LIST)
+        .flat_map(|list| list.children())
+        .filter(|param| param.kind() == SyntaxKind::PARAM)
+        .find_map(|param| {
+            // A PARAM holds its name as an IDENT token or a NAME node.
+            param
+                .children_with_tokens()
+                .find_map(|element| match element {
+                    rowan::NodeOrToken::Token(t)
+                        if t.kind() == SyntaxKind::IDENT && t.text() == name =>
+                    {
+                        Some(t.text_range())
                     }
-                }
-            }
-        }
-    }
-    None
+                    rowan::NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
+                        (first_ident_text(&n).as_deref() == Some(name)).then(|| n.text_range())
+                    }
+                    _ => None,
+                })
+        })
 }
 
 /// Find a type definition (struct, sum type, type alias) with a matching name.
 fn find_type_def(root: &SyntaxNode, name: &str) -> Option<TextRange> {
-    for child in root.children() {
-        match child.kind() {
-            SyntaxKind::STRUCT_DEF | SyntaxKind::SUM_TYPE_DEF | SyntaxKind::TYPE_ALIAS_DEF => {
-                if let Some(range) = name_child_if_matches(&child, name) {
-                    return Some(range);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
+    root.children()
+        .filter(|child| {
+            matches!(
+                child.kind(),
+                SyntaxKind::STRUCT_DEF | SyntaxKind::SUM_TYPE_DEF | SyntaxKind::TYPE_ALIAS_DEF
+            )
+        })
+        .find_map(|definition| name_child_if_matches(&definition, name))
 }
 
 /// Find a function definition inside a MODULE_DEF with the given module name.
 fn find_in_module(root: &SyntaxNode, module_name: &str, fn_name: &str) -> Option<TextRange> {
-    for child in root.children() {
-        if child.kind() == SyntaxKind::MODULE_DEF {
-            if name_child_text(&child).as_deref() == Some(module_name) {
-                // Search inside the module for a matching function.
-                for module_child in child.children() {
-                    if module_child.kind() == SyntaxKind::FN_DEF {
-                        if let Some(range) = name_child_if_matches(&module_child, fn_name) {
-                            return Some(range);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
+    module_items(root, module_name)
+        .filter(|item| item.kind() == SyntaxKind::FN_DEF)
+        .find_map(|function| name_child_if_matches(&function, fn_name))
 }
 
 /// If a node has a NAME child whose text matches `name`, return the NAME's range.
 fn name_child_if_matches(node: &SyntaxNode, name: &str) -> Option<TextRange> {
-    for child in node.children() {
-        if child.kind() == SyntaxKind::NAME {
-            if first_ident_text(&child).as_deref() == Some(name) {
-                return Some(child.text_range());
-            }
-        }
-    }
-    None
-}
-
-/// Get the text of the NAME child of a node.
-fn name_child_text(node: &SyntaxNode) -> Option<String> {
-    for child in node.children() {
-        if child.kind() == SyntaxKind::NAME {
-            return first_ident_text(&child);
-        }
-    }
-    None
-}
-
-/// Get the text of the first IDENT token in a node.
-fn first_ident_text(node: &SyntaxNode) -> Option<String> {
-    for token in node.children_with_tokens() {
-        if let rowan::NodeOrToken::Token(t) = token {
-            if t.kind() == SyntaxKind::IDENT {
-                return Some(t.text().to_string());
-            }
-        }
-    }
-    None
+    node.children()
+        .find(|child| {
+            child.kind() == SyntaxKind::NAME && first_ident_text(child).as_deref() == Some(name)
+        })
+        .map(|name| name.text_range())
 }
 
 #[cfg(test)]
@@ -356,6 +258,28 @@ mod tests {
             def_source_offset, 4,
             "Definition of x should be at source offset 4"
         );
+    }
+
+    /// Where the definition of the `occurrence`-th `name` in `source`
+    /// (counting from 0) starts, as a source offset.
+    fn def_of(source: &str, name: &str, occurrence: usize) -> Option<usize> {
+        let at = source.match_indices(name).nth(occurrence)?.0;
+        tree_range_to_source(source, def_at(source, at)?)
+    }
+
+    #[test]
+    fn find_def_module_function_and_other_definitions() {
+        // `Geo.area(...)` resolves into the module's body.
+        let source =
+            "module Geo do\n  pub fn area(r) = r * r\nend\n\nfn main() do\n  Geo.area(2)\nend\n";
+        assert_eq!(def_of(source, "area", 1), source.find("area"));
+        assert_eq!(def_of(source, "Geo", 1), source.find("Geo"));
+        // A closure's parameter, an actor and a service.
+        let source = "actor Pinger() do\n  1\nend\n\nservice Store do\n  fn init() -> Int do\n    0\n  end\nend\n\nfn main() do\n  let f = fn(x) -> x + 1 end\n  spawn(Pinger)\n  Store.start()\nend\n";
+        assert_eq!(def_of(source, "x", 1), source.find("(x)").map(|at| at + 1));
+        assert_eq!(def_of(source, "Pinger", 1), source.find("Pinger"));
+        // An unknown module's function has no definition here.
+        assert_eq!(def_of("fn main() do\n  Nowhere.go()\nend\n", "go", 0), None);
     }
 
     #[test]

@@ -12,6 +12,7 @@ use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 
 use crate::analysis::AnalysisResult;
+use crate::syntax::{name_child_text, param_name};
 
 /// Mesh keywords and contextual syntax.
 const KEYWORDS: &[&str] = &[
@@ -285,57 +286,19 @@ fn collect_block_names(
             break;
         }
 
-        let (name, kind) = match child.kind() {
-            SyntaxKind::LET_BINDING => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::VARIABLE)
-                } else {
-                    continue;
-                }
+        let kind = match child.kind() {
+            SyntaxKind::LET_BINDING => CompletionItemKind::VARIABLE,
+            SyntaxKind::FN_DEF | SyntaxKind::ACTOR_DEF | SyntaxKind::SERVICE_DEF => {
+                CompletionItemKind::FUNCTION
             }
-            SyntaxKind::FN_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::FUNCTION)
-                } else {
-                    continue;
-                }
-            }
-            SyntaxKind::ACTOR_DEF | SyntaxKind::SERVICE_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::FUNCTION)
-                } else {
-                    continue;
-                }
-            }
-            SyntaxKind::MODULE_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::MODULE)
-                } else {
-                    continue;
-                }
-            }
-            SyntaxKind::STRUCT_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::STRUCT)
-                } else {
-                    continue;
-                }
-            }
-            SyntaxKind::SUM_TYPE_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::ENUM)
-                } else {
-                    continue;
-                }
-            }
-            SyntaxKind::INTERFACE_DEF => {
-                if let Some(n) = name_child_text(&child) {
-                    (n, CompletionItemKind::INTERFACE)
-                } else {
-                    continue;
-                }
-            }
+            SyntaxKind::MODULE_DEF => CompletionItemKind::MODULE,
+            SyntaxKind::STRUCT_DEF => CompletionItemKind::STRUCT,
+            SyntaxKind::SUM_TYPE_DEF => CompletionItemKind::ENUM,
+            SyntaxKind::INTERFACE_DEF => CompletionItemKind::INTERFACE,
             _ => continue,
+        };
+        let Some(name) = name_child_text(&child) else {
+            continue;
         };
 
         // Deduplicate: inner-scope names shadow outer-scope names.
@@ -365,46 +328,6 @@ fn collect_param_names(
             }
         }
     }
-}
-
-/// Extract the name text from a PARAM node.
-///
-/// Parameters may contain either a bare IDENT token or a NAME child node.
-fn param_name(param: &SyntaxNode) -> Option<String> {
-    for token_or_node in param.children_with_tokens() {
-        match token_or_node {
-            rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
-                return Some(t.text().to_string());
-            }
-            rowan::NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                return first_ident_text(&n);
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Get the text of the NAME child of a definition node.
-fn name_child_text(node: &SyntaxNode) -> Option<String> {
-    for child in node.children() {
-        if child.kind() == SyntaxKind::NAME {
-            return first_ident_text(&child);
-        }
-    }
-    None
-}
-
-/// Get the text of the first IDENT token in a node.
-fn first_ident_text(node: &SyntaxNode) -> Option<String> {
-    for token in node.children_with_tokens() {
-        if let rowan::NodeOrToken::Token(t) = token {
-            if t.kind() == SyntaxKind::IDENT {
-                return Some(t.text().to_string());
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]
