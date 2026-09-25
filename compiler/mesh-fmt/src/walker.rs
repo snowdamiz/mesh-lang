@@ -593,37 +593,25 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
-/// Walk a destructure binding node: `{k, v}`.
+/// `{k, v}`: a `for` loop's map entry binding.
 fn walk_destructure_binding(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    parts.push(ir::text("{"));
-    let mut first = true;
+    let mut names = 0;
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => {
-                match tok.kind() {
-                    SyntaxKind::L_BRACE | SyntaxKind::R_BRACE => {
-                        // Handled by the explicit { and } text nodes above/below.
-                    }
-                    SyntaxKind::COMMA => {
-                        parts.push(ir::text(","));
-                        parts.push(sp());
-                    }
-                    _ => {}
-                }
-            }
             NodeOrToken::Node(n) => {
-                if n.kind() == SyntaxKind::NAME {
-                    if !first {
-                        // Comma already added above for non-first names.
-                    }
-                    parts.push(walk_node(&n));
-                    first = false;
+                parts.push(walk_node(&n));
+                names += 1;
+            }
+            // `{k, v,}` loses its trailing comma.
+            NodeOrToken::Token(tok) if tok.kind() == SyntaxKind::COMMA => {
+                if names < 2 {
+                    parts.extend([ir::text(","), sp()]);
                 }
             }
+            NodeOrToken::Token(tok) => add_token_with_context(&tok, &mut parts),
         }
     }
-    parts.push(ir::text("}"));
     ir::concat(parts)
 }
 
@@ -2707,6 +2695,18 @@ mod tests {
         assert_eq!(
             fmt("fn h(0) = 0\n\nfn h(n) = n # n\nfn h2() = 1\n"),
             "fn h(0) = 0\n\nfn h(n) = n # n\n\nfn h2() = 1\n"
+        );
+    }
+
+    #[test]
+    fn a_map_entry_binding_keeps_comments_and_drops_a_trailing_comma() {
+        assert_eq!(
+            fmt("fn f(m) do\nfor {k,v,} in m do\nk\nend\nend"),
+            "fn f(m) do\n  for {k, v} in m do\n    k\n  end\nend\n"
+        );
+        assert_eq!(
+            fmt("fn f(m) do\nfor {k, # key\nv} in m do\nk\nend\nend"),
+            "fn f(m) do\n  for {k, # key\n    v} in m do\n    k\n  end\nend\n"
         );
     }
 
