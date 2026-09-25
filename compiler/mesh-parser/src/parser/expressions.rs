@@ -808,11 +808,7 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
     let m = p.open();
 
     loop {
-        // Eat leading newlines/semicolons between statements.
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         // Check if we've reached a block terminator.
         match p.current() {
@@ -828,24 +824,6 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
 
         if p.has_error() {
             break;
-        }
-
-        // After a statement, expect a separator or block terminator.
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {
-                // Will be eaten at top of loop.
-            }
-            SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => {
-                // Block terminator -- stop.
-            }
-            _ => {
-                // If we're not at a separator or terminator, that's ok --
-                // the next iteration will try to parse another statement
-                // or hit an error.
-            }
         }
     }
 
@@ -1093,10 +1071,7 @@ fn parse_arm_block_body(p: &mut Parser) {
     let mut statements = 0;
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         if p.at(SyntaxKind::END_KW)
             || p.at(SyntaxKind::EOF)
@@ -1202,7 +1177,7 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
 
     // No-params closures: `fn -> body end` or `fn do body end`
     if has_arrow_immediately || has_do_immediately {
-        parse_closure_body_block(p, fn_span);
+        parse_closure_body_block(p);
         expect_closure_end(p, fn_span);
         return p.close(m, SyntaxKind::CLOSURE_EXPR);
     }
@@ -1352,20 +1327,11 @@ fn parse_closure_clause(p: &mut Parser) {
     p.close(clause, SyntaxKind::CLOSURE_CLAUSE);
 }
 
-/// Parse a closure body for the no-params variant.
-/// Handles both `-> body` and `do body` forms. Produces a BLOCK.
-fn parse_closure_body_block(p: &mut Parser, _fn_span: Span) {
-    if p.at(SyntaxKind::ARROW) {
-        p.advance(); // ARROW
-        if !p.has_error() {
-            parse_block_body(p);
-        }
-    } else if p.at(SyntaxKind::DO_KW) {
-        p.advance(); // DO_KW
-        parse_block_body(p);
-    } else {
-        p.error("expected `->` or `do` after `fn`");
-    }
+/// Parse a closure body for the no-params variant: `-> body` or `do body`,
+/// the `->` or `do` already seen. Produces a BLOCK.
+fn parse_closure_body_block(p: &mut Parser) {
+    p.advance(); // ARROW or DO_KW
+    parse_block_body(p);
 }
 
 /// Expect END_KW to close a closure, emitting an error pointing back to fn if missing.

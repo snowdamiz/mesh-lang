@@ -47,12 +47,10 @@ impl FnDeclPrefixState {
             Self::ExportDecoratorValid | Self::ExportDecoratorInvalid => {
                 Some("expected `fn` or `def` after `@export`")
             }
+            // The removed spelling is reported where it is, and a function
+            // without a prefix is only started at its `fn` or `def`.
             Self::RemovedSyntaxInvalid | Self::Absent => None,
         }
-    }
-
-    fn is_removed_syntax(self) -> bool {
-        matches!(self, Self::RemovedSyntaxInvalid)
     }
 
     fn is_native(self) -> bool {
@@ -98,11 +96,8 @@ fn recover_cluster_decorator_args(p: &mut Parser) {
     }
 }
 
+/// `@cluster` or `@cluster(N)`, the `@` already seen.
 fn parse_cluster_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
-    if !p.at(SyntaxKind::AT) {
-        return FnDeclPrefixState::Absent;
-    }
-
     let m = p.open();
     let start_span = p.current_span();
     let mut valid = true;
@@ -329,8 +324,6 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
     } else {
         if let Some(message) = declaration_prefix.missing_fn_message() {
             p.error(message);
-        } else if !declaration_prefix.is_removed_syntax() {
-            p.error("expected `fn` or `def`");
         }
         p.close(m, SyntaxKind::FN_DEF);
         return;
@@ -400,7 +393,7 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
         let do_span = p.current_span();
         p.advance(); // DO_KW
 
-        parse_item_block_body(p);
+        super::expressions::parse_block_body(p);
 
         if !p.at(SyntaxKind::END_KW) {
             p.error_with_related(
@@ -446,7 +439,7 @@ pub(crate) fn parse_module_def(p: &mut Parser) {
 
     // Parse module items.
     if !p.has_error() {
-        parse_item_block_body(p);
+        super::expressions::parse_block_body(p);
     }
 
     // Expect `end`.
@@ -765,7 +758,7 @@ fn parse_relationship_decl(p: &mut Parser) {
 /// Syntax:
 /// - `table "custom_table_name"` (STRING value)
 /// - `primary_key :custom_pk` (ATOM value)
-/// - `timestamps true` or `timestamps false` (IDENT value)
+/// - `timestamps true` or `timestamps false`
 ///
 /// These are contextual identifiers (not keywords) recognized only inside struct bodies.
 /// They produce SCHEMA_OPTION nodes containing the option name identifier and its value.
@@ -802,24 +795,12 @@ fn parse_schema_option(p: &mut Parser) {
                 p.error("expected atom literal after `primary_key` (e.g., primary_key :uuid)");
             }
         }
-        "timestamps" => {
-            // Expect an IDENT "true" or "false"
-            if p.at(SyntaxKind::TRUE_KW) {
-                p.advance(); // TRUE_KW
-            } else if p.at(SyntaxKind::FALSE_KW) {
-                p.advance(); // FALSE_KW
-            } else if p.at(SyntaxKind::IDENT) {
-                let val = p.current_text().to_string();
-                if val == "true" || val == "false" {
-                    p.advance(); // IDENT
-                } else {
-                    p.error("expected `true` or `false` after `timestamps`");
-                }
-            } else {
+        // `timestamps`, the one option left.
+        _ => {
+            if !p.eat(SyntaxKind::TRUE_KW) && !p.eat(SyntaxKind::FALSE_KW) {
                 p.error("expected `true` or `false` after `timestamps`");
             }
         }
-        _ => unreachable!("the struct body parses only known schema options"),
     }
 
     p.close(m, SyntaxKind::SCHEMA_OPTION);
@@ -1088,7 +1069,7 @@ fn parse_interface_method(p: &mut Parser) {
         let do_span = p.current_span();
         p.advance(); // DO_KW
 
-        parse_item_block_body(p);
+        super::expressions::parse_block_body(p);
 
         if !p.at(SyntaxKind::END_KW) {
             p.error_with_related(
@@ -1245,16 +1226,13 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
 
 /// Parse the body of an impl block: associated type bindings and method definitions.
 ///
-/// Unlike `parse_item_block_body`, this specifically handles `type Item = T`
+/// Unlike a block body, this specifically handles `type Item = T`
 /// as associated type bindings rather than top-level type aliases/sum types.
 fn parse_impl_body(p: &mut Parser) {
     let m = p.open();
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1287,10 +1265,6 @@ fn parse_impl_body(p: &mut Parser) {
         }
         if p.has_error() {
             break;
-        }
-
-        if p.at(SyntaxKind::NEWLINE) {
-            p.eat_newlines();
         }
     }
 
@@ -1542,56 +1516,6 @@ fn parse_trait_bound(p: &mut Parser) {
     p.close(m, SyntaxKind::TRAIT_BOUND);
 }
 
-// ── Item Block Body ──────────────────────────────────────────────────────
-
-/// Parse a block body that can contain items (fn, module, struct) as well
-/// as statements/expressions.
-///
-/// This is used for module bodies and function bodies.
-fn parse_item_block_body(p: &mut Parser) {
-    let m = p.open();
-
-    loop {
-        // Eat leading newlines/semicolons between statements.
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
-
-        // Check if we've reached a block terminator.
-        match p.current() {
-            SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => break,
-            _ => {}
-        }
-
-        // Parse an item or statement.
-        super::parse_item_or_stmt(p);
-        if !p.has_error() {
-            super::expect_statement_end(p);
-        }
-
-        if p.has_error() {
-            break;
-        }
-
-        // After a statement, handle separators.
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {
-                // Will be eaten at top of loop.
-            }
-            SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => {
-                // Block terminator -- stop.
-            }
-            _ => {}
-        }
-    }
-
-    p.close(m, SyntaxKind::BLOCK);
-}
-
 // ── Actor Definition ────────────────────────────────────────────────────
 
 /// Parse an actor block definition: `actor Name(params) do body [terminate do ... end] end`
@@ -1653,10 +1577,7 @@ fn parse_actor_body(p: &mut Parser) {
     let mut seen_terminate = false;
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1678,10 +1599,6 @@ fn parse_actor_body(p: &mut Parser) {
         }
         if p.has_error() {
             break;
-        }
-
-        if p.at(SyntaxKind::NEWLINE) {
-            p.eat_newlines();
         }
     }
 
@@ -1774,10 +1691,7 @@ fn parse_supervisor_body(p: &mut Parser) {
     let m = p.open();
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1805,10 +1719,6 @@ fn parse_supervisor_body(p: &mut Parser) {
         }
         if p.has_error() {
             break;
-        }
-
-        if p.at(SyntaxKind::NEWLINE) {
-            p.eat_newlines();
         }
     }
 
@@ -1917,10 +1827,7 @@ fn parse_child_spec_body(p: &mut Parser) {
     let m = p.open();
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1951,17 +1858,12 @@ fn parse_child_spec_body(p: &mut Parser) {
                                     p.error("expected restart strategy (permanent, transient, temporary)");
                                 }
                             }
-                            "shutdown" => {
-                                // Either an integer or `brutal_kill`.
-                                if p.at(SyntaxKind::INT_LITERAL) {
-                                    p.advance();
-                                } else if p.at(SyntaxKind::IDENT) {
-                                    p.advance(); // brutal_kill
-                                } else {
+                            // `shutdown`: an integer or `brutal_kill`.
+                            _ => {
+                                if !p.eat(SyntaxKind::INT_LITERAL) && !p.eat(SyntaxKind::IDENT) {
                                     p.error("expected shutdown timeout (integer or brutal_kill)");
                                 }
                             }
-                            _ => unreachable!(),
                         }
                     }
                     _ => {
@@ -1981,10 +1883,6 @@ fn parse_child_spec_body(p: &mut Parser) {
         }
         if p.has_error() {
             break;
-        }
-
-        if p.at(SyntaxKind::NEWLINE) {
-            p.eat_newlines();
         }
     }
 
@@ -2045,10 +1943,7 @@ fn parse_service_body(p: &mut Parser) {
     let m = p.open();
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -2073,10 +1968,6 @@ fn parse_service_body(p: &mut Parser) {
         }
         if p.has_error() {
             break;
-        }
-
-        if p.at(SyntaxKind::NEWLINE) {
-            p.eat_newlines();
         }
     }
 

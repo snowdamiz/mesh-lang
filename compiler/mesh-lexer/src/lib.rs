@@ -793,13 +793,10 @@ impl<'src> Iterator for Lexer<'src> {
             return None;
         }
 
-        // Drain pending tokens first.
+        // Drain pending tokens first (never the end of input, which is
+        // produced below).
         if !self.pending.is_empty() {
-            let token = self.pending.remove(0);
-            if token.kind == TokenKind::Eof {
-                self.emitted_eof = true;
-            }
-            return Some(token);
+            return Some(self.pending.remove(0));
         }
 
         let token = self.produce_token();

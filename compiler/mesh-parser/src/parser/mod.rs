@@ -145,21 +145,19 @@ impl<'src> Parser<'src> {
     /// `nth(0)` is equivalent to `current()`. Skips trivia and
     /// insignificant newlines. Returns `SyntaxKind::EOF` if past end.
     pub(crate) fn nth(&self, n: usize) -> SyntaxKind {
-        let mut pos = self.pos;
-        let mut remaining = n;
-        while pos < self.tokens.len() {
-            let token_kind = &self.tokens[pos].kind;
-            if self.should_skip(token_kind) {
-                pos += 1;
-                continue;
-            }
-            if remaining == 0 {
-                return SyntaxKind::from(token_kind.clone());
-            }
-            remaining -= 1;
-            pos += 1;
-        }
-        SyntaxKind::EOF
+        self.nth_token(n).map_or(SyntaxKind::EOF, |token| {
+            SyntaxKind::from(token.kind.clone())
+        })
+    }
+
+    /// The Nth significant token ahead, skipping trivia and insignificant
+    /// newlines; `None` past the end.
+    fn nth_token(&self, n: usize) -> Option<&Token> {
+        self.tokens
+            .get(self.pos..)?
+            .iter()
+            .filter(|token| !self.should_skip(&token.kind))
+            .nth(n)
     }
 
     /// Returns the text of the current significant token.
@@ -169,53 +167,22 @@ impl<'src> Parser<'src> {
 
     /// Returns the text of the Nth significant token ahead.
     pub(crate) fn nth_text(&self, n: usize) -> &str {
-        let mut pos = self.pos;
-        let mut remaining = n;
-        while pos < self.tokens.len() {
-            let token_kind = &self.tokens[pos].kind;
-            if self.should_skip(token_kind) {
-                pos += 1;
-                continue;
-            }
-            if remaining == 0 {
-                let span = &self.tokens[pos].span;
-                return &self.source[span.start as usize..span.end as usize];
-            }
-            remaining -= 1;
-            pos += 1;
-        }
-        ""
+        self.nth_token(n).map_or("", |token| {
+            &self.source[token.span.start as usize..token.span.end as usize]
+        })
     }
 
-    /// Returns the span of the Nth significant token ahead.
+    /// Returns the span of the Nth significant token ahead: past the end, the
+    /// empty span at the end of the source.
     pub(crate) fn nth_span(&self, n: usize) -> Span {
-        let mut pos = self.pos;
-        let mut remaining = n;
-        while pos < self.tokens.len() {
-            if self.should_skip(&self.tokens[pos].kind) {
-                pos += 1;
-                continue;
-            }
-            if remaining == 0 {
-                return self.tokens[pos].span;
-            }
-            remaining -= 1;
-            pos += 1;
-        }
         let end = self.source.len() as u32;
-        Span::new(end, end)
+        self.nth_token(n)
+            .map_or(Span::new(end, end), |token| token.span)
     }
 
     /// Returns the span of the current significant token.
     pub(crate) fn current_span(&self) -> Span {
-        let pos = self.skip_to_significant(self.pos);
-        if pos < self.tokens.len() {
-            self.tokens[pos].span
-        } else {
-            // Past end -- return zero-length span at end of source.
-            let end = self.source.len() as u32;
-            Span::new(end, end)
-        }
+        self.nth_span(0)
     }
 
     /// Check if the current significant token matches the given kind.
@@ -339,6 +306,14 @@ impl<'src> Parser<'src> {
 
     /// Consume any significant newlines (used as statement separators).
     /// Only consumes newlines that are significant (at zero delimiter depth).
+    /// Skip what separates statements: new lines and `;`s.
+    pub(crate) fn eat_separators(&mut self) {
+        self.eat_newlines();
+        while self.eat(SyntaxKind::SEMICOLON) {
+            self.eat_newlines();
+        }
+    }
+
     pub(crate) fn eat_newlines(&mut self) {
         while self.pos < self.tokens.len() {
             let kind = &self.tokens[self.pos].kind;
@@ -441,14 +416,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Find the position of the next significant token starting from `pos`.
-    fn skip_to_significant(&self, mut pos: usize) -> usize {
-        while pos < self.tokens.len() && self.should_skip(&self.tokens[pos].kind) {
-            pos += 1;
-        }
-        pos
-    }
-
     /// Peek past newlines and comments at the top level (outside delimiters)
     /// to find the next significant non-newline token kind.
     ///
@@ -457,20 +424,21 @@ impl<'src> Parser<'src> {
     /// follows on the next line. Returns the SyntaxKind of the first
     /// non-newline, non-comment token after the current position.
     pub(crate) fn peek_past_newlines(&self) -> SyntaxKind {
-        let mut pos = self.pos;
-        while pos < self.tokens.len() {
-            let kind = &self.tokens[pos].kind;
-            match kind {
-                TokenKind::Newline
-                | TokenKind::Comment
-                | TokenKind::DocComment
-                | TokenKind::ModuleDocComment => {
-                    pos += 1;
-                }
-                _ => return SyntaxKind::from(kind.clone()),
-            }
-        }
-        SyntaxKind::EOF
+        self.tokens
+            .get(self.pos..)
+            .into_iter()
+            .flatten()
+            .map(|token| &token.kind)
+            .find(|kind| {
+                !matches!(
+                    kind,
+                    TokenKind::Newline
+                        | TokenKind::Comment
+                        | TokenKind::DocComment
+                        | TokenKind::ModuleDocComment
+                )
+            })
+            .map_or(SyntaxKind::EOF, |kind| SyntaxKind::from(kind.clone()))
     }
 
     /// Skip newline and comment tokens at the current position, emitting
@@ -557,21 +525,18 @@ impl<'src> Parser<'src> {
                     if forward_parent.is_some() {
                         // Follow the forward_parent chain, collecting (index, kind) pairs.
                         forward_parents.clear();
-                        let mut current = i;
-                        loop {
-                            let (fk, fp) = match self.events[current] {
-                                Event::Open {
-                                    kind,
-                                    forward_parent,
-                                } => (kind, forward_parent),
-                                _ => unreachable!(),
-                            };
-                            forward_parents.push((current, fk));
-                            if let Some(next) = fp {
-                                current = next;
-                            } else {
+                        // A forward parent is always an Open event.
+                        let mut next = Some(i);
+                        while let Some(current) = next {
+                            let Event::Open {
+                                kind,
+                                forward_parent,
+                            } = self.events[current]
+                            else {
                                 break;
-                            }
+                            };
+                            forward_parents.push((current, kind));
+                            next = forward_parent;
                         }
 
                         // Mark all forward parent Open events (except the first
@@ -670,10 +635,7 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
     let root = p.open();
 
     loop {
-        p.eat_newlines();
-        while p.eat(SyntaxKind::SEMICOLON) {
-            p.eat_newlines();
-        }
+        p.eat_separators();
 
         if p.at(SyntaxKind::EOF) {
             break;
@@ -690,18 +652,6 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
                 p.advance();
             }
             break;
-        }
-
-        // After a statement, handle separators.
-        match p.current() {
-            SyntaxKind::NEWLINE => {
-                p.eat_newlines();
-            }
-            SyntaxKind::SEMICOLON => {
-                // Will be eaten at top of loop.
-            }
-            SyntaxKind::EOF => break,
-            _ => {}
         }
     }
 
