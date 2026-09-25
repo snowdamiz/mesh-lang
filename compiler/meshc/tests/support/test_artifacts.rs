@@ -27,12 +27,26 @@ pub fn meshc_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
+/// Build the runtime that compiled Mesh programs link. The compiler flags
+/// and wrapper of the cargo run that started the tests are dropped: under
+/// `cargo llvm-cov` (a `RUSTC_WRAPPER`) they instrument the build, a program
+/// linked with that runtime fails on the missing profiler symbols, and cargo
+/// does not rebuild it once the wrapper is gone.
 pub fn ensure_mesh_rt_staticlib() {
     static BUILD_ONCE: OnceLock<()> = OnceLock::new();
     BUILD_ONCE.get_or_init(|| {
-        let output = Command::new("cargo")
-            .current_dir(repo_root())
-            .args(["build", "-p", "mesh-rt"])
+        let mut command = Command::new("cargo");
+        command.current_dir(repo_root()).args(["build", "-p", "mesh-rt"]);
+        for (name, _) in std::env::vars_os() {
+            let name = name.to_string_lossy();
+            if name.contains("RUSTFLAGS")
+                || name.starts_with("RUSTC_")
+                || name.contains("CARGO_LLVM_COV")
+            {
+                command.env_remove(name.as_ref());
+            }
+        }
+        let output = command
             .output()
             .expect("failed to invoke cargo build -p mesh-rt");
         assert!(

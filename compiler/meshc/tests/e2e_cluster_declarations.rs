@@ -1,48 +1,14 @@
+#[path = "support/test_artifacts.rs"]
+mod test_artifacts;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::OnceLock;
+
+use test_artifacts::{command_output_text, ensure_mesh_rt_staticlib, meshc_bin, repo_root};
 
 use serde_json::Value;
 use tempfile::TempDir;
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-}
-
-fn meshc_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
-}
-
-fn ensure_mesh_rt_staticlib() {
-    static BUILD_ONCE: OnceLock<()> = OnceLock::new();
-    BUILD_ONCE.get_or_init(|| {
-        let output = Command::new("cargo")
-            .current_dir(repo_root())
-            .args(["build", "-p", "mesh-rt"])
-            .output()
-            .expect("failed to invoke cargo build -p mesh-rt");
-        assert!(
-            output.status.success(),
-            "cargo build -p mesh-rt failed:\n{}",
-            command_output_text(&output)
-        );
-    });
-}
-
-fn command_output_text(output: &Output) -> String {
-    format!(
-        "status: {:?}\nstdout:\n{}\nstderr:\n{}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    )
-}
 
 fn package_manifest(name: &str) -> String {
     format!("[package]\nname = \"{}\"\nversion = \"1.0.0\"\n", name)
