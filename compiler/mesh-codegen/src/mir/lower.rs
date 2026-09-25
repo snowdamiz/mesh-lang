@@ -17014,135 +17014,51 @@ fn collect_bindings_recursive(pat: &MirPattern, bindings: &mut Vec<(String, MirT
     }
 }
 
-/// Collect free variables from an expression that exist in the outer scope
-/// but are not in the parameter set. Deduplicates by name.
-fn collect_free_vars(
-    expr: &MirExpr,
-    params: &std::collections::HashSet<&str>,
+/// The outer variables `expr` uses, in order of first use: each `Var`
+/// naming one of `outer_vars` that neither `bound` (the closure's
+/// parameters) nor anything inside `expr` binds first: a `let`, a loop
+/// variable or a pattern.
+fn collect_free_vars<'a>(
+    expr: &'a MirExpr,
+    bound: &HashSet<&'a str>,
     outer_vars: &HashMap<String, MirType>,
     captures: &mut Vec<(String, MirType)>,
 ) {
+    let binding = |names: &[&'a str]| {
+        let mut inner = bound.clone();
+        inner.extend(names);
+        inner
+    };
+    let arm = |arm: &'a MirMatchArm, captures: &mut Vec<(String, MirType)>| {
+        let mut names = Vec::new();
+        pattern_names(&arm.pattern, &mut names);
+        let inner = binding(&names);
+        for part in arm.guard.iter().chain([&arm.body]) {
+            collect_free_vars(part, &inner, outer_vars, captures);
+        }
+    };
     match expr {
         MirExpr::Var(name, _) => {
-            if !params.contains(name.as_str())
+            if !bound.contains(name.as_str())
                 && name != "__env"
-                && outer_vars.contains_key(name)
-                && !captures.iter().any(|(n, _)| n == name)
+                && !captures.iter().any(|(captured, _)| captured == name)
             {
                 if let Some(ty) = outer_vars.get(name) {
                     captures.push((name.clone(), ty.clone()));
                 }
             }
         }
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            collect_free_vars(lhs, params, outer_vars, captures);
-            collect_free_vars(rhs, params, outer_vars, captures);
-        }
-        MirExpr::UnaryOp { operand, .. } => {
-            collect_free_vars(operand, params, outer_vars, captures);
-        }
-        MirExpr::Call { func, args, .. }
-        | MirExpr::ClosureCall {
-            closure: func,
-            args,
-            ..
+        MirExpr::Let {
+            name, value, body, ..
         } => {
-            collect_free_vars(func, params, outer_vars, captures);
-            for arg in args {
-                collect_free_vars(arg, params, outer_vars, captures);
-            }
-        }
-        MirExpr::If {
-            cond,
-            then_body,
-            else_body,
-            ..
-        } => {
-            collect_free_vars(cond, params, outer_vars, captures);
-            collect_free_vars(then_body, params, outer_vars, captures);
-            collect_free_vars(else_body, params, outer_vars, captures);
-        }
-        MirExpr::Let { value, body, .. } => {
-            collect_free_vars(value, params, outer_vars, captures);
-            collect_free_vars(body, params, outer_vars, captures);
-        }
-        MirExpr::Block(exprs, _) => {
-            for e in exprs {
-                collect_free_vars(e, params, outer_vars, captures);
-            }
+            collect_free_vars(value, bound, outer_vars, captures);
+            collect_free_vars(body, &binding(&[name]), outer_vars, captures);
         }
         MirExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_free_vars(scrutinee, params, outer_vars, captures);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_free_vars(guard, params, outer_vars, captures);
-                }
-                collect_free_vars(&arm.body, params, outer_vars, captures);
-            }
-        }
-        MirExpr::StructLit { fields, .. } => {
-            for (_, val) in fields {
-                collect_free_vars(val, params, outer_vars, captures);
-            }
-        }
-        MirExpr::StructUpdate {
-            base, overrides, ..
-        } => {
-            collect_free_vars(base, params, outer_vars, captures);
-            for (_, val) in overrides {
-                collect_free_vars(val, params, outer_vars, captures);
-            }
-        }
-        MirExpr::FieldAccess { object, .. } => {
-            collect_free_vars(object, params, outer_vars, captures);
-        }
-        MirExpr::ConstructVariant { fields, .. } => {
-            for f in fields {
-                collect_free_vars(f, params, outer_vars, captures);
-            }
-        }
-        MirExpr::MakeClosure { captures: caps, .. } => {
-            for c in caps {
-                collect_free_vars(c, params, outer_vars, captures);
-            }
-        }
-        MirExpr::ResourceMove { value, .. }
-        | MirExpr::ResourceBorrow { value, .. }
-        | MirExpr::ResourceDrop { value, .. }
-        | MirExpr::ResourceDestroy { value, .. } => {
-            collect_free_vars(value, params, outer_vars, captures);
-        }
-        MirExpr::Return(val) => {
-            collect_free_vars(val, params, outer_vars, captures);
-        }
-        MirExpr::IntLit(_, _)
-        | MirExpr::FloatLit(_, _)
-        | MirExpr::BoolLit(_, _)
-        | MirExpr::StringLit(_, _)
-        | MirExpr::Panic { .. }
-        | MirExpr::Unit => {}
-        // Actor primitives
-        MirExpr::ActorSpawn {
-            func,
-            args,
-            terminate_callback,
-            ..
-        } => {
-            collect_free_vars(func, params, outer_vars, captures);
-            for arg in args {
-                collect_free_vars(arg, params, outer_vars, captures);
-            }
-            if let Some(cb) = terminate_callback {
-                collect_free_vars(cb, params, outer_vars, captures);
-            }
-        }
-        MirExpr::ActorSend {
-            target, message, ..
-        } => {
-            collect_free_vars(target, params, outer_vars, captures);
-            collect_free_vars(message, params, outer_vars, captures);
+            collect_free_vars(scrutinee, bound, outer_vars, captures);
+            arms.iter().for_each(|each| arm(each, captures));
         }
         MirExpr::ActorReceive {
             arms,
@@ -17150,37 +17066,13 @@ fn collect_free_vars(
             timeout_body,
             ..
         } => {
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_free_vars(guard, params, outer_vars, captures);
-                }
-                collect_free_vars(&arm.body, params, outer_vars, captures);
-            }
-            if let Some(tm) = timeout_ms {
-                collect_free_vars(tm, params, outer_vars, captures);
-            }
-            if let Some(tb) = timeout_body {
-                collect_free_vars(tb, params, outer_vars, captures);
+            arms.iter().for_each(|each| arm(each, captures));
+            for part in timeout_ms.iter().chain(timeout_body) {
+                collect_free_vars(part, bound, outer_vars, captures);
             }
         }
-        MirExpr::ActorSelf { .. } => {}
-        MirExpr::Shaped { value, .. } => collect_free_vars(value, params, outer_vars, captures),
-        MirExpr::ActorLink { target, .. } => {
-            collect_free_vars(target, params, outer_vars, captures);
-        }
-        MirExpr::ListLit { elements, .. } => {
-            for elem in elements {
-                collect_free_vars(elem, params, outer_vars, captures);
-            }
-        }
-        // Supervisor start has no free variable captures (all config is static).
-        MirExpr::SupervisorStart { .. } => {}
-        // Loop primitives
-        MirExpr::While { cond, body, .. } => {
-            collect_free_vars(cond, params, outer_vars, captures);
-            collect_free_vars(body, params, outer_vars, captures);
-        }
-        MirExpr::Break | MirExpr::Continue => {}
+        // A loop's variables are bound in its filter and body, not in the
+        // range or collection it runs over.
         MirExpr::ForInRange {
             var,
             start,
@@ -17189,15 +17081,12 @@ fn collect_free_vars(
             body,
             ..
         } => {
-            collect_free_vars(start, params, outer_vars, captures);
-            collect_free_vars(end, params, outer_vars, captures);
-            // The loop variable is locally bound -- exclude it from free vars.
-            let mut inner_params = params.clone();
-            inner_params.insert(var.as_str());
-            if let Some(f) = filter {
-                collect_free_vars(f, &inner_params, outer_vars, captures);
+            collect_free_vars(start, bound, outer_vars, captures);
+            collect_free_vars(end, bound, outer_vars, captures);
+            let inner = binding(&[var]);
+            for part in filter.iter().chain([body]) {
+                collect_free_vars(part, &inner, outer_vars, captures);
             }
-            collect_free_vars(body, &inner_params, outer_vars, captures);
         }
         MirExpr::ForInList {
             var,
@@ -17205,14 +17094,26 @@ fn collect_free_vars(
             filter,
             body,
             ..
+        }
+        | MirExpr::ForInSet {
+            var,
+            collection,
+            filter,
+            body,
+            ..
+        }
+        | MirExpr::ForInIterator {
+            var,
+            iterator: collection,
+            filter,
+            body,
+            ..
         } => {
-            collect_free_vars(collection, params, outer_vars, captures);
-            let mut inner_params = params.clone();
-            inner_params.insert(var.as_str());
-            if let Some(f) = filter {
-                collect_free_vars(f, &inner_params, outer_vars, captures);
+            collect_free_vars(collection, bound, outer_vars, captures);
+            let inner = binding(&[var]);
+            for part in filter.iter().chain([body]) {
+                collect_free_vars(part, &inner, outer_vars, captures);
             }
-            collect_free_vars(body, &inner_params, outer_vars, captures);
         }
         MirExpr::ForInMap {
             key_var,
@@ -17222,49 +17123,15 @@ fn collect_free_vars(
             body,
             ..
         } => {
-            collect_free_vars(collection, params, outer_vars, captures);
-            let mut inner_params = params.clone();
-            inner_params.insert(key_var.as_str());
-            inner_params.insert(val_var.as_str());
-            if let Some(f) = filter {
-                collect_free_vars(f, &inner_params, outer_vars, captures);
+            collect_free_vars(collection, bound, outer_vars, captures);
+            let inner = binding(&[key_var, val_var]);
+            for part in filter.iter().chain([body]) {
+                collect_free_vars(part, &inner, outer_vars, captures);
             }
-            collect_free_vars(body, &inner_params, outer_vars, captures);
         }
-        MirExpr::ForInSet {
-            var,
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            collect_free_vars(collection, params, outer_vars, captures);
-            let mut inner_params = params.clone();
-            inner_params.insert(var.as_str());
-            if let Some(f) = filter {
-                collect_free_vars(f, &inner_params, outer_vars, captures);
-            }
-            collect_free_vars(body, &inner_params, outer_vars, captures);
-        }
-        MirExpr::ForInIterator {
-            var,
-            iterator,
-            filter,
-            body,
-            ..
-        } => {
-            collect_free_vars(iterator, params, outer_vars, captures);
-            let mut inner_params = params.clone();
-            inner_params.insert(var.as_str());
-            if let Some(f) = filter {
-                collect_free_vars(f, &inner_params, outer_vars, captures);
-            }
-            collect_free_vars(body, &inner_params, outer_vars, captures);
-        }
-        // TCE: TailCall args may reference captured variables.
-        MirExpr::TailCall { args, .. } => {
-            for arg in args {
-                collect_free_vars(arg, params, outer_vars, captures);
+        _ => {
+            for child in expr.children() {
+                collect_free_vars(child, bound, outer_vars, captures);
             }
         }
     }
@@ -19216,6 +19083,58 @@ end
         assert!(closure_fn.is_closure_fn);
         // First param should be __env
         assert_eq!(closure_fn.params[0].0, "__env");
+    }
+
+    /// A closure captures the outer variables it uses, not names it binds
+    /// itself: a `let`, a pattern or a loop variable that shadows an outer
+    /// one. Capturing a shadowed resource made lowering refuse the closure.
+    #[test]
+    fn closures_capture_only_what_they_do_not_bind() {
+        let captures_of = |source: &str| -> Vec<String> {
+            let mir = lower(source);
+            mir.functions
+                .iter()
+                .flat_map(|function| function.body.descendants())
+                .find_map(|node| match node {
+                    MirExpr::MakeClosure { captures, .. } => Some(
+                        // Each capture, perhaps wrapped with its shape.
+                        captures
+                            .iter()
+                            .flat_map(MirExpr::descendants)
+                            .filter_map(|capture| match capture {
+                                MirExpr::Var(name, _) => Some(name.clone()),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            captures_of(
+                "fn main() do\n  let y = 10\n  let z = 5\n  let f = fn(x :: Int) do\n    let z = x + y\n    case z do\n      w -> w + z\n    end\n  end\n  f(z)\nend\n"
+            ),
+            ["y"]
+        );
+        assert_eq!(
+            captures_of(
+                "fn main() do\n  let v = 1\n  let f = fn() do\n    for v in [1, 2] do\n      v\n    end\n    0\n  end\n  f() + v\nend\n"
+            ),
+            Vec::<String>::new()
+        );
+
+        let parse = mesh_parser::parse(
+            "fn make_closure(secret :: SecretBytes) do\n\
+               fn () do\n\
+                 let secret = 1\n\
+                 secret\n\
+               end\n\
+             end",
+        );
+        let typeck = mesh_typeck::check(&parse);
+        lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
+            .expect("a closure's own `secret` is not the outer resource");
     }
 
     #[test]
