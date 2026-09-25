@@ -607,6 +607,85 @@ version = "1.0.0"
         assert_eq!(resolved[0].revision, dev_commit_oid.to_string());
     }
 
+    /// A git dependency is fetched again into its checkout, pinned by rev,
+    /// tag or branch, and each pin that names nothing says so.
+    #[test]
+    fn git_dependencies_are_pinned_by_rev_tag_or_branch() {
+        let root = TempDir::new().unwrap();
+        let upstream = root.path().join("upstream");
+        std::fs::create_dir_all(&upstream).unwrap();
+        let repo = git2::Repository::init(&upstream).unwrap();
+        std::fs::write(
+            upstream.join("mesh.toml"),
+            "[package]\nname = \"upstream\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("mesh.toml")).unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let commit = repo
+            .commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .unwrap();
+        repo.tag_lightweight("v1", &repo.find_object(commit, None).unwrap(), false)
+            .unwrap();
+
+        let project_dir = root.path().join("project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let resolve_with = |pin: &str| {
+            write_manifest(
+                &project_dir,
+                "app",
+                &format!(
+                    "[dependencies]\nupstream = {{ git = \"{}\"{pin} }}",
+                    upstream.display()
+                ),
+            );
+            let manifest = Manifest::from_file(&project_dir.join("mesh.toml")).unwrap();
+            resolve(&manifest, &project_dir).map(|resolved| resolved[0].revision.clone())
+        };
+
+        // Cloned, then fetched into the checkout it made.
+        assert_eq!(resolve_with("").unwrap(), commit.to_string());
+        assert_eq!(resolve_with("").unwrap(), commit.to_string());
+        assert_eq!(
+            resolve_with(&format!(", rev = \"{commit}\"")).unwrap(),
+            commit.to_string()
+        );
+        assert_eq!(resolve_with(", tag = \"v1\"").unwrap(), commit.to_string());
+        for (pin, expected) in [
+            (", rev = \"not-a-sha\"", "Invalid revision 'not-a-sha'"),
+            (", tag = \"v9\"", "Failed to find tag 'v9'"),
+            (", branch = \"nope\"", "Failed to find branch 'nope'"),
+        ] {
+            let error = resolve_with(pin).unwrap_err();
+            assert!(error.contains(expected), "{expected}: {error}");
+        }
+
+        // A checkout that is not a repository is not fetched into.
+        let checkout = project_dir.join(".mesh/deps/upstream");
+        std::fs::remove_dir_all(&checkout).unwrap();
+        std::fs::create_dir_all(&checkout).unwrap();
+        let error = resolve_with("").unwrap_err();
+        assert!(error.contains("Failed to open git repo"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_path_dependency_is_named() {
+        let root = TempDir::new().unwrap();
+        write_manifest(
+            root.path(),
+            "app",
+            "[dependencies]\ngone = { path = \"../gone\" }",
+        );
+        let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
+        let error = resolve(&manifest, root.path()).unwrap_err();
+        assert!(
+            error.contains("Failed to resolve path dependency `gone`"),
+            "{error}"
+        );
+    }
+
     #[test]
     fn resolve_dependencies_e2e() {
         let root = TempDir::new().unwrap();
