@@ -223,3 +223,18 @@ impl Show for #= impl =# Boxed do
     "boxed"
   end
 end
+
+from Bar #= path =# import x
+
+supervisor Sup do
+  child w #= name =# do
+    start: fn -> 1 end
+  end
+end
+
+fn block_comments_in_rare_places(xs) do
+  let g = fn 0 -> 1 | n #= clause =# -> n end
+  let h = fn a #= first =#, b -> a end
+  g(1, name: #= kw =# 2)
+  return #= value =# 1
+end

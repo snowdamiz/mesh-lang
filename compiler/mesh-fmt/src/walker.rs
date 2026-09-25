@@ -1242,7 +1242,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                 }
             },
             NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::PARAM_LIST => parts.push(walk_closure_params(&n)),
+                SyntaxKind::PARAM_LIST => parts.extend([walk_closure_params(&n), sp()]),
                 SyntaxKind::GUARD_CLAUSE => parts.extend([walk_node(&n), sp()]),
                 SyntaxKind::CLOSURE_CLAUSE => parts.extend([sp(), walk_closure_clause(&n)]),
                 _ if has_do => parts.push(closure_do_body(&n)),
@@ -1263,15 +1263,13 @@ fn has_parens(params: &SyntaxNode) -> bool {
         && params.elements().any(|c| c.kind() == SyntaxKind::L_PAREN)
 }
 
-/// A closure clause's parameters, `(x, y)` or bare `x, y`, and the space
-/// after them.
+/// A closure clause's parameters, `(x, y)` or bare `x, y`.
 fn walk_closure_params(params: &SyntaxNode) -> FormatIR {
-    let list = if has_parens(params) {
+    if has_parens(params) {
         walk_paren_list(params)
     } else {
         walk_bare_param_list(params)
-    };
-    ir::concat(vec![list, sp()])
+    }
 }
 
 /// A closure clause's `do` body up to its `end`: on the `do` line when it is
@@ -1313,7 +1311,7 @@ fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
                 _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::PARAM_LIST => parts.push(walk_closure_params(&n)),
+                SyntaxKind::PARAM_LIST => parts.extend([walk_closure_params(&n), sp()]),
                 SyntaxKind::GUARD_CLAUSE => parts.extend([walk_node(&n), sp()]),
                 _ if has_do => parts.push(closure_do_body(&n)),
                 _ => parts.push(walk_block_body(&n)),
