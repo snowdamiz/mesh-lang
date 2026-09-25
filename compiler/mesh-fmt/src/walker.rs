@@ -93,10 +93,10 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
-        SyntaxKind::STRUCT_LITERAL => walk_struct_literal(node),
-        SyntaxKind::STRUCT_PAT => walk_struct_pat(node),
+        SyntaxKind::STRUCT_LITERAL | SyntaxKind::STRUCT_PAT | SyntaxKind::JSON_EXPR => {
+            walk_braced_fields(node)
+        }
         SyntaxKind::MAP_LITERAL => walk_map_literal(node),
-        SyntaxKind::JSON_EXPR => walk_json_expr(node),
         SyntaxKind::MAP_ENTRY => walk_map_entry(node),
         SyntaxKind::LIST_LITERAL => walk_list_literal(node),
         SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
@@ -2077,9 +2077,12 @@ fn walk_terminate_clause(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
-// ── Struct literal ──────────────────────────────────────────────────
+// ── Struct literals and patterns, json literals ─────────────────────
 
-fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
+/// `Point { x: 1, y }`, the pattern `Point { x, y: 0 }` and `json { a: 1 }`:
+/// on one line when it fits, one field per line when it does not or when a
+/// comment sits among the fields.
+fn walk_braced_fields(node: &SyntaxNode) -> FormatIR {
     let mut prefix_parts = Vec::new();
     // Each field and each comment on a line of its own is a line; a comment
     // that ends a field's line stays after that field and its comma.
@@ -2091,17 +2094,22 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Token(tok) => match tok.kind() {
                 SyntaxKind::L_BRACE => saw_l_brace = true,
                 SyntaxKind::R_BRACE | SyntaxKind::COMMA => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT if saw_l_brace => {
-                    match lines.last_mut() {
-                        Some((Some(_), comment @ None)) if ends_a_line_of_code(&tok) => {
-                            *comment = Some(tok)
-                        }
-                        _ => lines.push((None, Some(tok))),
+                kind if kind.is_trivia() && saw_l_brace => match lines.last_mut() {
+                    Some((Some(_), comment @ None)) if ends_a_line_of_code(&tok) => {
+                        *comment = Some(tok)
                     }
-                }
+                    _ => lines.push((None, Some(tok))),
+                },
                 _ => add_token_with_context(&tok, &mut prefix_parts),
             },
-            NodeOrToken::Node(n) if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD => {
+            NodeOrToken::Node(n)
+                if matches!(
+                    n.kind(),
+                    SyntaxKind::STRUCT_LITERAL_FIELD
+                        | SyntaxKind::STRUCT_PAT_FIELD
+                        | SyntaxKind::JSON_FIELD
+                ) =>
+            {
                 lines.push((Some(walk_node(&n)), None))
             }
             NodeOrToken::Node(n) => prefix_parts.push(walk_node(&n)),
@@ -2154,83 +2162,6 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     parts.push(ir::hardline());
     parts.push(ir::text("}"));
     ir::concat(parts)
-}
-
-/// `Point { x, y: 0 }` on one line when it fits, one field per line when
-/// it does not.
-fn walk_struct_pat(node: &SyntaxNode) -> FormatIR {
-    let mut name = Vec::new();
-    let mut fields = Vec::new();
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Node(n) if n.kind() == SyntaxKind::STRUCT_PAT_FIELD => {
-                fields.push(walk_node(&n));
-            }
-            NodeOrToken::Token(tok)
-                if matches!(tok.kind(), SyntaxKind::IDENT | SyntaxKind::DOT) =>
-            {
-                name.push(ir::text(tok.text()));
-            }
-            // Braces, the commas between fields, new lines.
-            _ => {}
-        }
-    }
-    let mut inner = Vec::new();
-    for (i, field) in fields.into_iter().enumerate() {
-        if i > 0 {
-            inner.push(ir::text(","));
-        }
-        inner.push(ir::space());
-        inner.push(field);
-    }
-    name.push(ir::text(" {"));
-    name.push(ir::indent(ir::concat(inner)));
-    name.push(ir::space());
-    name.push(ir::text("}"));
-    ir::group(ir::concat(name))
-}
-
-// ── JSON literal ────────────────────────────────────────────────────
-
-/// `json { key : value, ... }` on one line when it fits, one field per line
-/// when it does not.
-fn walk_json_expr(node: &SyntaxNode) -> FormatIR {
-    let fields = node
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::JSON_FIELD)
-        .count();
-    let mut inner = Vec::new();
-    let mut seen = 0;
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Node(n) if n.kind() == SyntaxKind::JSON_FIELD => {
-                inner.push(ir::space());
-                inner.push(walk_node(&n));
-                seen += 1;
-                if seen < fields {
-                    inner.push(ir::text(","));
-                }
-            }
-            // A comment after code ends that line; one on a line of its own
-            // keeps one.
-            NodeOrToken::Token(tok) if tok.kind().is_trivia() => {
-                inner.push(if ends_a_line_of_code(&tok) {
-                    sp()
-                } else {
-                    ir::space()
-                });
-                inner.push(inline_comment(&tok));
-            }
-            // `json`, the braces, commas and newlines are re-emitted around the fields.
-            _ => {}
-        }
-    }
-    ir::group(ir::concat(vec![
-        ir::text("json {"),
-        ir::indent(ir::concat(inner)),
-        ir::space(),
-        ir::text("}"),
-    ]))
 }
 
 // ── Map literal ─────────────────────────────────────────────────────
@@ -2735,6 +2666,10 @@ mod tests {
             ),
             ("fn f(a, # a\nb) = a", "fn f(a, # a\n  b) = a\n"),
             ("let t = (1, # c\n2)", "let t = (1, # c\n  2)\n"),
+            (
+                "case p do\nP { x, # c\ny } -> x\nend",
+                "case p do\n  P {\n    x, # c\n    y\n  } -> x\nend\n",
+            ),
         ] {
             assert_eq!(fmt(source), formatted, "{source}");
         }
