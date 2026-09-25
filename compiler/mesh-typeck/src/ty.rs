@@ -264,7 +264,6 @@ impl Ty {
         Ty::Con(TyCon::new("Bool"))
     }
 
-    /// Create an `Option<T>` type.
     /// Whether any inference variable occurs in this type.
     pub fn has_type_vars(&self) -> bool {
         match self {
@@ -276,6 +275,7 @@ impl Ty {
         }
     }
 
+    /// Create an `Option<T>` type.
     pub fn option(inner: Ty) -> Ty {
         Ty::App(Box::new(Ty::Con(TyCon::new("Option"))), vec![inner])
     }
