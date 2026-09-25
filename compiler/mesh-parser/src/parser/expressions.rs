@@ -1104,22 +1104,25 @@ fn at_match_arm_head(p: &Parser) -> bool {
     // A head is one line, brackets aside. The raw tokens show where the line
     // ends even inside brackets, where new lines are insignificant and a scan
     // would run on into the next line (`h(y)` then `_ -> 0`).
-    for kind in p
-        .raw_kinds_ahead()
+    p.raw_kinds_ahead()
         .skip_while(|kind| *kind == SyntaxKind::NEWLINE)
-    {
-        match kind {
-            SyntaxKind::NEWLINE if depth == 0 => return false,
-            SyntaxKind::NEWLINE => {}
-            SyntaxKind::ARROW | SyntaxKind::WHEN_KW if depth == 0 => return true,
-            SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::L_BRACE => depth += 1,
+        .find_map(|kind| match kind {
+            SyntaxKind::NEWLINE if depth == 0 => Some(false),
+            SyntaxKind::NEWLINE => None,
+            SyntaxKind::ARROW | SyntaxKind::WHEN_KW if depth == 0 => Some(true),
+            SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::L_BRACE => {
+                depth += 1;
+                None
+            }
             // `field: pattern` inside a struct pattern.
-            SyntaxKind::COLON if depth > 0 => {}
+            SyntaxKind::COLON if depth > 0 => None,
+            // A line that closes a bracket opened before it is a statement's.
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE if depth == 0 => {
+                Some(false)
+            }
             SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE => {
-                if depth == 0 {
-                    return false;
-                }
                 depth -= 1;
+                None
             }
             SyntaxKind::IDENT
             | SyntaxKind::INT_LITERAL
@@ -1134,11 +1137,11 @@ fn at_match_arm_head(p: &Parser) -> bool {
             | SyntaxKind::DOT
             | SyntaxKind::COLON_COLON
             | SyntaxKind::BAR
-            | SyntaxKind::MINUS => {}
-            _ => return false,
-        }
-    }
-    false
+            | SyntaxKind::MINUS => None,
+            // Anything else, EOF included, is not a pattern.
+            _ => Some(false),
+        })
+        .unwrap_or(false)
 }
 
 // ── Closure Expression ────────────────────────────────────────────────

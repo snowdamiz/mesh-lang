@@ -1605,6 +1605,7 @@ fn less_common_forms_parse_without_errors() {
         "fn f() do\n  1;; 2\n  3; 4\nend",
         "fn f(x) do\n  case x do\n    1 ->\n      2; 3\n    _ -> 4\n  end\nend",
         "fn f(x) do\n  case x do 1 -> 2; _ -> 4 end\nend",
+        "fn f(x) do\n  case x do\n    1 ->\n      g(\n        2\n      )\n    _ -> 0\n  end\nend",
         "fn f(x) do\n  case x do\n    1 -> 2;\n    _ -> 4;\n  end\nend",
         "actor A() do\n  receive do\n    n -> n; after 10 -> 0;\n  end\nend",
         "fn f() do\n  fn 0 -> 1 | n do\n    n\n  end end\nend",
