@@ -1,0 +1,989 @@
+---
+source: compiler/mesh-typeck/tests/rendering.rs
+expression: rendered
+---
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── expected Int, found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected Int, found String"}],"fix":null}
+
+[E0002] Error: infinite type: ?7 occurs in Int
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── recursive type here
+   │
+   │ Help: a value cannot have a type that refers to itself
+───╯
+{"code":"E0002","severity":"error","message":"infinite type: `?7` occurs in `Int`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"recursive type here"}],"fix":"a value cannot have a type that refers to itself"}
+
+[E0003] Error: expected 2 argument(s), found 3
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── expected 2 argument(s)
+   │
+   │ Help: 1 extra argument(s)
+───╯
+{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)"}],"fix":"1 extra argument(s)"}
+
+[E0044] Error: slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── slot 4 exceeds function arity 2
+   │
+   │ Help: use |> to pipe as the first argument, or |2>...|2> for other positions
+───╯
+{"code":"E0044","severity":"error","message":"slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 4 exceeds function arity 2"}],"fix":"use |> to pipe as the first argument, or |2>...|2> for other positions"}
+
+[E0004] Error: undefined variable: name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── not found in this scope
+   │
+   │ Help: did you mean `suggestion`?
+───╯
+{"code":"E0004","severity":"error","message":"unbound variable `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not found in this scope"}],"fix":"did you mean `suggestion`?"}
+
+[E0005] Error: type Int is not callable
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── Int is not a function
+   │
+   │ Help: only functions can be called; remove the parentheses to use the value
+───╯
+{"code":"E0005","severity":"error","message":"`Int` is not a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"Int is not a function"}],"fix":"only functions can be called; remove the parentheses to use the value"}
+
+[E0006] Error: Int does not implement trait_name
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── Int does not satisfy trait_name
+   │
+   │ Help: add `impl trait_name for Int do ... end`
+───╯
+{"code":"E0006","severity":"error","message":"type `Int` does not satisfy trait `trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"Int does not satisfy trait_name"}],"fix":"add `impl trait_name for Int do ... end`"}
+
+[E0007] Error: impl trait_name for impl_ty is missing method method_name
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── missing `method_name`
+   │
+   │ Help: add `fn method_name` as `trait_name` declares it to the impl block
+───╯
+{"code":"E0007","severity":"error","message":"impl `trait_name` for `impl_ty` is missing method `method_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"missing `method_name`"}],"fix":"add `fn method_name` as `trait_name` declares it to the impl block"}
+
+[E0008] Error: method method_name in impl trait_name has wrong signature: expected Int, found String
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── `trait_name` declares Int, this is String
+───╯
+{"code":"E0008","severity":"error","message":"method `method_name` in impl `trait_name` has wrong signature: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"`trait_name` declares Int, this is String"}],"fix":null}
+
+[E0009] Error: missing field field_name in struct struct_name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── field `field_name` is required
+   │
+   │ Help: add `field_name: <value>`
+───╯
+{"code":"E0009","severity":"error","message":"missing field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"field `field_name` is required"}],"fix":"add `field_name: <value>`"}
+
+[E0009] Error: unknown field field_name in struct struct_name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `struct_name` has no field `field_name`
+───╯
+{"code":"E0009","severity":"error","message":"unknown field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`struct_name` has no field `field_name`"}],"fix":null}
+
+[E0009] Error: type Int has no field field_name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── no field `field_name`
+───╯
+{"code":"E0009","severity":"error","message":"type `Int` has no field `field_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no field `field_name`"}],"fix":null}
+
+[E0030] Error: no method `method_name` on type `Int`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── method `method_name` not found
+   │
+   │ Help: type `Int` has no trait impl providing `method_name`
+───╯
+{"code":"E0030","severity":"error","message":"no method `method_name` on type `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"method `method_name` not found"}],"fix":"type `Int` has no trait impl providing `method_name`"}
+
+[E0046] Error: `Continuity.promote()` is disabled
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── manual authority changes are no longer part of the Mesh surface
+   │
+   │ Help: failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state
+───╯
+{"code":"E0046","severity":"error","message":"`Continuity.promote()` is disabled; failover is automatic-only","file":"main.mpl","spans":[{"start":19,"end":24,"label":"manual authority changes are no longer part of the Mesh surface"}],"fix":"failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state"}
+
+[E0010] Error: unknown variant: name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── not a known variant
+   │
+   │ Help: did you mean `suggestion`?
+───╯
+{"code":"E0010","severity":"error","message":"unknown variant `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a known variant"}],"fix":"did you mean `suggestion`?"}
+
+[E0011] Error: or-pattern alternatives bind different variables: [expected_bindings_a, expected_bindings_b] vs [found_bindings_a, found_bindings_b]
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── alternatives must bind the same variables
+   │
+   │ Help: all alternatives in an or-pattern must bind the same set of variable names
+───╯
+{"code":"E0011","severity":"error","message":"or-pattern binding mismatch: expected [expected_bindings_a, expected_bindings_b], found [found_bindings_a, found_bindings_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"alternatives must bind the same variables"}],"fix":"all alternatives in an or-pattern must bind the same set of variable names"}
+
+[E0012] Error: non-exhaustive match on `scrutinee_type`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── missing: missing_patterns_a, missing_patterns_b
+   │
+   │ Help: add the missing patterns or a wildcard `_` arm
+───╯
+{"code":"E0012","severity":"error","message":"non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add the missing patterns or a wildcard `_` arm"}
+
+[W0003] Warning: clauses do not cover every `scrutinee_type`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── missing: missing_patterns_a, missing_patterns_b
+   │
+   │ Help: add a clause for the missing patterns: a call no clause matches panics
+───╯
+{"code":"W0003","severity":"warning","message":"clauses do not cover every `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add a clause for the missing patterns: a call no clause matches panics"}
+
+[W0001] Warning: redundant match arm (arm 3)
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── this arm is unreachable
+   │
+   │ Help: remove this arm or reorder the match
+───╯
+{"code":"W0001","severity":"warning","message":"redundant match arm at index 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this arm is unreachable"}],"fix":"remove this arm or reorder the match"}
+
+[E0014] Error: message type mismatch: expected Int, found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected Int, found String
+   │
+   │ Help: this Pid accepts messages of type Int
+───╯
+{"code":"E0014","severity":"error","message":"message type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String"}],"fix":"this Pid accepts messages of type Int"}
+
+[E0015] Error: self() used outside actor block
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── self() is only available inside an actor block
+───╯
+{"code":"E0015","severity":"error","message":"self() used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"self() is only available inside an actor block"}],"fix":null}
+
+[E0016] Error: cannot spawn non-function: found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected a function, found String
+───╯
+{"code":"E0016","severity":"error","message":"cannot spawn non-function: found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a function, found String"}],"fix":null}
+
+[E0017] Error: receive used outside actor block
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── receive is only available inside an actor block
+   │
+   │ Help: move this receive expression into an actor block
+───╯
+{"code":"E0017","severity":"error","message":"receive used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"receive is only available inside an actor block"}],"fix":"move this receive expression into an actor block"}
+
+[E0018] Error: child `child_name` start function must return Pid, found `String`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected Pid<M>, found String
+   │
+   │ Help: the start function must call spawn() and return a Pid
+───╯
+{"code":"E0018","severity":"error","message":"child `child_name` start function must return Pid, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Pid<M>, found String"}],"fix":"the start function must call spawn() and return a Pid"}
+
+[E0019] Error: unknown supervision strategy `found`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one
+───╯
+{"code":"E0019","severity":"error","message":"unknown supervision strategy `found`, expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one"}],"fix":null}
+
+[E0020] Error: invalid restart type `found` for child `child_name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected permanent, transient, or temporary
+───╯
+{"code":"E0020","severity":"error","message":"invalid restart type `found` for child `child_name`, expected permanent, transient, or temporary","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected permanent, transient, or temporary"}],"fix":null}
+
+[E0021] Error: invalid shutdown value `found` for child `child_name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected a positive integer or brutal_kill
+───╯
+{"code":"E0021","severity":"error","message":"invalid shutdown value `found` for child `child_name`, expected a positive integer or brutal_kill","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a positive integer or brutal_kill"}],"fix":null}
+
+[E0022] Error: catch-all clause must be the last clause of function `fn_name/2`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── clauses after a catch-all are unreachable
+───╯
+{"code":"E0022","severity":"error","message":"catch-all clause must be the last clause of function `fn_name/2`; clauses after a catch-all are unreachable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"clauses after a catch-all are unreachable"}],"fix":null}
+
+[E0023] Error: function `fn_name/2` already defined; multi-clause functions must have consecutive clauses
+   ╭─[ main.mpl:3:11 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── first definition here
+ 3 │   value + other
+   │           ──┬──
+   │             ╰──── non-consecutive redefinition here
+───╯
+{"code":"E0023","severity":"error","message":"function `fn_name/2` already defined; multi-clause functions must have consecutive clauses","file":"main.mpl","spans":[{"start":51,"end":56,"label":"non-consecutive redefinition here"},{"start":19,"end":24,"label":"first definition here"}],"fix":null}
+
+[E0024] Error: all clauses of `fn_name` must have the same number of parameters; expected 2, found 2
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected 2 parameters
+───╯
+{"code":"E0024","severity":"error","message":"all clauses of `fn_name` must have the same number of parameters; expected 2, found 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected 2 parameters"}],"fix":null}
+
+[W0002] Warning: what on non-first clause of `fn_name` will be ignored
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── only the first clause should have this annotation
+───╯
+{"code":"W0002","severity":"warning","message":"what on non-first clause of `fn_name` will be ignored","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only the first clause should have this annotation"}],"fix":null}
+
+[E0026] Error: duplicate impl: `trait_name` is already implemented for `impl_type`
+   ╭─[ main.mpl:1:1 ]
+   │
+ 1 │ ╭─▶ fn main() do
+   ┆ ┆
+ 4 │ ├─▶ end
+   │ │
+   │ ╰───────── first_impl
+   │
+   │     Help: remove one of the conflicting impl blocks
+───╯
+{"code":"E0026","severity":"error","message":"duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)","file":"main.mpl","spans":[{"start":0,"end":61,"label":"first_impl"}],"fix":"remove one of the conflicting impl blocks"}
+
+[E0027] Error: ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── multiple traits provide `method_name`
+   │
+   │ Help: use qualified syntax: candidate_traits_a.method_name(value) or candidate_traits_b.method_name(value)
+───╯
+{"code":"E0027","severity":"error","message":"ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"multiple traits provide `method_name`"}],"fix":"use qualified syntax: candidate_traits_a.method_name(value) or candidate_traits_b.method_name(value)"}
+
+[E0028] Error: cannot derive `trait_name` for `type_name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `trait_name` cannot be derived here
+   │
+   │ Help: structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema
+───╯
+{"code":"E0028","severity":"error","message":"cannot derive `trait_name` for `type_name` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` cannot be derived here"}],"fix":"structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema"}
+
+[E0029] Error: cannot derive `trait_name` for `type_name` without `requires`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `trait_name` requires `requires` for its implementation
+   │
+   │ Help: add `requires` to the deriving list: deriving(requires, trait_name)
+───╯
+{"code":"E0029","severity":"error","message":"deriving `trait_name` for `type_name` requires `requires` to also be derived","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` requires `requires` for its implementation"}],"fix":"add `requires` to the deriving list: deriving(requires, trait_name)"}
+
+[E0032] Error: `break` outside of loop
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `break` can only be used inside a `while` or `for` loop
+   │
+   │ Help: move this `break` inside a loop body
+───╯
+{"code":"E0032","severity":"error","message":"`break` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`break` can only be used inside a `while` or `for` loop"}],"fix":"move this `break` inside a loop body"}
+
+[E0033] Error: `continue` outside of loop
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `continue` can only be used inside a `while` or `for` loop
+   │
+   │ Help: move this `continue` inside a loop body
+───╯
+{"code":"E0033","severity":"error","message":"`continue` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`continue` can only be used inside a `while` or `for` loop"}],"fix":"move this `continue` inside a loop body"}
+
+[E0031] Error: module not found
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── module `module_name` not found
+   │
+   │ Note: did you mean `suggestion`?
+───╯
+{"code":"E0031","severity":"error","message":"module `module_name` not found; did you mean `suggestion`?","file":"main.mpl","spans":[{"start":19,"end":24,"label":"module `module_name` not found"}],"fix":null}
+
+[E0034] Error: name not found in module
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `name` is not exported by module `module_name`
+   │
+   │ Note: available exports: available_a, available_b
+───╯
+{"code":"E0034","severity":"error","message":"`name` is not exported by module `module_name`; available: available_a, available_b","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` is not exported by module `module_name`"}],"fix":null}
+
+[E0035] Error: private item cannot be imported
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `name` is private in module `module_name`
+   │
+   │ Help: add `pub` to `name` in module `module_name` to make it accessible
+───╯
+{"code":"E0035","severity":"error","message":"`name` is private in module `module_name`; add `pub` to make it accessible","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` is private in module `module_name`"}],"fix":"add `pub` to `name` in module `module_name` to make it accessible"}
+
+[E0047] Error: invalid HTTP.clustered(...) usage
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference
+───╯
+{"code":"E0047","severity":"error","message":"invalid HTTP.clustered(...) usage: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference"}
+
+[E0048] Error: clustered route handler must be public
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `handler_name` is private and cannot cross the clustered route boundary
+   │
+   │ Help: add `pub` to `handler_name` or remove `HTTP.clustered(...)`
+───╯
+{"code":"E0048","severity":"error","message":"route handler `handler_name` must be public to use HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`handler_name` is private and cannot cross the clustered route boundary"}],"fix":"add `pub` to `handler_name` or remove `HTTP.clustered(...)`"}
+
+[E0049] Error: HTTP.clustered(...) is only valid in route handler position
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`
+───╯
+{"code":"E0049","severity":"error","message":"HTTP.clustered(...) can only appear in the route handler position of HTTP.route(...) or HTTP.on_*(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`"}],"fix":null}
+
+[E0050] Error: conflicting clustered route replication counts
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `runtime_name` was first declared here with replication count 4
+   │         │
+   │         ╰──── conflicting replication count 4 for `runtime_name`
+   │
+   │ Help: keep one replication count per clustered route handler runtime name
+───╯
+{"code":"E0050","severity":"error","message":"clustered route handler `runtime_name` already uses replication count 4; found conflicting count 4","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`runtime_name` was first declared here with replication count 4"},{"start":19,"end":24,"label":"conflicting replication count 4 for `runtime_name`"}],"fix":"keep one replication count per clustered route handler runtime name"}
+
+[E0051] Error: imported clustered route handler is missing origin metadata
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── cannot determine the defining module for imported handler `handler_name`
+   │
+   │ Note: imported bare handlers must preserve their defining module so clustered route lowering can keep the real runtime name
+───╯
+{"code":"E0051","severity":"error","message":"imported route handler `handler_name` is missing defining-module metadata for HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot determine the defining module for imported handler `handler_name`"}],"fix":null}
+
+[E0036] Error: `?` operand is incompatible with the function return type
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── cannot use `?` here
+   │
+   │ Note: cannot propagate `Int` from a function returning `Int`; Result errors must match or have a From conversion, and Option requires an Option return type
+───╯
+{"code":"E0036","severity":"error","message":"`?` cannot propagate `Int` from a function returning `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot use `?` here"}],"fix":null}
+
+[E0037] Error: `?` requires `Result` or `Option`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── type `Int` is not `Result` or `Option`
+   │
+   │ Help: the `?` operator can only be used on `Result<T, E>` or `Option<T>` values
+───╯
+{"code":"E0037","severity":"error","message":"`?` operator requires `Result` or `Option`, found `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"type `Int` is not `Result` or `Option`"}],"fix":"the `?` operator can only be used on `Result<T, E>` or `Option<T>` values"}
+
+[E0038] Error: field `field_name` of type `field_type` is not JSON-serializable
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `field_type` is not serializable
+   │
+   │ Help: type `field_type` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)
+───╯
+{"code":"E0038","severity":"error","message":"field `field_name` of type `field_type` is not JSON-serializable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not serializable"}],"fix":"type `field_type` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)"}
+
+[E0039] Error: field `field_name` has type `field_type` which cannot be mapped from a database row
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `field_type` is not row-mappable
+   │
+   │ Help: only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)
+───╯
+{"code":"E0039","severity":"error","message":"field `field_name` has type `field_type` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not row-mappable"}],"fix":"only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)"}
+
+[E0040] Error: impl `trait_name` for `impl_ty` is missing associated type `assoc_name`
+   ╭─[ main.mpl:1:1 ]
+   │
+ 1 │ ╭─▶ fn main() do
+   ┆ ┆
+ 4 │ ├─▶ end
+   │ │
+   │ ╰───────── missing `type assoc_name = ...`
+   │
+   │     Help: add `type assoc_name = <ConcreteType>` to the impl block
+───╯
+{"code":"E0040","severity":"error","message":"impl `trait_name` for `impl_ty` is missing associated type `assoc_name`","file":"main.mpl","spans":[{"start":0,"end":61,"label":"missing `type assoc_name = ...`"}],"fix":"add `type assoc_name = <ConcreteType>` to the impl block"}
+
+[E0041] Error: impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait
+   ╭─[ main.mpl:1:1 ]
+   │
+ 1 │ ╭─▶ fn main() do
+   ┆ ┆
+ 4 │ ├─▶ end
+   │ │
+   │ ╰───────── `assoc_name` is not declared by `trait_name`
+───╯
+{"code":"E0041","severity":"error","message":"impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait","file":"main.mpl","spans":[{"start":0,"end":61,"label":"`assoc_name` is not declared by `trait_name`"}],"fix":null}
+
+[E0042] Error: cannot resolve associated type `assoc_name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── no associated type `assoc_name` is declared
+   │
+   │ Help: declare it in the interface with `type assoc_name`, and bind it in each impl
+───╯
+{"code":"E0042","severity":"error","message":"no associated type `assoc_name` is declared","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no associated type `assoc_name` is declared"}],"fix":"declare it in the interface with `type assoc_name`, and bind it in each impl"}
+
+[E0045] Error: type alias `alias_name` references undefined type `target_name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `target_name` is not defined
+   │
+   │ Help: define `target_name` as a struct, sum type, or type alias before using it here
+───╯
+{"code":"E0045","severity":"error","message":"type alias `alias_name` references undefined type `target_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`target_name` is not defined"}],"fix":"define `target_name` as a struct, sum type, or type alias before using it here"}
+
+[E0052] Error: invalid native function declaration
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: use a public, fully annotated, non-generic signature and a C identifier symbol
+───╯
+{"code":"E0052","severity":"error","message":"invalid native function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"use a public, fully annotated, non-generic signature and a C identifier symbol"}
+
+[E0055] Error: invalid exported function declaration
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: use `@export("c_symbol") pub fn name(request :: Bytes) -> Bytes!String`
+───╯
+{"code":"E0055","severity":"error","message":"invalid exported function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`"}
+
+[E0054] Error: invalid let destructuring pattern
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns
+───╯
+{"code":"E0054","severity":"error","message":"invalid let destructuring pattern: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns"}
+
+[E0056] Error: this arm has no `->`, so its pattern must also be its value
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: write the value after `->`: `pattern -> value`
+───╯
+{"code":"E0056","severity":"error","message":"this arm has no `->` and its pattern is not a value: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"write the value after `->`: `pattern -> value`"}
+
+[E0057] Error: `name` is bound twice in one pattern
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── each name in a pattern binds one value
+   │
+   │ Help: rename one of them, or compare the values in a `when` guard
+───╯
+{"code":"E0057","severity":"error","message":"`name` is bound twice in one pattern","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each name in a pattern binds one value"}],"fix":"rename one of them, or compare the values in a `when` guard"}
+
+[E0063] Error: `param` is not known to implement trait_name
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── this needs param: trait_name
+   │
+   │ Help: add `where param: trait_name` to the function, so every call is checked for it
+───╯
+{"code":"E0063","severity":"error","message":"`param` is not known to implement trait_name; add `where param: trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"this needs param: trait_name"}],"fix":"add `where param: trait_name` to the function, so every call is checked for it"}
+
+[E0065] Error: no impl's `method` on `Int` returns `Int`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── they return `Int`, `String`
+   │
+   │ Help: give the result a type: `let x :: Int = value.method()`
+───╯
+{"code":"E0065","severity":"error","message":"cannot tell which impl's `method` to call on `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+
+[E0068] Error: kind `name` is defined twice
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── defined again here
+   │
+   │ Help: rename or remove one of the two `name`s
+───╯
+{"code":"E0068","severity":"error","message":"kind `name` is defined twice","file":"main.mpl","spans":[{"start":19,"end":24,"label":"defined again here"}],"fix":"rename or remove one of the two `name`s"}
+
+[E0069] Error: unknown type `name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── no type has this name
+   │
+   │ Help: check the spelling, or define or import the type
+───╯
+{"code":"E0069","severity":"error","message":"unknown type `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no type has this name"}],"fix":"check the spelling, or define or import the type"}
+
+[E0070] Error: cannot tell which type has the field `field`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing here fixes the type of this value
+   │
+   │ Help: annotate the value's type, such as a parameter `p :: Point`
+───╯
+{"code":"E0070","severity":"error","message":"cannot tell which type has the field `field`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing here fixes the type of this value"}],"fix":"annotate the value's type, such as a parameter `p :: Point`"}
+
+[E0071] Error: unknown interface `name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── no interface has this name
+   │
+   │ Help: check the spelling, or declare the interface or import its module
+───╯
+{"code":"E0071","severity":"error","message":"unknown interface `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no interface has this name"}],"fix":"check the spelling, or declare the interface or import its module"}
+
+[E0072] Error: reason
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── invalid literal
+───╯
+{"code":"E0072","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid literal"}],"fix":null}
+
+[E0074] Error: module `module` has no function `name`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── not a function of `module`
+   │
+   │ Help: `module` has available_a, available_b
+───╯
+{"code":"E0074","severity":"error","message":"module `module` has no function `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a function of `module`"}],"fix":"`module` has available_a, available_b"}
+
+[E0077] Error: `assert_receive` works only in test files run by `meshc test`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── not in a test file
+   │
+   │ Help: elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for
+───╯
+{"code":"E0077","severity":"error","message":"`assert_receive` works only in test files run by `meshc test`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not in a test file"}],"fix":"elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for"}
+
+[E0076] Error: an `impl` for the generic type `name` is not supported
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `name` takes type parameters
+   │
+   │ Help: implement it for a type without type parameters, such as a struct holding the `name` you mean
+───╯
+{"code":"E0076","severity":"error","message":"an `impl` for the generic type `name` is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` takes type parameters"}],"fix":"implement it for a type without type parameters, such as a struct holding the `name` you mean"}
+
+[E0075] Error: `name` is defined at arities 1 and 3
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── each arity is its own function
+   │
+   │ Help: call it with 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`
+───╯
+{"code":"E0075","severity":"error","message":"`name` is defined at arities 1 and 3","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each arity is its own function"}],"fix":"call it with 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`"}
+
+[E0078] Error: `value[index]` indexing is not supported
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── no indexing syntax
+   │
+   │ Help: use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`
+───╯
+{"code":"E0078","severity":"error","message":"`value[index]` indexing is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no indexing syntax"}],"fix":"use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`"}
+
+[E0079] Error: cannot tell what type of message `actor` receives
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── only untyped `Pid`s reach this actor
+   │
+   │ Help: give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`
+───╯
+{"code":"E0079","severity":"error","message":"cannot tell what type of message `actor` receives","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only untyped `Pid`s reach this actor"}],"fix":"give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`"}
+
+[E0080] Error: `let name` outside a function is not supported
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a module has no global bindings
+   │
+   │ Help: move it into the function that uses it, or make it a function: `fn name() do ... end`
+───╯
+{"code":"E0080","severity":"error","message":"`let name` outside a function is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module has no global bindings"}],"fix":"move it into the function that uses it, or make it a function: `fn name() do ... end`"}
+
+[E0081] Error: module `name` is not imported
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a module of this project
+   │
+   │ Help: add `import module` at the top of the file
+───╯
+{"code":"E0081","severity":"error","message":"module `name` is not imported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module of this project"}],"fix":"add `import module` at the top of the file"}
+
+[E0073] Error: `op` joins strings or lists, not `Int`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── these operands are `Int`
+   │
+   │ Help: convert the values to strings first, e.g. with `"${a}${b}"`
+───╯
+{"code":"E0073","severity":"error","message":"`op` joins strings or lists, not `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"these operands are `Int`"}],"fix":"convert the values to strings first, e.g. with `\"${a}${b}\"`"}
+
+[E0067] Error: type parameter `param` stands for any type, but this function makes it `String`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `param` is declared here
+   │
+   │ Help: a generic function must work for every `param`: use `String` in its signature instead, or keep `param` values as they are
+───╯
+{"code":"E0067","severity":"error","message":"type parameter `param` stands for any type, but this function makes it `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`param` is declared here"}],"fix":"a generic function must work for every `param`: use `String` in its signature instead, or keep `param` values as they are"}
+
+[E0066] Error: `method` is a static method of several types: types_a, types_b
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── which type's is meant?
+   │
+   │ Help: call it on the type: `types_a.method()`
+───╯
+{"code":"E0066","severity":"error","message":"`method` is a static method of several types (types_a, types_b); call it on one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"which type's is meant?"}],"fix":"call it on the type: `types_a.method()`"}
+
+[E0064] Error: cannot tell which type `default()` builds here
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing fixes this value's type
+   │
+   │ Help: annotate it: `let x :: Int = default()`
+───╯
+{"code":"E0064","severity":"error","message":"cannot tell which type `default()` builds here","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes this value's type"}],"fix":"annotate it: `let x :: Int = default()`"}
+
+[E0062] Error: type alias `alias_name` refers to itself
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expanding it never ends
+   │
+   │ Help: an alias names an existing type; use a struct or sum type for a recursive type
+───╯
+{"code":"E0062","severity":"error","message":"type alias `alias_name` refers to itself","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expanding it never ends"}],"fix":"an alias names an existing type; use a struct or sum type for a recursive type"}
+
+[E0061] Error: variant `variant` of `second_type` is already a variant of `first_type`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `variant` would name either type's variant
+   │
+   │ Help: give one of the variants another name
+───╯
+{"code":"E0061","severity":"error","message":"variant `variant` of `second_type` is already a variant of `first_type`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`variant` would name either type's variant"}],"fix":"give one of the variants another name"}
+
+[E0060] Error: cannot derive `trait_name` for `type_name`: field `field_name` holds a function
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── functions cannot be compared, hashed or shown
+   │
+   │ Help: remove `trait_name` from the deriving list
+───╯
+{"code":"E0060","severity":"error","message":"cannot derive `trait_name` for `type_name`: field `field_name` holds a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"functions cannot be compared, hashed or shown"}],"fix":"remove `trait_name` from the deriving list"}
+
+[E0058] Error: field `field_name` is given more than once
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── given again here
+   │
+   │ Help: give each field one value
+───╯
+{"code":"E0058","severity":"error","message":"field `field_name` is given more than once","file":"main.mpl","spans":[{"start":19,"end":24,"label":"given again here"}],"fix":"give each field one value"}
+
+[E0059] Error: `Int` is not a struct
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── not a struct
+   │
+   │ Help: `Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one
+───╯
+{"code":"E0059","severity":"error","message":"`Int` is not a struct","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a struct"}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one"}
+
+[E0053] Error: resource ownership violation
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reason
+   │
+   │ Help: move each resource once, or pass it to a direct `borrow` parameter
+───╯
+{"code":"E0053","severity":"error","message":"resource ownership violation: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reason"}],"fix":"move each resource once, or pass it to a direct `borrow` parameter"}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── argument 2 has type String, expected Int
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"argument 2 has type String, expected Int"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:3:9 ]
+   │
+ 3 │   value + other
+   │         ┬
+   │         ╰── expected Int, found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":49,"end":50,"label":"expected Int, found String"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected Int
+ 3 │   value + other
+   │           ──┬──
+   │             ╰──── found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected Int, found String"},{"start":19,"end":24,"label":"expected Int"},{"start":51,"end":56,"label":"found String"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected Int from annotation
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int from annotation"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:3:11 ]
+   │
+ 3 │   value + other
+   │           ──┬──
+   │             ╰──── returns String
+   │
+   ├─[ main.mpl:3:11 ]
+   │
+ 1 │ fn main() do
+   │ ──────┬─────
+   │       ╰─────── return type declared as Int
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":51,"end":56,"label":"returns String"},{"start":0,"end":12,"label":"return type declared as Int"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── expected Int, found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──   ──────┬──────
+   │         ╰──────────────────── expected Int
+   │                     │
+   │                     ╰──────── found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int"},{"start":27,"end":40,"label":"found String"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── this pattern matches String, but the value is Int
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern matches String, but the value is Int"}],"fix":null}
+
+[E0001] Error: expected Int, found String
+   ╭─[ main.mpl:1:1 ]
+   │
+ 1 │ ╭─▶ fn main() do
+   ┆ ┆
+ 4 │ ├─▶ end
+   │ │
+   │ ╰───────── expected Int, found String
+───╯
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":0,"end":61,"label":"expected Int, found String"}],"fix":null}

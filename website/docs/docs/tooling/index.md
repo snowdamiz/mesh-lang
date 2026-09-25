@@ -293,12 +293,14 @@ With `--json`, each diagnostic is one JSON object per line on standard error.
 For `let x :: Int = "abc"` in `main.mpl`, `meshc build . --json` prints:
 
 ```text
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"./main.mpl","spans":[{"start":21,"end":27,"label":"expected Int, found String"}],"fix":null}
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"./main.mpl","spans":[{"start":21,"end":27,"label":"expected Int from annotation"}],"fix":null}
 {"code":"C0001","file":"","fix":null,"message":"Compilation failed due to errors above.","severity":"error","spans":[]}
 ```
 
 `spans` hold byte offsets into `file`, which is named as the build argument
-names it. Codes starting with `E` are type errors and `W` warnings from the
+names it. The first span is where the error is and the others are places it
+relates to, each labelled as the terminal report labels it; `fix` is the
+report's help, or `null`. Codes starting with `E` are type errors and `W` warnings from the
 type checker; `P0001` is a parse error and `CFG0001` an invalid cluster
 declaration. A failed build always ends with one `C0001` object with an empty
 `file`, carrying either the summary above or a failure outside any source file

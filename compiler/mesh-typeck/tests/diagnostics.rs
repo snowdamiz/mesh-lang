@@ -396,7 +396,8 @@ fn test_json_one_line() {
 /// A struct missing a derivable trait is told to derive it.
 #[test]
 fn test_a_struct_without_display_is_told_to_derive_it() {
-    let src = "struct Box do\n  n :: Int\nend\n\nfn main() do\n  println(\"#{Box { n: 1 }}\")\nend\n";
+    let src =
+        "struct Box do\n  n :: Int\nend\n\nfn main() do\n  println(\"#{Box { n: 1 }}\")\nend\n";
     let result = mesh_typeck::check(&mesh_parser::parse(src));
     let err = result
         .errors

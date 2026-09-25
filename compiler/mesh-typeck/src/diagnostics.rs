@@ -11,7 +11,7 @@
 
 use std::ops::Range;
 
-use ariadne::{Color, Config, Label, Report, ReportKind};
+use ariadne::{Color, Config, Report, ReportKind};
 use serde::Serialize;
 
 use crate::error::{ConstraintOrigin, TypeError};
@@ -378,19 +378,177 @@ pub fn report_span(source: &str, span: Range<usize>) -> Range<usize> {
     start..end
 }
 
+/// The diagnostic as one JSON line: the error's message, and the spans,
+/// labels and first help the terminal report shows.
 pub fn render_json_diagnostic(
     error: &TypeError,
     source: &str,
     filename: &str,
     suggestions: Option<&[String]>,
 ) -> String {
-    let source_len = source.len();
-    let code = error_code(error).to_string();
-    let sev = severity(error).to_string();
-    let message = format!("{}", error);
+    let description = describe(error, source, suggestions);
+    // The first span is where the error is, as the report is; it carries
+    // the label there, or the report's headline.
+    let span = |range: &Range<usize>, label: String| JsonSpan {
+        start: range.start,
+        end: range.end,
+        label,
+    };
+    let mut labels = description.labels;
+    let at_error = labels
+        .iter()
+        .position(|label| label.span == description.span)
+        .map(|index| labels.remove(index));
+    let mut spans = vec![span(
+        &description.span,
+        at_error
+            .and_then(|label| label.message)
+            .unwrap_or(description.message),
+    )];
+    spans.extend(
+        labels
+            .into_iter()
+            .map(|label| span(&label.span, label.message.unwrap_or_default())),
+    );
+    let diag = JsonDiagnostic {
+        code: error_code(error).to_string(),
+        severity: severity(error).to_string(),
+        message: error.to_string(),
+        file: filename.to_string(),
+        spans,
+        fix: description.helps.into_iter().next(),
+    };
+    serde_json::to_string(&diag).unwrap_or_else(|_| "{}".to_string())
+}
 
-    let mut spans = Vec::new();
-    let fix;
+/// What a diagnostic shows, whether in a terminal report or a JSON line:
+/// its kind, headline, labelled spans (the first is where the error is),
+/// help and notes. Built as ariadne's reports are.
+struct Description {
+    kind: ReportKind<'static>,
+    span: Range<usize>,
+    message: String,
+    labels: Vec<Label>,
+    helps: Vec<String>,
+    notes: Vec<String>,
+}
+
+/// A labelled span of a [`Description`].
+struct Label {
+    span: Range<usize>,
+    message: Option<String>,
+    color: Option<Color>,
+}
+
+impl Label {
+    fn new(span: Range<usize>) -> Self {
+        Label {
+            span,
+            message: None,
+            color: None,
+        }
+    }
+
+    fn with_message(mut self, message: impl ToString) -> Self {
+        self.message = Some(message.to_string());
+        self
+    }
+
+    fn with_color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl Description {
+    fn build(kind: ReportKind<'static>, span: Range<usize>) -> Self {
+        Description {
+            kind,
+            span,
+            message: String::new(),
+            labels: Vec::new(),
+            helps: Vec::new(),
+            notes: Vec::new(),
+        }
+    }
+
+    fn with_message(mut self, message: impl ToString) -> Self {
+        self.message = message.to_string();
+        self
+    }
+
+    fn with_label(mut self, label: Label) -> Self {
+        self.add_label(label);
+        self
+    }
+
+    fn add_label(&mut self, label: Label) {
+        self.labels.push(label);
+    }
+
+    /// Adds a help, as ariadne's `with_help` does.
+    fn with_help(mut self, help: impl ToString) -> Self {
+        self.helps.push(help.to_string());
+        self
+    }
+
+    /// Replaces the helps, as ariadne's `set_help` does.
+    fn set_help(&mut self, help: impl ToString) {
+        self.helps = vec![help.to_string()];
+    }
+
+    fn with_note(mut self, note: impl ToString) -> Self {
+        self.notes.push(note.to_string());
+        self
+    }
+
+    fn set_note(&mut self, note: impl ToString) {
+        self.notes = vec![note.to_string()];
+    }
+
+    /// An error at `span`, labelled there.
+    fn error(span: Range<usize>, message: impl ToString, label: impl ToString) -> Self {
+        Description::build(ReportKind::Error, span.clone())
+            .with_message(message)
+            .with_label(Label::new(span).with_message(label).with_color(Color::Red))
+    }
+
+    /// The terminal report.
+    fn report(
+        self,
+        fname: &str,
+        code: &str,
+        config: Config,
+    ) -> Report<'static, (String, Range<usize>)> {
+        let mut report = Report::build(self.kind, (fname.to_string(), self.span))
+            .with_code(code)
+            .with_message(self.message)
+            .with_config(config);
+        for label in self.labels {
+            let mut ariadne_label = ariadne::Label::new((fname.to_string(), label.span));
+            if let Some(message) = label.message {
+                ariadne_label = ariadne_label.with_message(message);
+            }
+            if let Some(color) = label.color {
+                ariadne_label = ariadne_label.with_color(color);
+            }
+            report.add_label(ariadne_label);
+        }
+        for help in self.helps {
+            report.add_help(help);
+        }
+        for note in self.notes {
+            report.add_note(note);
+        }
+        report.finish()
+    }
+}
+
+/// What `error` shows: see [`Description`].
+fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> Description {
+    let source_len = source.len();
+    // Spans are byte offsets into the source.
+    let clamp = |r: Range<usize>| report_span(source, r);
 
     match error {
         TypeError::Mismatch {
@@ -399,176 +557,1299 @@ pub fn render_json_diagnostic(
             origin,
         } => {
             let (expected, found) = (&expected.with_holes(), &found.with_holes());
-            if let Some(span) = origin_span(origin) {
-                let s = span.start.min(source_len);
-                let e = span.end.min(source_len).max(s);
-                spans.push(JsonSpan {
-                    start: s,
-                    end: e,
-                    label: format!("expected {}, found {}", expected, found),
-                });
-            }
+            let msg = format!("expected {}, found {}", expected, found);
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+
+            let mut builder =
+                Description::build(ReportKind::Error, span.clone()).with_message(&msg);
+
             match origin {
                 ConstraintOrigin::IfBranches {
                     then_span,
                     else_span,
                     ..
                 } => {
-                    let tr = text_range_to_range(*then_span);
-                    let er = text_range_to_range(*else_span);
-                    spans.push(JsonSpan {
-                        start: tr.start,
-                        end: tr.end,
-                        label: format!("expected {}", expected),
-                    });
-                    spans.push(JsonSpan {
-                        start: er.start,
-                        end: er.end,
-                        label: format!("found {}", found),
-                    });
+                    let then_range = clamp(text_range_to_range(*then_span));
+                    let else_range = clamp(text_range_to_range(*else_span));
+                    builder.add_label(
+                        Label::new(then_range)
+                            .with_message(format!("expected {}", expected))
+                            .with_color(Color::Red),
+                    );
+                    builder.add_label(
+                        Label::new(else_range)
+                            .with_message(format!("found {}", found))
+                            .with_color(Color::Blue),
+                    );
+                }
+                ConstraintOrigin::Annotation { annotation_span } => {
+                    let ann_range = clamp(text_range_to_range(*annotation_span));
+                    builder.add_label(
+                        Label::new(ann_range)
+                            .with_message(format!("expected {} from annotation", expected))
+                            .with_color(Color::Red),
+                    );
+                }
+                ConstraintOrigin::FnArg {
+                    call_site,
+                    param_idx,
+                } => {
+                    let call_range = clamp(text_range_to_range(*call_site));
+                    builder.add_label(
+                        Label::new(call_range)
+                            .with_message(format!(
+                                "argument {} has type {}, expected {}",
+                                param_idx + 1,
+                                found,
+                                expected
+                            ))
+                            .with_color(Color::Red),
+                    );
                 }
                 ConstraintOrigin::Return {
                     return_span,
                     fn_span,
                 } => {
-                    let rr = text_range_to_range(*return_span);
-                    let fr = text_range_to_range(*fn_span);
-                    spans.push(JsonSpan {
-                        start: rr.start,
-                        end: rr.end,
-                        label: "return expression here".to_string(),
-                    });
-                    spans.push(JsonSpan {
-                        start: fr.start,
-                        end: fr.end,
-                        label: "return type declared here".to_string(),
-                    });
+                    let ret_range = clamp(text_range_to_range(*return_span));
+                    let fn_range = clamp(text_range_to_range(*fn_span));
+                    builder.add_label(
+                        Label::new(ret_range)
+                            .with_message(format!("returns {}", found))
+                            .with_color(Color::Red),
+                    );
+                    builder.add_label(
+                        Label::new(fn_range)
+                            .with_message(format!("return type declared as {}", expected))
+                            .with_color(Color::Blue),
+                    );
                 }
                 ConstraintOrigin::Assignment { lhs_span, rhs_span } => {
-                    let lr = text_range_to_range(*lhs_span);
-                    let rr = text_range_to_range(*rhs_span);
-                    spans.push(JsonSpan {
-                        start: lr.start,
-                        end: lr.end,
-                        label: format!("expected {}", expected),
-                    });
-                    spans.push(JsonSpan {
-                        start: rr.start,
-                        end: rr.end,
-                        label: format!("found {}", found),
-                    });
+                    let lhs_range = clamp(text_range_to_range(*lhs_span));
+                    let rhs_range = clamp(text_range_to_range(*rhs_span));
+                    builder.add_label(
+                        Label::new(lhs_range)
+                            .with_message(format!("expected {}", expected))
+                            .with_color(Color::Red),
+                    );
+                    builder.add_label(
+                        Label::new(rhs_range)
+                            .with_message(format!("found {}", found))
+                            .with_color(Color::Blue),
+                    );
                 }
-                _ => {}
+                ConstraintOrigin::Pattern { pattern_span } => {
+                    let range = clamp(text_range_to_range(*pattern_span));
+                    builder.add_label(
+                        Label::new(range)
+                            .with_message(format!(
+                                "this pattern matches {found}, but the value is {expected}"
+                            ))
+                            .with_color(Color::Red),
+                    );
+                }
+                _ => {
+                    builder.add_label(
+                        Label::new(span.clone())
+                            .with_message(format!("expected {}, found {}", expected, found))
+                            .with_color(Color::Red),
+                    );
+                }
             }
-            fix = fix_suggestion(expected, found)
-                .filter(|_| !matches!(origin, ConstraintOrigin::Pattern { .. }));
-        }
-        TypeError::UnboundVariable { span, .. } => {
-            let range = text_range_to_range(*span);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: "not found in this scope".to_string(),
-            });
-            fix = error_fix_suggestion(error, suggestions);
-        }
-        TypeError::NotAFunction { span, .. } => {
-            let range = text_range_to_range(*span);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: message.clone(),
-            });
-            fix = error_fix_suggestion(error, suggestions);
-        }
-        TypeError::UnknownVariant { span, .. } => {
-            let range = text_range_to_range(*span);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: "not a known variant".to_string(),
-            });
-            fix = error_fix_suggestion(error, suggestions);
-        }
-        TypeError::InfiniteType { origin, .. } => {
-            if let Some(span) = origin_span(origin) {
-                spans.push(JsonSpan {
-                    start: span.start,
-                    end: span.end,
-                    label: "recursive type here".to_string(),
-                });
+
+            let is_pattern = matches!(origin, ConstraintOrigin::Pattern { .. });
+            if let Some(fix) = fix_suggestion(expected, found).filter(|_| !is_pattern) {
+                builder.set_help(fix);
             }
-            fix = Some("a value cannot have a type that refers to itself".to_string());
+
+            builder
         }
+
+        TypeError::InfiniteType { var, ty, origin } => {
+            let msg = format!("infinite type: ?{} occurs in {}", var.0, ty);
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+
+            Description::error(span, &msg, "recursive type here")
+                .with_help("a value cannot have a type that refers to itself")
+        }
+
         TypeError::ArityMismatch {
-            expected: exp,
-            found: fnd,
+            expected,
+            found,
             origin,
         } => {
-            if let Some(span) = origin_span(origin) {
-                spans.push(JsonSpan {
-                    start: span.start,
-                    end: span.end,
-                    label: format!("expected {} argument(s)", exp),
-                });
-            }
-            fix = if *exp > *fnd {
-                Some(format!("missing {} argument(s)", exp - fnd))
+            let msg = format!("expected {} argument(s), found {}", expected, found);
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+
+            let mut builder =
+                Description::error(span, &msg, format!("expected {} argument(s)", expected));
+
+            if *expected > *found {
+                builder.set_help(format!("missing {} argument(s)", expected - found));
             } else {
-                Some(format!("{} extra argument(s)", fnd - exp))
-            };
+                builder.set_help(format!("{} extra argument(s)", found - expected));
+            }
+
+            builder
         }
-        TypeError::NonExhaustiveMatch {
-            missing_patterns,
-            span,
-            ..
+
+        TypeError::UnboundVariable { name, span, .. } => {
+            let msg = format!("undefined variable: {}", name);
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Description::error(range, &msg, "not found in this scope");
+
+            if let Some(fix) = error_fix_suggestion(error, suggestions) {
+                builder.set_help(fix);
+            }
+
+            builder
         }
-        | TypeError::NonExhaustiveClauses {
-            missing_patterns,
-            span,
-            ..
+
+        TypeError::NotAFunction { ty, span } => {
+            let msg = format!("type {} is not callable", ty);
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Description::error(range, &msg, format!("{} is not a function", ty));
+
+            if let Some(fix) = error_fix_suggestion(error, None) {
+                builder.set_help(fix);
+            }
+
+            builder
+        }
+
+        TypeError::TraitNotSatisfied {
+            ty,
+            trait_name,
+            origin,
         } => {
-            let range = text_range_to_range(*span);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: format!("missing: {}", missing_patterns.join(", ")),
-            });
-            fix = Some("add the missing patterns or a wildcard `_` arm".to_string());
+            let msg = format!("{} does not implement {}", ty, trait_name);
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+
+            Description::error(span, &msg, format!("{} does not satisfy {}", ty, trait_name))
+                .with_help(if trait_name == "Json" {
+                    "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
+                     Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
+                        .to_string()
+                } else if is_named_type(ty)
+                    && matches!(trait_name.as_str(), "Eq" | "Ord" | "Display" | "Debug" | "Hash")
+                {
+                    format!(
+                        "add `deriving({trait_name})` to the definition of `{ty}`, or `impl {trait_name} for {ty} do ... end`"
+                    )
+                } else if is_named_type(ty) {
+                    format!("add `impl {} for {} do ... end`", trait_name, ty)
+                } else {
+                    "only a named type without type parameters can have an `impl`".to_string()
+                })
         }
-        TypeError::RedundantArm { span, .. } => {
-            let range = text_range_to_range(*span);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: "this arm is unreachable".to_string(),
-            });
-            fix = Some("remove this arm or reorder the match".to_string());
+
+        TypeError::UnboundedTypeParam {
+            param,
+            trait_name,
+            origin,
+        } => {
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let span = clamp(span);
+            Description::error(span, format!(
+                    "`{param}` is not known to implement {trait_name}"
+                ), format!("this needs {param}: {trait_name}"))
+                .with_help(format!(
+                    "add `where {param}: {trait_name}` to the function, so every call is checked for it"
+                ))
         }
-        _ => {
-            fix = None;
-            // The error's own place, or the whole source when it has none.
-            let range = error
-                .span()
-                .map_or(0..source_len.max(1), text_range_to_range);
-            spans.push(JsonSpan {
-                start: range.start,
-                end: range.end,
-                label: message.clone(),
-            });
+
+        TypeError::MissingTraitMethod {
+            trait_name,
+            method_name,
+            impl_ty,
+            span,
+        } => {
+            let msg = format!(
+                "impl {} for {} is missing method {}",
+                trait_name, impl_ty, method_name
+            );
+            let span = clamp(
+                span.map(text_range_to_range)
+                    .unwrap_or(0..source_len.max(1).min(source_len)),
+            );
+
+            Description::error(span, &msg, format!("missing `{}`", method_name)).with_help(format!(
+                "add `fn {}` as `{}` declares it to the impl block",
+                method_name, trait_name
+            ))
+        }
+
+        TypeError::TraitMethodSignatureMismatch {
+            trait_name,
+            method_name,
+            expected,
+            found,
+            span,
+        } => {
+            let msg = format!(
+                "method {} in impl {} has wrong signature: expected {}, found {}",
+                method_name, trait_name, expected, found
+            );
+            let span = clamp(
+                span.map(text_range_to_range)
+                    .unwrap_or(0..source_len.max(1).min(source_len)),
+            );
+
+            Description::error(
+                span,
+                &msg,
+                format!("`{}` declares {}, this is {}", trait_name, expected, found),
+            )
+        }
+
+        TypeError::MissingField {
+            struct_name,
+            field_name,
+            span,
+        } => {
+            let msg = format!("missing field {} in struct {}", field_name, struct_name);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("field `{}` is required", field_name))
+                .with_help(format!("add `{}: <value>`", field_name))
+        }
+
+        TypeError::UnknownField {
+            struct_name,
+            field_name,
+            span,
+        } => {
+            let msg = format!("unknown field {} in struct {}", field_name, struct_name);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                &msg,
+                format!("`{}` has no field `{}`", struct_name, field_name),
+            )
+        }
+
+        TypeError::NoSuchField {
+            ty,
+            field_name,
+            span,
+        } => {
+            let msg = format!("type {} has no field {}", ty, field_name);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("no field `{}`", field_name))
+        }
+
+        TypeError::NoSuchMethod {
+            ty,
+            method_name,
+            span,
+        } => {
+            let msg = format!("no method `{}` on type `{}`", method_name, ty);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("method `{}` not found", method_name))
+                .with_help(format!(
+                    "type `{}` has no trait impl providing `{}`",
+                    ty, method_name
+                ))
+        }
+
+        TypeError::ManualContinuityPromotionDisabled { span } => {
+            let msg = "`Continuity.promote()` is disabled";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, msg, "manual authority changes are no longer part of the Mesh surface")
+                .with_help(
+                    "failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state",
+                )
+        }
+
+        TypeError::UnknownVariant { name, span, .. } => {
+            let msg = format!("unknown variant: {}", name);
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Description::error(range, &msg, "not a known variant");
+
+            if let Some(fix) = error_fix_suggestion(error, suggestions) {
+                builder.set_help(fix);
+            }
+
+            builder
+        }
+
+        TypeError::OrPatternBindingMismatch {
+            expected_bindings,
+            found_bindings,
+            span,
+        } => {
+            let msg = format!(
+                "or-pattern alternatives bind different variables: [{}] vs [{}]",
+                expected_bindings.join(", "),
+                found_bindings.join(", ")
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, "alternatives must bind the same variables").with_help(
+                "all alternatives in an or-pattern must bind the same set of variable names",
+            )
+        }
+
+        TypeError::NonExhaustiveMatch {
+            scrutinee_type,
+            missing_patterns,
+            span,
+        } => {
+            let msg = format!("non-exhaustive match on `{}`", scrutinee_type);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                &msg,
+                format!("missing: {}", missing_patterns.join(", ")),
+            )
+            .with_help("add the missing patterns or a wildcard `_` arm")
+        }
+
+        TypeError::NonExhaustiveClauses {
+            scrutinee_type,
+            missing_patterns,
+            span,
+        } => {
+            let msg = format!("clauses do not cover every `{}`", scrutinee_type);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::build(ReportKind::Warning, range.clone())
+                .with_message(&msg)
+                .with_label(
+                    Label::new(range)
+                        .with_message(format!("missing: {}", missing_patterns.join(", ")))
+                        .with_color(Color::Yellow),
+                )
+                .with_help("add a clause for the missing patterns: a call no clause matches panics")
+        }
+
+        TypeError::RedundantArm { arm_index, span } => {
+            let msg = format!("redundant match arm (arm {})", arm_index + 1);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::build(ReportKind::Warning, range.clone())
+                .with_message(&msg)
+                .with_label(
+                    Label::new(range)
+                        .with_message("this arm is unreachable")
+                        .with_color(Color::Yellow),
+                )
+                .with_help("remove this arm or reorder the match")
+        }
+
+        TypeError::SendTypeMismatch {
+            expected,
+            found,
+            span,
+        } => {
+            let msg = format!(
+                "message type mismatch: expected {}, found {}",
+                expected, found
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                &msg,
+                format!("expected {}, found {}", expected, found),
+            )
+            .with_help(format!("this Pid accepts messages of type {}", expected))
+        }
+
+        TypeError::SelfOutsideActor { span } => {
+            let msg = "self() used outside actor block";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, msg, "self() is only available inside an actor block")
+        }
+
+        TypeError::SpawnNonFunction { found, span } => {
+            let msg = format!("cannot spawn non-function: found {}", found);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("expected a function, found {}", found))
+        }
+
+        TypeError::ReceiveOutsideActor { span } => {
+            let msg = "receive used outside actor block";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                "receive is only available inside an actor block",
+            )
+            .with_help("move this receive expression into an actor block")
+        }
+
+        TypeError::InvalidChildStart {
+            child_name,
+            found,
+            span,
+        } => {
+            let msg = format!(
+                "child `{}` start function must return Pid, found `{}`",
+                child_name, found
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("expected Pid<M>, found {}", found))
+                .with_help("the start function must call spawn() and return a Pid")
+        }
+
+        TypeError::InvalidStrategy { found, span } => {
+            let msg = format!("unknown supervision strategy `{}`", found);
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                &msg,
+                "expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
+            )
+        }
+
+        TypeError::InvalidRestartType {
+            found,
+            child_name,
+            span,
+        } => {
+            let msg = format!(
+                "invalid restart type `{}` for child `{}`",
+                found, child_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, "expected permanent, transient, or temporary")
+        }
+
+        TypeError::InvalidShutdownValue {
+            found,
+            child_name,
+            span,
+        } => {
+            let msg = format!(
+                "invalid shutdown value `{}` for child `{}`",
+                found, child_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, "expected a positive integer or brutal_kill")
+        }
+
+        // ── Multi-clause function diagnostics (11-02) ──────────────────
+        TypeError::CatchAllNotLast {
+            fn_name,
+            arity,
+            span,
+        } => {
+            let msg = format!(
+                "catch-all clause must be the last clause of function `{}/{}`",
+                fn_name, arity
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, "clauses after a catch-all are unreachable")
+        }
+        TypeError::NonConsecutiveClauses {
+            fn_name,
+            arity,
+            first_span,
+            second_span,
+        } => {
+            let msg = format!(
+                "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
+                fn_name, arity
+            );
+            let range = clamp(text_range_to_range(*second_span));
+            let first_range = clamp(text_range_to_range(*first_span));
+
+            Description::build(ReportKind::Error, range.clone())
+                .with_message(&msg)
+                .with_label(
+                    Label::new(first_range)
+                        .with_message("first definition here")
+                        .with_color(Color::Blue),
+                )
+                .with_label(
+                    Label::new(range)
+                        .with_message("non-consecutive redefinition here")
+                        .with_color(Color::Red),
+                )
+        }
+        TypeError::ClauseArityMismatch {
+            fn_name,
+            expected_arity,
+            found_arity,
+            span,
+        } => {
+            let msg = format!(
+                "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
+                fn_name, expected_arity, found_arity
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                &msg,
+                format!("expected {} parameters", expected_arity),
+            )
+        }
+        TypeError::NonFirstClauseAnnotation {
+            fn_name,
+            what,
+            span,
+        } => {
+            let msg = format!(
+                "{} on non-first clause of `{}` will be ignored",
+                what, fn_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::build(ReportKind::Warning, range.clone())
+                .with_message(&msg)
+                .with_label(
+                    Label::new(range)
+                        .with_message("only the first clause should have this annotation")
+                        .with_color(Color::Yellow),
+                )
+        }
+        TypeError::DuplicateImpl {
+            trait_name,
+            impl_type,
+            first_impl,
+        } => {
+            let msg = format!(
+                "duplicate impl: `{}` is already implemented for `{}`",
+                trait_name, impl_type
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Description::error(span, &msg, first_impl.to_string())
+                .with_help("remove one of the conflicting impl blocks")
+        }
+
+        TypeError::AmbiguousMethod {
+            method_name,
+            candidate_traits,
+            ty,
+            span,
+        } => {
+            let msg = format!(
+                "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
+                method_name,
+                ty,
+                candidate_traits.join(", ")
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            let suggestions: Vec<String> = candidate_traits
+                .iter()
+                .map(|t| format!("{}.{}(value)", t, method_name))
+                .collect();
+            let help = format!("use qualified syntax: {}", suggestions.join(" or "));
+
+            Description::error(
+                range,
+                &msg,
+                format!("multiple traits provide `{}`", method_name),
+            )
+            .with_help(help)
+        }
+
+        TypeError::UnsupportedDerive {
+            trait_name,
+            type_name,
+            span,
+        } => {
+            let msg = format!("cannot derive `{}` for `{}`", trait_name, type_name);
+            let span = clamp(text_range_to_range(*span));
+
+            Description::error(span, &msg, format!("`{}` cannot be derived here", trait_name))
+                .with_help(
+                    "structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
+                )
+        }
+
+        TypeError::MissingDerivePrerequisite {
+            trait_name,
+            requires,
+            type_name,
+            span,
+        } => {
+            let msg = format!(
+                "cannot derive `{}` for `{}` without `{}`",
+                trait_name, type_name, requires
+            );
+            let span = clamp(text_range_to_range(*span));
+
+            Description::error(
+                span,
+                &msg,
+                format!(
+                    "`{}` requires `{}` for its implementation",
+                    trait_name, requires
+                ),
+            )
+            .with_help(format!(
+                "add `{}` to the deriving list: deriving({}, {})",
+                requires, requires, trait_name
+            ))
+        }
+
+        TypeError::BreakOutsideLoop { span } => {
+            let msg = "`break` outside of loop";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                "`break` can only be used inside a `while` or `for` loop",
+            )
+            .with_help("move this `break` inside a loop body")
+        }
+
+        TypeError::ContinueOutsideLoop { span } => {
+            let msg = "`continue` outside of loop";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                "`continue` can only be used inside a `while` or `for` loop",
+            )
+            .with_help("move this `continue` inside a loop body")
+        }
+
+        TypeError::ImportModuleNotFound {
+            module_name,
+            span,
+            suggestion,
+        } => {
+            let msg = "module not found";
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder =
+                Description::error(range, msg, format!("module `{}` not found", module_name));
+
+            if let Some(sug) = suggestion {
+                builder.set_note(format!("did you mean `{}`?", sug));
+            }
+
+            builder
+        }
+
+        TypeError::ImportNameNotFound {
+            module_name,
+            name,
+            span,
+            available,
+        } => {
+            let msg = "name not found in module";
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Description::error(
+                range,
+                msg,
+                format!("`{}` is not exported by module `{}`", name, module_name),
+            );
+
+            if !available.is_empty() {
+                builder.set_note(format!("available exports: {}", available.join(", ")));
+            }
+
+            builder
+        }
+
+        TypeError::PrivateItem {
+            module_name,
+            name,
+            span,
+        } => {
+            let msg = "private item cannot be imported";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                format!("`{}` is private in module `{}`", name, module_name),
+            )
+            .with_help(format!(
+                "add `pub` to `{}` in module `{}` to make it accessible",
+                name, module_name
+            ))
+        }
+
+        TypeError::HttpClusteredInvalidArguments { reason, span } => {
+            let msg = "invalid HTTP.clustered(...) usage";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, msg, reason.clone())
+                .with_help(
+                    "use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference",
+                )
+        }
+
+        TypeError::HttpClusteredPrivateHandler { handler_name, span } => {
+            let msg = "clustered route handler must be public";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                format!(
+                    "`{}` is private and cannot cross the clustered route boundary",
+                    handler_name
+                ),
+            )
+            .with_help(format!(
+                "add `pub` to `{}` or remove `HTTP.clustered(...)`",
+                handler_name
+            ))
+        }
+
+        TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => {
+            let msg = "HTTP.clustered(...) is only valid in route handler position";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                "use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`",
+            )
+        }
+
+        TypeError::HttpClusteredConflictingReplicationCount {
+            runtime_name,
+            first_count,
+            current_count,
+            first_span,
+            span,
+        } => {
+            let msg = "conflicting clustered route replication counts";
+            let first_range = clamp(text_range_to_range(*first_span));
+            let current_range = clamp(text_range_to_range(*span));
+
+            Description::build(ReportKind::Error, current_range.clone())
+                .with_message(msg)
+                .with_label(
+                    Label::new(first_range)
+                        .with_message(format!(
+                            "`{}` was first declared here with replication count {}",
+                            runtime_name, first_count
+                        ))
+                        .with_color(Color::Blue),
+                )
+                .with_label(
+                    Label::new(current_range)
+                        .with_message(format!(
+                            "conflicting replication count {} for `{}`",
+                            current_count, runtime_name
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("keep one replication count per clustered route handler runtime name")
+        }
+
+        TypeError::HttpClusteredImportedOriginMissing { handler_name, span } => {
+            let msg = "imported clustered route handler is missing origin metadata";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, msg, format!(
+                            "cannot determine the defining module for imported handler `{}`",
+                            handler_name
+                        ))
+                .with_note(
+                    "imported bare handlers must preserve their defining module so clustered route lowering can keep the real runtime name",
+                )
+        }
+
+        TypeError::TryIncompatibleReturn {
+            operand_ty,
+            fn_return_ty,
+            span,
+        } => {
+            let msg = "`?` operand is incompatible with the function return type";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, msg, "cannot use `?` here")
+                .with_note(format!(
+                    "cannot propagate `{}` from a function returning `{}`; Result errors must match or have a From conversion, and Option requires an Option return type",
+                    operand_ty, fn_return_ty
+                ))
+        }
+
+        TypeError::TryOnNonResultOption { operand_ty, span } => {
+            let msg = "`?` requires `Result` or `Option`";
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                msg,
+                format!("type `{}` is not `Result` or `Option`", operand_ty),
+            )
+            .with_help("the `?` operator can only be used on `Result<T, E>` or `Option<T>` values")
+        }
+
+        TypeError::NonSerializableField {
+            struct_name: _,
+            field_name,
+            field_type,
+            span,
+        } => {
+            let msg = format!(
+                "field `{}` of type `{}` is not JSON-serializable",
+                field_name, field_type
+            );
+            let span = clamp(text_range_to_range(*span));
+
+            Description::error(span, &msg, format!("`{}` is not serializable", field_type))
+                .with_help(format!(
+                    "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)",
+                    field_type
+                ))
+        }
+
+        TypeError::NonMappableField {
+            struct_name: _,
+            field_name,
+            field_type,
+            span,
+        } => {
+            let msg = format!(
+                "field `{}` has type `{}` which cannot be mapped from a database row",
+                field_name, field_type
+            );
+            let span = clamp(text_range_to_range(*span));
+
+            Description::error(span, &msg, format!("`{}` is not row-mappable", field_type))
+                .with_help("only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)")
+        }
+
+        TypeError::MissingAssocType {
+            trait_name,
+            assoc_name,
+            impl_ty,
+        } => {
+            let msg = format!(
+                "impl `{}` for `{}` is missing associated type `{}`",
+                trait_name, impl_ty, assoc_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Description::error(span, &msg, format!("missing `type {} = ...`", assoc_name))
+                .with_help(format!(
+                    "add `type {} = <ConcreteType>` to the impl block",
+                    assoc_name
+                ))
+        }
+
+        TypeError::ExtraAssocType {
+            trait_name,
+            assoc_name,
+            impl_ty,
+        } => {
+            let msg = format!(
+                "impl `{}` for `{}` provides associated type `{}` which is not declared by the trait",
+                trait_name, impl_ty, assoc_name
+            );
+            let span = clamp(0..source_len.max(1).min(source_len));
+
+            Description::error(
+                span,
+                &msg,
+                format!("`{}` is not declared by `{}`", assoc_name, trait_name),
+            )
+        }
+
+        TypeError::UnresolvedAssocType { assoc_name, span } => {
+            let msg = format!("cannot resolve associated type `{}`", assoc_name);
+            let span = clamp(text_range_to_range(*span));
+
+            Description::error(
+                span,
+                &msg,
+                format!("no associated type `{assoc_name}` is declared"),
+            )
+            .with_help(format!(
+                "declare it in the interface with `type {assoc_name}`, and bind it in each impl"
+            ))
+        }
+
+        TypeError::SlotPipeOutOfRange {
+            slot,
+            fn_name,
+            arity,
+            span,
+        } => {
+            let msg = if *arity <= 1 {
+                format!(
+                    "slot position {} is out of range: `{}` takes {} argument(s)",
+                    slot, fn_name, arity
+                )
+            } else {
+                format!(
+                    "slot position {} is out of range: `{}` takes {} arguments, so valid slot positions are 2\u{2013}{}",
+                    slot, fn_name, arity, arity
+                )
+            };
+            let range = clamp(text_range_to_range(*span));
+
+            let mut builder = Description::error(
+                range,
+                &msg,
+                format!("slot {} exceeds function arity {}", slot, arity),
+            );
+
+            if *arity <= 1 {
+                builder.set_help("use |> to pipe as the first argument");
+            } else {
+                builder.set_help(format!(
+                    "use |> to pipe as the first argument, or |2>...|{}> for other positions",
+                    arity
+                ));
+            }
+
+            builder
+        }
+
+        TypeError::UndefinedType {
+            alias_name,
+            target_name,
+            span,
+        } => {
+            let msg = format!(
+                "type alias `{}` references undefined type `{}`",
+                alias_name, target_name
+            );
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(range, &msg, format!("`{}` is not defined", target_name)).with_help(
+                format!(
+                    "define `{}` as a struct, sum type, or type alias before using it here",
+                    target_name
+                ),
+            )
+        }
+        TypeError::NativeDeclarationInvalid { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "invalid native function declaration", reason).with_help(
+                "use a public, fully annotated, non-generic signature and a C identifier symbol",
+            )
+        }
+        TypeError::ExportDeclarationInvalid { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "invalid exported function declaration", reason).with_help(
+                "use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`",
+            )
+        }
+        TypeError::InvalidLetPattern { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "invalid let destructuring pattern", reason)
+                .with_help(
+                    "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
+                )
+        }
+        TypeError::DuplicateField { field_name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("field `{field_name}` is given more than once"),
+                "given again here",
+            )
+            .with_help("give each field one value")
+        }
+        TypeError::UnderivableField {
+            trait_name,
+            type_name,
+            field_name,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, format!(
+                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` holds a function"
+                ), "functions cannot be compared, hashed or shown")
+                .with_help(format!("remove `{trait_name}` from the deriving list"))
+        }
+        TypeError::DuplicateVariant {
+            variant,
+            first_type,
+            second_type,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!(
+                    "variant `{variant}` of `{second_type}` is already a variant of `{first_type}`"
+                ),
+                format!("`{variant}` would name either type's variant"),
+            )
+            .with_help("give one of the variants another name")
+        }
+        TypeError::AmbiguousImplMethod {
+            method,
+            receiver,
+            candidates,
+            found,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let returns = candidates
+                .iter()
+                .map(|ty| format!("`{ty}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (message, label) = match found {
+                Some(found) => (
+                    format!("no impl's `{method}` on `{receiver}` returns `{found}`"),
+                    format!("they return {returns}"),
+                ),
+                None => (
+                    format!("cannot tell which impl's `{method}` to call on `{receiver}`"),
+                    format!("its impls return {returns}"),
+                ),
+            };
+            Description::error(range, message, label).with_help(format!(
+                "give the result a type: `let x :: {} = value.{method}()`",
+                candidates
+                    .first()
+                    .map_or_else(|| "Int".to_string(), |ty| ty.to_string())
+            ))
+        }
+        TypeError::DuplicateDefinition { kind, name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("{kind} `{name}` is defined twice"),
+                "defined again here",
+            )
+            .with_help(format!("rename or remove one of the two `{name}`s"))
+        }
+        TypeError::UnknownType { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("unknown type `{name}`"),
+                "no type has this name",
+            )
+            .with_help("check the spelling, or define or import the type")
+        }
+        TypeError::NoSuchModuleFunction {
+            module,
+            name,
+            available,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let mut report = Description::error(
+                range,
+                format!("module `{module}` has no function `{name}`"),
+                format!("not a function of `{module}`"),
+            );
+            if !available.is_empty() {
+                report = report.with_help(format!("`{module}` has {}", available.join(", ")));
+            }
+            report
+        }
+        TypeError::AssertReceiveOutsideTest { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, error.to_string(), "not in a test file")
+                .with_help("elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for")
+        }
+        TypeError::GenericImplTarget { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                error.to_string(),
+                format!("`{name}` takes type parameters"),
+            )
+            .with_help(format!(
+                "implement it for a type without type parameters, such as a struct \
+                     holding the `{name}` you mean"
+            ))
+        }
+        TypeError::OverloadedFunctionValue {
+            name,
+            arities,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let counts: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
+            let counts = match counts.split_last() {
+                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+                None => String::new(),
+            };
+            let shown = arities.iter().copied().find(|&a| a > 0).unwrap_or(0);
+            let params: Vec<String> = (0..shown).map(|i| format!("a{i}")).collect();
+            let params = params.join(", ");
+            Description::error(range, error.to_string(), "each arity is its own function")
+                .with_help(format!(
+                    "call it with {counts} arguments; as a value, use a closure \
+                     that calls one: `fn {params} -> {name}({params}) end`"
+                ))
+        }
+        TypeError::InvalidConcat { op, ty, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("`{op}` joins strings or lists, not `{ty}`"),
+                format!("these operands are `{ty}`"),
+            )
+            .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
+        }
+        TypeError::TopLevelLet { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, format!("`let {name}` outside a function is not supported"), "a module has no global bindings")
+                .with_help(format!(
+                    "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
+                ))
+        }
+        TypeError::ModuleNotImported { name, module, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("module `{name}` is not imported"),
+                "a module of this project",
+            )
+            .with_help(format!("add `import {module}` at the top of the file"))
+        }
+        TypeError::ActorMessageTypeUnknown { actor, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, format!("cannot tell what type of message `{actor}` receives"), "only untyped `Pid`s reach this actor")
+                .with_help(format!(
+                    "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`"
+                ))
+        }
+        TypeError::IndexingUnsupported { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                "`value[index]` indexing is not supported",
+                "no indexing syntax",
+            )
+            .with_help(
+                "use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`",
+            )
+        }
+        TypeError::InvalidLiteral { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, reason, "invalid literal")
+        }
+        TypeError::UnknownInterface { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("unknown interface `{name}`"),
+                "no interface has this name",
+            )
+            .with_help("check the spelling, or declare the interface or import its module")
+        }
+        TypeError::UnknownFieldOwner { field, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("cannot tell which type has the field `{field}`"),
+                "nothing here fixes the type of this value",
+            )
+            .with_help("annotate the value's type, such as a parameter `p :: Point`")
+        }
+        TypeError::RigidTypeParam { param, found, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, format!(
+                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
+                ), format!("`{param}` is declared here"))
+                .with_help(format!(
+                    "a generic function must work for every `{param}`: use `{found}` in its signature instead, or keep `{param}` values as they are"
+                ))
+        }
+        TypeError::AmbiguousStaticMethod {
+            method,
+            types,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let example = types.first().cloned().unwrap_or_else(|| "Type".to_string());
+            Description::error(
+                range,
+                format!(
+                    "`{method}` is a static method of several types: {}",
+                    types.join(", ")
+                ),
+                "which type's is meant?",
+            )
+            .with_help(format!("call it on the type: `{example}.{method}()`"))
+        }
+        TypeError::AmbiguousDefault { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                "cannot tell which type `default()` builds here",
+                "nothing fixes this value's type",
+            )
+            .with_help("annotate it: `let x :: Int = default()`")
+        }
+        TypeError::CyclicAlias { alias_name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("type alias `{alias_name}` refers to itself"),
+                "expanding it never ends",
+            )
+            .with_help(
+                "an alias names an existing type; use a struct or sum type for a recursive type",
+            )
+        }
+        TypeError::NotAStruct { ty, span } => {
+            let range = clamp(text_range_to_range(*span));
+            let (message, label) = if matches!(ty, Ty::Var(_)) {
+                (
+                    "a struct update needs a struct value".to_string(),
+                    "the type of this value is not known here".to_string(),
+                )
+            } else {
+                (
+                    format!("`{ty}` is not a struct"),
+                    "not a struct".to_string(),
+                )
+            };
+            Description::error(range, message, label)
+                .with_help("`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one")
+        }
+        TypeError::DuplicateBinding { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("`{name}` is bound twice in one pattern"),
+                "each name in a pattern binds one value",
+            )
+            .with_help("rename one of them, or compare the values in a `when` guard")
+        }
+        TypeError::InvalidPassThroughArm { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                "this arm has no `->`, so its pattern must also be its value",
+                reason,
+            )
+            .with_help("write the value after `->`: `pattern -> value`")
+        }
+        TypeError::ResourceViolation { reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "resource ownership violation", reason)
+                .with_help("move each resource once, or pass it to a direct `borrow` parameter")
         }
     }
-
-    let diag = JsonDiagnostic {
-        code,
-        severity: sev,
-        message,
-        file: filename.to_string(),
-        spans,
-        fix,
-    };
-
-    serde_json::to_string(&diag).unwrap_or_else(|_| "{}".to_string())
 }
 
 // ── Main Rendering Function ────────────────────────────────────────────
@@ -604,1889 +1885,11 @@ pub fn render_diagnostic(
         Config::default().with_color(false)
     }
     .with_index_type(ariadne::IndexType::Byte);
-    let source_len = source.len();
-
-    let clamp = |r: Range<usize>| report_span(source, r);
-
     let code = error_code(error);
 
     let fname = filename.to_string();
 
-    let report = match error {
-        TypeError::Mismatch {
-            expected,
-            found,
-            origin,
-        } => {
-            let (expected, found) = (&expected.with_holes(), &found.with_holes());
-            let msg = format!("expected {}, found {}", expected, found);
-            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
-            let span = clamp(span);
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config);
-
-            match origin {
-                ConstraintOrigin::IfBranches {
-                    then_span,
-                    else_span,
-                    ..
-                } => {
-                    let then_range = clamp(text_range_to_range(*then_span));
-                    let else_range = clamp(text_range_to_range(*else_span));
-                    builder.add_label(
-                        Label::new((fname.clone(), then_range))
-                            .with_message(format!("expected {}", expected))
-                            .with_color(Color::Red),
-                    );
-                    builder.add_label(
-                        Label::new((fname.clone(), else_range))
-                            .with_message(format!("found {}", found))
-                            .with_color(Color::Blue),
-                    );
-                }
-                ConstraintOrigin::Annotation { annotation_span } => {
-                    let ann_range = clamp(text_range_to_range(*annotation_span));
-                    builder.add_label(
-                        Label::new((fname.clone(), ann_range))
-                            .with_message(format!("expected {} from annotation", expected))
-                            .with_color(Color::Red),
-                    );
-                }
-                ConstraintOrigin::FnArg {
-                    call_site,
-                    param_idx,
-                } => {
-                    let call_range = clamp(text_range_to_range(*call_site));
-                    builder.add_label(
-                        Label::new((fname.clone(), call_range))
-                            .with_message(format!(
-                                "argument {} has type {}, expected {}",
-                                param_idx + 1,
-                                found,
-                                expected
-                            ))
-                            .with_color(Color::Red),
-                    );
-                }
-                ConstraintOrigin::Return {
-                    return_span,
-                    fn_span,
-                } => {
-                    let ret_range = clamp(text_range_to_range(*return_span));
-                    let fn_range = clamp(text_range_to_range(*fn_span));
-                    builder.add_label(
-                        Label::new((fname.clone(), ret_range))
-                            .with_message(format!("returns {}", found))
-                            .with_color(Color::Red),
-                    );
-                    builder.add_label(
-                        Label::new((fname.clone(), fn_range))
-                            .with_message(format!("return type declared as {}", expected))
-                            .with_color(Color::Blue),
-                    );
-                }
-                ConstraintOrigin::Assignment { lhs_span, rhs_span } => {
-                    let lhs_range = clamp(text_range_to_range(*lhs_span));
-                    let rhs_range = clamp(text_range_to_range(*rhs_span));
-                    builder.add_label(
-                        Label::new((fname.clone(), lhs_range))
-                            .with_message(format!("expected {}", expected))
-                            .with_color(Color::Red),
-                    );
-                    builder.add_label(
-                        Label::new((fname.clone(), rhs_range))
-                            .with_message(format!("found {}", found))
-                            .with_color(Color::Blue),
-                    );
-                }
-                ConstraintOrigin::Pattern { pattern_span } => {
-                    let range = clamp(text_range_to_range(*pattern_span));
-                    builder.add_label(
-                        Label::new((fname.clone(), range))
-                            .with_message(format!(
-                                "this pattern matches {found}, but the value is {expected}"
-                            ))
-                            .with_color(Color::Red),
-                    );
-                }
-                _ => {
-                    builder.add_label(
-                        Label::new((fname.clone(), span.clone()))
-                            .with_message(format!("expected {}, found {}", expected, found))
-                            .with_color(Color::Red),
-                    );
-                }
-            }
-
-            let is_pattern = matches!(origin, ConstraintOrigin::Pattern { .. });
-            if let Some(fix) = fix_suggestion(expected, found).filter(|_| !is_pattern) {
-                builder.set_help(fix);
-            }
-
-            builder.finish()
-        }
-
-        TypeError::InfiniteType { var, ty, origin } => {
-            let msg = format!("infinite type: ?{} occurs in {}", var.0, ty);
-            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
-            let span = clamp(span);
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message("recursive type here")
-                        .with_color(Color::Red),
-                )
-                .with_help("a value cannot have a type that refers to itself")
-                .finish()
-        }
-
-        TypeError::ArityMismatch {
-            expected,
-            found,
-            origin,
-        } => {
-            let msg = format!("expected {} argument(s), found {}", expected, found);
-            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
-            let span = clamp(span);
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("expected {} argument(s)", expected))
-                        .with_color(Color::Red),
-                );
-
-            if *expected > *found {
-                builder.set_help(format!("missing {} argument(s)", expected - found));
-            } else {
-                builder.set_help(format!("{} extra argument(s)", found - expected));
-            }
-
-            builder.finish()
-        }
-
-        TypeError::UnboundVariable { name, span, .. } => {
-            let msg = format!("undefined variable: {}", name);
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("not found in this scope")
-                        .with_color(Color::Red),
-                );
-
-            if let Some(fix) = error_fix_suggestion(error, suggestions) {
-                builder.set_help(fix);
-            }
-
-            builder.finish()
-        }
-
-        TypeError::NotAFunction { ty, span } => {
-            let msg = format!("type {} is not callable", ty);
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("{} is not a function", ty))
-                        .with_color(Color::Red),
-                );
-
-            if let Some(fix) = error_fix_suggestion(error, None) {
-                builder.set_help(fix);
-            }
-
-            builder.finish()
-        }
-
-        TypeError::TraitNotSatisfied {
-            ty,
-            trait_name,
-            origin,
-        } => {
-            let msg = format!("{} does not implement {}", ty, trait_name);
-            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
-            let span = clamp(span);
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("{} does not satisfy {}", ty, trait_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(if trait_name == "Json" {
-                    "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
-                     Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
-                        .to_string()
-                } else if is_named_type(ty)
-                    && matches!(trait_name.as_str(), "Eq" | "Ord" | "Display" | "Debug" | "Hash")
-                {
-                    format!(
-                        "add `deriving({trait_name})` to the definition of `{ty}`, or `impl {trait_name} for {ty} do ... end`"
-                    )
-                } else if is_named_type(ty) {
-                    format!("add `impl {} for {} do ... end`", trait_name, ty)
-                } else {
-                    "only a named type without type parameters can have an `impl`".to_string()
-                })
-                .finish()
-        }
-
-        TypeError::UnboundedTypeParam {
-            param,
-            trait_name,
-            origin,
-        } => {
-            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
-            let span = clamp(span);
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(format!(
-                    "`{param}` is not known to implement {trait_name}"
-                ))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("this needs {param}: {trait_name}"))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `where {param}: {trait_name}` to the function, so every call is checked for it"
-                ))
-                .finish()
-        }
-
-        TypeError::MissingTraitMethod {
-            trait_name,
-            method_name,
-            impl_ty,
-            span,
-        } => {
-            let msg = format!(
-                "impl {} for {} is missing method {}",
-                trait_name, impl_ty, method_name
-            );
-            let span = clamp(
-                span.map(text_range_to_range)
-                    .unwrap_or(0..source_len.max(1).min(source_len)),
-            );
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("missing `{}`", method_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `fn {}` as `{}` declares it to the impl block",
-                    method_name, trait_name
-                ))
-                .finish()
-        }
-
-        TypeError::TraitMethodSignatureMismatch {
-            trait_name,
-            method_name,
-            expected,
-            found,
-            span,
-        } => {
-            let msg = format!(
-                "method {} in impl {} has wrong signature: expected {}, found {}",
-                method_name, trait_name, expected, found
-            );
-            let span = clamp(
-                span.map(text_range_to_range)
-                    .unwrap_or(0..source_len.max(1).min(source_len)),
-            );
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!(
-                            "`{}` declares {}, this is {}",
-                            trait_name, expected, found
-                        ))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::MissingField {
-            struct_name,
-            field_name,
-            span,
-        } => {
-            let msg = format!("missing field {} in struct {}", field_name, struct_name);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("field `{}` is required", field_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("add `{}: <value>`", field_name))
-                .finish()
-        }
-
-        TypeError::UnknownField {
-            struct_name,
-            field_name,
-            span,
-        } => {
-            let msg = format!("unknown field {} in struct {}", field_name, struct_name);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{}` has no field `{}`", struct_name, field_name))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::NoSuchField {
-            ty,
-            field_name,
-            span,
-        } => {
-            let msg = format!("type {} has no field {}", ty, field_name);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("no field `{}`", field_name))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::NoSuchMethod {
-            ty,
-            method_name,
-            span,
-        } => {
-            let msg = format!("no method `{}` on type `{}`", method_name, ty);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("method `{}` not found", method_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "type `{}` has no trait impl providing `{}`",
-                    ty, method_name
-                ))
-                .finish()
-        }
-
-        TypeError::ManualContinuityPromotionDisabled { span } => {
-            let msg = "`Continuity.promote()` is disabled";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("manual authority changes are no longer part of the Mesh surface")
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state",
-                )
-                .finish()
-        }
-
-        TypeError::UnknownVariant { name, span, .. } => {
-            let msg = format!("unknown variant: {}", name);
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("not a known variant")
-                        .with_color(Color::Red),
-                );
-
-            if let Some(fix) = error_fix_suggestion(error, suggestions) {
-                builder.set_help(fix);
-            }
-
-            builder.finish()
-        }
-
-        TypeError::OrPatternBindingMismatch {
-            expected_bindings,
-            found_bindings,
-            span,
-        } => {
-            let msg = format!(
-                "or-pattern alternatives bind different variables: [{}] vs [{}]",
-                expected_bindings.join(", "),
-                found_bindings.join(", ")
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("alternatives must bind the same variables")
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "all alternatives in an or-pattern must bind the same set of variable names",
-                )
-                .finish()
-        }
-
-        TypeError::NonExhaustiveMatch {
-            scrutinee_type,
-            missing_patterns,
-            span,
-        } => {
-            let msg = format!("non-exhaustive match on `{}`", scrutinee_type);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("missing: {}", missing_patterns.join(", ")))
-                        .with_color(Color::Red),
-                )
-                .with_help("add the missing patterns or a wildcard `_` arm")
-                .finish()
-        }
-
-        TypeError::NonExhaustiveClauses {
-            scrutinee_type,
-            missing_patterns,
-            span,
-        } => {
-            let msg = format!("clauses do not cover every `{}`", scrutinee_type);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("missing: {}", missing_patterns.join(", ")))
-                        .with_color(Color::Yellow),
-                )
-                .with_help("add a clause for the missing patterns: a call no clause matches panics")
-                .finish()
-        }
-
-        TypeError::RedundantArm { arm_index, span } => {
-            let msg = format!("redundant match arm (arm {})", arm_index + 1);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("this arm is unreachable")
-                        .with_color(Color::Yellow),
-                )
-                .with_help("remove this arm or reorder the match")
-                .finish()
-        }
-
-        TypeError::SendTypeMismatch {
-            expected,
-            found,
-            span,
-        } => {
-            let msg = format!(
-                "message type mismatch: expected {}, found {}",
-                expected, found
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("expected {}, found {}", expected, found))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("this Pid accepts messages of type {}", expected))
-                .finish()
-        }
-
-        TypeError::SelfOutsideActor { span } => {
-            let msg = "self() used outside actor block";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("self() is only available inside an actor block")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::SpawnNonFunction { found, span } => {
-            let msg = format!("cannot spawn non-function: found {}", found);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("expected a function, found {}", found))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::ReceiveOutsideActor { span } => {
-            let msg = "receive used outside actor block";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("receive is only available inside an actor block")
-                        .with_color(Color::Red),
-                )
-                .with_help("move this receive expression into an actor block")
-                .finish()
-        }
-
-        TypeError::InvalidChildStart {
-            child_name,
-            found,
-            span,
-        } => {
-            let msg = format!(
-                "child `{}` start function must return Pid, found `{}`",
-                child_name, found
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("expected Pid<M>, found {}", found))
-                        .with_color(Color::Red),
-                )
-                .with_help("the start function must call spawn() and return a Pid")
-                .finish()
-        }
-
-        TypeError::InvalidStrategy { found, span } => {
-            let msg = format!("unknown supervision strategy `{}`", found);
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(
-                            "expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
-                        )
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::InvalidRestartType {
-            found,
-            child_name,
-            span,
-        } => {
-            let msg = format!(
-                "invalid restart type `{}` for child `{}`",
-                found, child_name
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("expected permanent, transient, or temporary")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::InvalidShutdownValue {
-            found,
-            child_name,
-            span,
-        } => {
-            let msg = format!(
-                "invalid shutdown value `{}` for child `{}`",
-                found, child_name
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("expected a positive integer or brutal_kill")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        // ── Multi-clause function diagnostics (11-02) ──────────────────
-        TypeError::CatchAllNotLast {
-            fn_name,
-            arity,
-            span,
-        } => {
-            let msg = format!(
-                "catch-all clause must be the last clause of function `{}/{}`",
-                fn_name, arity
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("clauses after a catch-all are unreachable")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-        TypeError::NonConsecutiveClauses {
-            fn_name,
-            arity,
-            first_span,
-            second_span,
-        } => {
-            let msg = format!(
-                "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
-                fn_name, arity
-            );
-            let range = clamp(text_range_to_range(*second_span));
-            let first_range = clamp(text_range_to_range(*first_span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), first_range))
-                        .with_message("first definition here")
-                        .with_color(Color::Blue),
-                )
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("non-consecutive redefinition here")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-        TypeError::ClauseArityMismatch {
-            fn_name,
-            expected_arity,
-            found_arity,
-            span,
-        } => {
-            let msg = format!(
-                "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
-                fn_name, expected_arity, found_arity
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("expected {} parameters", expected_arity))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-        TypeError::NonFirstClauseAnnotation {
-            fn_name,
-            what,
-            span,
-        } => {
-            let msg = format!(
-                "{} on non-first clause of `{}` will be ignored",
-                what, fn_name
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Warning, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("only the first clause should have this annotation")
-                        .with_color(Color::Yellow),
-                )
-                .finish()
-        }
-        TypeError::DuplicateImpl {
-            trait_name,
-            impl_type,
-            first_impl,
-        } => {
-            let msg = format!(
-                "duplicate impl: `{}` is already implemented for `{}`",
-                trait_name, impl_type
-            );
-            let span = clamp(0..source_len.max(1).min(source_len));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(first_impl.to_string())
-                        .with_color(Color::Red),
-                )
-                .with_help("remove one of the conflicting impl blocks")
-                .finish()
-        }
-
-        TypeError::AmbiguousMethod {
-            method_name,
-            candidate_traits,
-            ty,
-            span,
-        } => {
-            let msg = format!(
-                "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
-                method_name,
-                ty,
-                candidate_traits.join(", ")
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            let suggestions: Vec<String> = candidate_traits
-                .iter()
-                .map(|t| format!("{}.{}(value)", t, method_name))
-                .collect();
-            let help = format!("use qualified syntax: {}", suggestions.join(" or "));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("multiple traits provide `{}`", method_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(help)
-                .finish()
-        }
-
-        TypeError::UnsupportedDerive {
-            trait_name,
-            type_name,
-            span,
-        } => {
-            let msg = format!("cannot derive `{}` for `{}`", trait_name, type_name);
-            let span = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("`{}` cannot be derived here", trait_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
-                )
-                .finish()
-        }
-
-        TypeError::MissingDerivePrerequisite {
-            trait_name,
-            requires,
-            type_name,
-            span,
-        } => {
-            let msg = format!(
-                "cannot derive `{}` for `{}` without `{}`",
-                trait_name, type_name, requires
-            );
-            let span = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!(
-                            "`{}` requires `{}` for its implementation",
-                            trait_name, requires
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `{}` to the deriving list: deriving({}, {})",
-                    requires, requires, trait_name
-                ))
-                .finish()
-        }
-
-        TypeError::BreakOutsideLoop { span } => {
-            let msg = "`break` outside of loop";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("`break` can only be used inside a `while` or `for` loop")
-                        .with_color(Color::Red),
-                )
-                .with_help("move this `break` inside a loop body")
-                .finish()
-        }
-
-        TypeError::ContinueOutsideLoop { span } => {
-            let msg = "`continue` outside of loop";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("`continue` can only be used inside a `while` or `for` loop")
-                        .with_color(Color::Red),
-                )
-                .with_help("move this `continue` inside a loop body")
-                .finish()
-        }
-
-        TypeError::ImportModuleNotFound {
-            module_name,
-            span,
-            suggestion,
-        } => {
-            let msg = "module not found";
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("module `{}` not found", module_name))
-                        .with_color(Color::Red),
-                );
-
-            if let Some(sug) = suggestion {
-                builder.set_note(format!("did you mean `{}`?", sug));
-            }
-
-            builder.finish()
-        }
-
-        TypeError::ImportNameNotFound {
-            module_name,
-            name,
-            span,
-            available,
-        } => {
-            let msg = "name not found in module";
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!(
-                            "`{}` is not exported by module `{}`",
-                            name, module_name
-                        ))
-                        .with_color(Color::Red),
-                );
-
-            if !available.is_empty() {
-                builder.set_note(format!("available exports: {}", available.join(", ")));
-            }
-
-            builder.finish()
-        }
-
-        TypeError::PrivateItem {
-            module_name,
-            name,
-            span,
-        } => {
-            let msg = "private item cannot be imported";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{}` is private in module `{}`", name, module_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `pub` to `{}` in module `{}` to make it accessible",
-                    name, module_name
-                ))
-                .finish()
-        }
-
-        TypeError::HttpClusteredInvalidArguments { reason, span } => {
-            let msg = "invalid HTTP.clustered(...) usage";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason.clone())
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference",
-                )
-                .finish()
-        }
-
-        TypeError::HttpClusteredPrivateHandler { handler_name, span } => {
-            let msg = "clustered route handler must be public";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!(
-                            "`{}` is private and cannot cross the clustered route boundary",
-                            handler_name
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `pub` to `{}` or remove `HTTP.clustered(...)`",
-                    handler_name
-                ))
-                .finish()
-        }
-
-        TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => {
-            let msg = "HTTP.clustered(...) is only valid in route handler position";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(
-                            "use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`",
-                        )
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::HttpClusteredConflictingReplicationCount {
-            runtime_name,
-            first_count,
-            current_count,
-            first_span,
-            span,
-        } => {
-            let msg = "conflicting clustered route replication counts";
-            let first_range = clamp(text_range_to_range(*first_span));
-            let current_range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), current_range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), first_range))
-                        .with_message(format!(
-                            "`{}` was first declared here with replication count {}",
-                            runtime_name, first_count
-                        ))
-                        .with_color(Color::Blue),
-                )
-                .with_label(
-                    Label::new((fname.clone(), current_range))
-                        .with_message(format!(
-                            "conflicting replication count {} for `{}`",
-                            current_count, runtime_name
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help("keep one replication count per clustered route handler runtime name")
-                .finish()
-        }
-
-        TypeError::HttpClusteredImportedOriginMissing { handler_name, span } => {
-            let msg = "imported clustered route handler is missing origin metadata";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!(
-                            "cannot determine the defining module for imported handler `{}`",
-                            handler_name
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_note(
-                    "imported bare handlers must preserve their defining module so clustered route lowering can keep the real runtime name",
-                )
-                .finish()
-        }
-
-        TypeError::TryIncompatibleReturn {
-            operand_ty,
-            fn_return_ty,
-            span,
-        } => {
-            let msg = "`?` operand is incompatible with the function return type";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("cannot use `?` here")
-                        .with_color(Color::Red),
-                )
-                .with_note(format!(
-                    "cannot propagate `{}` from a function returning `{}`; Result errors must match or have a From conversion, and Option requires an Option return type",
-                    operand_ty, fn_return_ty
-                ))
-                .finish()
-        }
-
-        TypeError::TryOnNonResultOption { operand_ty, span } => {
-            let msg = "`?` requires `Result` or `Option`";
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("type `{}` is not `Result` or `Option`", operand_ty))
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "the `?` operator can only be used on `Result<T, E>` or `Option<T>` values",
-                )
-                .finish()
-        }
-
-        TypeError::NonSerializableField {
-            struct_name: _,
-            field_name,
-            field_type,
-            span,
-        } => {
-            let msg = format!(
-                "field `{}` of type `{}` is not JSON-serializable",
-                field_name, field_type
-            );
-            let span = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("`{}` is not serializable", field_type))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)",
-                    field_type
-                ))
-                .finish()
-        }
-
-        TypeError::NonMappableField {
-            struct_name: _,
-            field_name,
-            field_type,
-            span,
-        } => {
-            let msg = format!(
-                "field `{}` has type `{}` which cannot be mapped from a database row",
-                field_name, field_type
-            );
-            let span = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("`{}` is not row-mappable", field_type))
-                        .with_color(Color::Red),
-                )
-                .with_help("only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)")
-                .finish()
-        }
-
-        TypeError::MissingAssocType {
-            trait_name,
-            assoc_name,
-            impl_ty,
-        } => {
-            let msg = format!(
-                "impl `{}` for `{}` is missing associated type `{}`",
-                trait_name, impl_ty, assoc_name
-            );
-            let span = clamp(0..source_len.max(1).min(source_len));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("missing `type {} = ...`", assoc_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "add `type {} = <ConcreteType>` to the impl block",
-                    assoc_name
-                ))
-                .finish()
-        }
-
-        TypeError::ExtraAssocType {
-            trait_name,
-            assoc_name,
-            impl_ty,
-        } => {
-            let msg = format!(
-                "impl `{}` for `{}` provides associated type `{}` which is not declared by the trait",
-                trait_name, impl_ty, assoc_name
-            );
-            let span = clamp(0..source_len.max(1).min(source_len));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!(
-                            "`{}` is not declared by `{}`",
-                            assoc_name, trait_name
-                        ))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
-        TypeError::UnresolvedAssocType { assoc_name, span } => {
-            let msg = format!("cannot resolve associated type `{}`", assoc_name);
-            let span = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), span.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), span))
-                        .with_message(format!("no associated type `{assoc_name}` is declared"))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "declare it in the interface with `type {assoc_name}`, and bind it in each impl"
-                ))
-                .finish()
-        }
-
-        TypeError::SlotPipeOutOfRange {
-            slot,
-            fn_name,
-            arity,
-            span,
-        } => {
-            let msg = if *arity <= 1 {
-                format!(
-                    "slot position {} is out of range: `{}` takes {} argument(s)",
-                    slot, fn_name, arity
-                )
-            } else {
-                format!(
-                    "slot position {} is out of range: `{}` takes {} arguments, so valid slot positions are 2\u{2013}{}",
-                    slot, fn_name, arity, arity
-                )
-            };
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("slot {} exceeds function arity {}", slot, arity))
-                        .with_color(Color::Red),
-                );
-
-            if *arity <= 1 {
-                builder.set_help("use |> to pipe as the first argument");
-            } else {
-                builder.set_help(format!(
-                    "use |> to pipe as the first argument, or |2>...|{}> for other positions",
-                    arity
-                ));
-            }
-
-            builder.finish()
-        }
-
-        TypeError::UndefinedType {
-            alias_name,
-            target_name,
-            span,
-        } => {
-            let msg = format!(
-                "type alias `{}` references undefined type `{}`",
-                alias_name, target_name
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{}` is not defined", target_name))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "define `{}` as a struct, sum type, or type alias before using it here",
-                    target_name
-                ))
-                .finish()
-        }
-        TypeError::NativeDeclarationInvalid { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("invalid native function declaration")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason)
-                        .with_color(Color::Red),
-                )
-                .with_help("use a public, fully annotated, non-generic signature and a C identifier symbol")
-                .finish()
-        }
-        TypeError::ExportDeclarationInvalid { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("invalid exported function declaration")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason)
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`",
-                )
-                .finish()
-        }
-        TypeError::InvalidLetPattern { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("invalid let destructuring pattern")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason)
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
-                )
-                .finish()
-        }
-        TypeError::DuplicateField { field_name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("field `{field_name}` is given more than once"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("given again here")
-                        .with_color(Color::Red),
-                )
-                .with_help("give each field one value")
-                .finish()
-        }
-        TypeError::UnderivableField {
-            trait_name,
-            type_name,
-            field_name,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!(
-                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` holds a function"
-                ))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("functions cannot be compared, hashed or shown")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("remove `{trait_name}` from the deriving list"))
-                .finish()
-        }
-        TypeError::DuplicateVariant {
-            variant,
-            first_type,
-            second_type,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!(
-                    "variant `{variant}` of `{second_type}` is already a variant of `{first_type}`"
-                ))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{variant}` would name either type's variant"))
-                        .with_color(Color::Red),
-                )
-                .with_help("give one of the variants another name")
-                .finish()
-        }
-        TypeError::AmbiguousImplMethod {
-            method,
-            receiver,
-            candidates,
-            found,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            let returns = candidates
-                .iter()
-                .map(|ty| format!("`{ty}`"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let (message, label) = match found {
-                Some(found) => (
-                    format!("no impl's `{method}` on `{receiver}` returns `{found}`"),
-                    format!("they return {returns}"),
-                ),
-                None => (
-                    format!("cannot tell which impl's `{method}` to call on `{receiver}`"),
-                    format!("its impls return {returns}"),
-                ),
-            };
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(message)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(label)
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "give the result a type: `let x :: {} = value.{method}()`",
-                    candidates
-                        .first()
-                        .map_or_else(|| "Int".to_string(), |ty| ty.to_string())
-                ))
-                .finish()
-        }
-        TypeError::DuplicateDefinition { kind, name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("{kind} `{name}` is defined twice"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("defined again here")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("rename or remove one of the two `{name}`s"))
-                .finish()
-        }
-        TypeError::UnknownType { name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("unknown type `{name}`"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("no type has this name")
-                        .with_color(Color::Red),
-                )
-                .with_help("check the spelling, or define or import the type")
-                .finish()
-        }
-        TypeError::NoSuchModuleFunction {
-            module,
-            name,
-            available,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            let mut report = Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("module `{module}` has no function `{name}`"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("not a function of `{module}`"))
-                        .with_color(Color::Red),
-                );
-            if !available.is_empty() {
-                report = report.with_help(format!("`{module}` has {}", available.join(", ")));
-            }
-            report.finish()
-        }
-        TypeError::AssertReceiveOutsideTest { span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(error.to_string())
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("not in a test file")
-                        .with_color(Color::Red),
-                )
-                .with_help("elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for")
-                .finish()
-        }
-        TypeError::GenericImplTarget { name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(error.to_string())
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{name}` takes type parameters"))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "implement it for a type without type parameters, such as a struct \
-                     holding the `{name}` you mean"
-                ))
-                .finish()
-        }
-        TypeError::OverloadedFunctionValue {
-            name,
-            arities,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            let counts: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
-            let counts = match counts.split_last() {
-                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-                None => String::new(),
-            };
-            let shown = arities.iter().copied().find(|&a| a > 0).unwrap_or(0);
-            let params: Vec<String> = (0..shown).map(|i| format!("a{i}")).collect();
-            let params = params.join(", ");
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(error.to_string())
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("each arity is its own function")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "call it with {counts} arguments; as a value, use a closure \
-                     that calls one: `fn {params} -> {name}({params}) end`"
-                ))
-                .finish()
-        }
-        TypeError::InvalidConcat { op, ty, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("`{op}` joins strings or lists, not `{ty}`"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("these operands are `{ty}`"))
-                        .with_color(Color::Red),
-                )
-                .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
-                .finish()
-        }
-        TypeError::TopLevelLet { name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("`let {name}` outside a function is not supported"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("a module has no global bindings")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
-                ))
-                .finish()
-        }
-        TypeError::ModuleNotImported { name, module, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("module `{name}` is not imported"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("a module of this project")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("add `import {module}` at the top of the file"))
-                .finish()
-        }
-        TypeError::ActorMessageTypeUnknown { actor, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("cannot tell what type of message `{actor}` receives"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("only untyped `Pid`s reach this actor")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`"
-                ))
-                .finish()
-        }
-        TypeError::IndexingUnsupported { span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("`value[index]` indexing is not supported")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("no indexing syntax")
-                        .with_color(Color::Red),
-                )
-                .with_help(
-                    "use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`",
-                )
-                .finish()
-        }
-        TypeError::InvalidLiteral { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(reason)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("invalid literal")
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-        TypeError::UnknownInterface { name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("unknown interface `{name}`"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("no interface has this name")
-                        .with_color(Color::Red),
-                )
-                .with_help("check the spelling, or declare the interface or import its module")
-                .finish()
-        }
-        TypeError::UnknownFieldOwner { field, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("cannot tell which type has the field `{field}`"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("nothing here fixes the type of this value")
-                        .with_color(Color::Red),
-                )
-                .with_help("annotate the value's type, such as a parameter `p :: Point`")
-                .finish()
-        }
-        TypeError::RigidTypeParam { param, found, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!(
-                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
-                ))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("`{param}` is declared here"))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "a generic function must work for every `{param}`: use `{found}` in its signature instead, or keep `{param}` values as they are"
-                ))
-                .finish()
-        }
-        TypeError::AmbiguousStaticMethod {
-            method,
-            types,
-            span,
-        } => {
-            let range = clamp(text_range_to_range(*span));
-            let example = types.first().cloned().unwrap_or_else(|| "Type".to_string());
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!(
-                    "`{method}` is a static method of several types: {}",
-                    types.join(", ")
-                ))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("which type's is meant?")
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("call it on the type: `{example}.{method}()`"))
-                .finish()
-        }
-        TypeError::AmbiguousDefault { span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("cannot tell which type `default()` builds here")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("nothing fixes this value's type")
-                        .with_color(Color::Red),
-                )
-                .with_help("annotate it: `let x :: Int = default()`")
-                .finish()
-        }
-        TypeError::CyclicAlias { alias_name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("type alias `{alias_name}` refers to itself"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("expanding it never ends")
-                        .with_color(Color::Red),
-                )
-                .with_help("an alias names an existing type; use a struct or sum type for a recursive type")
-                .finish()
-        }
-        TypeError::NotAStruct { ty, span } => {
-            let range = clamp(text_range_to_range(*span));
-            let (message, label) = if matches!(ty, Ty::Var(_)) {
-                (
-                    "a struct update needs a struct value".to_string(),
-                    "the type of this value is not known here".to_string(),
-                )
-            } else {
-                (
-                    format!("`{ty}` is not a struct"),
-                    "not a struct".to_string(),
-                )
-            };
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(message)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(label)
-                        .with_color(Color::Red),
-                )
-                .with_help("`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one")
-                .finish()
-        }
-        TypeError::DuplicateBinding { name, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(format!("`{name}` is bound twice in one pattern"))
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message("each name in a pattern binds one value")
-                        .with_color(Color::Red),
-                )
-                .with_help("rename one of them, or compare the values in a `when` guard")
-                .finish()
-        }
-        TypeError::InvalidPassThroughArm { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("this arm has no `->`, so its pattern must also be its value")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason)
-                        .with_color(Color::Red),
-                )
-                .with_help("write the value after `->`: `pattern -> value`")
-                .finish()
-        }
-        TypeError::ResourceViolation { reason, span } => {
-            let range = clamp(text_range_to_range(*span));
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message("resource ownership violation")
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(reason)
-                        .with_color(Color::Red),
-                )
-                .with_help("move each resource once, or pass it to a direct `borrow` parameter")
-                .finish()
-        }
-    };
+    let report = describe(error, source, suggestions).report(&fname, code, config);
 
     let mut buf = Vec::new();
     let cache = ariadne::sources([(fname, source.to_string())]);
