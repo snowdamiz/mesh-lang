@@ -5495,7 +5495,16 @@ fn infer_multi_clause_fn(
 
     // Store fn constraints if any.
     if !where_constraints.is_empty() {
-        let param_type_param_names: Vec<Option<String>> = (0..arity).map(|_| None).collect();
+        let param_type_param_names = first
+            .param_list()
+            .iter()
+            .flat_map(|list| list.params())
+            .map(|param| {
+                param
+                    .type_annotation()
+                    .and_then(|ann| annotation_type_param(&ann, &type_params))
+            })
+            .collect();
         fn_constraints.insert(
             env_key.clone(),
             FnConstraints {
@@ -5530,58 +5539,15 @@ fn infer_multi_clause_fn(
             env.insert(name.clone(), Scheme::mono(ty.clone()));
         }
 
-        // Process each parameter's pattern and unify with param type.
-        let param_list = clause.param_list();
-        let params: Vec<_> = param_list.iter().flat_map(|pl| pl.params()).collect();
-        let param_patterns: Vec<Pattern> = params.iter().filter_map(|p| p.pattern()).collect();
-        check_unique_binders(ctx, &param_patterns);
-
-        let mut clause_abs_pats: Vec<AbsPat> = Vec::new();
-
-        for (param_idx, param) in params.iter().enumerate() {
-            if param_idx >= arity {
-                break;
-            }
-
-            if let Some(pat) = param.pattern() {
-                // Pattern parameter -- infer the pattern type and unify.
-                let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-                ctx.unify(
-                    param_types[param_idx].clone(),
-                    pat_ty,
-                    ConstraintOrigin::Pattern {
-                        pattern_span: pat.syntax().text_range(),
-                    },
-                )?;
-
-                // Convert to abstract pattern for exhaustiveness.
-                let abs_pat = ast_pattern_to_abstract(&pat, env, type_registry);
-                clause_abs_pats.push(abs_pat);
-            } else if let Some(name_tok) = param.name() {
-                // Regular named parameter -- treat as wildcard pattern, bind the name.
-                let name_text = name_tok.text().to_string();
-                env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
-                clause_abs_pats.push(AbsPat::Wildcard);
-            } else {
-                clause_abs_pats.push(AbsPat::Wildcard);
-            }
-        }
-
-        // For exhaustiveness: combine param patterns into a single abstract pattern.
-        // For single-param functions, use the pattern directly.
-        // For multi-param functions, combine into a tuple pattern.
-        let combined_pat = if clause_abs_pats.len() == 1 {
-            clause_abs_pats.into_iter().next().unwrap()
-        } else if clause_abs_pats.is_empty() {
-            AbsPat::Wildcard
-        } else {
-            AbsPat::Constructor {
-                name: "Tuple".to_string(),
-                type_name: "Tuple".to_string(),
-                args: clause_abs_pats,
-            }
-        };
-        arm_patterns.push(combined_pat);
+        arm_patterns.push(bind_clause_params(
+            ctx,
+            env,
+            clause.param_list(),
+            &param_types,
+            &type_params,
+            types,
+            type_registry,
+        )?);
 
         // Process guard expression if present.
         let has_guard = clause.guard().is_some();
@@ -11349,6 +11315,71 @@ fn infer_closure(
     Ok(Ty::Fun(param_types, Box::new(body_ty)))
 }
 
+/// Binds a clause's parameters to the function's parameter types: a
+/// pattern's bindings, or a name, with the type an annotation declares
+/// (`type_params` are the function's). Returns what the clause matches its
+/// arguments with, for exhaustiveness: its one parameter's pattern, or a
+/// tuple of several.
+#[allow(clippy::too_many_arguments)]
+fn bind_clause_params(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    param_list: Option<mesh_parser::ast::item::ParamList>,
+    param_types: &[Ty],
+    type_params: &FxHashMap<String, Ty>,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<AbsPat, TypeError> {
+    let params: Vec<_> = param_list.iter().flat_map(|list| list.params()).collect();
+    let patterns: Vec<Pattern> = params.iter().filter_map(|param| param.pattern()).collect();
+    check_unique_binders(ctx, &patterns);
+
+    let mut clause_pats = Vec::new();
+    for (param, param_ty) in params.iter().zip(param_types) {
+        if let Some(ann) = param.type_annotation() {
+            let declared = match annotation_type_param(&ann, type_params) {
+                Some(name) => Some(type_params[&name].clone()),
+                None => resolve_type_annotation(ctx, &ann, type_registry)
+                    .map(|ty| with_declared_type_params(&ty, type_params)),
+            };
+            if let Some(declared) = declared {
+                ctx.unify(
+                    param_ty.clone(),
+                    declared,
+                    ConstraintOrigin::Annotation {
+                        annotation_span: ann.syntax().text_range(),
+                    },
+                )?;
+            }
+        }
+        if let Some(pat) = param.pattern() {
+            let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+            ctx.unify(
+                param_ty.clone(),
+                pat_ty,
+                ConstraintOrigin::Pattern {
+                    pattern_span: pat.syntax().text_range(),
+                },
+            )?;
+            clause_pats.push(ast_pattern_to_abstract(&pat, env, type_registry));
+        } else {
+            if let Some(name) = param.name() {
+                env.insert(name.text().to_string(), Scheme::mono(param_ty.clone()));
+            }
+            clause_pats.push(AbsPat::Wildcard);
+        }
+    }
+    Ok(match clause_pats.len() {
+        0 => AbsPat::Wildcard,
+        1 => clause_pats.remove(0),
+        _ => AbsPat::Constructor {
+            name: "Tuple".to_string(),
+            type_name: "Tuple".to_string(),
+            args: clause_pats,
+        },
+    })
+}
+
 /// Infer the type of a multi-clause closure.
 ///
 /// Multi-clause closures like `fn 0 -> "zero" | n -> to_string(n) end` are
@@ -11417,57 +11448,15 @@ fn infer_multi_clause_closure(
             .map_or(span, |body| body.syntax().text_range());
         env.push_scope();
 
-        let mut clause_abs_pats = Vec::new();
-        if let Some(param_list) = &param_list {
-            let patterns: Vec<Pattern> = param_list.params().filter_map(|p| p.pattern()).collect();
-            check_unique_binders(ctx, &patterns);
-        }
-        if let Some(param_list) = param_list {
-            for (param_idx, param) in param_list.params().enumerate() {
-                if param_idx >= arity {
-                    break;
-                }
-                if let Some(pat) = param.pattern() {
-                    // Pattern parameter: infer type and unify with param position.
-                    let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-                    ctx.unify(
-                        param_types[param_idx].clone(),
-                        pat_ty,
-                        ConstraintOrigin::Pattern {
-                            pattern_span: pat.syntax().text_range(),
-                        },
-                    )?;
-                    clause_abs_pats.push(ast_pattern_to_abstract(&pat, env, type_registry));
-                } else {
-                    if let Some(ann) = param.type_annotation() {
-                        if let Some(annotated) = resolve_type_annotation(ctx, &ann, type_registry) {
-                            ctx.unify(
-                                param_types[param_idx].clone(),
-                                annotated,
-                                ConstraintOrigin::Annotation {
-                                    annotation_span: ann.syntax().text_range(),
-                                },
-                            )?;
-                        }
-                    }
-                    if let Some(name_tok) = param.name() {
-                        // Regular named parameter: bind as wildcard.
-                        let name_text = name_tok.text().to_string();
-                        env.insert(name_text, Scheme::mono(param_types[param_idx].clone()));
-                    }
-                    clause_abs_pats.push(AbsPat::Wildcard);
-                }
-            }
-        }
-        arm_patterns.push(match clause_abs_pats.len() {
-            0 => AbsPat::Wildcard,
-            1 => clause_abs_pats.pop().unwrap(),
-            _ => AbsPat::Constructor {
-                name: "Tuple".to_string(),
-                type_name: "Tuple".to_string(),
-                args: clause_abs_pats,
-            },
-        });
+        arm_patterns.push(bind_clause_params(
+            ctx,
+            env,
+            param_list,
+            &param_types,
+            &FxHashMap::default(),
+            types,
+            type_registry,
+        )?);
         arm_has_guard.push(guard.is_some());
         arm_spans.push(span);
 

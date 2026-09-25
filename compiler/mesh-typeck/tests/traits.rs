@@ -353,3 +353,12 @@ fn a_function_used_as_a_value_keeps_its_requirements() {
     let result = check_source(&shadowed);
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// A where-clause holds for a function written `fn f<T>(x :: T) = ...`:
+/// its parameters' annotations were ignored, so no argument was checked
+/// against the clause.
+#[test]
+fn a_where_clause_holds_for_an_expression_bodied_function() {
+    let src = "struct Box do\n  n :: Int\nend\n\nfn show<T>(x :: T) -> String where T: Display = \"shown\"\n\nfn main() do\n  show(Box { n: 1 })\nend\n";
+    assert_has_error(&check_source(src), box_lacks_display, "show(Box)");
+}

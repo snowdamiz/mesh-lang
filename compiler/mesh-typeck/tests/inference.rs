@@ -323,3 +323,26 @@ fn an_unfinished_expression_has_no_type_error_of_its_own() {
         assert!(result.errors.is_empty(), "{src}: {:?}", result.errors);
     }
 }
+
+/// A parameter's annotation holds in a function written `fn f(x :: Int) =
+/// ...`, with a guard, or in several clauses, as in a `do` body: it was
+/// ignored there, and `id_int("a")` compiled.
+#[test]
+fn clause_parameter_annotations_are_checked() {
+    for def in [
+        "fn id_int(x :: Int) = x",
+        "fn id_int(x :: Int) when x > 0 do\n  x\nend\nfn id_int(x :: Int) = 0 - x",
+    ] {
+        let src = format!("{def}\n\nfn main() do\n  id_int(\"a\")\nend\n");
+        let result = mesh_typeck::check(&mesh_parser::parse(&src));
+        assert!(
+            result.errors.iter().any(|error| matches!(
+                error,
+                mesh_typeck::error::TypeError::Mismatch { expected, found, .. }
+                    if *expected == Ty::int() && *found == Ty::string()
+            )),
+            "{def}: {:?}",
+            result.errors
+        );
+    }
+}
