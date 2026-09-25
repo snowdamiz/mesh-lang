@@ -612,7 +612,7 @@ fn main() do
 end
 ```
 
-The `_` pattern is a wildcard that matches anything.
+The `_` pattern is a wildcard that matches anything. Arms go one per line, or on one line separated by `;`, as statements do: `case x do 0 -> "zero"; _ -> "other" end`.
 
 Every unguarded `case` or `match` must cover all possible values. The compiler reports a non-exhaustive match as an error and warns about redundant arms. An arm with a `when` guard does not count as exhaustive because the guard may be false.
 

@@ -628,7 +628,8 @@ fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(sp());
                     parts.push(ir::text("do"));
                 }
-                SyntaxKind::END_KW => {}
+                // Arms separated by `;` go on lines of their own.
+                SyntaxKind::END_KW | SyntaxKind::SEMICOLON => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     push_body_comment(&mut parts, &mut arms, &tok);
                 }
@@ -2624,6 +2625,14 @@ mod tests {
         assert_eq!(
             fmt("fn f(m) do\nfor {k, # key\nv} in m do\nk\nend\nend"),
             "fn f(m) do\n  for {k, # key\n    v} in m do\n    k\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn arms_separated_by_semicolons_go_on_lines_of_their_own() {
+        assert_eq!(
+            fmt("fn f(x) do\ncase x do 1 -> 2; _ -> 4 end\nend"),
+            "fn f(x) do\n  case x do\n    1 -> 2\n    _ -> 4\n  end\nend\n"
         );
     }
 

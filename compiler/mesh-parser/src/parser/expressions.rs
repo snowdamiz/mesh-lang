@@ -978,9 +978,9 @@ fn parse_case_expr(p: &mut Parser) -> MarkClosed {
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
 
-    // Parse match arms until END_KW.
+    // Parse match arms until END_KW, one per line or separated by `;`.
     loop {
-        p.eat_newlines();
+        p.eat_separators();
 
         if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
             break;
@@ -1854,9 +1854,10 @@ fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);
 
-    // Parse receive arms until END_KW, AFTER_KW, or EOF.
+    // Parse receive arms until END_KW, AFTER_KW, or EOF, one per line or
+    // separated by `;`.
     loop {
-        p.eat_newlines();
+        p.eat_separators();
 
         if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
             break;
@@ -1876,7 +1877,7 @@ fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
     }
 
     // The `after` clause ends the loop above; `end` may follow on its own line.
-    p.eat_newlines();
+    p.eat_separators();
 
     if !p.at(SyntaxKind::END_KW) {
         p.error_with_related(
