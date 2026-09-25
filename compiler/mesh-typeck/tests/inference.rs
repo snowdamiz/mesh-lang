@@ -306,3 +306,20 @@ fn test_bare_generic_annotation_infers_its_arguments() {
     );
     assert_result_type(&result, Ty::bool());
 }
+
+/// An expression the parser could not complete has its parse error and no
+/// type error besides: it used to add "expected Never, found Never".
+#[test]
+fn an_unfinished_expression_has_no_type_error_of_its_own() {
+    for src in [
+        "fn main() do\n  let x = 1 +\nend\n",
+        "fn main() do\n  let x = 1 |>\nend\n",
+        "fn main() do\n  let x = -\nend\n",
+        "fn main() do\n  let x =\nend\n",
+    ] {
+        let parse = mesh_parser::parse(src);
+        assert!(!parse.errors().is_empty(), "{src}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{src}: {:?}", result.errors);
+    }
+}

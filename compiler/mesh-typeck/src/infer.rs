@@ -8008,15 +8008,7 @@ fn infer_let_binding(
     ctx.enter_level();
     let pending_before = ctx.pending_fields.len();
 
-    let init_expr = let_.initializer().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let init_expr = let_.initializer().ok_or_else(incomplete)?;
 
     let init_ty = match infer_expr(
         ctx,
@@ -9148,24 +9140,8 @@ fn infer_binary(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let lhs_expr = bin.lhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
-    let rhs_expr = bin.rhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let lhs_expr = bin.lhs().ok_or_else(incomplete)?;
+    let rhs_expr = bin.rhs().ok_or_else(incomplete)?;
 
     let lhs_ty = infer_expr(
         ctx,
@@ -9362,15 +9338,7 @@ fn infer_unary(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let operand = un.operand().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let operand = un.operand().ok_or_else(incomplete)?;
 
     let operand_ty = infer_expr(
         ctx,
@@ -10219,15 +10187,7 @@ fn infer_call_inner(
     )? {
         return Ok(ty);
     }
-    let callee_expr = call.callee().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let callee_expr = call.callee().ok_or_else(incomplete)?;
 
     if is_http_clustered_callee(&callee_expr) {
         return infer_http_clustered_wrapper_call(
@@ -10638,6 +10598,17 @@ fn infer_overloaded_callee(
     Some(ty)
 }
 
+/// What an expression the parser could not complete (`1 +` with nothing
+/// after it) checks as: given up on, with no error of its own, since its
+/// parse error says what is wrong.
+fn incomplete() -> TypeError {
+    TypeError::Mismatch {
+        expected: Ty::Never,
+        found: Ty::Never,
+        origin: ConstraintOrigin::Builtin,
+    }
+}
+
 fn infer_pipe(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -10647,24 +10618,8 @@ fn infer_pipe(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let lhs = pipe.lhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
-    let rhs = pipe.rhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let lhs = pipe.lhs().ok_or_else(incomplete)?;
+    let rhs = pipe.rhs().ok_or_else(incomplete)?;
 
     let lhs_ty = infer_expr(
         ctx,
@@ -10698,15 +10653,7 @@ fn infer_pipe(
             // Pipe-aware call inference: `x |> f(a, b)` desugars to `f(x, a, b)`.
             // The piped argument constrains parameter zero before explicit arguments are
             // inferred, so later closures see types established by the lhs.
-            let callee_expr = call.callee().ok_or_else(|| {
-                let err = TypeError::Mismatch {
-                    expected: Ty::Never,
-                    found: Ty::Never,
-                    origin: ConstraintOrigin::Builtin,
-                };
-                ctx.errors.push(err.clone());
-                err
-            })?;
+            let callee_expr = call.callee().ok_or_else(incomplete)?;
 
             if is_http_clustered_callee(&callee_expr) {
                 let err = TypeError::HttpClusteredOutsideRouteHandlerPosition {
@@ -10985,24 +10932,8 @@ fn infer_slot_pipe(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let lhs = pipe.lhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
-    let rhs = pipe.rhs().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let lhs = pipe.lhs().ok_or_else(incomplete)?;
+    let rhs = pipe.rhs().ok_or_else(incomplete)?;
 
     let slot = pipe.slot().unwrap_or(2); // 1-indexed, >= 2 by parse guarantee
     let insert_idx = (slot - 1) as usize; // 0-indexed insert position in the final arg list
@@ -11035,15 +10966,7 @@ fn infer_slot_pipe(
 
     match &rhs {
         Expr::CallExpr(call) => {
-            let callee_expr = call.callee().ok_or_else(|| {
-                let err = TypeError::Mismatch {
-                    expected: Ty::Never,
-                    found: Ty::Never,
-                    origin: ConstraintOrigin::Builtin,
-                };
-                ctx.errors.push(err.clone());
-                err
-            })?;
+            let callee_expr = call.callee().ok_or_else(incomplete)?;
 
             if is_http_clustered_callee(&callee_expr) {
                 let err = TypeError::HttpClusteredOutsideRouteHandlerPosition {
@@ -12954,15 +12877,7 @@ fn infer_field_access(
     fn_constraints: &FxHashMap<String, FnConstraints>,
     is_method_call: bool,
 ) -> Result<Ty, TypeError> {
-    let base_expr = fa.base().ok_or_else(|| {
-        let err = TypeError::Mismatch {
-            expected: Ty::Never,
-            found: Ty::Never,
-            origin: ConstraintOrigin::Builtin,
-        };
-        ctx.errors.push(err.clone());
-        err
-    })?;
+    let base_expr = fa.base().ok_or_else(incomplete)?;
 
     let field_name = match fa.field() {
         Some(tok) => tok.text().to_string(),
