@@ -106,12 +106,6 @@ impl ModuleGraph {
     }
 }
 
-impl Default for ModuleGraph {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Topological sort of the module graph using Kahn's algorithm.
 ///
 /// Returns modules in dependency order: leaf modules (no dependencies) first,
@@ -181,50 +175,32 @@ pub fn topological_sort(graph: &ModuleGraph) -> Result<Vec<ModuleId>, CycleError
 
 /// Extract a cycle path from modules that remain unprocessed (in_degree > 0).
 ///
-/// Follows dependency edges among unprocessed modules until a module is revisited,
-/// forming the cycle path. Returns module names ending with the repeated name.
+/// A module stays unprocessed exactly when one of its dependencies does, so
+/// following unprocessed dependencies from one never stops: it reaches a
+/// module again. Returns the names on that cycle, ending with the repeated one.
 fn extract_cycle_path(graph: &ModuleGraph, in_degree: &[u32]) -> Vec<String> {
-    // Find any module still in a cycle (in_degree > 0).
-    let start = match (0..graph.modules.len()).find(|&i| in_degree[i] > 0) {
-        Some(i) => i,
-        None => return Vec::new(),
-    };
-
+    let unprocessed = |i: &usize| in_degree[*i] > 0;
+    let mut current = (0..graph.modules.len())
+        .find(unprocessed)
+        .expect("a cycle leaves modules unprocessed");
     let mut path = Vec::new();
     let mut visited = vec![false; graph.modules.len()];
-    let mut current = start;
-
-    loop {
-        if visited[current] {
-            // Found the cycle start -- trim path to just the cycle portion.
-            let cycle_start_name = &graph.modules[current].name;
-            let cycle_begin = path
-                .iter()
-                .position(|name: &String| name == cycle_start_name)
-                .unwrap_or(0);
-            let mut cycle: Vec<String> = path[cycle_begin..].to_vec();
-            cycle.push(cycle_start_name.clone());
-            return cycle;
-        }
-
+    while !visited[current] {
         visited[current] = true;
-        path.push(graph.modules[current].name.clone());
-
-        // Follow a dependency edge to another unprocessed module.
-        let next = graph.modules[current]
+        path.push(current);
+        current = graph.modules[current]
             .dependencies
             .iter()
-            .find(|dep| in_degree[dep.0 as usize] > 0);
-
-        match next {
-            Some(dep) => current = dep.0 as usize,
-            None => {
-                // Should not happen if in_degree > 0, but be safe.
-                path.push(graph.modules[current].name.clone());
-                return path;
-            }
-        }
+            .map(|dep| dep.0 as usize)
+            .find(unprocessed)
+            .expect("an unprocessed module has an unprocessed dependency");
     }
+    let begin = path.iter().position(|&i| i == current).unwrap_or(0);
+    path[begin..]
+        .iter()
+        .chain([&current])
+        .map(|&i| graph.modules[i].name.clone())
+        .collect()
 }
 
 #[cfg(test)]

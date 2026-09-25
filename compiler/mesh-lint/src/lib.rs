@@ -81,13 +81,12 @@ fn deep_nesting(node: &SyntaxNode, depth: usize, lints: &mut Vec<Lint>) {
 /// The body of a top-level `test`, `describe`, `setup` or `teardown` block
 /// (or one inside a `describe`) is a definition of its own, like a function's.
 fn is_test_block(closure: &SyntaxNode) -> bool {
-    let Some(call) = closure.parent() else {
-        return false;
-    };
-    matches!(
-        callee_name(&call).as_deref(),
-        Some("test" | "describe" | "setup" | "teardown")
-    ) && at_test_file_top_level(&call)
+    closure.parent().is_some_and(|call| {
+        matches!(
+            callee_name(&call).as_deref(),
+            Some("test" | "describe" | "setup" | "teardown")
+        ) && at_test_file_top_level(&call)
+    })
 }
 
 fn at_test_file_top_level(call: &SyntaxNode) -> bool {
@@ -135,14 +134,16 @@ fn pass_through_arm(arm: &SyntaxNode, lints: &mut Vec<Lint>) {
     let has_arrow = arm
         .children_with_tokens()
         .any(|element| element.kind() == SyntaxKind::ARROW);
-    let (Some(pattern), Some(body)) = (arm.first_child(), arm.last_child()) else {
-        return;
-    };
-    if has_arrow
-        && pattern != body
-        && stands_for_its_value(&pattern)
-        && significant_text(&pattern) == significant_text(&body)
-    {
+    let passes_through = arm
+        .first_child()
+        .zip(arm.last_child())
+        .is_some_and(|(pattern, body)| {
+            has_arrow
+                && pattern != body
+                && stands_for_its_value(&pattern)
+                && significant_text(&pattern) == significant_text(&body)
+        });
+    if passes_through {
         lints.push(Lint {
             rule: "pass-through-arm",
             message: "this arm returns exactly what it matched; write the pattern alone".to_owned(),
@@ -367,6 +368,29 @@ describe(\"group\") do
 end
 ";
         assert_eq!(findings(source), vec![]);
+    }
+
+    /// A `test` call that is not a statement of a test file (here, bound by
+    /// a `let` in a function) is an ordinary call with a trailing closure.
+    #[test]
+    fn a_nested_test_call_does_not_start_over() {
+        let source = "\
+fn f(a, b, c) do
+  let t = test(\"x\") do
+    if a do
+      if b do
+        if c do
+          if a do
+            1
+          end
+        end
+      end
+    end
+  end
+  t
+end
+";
+        assert_eq!(findings(source), vec![("deep-nesting", 6)]);
     }
 
     #[test]
