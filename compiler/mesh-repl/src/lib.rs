@@ -225,12 +225,12 @@ fn type_check_expression(expr: &str, session: &ReplSession) -> CommandResult {
         return CommandResult::Error(rendered.join("\n"));
     }
 
-    // Extract the result type
-    if let Some(ref ty) = typeck.result_type {
-        CommandResult::TypeInfo(format!("{} :: {}", expr, ty))
-    } else {
-        CommandResult::TypeInfo(format!("{} :: Unit", expr))
-    }
+    // The wrapper is the last item: `() -> T`, with T the expression's type.
+    let ty = match typeck.result_type {
+        Some(mesh_typeck::ty::Ty::Fun(_, result)) => *result,
+        _ => mesh_typeck::ty::Ty::Tuple(Vec::new()),
+    };
+    CommandResult::TypeInfo(format!("{expr} :: {ty}"))
 }
 
 /// Load a file and evaluate each top-level item.
@@ -554,17 +554,16 @@ mod tests {
     #[test]
     fn test_type_command_with_expression() {
         let mut session = ReplSession::new();
-        match process_command(":type 1 + 2", &mut session) {
-            CommandResult::TypeInfo(info) => {
-                assert!(info.contains("1 + 2"));
-                assert!(info.contains("Int"));
+        // The expression's type, not the `() -> Int` of the function
+        // wrapped around it to check it.
+        for (command, expected) in [
+            (":type 1 + 2", "1 + 2 :: Int"),
+            (":t \"a\" <> \"b\"", "\"a\" <> \"b\" :: String"),
+        ] {
+            match process_command(command, &mut session) {
+                CommandResult::TypeInfo(info) => assert_eq!(info, expected),
+                _ => panic!("expected TypeInfo for {command}"),
             }
-            CommandResult::Error(e) => {
-                // Type checking may fail depending on how the expression wraps
-                // In a real session, this should work
-                println!("Type check error (may be expected in unit test): {}", e);
-            }
-            _ => panic!("Expected TypeInfo or Error for :type 1 + 2"),
         }
     }
 
