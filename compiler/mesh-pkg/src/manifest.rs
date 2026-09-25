@@ -1145,7 +1145,8 @@ mod tests {
             declarations[0].provenance.syntax,
             SourceClusteredDeclarationSyntax::Decorator
         );
-        assert!(!declarations[0].provenance.span.is_empty());
+        let span = declarations[0].provenance.span;
+        assert!(span.start < span.end);
 
         assert_eq!(declarations[1].target, "Work.handle_retry");
         assert_eq!(
