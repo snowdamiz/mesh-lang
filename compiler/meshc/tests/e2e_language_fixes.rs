@@ -5106,6 +5106,42 @@ end
     );
 }
 
+/// A module's function bound by a `let` is generic like any function value:
+/// each use gets a copy for its own types, with the helpers those types need
+/// (`Queue.pop` building its tuple, a struct compared by its Eq, a string
+/// sent into a channel copied). The one copy made for no type in particular
+/// crashed.
+#[test]
+fn let_bound_module_functions_specialize_per_use() {
+    let output = run(r##"
+struct P do
+  x :: Int
+  y :: Int
+end
+
+fn main() do
+  let pop = Queue.pop
+  let (front, _) = pop(Queue.push(Queue.new(), "first"))
+  let (number, _) = pop(Queue.push(Queue.new(), 7))
+  println("#{front} #{number}")
+  let has = List.contains
+  println("#{has([P { x: 1, y: 2 }], P { x: 1, y: 2 })} #{has(["a"], "b")}")
+  let put = Channel.try_send
+  case Channel.bounded(2, :drop_oldest) do
+    Ok(texts) -> do
+      let _ = put(texts, "sent #{number}")
+      case Channel.recv(texts, 0) do
+        Ok(text) -> println(text)
+        Err(error) -> println(error)
+      end
+    end
+    Err(error) -> println(error)
+  end
+end
+"##);
+    assert_eq!(output, "first 7\ntrue false\nsent 7\n");
+}
+
 /// A queue holds any element type, and `Queue.pop` gives it back as the
 /// first element of its tuple, small structs included.
 #[test]

@@ -8156,13 +8156,18 @@ impl<'a> Lowerer<'a> {
                             .and_then(|init| self.get_ty(init.syntax().text_range()))
                             .cloned();
                         // A polymorphic closure, or a generic function named
-                        // by the `let` (`let id = identity`), gets one
-                        // compiled copy per concrete type it is used at, bound
-                        // here so its captures are the values in scope at the
-                        // `let`.
+                        // by the `let` (`let id = identity`, `let pop =
+                        // Queue.pop`), gets one compiled copy per concrete
+                        // type it is used at, bound here so its captures are
+                        // the values in scope at the `let`.
                         let mut specialized_everywhere = false;
                         let poly_value = match initializer.as_ref() {
                             Some(expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_))) => Some(expr),
+                            Some(expr @ Expr::FieldAccess(fa))
+                                if matches!(fa.base(), Some(Expr::NameRef(_))) =>
+                            {
+                                Some(expr)
+                            }
                             _ => None,
                         };
                         if let (Some(poly_value), Some(generic), Some(name)) = (
