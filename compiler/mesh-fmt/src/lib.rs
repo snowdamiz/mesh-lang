@@ -46,14 +46,29 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
     let formatted = printer::print(&walker::walk_node(&parse.syntax()), config);
 
     // Formatting may only move whitespace. Output that parses to other tokens
-    // (a line comment swallowing the code after it, a dropped comment) is a
-    // formatter bug, and writing it would change the program.
+    // (a line comment swallowing the code after it, a dropped comment) or to
+    // another tree (new lines end statements) is a formatter bug, and writing
+    // it would change the program.
     let reparsed = mesh_parser::parse(&formatted);
-    if !reparsed.errors().is_empty() || significant_tokens(&parse) != significant_tokens(&reparsed)
+    if !reparsed.errors().is_empty()
+        || significant_tokens(&parse) != significant_tokens(&reparsed)
+        || tree_shape(&parse) != tree_shape(&reparsed)
     {
         return Err("the formatter could not preserve it exactly (a formatter bug), so it was left unchanged".to_owned());
     }
     Ok(formatted)
+}
+
+/// Where each node starts (`Some(kind)`) and ends (`None`), in order.
+fn tree_shape(parse: &mesh_parser::Parse) -> Vec<Option<mesh_parser::SyntaxKind>> {
+    parse
+        .syntax()
+        .preorder()
+        .map(|event| match event {
+            rowan::WalkEvent::Enter(node) => Some(node.kind()),
+            rowan::WalkEvent::Leave(_) => None,
+        })
+        .collect()
 }
 
 /// Every token but whitespace, with the trailing blanks the printer trims, a
