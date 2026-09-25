@@ -20,7 +20,7 @@ use mesh_pkg::project::{
     build_import_context, build_project, check_project, single_source_project, CheckedProject,
     ProjectData,
 };
-use mesh_typeck::error::{ConstraintOrigin, TypeError};
+use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::TypeckResult;
 
@@ -171,120 +171,13 @@ fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
     Some(line_start + line.len())
 }
 
-/// Extract a TextRange span from a TypeError for diagnostic positioning.
-fn type_error_span(error: &TypeError) -> Option<TextRange> {
-    match error {
-        TypeError::Mismatch { origin, .. } => origin_to_range(origin),
-        TypeError::InfiniteType { origin, .. } => origin_to_range(origin),
-        TypeError::ArityMismatch { origin, .. } => origin_to_range(origin),
-        TypeError::UnboundVariable { span, .. } => Some(*span),
-        TypeError::NotAFunction { span, .. } => Some(*span),
-        TypeError::TraitNotSatisfied { origin, .. } => origin_to_range(origin),
-        TypeError::UnboundedTypeParam { origin, .. } => origin_to_range(origin),
-        TypeError::MissingTraitMethod { span, .. } => *span,
-        TypeError::TraitMethodSignatureMismatch { span, .. } => *span,
-        TypeError::MissingField { span, .. } => Some(*span),
-        TypeError::UnknownField { span, .. } => Some(*span),
-        TypeError::NoSuchField { span, .. } => Some(*span),
-        TypeError::UnknownVariant { span, .. } => Some(*span),
-        TypeError::OrPatternBindingMismatch { span, .. } => Some(*span),
-        TypeError::NonExhaustiveMatch { span, .. } => Some(*span),
-        TypeError::NonExhaustiveClauses { span, .. } => Some(*span),
-        TypeError::RedundantArm { span, .. } => Some(*span),
-        TypeError::SendTypeMismatch { span, .. } => Some(*span),
-        TypeError::SelfOutsideActor { span, .. } => Some(*span),
-        TypeError::SpawnNonFunction { span, .. } => Some(*span),
-        TypeError::ReceiveOutsideActor { span, .. } => Some(*span),
-        TypeError::InvalidChildStart { span, .. } => Some(*span),
-        TypeError::InvalidStrategy { span, .. } => Some(*span),
-        TypeError::InvalidRestartType { span, .. } => Some(*span),
-        TypeError::InvalidShutdownValue { span, .. } => Some(*span),
-        TypeError::CatchAllNotLast { span, .. } => Some(*span),
-        TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
-        TypeError::ClauseArityMismatch { span, .. } => Some(*span),
-        TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
-        TypeError::GuardTypeMismatch { span, .. } => Some(*span),
-        TypeError::DuplicateImpl { .. } => None,
-        TypeError::AmbiguousMethod { span, .. } => Some(*span),
-        TypeError::UnsupportedDerive { span, .. } => Some(*span),
-        TypeError::MissingDerivePrerequisite { span, .. } => Some(*span),
-        TypeError::NoSuchMethod { span, .. } => Some(*span),
-        TypeError::ManualContinuityPromotionDisabled { span } => Some(*span),
-        TypeError::BreakOutsideLoop { span, .. } => Some(*span),
-        TypeError::ContinueOutsideLoop { span, .. } => Some(*span),
-        TypeError::ImportModuleNotFound { span, .. } => Some(*span),
-        TypeError::ImportNameNotFound { span, .. } => Some(*span),
-        TypeError::PrivateItem { span, .. } => Some(*span),
-        TypeError::HttpClusteredInvalidArguments { span, .. } => Some(*span),
-        TypeError::HttpClusteredPrivateHandler { span, .. } => Some(*span),
-        TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => Some(*span),
-        TypeError::HttpClusteredConflictingReplicationCount { span, .. } => Some(*span),
-        TypeError::HttpClusteredImportedOriginMissing { span, .. } => Some(*span),
-        TypeError::TryIncompatibleReturn { span, .. } => Some(*span),
-        TypeError::TryOnNonResultOption { span, .. } => Some(*span),
-        TypeError::NonSerializableField { span, .. } => Some(*span),
-        TypeError::NonMappableField { span, .. } => Some(*span),
-        TypeError::MissingAssocType { .. } => None,
-        TypeError::ExtraAssocType { .. } => None,
-        TypeError::UnresolvedAssocType { span, .. } => Some(*span),
-        TypeError::SlotPositionConflict { span, .. } => Some(*span),
-        TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
-        TypeError::UndefinedType { span, .. }
-        | TypeError::NativeDeclarationInvalid { span, .. }
-        | TypeError::ExportDeclarationInvalid { span, .. }
-        | TypeError::InvalidLetPattern { span, .. }
-        | TypeError::InvalidPassThroughArm { span, .. }
-        | TypeError::DuplicateBinding { span, .. }
-        | TypeError::DuplicateField { span, .. }
-        | TypeError::NotAStruct { span, .. }
-        | TypeError::UnderivableField { span, .. }
-        | TypeError::DuplicateVariant { span, .. }
-        | TypeError::CyclicAlias { span, .. }
-        | TypeError::AmbiguousDefault { span }
-        | TypeError::AmbiguousImplMethod { span, .. }
-        | TypeError::AmbiguousStaticMethod { span, .. }
-        | TypeError::RigidTypeParam { span, .. }
-        | TypeError::DuplicateDefinition { span, .. }
-        | TypeError::UnknownType { span, .. }
-        | TypeError::UnknownFieldOwner { span, .. }
-        | TypeError::UnknownInterface { span, .. }
-        | TypeError::InvalidLiteral { span, .. }
-        | TypeError::InvalidConcat { span, .. }
-        | TypeError::IndexingUnsupported { span }
-        | TypeError::ActorMessageTypeUnknown { span, .. }
-        | TypeError::TopLevelLet { span, .. }
-        | TypeError::ModuleNotImported { span, .. }
-        | TypeError::NoSuchModuleFunction { span, .. }
-        | TypeError::OverloadedFunctionValue { span, .. }
-        | TypeError::GenericImplTarget { span, .. }
-        | TypeError::AssertReceiveOutsideTest { span }
-        | TypeError::ResourceViolation { span, .. } => Some(*span),
-    }
-}
-
-/// Extract a TextRange from a ConstraintOrigin.
-fn origin_to_range(origin: &ConstraintOrigin) -> Option<TextRange> {
-    match origin {
-        ConstraintOrigin::FnArg { call_site, .. } => Some(*call_site),
-        ConstraintOrigin::BinOp { op_span } => Some(*op_span),
-        ConstraintOrigin::IfBranches { if_span, .. } => Some(*if_span),
-        ConstraintOrigin::Annotation { annotation_span } => Some(*annotation_span),
-        ConstraintOrigin::Return { return_span, .. } => Some(*return_span),
-        ConstraintOrigin::LetBinding { binding_span } => Some(*binding_span),
-        ConstraintOrigin::Assignment { lhs_span, .. } => Some(*lhs_span),
-        ConstraintOrigin::Expr { span } => Some(*span),
-        ConstraintOrigin::Pattern { pattern_span } => Some(*pattern_span),
-        ConstraintOrigin::Builtin => None,
-    }
-}
-
 /// Convert a TypeError into an LSP Diagnostic.
 fn type_error_to_diagnostic(
     source: &str,
     error: &TypeError,
     severity: DiagnosticSeverity,
 ) -> Option<Diagnostic> {
-    let range = type_error_span(error)?;
+    let range = error.span()?;
     let start_tree: usize = range.start().into();
     let end_tree: usize = range.end().into();
     let start_offset =

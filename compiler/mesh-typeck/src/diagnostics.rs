@@ -219,20 +219,7 @@ fn text_range_to_range(range: rowan::TextRange) -> Range<usize> {
 
 /// Extract a primary span from a ConstraintOrigin.
 fn origin_span(origin: &ConstraintOrigin) -> Option<Range<usize>> {
-    match origin {
-        ConstraintOrigin::FnArg { call_site, .. } => Some(text_range_to_range(*call_site)),
-        ConstraintOrigin::BinOp { op_span } => Some(text_range_to_range(*op_span)),
-        ConstraintOrigin::IfBranches { if_span, .. } => Some(text_range_to_range(*if_span)),
-        ConstraintOrigin::Annotation { annotation_span } => {
-            Some(text_range_to_range(*annotation_span))
-        }
-        ConstraintOrigin::Return { return_span, .. } => Some(text_range_to_range(*return_span)),
-        ConstraintOrigin::LetBinding { binding_span } => Some(text_range_to_range(*binding_span)),
-        ConstraintOrigin::Assignment { lhs_span, .. } => Some(text_range_to_range(*lhs_span)),
-        ConstraintOrigin::Expr { span } => Some(text_range_to_range(*span)),
-        ConstraintOrigin::Pattern { pattern_span } => Some(text_range_to_range(*pattern_span)),
-        ConstraintOrigin::Builtin => None,
-    }
+    origin.span().map(text_range_to_range)
 }
 
 // ── Fix Suggestions ────────────────────────────────────────────────────
@@ -552,95 +539,15 @@ pub fn render_json_diagnostic(
         }
         _ => {
             fix = None;
-            match error {
-                TypeError::TraitNotSatisfied { origin, .. }
-                | TypeError::UnboundedTypeParam { origin, .. } => {
-                    if let Some(span) = origin_span(origin) {
-                        spans.push(JsonSpan {
-                            start: span.start,
-                            end: span.end,
-                            label: message.clone(),
-                        });
-                    }
-                }
-                TypeError::MissingField { span, .. }
-                | TypeError::UnknownField { span, .. }
-                | TypeError::NoSuchField { span, .. }
-                | TypeError::NoSuchMethod { span, .. }
-                | TypeError::AmbiguousMethod { span, .. }
-                | TypeError::OrPatternBindingMismatch { span, .. }
-                | TypeError::SendTypeMismatch { span, .. }
-                | TypeError::SelfOutsideActor { span }
-                | TypeError::SpawnNonFunction { span, .. }
-                | TypeError::ReceiveOutsideActor { span }
-                | TypeError::InvalidChildStart { span, .. }
-                | TypeError::InvalidStrategy { span, .. }
-                | TypeError::InvalidRestartType { span, .. }
-                | TypeError::InvalidShutdownValue { span, .. }
-                | TypeError::BreakOutsideLoop { span }
-                | TypeError::ContinueOutsideLoop { span }
-                | TypeError::ImportModuleNotFound { span, .. }
-                | TypeError::ImportNameNotFound { span, .. }
-                | TypeError::PrivateItem { span, .. }
-                | TypeError::HttpClusteredInvalidArguments { span, .. }
-                | TypeError::HttpClusteredPrivateHandler { span, .. }
-                | TypeError::HttpClusteredOutsideRouteHandlerPosition { span }
-                | TypeError::HttpClusteredConflictingReplicationCount { span, .. }
-                | TypeError::HttpClusteredImportedOriginMissing { span, .. }
-                | TypeError::TryIncompatibleReturn { span, .. }
-                | TypeError::TryOnNonResultOption { span, .. }
-                | TypeError::UnresolvedAssocType { span, .. }
-                | TypeError::SlotPositionConflict { span, .. }
-                | TypeError::SlotPipeOutOfRange { span, .. }
-                | TypeError::UndefinedType { span, .. }
-                | TypeError::NativeDeclarationInvalid { span, .. }
-                | TypeError::ExportDeclarationInvalid { span, .. }
-                | TypeError::InvalidLetPattern { span, .. }
-                | TypeError::InvalidPassThroughArm { span, .. }
-                | TypeError::DuplicateBinding { span, .. }
-                | TypeError::DuplicateField { span, .. }
-                | TypeError::NotAStruct { span, .. }
-                | TypeError::UnderivableField { span, .. }
-                | TypeError::DuplicateVariant { span, .. }
-                | TypeError::CyclicAlias { span, .. }
-                | TypeError::AmbiguousDefault { span }
-                | TypeError::AmbiguousImplMethod { span, .. }
-                | TypeError::AmbiguousStaticMethod { span, .. }
-                | TypeError::RigidTypeParam { span, .. }
-                | TypeError::DuplicateDefinition { span, .. }
-                | TypeError::UnknownType { span, .. }
-                | TypeError::UnknownFieldOwner { span, .. }
-                | TypeError::UnknownInterface { span, .. }
-                | TypeError::InvalidLiteral { span, .. }
-                | TypeError::InvalidConcat { span, .. }
-                | TypeError::IndexingUnsupported { span }
-                | TypeError::ActorMessageTypeUnknown { span, .. }
-                | TypeError::TopLevelLet { span, .. }
-                | TypeError::ModuleNotImported { span, .. }
-                | TypeError::NoSuchModuleFunction { span, .. }
-                | TypeError::OverloadedFunctionValue { span, .. }
-                | TypeError::GenericImplTarget { span, .. }
-                | TypeError::AssertReceiveOutsideTest { span }
-                | TypeError::UnsupportedDerive { span, .. }
-                | TypeError::MissingDerivePrerequisite { span, .. }
-                | TypeError::NonSerializableField { span, .. }
-                | TypeError::NonMappableField { span, .. }
-                | TypeError::ResourceViolation { span, .. } => {
-                    let range = text_range_to_range(*span);
-                    spans.push(JsonSpan {
-                        start: range.start,
-                        end: range.end,
-                        label: message.clone(),
-                    });
-                }
-                _ => {
-                    spans.push(JsonSpan {
-                        start: 0,
-                        end: source_len.max(1),
-                        label: message.clone(),
-                    });
-                }
-            }
+            // The error's own place, or the whole source when it has none.
+            let range = error
+                .span()
+                .map_or(0..source_len.max(1), text_range_to_range);
+            spans.push(JsonSpan {
+                start: range.start,
+                end: range.end,
+                label: message.clone(),
+            });
         }
     }
 
@@ -2639,6 +2546,36 @@ pub fn render_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Errors with a place of their own point there in JSON too; some were
+    /// reported as covering the whole file.
+    #[test]
+    fn json_diagnostics_point_at_the_error_not_the_whole_file() {
+        let source = "fn f(0) = 0\nfn g() = 1\nfn f(n) = n\n";
+        let second = source.rfind("fn f").unwrap();
+        let range = |start: usize, end: usize| {
+            rowan::TextRange::new((start as u32).into(), (end as u32).into())
+        };
+        let error = TypeError::NonConsecutiveClauses {
+            fn_name: "f".to_string(),
+            arity: 1,
+            first_span: range(0, 11),
+            second_span: range(second, second + 11),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&render_json_diagnostic(&error, source, "m.mpl", None)).unwrap();
+        assert_eq!(json["spans"][0]["start"], second, "{json}");
+        assert_eq!(json["spans"][0]["end"], second + 11, "{json}");
+        // An error about no one place still covers the whole source.
+        let error = TypeError::DuplicateImpl {
+            trait_name: "Show".to_string(),
+            impl_type: "Int".to_string(),
+            first_impl: "here".to_string(),
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&render_json_diagnostic(&error, source, "m.mpl", None)).unwrap();
+        assert_eq!(json["spans"][0]["end"], source.len(), "{json}");
+    }
 
     #[test]
     fn test_levenshtein_distance() {
