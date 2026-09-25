@@ -89,9 +89,9 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::BREAK_EXPR => walk_break_expr(node),
         SyntaxKind::CONTINUE_EXPR => walk_continue_expr(node),
         SyntaxKind::SELF_EXPR => walk_self_expr(node),
-        SyntaxKind::CALL_HANDLER => walk_call_handler(node),
-        SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
-        SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
+        SyntaxKind::CALL_HANDLER | SyntaxKind::CAST_HANDLER | SyntaxKind::TERMINATE_CLAUSE => {
+            walk_handler(node)
+        }
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
         SyntaxKind::DESTRUCTURE_BINDING => walk_destructure_binding(node),
         SyntaxKind::DERIVING_CLAUSE => walk_deriving_clause(node),
@@ -345,10 +345,7 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         }
                     }
                     SyntaxKind::BLOCK => {
-                        let body = walk_block_body(&n);
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                        parts.push(ir::hardline());
-                        parts.push(ir::text("end"));
+                        parts.push(body_then_end(&n));
                     }
                     // The name, generic parameters and parameters.
                     _ => parts.push(walk_node(&n)),
@@ -440,8 +437,7 @@ fn walk_if_expr(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Node(n) => {
                 match n.kind() {
                     SyntaxKind::BLOCK => {
-                        let body = walk_block_body(&n);
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                        parts.push(indented_body(&n));
                     }
                     // The condition and the else branch.
                     _ => parts.push(walk_node(&n)),
@@ -473,8 +469,7 @@ fn walk_else_branch(node: &SyntaxNode) -> FormatIR {
             },
             NodeOrToken::Node(n) => match n.kind() {
                 SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    parts.push(indented_body(&n));
                 }
                 // `else if`.
                 _ => {
@@ -515,8 +510,7 @@ fn walk_while_expr(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Node(n) => {
                 match n.kind() {
                     SyntaxKind::BLOCK => {
-                        let body = walk_block_body(&n);
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                        parts.push(indented_body(&n));
                     }
                     _ => {
                         // Condition expression.
@@ -567,8 +561,7 @@ fn walk_for_in_expr(node: &SyntaxNode) -> FormatIR {
             NodeOrToken::Node(n) => {
                 match n.kind() {
                     SyntaxKind::BLOCK => {
-                        let body = walk_block_body(&n);
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                        parts.push(indented_body(&n));
                     }
                     // The binding, the iterable and the filter.
                     _ => parts.push(walk_node(&n)),
@@ -693,8 +686,7 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                 // those stay there, indented, so the arm stays a block when
                 // re-parsed.
                 SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    parts.push(indented_body(&n));
                     if has_do {
                         parts.push(ir::hardline());
                         parts.push(ir::text("end"));
@@ -736,10 +728,7 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
             }
             // The body.
             NodeOrToken::Node(n) => {
-                let body = walk_block_body(&n);
-                parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                parts.push(ir::hardline());
-                parts.push(ir::text("end"));
+                parts.push(body_then_end(&n));
             }
         }
     }
@@ -872,6 +861,16 @@ fn walk_pipe_expr(node: &SyntaxNode) -> FormatIR {
 }
 
 // ── Block ─────────────────────────────────────────────────────────
+
+/// A block's statements on the lines below, one level in.
+fn indented_body(block: &SyntaxNode) -> FormatIR {
+    ir::indent(ir::concat(vec![ir::hardline(), walk_block_body(block)]))
+}
+
+/// A block's statements on the lines below, one level in, then `end`.
+fn body_then_end(block: &SyntaxNode) -> FormatIR {
+    ir::concat(vec![indented_body(block), ir::hardline(), ir::text("end")])
+}
 
 /// Walk the children of a BLOCK node, producing statements separated by hardlines.
 fn walk_block_body(node: &SyntaxNode) -> FormatIR {
@@ -1252,8 +1251,7 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::CLOSURE_CLAUSE => parts.extend([sp(), walk_closure_clause(&n)]),
                 _ if has_do => parts.push(closure_do_body(&n)),
                 _ if broken => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                    parts.push(indented_body(&n));
                 }
                 // An arrow body, on the arrow's line.
                 _ => parts.push(walk_block_body(&n)),
@@ -1299,14 +1297,10 @@ fn closure_do_body(block: &SyntaxNode) -> FormatIR {
                     | SyntaxKind::RECEIVE_EXPR
             )
         });
-    let body = walk_block_body(block);
     if multiline {
-        ir::concat(vec![
-            ir::indent(ir::concat(vec![ir::hardline(), body])),
-            ir::hardline(),
-        ])
+        ir::concat(vec![indented_body(block), ir::hardline()])
     } else {
-        ir::concat(vec![sp(), body, sp()])
+        ir::concat(vec![sp(), walk_block_body(block), sp()])
     }
 }
 
@@ -1664,15 +1658,15 @@ fn walk_self_expr(node: &SyntaxNode) -> FormatIR {
 
 // ── Call handler ──────────────────────────────────────────────────────
 
-fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
+/// A service's `call Name(params) :: T do |state| ... end`,
+/// `cast Name(params) do |state| ... end` and `terminate do ... end`.
+fn walk_handler(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::CALL_KW => {
-                    parts.push(ir::text("call"));
-                    parts.push(sp());
+                SyntaxKind::CALL_KW | SyntaxKind::CAST_KW => {
+                    parts.extend([ir::text(tok.text()), sp()])
                 }
                 SyntaxKind::BAR => {
                     if opens_state_param(&tok) {
@@ -1680,39 +1674,19 @@ fn walk_call_handler(node: &SyntaxNode) -> FormatIR {
                     }
                     parts.push(ir::text("|"));
                 }
-                SyntaxKind::DO_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("do"));
-                }
+                SyntaxKind::DO_KW => parts.extend([sp(), ir::text("do")]),
                 SyntaxKind::END_KW => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
+                // `terminate`, the state's name and comments.
+                _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                    parts.push(ir::hardline());
-                    parts.push(ir::text("end"));
-                }
-                SyntaxKind::PARAM_LIST => {
-                    parts.push(walk_node(&n));
-                }
-                SyntaxKind::TYPE_ANNOTATION => {
-                    parts.push(sp());
-                    parts.push(walk_node(&n));
-                }
-                SyntaxKind::NAME => {
-                    parts.push(walk_node(&n));
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
+                SyntaxKind::BLOCK => parts.push(body_then_end(&n)),
+                SyntaxKind::TYPE_ANNOTATION => parts.extend([sp(), walk_node(&n)]),
+                // The name and the parameters.
+                _ => parts.push(walk_node(&n)),
             },
         }
     }
-
     ir::concat(parts)
 }
 
@@ -1725,90 +1699,7 @@ fn opens_state_param(bar: &SyntaxToken) -> bool {
 
 // ── Cast handler ──────────────────────────────────────────────────────
 
-fn walk_cast_handler(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::CAST_KW => {
-                    parts.push(ir::text("cast"));
-                    parts.push(sp());
-                }
-                SyntaxKind::BAR => {
-                    if opens_state_param(&tok) {
-                        parts.push(sp());
-                    }
-                    parts.push(ir::text("|"));
-                }
-                SyntaxKind::DO_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("do"));
-                }
-                SyntaxKind::END_KW => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                    parts.push(ir::hardline());
-                    parts.push(ir::text("end"));
-                }
-                SyntaxKind::PARAM_LIST => {
-                    parts.push(walk_node(&n));
-                }
-                SyntaxKind::NAME => {
-                    parts.push(walk_node(&n));
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
-            },
-        }
-    }
-
-    ir::concat(parts)
-}
-
 // ── Terminate clause ──────────────────────────────────────────────────
-
-fn walk_terminate_clause(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::TERMINATE_KW => {
-                    parts.push(ir::text("terminate"));
-                }
-                SyntaxKind::DO_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("do"));
-                }
-                SyntaxKind::END_KW => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                    parts.push(ir::hardline());
-                    parts.push(ir::text("end"));
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
-            },
-        }
-    }
-
-    ir::concat(parts)
-}
 
 // ── Struct literals and patterns, json literals ─────────────────────
 
