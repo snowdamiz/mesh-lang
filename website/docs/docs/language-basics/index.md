@@ -1219,7 +1219,7 @@ pub module Geometry do
 end
 ```
 
-A module block is a module like a file is: import it to use it, in the file that holds it too. Its name is exactly the one it declares, wherever the file is: `module Billing` in `lib/helpers.mpl` is `Billing`, not `Lib.Helpers.Billing`. A block named like a file's module, such as `Billing` beside `billing.mpl`, is an error. Without `pub`, only the block's own file may import it:
+A module block is a module like a file is: import it to use it, in the file that holds it too. Its name is exactly the one it declares, wherever the file is: `module Billing` in `lib/helpers.mpl` is `Billing`, not `Lib.Helpers.Billing`. A block named like a file's module, such as `Billing` beside `billing.mpl`, is an error. Using a module of the project without importing it is error E0081, which names the import to add. Without `pub`, only the block's own file may import it:
 
 ```mesh
 import Billing

@@ -631,6 +631,13 @@ pub fn build_import_context(
     parse: &mesh_parser::Parse,
 ) -> mesh_typeck::ImportContext {
     let mut ctx = mesh_typeck::ImportContext::empty();
+    // `Main`, the entry module, is not importable.
+    ctx.project_modules = graph
+        .modules
+        .iter()
+        .map(|module| module.name.clone())
+        .filter(|name| name != "Main")
+        .collect();
     for exports in all_exports.iter().flatten() {
         ctx.all_trait_defs
             .extend(exports.trait_defs.iter().cloned());

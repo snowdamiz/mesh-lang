@@ -79,6 +79,8 @@ pub struct InferCtx {
     pub imported_function_origins: FxHashMap<String, String>,
     /// Full module name for qualified module namespaces (e.g. `Todos` -> `Api.Todos`).
     pub qualified_module_origins: FxHashMap<String, String>,
+    /// The full names of the project's modules (see `ImportContext`).
+    pub project_modules: Vec<String>,
     /// The variants of the sum types an imported module exports, by module
     /// namespace and variant name: the type each belongs to (`Geo.Dot`).
     pub module_variants: FxHashMap<String, FxHashMap<String, String>>,
@@ -193,6 +195,7 @@ impl InferCtx {
             imported_functions: Vec::new(),
             imported_function_origins: FxHashMap::default(),
             qualified_module_origins: FxHashMap::default(),
+            project_modules: Vec::new(),
             module_variants: FxHashMap::default(),
             qualified_module_private_names: FxHashMap::default(),
             top_level_function_visibility: FxHashMap::default(),

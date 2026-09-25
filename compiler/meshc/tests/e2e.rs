@@ -157,6 +157,20 @@ fn e2e_top_level_let_is_an_error() {
     assert!(!err.contains("Undefined variable"), "{err}");
 }
 
+/// A module of the project used without its import was "undefined
+/// variable: Geo"; it is error E0081, naming the import to add.
+#[test]
+fn e2e_module_used_without_import_is_named() {
+    let err = compile_expect_error(
+        "module Geo do\n  pub fn area(w :: Int) -> Int do\n    w * w\n  end\nend\n\nfn main() do\n  println(\"${Geo.area(2)}\")\nend\n",
+    );
+    assert!(
+        err.contains("E0081") && err.contains("add `import Geo`"),
+        "{err}"
+    );
+    assert!(!err.contains("undefined variable"), "{err}");
+}
+
 /// SC2: Closures with captured variables.
 #[test]
 fn e2e_closures() {

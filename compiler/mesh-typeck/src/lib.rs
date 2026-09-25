@@ -72,6 +72,10 @@ pub struct ImportContext {
 
     /// Whether compiler-provided test-only builtins are available.
     pub test_builtins: bool,
+
+    /// The full names of the project's modules, to tell a module used
+    /// without its import from an unknown name.
+    pub project_modules: Vec<String>,
 }
 
 impl ImportContext {

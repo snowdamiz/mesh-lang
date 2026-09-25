@@ -449,6 +449,13 @@ pub enum TypeError {
     ActorMessageTypeUnknown { actor: String, span: TextRange },
     /// A `let` outside any function: it makes no global.
     TopLevelLet { name: String, span: TextRange },
+    /// A module of the project named without importing it: `Geo.area(1)`
+    /// with no `import Geo` (the file declaring `module Geo` imports it too).
+    ModuleNotImported {
+        name: String,
+        module: String,
+        span: TextRange,
+    },
     /// `<>` or `++` on values that are neither strings nor lists.
     InvalidConcat {
         op: &'static str,
@@ -1028,6 +1035,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::TopLevelLet { name, .. } => {
                 write!(f, "`let {name}` outside a function is not supported")
+            }
+            TypeError::ModuleNotImported { name, .. } => {
+                write!(f, "module `{name}` is not imported")
             }
             TypeError::UnknownFieldOwner { field, .. } => {
                 write!(f, "cannot tell which type has the field `{field}`")

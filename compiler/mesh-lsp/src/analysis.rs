@@ -253,6 +253,7 @@ fn type_error_span(error: &TypeError) -> Option<TextRange> {
         | TypeError::IndexingUnsupported { span }
         | TypeError::ActorMessageTypeUnknown { span, .. }
         | TypeError::TopLevelLet { span, .. }
+        | TypeError::ModuleNotImported { span, .. }
         | TypeError::NoSuchModuleFunction { span, .. }
         | TypeError::OverloadedFunctionValue { span, .. }
         | TypeError::GenericImplTarget { span, .. }

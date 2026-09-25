@@ -194,6 +194,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::IndexingUnsupported { .. } => "E0078",
         TypeError::ActorMessageTypeUnknown { .. } => "E0079",
         TypeError::TopLevelLet { .. } => "E0080",
+        TypeError::ModuleNotImported { .. } => "E0081",
     }
 }
 
@@ -619,6 +620,7 @@ pub fn render_json_diagnostic(
                 | TypeError::IndexingUnsupported { span }
                 | TypeError::ActorMessageTypeUnknown { span, .. }
                 | TypeError::TopLevelLet { span, .. }
+                | TypeError::ModuleNotImported { span, .. }
                 | TypeError::NoSuchModuleFunction { span, .. }
                 | TypeError::OverloadedFunctionValue { span, .. }
                 | TypeError::GenericImplTarget { span, .. }
@@ -2393,6 +2395,20 @@ pub fn render_diagnostic(
                 .with_help(format!(
                     "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
                 ))
+                .finish()
+        }
+        TypeError::ModuleNotImported { name, module, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
+                .with_code(code)
+                .with_message(format!("module `{name}` is not imported"))
+                .with_config(config)
+                .with_label(
+                    Label::new((fname.clone(), range))
+                        .with_message("a module of this project")
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("add `import {module}` at the top of the file"))
                 .finish()
         }
         TypeError::ActorMessageTypeUnknown { actor, span } => {

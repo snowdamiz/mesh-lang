@@ -3872,6 +3872,7 @@ pub fn infer(parse: &Parse) -> TypeckResult {
 /// pre-seeded into the type environments before inference begins.
 pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckResult {
     let mut ctx = InferCtx::new();
+    ctx.project_modules = import_ctx.project_modules.clone();
     ctx.current_module = import_ctx.current_module.clone();
     ctx.test_builtins = import_ctx.test_builtins;
     let mut env = TypeEnv::new();
@@ -9083,6 +9084,18 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
                     arities,
                     span,
                 }
+            } else if let Some(module) = ctx
+                .project_modules
+                .iter()
+                .find(|module| {
+                    // Qualified access is through the last segment (`Vector`
+                    // for `Math.Vector`); a full path starts with the first.
+                    module.rsplit('.').next() == Some(name.as_str())
+                        || module.split('.').next() == Some(name.as_str())
+                })
+                .cloned()
+            {
+                TypeError::ModuleNotImported { name, module, span }
             } else {
                 let suggestion = did_you_mean(env, &name);
                 TypeError::UnboundVariable {
