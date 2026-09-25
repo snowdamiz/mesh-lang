@@ -3800,6 +3800,10 @@ fn malformed_constructs_report_what_was_expected() {
             "fn f() do\n  let g = fn x -> do\n    x\n  end end\nend",
             "a closure of several statements is `fn params do ... end`, without `->`",
         ),
+        (
+            "fn f() do\n  let g = fn(x :: Int) -> Int do\n    x\n  end\nend",
+            "a closure's return type is inferred: write `fn(params) do ... end`, without `-> Type`",
+        ),
         ("fn f() 1", "expected `=` or `do` for function body"),
         (
             "interface I do\n  fn f(self) do\n    1\n",

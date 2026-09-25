@@ -1225,7 +1225,14 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
                 break;
             }
         }
-        expect_closure_end(p, fn_span);
+        // `fn(x :: Int) -> Int do ... end`: the "body" was a return type,
+        // which a closure does not declare (a trailing block would have
+        // been the body's).
+        if p.at(SyntaxKind::DO_KW) && !p.has_error() {
+            p.error("a closure's return type is inferred: write `fn(params) do ... end`, without `-> Type`");
+        } else {
+            expect_closure_end(p, fn_span);
+        }
     } else if p.at(SyntaxKind::DO_KW) {
         // do/end body: `fn x do body end` -- single `end` for both block and closure.
         let do_span = p.current_span();
