@@ -277,6 +277,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{LockedPackage, Lockfile};
     use sha2::{Digest, Sha256};
     use std::fs;
 
@@ -419,5 +420,104 @@ bindings = ["bindings/helper.mpl"]
                 "unexpected error: {error}"
             );
         }
+    }
+
+    /// A native package reached through the registry or git is read from
+    /// its installed copy, and only when mesh.lock pins exactly that copy.
+    #[test]
+    fn native_dependencies_resolve_only_from_their_pinned_installed_copies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path().join("app");
+        let write_package = |dir: &Path, manifest: &str| {
+            fs::create_dir_all(dir.join("bindings")).unwrap();
+            fs::write(
+                dir.join("bindings/n.mpl"),
+                "pub fn n() -> Int do\n  1\nend\n",
+            )
+            .unwrap();
+            fs::write(dir.join("mesh.toml"), manifest).unwrap();
+        };
+        let native_package = |name: &str| {
+            format!("[package]\nname = \"{name}\"\nversion = \"1.0.0\"\n\n[native]\nabi = 1\nbindings = [\"bindings/n.mpl\"]\n")
+        };
+        let lock = |packages: &[LockedPackage]| {
+            Lockfile::new(packages.to_vec())
+                .write(&app.join("mesh.lock"))
+                .unwrap()
+        };
+        let locked =
+            |name: &str, version: &str, revision: &str, sha256: Option<&str>| LockedPackage {
+                name: name.to_string(),
+                version: version.to_string(),
+                source: String::new(),
+                revision: revision.to_string(),
+                sha256: sha256.map(str::to_string),
+            };
+        let error = || resolve_native_bindings(&app).unwrap_err();
+
+        // Through the registry.
+        write_package(
+            &app,
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nreg = \"1.0.0\"\n",
+        );
+        assert!(
+            error().contains("requires an exact mesh.lock entry"),
+            "{}",
+            error()
+        );
+        lock(&[locked("reg", "1.0.0", "1.0.0", None)]);
+        assert!(error().contains("is not checksum-pinned"), "{}", error());
+        lock(&[locked("reg", "1.0.0", "1.0.0", Some("ab"))]);
+        assert!(error().contains("run `meshpkg install`"), "{}", error());
+        write_package(
+            &app.join(".mesh/packages/reg@1.0.0"),
+            &native_package("reg"),
+        );
+        let bindings = resolve_native_bindings(&app).unwrap();
+        assert_eq!(bindings[0].package, "reg");
+
+        // Through git.
+        write_package(
+            &app,
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nremote = { git = \"https://example.com/r.git\" }\n",
+        );
+        lock(&[locked("remote", "", "local", None)]);
+        assert!(
+            error().contains("is not pinned to an exact revision"),
+            "{}",
+            error()
+        );
+        lock(&[locked(
+            "remote",
+            "",
+            "0000000000000000000000000000000000000000",
+            None,
+        )]);
+        assert!(error().contains("run `meshc deps`"), "{}", error());
+        let checkout = app.join(".mesh/deps/remote");
+        write_package(&checkout, &native_package("remote"));
+        let repository = git2::Repository::init(&checkout).unwrap();
+        let mut index = repository.index().unwrap();
+        index
+            .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
+        let tree = repository.find_tree(index.write_tree().unwrap()).unwrap();
+        let signature = git2::Signature::now("t", "t@example.com").unwrap();
+        let head = repository
+            .commit(Some("HEAD"), &signature, &signature, "c", &tree, &[])
+            .unwrap();
+        assert!(error().contains("revision mismatch"), "{}", error());
+        lock(&[locked("remote", "", &head.to_string(), None)]);
+        assert_eq!(resolve_native_bindings(&app).unwrap()[0].package, "remote");
+
+        // A binding the package names must be a file in it.
+        fs::remove_file(checkout.join("bindings/n.mpl")).unwrap();
+        assert!(
+            error().contains("does not exist or cannot be read"),
+            "{}",
+            error()
+        );
+        fs::create_dir(checkout.join("bindings/n.mpl")).unwrap();
+        assert!(error().contains("is not a file"), "{}", error());
     }
 }
