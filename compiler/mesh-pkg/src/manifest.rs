@@ -239,11 +239,6 @@ impl Dependency {
             _ => None,
         }
     }
-
-    /// Returns true if this is a registry (not git or path) dependency.
-    pub fn is_registry(&self) -> bool {
-        self.registry_version().is_some()
-    }
 }
 
 fn deserialize_entrypoint<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
@@ -261,31 +256,7 @@ fn normalize_entrypoint(raw: &str) -> Result<PathBuf, String> {
         return Err("`[package].entrypoint` must not be blank".to_string());
     }
 
-    let path = Path::new(trimmed);
-    if path.is_absolute() {
-        return Err(format!(
-            "`[package].entrypoint` must be project-root-relative, got absolute path `{trimmed}`"
-        ));
-    }
-
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(segment) => normalized.push(segment),
-            Component::ParentDir => {
-                return Err(format!(
-                    "`[package].entrypoint` must stay within the project root, got `{trimmed}`"
-                ));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(format!(
-                    "`[package].entrypoint` must be project-root-relative, got `{trimmed}`"
-                ));
-            }
-        }
-    }
-
+    let normalized = root_relative_path(trimmed, "`[package].entrypoint`", "project")?;
     if normalized.as_os_str().is_empty() {
         return Err("`[package].entrypoint` must not be blank".to_string());
     }
@@ -296,6 +267,27 @@ fn normalize_entrypoint(raw: &str) -> Result<PathBuf, String> {
         ));
     }
 
+    Ok(normalized)
+}
+
+/// `path` relative to a `root` ("project" or "package") with its `.`
+/// segments dropped, refusing one that is absolute or leaves the root.
+fn root_relative_path(path: &str, what: &str, root: &str) -> Result<PathBuf, String> {
+    let mut normalized = PathBuf::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(segment) => normalized.push(segment),
+            Component::ParentDir => {
+                return Err(format!(
+                    "{what} must stay within the {root} root, got `{path}`"
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("{what} must be {root}-root-relative, got `{path}`"));
+            }
+        }
+    }
     Ok(normalized)
 }
 
@@ -313,30 +305,7 @@ fn normalize_native_path(path: &Path, extension: &str, label: &str) -> Result<Pa
         ));
     }
 
-    let path = Path::new(trimmed);
-    if path.is_absolute() {
-        return Err(format!(
-            "{label} path must be package-root-relative, got `{trimmed}`"
-        ));
-    }
-
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(segment) => normalized.push(segment),
-            Component::ParentDir => {
-                return Err(format!(
-                    "{label} path must stay within the package root, got `{trimmed}`"
-                ));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(format!(
-                    "{label} path must be package-root-relative, got `{trimmed}`"
-                ));
-            }
-        }
-    }
+    let normalized = root_relative_path(trimmed, &format!("{label} path"), "package")?;
 
     if normalized.extension().and_then(|value| value.to_str()) != Some(extension) {
         return Err(format!(
@@ -438,84 +407,59 @@ pub fn resolve_entrypoint(
     Ok(entrypoint)
 }
 
-pub fn rewrite_manifest_entrypoint_source(
-    manifest_source: &str,
-    entrypoint: &Path,
-) -> Result<String, String> {
-    rewrite_manifest_source(manifest_source, entrypoint, None)
-}
-
+/// The manifest `meshc test` builds a test program with, in a scratch
+/// directory: its entrypoint the default one, and its relative path
+/// dependencies made absolute from `project_root`.
 pub fn rewrite_test_manifest_source(
     manifest_source: &str,
-    entrypoint: &Path,
     project_root: &Path,
 ) -> Result<String, String> {
-    rewrite_manifest_source(manifest_source, entrypoint, Some(project_root))
-}
-
-fn rewrite_manifest_source(
-    manifest_source: &str,
-    entrypoint: &Path,
-    path_dependency_root: Option<&Path>,
-) -> Result<String, String> {
-    let entrypoint_str = entrypoint.to_str().ok_or_else(|| {
-        format!(
-            "`[package].entrypoint` must be valid UTF-8, got '{}'",
-            entrypoint.display()
-        )
-    })?;
-    let normalized_entrypoint = normalize_entrypoint(entrypoint_str)?;
     let mut manifest_value: toml::Value = toml::from_str(manifest_source)
         .map_err(|error| format!("Failed to parse manifest for rewrite: {}", error))?;
     let manifest_table = manifest_value
         .as_table_mut()
-        .ok_or_else(|| "Manifest root must be a TOML table".to_string())?;
-    let package_value = manifest_table.get_mut("package").ok_or_else(|| {
-        "Manifest must contain a [package] table to rewrite entrypoint".to_string()
-    })?;
-    let package_table = package_value
-        .as_table_mut()
-        .ok_or_else(|| "Manifest [package] section must be a TOML table".to_string())?;
-
+        .expect("a parsed TOML document is a table");
+    let package_table = manifest_table
+        .get_mut("package")
+        .and_then(toml::Value::as_table_mut)
+        .ok_or_else(|| {
+            "Manifest must contain a [package] table to rewrite entrypoint".to_string()
+        })?;
     package_table.insert(
         "entrypoint".to_string(),
-        toml::Value::String(normalized_entrypoint.to_string_lossy().into_owned()),
+        toml::Value::String(DEFAULT_ENTRYPOINT.to_string()),
     );
 
-    if let Some(root) = path_dependency_root {
-        if let Some(dependencies) = manifest_table
-            .get_mut("dependencies")
-            .and_then(toml::Value::as_table_mut)
-        {
-            for (name, dependency) in dependencies {
-                let Some(path_value) = dependency
-                    .as_table_mut()
-                    .and_then(|table| table.get_mut("path"))
-                else {
-                    continue;
-                };
-                let Some(path) = path_value.as_str().map(str::to_owned) else {
-                    continue;
-                };
-                if Path::new(&path).is_absolute() {
-                    continue;
-                }
-                let absolute = root.join(&path).canonicalize().map_err(|error| {
-                    format!(
-                        "Failed to resolve path dependency `{name}` ({path}) for test manifest: {error}"
-                    )
-                })?;
-                *path_value = toml::Value::String(absolute.to_string_lossy().into_owned());
-            }
+    let dependencies = manifest_table
+        .get_mut("dependencies")
+        .and_then(toml::Value::as_table_mut);
+    for (name, dependency) in dependencies.into_iter().flatten() {
+        let Some(path_value) = dependency
+            .as_table_mut()
+            .and_then(|table| table.get_mut("path"))
+        else {
+            continue;
+        };
+        let Some(path) = path_value.as_str().map(str::to_owned) else {
+            continue;
+        };
+        if Path::new(&path).is_absolute() {
+            continue;
         }
+        let absolute = project_root.join(&path).canonicalize().map_err(|error| {
+            format!(
+                "Failed to resolve path dependency `{name}` ({path}) for test manifest: {error}"
+            )
+        })?;
+        *path_value = toml::Value::String(absolute.to_string_lossy().into_owned());
     }
 
     toml::to_string_pretty(&manifest_value)
         .map_err(|error| format!("Failed to serialize manifest rewrite: {}", error))
 }
 
-fn removed_cluster_section_error(source_path: Option<&Path>) -> String {
-    let message = "`[cluster]` manifest sections are no longer supported; move clustered declarations into source with `@cluster` or `@cluster(N)`";
+/// Why a manifest failed to parse, naming its file when it has one.
+fn parse_failure(source_path: Option<&Path>, message: impl fmt::Display) -> String {
     match source_path {
         Some(path) => format!("Failed to parse {}: {}", path.display(), message),
         None => format!("Failed to parse manifest: {}", message),
@@ -540,11 +484,8 @@ impl Manifest {
     }
 
     fn parse(content: &str, source_path: Option<&Path>) -> Result<Manifest, String> {
-        let mut value: toml::Value =
-            toml::from_str(content).map_err(|error| match source_path {
-                Some(path) => format!("Failed to parse {}: {}", path.display(), error),
-                None => format!("Failed to parse manifest: {}", error),
-            })?;
+        let failure = |message: &dyn fmt::Display| parse_failure(source_path, message);
+        let mut value: toml::Value = toml::from_str(content).map_err(|error| failure(&error))?;
 
         let autonomous_cluster = if let Some(cluster_value) = value
             .as_table_mut()
@@ -554,37 +495,21 @@ impl Manifest {
                 cluster.contains_key("enabled") || cluster.contains_key("declarations")
             });
             if is_removed_shape {
-                return Err(removed_cluster_section_error(source_path));
+                return Err(failure(&"`[cluster]` manifest sections are no longer supported; move clustered declarations into source with `@cluster` or `@cluster(N)`"));
             }
             let config: AutonomousClusterConfig =
-                cluster_value
-                    .try_into()
-                    .map_err(|error| match source_path {
-                        Some(path) => format!("Failed to parse {}: {}", path.display(), error),
-                        None => format!("Failed to parse manifest: {}", error),
-                    })?;
-            if let Err(errors) = config.validate() {
-                let message = errors.join("; ");
-                return Err(match source_path {
-                    Some(path) => format!("Failed to parse {}: {}", path.display(), message),
-                    None => format!("Failed to parse manifest: {}", message),
-                });
-            }
+                cluster_value.try_into().map_err(|error| failure(&error))?;
+            config
+                .validate()
+                .map_err(|errors| failure(&errors.join("; ")))?;
             Some(config)
         } else {
             None
         };
 
-        let mut manifest: Manifest = value.try_into().map_err(|error| match source_path {
-            Some(path) => format!("Failed to parse {}: {}", path.display(), error),
-            None => format!("Failed to parse manifest: {}", error),
-        })?;
-
+        let mut manifest: Manifest = value.try_into().map_err(|error| failure(&error))?;
         if let Some(native) = &mut manifest.native {
-            native.validate().map_err(|message| match source_path {
-                Some(path) => format!("Failed to parse {}: {}", path.display(), message),
-                None => format!("Failed to parse manifest: {}", message),
-            })?;
+            native.validate().map_err(|message| failure(&message))?;
         }
         manifest.autonomous_cluster = autonomous_cluster;
         Ok(manifest)
@@ -836,6 +761,130 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         );
     }
 
+    /// Each library a native package declares is an exact target, once,
+    /// with a checksum and an archive path inside the package.
+    #[test]
+    fn native_libraries_are_refused_for_what_is_wrong_with_them() {
+        const SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let library = |target: &str, path: &str, sha: &str| {
+            format!("[[native.libraries]]\ntarget = \"{target}\"\npath = \"{path}\"\nsha256 = \"{sha}\"\n")
+        };
+        let manifest = |libraries: &str| {
+            Manifest::from_str(&format!(
+                "[package]\nname = \"n\"\nversion = \"0.1.0\"\n\n[native]\nabi = 1\n\n{libraries}"
+            ))
+        };
+        for (libraries, expected) in [
+            (library("", "lib.a", SHA), "must be an exact target triple"),
+            (
+                library("x86 64", "lib.a", SHA),
+                "must be an exact target triple",
+            ),
+            (
+                library("aarch64-apple-darwin", "a.a", SHA)
+                    + &library("aarch64-apple-darwin", "b.a", SHA),
+                "more than one library for target `aarch64-apple-darwin`",
+            ),
+            (
+                library("aarch64-apple-darwin", "lib.a", "ABC"),
+                "lowercase 64-character SHA-256",
+            ),
+            (
+                library("aarch64-apple-darwin", "lib.a", &SHA.to_uppercase()),
+                "lowercase 64-character SHA-256",
+            ),
+            (
+                library("aarch64-apple-darwin", " ", SHA),
+                "path must not be blank",
+            ),
+            (
+                library("aarch64-apple-darwin", "/abs/lib.a", SHA),
+                "package-root-relative",
+            ),
+            (
+                library("aarch64-apple-darwin", "lib.lib", SHA),
+                "must name a `.a` file",
+            ),
+            (
+                library("x86_64-pc-windows-msvc", "lib.a", SHA),
+                "must name a `.lib` file",
+            ),
+        ] {
+            let error = manifest(&libraries).unwrap_err();
+            assert!(error.contains(expected), "{expected}: {error}");
+        }
+        let native = manifest(&library("x86_64-pc-windows-msvc", "./native/m.lib", SHA))
+            .unwrap()
+            .native
+            .unwrap();
+        assert_eq!(native.libraries[0].path, PathBuf::from("native/m.lib"));
+    }
+
+    /// Path dependencies are read where they are and git ones from their
+    /// checkout, each once however often they are reached.
+    #[test]
+    fn source_dependency_roots_follow_path_and_git_dependencies_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let package = |dir: &Path, dependencies: &str| {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(
+                dir.join("mesh.toml"),
+                format!("[package]\nname = \"p\"\nversion = \"0.1.0\"\n\n[dependencies]\n{dependencies}"),
+            )
+            .unwrap();
+        };
+        let app = root.join("app");
+        package(
+            &app,
+            "a = { path = \"../a\" }\nremote = { git = \"https://example.com/r.git\" }\nreg = \"1.0.0\"\n",
+        );
+        // `a` and `b` depend on each other.
+        package(&root.join("a"), "b = { path = \"../b\" }\n");
+        package(&root.join("b"), "a = { path = \"../a\" }\n");
+
+        let error = source_dependency_roots(&app).unwrap_err();
+        assert!(error.contains("`remote` is not fetched"), "{error}");
+
+        package(&app.join(".mesh/deps/remote"), "");
+        assert_eq!(
+            source_dependency_roots(&app).unwrap(),
+            [
+                root.join("a"),
+                app.join(".mesh/deps/remote"),
+                root.join("b")
+            ]
+        );
+        assert_eq!(
+            source_dependency_roots(&root).unwrap(),
+            Vec::<PathBuf>::new()
+        );
+
+        package(&app, "gone = { path = \"../gone\" }\n");
+        let error = source_dependency_roots(&app).unwrap_err();
+        assert!(
+            error.contains("Failed to resolve path dependency `gone`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_entrypoint_that_is_a_directory_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("main.mpl")).unwrap();
+        let error = resolve_entrypoint(tmp.path(), None).unwrap_err();
+        assert!(error.contains("is not a file"), "{error}");
+    }
+
+    #[test]
+    fn an_entrypoint_that_is_only_dots_is_blank() {
+        let error = Manifest::from_str(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\nentrypoint = \"./.\"\n",
+        )
+        .unwrap_err();
+        assert!(error.contains("must not be blank"), "{error}");
+    }
+
     #[test]
     fn reject_test_only_native_members() {
         for (binding, expected) in [
@@ -1055,8 +1104,13 @@ entrypoint = "lib/start.mpl"
     }
 
     #[test]
-    fn rewrite_manifest_entrypoint_source_preserves_dependencies_and_overrides_entrypoint() {
-        let rewritten = rewrite_manifest_entrypoint_source(
+    fn a_test_manifest_builds_the_default_entrypoint_with_absolute_path_dependencies() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("app");
+        fs::create_dir_all(project.join("../shared")).unwrap();
+        fs::create_dir_all(&project).unwrap();
+        let shared = fs::canonicalize(tmp.path().join("shared")).unwrap();
+        let rewritten = rewrite_test_manifest_source(
             r#"
 [package]
 name = "custom-entry"
@@ -1065,18 +1119,41 @@ entrypoint = "lib/start.mpl"
 
 [dependencies]
 shared = { path = "../shared" }
+pinned = { path = "/opt/pinned" }
+remote = { git = "https://example.com/remote.git" }
+registry = "1.0.0"
 "#,
-            Path::new(DEFAULT_ENTRYPOINT),
+            &project,
         )
         .expect("manifest rewrite should succeed");
 
         let manifest = Manifest::from_str(&rewritten).expect("rewritten manifest should parse");
-
         assert_eq!(
             manifest.package.entrypoint,
             Some(PathBuf::from(DEFAULT_ENTRYPOINT))
         );
-        assert!(manifest.dependencies.contains_key("shared"));
+        let path_of = |name: &str| match &manifest.dependencies[name] {
+            Dependency::Path { path } => path.clone(),
+            other => panic!("{name}: {other:?}"),
+        };
+        assert_eq!(path_of("shared"), shared.to_string_lossy());
+        assert_eq!(path_of("pinned"), "/opt/pinned");
+        assert!(matches!(
+            manifest.dependencies["remote"],
+            Dependency::Git { .. }
+        ));
+
+        for (source, expected) in [
+            ("[package", "Failed to parse manifest for rewrite"),
+            ("name = \"x\"", "must contain a [package] table"),
+            (
+                "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies]\ngone = { path = \"missing\" }\n",
+                "Failed to resolve path dependency `gone`",
+            ),
+        ] {
+            let error = rewrite_test_manifest_source(source, &project).unwrap_err();
+            assert!(error.contains(expected), "{expected}: {error}");
+        }
     }
 
     #[test]
@@ -1175,7 +1252,6 @@ foo = "1.0.0"
             }
             other => panic!("Expected RegistryShorthand, got: {:?}", other),
         }
-        assert!(manifest.dependencies["foo"].is_registry());
         assert_eq!(
             manifest.dependencies["foo"].registry_version(),
             Some("1.0.0")
@@ -1199,7 +1275,6 @@ foo = { version = "1.0.0" }
             }
             other => panic!("Expected Registry, got: {:?}", other),
         }
-        assert!(manifest.dependencies["foo"].is_registry());
         assert_eq!(
             manifest.dependencies["foo"].registry_version(),
             Some("1.0.0")

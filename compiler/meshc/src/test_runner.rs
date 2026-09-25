@@ -166,11 +166,7 @@ fn resolve_test_files(target: Option<&Path>) -> Result<Vec<PathBuf>, String> {
 }
 
 fn synthetic_test_manifest_source(test_project: &ResolvedTestProject) -> Result<String, String> {
-    rewrite_test_manifest_source(
-        &test_project.manifest_source,
-        Path::new(DEFAULT_ENTRYPOINT),
-        &test_project.project_dir,
-    )
+    rewrite_test_manifest_source(&test_project.manifest_source, &test_project.project_dir)
 }
 
 fn prepare_temp_test_project(
