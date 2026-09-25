@@ -295,7 +295,12 @@ fn upload_tarball(
     // Read auth token
     let token = crate::auth::read_token()?;
 
-    let agent = ureq::Agent::new_with_defaults();
+    // The statuses the registry refuses with are answered below; as errors
+    // they all read "Failed to connect".
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .build()
+        .into();
     let url = format!("{}/api/v1/packages", registry);
 
     let response = agent
