@@ -102,7 +102,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::MAP_ENTRY => walk_map_entry(node),
         SyntaxKind::LIST_LITERAL => walk_list_literal(node),
         SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
-        SyntaxKind::SCHEMA_OPTION => walk_schema_option(node),
+        SyntaxKind::SCHEMA_OPTION => walk_tokens_inline(node),
         SyntaxKind::TRY_EXPR | SyntaxKind::ASSERT_RECEIVE_EXPR => walk_tokens_inline(node),
         SyntaxKind::PATH => walk_path(node),
         // Simple leaf-like nodes: just emit their tokens inline.
@@ -1105,45 +1105,6 @@ fn walk_child_spec_def(node: &SyntaxNode) -> FormatIR {
     }
     parts.push(ir::hardline());
     parts.push(ir::text(&end_line));
-    ir::concat(parts)
-}
-
-fn walk_schema_option(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => {
-                let kind = tok.kind();
-                if kind == SyntaxKind::EOF {
-                    continue;
-                }
-                if kind == SyntaxKind::COMMENT
-                    || kind == SyntaxKind::DOC_COMMENT
-                    || kind == SyntaxKind::MODULE_DOC_COMMENT
-                {
-                    if !parts.is_empty() {
-                        parts.push(sp());
-                    }
-                    parts.push(inline_comment(&tok));
-                    continue;
-                }
-                if !parts.is_empty()
-                    && (kind == SyntaxKind::STRING_START || needs_space_before(kind))
-                {
-                    parts.push(sp());
-                }
-                parts.push(ir::text(tok.text()));
-            }
-            NodeOrToken::Node(n) => {
-                if !parts.is_empty() && needs_space_before_node(n.kind()) {
-                    parts.push(sp());
-                }
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
     ir::concat(parts)
 }
 
@@ -2322,7 +2283,6 @@ fn needs_space_before(kind: SyntaxKind) -> bool {
             | SyntaxKind::COLON_COLON
             | SyntaxKind::QUESTION
             | SyntaxKind::BANG
-            | SyntaxKind::STRING_START
             | SyntaxKind::STRING_END
             | SyntaxKind::STRING_CONTENT
             | SyntaxKind::INTERPOLATION_START
