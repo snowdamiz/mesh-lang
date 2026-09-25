@@ -56,12 +56,18 @@ fn create_project_dir(name: &str, dir: &Path) -> Result<PathBuf, String> {
     Ok(project_dir)
 }
 
-fn write_project_file(path: &Path, contents: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory '{}': {}", parent.display(), e))?;
+/// Write each `(path, contents)` under `project_dir`, making directories.
+fn write_project_files(project_dir: &Path, files: &[(&str, &str)]) -> Result<(), String> {
+    for (relative, contents) in files {
+        let path = project_dir.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory '{}': {}", parent.display(), e))?;
+        }
+        std::fs::write(&path, contents)
+            .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
     }
-    std::fs::write(path, contents).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,13 +89,15 @@ version = "0.1.0"
 "#,
         name
     );
-    write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
 
     let main_mesh = r#"fn main() do
   println("Hello from Mesh!")
 end
 "#;
-    write_project_file(&project_dir.join("main.mpl"), main_mesh)?;
+    write_project_files(
+        &project_dir,
+        &[("mesh.toml", &manifest), ("main.mpl", main_mesh)],
+    )?;
 
     println!("Created project '{}'", name);
     Ok(())
@@ -108,7 +116,6 @@ version = "0.1.0"
 "#,
         name
     );
-    write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
 
     let main_mesh = r#"fn log_bootstrap(status :: BootstrapStatus) do
   println("[clustered-app] runtime bootstrap mode=#{status.mode} node=#{status.node_name} cluster_port=#{status.cluster_port} discovery_seed=#{status.discovery_seed}")
@@ -125,13 +132,11 @@ fn main() do
   end
 end
 "#;
-    write_project_file(&project_dir.join("main.mpl"), main_mesh)?;
 
     let work_mesh = r#"@cluster pub fn add() -> Int do
   1 + 1
 end
 "#;
-    write_project_file(&project_dir.join("work.mpl"), work_mesh)?;
 
     let readme = format!(
         r#"# {name}
@@ -195,7 +200,15 @@ MESH_CONTINUITY_PROMOTION_EPOCH=0 \
         todo_sqlite_readme_url = TODO_SQLITE_README_URL,
         autonomous_cluster_docs_url = AUTONOMOUS_CLUSTER_DOCS_URL
     );
-    write_project_file(&project_dir.join("README.md"), &readme)?;
+    write_project_files(
+        &project_dir,
+        &[
+            ("mesh.toml", &manifest),
+            ("main.mpl", main_mesh),
+            ("work.mpl", work_mesh),
+            ("README.md", &readme),
+        ],
+    )?;
 
     println!("Created clustered project '{}'", name);
     Ok(())
@@ -1594,19 +1607,11 @@ version = "0.1.0"
 "#,
         name
     );
-    write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
-    write_project_file(&project_dir.join("main.mpl"), postgres_todo_main_mesh())?;
 
     let work_mesh = r#"@cluster pub fn sync_todos() -> Int do
   1 + 1
 end
 "#;
-    write_project_file(&project_dir.join("work.mpl"), work_mesh)?;
-    write_project_file(&project_dir.join("config.mpl"), postgres_todo_config_mesh())?;
-    write_project_file(
-        &project_dir.join("api/health.mpl"),
-        postgres_todo_health_mesh(),
-    )?;
 
     let router_mesh = r#"from Api.Health import handle_health
 from Api.Todos import handle_create_todo, handle_delete_todo, handle_get_todo, handle_list_todos, handle_toggle_todo
@@ -1622,15 +1627,6 @@ pub fn build_router() do
   router
 end
 "#;
-    write_project_file(&project_dir.join("api/router.mpl"), router_mesh)?;
-    write_project_file(
-        &project_dir.join("api/todos.mpl"),
-        postgres_todo_todos_api_mesh(),
-    )?;
-    write_project_file(
-        &project_dir.join("runtime/registry.mpl"),
-        postgres_todo_registry_mesh(),
-    )?;
 
     let rate_limiter_mesh = r#"struct RateLimiterState do
   counts :: Map<String, Int>
@@ -1700,14 +1696,6 @@ pub fn allow_write(limiter_pid :: Pid, key :: String) -> Bool do
   TodoWriteRateLimiter.check(limiter_pid, key)
 end
 "#;
-    write_project_file(
-        &project_dir.join("services/rate_limiter.mpl"),
-        rate_limiter_mesh,
-    )?;
-    write_project_file(
-        &project_dir.join("storage/todos.mpl"),
-        postgres_todo_storage_mesh(),
-    )?;
 
     let todo_type_mesh = r#"pub struct Todo do
   id :: String
@@ -1716,51 +1704,50 @@ end
   created_at :: String
 end deriving(Json)
 "#;
-    write_project_file(&project_dir.join("types/todo.mpl"), todo_type_mesh)?;
-    write_project_file(&project_dir.join("README.md"), &postgres_todo_readme(name))?;
-    write_project_file(
-        &project_dir.join("Dockerfile"),
-        &postgres_todo_dockerfile(name),
-    )?;
-    write_project_file(
-        &project_dir.join("docker-compose.yml"),
-        &postgres_todo_docker_compose(name),
-    )?;
-    write_project_file(
-        &project_dir.join(".dockerignore"),
-        ".git\n.gitignore\ntarget\n.mesh\n.tmp\n.env\n.env.local\n",
-    )?;
-    write_project_file(
-        &project_dir.join(".env.example"),
-        &postgres_todo_env_example(name),
-    )?;
-    write_project_file(
-        &project_dir.join("scripts/stage-deploy.sh"),
-        &postgres_todo_stage_deploy_script(name),
-    )?;
-    write_project_file(
-        &project_dir.join("scripts/apply-deploy-migrations.sh"),
-        postgres_todo_apply_deploy_migrations_script(),
-    )?;
-    write_project_file(
-        &project_dir.join("scripts/deploy-smoke.sh"),
-        postgres_todo_deploy_smoke_script(),
-    )?;
-    write_project_file(
-        &project_dir
-            .join("deploy")
-            .join(todo_postgres_deploy_sql_filename(name)),
-        postgres_todo_deploy_sql(),
-    )?;
-    write_project_file(
-        &project_dir.join("tests/config.test.mpl"),
-        postgres_todo_config_test(),
-    )?;
-    write_project_file(
-        &project_dir
-            .join("migrations")
-            .join(TODO_POSTGRES_MIGRATION_FILENAME),
-        postgres_todo_migration_mesh(),
+    write_project_files(
+        &project_dir,
+        &[
+            ("mesh.toml", &manifest),
+            ("main.mpl", postgres_todo_main_mesh()),
+            ("work.mpl", work_mesh),
+            ("config.mpl", postgres_todo_config_mesh()),
+            ("api/health.mpl", postgres_todo_health_mesh()),
+            ("api/router.mpl", router_mesh),
+            ("api/todos.mpl", postgres_todo_todos_api_mesh()),
+            ("runtime/registry.mpl", postgres_todo_registry_mesh()),
+            ("services/rate_limiter.mpl", rate_limiter_mesh),
+            ("storage/todos.mpl", postgres_todo_storage_mesh()),
+            ("types/todo.mpl", todo_type_mesh),
+            ("README.md", &postgres_todo_readme(name)),
+            ("Dockerfile", &postgres_todo_dockerfile(name)),
+            ("docker-compose.yml", &postgres_todo_docker_compose(name)),
+            (
+                ".dockerignore",
+                ".git\n.gitignore\ntarget\n.mesh\n.tmp\n.env\n.env.local\n",
+            ),
+            (".env.example", &postgres_todo_env_example(name)),
+            (
+                "scripts/stage-deploy.sh",
+                &postgres_todo_stage_deploy_script(name),
+            ),
+            (
+                "scripts/apply-deploy-migrations.sh",
+                postgres_todo_apply_deploy_migrations_script(),
+            ),
+            (
+                "scripts/deploy-smoke.sh",
+                postgres_todo_deploy_smoke_script(),
+            ),
+            (
+                &format!("deploy/{}", todo_postgres_deploy_sql_filename(name)),
+                postgres_todo_deploy_sql(),
+            ),
+            ("tests/config.test.mpl", postgres_todo_config_test()),
+            (
+                &format!("migrations/{TODO_POSTGRES_MIGRATION_FILENAME}"),
+                postgres_todo_migration_mesh(),
+            ),
+        ],
     )?;
 
     println!("Created todo-api project '{}'", name);
@@ -1780,7 +1767,6 @@ version = "0.1.0"
 "#,
         name
     );
-    write_project_file(&project_dir.join("mesh.toml"), &manifest)?;
 
     let config_mesh = r#"pub fn todo_db_path_key() -> String do
   "TODO_DB_PATH"
@@ -1822,7 +1808,6 @@ pub fn todo_not_found_message() -> String do
   "todo not found"
 end
 "#;
-    write_project_file(&project_dir.join("config.mpl"), config_mesh)?;
 
     let main_mesh = r#"from Config import default_todo_db_path, invalid_db_path, invalid_positive_int, port_key, todo_db_path_key, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key
 from Api.Router import build_router
@@ -1910,7 +1895,6 @@ fn main() do
   end
 end
 "#;
-    write_project_file(&project_dir.join("main.mpl"), main_mesh)?;
 
     let health_mesh = r#"from Runtime.Registry import get_db_path, get_max_requests, get_window_seconds
 
@@ -1927,7 +1911,6 @@ pub fn handle_health(_request) do
     })
 end
 "#;
-    write_project_file(&project_dir.join("api/health.mpl"), health_mesh)?;
 
     let router_mesh = r#"from Api.Health import handle_health
 from Api.Todos import handle_create_todo, handle_delete_todo, handle_get_todo, handle_list_todos, handle_toggle_todo
@@ -1943,7 +1926,6 @@ pub fn build_router() do
   router
 end
 "#;
-    write_project_file(&project_dir.join("api/router.mpl"), router_mesh)?;
 
     let todos_api_mesh = r#"from Config import invalid_todo_id_message, title_required_message, todo_not_found_message
 from Runtime.Registry import get_db_path, get_rate_limiter
@@ -2075,7 +2057,6 @@ pub fn handle_delete_todo(request) do
   end
 end
 "#;
-    write_project_file(&project_dir.join("api/todos.mpl"), todos_api_mesh)?;
 
     let registry_mesh = r#"struct RegistryState do
   db_path :: String
@@ -2140,7 +2121,6 @@ pub fn get_max_requests() -> Int do
   TodoRegistry.get_max_requests(registry_pid)
 end
 "#;
-    write_project_file(&project_dir.join("runtime/registry.mpl"), registry_mesh)?;
 
     let rate_limiter_mesh = r#"struct RateLimiterState do
   counts :: Map<String, Int>
@@ -2210,10 +2190,6 @@ pub fn allow_write(limiter_pid :: Pid, key :: String) -> Bool do
   TodoWriteRateLimiter.check(limiter_pid, key)
 end
 "#;
-    write_project_file(
-        &project_dir.join("services/rate_limiter.mpl"),
-        rate_limiter_mesh,
-    )?;
 
     let storage_mesh = r#"from Config import invalid_todo_id_message, title_required_message, todo_not_found_message
 from Types.Todo import Todo
@@ -2340,7 +2316,6 @@ pub fn delete_todo(db_path :: String, id :: String) -> String!String do
   end
 end
 "#;
-    write_project_file(&project_dir.join("storage/todos.mpl"), storage_mesh)?;
 
     let todo_type_mesh = r#"pub struct Todo do
   id :: String
@@ -2349,7 +2324,6 @@ end
   created_at :: String
 end deriving(Json, Row)
 "#;
-    write_project_file(&project_dir.join("types/todo.mpl"), todo_type_mesh)?;
 
     let config_test = r#"from Config import default_todo_db_path, invalid_db_path, invalid_positive_int, invalid_todo_id_message, port_key, title_required_message, todo_db_path_key, todo_not_found_message, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key
 
@@ -2375,7 +2349,6 @@ describe("SQLite todo-api config") do
   end
 end
 "#;
-    write_project_file(&project_dir.join("tests/config.test.mpl"), config_test)?;
 
     let storage_test = r#"from Storage.Todos import create_todo, delete_todo, ensure_schema, get_todo, list_todos, toggle_todo
 from Types.Todo import Todo
@@ -2397,13 +2370,28 @@ describe("SQLite todo storage") do
   end
 end
 "#;
-    write_project_file(&project_dir.join("tests/storage.test.mpl"), storage_test)?;
-
-    write_project_file(&project_dir.join("README.md"), &todo_readme(name))?;
-    write_project_file(&project_dir.join("Dockerfile"), &todo_dockerfile(name))?;
-    write_project_file(
-        &project_dir.join(".dockerignore"),
-        ".git\n.gitignore\ntarget\n.mesh\n.tmp\n*.sqlite3\n",
+    write_project_files(
+        &project_dir,
+        &[
+            ("mesh.toml", &manifest),
+            ("config.mpl", config_mesh),
+            ("main.mpl", main_mesh),
+            ("api/health.mpl", health_mesh),
+            ("api/router.mpl", router_mesh),
+            ("api/todos.mpl", todos_api_mesh),
+            ("runtime/registry.mpl", registry_mesh),
+            ("services/rate_limiter.mpl", rate_limiter_mesh),
+            ("storage/todos.mpl", storage_mesh),
+            ("types/todo.mpl", todo_type_mesh),
+            ("tests/config.test.mpl", config_test),
+            ("tests/storage.test.mpl", storage_test),
+            ("README.md", &todo_readme(name)),
+            ("Dockerfile", &todo_dockerfile(name)),
+            (
+                ".dockerignore",
+                ".git\n.gitignore\ntarget\n.mesh\n.tmp\n*.sqlite3\n",
+            ),
+        ],
     )?;
 
     println!("Created todo-api project '{}'", name);
