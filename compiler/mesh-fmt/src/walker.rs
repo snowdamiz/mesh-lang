@@ -1050,62 +1050,70 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
-fn normalize_child_spec_line(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if trimmed == "end" {
-        return Some("end".to_string());
-    }
-
-    if let Some(rest) = trimmed.strip_prefix("child") {
-        let rest = rest.trim();
-        if let Some(name) = rest.strip_suffix("do") {
-            let name = name.trim();
-            if !name.is_empty() {
-                return Some(format!("child {name} do"));
+/// `child name do`, then one `key: value` per line.
+fn walk_child_spec_def(node: &SyntaxNode) -> FormatIR {
+    let mut header = Vec::new();
+    let mut lines: Vec<FormatIR> = Vec::new();
+    let mut past_do = false;
+    for child in node.elements() {
+        match child {
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::DO_KW => {
+                    header.extend([sp(), ir::text("do")]);
+                    past_do = true;
+                }
+                SyntaxKind::END_KW => {}
+                _ if past_do => push_body_comment(&mut header, &mut lines, &tok),
+                // `child`.
+                SyntaxKind::IDENT => header.extend([ir::text(tok.text()), sp()]),
+                _ => add_token_with_context(&tok, &mut header),
+            },
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::BLOCK => {
+                walk_child_spec_body(&n, &mut header, &mut lines)
             }
+            // The name.
+            NodeOrToken::Node(n) => header.push(walk_node(&n)),
         }
-        return Some(trimmed.to_string());
     }
-
-    if let Some((key, value)) = trimmed.split_once(':') {
-        return Some(format!("{}: {}", key.trim(), value.trim()));
-    }
-
-    Some(trimmed.to_string())
+    let body: Vec<FormatIR> = lines
+        .into_iter()
+        .flat_map(|line| [ir::hardline(), line])
+        .collect();
+    ir::concat(vec![
+        ir::concat(header),
+        ir::indent(ir::concat(body)),
+        ir::hardline(),
+        ir::text("end"),
+    ])
 }
 
-fn walk_child_spec_def(node: &SyntaxNode) -> FormatIR {
-    let text = node.text().to_string();
-    let lines: Vec<String> = text.lines().filter_map(normalize_child_spec_line).collect();
-
-    if lines.is_empty() {
-        return FormatIR::Empty;
-    }
-
-    let header = ir::text(&lines[0]);
-    let end_line = lines.last().cloned().unwrap_or_else(|| "end".to_string());
-    let body_lines = if lines.len() > 2 {
-        lines[1..lines.len() - 1].to_vec()
-    } else {
-        Vec::new()
-    };
-
-    let mut parts = vec![header];
-    if !body_lines.is_empty() {
-        let mut body_parts = Vec::new();
-        for line in body_lines {
-            body_parts.push(ir::hardline());
-            body_parts.push(ir::text(&line));
+/// A child spec's `key: value` pairs, a line each; `;` between them goes.
+fn walk_child_spec_body(block: &SyntaxNode, header: &mut Vec<FormatIR>, lines: &mut Vec<FormatIR>) {
+    // A pair is a key, which starts its line, then `:`, then the value.
+    let mut at_key = true;
+    for element in block.elements() {
+        let (piece, colon) = match element {
+            NodeOrToken::Token(tok) if tok.kind() == SyntaxKind::SEMICOLON => continue,
+            NodeOrToken::Token(tok) if tok.kind().is_trivia() => {
+                push_body_comment(header, lines, &tok);
+                continue;
+            }
+            NodeOrToken::Token(tok) if tok.kind() == SyntaxKind::COLON => {
+                (ir::concat(vec![ir::text(":"), sp()]), true)
+            }
+            NodeOrToken::Token(tok) => (ir::text(tok.text()), false),
+            NodeOrToken::Node(n) => (walk_node(&n), false),
+        };
+        match lines.last_mut() {
+            Some(line) if !at_key => {
+                let code = std::mem::replace(line, FormatIR::Empty);
+                *line = ir::concat(vec![code, piece]);
+            }
+            _ => lines.push(piece),
         }
-        parts.push(ir::indent(ir::concat(body_parts)));
+        // After a key or `:` the pair goes on; a value ends it.
+        at_key = !at_key && !colon;
     }
-    parts.push(ir::hardline());
-    parts.push(ir::text(&end_line));
-    ir::concat(parts)
 }
 
 // ── Struct definition ─────────────────────────────────────────────────
@@ -2521,6 +2529,19 @@ mod tests {
         assert_eq!(
             fmt("struct S do\na :: Int\nend deriving(Eq, # c\nShow)"),
             "struct S do\n  a :: Int\nend deriving(Eq, # c\n  Show)\n"
+        );
+    }
+
+    #[test]
+    fn a_child_spec_has_a_pair_per_line() {
+        assert_eq!(
+            fmt("supervisor S do\nchild w do # w\nstart:   fn -> 1 end; restart: permanent #  note:  x\nshutdown: brutal_kill\nend\nend"),
+            "supervisor S do\n  child w do # w\n    start: fn -> 1 end\n    restart: permanent #  note:  x\n    shutdown: brutal_kill\n  end\nend\n"
+        );
+        // A value over several lines keeps its own layout.
+        assert_eq!(
+            fmt("supervisor S do\nchild w do\nstart: fn -> case 1 do\n1 -> 2\nend end\nend\nend"),
+            "supervisor S do\n  child w do\n    start: fn -> case 1 do\n      1 -> 2\n    end end\n  end\nend\n"
         );
     }
 
