@@ -84,16 +84,6 @@ pub enum TypeError {
         found: usize,
         origin: ConstraintOrigin,
     },
-    /// Slot pipe position N conflicts with an explicitly provided argument.
-    ///
-    /// Example: `x |2> func(a, b)` — position 2 is already filled by `b`.
-    SlotPositionConflict {
-        /// The 1-indexed slot position that conflicts.
-        slot: u32,
-        /// Name of the function being called.
-        fn_name: String,
-        span: TextRange,
-    },
     /// Slot pipe position N exceeds the function's total arity.
     ///
     /// Example: `x |5> func(a, b, c)` — func only takes 3 arguments.
@@ -248,12 +238,6 @@ pub enum TypeError {
     NonFirstClauseAnnotation {
         fn_name: String,
         what: String,
-        span: TextRange,
-    },
-    /// Guard expression type is not Bool.
-    GuardTypeMismatch {
-        expected: Ty,
-        found: Ty,
         span: TextRange,
     },
     /// Two impl blocks implement the same trait for the same type (or structurally overlapping types).
@@ -540,7 +524,6 @@ impl TypeError {
             TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
             TypeError::ClauseArityMismatch { span, .. } => Some(*span),
             TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
-            TypeError::GuardTypeMismatch { span, .. } => Some(*span),
             TypeError::DuplicateImpl { .. } => None,
             TypeError::AmbiguousMethod { span, .. } => Some(*span),
             TypeError::UnsupportedDerive { span, .. } => Some(*span),
@@ -564,7 +547,6 @@ impl TypeError {
             TypeError::MissingAssocType { .. } => None,
             TypeError::ExtraAssocType { .. } => None,
             TypeError::UnresolvedAssocType { span, .. } => Some(*span),
-            TypeError::SlotPositionConflict { span, .. } => Some(*span),
             TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
             TypeError::UndefinedType { span, .. }
             | TypeError::NativeDeclarationInvalid { span, .. }
@@ -641,13 +623,6 @@ impl fmt::Display for TypeError {
                     f,
                     "arity mismatch: expected {} arguments, found {}",
                     expected, found
-                )
-            }
-            TypeError::SlotPositionConflict { slot, fn_name, .. } => {
-                write!(
-                    f,
-                    "slot position {} conflicts with an argument already provided to `{}`",
-                    slot, fn_name
                 )
             }
             TypeError::SlotPipeOutOfRange {
@@ -865,15 +840,6 @@ impl fmt::Display for TypeError {
                     f,
                     "{} on non-first clause of `{}` will be ignored",
                     what, fn_name
-                )
-            }
-            TypeError::GuardTypeMismatch {
-                expected, found, ..
-            } => {
-                write!(
-                    f,
-                    "guard expression must return `{}`, found `{}`",
-                    expected, found
                 )
             }
             TypeError::DuplicateImpl {

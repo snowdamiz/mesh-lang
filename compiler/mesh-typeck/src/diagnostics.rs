@@ -140,7 +140,6 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NonConsecutiveClauses { .. } => "E0023",
         TypeError::ClauseArityMismatch { .. } => "E0024",
         TypeError::NonFirstClauseAnnotation { .. } => "W0002",
-        TypeError::GuardTypeMismatch { .. } => "E0025",
         TypeError::DuplicateImpl { .. } => "E0026",
         TypeError::AmbiguousMethod { .. } => "E0027",
         TypeError::UnsupportedDerive { .. } => "E0028",
@@ -162,7 +161,6 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MissingAssocType { .. } => "E0040",
         TypeError::ExtraAssocType { .. } => "E0041",
         TypeError::UnresolvedAssocType { .. } => "E0042",
-        TypeError::SlotPositionConflict { .. } => "E0043",
         TypeError::SlotPipeOutOfRange { .. } => "E0044",
         TypeError::UndefinedType { .. } => "E0045",
         TypeError::NativeDeclarationInvalid { .. } => "E0052",
@@ -1394,29 +1392,6 @@ pub fn render_diagnostic(
                 )
                 .finish()
         }
-        TypeError::GuardTypeMismatch {
-            expected,
-            found,
-            span,
-        } => {
-            let msg = format!(
-                "guard expression must return `{}`, found `{}`",
-                expected, found
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!("expected `{}`, found `{}`", expected, found))
-                        .with_color(Color::Red),
-                )
-                .finish()
-        }
-
         TypeError::DuplicateImpl {
             trait_name,
             impl_type,
@@ -1919,36 +1894,6 @@ pub fn render_diagnostic(
                         .with_message("Self.Item can only be used inside an impl block")
                         .with_color(Color::Red),
                 )
-                .finish()
-        }
-
-        TypeError::SlotPositionConflict {
-            slot,
-            fn_name,
-            span,
-        } => {
-            let msg = format!(
-                "slot position {} conflicts with an argument already provided to `{}`",
-                slot, fn_name
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Report::build(ReportKind::Error, (fname.clone(), range.clone()))
-                .with_code(code)
-                .with_message(&msg)
-                .with_config(config)
-                .with_label(
-                    Label::new((fname.clone(), range))
-                        .with_message(format!(
-                            "position {} is already filled by an explicit argument",
-                            slot
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!(
-                    "remove the argument at position {} from the call, or use a different slot",
-                    slot
-                ))
                 .finish()
         }
 
