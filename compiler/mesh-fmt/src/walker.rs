@@ -686,7 +686,7 @@ fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::END_KW => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    push_comment(&mut arms, &tok);
+                    push_body_comment(&mut parts, &mut arms, &tok);
                 }
                 _ => add_token_with_context(&tok, &mut parts),
             },
@@ -1079,9 +1079,8 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::END_KW => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    // One that ends the header's line (`do # why`) stays there.
-                    if past_do && !(inner_items.is_empty() && ends_a_line_of_code(&tok)) {
-                        push_comment(&mut inner_items, &tok);
+                    if past_do {
+                        push_body_comment(&mut parts, &mut inner_items, &tok);
                     } else {
                         parts.push(sp());
                         parts.push(inline_comment(&tok));
@@ -1303,9 +1302,9 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::END_KW => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     if in_body {
-                        push_comment(&mut fields, &tok);
+                        push_body_comment(&mut parts, &mut fields, &tok);
                     } else {
-                        parts.push(inline_comment(&tok));
+                        add_token_with_context(&tok, &mut parts);
                     }
                 }
                 _ => {
@@ -1645,68 +1644,63 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         return walk_tokens_inline(node);
     }
 
-    // Parenthesized: collect name parts and emit one per indented line. A
-    // comment stays after the name it follows, not as a name of its own; one
-    // on a line of its own stays on its own line, before the next name.
-    // Trivia attaches forward: a comment ending a line starts the NAME node
-    // of the next name.
-    let mut leading: Vec<FormatIR> = Vec::new();
-    // (own-line comments before, name, comments after)
-    let mut names: Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)> = Vec::new();
-    let trailing = |names: &mut Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)>,
-                    leading: &mut Vec<FormatIR>,
-                    comment: FormatIR| match names.last_mut() {
-        Some((_, _, comments)) => comments.push(comment),
-        None => leading.push(comment),
-    };
+    // Parenthesized: one name per indented line. A comment that ends a line
+    // stays at the end of that line, after `(` or after the name it follows;
+    // one on a line of its own stays on its own line, before the next name.
+    type Name = (Vec<FormatIR>, FormatIR, Vec<FormatIR>); // (comments before, name, after)
+    fn place(
+        tok: &SyntaxToken,
+        header: &mut Vec<FormatIR>,
+        before: &mut Vec<FormatIR>,
+        names: &mut [Name],
+    ) {
+        let comment = inline_comment(tok);
+        if !ends_a_line_of_code(tok) {
+            before.push(comment);
+        } else if let Some((_, _, after)) = names.last_mut() {
+            after.push(comment);
+        } else {
+            header.push(comment);
+        }
+    }
+    let mut header = Vec::new();
+    let mut before = Vec::new();
+    let mut names: Vec<Name> = Vec::new();
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::L_PAREN | SyntaxKind::R_PAREN => {}
-                SyntaxKind::COMMA => {}
-                kind if kind.is_trivia() => {
-                    trailing(&mut names, &mut leading, inline_comment(&tok));
-                }
-                _ => {
-                    names.push((Vec::new(), ir::text(tok.text()), Vec::new()));
-                }
+                SyntaxKind::L_PAREN | SyntaxKind::R_PAREN | SyntaxKind::COMMA => {}
+                kind if kind.is_trivia() => place(&tok, &mut header, &mut before, &mut names),
+                _ => names.push((
+                    std::mem::take(&mut before),
+                    ir::text(tok.text()),
+                    Vec::new(),
+                )),
             },
             NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                let mut before = Vec::new();
-                let mut own_line = false;
-                let mut name = None;
-                for element in n.children_with_tokens() {
-                    let NodeOrToken::Token(tok) = element else {
-                        continue;
-                    };
+                for tok in n.children_with_tokens().filter_map(|e| e.into_token()) {
                     match tok.kind() {
-                        SyntaxKind::NEWLINE => own_line = true,
-                        SyntaxKind::WHITESPACE => {}
-                        kind if kind.is_trivia() && own_line => before.push(inline_comment(&tok)),
+                        SyntaxKind::NEWLINE | SyntaxKind::WHITESPACE => {}
                         kind if kind.is_trivia() => {
-                            trailing(&mut names, &mut leading, inline_comment(&tok))
+                            place(&tok, &mut header, &mut before, &mut names)
                         }
-                        _ => name = Some(ir::text(tok.text())),
+                        _ => names.push((
+                            std::mem::take(&mut before),
+                            ir::text(tok.text()),
+                            Vec::new(),
+                        )),
                     }
-                }
-                if let Some(name) = name {
-                    names.push((before, name, Vec::new()));
                 }
             }
             NodeOrToken::Node(n) => {
-                names.push((Vec::new(), walk_node(&n), Vec::new()));
+                names.push((std::mem::take(&mut before), walk_node(&n), Vec::new()));
             }
         }
     }
 
-    // Emit: "(\n  name1,\n  name2\n)"
     let mut inner_parts = Vec::new();
-    for comment in leading {
+    for (i, (before, name, after)) in names.iter().enumerate() {
         inner_parts.push(ir::hardline());
-        inner_parts.push(comment);
-    }
-    inner_parts.push(ir::hardline());
-    for (i, (before, name, comments)) in names.iter().enumerate() {
         for comment in before {
             inner_parts.push(comment.clone());
             inner_parts.push(ir::hardline());
@@ -1715,17 +1709,22 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         if i < names.len() - 1 {
             inner_parts.push(ir::text(","));
         }
-        for comment in comments {
+        for comment in after {
             inner_parts.push(sp());
             inner_parts.push(comment.clone());
         }
-        if i < names.len() - 1 {
-            inner_parts.push(ir::hardline());
-        }
+    }
+    // Comments on lines of their own after the last name.
+    for comment in before {
+        inner_parts.push(ir::hardline());
+        inner_parts.push(comment);
     }
 
-    let mut parts = Vec::new();
-    parts.push(ir::text("("));
+    let mut parts = vec![ir::text("(")];
+    for comment in header {
+        parts.push(sp());
+        parts.push(comment);
+    }
     parts.push(ir::indent(ir::concat(inner_parts)));
     parts.push(ir::hardline());
     parts.push(ir::text(")"));
@@ -2597,6 +2596,17 @@ fn push_comment(items: &mut Vec<FormatIR>, tok: &SyntaxToken) {
     }
 }
 
+/// Add a comment in a construct's body. One that ends the header's line
+/// (`do # why`) stays there; the others are lines of the body.
+fn push_body_comment(header: &mut Vec<FormatIR>, lines: &mut Vec<FormatIR>, tok: &SyntaxToken) {
+    if lines.is_empty() && ends_a_line_of_code(tok) {
+        header.push(sp());
+        header.push(inline_comment(tok));
+    } else {
+        push_comment(lines, tok);
+    }
+}
+
 fn ends_a_line_of_code(comment: &SyntaxToken) -> bool {
     let mut prev = comment.prev_token();
     while prev
@@ -2619,7 +2629,14 @@ fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
         || kind == SyntaxKind::DOC_COMMENT
         || kind == SyntaxKind::MODULE_DOC_COMMENT
     {
-        // After a list's breakable space the comment starts the line the
+        // One that ends a line of code after a list's breakable space
+        // (`a, # why`) stays on that line, before the break.
+        if matches!(parts.last(), Some(FormatIR::Space)) && ends_a_line_of_code(tok) {
+            parts.pop();
+            parts.extend([sp(), inline_comment(tok), ir::space()]);
+            return;
+        }
+        // Otherwise after a breakable space the comment starts the line the
         // space breaks into; after a space it needs no other.
         if !matches!(parts.last(), None | Some(FormatIR::Space))
             && !matches!(parts.last(), Some(FormatIR::Text(text)) if text == " ")
@@ -2729,6 +2746,28 @@ mod tests {
             fmt("fn main() do\nlet f = fn (x, y) -> x end\nlet g = fn x -> x end\nfn () do 1 end\nend"),
             "fn main() do\n  let f = fn(x, y) -> x end\n  let g = fn x -> x end\n  fn() do 1 end\nend\n"
         );
+    }
+
+    #[test]
+    fn a_comment_ending_a_header_or_list_line_stays_there() {
+        for (source, formatted) in [
+            (
+                "case x do # c\n1 -> 2\nend",
+                "case x do # c\n  1 -> 2\nend\n",
+            ),
+            (
+                "struct S do # c\na :: Int\nend",
+                "struct S do # c\n  a :: Int\nend\n",
+            ),
+            (
+                "from Bar import ( # c\na, # a\n# own\nb\n# last\n)",
+                "from Bar import ( # c\n  a, # a\n  # own\n  b\n  # last\n)\n",
+            ),
+            ("fn f(a, # a\nb) = a", "fn f(a, # a\n  b) = a\n"),
+            ("let t = (1, # c\n2)", "let t = (1, # c\n  2)\n"),
+        ] {
+            assert_eq!(fmt(source), formatted, "{source}");
+        }
     }
 
     #[test]
@@ -2933,7 +2972,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            "fn main() do\n  let xs = [\n    1, # first\n    2\n  ]\n  let s = add(1,\n    # left\n    2)\n  let j = json {\n    # the id\n    id: 7\n  }\n  xs\nend\n"
+            "fn main() do\n  let xs = [\n    1, # first\n    2\n  ]\n  let s = add(1, # left\n    2)\n  let j = json {\n    # the id\n    id: 7\n  }\n  xs\nend\n"
         );
     }
 
