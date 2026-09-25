@@ -5078,7 +5078,7 @@ end
 
 fn main() do
   let words = Set.new() |> Set.add("b") |> Set.add("a") |> Set.add("b")
-  let copy = Set.add(Set.new(), String.concat("a", ""))
+  let copy = Set.add(Set.new(), String.trim(" a "))
   println("#{Set.size(words)} #{Set.contains(words, "a")} #{Set.contains(copy, "a")} #{Set.contains(words, "c")}")
   println("#{words}")
   println("#{Set.to_list(Set.remove(words, "b"))}")
@@ -5090,7 +5090,7 @@ fn main() do
   println("#{Set.size(many)} #{Set.contains(many, "k24")} #{Set.contains(many, "k25")}")
   let evens = Set.from_list(["k0", "k2", "k4"])
   println("#{Set.size(Set.intersection(many, evens))} #{Set.size(Set.difference(many, evens))} #{Set.size(Set.union(evens, Set.from_list(["z"])))}")
-  println("#{Set.from_list(["x", "y"]) == Set.from_list(["y", String.concat("x", "")])}")
+  println("#{Set.from_list(["x", "y"]) == Set.from_list(["y", String.trim(" x ")])}")
   let floats = Iter.from([1.5, 2.5, 1.5]) |> Set.collect()
   println("#{Set.size(floats)}")
   let collected = Iter.from(["q", "q", "r"]) |> Set.collect()
