@@ -198,10 +198,11 @@ value
 true
 nil
 
-# Tuple and constructors
+# Tuple, constructors and structs
 (left, right)
 Some(value)
 Result.Err(reason)
+Point { x: 0, y }     # field `x` is 0; bind field `y`; other fields match anything
 
 # List head/tail, or-pattern, and as-pattern
 head :: tail
@@ -215,7 +216,7 @@ case value do
 end
 ```
 
-`case`/`match` must be exhaustive; redundant arms are warned about. A `when` guard is any `Bool` expression. List-literal patterns such as `[]` and `[a, b]` match lists of exactly that length; there are no struct patterns. Function and closure parameters take the same patterns (`fn len(_ :: t) = 1 + len(t)`); clauses that miss a value are a warning, and a call they miss panics.
+`case`/`match` must be exhaustive; redundant arms are warned about. A `when` guard is any `Bool` expression. List-literal patterns such as `[]` and `[a, b]` match lists of exactly that length. A struct pattern (`Point { x: 0, y }`) matches the fields it names and binds a field named alone. Function and closure parameters take the same patterns (`fn len(_ :: t) = 1 + len(t)`); clauses that miss a value are a warning, and a call they miss panics.
 
 ## Control Flow
 

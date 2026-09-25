@@ -866,8 +866,8 @@ pub(crate) fn parse_let_binding(p: &mut Parser) {
     p.advance(); // LET_KW
 
     // Parse the pattern: identifier, tuple, wildcard, etc.
-    if p.at(SyntaxKind::L_PAREN) {
-        // Tuple pattern: let (a, b) = expr
+    if super::patterns::at_destructuring_pattern(p) {
+        // Tuple or struct pattern: let (a, b) = expr, let Point { x, y } = p
         super::patterns::parse_pattern(p);
     } else if p.at(SyntaxKind::IDENT) {
         let name = p.open();
@@ -1137,8 +1137,10 @@ fn at_match_arm_head(p: &Parser) -> bool {
     loop {
         match p.nth(k) {
             SyntaxKind::ARROW | SyntaxKind::WHEN_KW if depth == 0 => return true,
-            SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET => depth += 1,
-            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET => {
+            SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::L_BRACE => depth += 1,
+            // `field: pattern` inside a struct pattern.
+            SyntaxKind::COLON if depth > 0 => {}
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE => {
                 if depth == 0 {
                     return false;
                 }
@@ -1374,8 +1376,12 @@ fn looks_like_bare_closure_params(p: &Parser) -> bool {
             if text == "_" {
                 return true; // wildcard
             }
-            // Uppercase IDENT followed by L_PAREN -> constructor pattern
-            if text.starts_with(|c: char| c.is_uppercase()) && p.nth(1) == SyntaxKind::L_PAREN {
+            // Uppercase IDENT followed by `(` or `{` -> constructor or struct
+            // pattern, also module-qualified (`Shape.Circle(r)`, `Geo.Point { x }`)
+            if text.starts_with(|c: char| c.is_uppercase())
+                && (matches!(p.nth(1), SyntaxKind::L_PAREN | SyntaxKind::L_BRACE)
+                    || super::patterns::at_destructuring_pattern(p))
+            {
                 return true;
             }
             // Lowercase ident -> bare param (check next token to be sure)
@@ -1389,13 +1395,14 @@ fn looks_like_bare_closure_params(p: &Parser) -> bool {
                     | SyntaxKind::COLON_COLON
             )
         }
-        // Literal patterns
+        // Literal and list patterns
         SyntaxKind::INT_LITERAL
         | SyntaxKind::FLOAT_LITERAL
         | SyntaxKind::TRUE_KW
         | SyntaxKind::FALSE_KW
         | SyntaxKind::NIL_KW
-        | SyntaxKind::STRING_START => true,
+        | SyntaxKind::STRING_START
+        | SyntaxKind::L_BRACKET => true,
         // Negative literal pattern
         SyntaxKind::MINUS
             if matches!(
@@ -1732,14 +1739,15 @@ fn parse_continue_expr(p: &mut Parser) -> MarkClosed {
 /// Supports three binding forms:
 /// - Simple: `for x in iterable do body end`
 /// - Map destructuring: `for {k, v} in map do body end`
-/// - Pattern: `for (a, b) in pairs do body end` (an irrefutable pattern)
+/// - Pattern: `for (a, b) in pairs do body end`, `for Point { x, y } in points
+///   do body end` (an irrefutable pattern)
 fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // FOR_KW
 
     // Parse binding: a single IDENT (NAME), {k, v} (DESTRUCTURE_BINDING), or
-    // a tuple pattern.
-    if p.at(SyntaxKind::L_PAREN) {
+    // a tuple or struct pattern.
+    if super::patterns::at_destructuring_pattern(p) {
         super::patterns::parse_pattern(p);
     } else if p.at(SyntaxKind::L_BRACE) {
         // Destructuring binding: {k, v}

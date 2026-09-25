@@ -1,6 +1,7 @@
 //! Typed AST nodes for patterns.
 //!
-//! Covers: WildcardPat, IdentPat, LiteralPat, TuplePat, ConstructorPat, OrPat, AsPat.
+//! Covers: WildcardPat, IdentPat, LiteralPat, TuplePat, ConstructorPat, StructPat,
+//! OrPat, AsPat, ConsPat, ListPat.
 
 use crate::ast::{ast_node, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
@@ -16,6 +17,7 @@ pub enum Pattern {
     Literal(LiteralPat),
     Tuple(TuplePat),
     Constructor(ConstructorPat),
+    Struct(StructPat),
     Or(OrPat),
     As(AsPat),
     Cons(ConsPat),
@@ -43,6 +45,7 @@ impl Pattern {
             SyntaxKind::CONSTRUCTOR_PAT => {
                 Some(Pattern::Constructor(ConstructorPat { syntax: node }))
             }
+            SyntaxKind::STRUCT_PAT => Some(Pattern::Struct(StructPat { syntax: node })),
             SyntaxKind::OR_PAT => Some(Pattern::Or(OrPat { syntax: node })),
             SyntaxKind::AS_PAT => Some(Pattern::As(AsPat { syntax: node })),
             SyntaxKind::CONS_PAT => Some(Pattern::Cons(ConsPat { syntax: node })),
@@ -59,10 +62,59 @@ impl Pattern {
             Pattern::Literal(n) => &n.syntax,
             Pattern::Tuple(n) => &n.syntax,
             Pattern::Constructor(n) => &n.syntax,
+            Pattern::Struct(n) => &n.syntax,
             Pattern::Or(n) => &n.syntax,
             Pattern::As(n) => &n.syntax,
             Pattern::Cons(n) => &n.syntax,
             Pattern::List(n) => &n.syntax,
+        }
+    }
+
+    /// The patterns directly inside this one: tuple and list elements,
+    /// constructor arguments, struct field patterns, every alternative of an
+    /// or-pattern, a cons pattern's head and tail, an as-pattern's inner
+    /// pattern (not its name).
+    pub fn sub_patterns(&self) -> Vec<Pattern> {
+        match self {
+            Pattern::Wildcard(_) | Pattern::Ident(_) | Pattern::Literal(_) => Vec::new(),
+            Pattern::Struct(s) => s.fields().filter_map(|f| f.pattern()).collect(),
+            Pattern::As(a) => a.pattern().into_iter().collect(),
+            _ => self.syntax().children().filter_map(Pattern::cast).collect(),
+        }
+    }
+
+    /// The name tokens this pattern binds, in order: lowercase identifier
+    /// patterns (an uppercase one is a constructor) and `as` names. The
+    /// alternatives of an or-pattern bind the same names; the first one's
+    /// are returned.
+    pub fn binders(&self) -> Vec<SyntaxToken> {
+        let mut out = Vec::new();
+        self.collect_binders(&mut out);
+        out
+    }
+
+    fn collect_binders(&self, out: &mut Vec<SyntaxToken>) {
+        match self {
+            Pattern::Ident(ident) => out.extend(
+                ident
+                    .name()
+                    .filter(|name| !name.text().starts_with(|c: char| c.is_uppercase())),
+            ),
+            Pattern::Or(or) => {
+                if let Some(first) = or.alternatives().next() {
+                    first.collect_binders(out);
+                }
+            }
+            Pattern::As(as_pat) => {
+                if let Some(inner) = as_pat.pattern() {
+                    inner.collect_binders(out);
+                }
+                out.extend(as_pat.binding_name());
+            }
+            _ => self
+                .sub_patterns()
+                .iter()
+                .for_each(|sub| sub.collect_binders(out)),
         }
     }
 }
@@ -183,6 +235,59 @@ impl ConstructorPat {
     /// For nullary constructors like `Shape.Point`, this is empty.
     pub fn fields(&self) -> impl Iterator<Item = Pattern> + '_ {
         self.syntax.children().filter_map(Pattern::cast)
+    }
+}
+
+// ── Struct Pattern ──────────────────────────────────────────────────
+
+ast_node!(StructPat, STRUCT_PAT);
+
+impl StructPat {
+    /// The struct's name: `Point` in `Point { x }` and in `Geo.Point { x }`.
+    pub fn type_name(&self) -> Option<SyntaxToken> {
+        self.name_tokens().last()
+    }
+
+    /// The module qualifier: `Geo` in `Geo.Point { x }`.
+    pub fn qualifier(&self) -> Option<SyntaxToken> {
+        let names: Vec<_> = self.name_tokens().collect();
+        (names.len() > 1).then(|| names[0].clone())
+    }
+
+    fn name_tokens(&self) -> impl Iterator<Item = SyntaxToken> + '_ {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .filter(|t| t.kind() == SyntaxKind::IDENT)
+    }
+
+    /// The fields the pattern names; the struct's other fields match anything.
+    pub fn fields(&self) -> impl Iterator<Item = StructPatField> + '_ {
+        self.syntax.children().filter_map(StructPatField::cast)
+    }
+}
+
+ast_node!(StructPatField, STRUCT_PAT_FIELD);
+
+impl StructPatField {
+    /// The field's name: `y` in `y: 0`, and `x` in `x` alone.
+    pub fn name(&self) -> Option<SyntaxToken> {
+        match self
+            .syntax
+            .children()
+            .find(|n| n.kind() == SyntaxKind::NAME)
+        {
+            Some(name) => child_token(&name, SyntaxKind::IDENT),
+            None => self.pattern().and_then(|pattern| match pattern {
+                Pattern::Ident(ident) => ident.name(),
+                _ => None,
+            }),
+        }
+    }
+
+    /// The field's pattern: `0` in `y: 0`; `x` alone is the pattern `x`.
+    pub fn pattern(&self) -> Option<Pattern> {
+        self.syntax.children().find_map(Pattern::cast)
     }
 }
 

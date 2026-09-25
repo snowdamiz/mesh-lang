@@ -108,7 +108,7 @@ fn test_refutable_tuple_let_pattern_is_rejected() {
             matches!(
                 error,
                 TypeError::InvalidLetPattern { reason, .. }
-                    if reason.contains("refutable patterns are not allowed")
+                    if reason.contains("must match every value")
             )
         },
         "InvalidLetPattern(refutable)",

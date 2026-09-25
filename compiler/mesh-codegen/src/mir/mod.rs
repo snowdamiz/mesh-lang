@@ -795,6 +795,13 @@ pub enum MirPattern {
     },
     /// Matches a tuple with sub-patterns.
     Tuple(Vec<MirPattern>),
+    /// Matches a struct by its fields: every field of struct `name`, in
+    /// declaration order, with the field's type (a field the source pattern
+    /// leaves out is a `Wildcard`).
+    Struct {
+        name: std::string::String,
+        fields: Vec<(std::string::String, MirType, MirPattern)>,
+    },
     /// Or-pattern: matches if any alternative matches.
     Or(Vec<MirPattern>),
     /// List cons pattern: matches non-empty list, binding head element and tail list.

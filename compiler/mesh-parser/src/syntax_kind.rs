@@ -229,8 +229,10 @@ pub enum SyntaxKind {
     LITERAL_PAT,
     /// Tuple pattern: `(a, b, c)`
     TUPLE_PAT,
-    /// Struct pattern: `Point { x, y }`
+    /// Struct pattern: `Point { x, y: 0 }`
     STRUCT_PAT,
+    /// A field of a struct pattern: `y: pattern`, or `x` alone, which binds `x`
+    STRUCT_PAT_FIELD,
     /// Interpolated string expression: `"hello ${name}"`
     STRING_EXPR,
     /// Interpolation segment: `${expr}`
@@ -777,6 +779,7 @@ mod tests {
             SyntaxKind::LITERAL_PAT,
             SyntaxKind::TUPLE_PAT,
             SyntaxKind::STRUCT_PAT,
+            SyntaxKind::STRUCT_PAT_FIELD,
             SyntaxKind::STRING_EXPR,
             SyntaxKind::INTERPOLATION,
             SyntaxKind::TRAILING_CLOSURE,

@@ -10,12 +10,29 @@
 //! as_pattern    = cons_pattern ["as" IDENT]
 //! cons_pattern  = or_pattern ("::" cons_pattern)?
 //! or_pattern    = primary_pattern ("|" primary_pattern)*
-//! primary_pattern = wildcard | literal | tuple | list | constructor | ident
+//! primary_pattern = wildcard | literal | tuple | list | constructor | struct | ident
+//! struct        = NAME ["." NAME] "{" [field ("," field)* [","]] "}"
+//! field         = IDENT [":" pattern]
 //! ```
 
 use crate::syntax_kind::SyntaxKind;
 
 use super::{MarkClosed, Parser};
+
+/// Whether a `let` or `for` binding starts with a pattern rather than a
+/// name: a tuple `(a, b)` or a struct pattern `Point { x }` / `Geo.Point { x }`.
+pub(crate) fn at_destructuring_pattern(p: &Parser) -> bool {
+    let struct_start = |at: usize| {
+        p.nth(at) == SyntaxKind::L_BRACE
+            || (p.nth(at) == SyntaxKind::DOT
+                && p.nth(at + 1) == SyntaxKind::IDENT
+                && p.nth(at + 2) == SyntaxKind::L_BRACE)
+    };
+    p.at(SyntaxKind::L_PAREN)
+        || (p.at(SyntaxKind::IDENT)
+            && p.current_text().starts_with(|c: char| c.is_uppercase())
+            && struct_start(1))
+}
 
 /// Parse a pattern (top-level entry point).
 ///
@@ -96,6 +113,7 @@ fn parse_or_pattern(p: &mut Parser) -> Option<MarkClosed> {
 /// - `(p1, p2, ...)` -> TUPLE_PAT
 /// - `Name.Variant(args)` -> CONSTRUCTOR_PAT (qualified)
 /// - `Variant(args)` -> CONSTRUCTOR_PAT (unqualified, starts with uppercase + parens)
+/// - `Point { x, y: 0 }`, `Geo.Point { x }` -> STRUCT_PAT
 /// - `ident` -> IDENT_PAT
 fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
     match p.current() {
@@ -165,91 +183,43 @@ fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
         // List pattern: [] or [p1, p2, ...]
         SyntaxKind::L_BRACKET => {
             let m = p.open();
-            p.advance(); // [
-            if !p.at(SyntaxKind::R_BRACKET) {
-                parse_pattern(p);
-                while p.eat(SyntaxKind::COMMA) {
-                    if p.at(SyntaxKind::R_BRACKET) {
-                        break; // trailing comma
-                    }
-                    parse_pattern(p);
-                }
-            }
-            p.expect(SyntaxKind::R_BRACKET);
+            parse_pattern_list(p, SyntaxKind::R_BRACKET);
             Some(p.close(m, SyntaxKind::LIST_PAT))
         }
 
         // Tuple pattern: (p1, p2, ...)
         SyntaxKind::L_PAREN => {
             let m = p.open();
-            p.advance(); // (
-
-            if !p.at(SyntaxKind::R_PAREN) {
-                parse_pattern(p);
-                while p.eat(SyntaxKind::COMMA) {
-                    if p.at(SyntaxKind::R_PAREN) {
-                        break; // trailing comma
-                    }
-                    parse_pattern(p);
-                }
-            }
-
-            p.expect(SyntaxKind::R_PAREN);
+            parse_pattern_list(p, SyntaxKind::R_PAREN);
             Some(p.close(m, SyntaxKind::TUPLE_PAT))
         }
 
-        // Identifier-starting patterns: plain ident, constructor, qualified constructor
+        // Identifier-starting patterns: plain ident, constructor, qualified
+        // constructor, struct pattern.
         SyntaxKind::IDENT => {
-            let text = p.current_text().to_string();
-            let starts_upper = text.starts_with(|c: char| c.is_uppercase());
-
-            // Check for qualified constructor: Name.Variant or Name.Variant(args)
-            if p.nth(1) == SyntaxKind::DOT && p.nth(2) == SyntaxKind::IDENT {
-                // Qualified: Type.Variant or Type.Variant(args)
-                let m = p.open();
-                p.advance(); // type name
+            let starts_upper = p.current_text().starts_with(|c: char| c.is_uppercase());
+            let qualified = p.nth(1) == SyntaxKind::DOT && p.nth(2) == SyntaxKind::IDENT;
+            let m = p.open();
+            p.advance(); // name
+            if qualified {
                 p.advance(); // .
-                p.advance(); // variant name
-
-                // Optional argument list
-                if p.at(SyntaxKind::L_PAREN) {
-                    p.advance(); // (
-                    if !p.at(SyntaxKind::R_PAREN) {
-                        parse_pattern(p);
-                        while p.eat(SyntaxKind::COMMA) {
-                            if p.at(SyntaxKind::R_PAREN) {
-                                break;
-                            }
-                            parse_pattern(p);
-                        }
-                    }
-                    p.expect(SyntaxKind::R_PAREN);
+                p.advance(); // variant or struct name
+            }
+            match p.nth(0) {
+                // `Point { x, y: 0 }` or `Geo.Point { x }`
+                SyntaxKind::L_BRACE if starts_upper || qualified => {
+                    parse_struct_pattern_fields(p);
+                    Some(p.close(m, SyntaxKind::STRUCT_PAT))
                 }
-
-                Some(p.close(m, SyntaxKind::CONSTRUCTOR_PAT))
-            } else if starts_upper && p.nth(1) == SyntaxKind::L_PAREN {
-                // Unqualified constructor with args: Variant(args)
-                let m = p.open();
-                p.advance(); // variant name
-
-                p.advance(); // (
-                if !p.at(SyntaxKind::R_PAREN) {
-                    parse_pattern(p);
-                    while p.eat(SyntaxKind::COMMA) {
-                        if p.at(SyntaxKind::R_PAREN) {
-                            break;
-                        }
-                        parse_pattern(p);
-                    }
+                // `Variant(args)` or `Type.Variant(args)`
+                SyntaxKind::L_PAREN if starts_upper || qualified => {
+                    parse_pattern_list(p, SyntaxKind::R_PAREN);
+                    Some(p.close(m, SyntaxKind::CONSTRUCTOR_PAT))
                 }
-                p.expect(SyntaxKind::R_PAREN);
-
-                Some(p.close(m, SyntaxKind::CONSTRUCTOR_PAT))
-            } else {
-                // Plain identifier pattern (could be nullary constructor resolved later)
-                let m = p.open();
-                p.advance(); // ident
-                Some(p.close(m, SyntaxKind::IDENT_PAT))
+                // `Type.Variant`
+                _ if qualified => Some(p.close(m, SyntaxKind::CONSTRUCTOR_PAT)),
+                // A name (a nullary constructor is resolved later).
+                _ => Some(p.close(m, SyntaxKind::IDENT_PAT)),
             }
         }
 
@@ -258,4 +228,58 @@ fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
             None
         }
     }
+}
+
+/// Parse `open pattern, pattern, ... close`, where `open` is the current
+/// token; a trailing comma is allowed.
+fn parse_pattern_list(p: &mut Parser, close: SyntaxKind) {
+    p.advance(); // ( or [
+    if !p.at(close) {
+        parse_pattern(p);
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(close) {
+                break; // trailing comma
+            }
+            parse_pattern(p);
+        }
+    }
+    p.expect(close);
+}
+
+/// Parse a struct pattern's `{ field: pattern, field, ... }`. A field alone
+/// binds a variable of its name; fields left out match anything.
+fn parse_struct_pattern_fields(p: &mut Parser) {
+    p.advance(); // {
+    while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::EOF) {
+        let field = p.open();
+        if p.at(SyntaxKind::DOT_DOT) {
+            p.error("`..` is not needed: the fields a struct pattern leaves out match anything");
+            p.close(field, SyntaxKind::STRUCT_PAT_FIELD);
+            return;
+        }
+        if !p.at(SyntaxKind::IDENT) {
+            p.error("expected a field name in the struct pattern");
+            p.close(field, SyntaxKind::STRUCT_PAT_FIELD);
+            return;
+        }
+        if p.nth(1) == SyntaxKind::COLON {
+            let name = p.open();
+            p.advance(); // field name
+            p.close(name, SyntaxKind::NAME);
+            p.advance(); // :
+            parse_pattern(p);
+        } else {
+            let binding = p.open();
+            p.advance(); // field name, bound as a variable
+            p.close(binding, SyntaxKind::IDENT_PAT);
+        }
+        p.close(field, SyntaxKind::STRUCT_PAT_FIELD);
+        if p.has_error() {
+            return;
+        }
+        // Fields are separated by commas or, as in a struct literal, by
+        // new lines.
+        p.eat(SyntaxKind::COMMA);
+    }
+    p.expect(SyntaxKind::R_BRACE);
 }

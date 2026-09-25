@@ -247,6 +247,9 @@ Supported patterns are:
 - integer, float, string, atom, boolean, and `nil` literals;
 - negative numeric literals;
 - tuple patterns;
+- struct patterns such as `Point { x: 0, y }` and `Geo.Point { x }`: `field: pattern`
+  matches a field, a field alone binds a variable of its name, and omitted
+  fields match anything;
 - qualified and unqualified constructors;
 - constructor payload destructuring;
 - cons patterns such as `head :: tail`;
@@ -255,9 +258,9 @@ Supported patterns are:
 - alias patterns such as `pattern as whole`;
 - optional `when` guards on function, closure, receive, and match arms.
 
-Both sides of an or-pattern must bind the same names. Struct-field patterns are
-not currently supported; use tuple and constructor patterns. A heredoc literal
-is also a pattern.
+Both sides of an or-pattern must bind the same names. A heredoc literal is also
+a pattern. `let` and `for` take any pattern that matches every value: names,
+`_`, and tuple and struct patterns of them.
 
 An arm body is one expression, a `-> do ... end` block, or statements starting
 on the next line and indented under the arm. `return` is an expression, so
@@ -640,15 +643,12 @@ language features. Use:
 ## Current intentional limits
 
 - Variables and collections are immutable.
-- `Iter.from` currently accepts `List<T>`; `for ... in` has the wider
-  iterable surface.
 - There are no module-level bindings: a `let` outside a function is error E0080
   in a build. Use a function, such as `fn limit() -> Int do 10 end`. The REPL
   keeps its `let` bindings between inputs.
 - There is no bracket indexing: an index expression is error E0078. Use
   module functions such as `List.get`, `Map.get`, `Tuple.nth`, and
   `Json.array_get`.
-- Struct-field patterns are not implemented.
 - Wide integers use checked module functions instead of ordinary literal
   operators.
 - `Channel` payloads are currently `Int`.

@@ -11480,6 +11480,27 @@ impl<'a> Lowerer<'a> {
             .collect()
     }
 
+    /// The fields of struct type `ty`, in declaration order, with the type
+    /// arguments of `ty` substituted: `Box<Int>`'s `value` is an `Int`.
+    fn concrete_struct_fields(&self, ty: &Ty) -> Option<Vec<(String, Ty)>> {
+        let (name, args) = match ty {
+            Ty::Con(tc) => (tc.name.as_str(), &[][..]),
+            Ty::App(con, args) => match con.as_ref() {
+                Ty::Con(tc) => (tc.name.as_str(), args.as_slice()),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let def = self.registry.struct_defs.get(name)?;
+        let subst: HashMap<String, &Ty> = def.generic_params.iter().cloned().zip(args).collect();
+        Some(
+            def.fields
+                .iter()
+                .map(|(field, field_ty)| (field.clone(), substitute_type_params(field_ty, &subst)))
+                .collect(),
+        )
+    }
+
     fn lower_pattern(&mut self, pat: &Pattern) -> MirPattern {
         self.lower_pattern_with_expected(pat, None)
     }
@@ -11597,6 +11618,36 @@ impl<'a> Lowerer<'a> {
                     })
                     .collect();
                 MirPattern::Tuple(patterns)
+            }
+
+            Pattern::Struct(struct_pat) => {
+                let struct_ty = expected
+                    .cloned()
+                    .or_else(|| self.get_ty(struct_pat.syntax().text_range()).cloned());
+                let Some((mir_ty, fields)) = struct_ty.and_then(|ty| {
+                    let fields = self.concrete_struct_fields(&ty)?;
+                    Some((resolve_type(&ty, self.registry), fields))
+                }) else {
+                    return MirPattern::Wildcard;
+                };
+                let MirType::Struct(name) = mir_ty else {
+                    return MirPattern::Wildcard;
+                };
+                let fields = fields
+                    .into_iter()
+                    .map(|(field, field_ty)| {
+                        let pattern = struct_pat
+                            .fields()
+                            .find(|f| f.name().is_some_and(|n| n.text() == field))
+                            .and_then(|f| f.pattern())
+                            .map(|sub| self.lower_pattern_with_expected(&sub, Some(&field_ty)))
+                            .unwrap_or(MirPattern::Wildcard);
+                        let mir_field_ty =
+                            runtime_value_type(resolve_type(&field_ty, self.registry));
+                        (field, mir_field_ty, pattern)
+                    })
+                    .collect();
+                MirPattern::Struct { name, fields }
             }
 
             Pattern::Or(or) => {
@@ -17043,6 +17094,11 @@ fn collect_bindings_recursive(pat: &MirPattern, bindings: &mut Vec<(String, MirT
         }
         MirPattern::Tuple(pats) => {
             for p in pats {
+                collect_bindings_recursive(p, bindings);
+            }
+        }
+        MirPattern::Struct { fields, .. } => {
+            for (_, _, p) in fields {
                 collect_bindings_recursive(p, bindings);
             }
         }

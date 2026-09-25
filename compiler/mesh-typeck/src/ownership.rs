@@ -1496,16 +1496,7 @@ impl Checker<'_> {
                     }
                 }
             }
-            Pattern::Tuple(tuple) => {
-                for child in tuple.patterns() {
-                    self.bind_pattern(&child);
-                }
-            }
-            Pattern::Constructor(constructor) => {
-                for field in constructor.fields() {
-                    self.bind_pattern(&field);
-                }
-            }
+            // The alternatives bind the same names.
             Pattern::Or(or_pattern) => {
                 if let Some(first) = or_pattern.alternatives().next() {
                     self.bind_pattern(&first);
@@ -1522,71 +1513,17 @@ impl Checker<'_> {
                     self.insert(name.text().to_string(), ty);
                 }
             }
-            Pattern::Cons(cons_pattern) => {
-                if let Some(head) = cons_pattern.head() {
-                    self.bind_pattern(&head);
-                }
-                if let Some(tail) = cons_pattern.tail() {
-                    self.bind_pattern(&tail);
-                }
-            }
-            Pattern::List(list_pattern) => {
-                for child in list_pattern.patterns() {
+            _ => {
+                for child in pattern.sub_patterns() {
                     self.bind_pattern(&child);
                 }
             }
-            Pattern::Wildcard(_) | Pattern::Literal(_) => {}
         }
     }
 
     fn check_unconsumed_pattern_resources(&mut self, pattern: &Pattern) {
-        match pattern {
-            Pattern::Ident(identifier) => {
-                let Some(name) = identifier.name().map(|name| name.text().to_string()) else {
-                    return;
-                };
-                if name.starts_with(|character: char| character.is_uppercase()) {
-                    return;
-                }
-                self.check_unconsumed_resource_binding(&name, identifier.syntax().text_range());
-            }
-            Pattern::Tuple(tuple) => {
-                for child in tuple.patterns() {
-                    self.check_unconsumed_pattern_resources(&child);
-                }
-            }
-            Pattern::Constructor(constructor) => {
-                for field in constructor.fields() {
-                    self.check_unconsumed_pattern_resources(&field);
-                }
-            }
-            Pattern::Or(or_pattern) => {
-                if let Some(first) = or_pattern.alternatives().next() {
-                    self.check_unconsumed_pattern_resources(&first);
-                }
-            }
-            Pattern::As(as_pattern) => {
-                if let Some(inner) = as_pattern.pattern() {
-                    self.check_unconsumed_pattern_resources(&inner);
-                }
-                if let Some(binding) = as_pattern.binding_name() {
-                    self.check_unconsumed_resource_binding(binding.text(), binding.text_range());
-                }
-            }
-            Pattern::Cons(cons_pattern) => {
-                if let Some(head) = cons_pattern.head() {
-                    self.check_unconsumed_pattern_resources(&head);
-                }
-                if let Some(tail) = cons_pattern.tail() {
-                    self.check_unconsumed_pattern_resources(&tail);
-                }
-            }
-            Pattern::List(list_pattern) => {
-                for child in list_pattern.patterns() {
-                    self.check_unconsumed_pattern_resources(&child);
-                }
-            }
-            Pattern::Wildcard(_) | Pattern::Literal(_) => {}
+        for name in pattern.binders() {
+            self.check_unconsumed_resource_binding(name.text(), name.text_range());
         }
     }
 

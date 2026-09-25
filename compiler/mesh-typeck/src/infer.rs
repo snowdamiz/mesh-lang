@@ -5423,7 +5423,7 @@ fn infer_multi_clause_fn(
         let param_list = clause.param_list();
         let params: Vec<_> = param_list.iter().flat_map(|pl| pl.params()).collect();
         let param_patterns: Vec<Pattern> = params.iter().filter_map(|p| p.pattern()).collect();
-        check_unique_binders(ctx, &param_patterns, env);
+        check_unique_binders(ctx, &param_patterns);
 
         let mut clause_abs_pats: Vec<AbsPat> = Vec::new();
 
@@ -8169,8 +8169,8 @@ fn validate_let_destructuring_element(
     binders: &mut FxHashSet<String>,
 ) -> Result<(), TypeError> {
     match pattern {
-        Pattern::Tuple(tuple) => {
-            for element in tuple.patterns() {
+        Pattern::Tuple(_) | Pattern::Struct(_) => {
+            for element in pattern.sub_patterns() {
                 validate_let_destructuring_element(&element, binders)?;
             }
             Ok(())
@@ -8184,14 +8184,14 @@ fn validate_let_destructuring_element(
             let binder = name.trim_start_matches('_');
             if !binder.chars().next().is_some_and(char::is_lowercase) {
                 return Err(TypeError::InvalidLetPattern {
-                    reason: "tuple let binders must start with a lowercase letter".to_string(),
+                    reason: "let binders must start with a lowercase letter".to_string(),
                     span: identifier.syntax().text_range(),
                 });
             }
 
             if !binders.insert(name.clone()) {
                 return Err(TypeError::InvalidLetPattern {
-                    reason: format!("tuple let binders must be unique; `{name}` is repeated"),
+                    reason: format!("let binders must be unique; `{name}` is repeated"),
                     span: identifier.syntax().text_range(),
                 });
             }
@@ -8199,7 +8199,7 @@ fn validate_let_destructuring_element(
             Ok(())
         }
         _ => Err(TypeError::InvalidLetPattern {
-            reason: "refutable patterns are not allowed in tuple let bindings".to_string(),
+            reason: "a `let` pattern must match every value (use `case` to match some)".to_string(),
             span: pattern.syntax().text_range(),
         }),
     }
@@ -11851,7 +11851,7 @@ fn infer_multi_clause_closure(
         let mut clause_abs_pats = Vec::new();
         if let Some(param_list) = &param_list {
             let patterns: Vec<Pattern> = param_list.params().filter_map(|p| p.pattern()).collect();
-            check_unique_binders(ctx, &patterns, env);
+            check_unique_binders(ctx, &patterns);
         }
         if let Some(param_list) = param_list {
             for (param_idx, param) in param_list.params().enumerate() {
@@ -12325,6 +12325,32 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                 args,
             }
         }
+        // A struct is a type with one constructor, whose arguments are its
+        // fields in declaration order.
+        Pattern::Struct(struct_pat) => {
+            let def = struct_pat
+                .type_name()
+                .and_then(|name| struct_def_named(type_registry, name.text()));
+            match def {
+                Some(def) => AbsPat::Constructor {
+                    name: def.name.clone(),
+                    type_name: def.name.clone(),
+                    args: def
+                        .fields
+                        .iter()
+                        .map(|(field, _)| {
+                            struct_pat
+                                .fields()
+                                .find(|f| f.name().is_some_and(|n| n.text() == field))
+                                .and_then(|f| f.pattern())
+                                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                                .unwrap_or(AbsPat::Wildcard)
+                        })
+                        .collect(),
+                },
+                None => AbsPat::Wildcard,
+            }
+        }
         Pattern::Or(or_pat) => {
             let alts: Vec<AbsPat> = or_pat
                 .alternatives()
@@ -12413,10 +12439,37 @@ fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
                 .collect();
             return AbsTypeInfo::SumType { variants };
         }
+        if let Some(def) = type_registry.lookup_struct(name) {
+            return struct_type_info(def);
+        }
     }
 
     // Int, Float, String, or unknown -> infinite type.
     AbsTypeInfo::Infinite
+}
+
+/// A struct for exhaustiveness: one constructor with a field per argument.
+fn struct_type_info(def: &StructDefInfo) -> AbsTypeInfo {
+    AbsTypeInfo::SumType {
+        variants: vec![ConstructorSig {
+            name: def.name.clone(),
+            arity: def.fields.len(),
+        }],
+    }
+}
+
+/// The struct `name` names, directly or through an alias.
+fn struct_def_named<'a>(type_registry: &'a TypeRegistry, name: &str) -> Option<&'a StructDefInfo> {
+    type_registry.lookup_struct(name).or_else(|| {
+        match &type_registry.lookup_alias(name)?.aliased_type {
+            Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
+            Ty::App(con, _) => match con.as_ref() {
+                Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
+                _ => None,
+            },
+            _ => None,
+        }
+    })
 }
 
 /// Build an exhaustiveness `TypeRegistry` from the infer `TypeRegistry`.
@@ -12436,6 +12489,10 @@ fn build_abs_type_registry(type_registry: &TypeRegistry) -> AbsTypeRegistry {
             })
             .collect();
         abs_reg.register(name.clone(), AbsTypeInfo::SumType { variants });
+    }
+
+    for (name, def) in &type_registry.struct_defs {
+        abs_reg.register(name.clone(), struct_type_info(def));
     }
 
     // Also register Bool for nested bool patterns, and lists for `::` patterns.
@@ -12483,15 +12540,33 @@ fn build_abs_type_registry(type_registry: &TypeRegistry) -> AbsTypeRegistry {
 }
 
 /// Format an abstract pattern as a human-readable string for error messages.
-fn format_abstract_pat(pat: &AbsPat) -> String {
+fn format_abstract_pat(pat: &AbsPat, type_registry: &TypeRegistry) -> String {
+    let format = |pat: &AbsPat| format_abstract_pat(pat, type_registry);
     match pat {
         AbsPat::Wildcard => "_".to_string(),
-        AbsPat::Constructor { name, args, .. } => {
-            let args_str: Vec<String> = args.iter().map(format_abstract_pat).collect();
+        AbsPat::Constructor {
+            name,
+            type_name,
+            args,
+        } => {
+            let args_str: Vec<String> = args.iter().map(format).collect();
             if name == exhaustiveness::TUPLE {
                 format!("({})", args_str.join(", "))
             } else if name == exhaustiveness::CONS {
                 format!("{} :: {}", args_str[0], args_str[1])
+            } else if let Some(def) = type_registry.lookup_struct(name).filter(|_| {
+                // A top-level witness carries no type name; a variant may
+                // share a struct's name.
+                (type_name.is_empty() || name == type_name)
+                    && type_registry.lookup_variant(name).is_none()
+            }) {
+                let fields: Vec<String> = def
+                    .fields
+                    .iter()
+                    .zip(&args_str)
+                    .map(|((field, _), arg)| format!("{field}: {arg}"))
+                    .collect();
+                format!("{name} {{ {} }}", fields.join(", "))
             } else if args.is_empty() {
                 name.clone()
             } else {
@@ -12500,7 +12575,7 @@ fn format_abstract_pat(pat: &AbsPat) -> String {
         }
         AbsPat::Literal { value, .. } => value.clone(),
         AbsPat::Or { alternatives } => {
-            let alts_str: Vec<String> = alternatives.iter().map(format_abstract_pat).collect();
+            let alts_str: Vec<String> = alternatives.iter().map(format).collect();
             alts_str.join(" | ")
         }
     }
@@ -12545,7 +12620,7 @@ fn infer_case(
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
-            check_unique_binders(ctx, std::slice::from_ref(&pat), env);
+            check_unique_binders(ctx, std::slice::from_ref(&pat));
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             ctx.unify(
                 scrutinee_ty.clone(),
@@ -12701,7 +12776,10 @@ fn check_arm_coverage(
         &scrutinee_type_info,
         &abs_registry,
     ) {
-        let missing: Vec<String> = witnesses.iter().map(format_abstract_pat).collect();
+        let missing: Vec<String> = witnesses
+            .iter()
+            .map(|pat| format_abstract_pat(pat, type_registry))
+            .collect();
         let scrutinee_type = format!("{}", resolved_scrutinee);
         if clauses {
             ctx.warnings.push(TypeError::NonExhaustiveClauses {
@@ -13481,78 +13559,30 @@ fn infer_struct_literal(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     let struct_name = sl.type_name().unwrap_or_else(|| "<unknown>".to_string());
-
-    // A literal written through an alias (`P { x: 4 }` with `type P = Point`)
-    // builds the aliased struct, with the arguments the alias gives it.
-    let (struct_name, alias_args) = match type_registry.lookup_struct(&struct_name) {
-        Some(_) => (struct_name, None),
-        None => match type_registry.lookup_alias(&struct_name).map(|alias| {
-            let fresh: Vec<Ty> = alias
-                .generic_params
-                .iter()
-                .map(|_| ctx.fresh_var())
-                .collect();
-            substitute_type_params(&alias.aliased_type, &alias.generic_params, &fresh)
-        }) {
-            Some(Ty::Con(tc)) if type_registry.lookup_struct(&tc.name).is_some() => (tc.name, None),
-            Some(Ty::App(con, args)) => match *con {
-                Ty::Con(tc) if type_registry.lookup_struct(&tc.name).is_some() => {
-                    (tc.name, Some(args))
-                }
-                _ => (struct_name, None),
-            },
-            _ => (struct_name, None),
-        },
-    };
-
-    let struct_def = match type_registry.lookup_struct(&struct_name) {
-        Some(def) => def.clone(),
-        None => {
-            let span = sl
-                .name_ref()
-                .map(|nr| nr.syntax().text_range())
-                .unwrap_or_else(|| sl.syntax().text_range());
-            if is_known_type(&struct_name, type_registry) {
-                ctx.errors.push(TypeError::NotAStruct {
-                    ty: Ty::Con(TyCon::new(&struct_name)),
-                    span,
-                });
-            } else {
-                // Not in scope: declared nowhere, or private to another
-                // module (it said "`Secret` is not a struct").
-                ctx.unknown_types.insert(struct_name.clone());
-                ctx.errors.push(TypeError::UnknownType {
-                    name: struct_name.clone(),
-                    span,
-                });
+    let span = sl
+        .name_ref()
+        .map(|nr| nr.syntax().text_range())
+        .unwrap_or_else(|| sl.syntax().text_range());
+    let Some((struct_def, generic_vars)) =
+        resolve_struct_name(ctx, type_registry, &struct_name, span)
+    else {
+        // Infer the field values anyway, for their own errors.
+        for field in sl.fields() {
+            if let Some(value) = field.value() {
+                let _ = infer_expr(
+                    ctx,
+                    env,
+                    &value,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                );
             }
-            // Infer the field values anyway, for their own errors.
-            for field in sl.fields() {
-                if let Some(value) = field.value() {
-                    let _ = infer_expr(
-                        ctx,
-                        env,
-                        &value,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    );
-                }
-            }
-            return Ok(Ty::struct_ty(&struct_name, vec![]));
         }
+        return Ok(Ty::struct_ty(&struct_name, vec![]));
     };
-
-    // Create fresh type variables for generic params.
-    let generic_vars: Vec<Ty> = match alias_args {
-        Some(args) if args.len() == struct_def.generic_params.len() => args,
-        _ => struct_def
-            .generic_params
-            .iter()
-            .map(|_| ctx.fresh_var())
-            .collect(),
-    };
+    let struct_name = struct_def.name.clone();
 
     // Track provided fields.
     let mut provided_fields: Vec<String> = Vec::new();
@@ -13626,25 +13656,79 @@ fn infer_struct_literal(
         }
     }
 
-    // Build the struct type with display_prefix if applicable.
-    // Look up the env entry for this struct to preserve its display_prefix
-    // (set during import resolution).
-    let tycon = match env.lookup(&struct_name) {
-        Some(scheme) => match &scheme.ty {
-            Ty::App(inner, _) => {
-                if let Ty::Con(tc) = inner.as_ref() {
-                    tc.clone()
-                } else {
-                    TyCon::new(&struct_name)
-                }
-            }
-            Ty::Con(tc) => tc.clone(),
-            _ => TyCon::new(&struct_name),
-        },
-        None => TyCon::new(&struct_name),
-    };
+    Ok(struct_value_type(env, &struct_name, generic_vars))
+}
 
-    Ok(Ty::App(Box::new(Ty::Con(tycon)), generic_vars))
+/// The struct a literal or a pattern names, and its type arguments: fresh
+/// variables, or the arguments an alias gives it (`P { x: 4 }` with
+/// `type P = Point` builds a `Point`). A name that is not a struct is
+/// reported at `span`.
+fn resolve_struct_name(
+    ctx: &mut InferCtx,
+    type_registry: &TypeRegistry,
+    name: &str,
+    span: TextRange,
+) -> Option<(StructDefInfo, Vec<Ty>)> {
+    let (struct_name, alias_args) = match type_registry.lookup_struct(name) {
+        Some(_) => (name.to_string(), None),
+        None => match type_registry.lookup_alias(name).map(|alias| {
+            let fresh: Vec<Ty> = alias
+                .generic_params
+                .iter()
+                .map(|_| ctx.fresh_var())
+                .collect();
+            substitute_type_params(&alias.aliased_type, &alias.generic_params, &fresh)
+        }) {
+            Some(Ty::Con(tc)) if type_registry.lookup_struct(&tc.name).is_some() => (tc.name, None),
+            Some(Ty::App(con, args)) => match *con {
+                Ty::Con(tc) if type_registry.lookup_struct(&tc.name).is_some() => {
+                    (tc.name, Some(args))
+                }
+                _ => (name.to_string(), None),
+            },
+            _ => (name.to_string(), None),
+        },
+    };
+    let Some(struct_def) = type_registry.lookup_struct(&struct_name).cloned() else {
+        if is_known_type(&struct_name, type_registry) {
+            ctx.errors.push(TypeError::NotAStruct {
+                ty: Ty::Con(TyCon::new(&struct_name)),
+                span,
+            });
+        } else {
+            // Not in scope: declared nowhere, or private to another
+            // module (it said "`Secret` is not a struct").
+            ctx.unknown_types.insert(struct_name.clone());
+            ctx.errors.push(TypeError::UnknownType {
+                name: struct_name,
+                span,
+            });
+        }
+        return None;
+    };
+    let args = match alias_args {
+        Some(args) if args.len() == struct_def.generic_params.len() => args,
+        _ => struct_def
+            .generic_params
+            .iter()
+            .map(|_| ctx.fresh_var())
+            .collect(),
+    };
+    Some((struct_def, args))
+}
+
+/// The type of a value of struct `name` with type arguments `args`, keeping
+/// the display prefix an import gave the struct.
+fn struct_value_type(env: &TypeEnv, name: &str, args: Vec<Ty>) -> Ty {
+    let tycon = match env.lookup(name).map(|scheme| &scheme.ty) {
+        Some(Ty::App(inner, _)) => match inner.as_ref() {
+            Ty::Con(tc) => tc.clone(),
+            _ => TyCon::new(name),
+        },
+        Some(Ty::Con(tc)) => tc.clone(),
+        _ => TyCon::new(name),
+    };
+    Ty::App(Box::new(Ty::Con(tycon)), args)
 }
 
 // ── Struct Update Inference ────────────────────────────────────────────
@@ -13979,6 +14063,9 @@ fn infer_pattern(
         Pattern::Constructor(ctor_pat) => {
             infer_constructor_pattern(ctx, env, ctor_pat, pat, types, type_registry)
         }
+        Pattern::Struct(struct_pat) => {
+            infer_struct_pattern(ctx, env, struct_pat, pat, types, type_registry)
+        }
         Pattern::Or(or_pat) => infer_or_pattern(ctx, env, or_pat, pat, types, type_registry),
         Pattern::As(as_pat) => infer_as_pattern(ctx, env, as_pat, pat, types, type_registry),
         Pattern::Cons(cons_pat) => {
@@ -13996,6 +14083,65 @@ fn infer_pattern(
             Ok(ty)
         }
     }
+}
+
+/// Infer a struct pattern: `Point { x: 0, y }`. Each field it names matches
+/// a value of that field's type; the fields it leaves out match anything.
+/// An error in it is returned, as for an unknown constructor, so the match
+/// is not checked further.
+fn infer_struct_pattern(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    struct_pat: &mesh_parser::ast::pat::StructPat,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Result<Ty, TypeError> {
+    let errors_before = ctx.errors.len();
+    let first_error = |ctx: &InferCtx| ctx.errors[errors_before].clone();
+    let name = struct_pat.type_name();
+    let span = name
+        .as_ref()
+        .map(|t| t.text_range())
+        .unwrap_or_else(|| pat.syntax().text_range());
+    let name = name.map(|t| t.text().to_string()).unwrap_or_default();
+    let Some((def, args)) = resolve_struct_name(ctx, type_registry, &name, span) else {
+        return Err(first_error(ctx));
+    };
+    let mut seen: Vec<String> = Vec::new();
+    for field in struct_pat.fields() {
+        let (Some(field_name), Some(sub)) = (field.name(), field.pattern()) else {
+            continue;
+        };
+        let field_name = field_name.text().to_string();
+        let span = field.syntax().text_range();
+        if seen.contains(&field_name) {
+            ctx.errors
+                .push(TypeError::DuplicateField { field_name, span });
+            return Err(first_error(ctx));
+        }
+        let Some((_, field_ty)) = def.fields.iter().find(|(name, _)| *name == field_name) else {
+            ctx.errors.push(TypeError::UnknownField {
+                struct_name: def.name.clone(),
+                field_name,
+                span,
+            });
+            return Err(first_error(ctx));
+        };
+        let sub_ty = infer_pattern(ctx, env, &sub, types, type_registry)?;
+        let expected = substitute_type_params(field_ty, &def.generic_params, &args);
+        ctx.unify(
+            expected,
+            sub_ty,
+            ConstraintOrigin::Annotation {
+                annotation_span: span,
+            },
+        )?;
+        seen.push(field_name);
+    }
+    let ty = struct_value_type(env, &def.name, args);
+    types.insert(pat.syntax().text_range(), ty.clone());
+    Ok(ty)
 }
 
 /// Infer a constructor pattern: `Circle(r)` or `Shape.Circle(r)`.
@@ -14192,7 +14338,7 @@ fn infer_or_pattern(
     }
 
     // Collect binding names using semantic-aware collection (needs env).
-    let first_names = collect_pattern_binding_names(&alternatives[0], env);
+    let first_names = collect_pattern_binding_names(&alternatives[0]);
 
     // Infer first alternative in a temporary scope.
     env.push_scope();
@@ -14210,7 +14356,7 @@ fn infer_or_pattern(
 
     // Infer remaining alternatives, unify types, validate bindings.
     for alt in alternatives.iter().skip(1) {
-        let alt_names = collect_pattern_binding_names(alt, env);
+        let alt_names = collect_pattern_binding_names(alt);
 
         env.push_scope();
         let alt_ty = infer_pattern(ctx, env, alt, types, type_registry)?;
@@ -14254,10 +14400,10 @@ fn infer_or_pattern(
 
 /// Report a name that `patterns` (one arm's, or one clause's parameters)
 /// bind twice: `(a, a)` bound the second value and dropped the first.
-fn check_unique_binders(ctx: &mut InferCtx, patterns: &[Pattern], env: &TypeEnv) {
+fn check_unique_binders(ctx: &mut InferCtx, patterns: &[Pattern]) {
     let mut seen = FxHashSet::default();
     for pattern in patterns {
-        for name in collect_pattern_binding_names(pattern, env) {
+        for name in collect_pattern_binding_names(pattern) {
             if name != "_" && !seen.insert(name.clone()) {
                 ctx.errors.push(TypeError::DuplicateBinding {
                     name,
@@ -14268,73 +14414,9 @@ fn check_unique_binders(ctx: &mut InferCtx, patterns: &[Pattern], env: &TypeEnv)
     }
 }
 
-/// Collect all variable names that would be *bound* by a pattern (recursively).
-///
-/// This is semantically aware: ident patterns that resolve to known constructors
-/// in the environment are NOT counted as bindings.
-fn collect_pattern_binding_names(pat: &Pattern, env: &TypeEnv) -> Vec<String> {
-    let mut names = Vec::new();
-    collect_binding_names_recursive(pat, &mut names, env);
-    names
-}
-
-fn collect_binding_names_recursive(pat: &Pattern, names: &mut Vec<String>, env: &TypeEnv) {
-    match pat {
-        Pattern::Ident(ident) => {
-            if let Some(name_tok) = ident.name() {
-                let name_text = name_tok.text().to_string();
-                // Check if this name is a known constructor (not a variable binding).
-                // If the name already exists in the env, it may be a constructor.
-                // We use the same heuristic as infer_pattern: if it resolves to
-                // a sum type (App(Con(_), _)), it's a constructor, not a binding.
-                // Only an uppercase name can be a constructor; a lowercase one
-                // binds even when an outer variable has that name.
-                let is_constructor = name_text.starts_with(|c: char| c.is_uppercase())
-                    && env.lookup(&name_text).is_some();
-                if !is_constructor {
-                    names.push(name_text);
-                }
-            }
-        }
-        Pattern::Wildcard(_) | Pattern::Literal(_) => {}
-        Pattern::Tuple(tuple_pat) => {
-            for sub in tuple_pat.patterns() {
-                collect_binding_names_recursive(&sub, names, env);
-            }
-        }
-        Pattern::Constructor(ctor) => {
-            for sub in ctor.fields() {
-                collect_binding_names_recursive(&sub, names, env);
-            }
-        }
-        Pattern::Or(or_pat) => {
-            // For binding collection, use the first alternative.
-            if let Some(first) = or_pat.alternatives().next() {
-                collect_binding_names_recursive(&first, names, env);
-            }
-        }
-        Pattern::As(as_pat) => {
-            if let Some(inner) = as_pat.pattern() {
-                collect_binding_names_recursive(&inner, names, env);
-            }
-            if let Some(binding) = as_pat.binding_name() {
-                names.push(binding.text().to_string());
-            }
-        }
-        Pattern::Cons(cons_pat) => {
-            if let Some(head) = cons_pat.head() {
-                collect_binding_names_recursive(&head, names, env);
-            }
-            if let Some(tail) = cons_pat.tail() {
-                collect_binding_names_recursive(&tail, names, env);
-            }
-        }
-        Pattern::List(list_pat) => {
-            for sub in list_pat.patterns() {
-                collect_binding_names_recursive(&sub, names, env);
-            }
-        }
-    }
+/// The names a pattern binds (an uppercase identifier is a constructor).
+fn collect_pattern_binding_names(pat: &Pattern) -> Vec<String> {
+    pat.binders().iter().map(|t| t.text().to_string()).collect()
 }
 
 /// Infer an as-pattern: `Circle(r) as c`.
@@ -15391,7 +15473,7 @@ fn infer_receive(
         env.push_scope();
 
         if let Some(pat) = arm.pattern() {
-            check_unique_binders(ctx, std::slice::from_ref(&pat), env);
+            check_unique_binders(ctx, std::slice::from_ref(&pat));
             let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
             // Unify pattern type with actor message type.
             ctx.unify(

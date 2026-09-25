@@ -11,7 +11,7 @@
 
 use rustc_hash::FxHashMap;
 
-use crate::mir::{MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirSumTypeDef, MirType};
+use crate::mir::{MirExpr, MirLiteral, MirMatchArm, MirPattern, MirSumTypeDef, MirType};
 use crate::pattern::{AccessPath, ConstructorTag, DecisionTree};
 
 // ── Pattern Matrix ──────────────────────────────────────────────────
@@ -148,20 +148,6 @@ pub fn compile_match_columns(
     compile_matrix(matrix, file, line, sum_type_defs)
 }
 
-/// Walk all `MirExpr::Match` nodes in a module and compile them to
-/// `MirExpr::CompiledMatch` with decision trees.
-pub fn compile_patterns(module: &mut MirModule) {
-    // Build sum_type_defs map from the module's sum type definitions.
-    let sum_type_defs: FxHashMap<String, MirSumTypeDef> = module
-        .sum_types
-        .iter()
-        .map(|st| (st.name.clone(), st.clone()))
-        .collect();
-    for func in &mut module.functions {
-        compile_expr_patterns(&mut func.body, &sum_type_defs);
-    }
-}
-
 // ── Or-pattern expansion ────────────────────────────────────────────
 
 /// Expand or-patterns by duplicating arms for each alternative.
@@ -231,6 +217,20 @@ fn pattern_alternatives(pattern: &MirPattern) -> Vec<MirPattern> {
             .into_iter()
             .map(MirPattern::Tuple)
             .collect(),
+        MirPattern::Struct { name, fields } => {
+            let patterns: Vec<MirPattern> = fields.iter().map(|(_, _, p)| p.clone()).collect();
+            product(&patterns)
+                .into_iter()
+                .map(|patterns| MirPattern::Struct {
+                    name: name.clone(),
+                    fields: fields
+                        .iter()
+                        .zip(patterns)
+                        .map(|((field, ty, _), pattern)| (field.clone(), ty.clone(), pattern))
+                        .collect(),
+                })
+                .collect()
+        }
         MirPattern::ListCons {
             head,
             tail,
@@ -312,10 +312,10 @@ fn compile_matrix(
     // Step 1: Select the best column to test (most constructor diversity).
     let col = select_column(&matrix);
 
-    // Step 1.5: If the selected column contains tuple patterns, expand them first.
-    // Tuples are structural -- they don't need a switch/test, just decomposition.
-    if column_has_tuples(&matrix, col) {
-        let expanded = expand_tuple_column(&matrix, col);
+    // Step 1.5: If the selected column contains tuple or struct patterns,
+    // expand them first: they need no switch or test, only decomposition.
+    if column_has_products(&matrix, col) {
+        let expanded = expand_product_column(&matrix, col);
         return compile_matrix(expanded, file, line, sum_type_defs);
     }
 
@@ -452,6 +452,7 @@ fn head_ctor_key(p: &MirPattern) -> Option<String> {
         MirPattern::Literal(lit) => Some(format!("lit:{}", literal_key(lit))),
         MirPattern::Constructor { variant, .. } => Some(format!("ctor:{}", variant)),
         MirPattern::Tuple(elems) => Some(format!("tuple:{}", elems.len())),
+        MirPattern::Struct { name, .. } => Some(format!("struct:{name}")),
         MirPattern::ListCons { .. } => Some("list_cons".to_string()),
         MirPattern::ListNil => Some("list_nil".to_string()),
         MirPattern::As { inner, .. } => head_ctor_key(inner),
@@ -1136,14 +1137,17 @@ fn remove_wildcard_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
     }
 }
 
-// ── Tuple expansion ─────────────────────────────────────────────────
+// ── Tuple and struct expansion ──────────────────────────────────────
 
-/// Check if a column contains any tuple patterns.
-fn column_has_tuples(matrix: &PatMatrix, col: usize) -> bool {
-    matrix
-        .rows
-        .iter()
-        .any(|row| col < row.patterns.len() && matches!(&row.patterns[col], MirPattern::Tuple(_)))
+/// Whether a column holds tuple or struct patterns: values that are taken
+/// apart into their elements or fields, with no test.
+fn column_has_products(matrix: &PatMatrix, col: usize) -> bool {
+    matrix.rows.iter().any(|row| {
+        matches!(
+            row.patterns.get(col),
+            Some(MirPattern::Tuple(_) | MirPattern::Struct { .. })
+        )
+    })
 }
 
 /// Recover the concrete runtime type represented by a sub-pattern.
@@ -1159,6 +1163,7 @@ fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
         MirPattern::Literal(MirLiteral::Bool(_)) => Some(MirType::Bool),
         MirPattern::Literal(MirLiteral::String(_)) => Some(MirType::String),
         MirPattern::Constructor { type_name, .. } => Some(MirType::SumType(type_name.clone())),
+        MirPattern::Struct { name, .. } => Some(MirType::Struct(name.clone())),
         // Tuple values use the heap-backed runtime representation.
         MirPattern::Tuple(_) | MirPattern::ListCons { .. } | MirPattern::ListNil => {
             Some(MirType::Ptr)
@@ -1169,368 +1174,104 @@ fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
     }
 }
 
-/// Expand a tuple column into its sub-columns.
-/// Tuple patterns become their element patterns; wildcards/variables
-/// become wildcard elements.
-fn expand_tuple_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
-    // Determine arity of the tuple from the first tuple pattern.
-    let arity = matrix
+/// Expand a tuple or struct column into one column per element or field.
+/// Tuple and struct patterns become their sub-patterns; wildcards and
+/// variables become wildcards (a variable binds the whole value).
+fn expand_product_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
+    let parent_path = &matrix.column_paths[col];
+    let parent_type = &matrix.column_types[col];
+    let first_product = matrix
         .rows
         .iter()
-        .filter_map(|row| {
-            if col < row.patterns.len() {
-                if let MirPattern::Tuple(elems) = &row.patterns[col] {
-                    Some(elems.len())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .next()
-        .unwrap_or(0);
+        .find_map(|row| match row.patterns.get(col) {
+            Some(pattern @ (MirPattern::Tuple(_) | MirPattern::Struct { .. })) => Some(pattern),
+            _ => None,
+        });
 
-    if arity == 0 {
-        // Degenerate case -- just remove the column.
+    // Each new column's path and type.
+    let sub_columns: Vec<(AccessPath, MirType)> = match first_product {
+        Some(MirPattern::Struct { fields, .. }) => fields
+            .iter()
+            .map(|(name, ty, _)| {
+                (
+                    AccessPath::StructField(Box::new(parent_path.clone()), name.clone()),
+                    ty.clone(),
+                )
+            })
+            .collect(),
+        Some(MirPattern::Tuple(elements)) => (0..elements.len())
+            .map(|index| {
+                let ty = match parent_type {
+                    MirType::Tuple(elements) => elements.get(index).cloned(),
+                    _ => matrix
+                        .rows
+                        .iter()
+                        .find_map(|row| match row.patterns.get(col) {
+                            Some(MirPattern::Tuple(elements)) => {
+                                elements.get(index).and_then(pattern_type_hint)
+                            }
+                            _ => None,
+                        }),
+                }
+                .unwrap_or(MirType::Unit);
+                (
+                    AccessPath::TupleField(Box::new(parent_path.clone()), index, ty.clone()),
+                    ty,
+                )
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    if sub_columns.is_empty() {
+        // `()` or a struct without fields: nothing to take apart.
         return remove_wildcard_column(matrix, col);
     }
 
-    let parent_path = &matrix.column_paths[col];
-    let parent_type = &matrix.column_types[col];
-
-    // Build sub-column types from the parent tuple type.
-    let sub_types: Vec<MirType> = match parent_type {
-        MirType::Tuple(elems) => elems.clone(),
-        _ => (0..arity)
-            .map(|index| {
-                matrix
-                    .rows
+    let rows = matrix
+        .rows
+        .iter()
+        .map(|row| {
+            let mut bindings = row.bindings.clone();
+            let mut patterns: Vec<MirPattern> = match &row.patterns[col] {
+                MirPattern::Tuple(elements) => elements.clone(),
+                MirPattern::Struct { fields, .. } => fields
                     .iter()
-                    .find_map(|row| match row.patterns.get(col) {
-                        Some(MirPattern::Tuple(elements)) => {
-                            elements.get(index).and_then(pattern_type_hint)
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or(MirType::Unit)
-            })
-            .collect(),
-    };
-
-    let mut new_rows = Vec::new();
-
-    for row in &matrix.rows {
-        let pat = &row.patterns[col];
-        let mut new_pats = Vec::new();
-        let mut new_bindings = row.bindings.clone();
-
-        match pat {
-            MirPattern::Tuple(elems) => {
-                // Expand tuple elements as new columns.
-                for elem in elems {
-                    new_pats.push(elem.clone());
+                    .map(|(_, _, pattern)| pattern.clone())
+                    .collect(),
+                other => {
+                    if let MirPattern::Var(name, ty) = other {
+                        bindings.push((name.clone(), ty.clone(), parent_path.clone()));
+                    }
+                    vec![MirPattern::Wildcard; sub_columns.len()]
                 }
+            };
+            patterns.extend(
+                row.patterns
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != col)
+                    .map(|(_, pattern)| pattern.clone()),
+            );
+            PatRow {
+                patterns,
+                arm_index: row.arm_index,
+                guard: row.guard.clone(),
+                bindings,
             }
-            MirPattern::Wildcard => {
-                // Pad with wildcards for each tuple element.
-                for _ in 0..arity {
-                    new_pats.push(MirPattern::Wildcard);
-                }
-            }
-            MirPattern::Var(name, ty) => {
-                // Variable binding for the whole tuple -- bind and pad with wildcards.
-                new_bindings.push((name.clone(), ty.clone(), parent_path.clone()));
-                for _ in 0..arity {
-                    new_pats.push(MirPattern::Wildcard);
-                }
-            }
-            _ => {
-                // Shouldn't happen in a well-typed program, but handle gracefully.
-                for _ in 0..arity {
-                    new_pats.push(MirPattern::Wildcard);
-                }
-            }
-        }
+        })
+        .collect();
 
-        // Add remaining columns.
-        for (i, p) in row.patterns.iter().enumerate() {
-            if i != col {
-                new_pats.push(p.clone());
-            }
-        }
-
-        new_rows.push(PatRow {
-            patterns: new_pats,
-            arm_index: row.arm_index,
-            guard: row.guard.clone(),
-            bindings: new_bindings,
-        });
-    }
-
-    // Build new column paths.
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-
-    for i in 0..arity {
-        let sub_type = sub_types.get(i).cloned().unwrap_or(MirType::Unit);
-        new_paths.push(AccessPath::TupleField(
-            Box::new(parent_path.clone()),
-            i,
-            sub_type.clone(),
-        ));
-        new_types.push(sub_type);
-    }
-
+    let (mut column_paths, mut column_types): (Vec<_>, Vec<_>) = sub_columns.into_iter().unzip();
     for (i, path) in matrix.column_paths.iter().enumerate() {
         if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
+            column_paths.push(path.clone());
+            column_types.push(matrix.column_types[i].clone());
         }
     }
-
     PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
-    }
-}
-
-// ── Expression tree walking ─────────────────────────────────────────
-
-/// Recursively compile match expressions within an expression tree.
-fn compile_expr_patterns(expr: &mut MirExpr, sum_type_defs: &FxHashMap<String, MirSumTypeDef>) {
-    match expr {
-        MirExpr::Match {
-            scrutinee,
-            arms,
-            ty: _,
-        } => {
-            // First, recursively process sub-expressions.
-            compile_expr_patterns(scrutinee, sum_type_defs);
-            for arm in arms.iter_mut() {
-                compile_expr_patterns(&mut arm.body, sum_type_defs);
-                if let Some(guard) = &mut arm.guard {
-                    compile_expr_patterns(guard, sum_type_defs);
-                }
-            }
-
-            // Compile the match into a decision tree.
-            let scrutinee_ty = scrutinee.ty().clone();
-            let _tree = compile_match(&scrutinee_ty, arms, "<unknown>", 0, sum_type_defs);
-
-            // Note: In a full implementation, we would replace this MirExpr::Match
-            // with a MirExpr::CompiledMatch variant. For now, the decision tree
-            // is computed and will be used by the LLVM codegen directly via
-            // compile_match() calls.
-        }
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            compile_expr_patterns(lhs, sum_type_defs);
-            compile_expr_patterns(rhs, sum_type_defs);
-        }
-        MirExpr::UnaryOp { operand, .. } => {
-            compile_expr_patterns(operand, sum_type_defs);
-        }
-        MirExpr::Call { func, args, .. } => {
-            compile_expr_patterns(func, sum_type_defs);
-            for arg in args {
-                compile_expr_patterns(arg, sum_type_defs);
-            }
-        }
-        MirExpr::ClosureCall { closure, args, .. } => {
-            compile_expr_patterns(closure, sum_type_defs);
-            for arg in args {
-                compile_expr_patterns(arg, sum_type_defs);
-            }
-        }
-        MirExpr::If {
-            cond,
-            then_body,
-            else_body,
-            ..
-        } => {
-            compile_expr_patterns(cond, sum_type_defs);
-            compile_expr_patterns(then_body, sum_type_defs);
-            compile_expr_patterns(else_body, sum_type_defs);
-        }
-        MirExpr::Let { value, body, .. } => {
-            compile_expr_patterns(value, sum_type_defs);
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::Block(exprs, _) => {
-            for e in exprs {
-                compile_expr_patterns(e, sum_type_defs);
-            }
-        }
-        MirExpr::StructLit { fields, .. } => {
-            for (_, field_expr) in fields {
-                compile_expr_patterns(field_expr, sum_type_defs);
-            }
-        }
-        MirExpr::StructUpdate {
-            base, overrides, ..
-        } => {
-            compile_expr_patterns(base, sum_type_defs);
-            for (_, val) in overrides {
-                compile_expr_patterns(val, sum_type_defs);
-            }
-        }
-        MirExpr::FieldAccess { object, .. } => {
-            compile_expr_patterns(object, sum_type_defs);
-        }
-        MirExpr::ConstructVariant { fields, .. } => {
-            for f in fields {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-        }
-        MirExpr::MakeClosure { captures, .. } => {
-            for c in captures {
-                compile_expr_patterns(c, sum_type_defs);
-            }
-        }
-        MirExpr::ResourceMove { value, .. }
-        | MirExpr::ResourceBorrow { value, .. }
-        | MirExpr::ResourceDrop { value, .. }
-        | MirExpr::ResourceDestroy { value, .. } => {
-            compile_expr_patterns(value, sum_type_defs);
-        }
-        MirExpr::Return(inner) => {
-            compile_expr_patterns(inner, sum_type_defs);
-        }
-        // Leaf expressions -- nothing to recurse into.
-        MirExpr::IntLit(..)
-        | MirExpr::FloatLit(..)
-        | MirExpr::BoolLit(..)
-        | MirExpr::StringLit(..)
-        | MirExpr::Var(..)
-        | MirExpr::Panic { .. }
-        | MirExpr::Unit => {}
-        // Actor primitives -- recurse into sub-expressions.
-        MirExpr::ActorSpawn {
-            func,
-            args,
-            terminate_callback,
-            ..
-        } => {
-            compile_expr_patterns(func, sum_type_defs);
-            for arg in args {
-                compile_expr_patterns(arg, sum_type_defs);
-            }
-            if let Some(cb) = terminate_callback {
-                compile_expr_patterns(cb, sum_type_defs);
-            }
-        }
-        MirExpr::ActorSend {
-            target, message, ..
-        } => {
-            compile_expr_patterns(target, sum_type_defs);
-            compile_expr_patterns(message, sum_type_defs);
-        }
-        MirExpr::ActorReceive {
-            arms,
-            timeout_ms,
-            timeout_body,
-            ..
-        } => {
-            for arm in arms {
-                if let Some(guard) = &mut arm.guard {
-                    compile_expr_patterns(guard, sum_type_defs);
-                }
-                compile_expr_patterns(&mut arm.body, sum_type_defs);
-            }
-            if let Some(tm) = timeout_ms {
-                compile_expr_patterns(tm, sum_type_defs);
-            }
-            if let Some(tb) = timeout_body {
-                compile_expr_patterns(tb, sum_type_defs);
-            }
-        }
-        MirExpr::ActorSelf { .. } => {}
-        MirExpr::Shaped { value, .. } => compile_expr_patterns(value, sum_type_defs),
-        MirExpr::ActorLink { target, .. } => {
-            compile_expr_patterns(target, sum_type_defs);
-        }
-        MirExpr::ListLit { elements, .. } => {
-            for elem in elements {
-                compile_expr_patterns(elem, sum_type_defs);
-            }
-        }
-        // Supervisor start -- no sub-expressions to recurse into.
-        MirExpr::SupervisorStart { .. } => {}
-        // Loop primitives
-        MirExpr::While { cond, body, .. } => {
-            compile_expr_patterns(cond, sum_type_defs);
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::Break | MirExpr::Continue => {}
-        MirExpr::ForInRange {
-            start,
-            end,
-            filter,
-            body,
-            ..
-        } => {
-            compile_expr_patterns(start, sum_type_defs);
-            compile_expr_patterns(end, sum_type_defs);
-            if let Some(f) = filter {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::ForInList {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            compile_expr_patterns(collection, sum_type_defs);
-            if let Some(f) = filter {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::ForInMap {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            compile_expr_patterns(collection, sum_type_defs);
-            if let Some(f) = filter {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::ForInSet {
-            collection,
-            filter,
-            body,
-            ..
-        } => {
-            compile_expr_patterns(collection, sum_type_defs);
-            if let Some(f) = filter {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        MirExpr::ForInIterator {
-            iterator,
-            filter,
-            body,
-            ..
-        } => {
-            compile_expr_patterns(iterator, sum_type_defs);
-            if let Some(f) = filter {
-                compile_expr_patterns(f, sum_type_defs);
-            }
-            compile_expr_patterns(body, sum_type_defs);
-        }
-        // TCE: TailCall args may contain match expressions.
-        MirExpr::TailCall { args, .. } => {
-            for arg in args {
-                compile_expr_patterns(arg, sum_type_defs);
-            }
-        }
+        rows,
+        column_paths,
+        column_types,
     }
 }
 

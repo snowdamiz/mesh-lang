@@ -638,7 +638,7 @@ end
 
 ### Pattern Forms
 
-Patterns can bind names and decompose tuples and constructors:
+Patterns can bind names and decompose tuples, structs, and constructors:
 
 | Pattern | Meaning |
 |---------|---------|
@@ -646,6 +646,7 @@ Patterns can bind names and decompose tuples and constructors:
 | `name` | Match anything and bind it (a lowercase name) |
 | `42`, `-1`, `"ok"`, `:ok`, `true`, `nil` | Literal pattern |
 | `(left, right)` | Tuple pattern |
+| `Point { x: 0, y }`, `Geo.Point { x }` | Struct pattern: `field: pattern` matches a field, a field alone binds it, and fields left out match anything |
 | `Some(value)`, `Result.Ok(value)`, `None` | Constructor pattern; an uppercase name is always a constructor, and an unknown one is an error |
 | `head :: tail` | Match a non-empty list as its head and tail |
 | `[]`, `[first, second]` | Match a list of exactly that length, element by element |
@@ -675,7 +676,27 @@ fn describe(xs :: List<Int>) -> String do
 end
 ```
 
-Struct patterns are not part of the current grammar. Use tuples or sum-type constructors instead.
+A struct pattern names the fields it cares about. `field: pattern` matches the field's value, a field on its own binds a variable of that name, and the fields it leaves out match anything. Struct patterns nest inside constructors, tuples, and other struct patterns, and a `case` over a struct must still cover every value:
+
+```mesh
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+fn quadrant(p :: Point) -> String do
+  case p do
+    Point { x: 0, y: 0 } -> "origin"
+    Point { x: 0 } | Point { y: 0 } -> "on an axis"
+    Point { x, y } when x > 0 and y > 0 -> "first quadrant"
+    _ -> "elsewhere"
+  end
+end
+
+fn manhattan(Point { x, y }) = x + y
+```
+
+A struct pattern that matches every value, like `Point { x, y }`, can also take a value apart in `let` and `for`: `let Point { x, y } = p`.
 
 ### Matching on Constructors
 
@@ -827,7 +848,7 @@ Every `for` expression returns a list containing one body result per accepted el
 
 #### Destructuring Loop Variables
 
-A tuple pattern in the loop header takes each element apart, exactly as `let (a, b) = ...` does. Over a map the pattern receives a `(key, value)` pair:
+A tuple or struct pattern in the loop header takes each element apart, exactly as `let (a, b) = ...` does. Over a map the pattern receives a `(key, value)` pair:
 
 ```mesh
 fn main() do

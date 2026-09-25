@@ -3460,3 +3460,89 @@ fn list_patterns_match_fixed_lengths() {
 end"
     ));
 }
+/// `Point { x, y: 0 }` is a struct pattern: a field alone binds its name,
+/// `field: pattern` matches the field, and the struct may be qualified.
+#[test]
+fn struct_patterns_name_fields_and_bind_shorthands() {
+    let parse = parse(
+        "fn f(p) do
+  case p do
+    Point { x: 0, y } -> y
+    Geo.Point { x, y: (a, _) } as whole -> x
+  end
+  let Point { x, y: why } = p
+end",
+    );
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let structs: Vec<_> = parse
+        .syntax()
+        .descendants()
+        .filter_map(Pattern::cast)
+        .filter_map(|pattern| match pattern {
+            Pattern::Struct(s) => Some(s),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(structs.len(), 3);
+    let describe = |s: &mesh_parser::ast::pat::StructPat| {
+        let fields: Vec<String> = s
+            .fields()
+            .map(|f| f.name().map(|n| n.text().to_string()).unwrap_or_default())
+            .collect();
+        (
+            s.qualifier().map(|q| q.text().to_string()),
+            s.type_name().map(|n| n.text().to_string()),
+            fields,
+        )
+    };
+    assert_eq!(
+        describe(&structs[0]),
+        (None, Some("Point".into()), vec!["x".into(), "y".into()])
+    );
+    assert_eq!(
+        describe(&structs[1]),
+        (
+            Some("Geo".into()),
+            Some("Point".into()),
+            vec!["x".into(), "y".into()]
+        )
+    );
+    let binders = |node: &mesh_parser::SyntaxNode| -> Vec<String> {
+        Pattern::cast(node.clone())
+            .unwrap()
+            .binders()
+            .iter()
+            .map(|t| t.text().to_string())
+            .collect()
+    };
+    assert_eq!(binders(structs[0].syntax()), vec!["y"]);
+    let as_pat = structs[1].syntax().parent().unwrap();
+    assert_eq!(binders(&as_pat), vec!["x", "a", "whole"]);
+    assert_eq!(binders(structs[2].syntax()), vec!["x", "why"]);
+}
+
+#[test]
+fn struct_pattern_errors_name_what_is_missing() {
+    let messages = |source: &str| -> Vec<String> {
+        parse(source)
+            .errors()
+            .iter()
+            .map(|e| e.message.clone())
+            .collect()
+    };
+    assert!(
+        messages("fn f(p) do\n  case p do\n    Point { 1 } -> 0\n  end\nend")
+            .iter()
+            .any(|m| m.contains("expected a field name in the struct pattern"))
+    );
+    assert!(
+        messages("fn f(p) do\n  case p do\n    Point { x, .. } -> 0\n  end\nend")
+            .iter()
+            .any(|m| m.contains("`..` is not needed"))
+    );
+    // Fields may also be separated by new lines, as in a struct literal.
+    assert!(messages(
+        "fn f(p) do\n  case p do\n    Point {\n      x\n      y: 0\n    } -> x\n  end\nend"
+    )
+    .is_empty());
+}

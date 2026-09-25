@@ -4926,3 +4926,151 @@ end
 "##;
     assert_eq!(run(source), "10\n21\nSome(a) Some(b) None 1\nSome(1.5)\n");
 }
+// ── Struct patterns ────────────────────────────────────────────────────
+
+/// `Point { x: 0, y }` matches a struct by its fields: `field: pattern`
+/// tests the field, a field alone binds it, and fields left out match
+/// anything. Struct patterns nest in constructors, tuples and each other,
+/// and work in `case`, function and closure clauses, `let` and `for`.
+#[test]
+fn struct_patterns_match_and_bind_fields() {
+    let output = run(r##"
+struct Point do
+  x :: Int
+  y :: Int
+end
+
+struct Box<T> do
+  value :: T
+  label :: String
+end
+
+struct Line do
+  from :: Point
+  to :: Point
+end
+
+struct Pair do
+  t :: (Int, String)
+  f :: Float
+end
+
+type Shape do
+  Dot(Point)
+  Segment(Line)
+end
+
+fn describe(p :: Point) -> String do
+  case p do
+    Point { x: 0, y: 0 } -> "origin"
+    Point { x: 0, y } -> "on y axis at #{y}"
+    Point { y: 0, x } -> "on x axis at #{x}"
+    Point { x, y } when x == y -> "diagonal #{x}"
+    Point { x: 1 } | Point { y: 1 } -> "next to an axis"
+    _ -> "elsewhere"
+  end
+end
+
+fn norm1(Point { x, y }) = x + y
+
+fn length(s :: Shape) -> Int do
+  case s do
+    Dot(_) -> 0
+    Segment(Line { from: Point { x: x1, y: y1 }, to: Point { x: x2, y: y2 } }) ->
+      x2 - x1 + (y2 - y1)
+  end
+end
+
+fn first_x(o :: Point?) -> Int do
+  case o do
+    Some(Point { x }) -> x
+    None -> -1
+  end
+end
+
+fn main() do
+  for p in [Point { x: 0, y: 0 }, Point { x: 0, y: 5 }, Point { x: 7, y: 0 }, Point { x: 3, y: 3 }, Point { x: 1, y: 9 }, Point { x: 4, y: 2 }] do
+    println(describe(p))
+  end
+  println("#{norm1(Point { x: 4, y: 5 })}")
+  let Point { x, y: why } = Point { x: 10, y: 20 }
+  println("#{x} #{why}")
+  case Box { value: "hi", label: "greeting" } do
+    Box { value: "hi", label } -> println("hi box #{label}")
+    Box { value } -> println(value)
+  end
+  case Box { value: Some(2.5), label: "maybe" } do
+    Box { value: Some(v) } -> println("some #{v}")
+    Box { value: None } -> println("none")
+  end
+  for Box { value, label } in [Box { value: 1, label: "a" }, Box { value: 2, label: "b" }] do
+    println("#{label}=#{value}")
+  end
+  let segment = Segment(Line { from: Point { x: 1, y: 1 }, to: Point { x: 4, y: 5 } })
+  println("#{length(segment)} #{length(Dot(Point { x: 0, y: 0 }))}")
+  println("#{first_x(Some(Point { x: 3, y: 4 }))} #{first_x(None)}")
+  case Pair { t: (5, "five"), f: 2.5 } do
+    Pair { t: (n, s), f } -> println("#{n} #{s} #{f}")
+  end
+  let get_x = fn Point { x } -> x end
+  println("#{get_x(Point { x: 42, y: 0 })}")
+  println("#{List.map([Point { x: 1, y: 2 }, Point { x: 3, y: 4 }], fn Point { x, y } -> x * y end)}")
+end
+"##);
+    assert_eq!(
+        output,
+        "origin\non y axis at 5\non x axis at 7\ndiagonal 3\nnext to an axis\nelsewhere\n\
+         9\n10 20\nhi box greeting\nsome 2.5\na=1\nb=2\n7 0\n3 -1\n5 five 2.5\n42\n[2, 12]\n"
+    );
+}
+
+/// A struct pattern's fields must exist, be named once, and hold values of
+/// the field's type; the name must be a struct. A match on a struct must
+/// cover every value, and the missing ones print as struct patterns.
+#[test]
+fn struct_pattern_errors_and_coverage() {
+    let program = |arms: &str| {
+        format!(
+            "struct Point do\n  x :: Int\n  y :: Int\nend\ntype Color do\n  Red\nend\n\
+             fn f(p :: Point) -> Int do\n  case p do\n{arms}\n  end\nend\n\
+             fn main() do\n  println(\"#{{f(Point {{ x: 1, y: 2 }})}}\")\nend\n"
+        )
+    };
+    let unknown = build_error(&program("    Point { z } -> 1\n    _ -> 0"));
+    assert!(
+        unknown.contains("E0009") && unknown.contains("has no field `z`"),
+        "{unknown}"
+    );
+    assert!(!unknown.contains("redundant"), "{unknown}");
+    let duplicate = build_error(&program("    Point { x, x: 2 } -> 1\n    _ -> 0"));
+    assert!(duplicate.contains("E0058"), "{duplicate}");
+    let not_struct = build_error(&program("    Color { x } -> 1\n    _ -> 0"));
+    assert!(
+        not_struct.contains("`Color` is not a struct"),
+        "{not_struct}"
+    );
+    let unknown_type = build_error(&program("    Nope { x } -> 1\n    _ -> 0"));
+    assert!(
+        unknown_type.contains("unknown type `Nope`"),
+        "{unknown_type}"
+    );
+    let mismatch = build_error(&program("    Point { x: \"s\" } -> 1\n    _ -> 0"));
+    assert!(
+        mismatch.contains("expected Int, found String"),
+        "{mismatch}"
+    );
+    let missing = build_error(&program("    Point { x: 0 } -> 1"));
+    assert!(
+        missing.contains("missing: Point { x: _, y: _ }"),
+        "{missing}"
+    );
+    let (warnings, output) = run_with_build_stderr(&program(
+        "    Point { x, y } -> x + y\n    Point { x: 0 } -> 2",
+    ));
+    assert!(warnings.contains("redundant match arm"), "{warnings}");
+    assert_eq!(output, "3\n");
+    let refutable = build_error(
+        "struct Point do\n  x :: Int\n  y :: Int\nend\nfn main() do\n  let Point { x: 0, y } = Point { x: 0, y: 1 }\n  println(\"#{y}\")\nend\n",
+    );
+    assert!(refutable.contains("must match every value"), "{refutable}");
+}
