@@ -2146,13 +2146,19 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
 
     let fields = lines.iter().filter(|(field, _)| field.is_some()).count();
     let commented = lines.iter().any(|(_, comment)| comment.is_some());
-    if !commented && fields < 2 {
-        prefix_parts.push(ir::text(" {"));
-        prefix_parts.push(sp());
-        if let Some((Some(field), _)) = lines.pop() {
-            prefix_parts.push(field);
-            prefix_parts.push(sp());
+    // Without comments: on one line when it fits, like a list or a map.
+    if !commented {
+        let mut inner = Vec::new();
+        for (i, (field, _)) in lines.into_iter().enumerate() {
+            if i > 0 {
+                inner.push(ir::text(","));
+            }
+            inner.push(ir::space());
+            inner.extend(field);
         }
+        prefix_parts.push(ir::text(" {"));
+        prefix_parts.push(ir::indent(ir::concat(inner)));
+        prefix_parts.push(ir::space());
         prefix_parts.push(ir::text("}"));
         return ir::group(ir::concat(prefix_parts));
     }
@@ -2681,6 +2687,23 @@ mod tests {
     }
 
     #[test]
+    fn a_struct_literal_is_on_one_line_when_it_fits() {
+        assert_eq!(
+            fmt("let p = Some(Point {\nx: 1,\ny: 2\n})"),
+            "let p = Some(Point { x: 1, y: 2 })\n"
+        );
+        assert_eq!(fmt("let e = Empty {}"), "let e = Empty { }\n");
+        let long = format!("let p = Point {{ name: \"{}\", y: 2 }}", "a".repeat(90));
+        assert_eq!(
+            fmt(&long),
+            format!(
+                "let p = Point {{\n  name: \"{}\",\n  y: 2\n}}\n",
+                "a".repeat(90)
+            )
+        );
+    }
+
+    #[test]
     fn fields_separated_by_new_lines_get_commas() {
         assert_eq!(
             fmt("case p do\nPoint {\nx\ny: 0\n} -> x\nend"),
@@ -2688,7 +2711,7 @@ mod tests {
         );
         assert_eq!(
             fmt("let p = Point {\nx: 1\ny: 2\n}"),
-            "let p = Point {\n  x: 1,\n  y: 2\n}\n"
+            "let p = Point { x: 1, y: 2 }\n"
         );
     }
 

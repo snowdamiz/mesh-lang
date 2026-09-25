@@ -119,11 +119,7 @@ fn checked_account_meta(key :: Pubkey, signer :: Bool, writable :: Bool) -> Acco
   if Bytes.length(key.bytes) != 32 do
     Err("SOLANA_TX: instruction account key must be 32 bytes")
   else
-    Ok(AccountMeta {
-      pubkey: key,
-      signer: signer,
-      writable: writable
-    })
+    Ok(AccountMeta { pubkey: key, signer: signer, writable: writable })
   end
 end
 
@@ -189,12 +185,7 @@ fn merge_key_meta(values :: List<KeyMeta>,
       output
     else
       output
-        |> List.append(KeyMeta {
-          pubkey: key,
-          signer: signer,
-          writable: writable,
-          invoked: invoked
-        })
+        |> List.append(KeyMeta { pubkey: key, signer: signer, writable: writable, invoked: invoked })
     end
   else
     let current = values
@@ -378,14 +369,7 @@ fn compile_instructions(instructions :: List<Instruction>,
 end
 
 fn compiled_key_metas(payer :: Pubkey, instructions :: List<Instruction>) -> List<KeyMeta> do
-  [
-    KeyMeta {
-      pubkey: payer,
-      signer: true,
-      writable: true,
-      invoked: false
-    }
-  ]
+  [KeyMeta { pubkey: payer, signer: true, writable: true, invoked: false }]
     |> collect_instruction_metas(instructions, 0)
 end
 

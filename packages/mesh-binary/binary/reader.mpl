@@ -27,11 +27,7 @@ fn remaining(state :: BinaryReader) -> Int!BinaryError do
 end
 
 fn advance(state :: BinaryReader, count :: Int) -> BinaryReader do
-  BinaryReader {
-    input: state.input,
-    offset: state.offset + count,
-    maximum: state.maximum
-  }
+  BinaryReader { input: state.input, offset: state.offset + count, maximum: state.maximum }
 end
 
 pub fn reader(input :: Bytes, maximum :: Int) -> BinaryReader!BinaryError do
@@ -40,11 +36,7 @@ pub fn reader(input :: Bytes, maximum :: Int) -> BinaryReader!BinaryError do
   else if Bytes.length(input) > maximum do
     Err(InputTooLarge)
   else
-    Ok(BinaryReader {
-      input: input,
-      offset: 0,
-      maximum: maximum
-    })
+    Ok(BinaryReader { input: input, offset: 0, maximum: maximum })
   end
 end
 

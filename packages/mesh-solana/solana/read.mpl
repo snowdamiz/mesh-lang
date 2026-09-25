@@ -122,18 +122,24 @@ fn pubkey_from_bytes(bytes :: Bytes) -> Pubkey!String do
 end
 
 pub fn pubkey(value :: String) -> Pubkey!String do
-  Ok(Pubkey { bytes: (value
-    |> fixed_base58(32, "PUBKEY"))? })
+  Ok(Pubkey {
+    bytes: (value
+      |> fixed_base58(32, "PUBKEY"))?
+  })
 end
 
 pub fn signature(value :: String) -> Signature!String do
-  Ok(Signature { bytes: (value
-    |> fixed_base58(64, "SIGNATURE"))? })
+  Ok(Signature {
+    bytes: (value
+      |> fixed_base58(64, "SIGNATURE"))?
+  })
 end
 
 pub fn hash_value(value :: String) -> Hash!String do
-  Ok(Hash { bytes: (value
-    |> fixed_base58(32, "HASH"))? })
+  Ok(Hash {
+    bytes: (value
+      |> fixed_base58(32, "HASH"))?
+  })
 end
 
 pub fn pubkey_string(value :: Pubkey) -> String do
@@ -157,13 +163,17 @@ pub fn pubkey_equal(left :: Pubkey, right :: Pubkey) -> Bool do
 end
 
 pub fn slot(value :: String) -> Slot!String do
-  Ok(Slot { value: (value
-    |> U64.parse())? })
+  Ok(Slot {
+    value: (value
+      |> U64.parse())?
+  })
 end
 
 pub fn block_height(value :: String) -> BlockHeight!String do
-  Ok(BlockHeight { value: (value
-    |> U64.parse())? })
+  Ok(BlockHeight {
+    value: (value
+      |> U64.parse())?
+  })
 end
 
 pub fn spl_token_program() -> Pubkey!String do
@@ -458,11 +468,7 @@ pub fn rpc_request(id :: Int, method :: String, params_json :: String) -> RpcReq
   else
     case params_json
       |> Json.parse() do
-      Ok(_) -> Ok(RpcRequest {
-        id: id,
-        method: method,
-        params_json: params_json
-      })
+      Ok(_) -> Ok(RpcRequest { id: id, method: method, params_json: params_json })
       Err(_) -> Err("SOLANA_RPC: params must be valid JSON")
     end
   end
@@ -561,7 +567,9 @@ pub fn memcmp_filter(offset :: Int, bytes :: String) -> ProgramAccountFilter!Str
       Ok(decoded) -> if Bytes.length(decoded) > 128 do
         Err("SOLANA_FILTER: memcmp bytes exceed 128 decoded bytes")
       else
-        Ok(ProgramAccountFilter { encoded: "{\"memcmp\":{\"offset\":#{offset},\"bytes\":#{Json.encode_string(bytes)}}}" })
+        Ok(ProgramAccountFilter {
+          encoded: "{\"memcmp\":{\"offset\":#{offset},\"bytes\":#{Json.encode_string(bytes)}}}"
+        })
       end
     end
   end
@@ -615,11 +623,7 @@ pub fn account_subscribe_request(id :: Int, address :: Pubkey, commitment :: Str
 end
 
 pub fn slot_subscribe_request(id :: Int) -> RpcRequest do
-  RpcRequest {
-    id: id,
-    method: "slotSubscribe",
-    params_json: "[]"
-  }
+  RpcRequest { id: id, method: "slotSubscribe", params_json: "[]" }
 end
 
 pub fn program_subscribe_request(id :: Int,
@@ -669,21 +673,11 @@ pub fn rpc_response(raw :: String) -> RpcResponse!String do
     let error = Json.get(raw, "error")
     let result = Json.get(raw, "result")
     if error != "" && error != "null" do
-      Ok(RpcResponse {
-        id: id,
-        ok: false,
-        result_json: "",
-        error_json: error
-      })
+      Ok(RpcResponse { id: id, ok: false, result_json: "", error_json: error })
     else if result == "" do
       Err("SOLANA_RPC: response has neither result nor error")
     else
-      Ok(RpcResponse {
-        id: id,
-        ok: true,
-        result_json: result,
-        error_json: ""
-      })
+      Ok(RpcResponse { id: id, ok: true, result_json: result, error_json: "" })
     end
   end
 end
@@ -697,15 +691,19 @@ fn require_rpc_result(response :: RpcResponse) -> String!String do
 end
 
 pub fn slot_from_response(response :: RpcResponse) -> Slot!String do
-  Ok(Slot { value: ((response
-    |> require_rpc_result())?
-    |> u64_text("SLOT"))? })
+  Ok(Slot {
+    value: ((response
+      |> require_rpc_result())?
+      |> u64_text("SLOT"))?
+  })
 end
 
 pub fn block_height_from_response(response :: RpcResponse) -> BlockHeight!String do
-  Ok(BlockHeight { value: ((response
-    |> require_rpc_result())?
-    |> u64_text("BLOCK_HEIGHT"))? })
+  Ok(BlockHeight {
+    value: ((response
+      |> require_rpc_result())?
+      |> u64_text("BLOCK_HEIGHT"))?
+  })
 end
 
 pub fn epoch_info_from_response(response :: RpcResponse) -> EpochInfo!String do
