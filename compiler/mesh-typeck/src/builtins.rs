@@ -1774,9 +1774,7 @@ pub fn register_builtins(
     );
 
     // ── Range module functions ────────────────────────────────────────
-    // Re-declare opaque list and closure types for range/JSON functions.
-    let list_t = Ty::list_untyped();
-    let int_to_int = Ty::fun(vec![Ty::int()], Ty::int());
+    let int_list = Ty::list(Ty::int());
     let int_to_bool = Ty::fun(vec![Ty::int()], Ty::bool());
 
     env.insert(
@@ -1785,18 +1783,23 @@ pub fn register_builtins(
     );
     env.insert(
         "range_to_list".into(),
-        Scheme::mono(Ty::fun(vec![range_t.clone()], list_t.clone())),
+        Scheme::mono(Ty::fun(vec![range_t.clone()], int_list.clone())),
     );
+    // `Range.map` makes a list of whatever its function returns.
+    let u_var = TyVar(91001);
     env.insert(
         "range_map".into(),
-        Scheme::mono(Ty::fun(
-            vec![range_t.clone(), int_to_int.clone()],
-            list_t.clone(),
-        )),
+        Scheme {
+            vars: vec![u_var],
+            ty: Ty::fun(
+                vec![range_t.clone(), Ty::fun(vec![Ty::int()], Ty::Var(u_var))],
+                Ty::list(Ty::Var(u_var)),
+            ),
+        },
     );
     env.insert(
         "range_filter".into(),
-        Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_bool], list_t.clone())),
+        Scheme::mono(Ty::fun(vec![range_t.clone(), int_to_bool], int_list)),
     );
     env.insert(
         "range_length".into(),
@@ -1845,7 +1848,7 @@ pub fn register_builtins(
     // JSON.encode_list(list) -> String
     env.insert(
         "json_encode_list".into(),
-        Scheme::mono(Ty::fun(vec![list_t.clone()], Ty::string())),
+        Scheme::mono(Ty::fun(vec![Ty::list_untyped()], Ty::string())),
     );
     env.insert(
         "json_object_get".into(),

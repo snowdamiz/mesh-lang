@@ -5205,3 +5205,27 @@ end
 "##);
     assert_eq!(output, "[0, 2, 4, 6, 8]\n[a=1, b=2]\n2\n[x!, y!]\n6\n2\n");
 }
+
+#[test]
+fn range_map_makes_a_list_of_whatever_its_function_returns() {
+    // `Range.map` took only `Int -> Int`; a string or a struct per index
+    // needed `Range.to_list` and `List.map`.
+    let source = r##"
+struct P do
+  x :: Int
+end
+
+fn main() do
+  let names = Range.map(1..4, fn(i) -> "n#{i}" end)
+  let halves = Range.map(1..3, fn(i) -> Int.to_float(i) / 2.0 end)
+  let pairs = (0..2).map(fn(i) -> (i, i * i) end)
+  let ps = Range.map(5..7, fn(i) -> P { x: i } end)
+  println("#{String.join(names, ",")} #{halves} #{pairs} #{List.map(ps, fn(p) -> p.x end)}")
+  println("#{range_map(1..3, fn(i) -> i > 1 end)} #{range_to_list(1..3)} #{range_filter(1..5, fn(i) -> i > 3 end)}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "n1,n2,n3 [0.5, 1.0] [(0, 0), (1, 1)] [5, 6]\n[false, true] [1, 2] [4]\n"
+    );
+}

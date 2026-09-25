@@ -1730,10 +1730,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     range_mod.insert(
         "map".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![range_t.clone(), Ty::fun(vec![Ty::int()], Ty::int())],
-            Ty::list(Ty::int()),
-        )),
+        Scheme {
+            vars: vec![u_var],
+            ty: Ty::fun(
+                vec![range_t.clone(), Ty::fun(vec![Ty::int()], u.clone())],
+                Ty::list(u.clone()),
+            ),
+        },
     );
     range_mod.insert(
         "filter".to_string(),

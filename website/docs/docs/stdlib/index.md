@@ -162,7 +162,7 @@ Lists, maps and sets are immutable: `List.append`, `List.concat` (`++`), `Map.pu
 | `Range.new(start, end)` | `Range` | Create the half-open range `[start, end)` |
 | `Range.length(range)` | `Int` | Number of integers in the range; `0` when `end <= start`, and the largest `Int` when the true count is larger |
 | `Range.to_list(range)` | `List<Int>` | Materialize a range |
-| `Range.map(range, fn)` | `List<Int>` | Map its integers |
+| `Range.map(range, fn)` | `List<B>` | Apply `fn :: Int -> B` to each integer |
 | `Range.filter(range, predicate)` | `List<Int>` | Retain matching integers |
 | `Queue.new()` | `Queue<T>` | Create an empty FIFO |
 | `Queue.push(queue, value)` | `Queue<T>` | Return a queue with a value appended |
