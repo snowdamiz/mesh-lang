@@ -237,19 +237,10 @@ fn analyze_project_document(
     let Some(project_root) = find_project_root(&doc_path) else {
         return ProjectAnalysis::NotProject;
     };
-    let relative_path = match doc_path.strip_prefix(&project_root) {
-        Ok(relative_path) => relative_path.to_path_buf(),
-        Err(_) => {
-            return ProjectAnalysis::Failed(project_failure_analysis(
-                source,
-                format!(
-                    "Document '{}' is not contained within discovered project root '{}'",
-                    doc_path.display(),
-                    project_root.display()
-                ),
-            ));
-        }
-    };
+    let relative_path = doc_path
+        .strip_prefix(&project_root)
+        .expect("the project root is an ancestor of the document")
+        .to_path_buf();
 
     let mut overlays = HashMap::new();
     for (open_uri, open_source) in open_documents {
@@ -419,6 +410,9 @@ fn read_source_with_overlays(
     std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
 }
 
+/// The nearest directory above the document holding a mesh.toml: one of
+/// its ancestors as spelled, so the document's path is under it even when
+/// the document is not on disk and could not be canonicalized.
 fn canonical_file_path(uri: &str) -> Option<PathBuf> {
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
@@ -426,19 +420,10 @@ fn canonical_file_path(uri: &str) -> Option<PathBuf> {
 }
 
 fn find_project_root(path: &Path) -> Option<PathBuf> {
-    let mut current = if path.is_dir() {
-        path.to_path_buf()
-    } else {
-        path.parent()?.to_path_buf()
-    };
-    loop {
-        if current.join("mesh.toml").exists() {
-            return Some(std::fs::canonicalize(&current).unwrap_or_else(|_| current.clone()));
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
+    path.ancestors()
+        .skip(1)
+        .find(|dir| dir.join("mesh.toml").exists())
+        .map(Path::to_path_buf)
 }
 
 #[cfg(test)]
@@ -610,12 +595,27 @@ mod tests {
             "nested/support.mpl",
         );
 
-        let detected_root = find_project_root(&open_path).expect("manifest root should resolve");
+        assert_eq!(find_project_root(&open_path), Some(project_dir));
+    }
 
-        assert_eq!(
-            detected_root,
-            std::fs::canonicalize(&project_dir).unwrap(),
-            "manifest marker should identify the project root"
+    /// A document not saved yet cannot be canonicalized; the project it is
+    /// under is still its project, even through a symlink.
+    #[cfg(unix)]
+    #[test]
+    fn unsaved_documents_under_a_symlink_belong_to_their_project() {
+        let (tmp, project_dir, _open_path, _source) = write_mesh_project(
+            Some(&package_manifest("linked")),
+            &[("main.mpl", "fn main() do\n  1\nend\n")],
+            "main.mpl",
+        );
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(&project_dir, &link).unwrap();
+
+        let result = analyze_document(&file_uri(&link.join("draft.mpl")), "fn draft() = 1\n", &[]);
+        assert!(
+            diagnostic_messages(&result)[0].contains("was not discovered under project root"),
+            "{:?}",
+            diagnostic_messages(&result)
         );
     }
 
@@ -1055,6 +1055,14 @@ mod tests {
                     ("main.mpl", "fn main() do\n  1\nend\n"),
                     (
                         "math.test.mpl",
+            (
+                vec![
+                    ("main.mpl", "fn main() do\n  1\nend\n"),
+                    ("mesh.lock", "not a lockfile"),
+                ],
+                "main.mpl",
+                "Failed to parse lockfile",
+            ),
                         "describe(\"math\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\nend\n",
                     ),
                 ],
