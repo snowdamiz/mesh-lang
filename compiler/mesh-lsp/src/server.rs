@@ -322,131 +322,56 @@ impl LanguageServer for MeshBackend {
 /// Recursively descends into container nodes (modules, actors, services,
 /// interfaces, impls) to produce a hierarchical symbol tree.
 fn collect_symbols(source: &str, node: &SyntaxNode) -> Vec<DocumentSymbol> {
-    let mut symbols = Vec::new();
-
-    for child in node.children() {
-        match child.kind() {
-            SyntaxKind::FN_DEF => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
-                    symbols.push(sym);
+    node.children()
+        .filter_map(|child| {
+            let kind = match child.kind() {
+                SyntaxKind::FN_DEF | SyntaxKind::CALL_HANDLER | SyntaxKind::CAST_HANDLER => {
+                    SymbolKind::FUNCTION
                 }
-            }
-            SyntaxKind::STRUCT_DEF => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::STRUCT, None) {
-                    symbols.push(sym);
+                SyntaxKind::STRUCT_DEF => SymbolKind::STRUCT,
+                SyntaxKind::MODULE_DEF => SymbolKind::MODULE,
+                SyntaxKind::ACTOR_DEF | SyntaxKind::SERVICE_DEF | SyntaxKind::SUPERVISOR_DEF => {
+                    SymbolKind::CLASS
                 }
+                SyntaxKind::INTERFACE_DEF => SymbolKind::INTERFACE,
+                SyntaxKind::IMPL_DEF => SymbolKind::OBJECT,
+                SyntaxKind::LET_BINDING => SymbolKind::VARIABLE,
+                SyntaxKind::SUM_TYPE_DEF => SymbolKind::ENUM,
+                SyntaxKind::TYPE_ALIAS_DEF => SymbolKind::TYPE_PARAMETER,
+                _ => return None,
+            };
+            let mut symbol = if child.kind() == SyntaxKind::IMPL_DEF {
+                // An impl has no NAME child: it is named for its interface and type.
+                let name = extract_impl_name(&child);
+                let path = child.children().find(|n| n.kind() == SyntaxKind::PATH);
+                make_symbol(source, &child, kind, Some((&name, path.as_ref())))
+            } else {
+                make_symbol(source, &child, kind, None)
+            }?;
+            // An interface's members are its methods; a module's, an actor's,
+            // a service's and an impl's are the definitions in their bodies.
+            let members: Vec<DocumentSymbol> = match child.kind() {
+                SyntaxKind::INTERFACE_DEF => child
+                    .children()
+                    .filter(|n| n.kind() == SyntaxKind::INTERFACE_METHOD)
+                    .filter_map(|method| make_symbol(source, &method, SymbolKind::FUNCTION, None))
+                    .collect(),
+                SyntaxKind::MODULE_DEF
+                | SyntaxKind::ACTOR_DEF
+                | SyntaxKind::SERVICE_DEF
+                | SyntaxKind::IMPL_DEF => child
+                    .children()
+                    .filter(|n| n.kind() == SyntaxKind::BLOCK)
+                    .flat_map(|block| collect_symbols(source, &block))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            if !members.is_empty() {
+                symbol.children = Some(members);
             }
-            SyntaxKind::MODULE_DEF => {
-                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::MODULE, None) {
-                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
-                    if let Some(block) = block {
-                        let children = collect_symbols(source, &block);
-                        if !children.is_empty() {
-                            sym.children = Some(children);
-                        }
-                    }
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::ACTOR_DEF => {
-                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
-                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
-                    if let Some(block) = block {
-                        let children = collect_symbols(source, &block);
-                        if !children.is_empty() {
-                            sym.children = Some(children);
-                        }
-                    }
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::SERVICE_DEF => {
-                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
-                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
-                    if let Some(block) = block {
-                        let children = collect_symbols(source, &block);
-                        if !children.is_empty() {
-                            sym.children = Some(children);
-                        }
-                    }
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::SUPERVISOR_DEF => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::CLASS, None) {
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::INTERFACE_DEF => {
-                if let Some(mut sym) = make_symbol(source, &child, SymbolKind::INTERFACE, None) {
-                    // Collect interface methods as child symbols.
-                    let mut method_symbols = Vec::new();
-                    for method in child.children() {
-                        if method.kind() == SyntaxKind::INTERFACE_METHOD {
-                            if let Some(msym) =
-                                make_symbol(source, &method, SymbolKind::FUNCTION, None)
-                            {
-                                method_symbols.push(msym);
-                            }
-                        }
-                    }
-                    if !method_symbols.is_empty() {
-                        sym.children = Some(method_symbols);
-                    }
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::IMPL_DEF => {
-                // IMPL_DEF has no NAME child; extract name from PATH child.
-                let impl_name = extract_impl_name(&child);
-                let sel_node = child.children().find(|n| n.kind() == SyntaxKind::PATH);
-                if let Some(mut sym) = make_symbol(
-                    source,
-                    &child,
-                    SymbolKind::OBJECT,
-                    Some((&impl_name, sel_node.as_ref())),
-                ) {
-                    let block = child.children().find(|n| n.kind() == SyntaxKind::BLOCK);
-                    if let Some(block) = block {
-                        let children = collect_symbols(source, &block);
-                        if !children.is_empty() {
-                            sym.children = Some(children);
-                        }
-                    }
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::LET_BINDING => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::VARIABLE, None) {
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::SUM_TYPE_DEF => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::ENUM, None) {
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::TYPE_ALIAS_DEF => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::TYPE_PARAMETER, None) {
-                    symbols.push(sym);
-                }
-            }
-            // Also handle fn defs and call/cast handlers inside service blocks.
-            SyntaxKind::CALL_HANDLER => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
-                    symbols.push(sym);
-                }
-            }
-            SyntaxKind::CAST_HANDLER => {
-                if let Some(sym) = make_symbol(source, &child, SymbolKind::FUNCTION, None) {
-                    symbols.push(sym);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    symbols
+            Some(symbol)
+        })
+        .collect()
 }
 
 /// Extract a display name for an IMPL_DEF node: `impl Show for Point`.
@@ -549,6 +474,46 @@ mod tests {
     use super::*;
 
     /// Verify that the server advertises the expected capabilities.
+    /// Every kind of definition is a symbol, with its members nested.
+    #[test]
+    fn every_definition_kind_is_a_document_symbol() {
+        let source = "module Geo do\n  pub fn area(r) = r * r\nend\n\nstruct Point do\n  x :: Int\nend\n\ntype Shape do\n  Dot\nend\n\ntype Id = Int\n\ninterface Named do\n  fn name(self) -> String\nend\n\nimpl Named for Point do\n  fn name(self) -> String do\n    \"p\"\n  end\nend\n\nactor Pinger() do\n  1\nend\n\nservice Counter do\n  fn init() -> Int do\n    0\n  end\n  call Get() :: Int do |n|\n    (n, n)\n  end\n  cast Add(k :: Int) do |n|\n    n + k\n  end\nend\n\nsupervisor Sup do\n  strategy: one_for_one\nend\n\nlet limit = 3\n";
+        let parse = mesh_parser::parse(source);
+        assert!(parse.ok(), "{:?}", parse.errors());
+        let symbols = collect_symbols(source, &parse.syntax());
+        let described: Vec<(String, SymbolKind, Vec<String>)> = symbols
+            .iter()
+            .map(|symbol| {
+                let members = symbol
+                    .children
+                    .iter()
+                    .flatten()
+                    .map(|member| member.name.clone())
+                    .collect();
+                (symbol.name.clone(), symbol.kind, members)
+            })
+            .collect();
+        let expected = [
+            ("Geo", SymbolKind::MODULE, vec!["area"]),
+            ("Point", SymbolKind::STRUCT, vec![]),
+            ("Shape", SymbolKind::ENUM, vec![]),
+            ("Id", SymbolKind::TYPE_PARAMETER, vec![]),
+            ("Named", SymbolKind::INTERFACE, vec!["name"]),
+            ("impl Named for Point", SymbolKind::OBJECT, vec!["name"]),
+            ("Pinger", SymbolKind::CLASS, vec![]),
+            ("Counter", SymbolKind::CLASS, vec!["init", "Get", "Add"]),
+            ("Sup", SymbolKind::CLASS, vec![]),
+            ("limit", SymbolKind::VARIABLE, vec![]),
+        ];
+        assert_eq!(described.len(), expected.len(), "{described:?}");
+        for ((name, kind, members), (want_name, want_kind, want_members)) in
+            described.iter().zip(expected)
+        {
+            assert_eq!((name.as_str(), *kind), (want_name, want_kind));
+            assert_eq!(members, &want_members);
+        }
+    }
+
     #[tokio::test]
     async fn server_capabilities() {
         let (service, _) = tower_lsp::LspService::new(MeshBackend::new);
