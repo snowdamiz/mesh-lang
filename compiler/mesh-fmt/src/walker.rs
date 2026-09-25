@@ -70,7 +70,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::IMPORT_DECL => walk_import_decl(node),
         SyntaxKind::FROM_IMPORT_DECL => walk_from_import_decl(node),
         SyntaxKind::IMPORT_LIST => walk_import_list(node),
-        SyntaxKind::STRING_EXPR => walk_string_expr(node),
+        SyntaxKind::STRING_EXPR | SyntaxKind::INTERPOLATION => walk_concat(node),
         SyntaxKind::TUPLE_EXPR => walk_paren_list(node),
         SyntaxKind::FIELD_ACCESS | SyntaxKind::INDEX_EXPR => walk_concat(node),
         SyntaxKind::ELSE_BRANCH => walk_else_branch(node),
@@ -120,7 +120,6 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::AS_PAT
         | SyntaxKind::GUARD_CLAUSE
         | SyntaxKind::FN_EXPR_BODY
-        | SyntaxKind::INTERPOLATION
         | SyntaxKind::TYPE_PARAM_LIST
         | SyntaxKind::GENERIC_PARAM_LIST
         | SyntaxKind::GENERIC_ARG_LIST
@@ -1484,44 +1483,6 @@ fn walk_from_import_decl(node: &SyntaxNode) -> FormatIR {
 }
 
 // ── String expression ────────────────────────────────────────────────
-
-fn walk_string_expr(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_string_interpolation(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
-
-fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
 
 // ── Field access ────────────────────────────────────────────────────
 
