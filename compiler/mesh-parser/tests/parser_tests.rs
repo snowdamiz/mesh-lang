@@ -2630,6 +2630,83 @@ fn parser_cluster_decorator_ast_accessor_present_for_counted_def() {
     assert_eq!((span.start, span.end), (0, 11));
 }
 
+/// A replica count is an integer literal in any radix, with `_`s.
+#[test]
+fn replica_counts_read_in_every_radix() {
+    for (count, expected) in [("0x1F", 31), ("0b101", 5), ("0o17", 15), ("1_000", 1000)] {
+        let parse = parse(&format!("@cluster({count}) fn work() do\n  1\nend"));
+        let decl = parse
+            .tree()
+            .fn_defs()
+            .next()
+            .unwrap()
+            .clustered_decl()
+            .unwrap();
+        assert_eq!(decl.explicit_replica_count(), Some(expected), "{count}");
+    }
+}
+
+/// Every item and decorator gives back its own node.
+#[test]
+fn items_and_decorators_are_their_nodes() {
+    let source = "import Foo\nfrom Bar import baz\ninterface I do\n  fn f(self) -> Int\nend\nimpl I for Int do\n  fn f(self) -> Int do\n    1\n  end\nend\n@native(\"c_sym\") pub fn native_f() -> Int\n@export(\"exported\") pub fn export_f() -> Int do\n  1\nend\n@cluster fn work() do\n  1\nend\n";
+    let parse = parse(source);
+    let kinds: Vec<SyntaxKind> = parse
+        .tree()
+        .items()
+        .map(|item| item.syntax().kind())
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            SyntaxKind::IMPORT_DECL,
+            SyntaxKind::FROM_IMPORT_DECL,
+            SyntaxKind::INTERFACE_DEF,
+            SyntaxKind::IMPL_DEF,
+            SyntaxKind::FN_DEF,
+            SyntaxKind::FN_DEF,
+            SyntaxKind::FN_DEF,
+        ]
+    );
+    let fns: Vec<FnDef> = parse.tree().fn_defs().collect();
+    assert_eq!(
+        fns[0].native_decl().unwrap().syntax().kind(),
+        SyntaxKind::NATIVE_DECORATOR_DECL
+    );
+    assert_eq!(
+        fns[1].export_decl().unwrap().syntax().kind(),
+        SyntaxKind::EXPORT_DECORATOR_DECL
+    );
+    assert_eq!(
+        fns[2].clustered_decl().unwrap().syntax().kind(),
+        SyntaxKind::CLUSTER_DECORATOR_DECL
+    );
+}
+
+/// An as-pattern's sub-pattern is what it names, not the name.
+#[test]
+fn an_as_pattern_contains_its_inner_pattern() {
+    let parse = parse("fn f(v) do\n  case v do\n    Some(x) as whole -> x\n  end\nend");
+    let pattern = parse
+        .syntax()
+        .descendants()
+        .find_map(Pattern::cast)
+        .expect("a pattern");
+    let Pattern::As(as_pat) = &pattern else {
+        panic!("{pattern:?}")
+    };
+    assert_eq!(as_pat.binding_name().unwrap().text(), "whole");
+    let subs = pattern.sub_patterns();
+    assert_eq!(subs.len(), 1);
+    assert!(matches!(subs[0], Pattern::Constructor(_)), "{subs:?}");
+    let names: Vec<String> = pattern
+        .binders()
+        .iter()
+        .map(|t| t.text().to_string())
+        .collect();
+    assert_eq!(names, ["x", "whole"]);
+}
+
 #[test]
 fn clustered_work_does_not_expose_generic_accessor() {
     let source = "clustered(work) pub fn enqueue(job) do\n  job\nend";

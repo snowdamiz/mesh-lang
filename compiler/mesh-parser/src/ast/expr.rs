@@ -359,18 +359,6 @@ impl FieldAccess {
 
 ast_node!(IndexExpr, INDEX_EXPR);
 
-impl IndexExpr {
-    /// The expression being indexed.
-    pub fn base(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
-    }
-
-    /// The index expression (inside brackets).
-    pub fn index(&self) -> Option<Expr> {
-        self.syntax.children().filter_map(Expr::cast).nth(1)
-    }
-}
-
 // ── If Expression ────────────────────────────────────────────────────────
 
 ast_node!(IfExpr, IF_EXPR);
@@ -548,11 +536,6 @@ impl ClosureClause {
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
     }
-
-    /// The body as an expression (first Expr child).
-    pub fn body_expr(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
-    }
 }
 
 // ── String Expression ────────────────────────────────────────────────────
@@ -655,13 +638,9 @@ impl MapEntry {
             && child_token(&self.syntax, SyntaxKind::FAT_ARROW).is_none()
     }
 
-    /// For keyword entries, return the key name as a string.
-    ///
-    /// Returns the text of the NAME_REF key for keyword argument entries.
+    /// The key's source text: for a keyword entry, the name, which is the
+    /// key's string.
     pub fn keyword_key_text(&self) -> Option<String> {
-        if !self.is_keyword_entry() {
-            return None;
-        }
         self.key().map(|k| k.syntax().text().to_string())
     }
 }
@@ -905,10 +884,8 @@ impl RegexExpr {
     /// Parses the source token text `~r/pattern/flags` by scanning for the
     /// first unescaped `/` after the `~r/` prefix.
     pub fn pattern(&self) -> Option<String> {
-        child_token(&self.syntax, SyntaxKind::REGEX_LITERAL).map(|t| {
-            let text = t.text();
-            extract_regex_pattern(text)
-        })
+        child_token(&self.syntax, SyntaxKind::REGEX_LITERAL)
+            .map(|t| split_regex_literal(t.text()).0.to_string())
     }
 
     /// Returns the flags string (e.g. "ims", "i", "").
@@ -917,62 +894,23 @@ impl RegexExpr {
     /// after the closing `/`.
     pub fn flags(&self) -> String {
         child_token(&self.syntax, SyntaxKind::REGEX_LITERAL)
-            .map(|t| {
-                let text = t.text();
-                extract_regex_flags(text)
-            })
+            .map(|t| split_regex_literal(t.text()).1.to_string())
             .unwrap_or_default()
     }
 }
 
-/// Extract the pattern from a regex literal source text like `~r/pattern/flags`.
-///
-/// Scans char-by-char after `~r/`, tracking backslash escapes.
-/// The first unescaped `/` ends the pattern.
-fn extract_regex_pattern(text: &str) -> String {
-    let Some(rest) = text.strip_prefix("~r/") else {
-        return String::new();
-    };
-    let mut pattern = String::new();
-    let mut prev_was_backslash = false;
-    for c in rest.chars() {
-        if c == '/' && !prev_was_backslash {
-            break;
-        }
-        pattern.push(c);
-        if c == '\\' && !prev_was_backslash {
-            prev_was_backslash = true;
-        } else {
-            prev_was_backslash = false;
-        }
-    }
-    pattern
-}
-
-/// Extract the flags from a regex literal source text like `~r/pattern/flags`.
-///
-/// Finds the closing unescaped `/` and returns everything after it.
-fn extract_regex_flags(text: &str) -> String {
-    let Some(rest) = text.strip_prefix("~r/") else {
-        return String::new();
-    };
-    let mut prev_was_backslash = false;
-    let mut slash_pos = None;
-    for (i, c) in rest.char_indices() {
-        if c == '/' && !prev_was_backslash {
-            slash_pos = Some(i);
-            break;
-        }
-        if c == '\\' && !prev_was_backslash {
-            prev_was_backslash = true;
-        } else {
-            prev_was_backslash = false;
-        }
-    }
-    match slash_pos {
-        Some(pos) => rest[pos + 1..].to_string(),
-        None => String::new(),
-    }
+/// The pattern and the flags of a regex literal's source text,
+/// `~r/pattern/flags`: the pattern runs to the first `/` that no backslash
+/// escapes.
+fn split_regex_literal(text: &str) -> (&str, &str) {
+    let rest = text.strip_prefix("~r/").unwrap_or(text);
+    let mut escaped = false;
+    let close = rest.char_indices().find(|&(_, c)| {
+        let closes = c == '/' && !escaped;
+        escaped = c == '\\' && !escaped;
+        closes
+    });
+    close.map_or((rest, ""), |(i, _)| (&rest[..i], &rest[i + 1..]))
 }
 
 // ── Json Literal Expression ──────────────────────────────────────────────
@@ -986,11 +924,8 @@ impl JsonExpr {
     }
 }
 
-/// A single field in a json literal: `key: value`
-#[derive(Debug, Clone)]
-pub struct JsonField {
-    pub(crate) syntax: crate::cst::SyntaxNode,
-}
+// A single field in a json literal: `key: value`
+ast_node!(JsonField, JSON_FIELD);
 
 impl JsonField {
     /// Key name (bare identifier, e.g. `status` in `json { status: "ok" }`)
@@ -1001,13 +936,5 @@ impl JsonField {
     /// Value expression after the colon.
     pub fn value(&self) -> Option<Expr> {
         self.syntax.children().find_map(Expr::cast)
-    }
-
-    pub fn cast(node: crate::cst::SyntaxNode) -> Option<Self> {
-        if node.kind() == SyntaxKind::JSON_FIELD {
-            Some(JsonField { syntax: node })
-        } else {
-            None
-        }
     }
 }

@@ -3,7 +3,7 @@
 //! Covers: WildcardPat, IdentPat, LiteralPat, TuplePat, ConstructorPat, StructPat,
 //! OrPat, AsPat, ConsPat, ListPat.
 
-use crate::ast::{ast_node, child_token, AstNode};
+use crate::ast::{ast_node, child_node, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
 use crate::syntax_kind::SyntaxKind;
 
@@ -278,10 +278,8 @@ impl StructPatField {
             .find(|n| n.kind() == SyntaxKind::NAME)
         {
             Some(name) => child_token(&name, SyntaxKind::IDENT),
-            None => self.pattern().and_then(|pattern| match pattern {
-                Pattern::Ident(ident) => ident.name(),
-                _ => None,
-            }),
+            // A field alone is an identifier pattern binding its name.
+            None => child_node::<IdentPat>(&self.syntax)?.name(),
         }
     }
 
@@ -353,11 +351,7 @@ impl AsPat {
     /// For `Circle(r) as c`, this returns the token "c".
     /// The binding is stored as an IDENT_PAT child; we get its IDENT token.
     pub fn binding_name(&self) -> Option<SyntaxToken> {
-        // The binding is the last IDENT_PAT child (after the inner pattern)
-        let binding_pat = self.syntax.children().filter_map(Pattern::cast).last()?;
-        match binding_pat {
-            Pattern::Ident(ident_pat) => ident_pat.name(),
-            _ => None,
-        }
+        // The binding is the last child, an IDENT_PAT after the inner pattern.
+        IdentPat::cast(self.syntax.children().last()?)?.name()
     }
 }

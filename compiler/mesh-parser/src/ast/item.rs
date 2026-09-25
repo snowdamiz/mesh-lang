@@ -2,7 +2,7 @@
 //!
 //! Covers: SourceFile, FnDef, ClusteredDecl, ParamList, Param,
 //! TypeAnnotation, ModuleDef, ImportDecl, FromImportDecl, ImportList,
-//! StructDef, StructField, LetBinding, Visibility, Block, Name, NameRef,
+//! StructDef, StructField, LetBinding, Visibility, Block, Name,
 //! Path, SumTypeDef, VariantDef, VariantField.
 
 use crate::ast::{ast_node, child_node, child_nodes, child_token, AstNode};
@@ -152,10 +152,6 @@ impl ClusteredDecl {
     }
 
     pub fn explicit_replica_count_token(&self) -> Option<SyntaxToken> {
-        if self.syntax.kind() != SyntaxKind::CLUSTER_DECORATOR_DECL {
-            return None;
-        }
-
         self.syntax
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -381,10 +377,11 @@ impl OwnershipModifier {
 
     /// The ownership behavior represented by this modifier.
     pub fn ownership(&self) -> ParamOwnership {
-        match self.token().as_ref().map(|token| token.text()) {
-            Some("borrow") => ParamOwnership::Borrow,
-            Some("consume") => ParamOwnership::Consume,
-            _ => ParamOwnership::Move,
+        // The parser makes a modifier only of `borrow` or `consume`.
+        if self.token().is_some_and(|token| token.text() == "borrow") {
+            ParamOwnership::Borrow
+        } else {
+            ParamOwnership::Consume
         }
     }
 }
@@ -581,31 +578,17 @@ impl RelationshipDecl {
             .children_with_tokens()
             .filter_map(|it| it.into_token())
             .find(|t| t.kind() == SyntaxKind::ATOM_LITERAL)
-            .map(|t| {
-                let text = t.text().to_string();
-                // Strip leading colon from atom literal.
-                if text.starts_with(':') {
-                    text[1..].to_string()
-                } else {
-                    text
-                }
-            })
+            .map(|t| atom_name(&t))
     }
 
     /// The target type name (e.g., "User" from `belongs_to :user, User`).
     pub fn target_type(&self) -> Option<String> {
-        // The target type is the IDENT after the COMMA token.
-        let mut after_comma = false;
-        for element in self.syntax.children_with_tokens() {
-            if let Some(token) = element.as_token() {
-                if token.kind() == SyntaxKind::COMMA {
-                    after_comma = true;
-                } else if after_comma && token.kind() == SyntaxKind::IDENT {
-                    return Some(token.text().to_string());
-                }
-            }
-        }
-        None
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .skip_while(|token| token.kind() != SyntaxKind::COMMA)
+            .find(|token| token.kind() == SyntaxKind::IDENT)
+            .map(|token| token.text().to_string())
     }
 }
 
@@ -640,30 +623,18 @@ impl SchemaOption {
             .children_with_tokens()
             .filter_map(|it| it.into_token())
             .find(|t| t.kind() == SyntaxKind::ATOM_LITERAL)
-            .map(|t| {
-                let text = t.text().to_string();
-                if text.starts_with(':') {
-                    text[1..].to_string()
-                } else {
-                    text
-                }
-            })
+            .map(|t| atom_name(&t))
     }
 
     /// The boolean value (for `timestamps` option).
     pub fn bool_value(&self) -> Option<bool> {
-        for element in self.syntax.children_with_tokens() {
-            if let Some(token) = element.as_token() {
-                match token.kind() {
-                    SyntaxKind::TRUE_KW => return Some(true),
-                    SyntaxKind::FALSE_KW => return Some(false),
-                    SyntaxKind::IDENT if token.text() == "true" => return Some(true),
-                    SyntaxKind::IDENT if token.text() == "false" => return Some(false),
-                    _ => {}
-                }
-            }
-        }
-        None
+        self.syntax
+            .children_with_tokens()
+            .find_map(|element| match element.kind() {
+                SyntaxKind::TRUE_KW => Some(true),
+                SyntaxKind::FALSE_KW => Some(false),
+                _ => None,
+            })
     }
 }
 
@@ -704,11 +675,6 @@ ast_node!(Visibility, VISIBILITY);
 ast_node!(Block, BLOCK);
 
 impl Block {
-    /// Statements and expressions in the block.
-    pub fn stmts(&self) -> impl Iterator<Item = Item> + '_ {
-        self.syntax.children().filter_map(Item::cast)
-    }
-
     /// The tail expression (last expression that is the block's value).
     /// This is the last child that can be cast to an Expr.
     pub fn tail_expr(&self) -> Option<super::expr::Expr> {
@@ -719,20 +685,16 @@ impl Block {
     }
 }
 
-// ── Name and NameRef ─────────────────────────────────────────────────────
+/// An atom literal's name, without its `:`.
+fn atom_name(token: &SyntaxToken) -> String {
+    token.text().trim_start_matches(':').to_string()
+}
+
+// ── Name ─────────────────────────────────────────────────────
 
 ast_node!(Name, NAME);
 
 impl Name {
-    /// The identifier text.
-    pub fn text(&self) -> Option<String> {
-        child_token(&self.syntax, SyntaxKind::IDENT).map(|t| t.text().to_string())
-    }
-}
-
-ast_node!(NameRef, NAME_REF);
-
-impl NameRef {
     /// The identifier text.
     pub fn text(&self) -> Option<String> {
         child_token(&self.syntax, SyntaxKind::IDENT).map(|t| t.text().to_string())
@@ -897,27 +859,12 @@ impl TypeAliasDef {
     /// For `type Url = String`, returns `Some("String")`.
     /// For `type Pair<A, B> = (A, B)`, returns `None` (no bare IDENT after `=`).
     pub fn target_type_name(&self) -> Option<String> {
-        let mut past_eq = false;
-        for child in self.syntax.children_with_tokens() {
-            match child {
-                rowan::NodeOrToken::Token(t) => {
-                    if t.kind() == SyntaxKind::EQ {
-                        past_eq = true;
-                        continue;
-                    }
-                    if past_eq && t.kind() == SyntaxKind::IDENT {
-                        return Some(t.text().to_string());
-                    }
-                }
-                rowan::NodeOrToken::Node(_) => {
-                    if past_eq {
-                        // Complex type node after `=` — not a bare name
-                        return None;
-                    }
-                }
-            }
-        }
-        None
+        self.syntax
+            .children_with_tokens()
+            .skip_while(|element| element.kind() != SyntaxKind::EQ)
+            .find(|element| element.as_node().is_some() || element.kind() == SyntaxKind::IDENT)?
+            .into_token()
+            .map(|token| token.text().to_string())
     }
 }
 
@@ -1068,19 +1015,6 @@ impl GuardClause {
     }
 }
 
-// ── FnExprBody ──────────────────────────────────────────────────────────
-
-ast_node!(FnExprBody, FN_EXPR_BODY);
-
-impl FnExprBody {
-    /// The body expression.
-    ///
-    /// For `fn fib(0) = 0`, this returns the expression `0`.
-    pub fn expr(&self) -> Option<super::expr::Expr> {
-        self.syntax.children().find_map(super::expr::Expr::cast)
-    }
-}
-
 // ── Supervisor Definition ──────────────────────────────────────────────
 
 ast_node!(SupervisorDef, SUPERVISOR_DEF);
@@ -1211,22 +1145,19 @@ impl CallHandler {
 
     /// The state parameter name from the |state| pattern.
     pub fn state_param_name(&self) -> Option<String> {
-        // First NAME is the handler name, second NAME (before BLOCK) is state param.
-        let names: Vec<_> = self
-            .syntax
-            .children()
-            .filter(|n| n.kind() == SyntaxKind::NAME)
-            .collect();
-        if names.len() >= 2 {
-            return Name::cast(names[1].clone()).and_then(|n| n.text());
-        }
-        None
+        handler_state_param(&self.syntax)
     }
 
     /// The body block of the call handler.
     pub fn body(&self) -> Option<Block> {
         child_node(&self.syntax)
     }
+}
+
+/// The state parameter a service handler names in `|state|`: its second
+/// NAME, after the handler's own.
+fn handler_state_param(handler: &SyntaxNode) -> Option<String> {
+    handler.children().filter_map(Name::cast).nth(1)?.text()
 }
 
 // ── Cast Handler ─────────────────────────────────────────────────────
@@ -1246,16 +1177,7 @@ impl CastHandler {
 
     /// The state parameter name from the |state| pattern.
     pub fn state_param_name(&self) -> Option<String> {
-        // First NAME is the handler name, second NAME (before BLOCK) is state param.
-        let names: Vec<_> = self
-            .syntax
-            .children()
-            .filter(|n| n.kind() == SyntaxKind::NAME)
-            .collect();
-        if names.len() >= 2 {
-            return Name::cast(names[1].clone()).and_then(|n| n.text());
-        }
-        None
+        handler_state_param(&self.syntax)
     }
 
     /// The body block of the cast handler.
