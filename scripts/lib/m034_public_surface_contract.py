@@ -289,8 +289,6 @@ WORKFLOW_CONTRACT = {
     "deployDocsOptInExpression": "${{ vars.MESH_ENABLE_PAGES_DEPLOY == 'true' }}",
     "deployDocsStepName": "Verify public docs contract",
     "deployDocsCommand": 'python3 scripts/lib/m034_public_surface_contract.py built-docs --root "$GITHUB_WORKSPACE" --dist-root "$GITHUB_WORKSPACE/website/docs/.vitepress/dist"',
-    "deployServicesOptInVariable": "MESH_ENABLE_FLY_DEPLOY",
-    "deployServicesOptInExpression": "${{ vars.MESH_ENABLE_FLY_DEPLOY == 'true' }}",
     "deployServicesStepName": "Verify public surface contract",
     "deployServicesCommand": 'python3 scripts/lib/m034_public_surface_contract.py public-http --root "$GITHUB_WORKSPACE" --artifact-dir "$RUNNER_TEMP/m034-public-surface-contract"',
     "deployServicesJobs": [

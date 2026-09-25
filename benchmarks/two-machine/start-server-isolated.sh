@@ -83,7 +83,7 @@ echo "Sampling RSS every 2s to stdout"
 echo ""
 
 # Sample RSS every 2s and log to stdout
-# Load gen VM can retrieve this via: fly logs --machine <id> | grep '^RSS,'
+# Read it on the server machine with: docker logs bench-servers | grep '^RSS,'
 while true; do
   rss=$(grep VmRSS /proc/$SERVER_PID/status 2>/dev/null | awk '{print $2}')
   echo "RSS,$LANG,$(date +%s),${rss:-0}"

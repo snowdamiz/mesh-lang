@@ -7,8 +7,7 @@
 
   "routes": [{ "pattern": "api.packages.meshlang.dev", "custom_domain": true }],
 
-  // The Dockerfile is the one that ran on Fly, unchanged. `basic` is 1 GiB,
-  // matching the VM it replaces.
+  // `basic` is 1 GiB.
   "containers": [
     {
       "class_name": "RegistryContainer",

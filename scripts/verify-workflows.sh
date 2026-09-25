@@ -46,7 +46,6 @@ main() {
   require_text ".github/workflows/autonomous-cluster-proof.yml" "cargo run -p meshc --locked -- proof docker-autoscaling"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "cargo run -p meshc --locked -- proof autonomous-performance"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "cargo run -p meshc --locked -- proof autonomous-chaos"
-  require_text ".github/workflows/autonomous-cluster-proof.yml" "cargo run -p meshc --locked -- proof fly-driver-conformance"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "--duration-seconds 10 --cycle-millis 10 --allow-short"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "path: target/proof/**"
 

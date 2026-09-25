@@ -4,8 +4,8 @@ The package registry behind `api.packages.meshlang.dev`: an axum service on
 Postgres, with package tarballs in S3-compatible object storage.
 
 It runs as a **Cloudflare Container**. `worker/index.ts` is the front door — a
-Worker that routes every request into the container — and the container is the
-same image that ran on Fly, built from `Dockerfile` unchanged.
+Worker that routes every request into the container — and the container is
+built from `Dockerfile`.
 
 Postgres is **Neon** (`mesh-registry` project). Cloudflare has no managed
 Postgres, and the service uses sqlx, Postgres full-text search and a Postgres

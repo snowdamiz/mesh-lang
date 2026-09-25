@@ -48,15 +48,15 @@ Reversal cost: medium. Automation must be paused and capacity fixed before eligi
 
 Owner role: Mesh capacity-driver maintainer.
 
-Context: the first production provider needs an idempotent API, immutable images, private networking, and metadata lookup after response loss.
+Context: Mesh is platform agnostic. A hosting-provider driver ties the runtime, the manifest schema, and the release gates to one vendor's API and credentials.
 
-Decision: implement Fly Machines through its HTTP API behind the common driver contract. Tokens are read from a named environment variable.
+Decision: Mesh ships only the Process and Docker drivers behind the common driver contract; no hosting-provider driver is built in. A deployment that needs another substrate runs it behind the external driver service contract.
 
-Rejected: shelling out to `flyctl` and a universal cloud abstraction.
+Rejected: shelling out to a provider CLI, a built-in provider driver, and a universal cloud abstraction.
 
-Consequences and reversal: certify against a fake API and staging account. Revoke the token and pause automation to reverse.
+Consequences and reversal: provider authority stays outside Mesh. Adding a provider later requires the full driver conformance and staging lifecycle gates.
 
-Reversal cost: low for disabling Fly authority, high for replacing the provider. Revocation is immediate; a new production provider requires the full driver conformance and staging lifecycle gates.
+Reversal cost: medium. A new provider driver needs its own manifest section, credentials handling, and certification.
 
 ## Docker authority boundary
 

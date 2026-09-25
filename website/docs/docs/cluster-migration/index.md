@@ -61,5 +61,3 @@ Pause the autoscaler, set a safe fixed desired count, disable automatic scale-do
 If quorum is unavailable, restore a majority rather than forcing provider changes. If the driver is unhealthy, reconcile observed objects by labels before resuming. If mixed-version capability checks fail, keep service at fixed capacity until every voter and eligible worker is compatible.
 
 Autonomous cluster-cookie generations and operator HMAC keys must each be at least 32 characters. Rotate credentials with overlapping verifier keyrings as described in [Cluster Operations](/docs/cluster-operations/#credential-lifecycle-and-rolling-rotation); do not combine a binary rollback with a signer-first credential rotation.
-
-The local Fly fake-API conformance suite validates the driver contract but does not certify credentials, private networking, image access, or provider behavior. Complete and retain the credentialed Fly staging create/Ready/cordon/delete artifact before enabling Fly mutations in a production environment.

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
   <text x="300" y="30" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold">HTTP Throughput — 100 concurrent connections</text>
-  <text x="300" y="50" text-anchor="middle" font-family="sans-serif" font-size="11">Fly.io performance-2x (2 vCPU, 4GB RAM), ord region</text>
+  <text x="300" y="50" text-anchor="middle" font-family="sans-serif" font-size="11">2 dedicated vCPU, 4 GB RAM per machine</text>
   <!-- /text bars -->
   <rect x="60" y="290" width="50" height="64" fill="#4e9af1"/>
   <rect x="170" y="175" width="50" height="179" fill="#adb5bd"/>

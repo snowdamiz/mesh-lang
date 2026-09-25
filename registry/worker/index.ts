@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-// The registry is the same axum binary that ran on Fly: a long-lived HTTP
+// The registry is an axum binary: a long-lived HTTP
 // service that needs Postgres and an S3 client, neither of which a Worker can
 // hold. It runs as a Cloudflare Container, and this Worker is the front door
 // that routes requests into it.

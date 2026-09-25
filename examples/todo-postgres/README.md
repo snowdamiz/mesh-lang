@@ -66,7 +66,7 @@ todo-postgres/
 - Treat that header as an operator/debug seam: take the returned request key and run `meshc cluster continuity <node-name@host:port> <request-key> --json` against a node when you want the same request's continuity record directly.
 - Use `meshc cluster status`, `meshc cluster continuity`, and `meshc cluster diagnostics` against node addresses when you need the same request's ingress, owner, replica, or execution truth.
 - The response header is a runtime-owned operator/debug seam, not a frontend-aware routing signal.
-- The starter does not promise frontend-aware node selection, sticky-session semantics, or a Fly-specific product contract.
+- The starter does not promise frontend-aware node selection or sticky-session semantics.
 - If you only need a local-only single-node path, stay on `meshc init --template todo-api --db sqlite`.
 
 ## Schema and migrations
@@ -148,7 +148,7 @@ BASE_URL=http://127.0.0.1:8080 \
 bash ./.bundle/todo-postgres/deploy-smoke.sh
 ```
 
-The staged bundle is the public deploy contract. Hosted runtimes or managed PostgreSQL providers can sit behind the same bundle later, and a proxy/platform ingress may expose one public app URL in front of multiple nodes, but Mesh runtime ownership still stays on the `meshc cluster` inspection path and the starter does not promise frontend-aware node selection or a Fly-specific product contract.
+The staged bundle is the public deploy contract. Hosted runtimes or managed PostgreSQL providers can sit behind the same bundle later, and a proxy/platform ingress may expose one public app URL in front of multiple nodes, but Mesh runtime ownership still stays on the `meshc cluster` inspection path and the starter does not promise frontend-aware node selection.
 
 ## Runtime inspection
 
@@ -218,7 +218,7 @@ The compose file uses a shared DNS alias (`mesh-cluster`) so every node can disc
 | `MESH_CONTINUITY_PROMOTION_EPOCH` | No | `0` | Monotonic counter for split-brain prevention |
 | `MESH_DISCOVERY_INTERVAL_MS` | No | `5000` | DNS re-resolution interval in milliseconds |
 
-Identity resolution order: `MESH_NODE_NAME` > `FLY_*` env > hostname + `MESH_NODE_HOST`.
+Identity resolution order: `MESH_NODE_NAME` > `MESH_NODE_HOST` (or the hostname) with `MESH_CLUSTER_PORT`.
 
 ### Operator inspection
 

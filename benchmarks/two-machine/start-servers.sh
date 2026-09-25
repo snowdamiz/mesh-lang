@@ -73,7 +73,7 @@ echo "Ready for benchmark run — sampling RSS every 2s to stdout"
 echo ""
 
 # Periodically sample peak RSS of all server processes and log to stdout
-# Load gen VM can retrieve this via: fly logs --machine <id> | grep '^RSS,'
+# Read it on the server machine with: docker logs bench-servers | grep '^RSS,'
 declare -A PEAK_RSS
 PEAK_RSS[Mesh]=0
 PEAK_RSS[Go]=0

@@ -97,7 +97,7 @@ RUN cd benchmarks/elixir \
 
 EXPOSE 3000 3001 3002 3003
 
-COPY benchmarks/fly/start-servers.sh /app/start-servers.sh
+COPY benchmarks/two-machine/start-servers.sh /app/start-servers.sh
 RUN chmod +x /app/start-servers.sh
 
 CMD ["/app/start-servers.sh"]

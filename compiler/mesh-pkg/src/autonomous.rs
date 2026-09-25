@@ -1,6 +1,6 @@
 //! Typed manifest contract for runtime-owned clustering and elasticity.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -205,7 +205,6 @@ pub enum RoutingAlgorithm {
 pub enum CapacityDriverKind {
     Process,
     Docker,
-    Fly,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -579,75 +578,6 @@ pub struct DockerDriverConfig {
     pub env: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct FlyDriverConfig {
-    #[serde(default = "default_fly_api_base_url")]
-    pub api_base_url: String,
-    #[serde(default)]
-    pub app_name: String,
-    #[serde(default = "default_fly_token_env")]
-    pub token_env: String,
-    #[serde(default)]
-    pub image: String,
-    #[serde(default)]
-    pub region: Option<String>,
-    #[serde(default = "default_docker_pool")]
-    pub pool: String,
-    #[serde(default = "default_template_revision")]
-    pub template_revision: String,
-    #[serde(default)]
-    pub env: BTreeMap<String, String>,
-    #[serde(default = "default_fly_cpu_kind")]
-    pub cpu_kind: String,
-    #[serde(default = "default_fly_cpus")]
-    pub cpus: u8,
-    #[serde(default = "default_fly_memory_mb")]
-    pub memory_mb: u32,
-}
-
-impl Default for FlyDriverConfig {
-    fn default() -> Self {
-        Self {
-            api_base_url: default_fly_api_base_url(),
-            app_name: String::new(),
-            token_env: default_fly_token_env(),
-            image: String::new(),
-            region: None,
-            pool: default_docker_pool(),
-            template_revision: default_template_revision(),
-            env: BTreeMap::new(),
-            cpu_kind: default_fly_cpu_kind(),
-            cpus: default_fly_cpus(),
-            memory_mb: default_fly_memory_mb(),
-        }
-    }
-}
-
-fn default_fly_api_base_url() -> String {
-    "https://api.machines.dev".to_string()
-}
-
-fn official_fly_api_base_url(value: &str) -> bool {
-    value.trim_end_matches('/') == "https://api.machines.dev"
-}
-
-fn default_fly_token_env() -> String {
-    "FLY_API_TOKEN".to_string()
-}
-
-fn default_fly_cpu_kind() -> String {
-    "shared".to_string()
-}
-
-fn default_fly_cpus() -> u8 {
-    1
-}
-
-fn default_fly_memory_mb() -> u32 {
-    256
-}
-
 fn default_docker_pool() -> String {
     "workers".to_string()
 }
@@ -672,8 +602,6 @@ pub struct CapacityConfig {
     pub process: Option<ProcessDriverConfig>,
     #[serde(default)]
     pub docker: Option<DockerDriverConfig>,
-    #[serde(default)]
-    pub fly: Option<FlyDriverConfig>,
 }
 
 fn default_startup_timeout() -> HumanDuration {
@@ -696,7 +624,6 @@ impl Default for CapacityConfig {
             forced_termination: ForcedTerminationPolicy::Never,
             process: None,
             docker: None,
-            fly: None,
         }
     }
 }
@@ -904,19 +831,6 @@ impl AutonomousClusterConfig {
                         }
                     }
                     _ => errors.push("the Docker capacity driver requires image, pool, and template_revision".to_string()),
-                },
-                Some(CapacityDriverKind::Fly) => match &self.capacity.fly {
-                    Some(fly)
-                        if official_fly_api_base_url(&fly.api_base_url)
-                            && !fly.app_name.trim().is_empty()
-                            && !fly.token_env.trim().is_empty()
-                            && !fly.image.trim().is_empty()
-                            && !fly.pool.trim().is_empty()
-                            && !fly.template_revision.trim().is_empty()
-                            && !fly.cpu_kind.trim().is_empty()
-                            && fly.cpus > 0
-                            && fly.memory_mb >= 128 => {}
-                    _ => errors.push("the Fly Machines capacity driver requires the official https://api.machines.dev origin, app_name, token_env, image, pool, template_revision, and a valid guest size".to_string()),
                 },
             }
         }
@@ -1135,55 +1049,4 @@ template_revision = "v1"
             .any(|error| error.contains("must include the worker role")));
     }
 
-    #[test]
-    fn production_autonomous_config_accepts_typed_fly_driver_without_inline_credentials() {
-        let config = parse_config(
-            r#"
-mode = "autonomous"
-default_replicas = 2
-durability = "strict"
-
-[controllers]
-voters = 3
-
-[autoscaling]
-enabled = true
-managed_roles = ["worker"]
-min_nodes = 2
-max_nodes = 5
-scale_up_window = "30s"
-scale_down_window = "10m"
-max_unavailable = 1
-
-[capacity]
-driver = "fly"
-
-[capacity.fly]
-app_name = "mesh-production"
-token_env = "FLY_API_TOKEN"
-image = "registry.fly.io/mesh-production@sha256:abc"
-region = "lax"
-pool = "workers"
-template_revision = "v1"
-cpu_kind = "shared"
-cpus = 1
-memory_mb = 256
-"#,
-        );
-
-        assert_eq!(config.validate(), Ok(()));
-        let fly = config.capacity.fly.expect("typed Fly configuration");
-        assert_eq!(fly.token_env, "FLY_API_TOKEN");
-        assert_eq!(fly.api_base_url, "https://api.machines.dev");
-    }
-
-    #[test]
-    fn fly_manifest_origin_is_pinned_before_token_lookup() {
-        assert!(official_fly_api_base_url("https://api.machines.dev"));
-        assert!(official_fly_api_base_url("https://api.machines.dev/"));
-        assert!(!official_fly_api_base_url("https://attacker.example"));
-        assert!(!official_fly_api_base_url(
-            "https://api.machines.dev.attacker.example"
-        ));
-    }
 }

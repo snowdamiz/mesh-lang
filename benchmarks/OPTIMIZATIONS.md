@@ -73,7 +73,6 @@ Fresh verification after the snapshot change (local logs: `target/performance/ve
 | Full runtime library suite, one test thread | 1,016 passed, 2 ignored |
 | JSON and collection end-to-end filters | 6 + 1 passed |
 | `proof autonomous-chaos` | Passed, five rounds |
-| `proof fly-driver-conformance` | Passed, 14 tests |
 | `proof continuity-soak --duration-seconds 10 --cycle-millis 10 --allow-short` | Smoke passed; not a 24-hour release proof |
 | `proof autonomous-performance` | Passed all budgets on isolated retry |
 | `proof docker-autoscaling` | Failed twice: burst/latency + scale-down first; managed-worker readiness on isolated retry |

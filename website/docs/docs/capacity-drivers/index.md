@@ -1,6 +1,6 @@
 ---
 title: Capacity Drivers
-description: Provision process, Docker, and Fly capacity through Mesh's fenced driver contract
+description: Provision process and Docker capacity through Mesh's fenced driver contract
 ---
 
 # Capacity Drivers
@@ -76,49 +76,10 @@ MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES=DATABASE_URL,PORT,MESH_ROLES
 
 The network and exact sorted environment-name set must match every authenticated request. Values remain covered by mTLS/HMAC authentication and are never printed by `Debug`; constrain which controllers hold the driver key and put application-secret authorization at the secret source. The service refuses first-request trust-on-first-use for the network or environment shape.
 
-## Fly Machines driver
-
-The Fly driver uses the Machines HTTP API directly. It does not shell out to `flyctl`.
-
-```toml
-[cluster.capacity]
-driver = "fly"
-
-[cluster.capacity.fly]
-app_name = "mesh-production"
-token_env = "FLY_API_TOKEN"
-image = "registry.fly.io/mesh-production@sha256:..."
-region = "lax"
-pool = "workers"
-template_revision = "release-42"
-cpu_kind = "shared"
-cpus = 1
-memory_mb = 256
-```
-
-The bearer token is read only from `token_env`. The optional `api_base_url` key defaults to, and in a manifest must be, `https://api.machines.dev`; an arbitrary manifest cannot redirect the token. A direct test-only driver can use another HTTPS origin only when the process owner explicitly sets `MESH_FLY_ALLOW_CUSTOM_API_BASE_URL`, which forwards the configured bearer token to that origin and must never be enabled around production credentials.
-
-Machine metadata uses the same identity and fencing labels as other drivers. HTTP 408, 429, provider timeouts, and server errors are retryable with operation-scoped exponential backoff and full jitter; validation and authorization errors are permanent. The driver re-observes before creation, adopts exactly one metadata match after create-response loss or controller restart, and treats absence during deletion as success. It rate-limits provider mutations independently from retry timing.
-
 ## External driver service
 
 When provider credentials should not enter controller processes, run the driver service behind mutually authenticated TLS. The channel authenticates the controller identity, verifies a bounded signed request, rejects replay, and applies an independent control budget. The external service still implements the same idempotent operation semantics.
 
 ## Certification checklist
 
-A production driver is not certified until tests cover validation, credential redaction, exact-label adoption, create-response loss, timeouts, partial success, orphan handling, already-removed resources, leader failover, retry bounds, and destructive-call authorization. Run credential-free Fly conformance with `meshc proof fly-driver-conformance`.
-
-The credentialed staging gate creates and deletes one Machine and requires an explicit acknowledgement:
-
-```bash
-FLY_API_TOKEN=... DATABASE_URL=... \
-meshc proof fly-driver-staging \
-  --app-name mesh-staging \
-  --image registry.fly.io/mesh-staging@sha256:... \
-  --cluster-id mesh-staging-cert \
-  --template-revision release-42 \
-  --worker-env DATABASE_URL \
-  --confirm-create-and-delete
-```
-
-The Docker release proof certifies the local driver path. Fly cannot be called production-certified until the target staging app retains a passing create, Ready, cordon, delete, and observed-removal bundle.
+A production driver is not certified until tests cover validation, credential redaction, exact-label adoption, create-response loss, timeouts, partial success, orphan handling, already-removed resources, leader failover, retry bounds, and destructive-call authorization. The Docker release proof (`meshc proof docker-autoscaling`) certifies the Docker driver path.

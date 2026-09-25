@@ -170,7 +170,7 @@ Take the public follow-on ladder in order: honest local SQLite starter, shared/d
 
 Use [Distributed Proof](/docs/distributed-proof/) for the repository-owned
 Docker/PostgreSQL autoscaling gate. The [Developer Tools](/docs/tooling/#proof-commands)
-reference lists the separate chaos, performance, continuity-soak, and Fly
+reference lists the separate chaos, performance, and continuity-soak
 commands.
 
 ## What to read next

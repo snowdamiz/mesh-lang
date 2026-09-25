@@ -60,8 +60,6 @@ See [Cluster operator commands](/docs/tooling/#cluster-operator-commands) and
 | `MESH_CLUSTER_COOKIE` | `meshc cluster` | Cookie keyring (see [Node bootstrap](#node-bootstrap)) | None; required unless `--cookie-file` is given | **Secret.** Authenticates the CLI to the target node. A blank value is an error. |
 | `MESH_OPERATOR_KEY` | `meshc cluster` mutations | Comma-separated keys; the CLI signs with the first key of at least 32 characters | None; required unless `--operator-key-file` is given | **Secret.** Signs `autoscale`, `scale`, `drain`, and `cancel-drain` requests. See [Credential rotation](/docs/cluster-operations/#credential-lifecycle-and-rolling-rotation). |
 | `MESH_PROOF_TIME_SCALE` | `meshc proof` | Integer, clamped to 1–10 | 3 with up to 4 CPUs, 2 with 5–8, 1 above that | Multiplies every proof deadline for a slow machine. A non-numeric value is ignored. |
-| `FLY_API_TOKEN`, or the name given to `--token-env` | `meshc proof fly-driver-staging` | Fly API token | None; required | **Secret.** The Machines API token. Each `--worker-env` name is also read from the environment and passed to the Machine. |
-| `MESH_FLY_ALLOW_CUSTOM_API_BASE_URL` | Fly capacity driver, as used by `meshc proof fly-driver-staging` | `1`, `true`, `yes`, `on` (any case) | Off | Allows an HTTPS `--api-base-url` other than `https://api.machines.dev` and sends the bearer token there. Never enable it around production credentials. See [Fly Machines driver](/docs/capacity-drivers/#fly-machines-driver). |
 
 Against an autonomous cluster, `meshc cluster` also uses the node TLS and
 signed-identity variables from [Autonomous identity and trust](#autonomous-identity-and-trust).
@@ -80,17 +78,14 @@ and the [clustered example](/docs/getting-started/clustered-example/).
 | `MESH_CLUSTER_PORT` | Program | 1–65535 | `4370` | Cluster listener port and discovery dial port. An invalid value makes `Node.start_from_env()` return an error; an empty value means the default. |
 | `MESH_NODE_NAME` | Program | `name@host:port`, or `name@[ipv6]:port` | Derived; see below | Explicit node identity. The port must equal `MESH_CLUSTER_PORT`. An invalid value makes `Node.start_from_env()` return an error. |
 | `MESH_NODE_HOST` | Program | Host name or IP address | The system host name | The advertised host when the name comes from the host name: `<hostname>@<MESH_NODE_HOST>:<port>`. |
-| `FLY_APP_NAME`, `FLY_REGION`, `FLY_MACHINE_ID`, `FLY_PRIVATE_IP` | Program | Set by Fly Machines | None | When `MESH_NODE_NAME` is unset and any of these is set, all four are required and the node name becomes `<app>-<region>-<machine>@[<private-ip>]:<port>`. |
 | `MESH_DISCOVERY_INTERVAL_MS` | Program | Positive integer (ms) | `5000` | How often discovery resolves the seed. An invalid value disables discovery with a message on stderr; the node still starts. |
 | `MESH_CONTINUITY_ROLE` | Program | `primary`, `standby` (any case) | `primary` | Continuity authority role for a primary/standby pair. Any other value stops the program: `Node.start_from_env()` returns an error naming it. |
 | `MESH_CONTINUITY_PROMOTION_EPOCH` | Program | Non-negative integer | `0` | Starting promotion epoch. A value that is not a whole number stops the program the same way. |
 
-The node name comes from `MESH_NODE_NAME` first, then the four `FLY_*`
-variables, then the system host name with `MESH_NODE_HOST`. Setting
-`MESH_DISCOVERY_SEED`, `MESH_NODE_NAME`, `MESH_NODE_HOST`, or any `FLY_*`
-variable without `MESH_CLUSTER_COOKIE` makes `Node.start_from_env()` return an
-error. Fly sets its variables on every Machine, so a program there needs the
-cookie to start at all.
+The node name comes from `MESH_NODE_NAME` first, then the system host name
+with `MESH_NODE_HOST`. Setting `MESH_DISCOVERY_SEED`, `MESH_NODE_NAME`, or
+`MESH_NODE_HOST` without `MESH_CLUSTER_COOKIE` makes `Node.start_from_env()`
+return an error.
 
 ## Autonomous identity and trust
 
@@ -110,7 +105,7 @@ See [Autonomous Clusters](/docs/autonomous-clusters/) and
 | `MESH_TLS_KEY_DER_B64` | Program, `meshc cluster` | Base64 PKCS#8 DER private key | None | **Secret.** This node's private key. |
 | `MESH_NODE_IDENTITY_ENVELOPE_B64` | Program, `meshc cluster` | Base64 signed identity envelope | None | This node's signed claim: cluster, stable ID, advertised name, roles, and an expiry of at most 31 days. It is checked on every handshake. |
 | `MESH_NODE_IDENTITY_VERIFY_KEYS_B64` | Program, `meshc cluster` | Comma-separated base64 Ed25519 public keys | None | Keys that verify peers' identity claims. |
-| `MESH_CAPACITY_IDENTITY_SIGNING_KEY_DER_B64` | Controller running the Docker or Fly driver in process; `mesh-capacity-driver` | Base64 PKCS#8 Ed25519 private key | None; required when the worker template sets `MESH_CLUSTER_MODE=autonomous` | **Secret.** Signs 30-day identity envelopes for the workers the driver creates. |
+| `MESH_CAPACITY_IDENTITY_SIGNING_KEY_DER_B64` | Controller running the Docker driver in process; `mesh-capacity-driver` | Base64 PKCS#8 Ed25519 private key | None; required when the worker template sets `MESH_CLUSTER_MODE=autonomous` | **Secret.** Signs 30-day identity envelopes for the workers the driver creates. |
 | `MESH_APPLICATION_ID` | Program | String | `mesh-application` | Scopes `Idempotency-Key` replay. Every node of one application must use the same value. |
 
 Each `MESH_CONTROLLER_VOTERS` entry is `<stable-node-id>|<name@host:port>`,
@@ -204,8 +199,7 @@ invalid required value stops the controller at startup. See
 
 | Variable | Read by | Accepted values | Default | Effect |
 | --- | --- | --- | --- | --- |
-| `FLY_API_TOKEN`, or the manifest's `token_env` | Controller (Fly driver) | Fly API token | None; required | **Secret.** The Machines API bearer token. |
-| `MESH_CAPACITY_WORKER_ENV_ALLOWLIST` | Controller (Docker and Fly drivers) | Comma-separated variable names | None | Copies each named variable from the controller's environment into every managed worker, skipping unset names. Use it to pass values such as `DATABASE_URL` without writing them into `mesh.toml`. A name containing `=`, or a value containing a newline, stops the controller. |
+| `MESH_CAPACITY_WORKER_ENV_ALLOWLIST` | Controller (Docker driver) | Comma-separated variable names | None | Copies each named variable from the controller's environment into every managed worker, skipping unset names. Use it to pass values such as `DATABASE_URL` without writing them into `mesh.toml`. A name containing `=`, or a value containing a newline, stops the controller. |
 | `MESH_CAPACITY_DOCKER_NETWORK` | Controller (Docker driver) | Network name | The manifest's `network` | Overrides the Docker network when non-blank. |
 | `MESH_DOCKER_DRIVER_ENDPOINT` | Controller (Docker driver) | `host:port` | Unset: run the Docker CLI in process | Sends Docker operations to the external driver service. |
 | `MESH_DOCKER_DRIVER_SERVER_NAME` | Controller | TLS server name | `docker-driver` | The name the service certificate must match. |
@@ -254,6 +248,6 @@ plumbing. Do not set them yourself.
 - `MESH_PROOF_*` (except `MESH_PROOF_TIME_SCALE`), `CARGO_INCREMENTAL`, and `RUST_TEST_THREADS`: set by `meshc proof` for the processes it runs.
 
 Capacity drivers also overwrite `MESH_ROLES` on every managed worker with the
-manifest's managed roles. The Docker and Fly drivers set `MESH_STABLE_NODE_ID`,
+manifest's managed roles. The Docker driver sets `MESH_STABLE_NODE_ID`,
 and when the worker template sets `MESH_CLUSTER_MODE=autonomous`, also
 `MESH_NODE_NAME` and a freshly signed `MESH_NODE_IDENTITY_ENVELOPE_B64`.

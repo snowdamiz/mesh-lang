@@ -2,11 +2,11 @@
 
 Review date: 2026-07-16
 
-Scope: protocol-two node identity and transport, operator control, external Docker driver service, Process/Docker/Fly capacity drivers, credential handling, replay protection, and audit redaction. The PostgreSQL application schema and unrelated website code are out of scope.
+Scope: protocol-two node identity and transport, operator control, external Docker driver service, Process/Docker capacity drivers, credential handling, replay protection, and audit redaction. The PostgreSQL application schema and unrelated website code are out of scope.
 
 ## Summary
 
-The core design has strong foundations: autonomous nodes require mTLS and signed cluster-scoped identities, control changes are HMAC-authenticated and normally majority-committed, provider mutations are idempotent and metadata-fenced, frames and caches are bounded, and secrets have dedicated rotation paths. The review found three high-severity trust-boundary defects and five medium/low hardening defects. All eight findings have been remediated and verified by focused tests; the time-bound 24-hour soak and credentialed Fly staging gate remain release-evidence requirements, not unresolved findings in this review.
+The core design has strong foundations: autonomous nodes require mTLS and signed cluster-scoped identities, control changes are HMAC-authenticated and normally majority-committed, provider mutations are idempotent and metadata-fenced, frames and caches are bounded, and secrets have dedicated rotation paths. The review found three high-severity trust-boundary defects and five medium/low hardening defects. All eight findings have been remediated and verified by focused tests; the time-bound 24-hour soak remains a release-evidence requirement, not unresolved findings in this review.
 
 ## Findings
 
@@ -26,21 +26,9 @@ The core design has strong foundations: autonomous nodes require mTLS and signed
 
 **Status:** Remediated and verified. Autonomous sessions reject the transient route identity; only explicit manual protocol-one compatibility retains it. Regression coverage verifies the autonomous rejection and the fenced persistent route path.
 
-### HIGH-2: Custom Fly API origin can receive the production bearer token
+### HIGH-2: No longer applicable
 
-**Location:** `compiler/mesh-pkg/src/autonomous.rs` (Fly manifest validation), `compiler/mesh-rt/src/dist/autonomous.rs` (`RuntimeCapacityDriverConfig`), and `compiler/mesh-rt/src/dist/scaling.rs` (`FlyMachinesCapacityDriver` origin validation and request adapter)
-
-**Category:** Information disclosure / SSRF
-
-**Exploit:** `api_base_url` is deployment-manifest controlled and validation only requires an `https://` prefix. The HTTP adapter attaches `Authorization: Bearer <Fly token>` to every request. A malicious or compromised manifest can set `api_base_url = "https://attacker.example"`; controller startup then sends the Fly token to that origin during configuration validation.
-
-**Reachability:** Deployment-author or supply-chain access to the Mesh manifest; no running-cluster credential is required.
-
-**Impact:** Fly account credential disclosure and subsequent capacity takeover within the token's scope.
-
-**Remediation:** Pin the production origin to `https://api.machines.dev`. Permit a custom HTTPS origin only behind an explicit process-owner environment opt-in intended for isolated tests, and document that the opt-in forwards the token. Add manifest/runtime validation tests.
-
-**Status:** Remediated and verified. Manifest defaults and runtime validation pin `https://api.machines.dev`; no request is issued to an unapproved origin unless the process owner explicitly enables the documented test-only override. `fly_manifest_origin_is_pinned_before_token_lookup` and `fly_driver_conformance_rejects_token_forwarding_to_unapproved_origin` cover both boundaries.
+This finding concerned a hosting-provider capacity driver that Mesh no longer ships (removed 2026-09-25); Mesh keeps only the Process and Docker drivers.
 
 ### HIGH-3: Reserved actor string bypasses controller quorum for drain admission
 
@@ -128,7 +116,7 @@ The core design has strong foundations: autonomous nodes require mTLS and signed
 
 **Category:** Information disclosure
 
-**Exploit:** The direct Process driver derived `Debug` over its complete command vector and environment map. A panic, diagnostic, or future debug log could therefore retain command-line credentials, database URLs, or application secrets even though the Docker, Fly, remote-driver, and embedded runtime configurations already redact those values.
+**Exploit:** The direct Process driver derived `Debug` over its complete command vector and environment map. A panic, diagnostic, or future debug log could therefore retain command-line credentials, database URLs, or application secrets even though the Docker, remote-driver, and embedded runtime configurations already redact those values.
 
 **Reachability:** Local log/diagnostic reader; triggered by routine debugging or a panic path when the Process driver is configured.
 
@@ -147,11 +135,10 @@ The core design has strong foundations: autonomous nodes require mTLS and signed
 - Docker and Process drivers use argv arrays rather than shell interpolation.
 - Docker adoption checks managed marker, cluster, pool, operation, template, term, and desired revision before reuse; deletion re-inspects managed scope.
 - Docker environment files use unpredictable create-new names and owner-only permissions and are removed after create attempts.
-- Fly response bodies are bounded and credentials/environment values are redacted by the concrete driver formatter.
 - HTTP idempotency keys are printable, trimmed, and limited to 255 bytes before hashing.
 - CLI control secrets are no longer accepted in argv; secret files must be regular owner-only files on Unix.
 
 ## Out of scope
 
-- Security of Docker Engine, Fly's control plane, PostgreSQL itself, application handlers, and user-authentication policy above Mesh's clustered handler boundary.
+- Security of Docker Engine, PostgreSQL itself, application handlers, and user-authentication policy above Mesh's clustered handler boundary.
 - Host compromise, malicious root/process owner, or theft of all current CA, identity-signing, cookie, operator, and driver keys.

@@ -11,17 +11,17 @@ Compare HTTP throughput and latency of four language implementations of a minima
 
 ## Hardware Topology
 
-Two dedicated Fly.io machines in the same region (`ord`, Chicago):
+Two dedicated machines in one datacenter (Chicago), on a private network:
 
 | Machine | Size | Purpose |
 |---------|------|---------|
-| `bench-servers` | `performance-2x` (2 dedicated vCPU, 4 GB RAM) | Runs all 4 language servers |
-| `bench-loadgen` | `performance-2x` (2 dedicated vCPU, 4 GB RAM) | Runs `hey` load generator |
+| `bench-servers` | 2 dedicated vCPU, 4 GB RAM | Runs all 4 language servers |
+| `bench-loadgen` | 2 dedicated vCPU, 4 GB RAM | Runs `hey` load generator |
 
-**Why two VMs in the same region?**
+**Why two machines in one datacenter?**
 - Dedicated CPUs eliminate CPU sharing between load generator and application servers
-- Intra-datacenter WireGuard network (Fly.io 6PN) gives sub-millisecond RTT, minimising network noise
-- `performance-2x` machines have dedicated (not burstable) CPUs — results are reproducible
+- An intra-datacenter private network gives sub-millisecond RTT, minimising network noise
+- Dedicated (not burstable) CPUs make results reproducible
 
 ## Benchmark Tool
 
@@ -37,7 +37,7 @@ hey -c 100 -z 30s -t 30 <url>
 
 ## Protocol
 
-HTTP/1.1 over IPv6 (Fly.io 6PN private network). All servers bind `[::]:PORT` for dual-stack compatibility.
+HTTP/1.1 over the private network (IPv6 in the published runs). All servers bind `[::]:PORT` for dual-stack compatibility.
 
 ## Server Ports
 
@@ -103,43 +103,42 @@ Plug + Cowboy (plug_cowboy 2.8), MIX_ENV=prod.
 
 ## Reproducibility
 
-All server and load generator code is in `benchmarks/` and `benchmarks/fly/`. The two-VM Fly.io setup can be reproduced exactly by following `benchmarks/fly/README.md`.
+All server and load generator code is in `benchmarks/` and `benchmarks/two-machine/`. The two-machine setup can be reproduced on any provider or on your own hardware by following Option 2 in [README.md](README.md).
 
 ## Caveats
 
-- All four language servers run co-located on the **same VM** (2 dedicated vCPUs, 4 GB RAM). Under sustained load they share these resources; reported throughput reflects realistic multi-tenant conditions, not the isolated peak each server could sustain alone.
+- All four language servers run co-located on the **same machine** (2 dedicated vCPUs, 4 GB RAM). Under sustained load they share these resources; reported throughput reflects realistic multi-tenant conditions, not the isolated peak each server could sustain alone.
 - Mesh's first timed run for `/text` was 4,041 req/s (JIT warmup). It is excluded from the reported average (19,718 req/s); subsequent runs stabilised at ~19,500–20,000 req/s.
-- Mesh p50/p99 are absent from the recorded results — the original run predated the latency parser fix in `fly/run-benchmarks.sh`; a fresh run will populate these values.
+- Mesh p50/p99 are absent from the recorded results — the original run predated the latency parser fix in `two-machine/run-benchmarks.sh`; a fresh run will populate these values.
 
 ## Isolated Peak Throughput
 
-The co-located results above reflect realistic multi-tenant conditions (all four servers sharing 2 vCPUs). To measure each server's actual peak throughput, a separate isolated run benchmarks each language alone on the server VM.
+The co-located results above reflect realistic multi-tenant conditions (all four servers sharing 2 vCPUs). To measure each server's actual peak throughput, a separate isolated run benchmarks each language alone on the server machine.
 
 ### Procedure
 
 For each language (Mesh → Go → Rust → Elixir):
 
-1. Spin up a fresh `performance-2x` Fly.io server VM with `LANG=<language>` — only that language's server starts.
+1. Start the server image with `LANG=<language>` and the isolated entrypoint — only that language's server starts.
 2. Run the same benchmark protocol: 30s warmup + 5 × 30s timed runs, Run 1 excluded, runs 2–5 averaged.
-3. Stop and destroy the server VM before starting the next language.
+3. Stop the server container before starting the next language.
 
 This gives each server exclusive access to both dedicated vCPUs and full 4 GB RAM, eliminating cross-language interference entirely.
 
 ### Running Isolated Benchmarks
 
-```bash
-# Build and push the server image (same image as co-located — start-server-isolated.sh is the entrypoint)
-docker buildx build --platform linux/amd64 \
-  -f benchmarks/fly/Dockerfile.servers \
-  -t registry.fly.io/bench-mesh/servers:latest .
-fly auth docker
-docker push registry.fly.io/bench-mesh/servers:latest
+Build the images as in [README.md](README.md) Option 2. Then, for each language, start its server alone on the server machine and run the load generator against it:
 
-# On the load gen VM (or locally with fly ssh):
-SERVER_IMAGE=registry.fly.io/bench-mesh/servers:latest \
-APP=bench-mesh \
-REGION=ord \
-bash benchmarks/fly/run-benchmarks-isolated.sh
+```bash
+# Server machine
+docker run -d --name bench-servers --network host -e LANG=Mesh \
+  bench-servers /app/benchmarks/two-machine/start-server-isolated.sh
+
+# Load generator machine
+docker run --rm --network host -e SERVER_HOST=10.0.0.10 bench-loadgen
+
+# Server machine, before the next language
+docker rm -f bench-servers
 ```
 
 Results are printed to stdout in the same table format as the co-located runner.

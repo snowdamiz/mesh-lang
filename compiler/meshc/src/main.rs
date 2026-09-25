@@ -543,25 +543,6 @@ fn runtime_autonomous_config_json(
                 environment: docker.env.clone(),
             }
         }
-        (true, Some(CapacityDriverKind::Fly)) => {
-            let fly = config
-                .capacity
-                .fly
-                .as_ref()
-                .ok_or_else(|| "validated Fly driver config missing".to_string())?;
-            RuntimeCapacityDriverConfig::Fly {
-                api_base_url: fly.api_base_url.clone(),
-                app_name: fly.app_name.clone(),
-                token_env: fly.token_env.clone(),
-                image: fly.image.clone(),
-                region: fly.region.clone(),
-                pool: fly.pool.clone(),
-                environment: fly.env.clone(),
-                cpu_kind: fly.cpu_kind.clone(),
-                cpus: fly.cpus,
-                memory_mb: fly.memory_mb,
-            }
-        }
         (true, None) => return Err("validated autonomous capacity driver missing".to_string()),
     };
     let template_revision = if !config.autoscaling.enabled {
@@ -571,11 +552,6 @@ fn runtime_autonomous_config_json(
             Some(CapacityDriverKind::Docker) => config
                 .capacity
                 .docker
-                .as_ref()
-                .map(|driver| driver.template_revision.clone()),
-            Some(CapacityDriverKind::Fly) => config
-                .capacity
-                .fly
                 .as_ref()
                 .map(|driver| driver.template_revision.clone()),
             Some(CapacityDriverKind::Process) => Some("process-v1".to_string()),

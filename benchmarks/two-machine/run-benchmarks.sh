@@ -132,6 +132,6 @@ for lang in Mesh Go Rust Elixir; do
 done
 
 echo ""
-echo "Peak RSS: retrieve from server VM logs with:"
-echo "  fly logs --machine <server-machine-id> --app <app> | grep '^RSS,'"
+echo "Peak RSS: the server container logs it; on the server machine run:"
+echo "  docker logs bench-servers | grep '^RSS,'"
 echo "============================================================"

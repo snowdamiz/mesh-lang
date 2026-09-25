@@ -497,7 +497,7 @@ capacity or drain state.
 
 ## Proof commands
 
-`meshc proof` exposes seven separate repository-owned gates:
+`meshc proof` exposes four separate repository-owned gates:
 
 | Command | Purpose |
 | --- | --- |
@@ -505,9 +505,6 @@ capacity or drain state.
 | `continuity-soak` | Bounded-retention soak; release default is 24 hours |
 | `autonomous-performance` | Deterministic performance budgets |
 | `autonomous-chaos` | Repeated deterministic fault/model suite |
-| `fly-driver-conformance` | Credential-free Fly Machines fake-API certification |
-| `fly-driver-staging` | Credentialed create, Ready, cordon, delete, and removal gate |
-| `fly-autoscaling-materialize` | Create owner-only TLS and signed-identity input for the full Fly proof |
 
 ### Docker autoscaling
 
@@ -551,64 +548,6 @@ never a 24-hour release pass.
 Proof deadlines stretch on slower machines: by 3 on four cores or fewer, by 2
 on five to eight, and not at all above that. Set `MESH_PROOF_TIME_SCALE` (1 to
 10) to choose the factor.
-
-### Fly driver gates
-
-Credential-free conformance needs no Fly account:
-
-```bash
-meshc proof fly-driver-conformance
-```
-
-It accepts `--evidence-dir`.
-
-The staging command creates and deletes one real Machine and refuses to run
-without acknowledgement:
-
-```bash
-meshc proof fly-driver-staging \
-  --app-name mesh-staging \
-  --image registry.fly.io/mesh-staging@sha256:... \
-  --cluster-id mesh-staging-cert \
-  --template-revision release-42 \
-  --worker-env DATABASE_URL \
-  --confirm-create-and-delete
-```
-
-Required options are `--app-name`, `--image`, `--cluster-id`, and
-`--confirm-create-and-delete`. Other options are:
-
-- `--token-env` (default `FLY_API_TOKEN`);
-- repeatable `--worker-env`;
-- `--api-base-url` (default `https://api.machines.dev`);
-- `--region`;
-- `--pool` (default `workers`);
-- `--template-revision`;
-- `--cpu-kind` (default `shared`);
-- `--cpus` (default `1`);
-- `--memory-mb` (default `256`);
-- `--deadline-seconds` (default `300`); and
-- `--evidence-dir`.
-
-The command reads token and worker values from environment-variable names; it
-does not accept secret values on the command line.
-
-Materialize the owner-only identity input for a full Fly autoscaling run:
-
-```bash
-meshc proof fly-autoscaling-materialize \
-  --controller-app mesh-controller \
-  --data-app mesh-data \
-  --cluster-id mesh-proof \
-  --output ./fly-proof-identity.json
-```
-
-The output path must be new; the command does not overwrite an existing
-identity file, and writes it with mode `0600`. App names must be 1 to 63
-lowercase letters, digits, or hyphens, starting and ending with a letter or
-digit; the cluster id must be non-blank and at most 128 bytes. The signed
-identities it writes expire after two days. See
-[Capacity Drivers](/docs/capacity-drivers/) for the Fly driver contract.
 
 ## Test Runner
 
@@ -1266,7 +1205,7 @@ The verifier persists the candidate and hosted-run evidence under:
 | REPL | `meshc repl` | Interactive LLVM JIT evaluation |
 | Language Server | `meshc lsp` | Diagnostics, hover, navigation, completion, symbols, formatting, and signature help over stdio JSON-RPC |
 | Cluster operations | `meshc cluster <command>` | Inspect or mutate runtime-owned cluster state |
-| Release gates | `meshc proof <command>` | Run Docker, Fly, chaos, performance, and continuity proof commands |
+| Release gates | `meshc proof <command>` | Run Docker, chaos, performance, and continuity proof commands |
 | Toolchain update | `meshc update` or `meshpkg update` | Refresh both installed commands |
 | Package CLI | `meshpkg <login \| publish \| install \| search \| update>` | Authenticate with and use a registry |
 | VS Code Extension | Marketplace or VSIX | First-class VS Code host for the shared grammar and Mesh LSP |

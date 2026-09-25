@@ -10,7 +10,7 @@ pub mod toolchain_update;
 pub use autonomous::{
     AutonomousClusterConfig, AutoscalingConfig, ByteSize, CapacityConfig, CapacityDriverKind,
     ClusterFeatureConfig, ClusterMode, ContinuityConfig, ControllerConfig, DockerDriverConfig,
-    DurabilityMode, FlyDriverConfig, ForcedTerminationPolicy, HumanDuration, ManagedRole,
+    DurabilityMode, ForcedTerminationPolicy, HumanDuration, ManagedRole,
     ProcessDriverConfig, RoleConfig, RoutingAlgorithm, RoutingConfig, SchedulerConfig,
     DEFAULT_TRANSPORT_FRAME_BYTES, MAX_TOTAL_REPLICAS,
 };

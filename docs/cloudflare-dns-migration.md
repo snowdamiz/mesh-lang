@@ -1,6 +1,6 @@
 # Moving meshlang.dev and its services onto Cloudflare
 
-The services moved from Fly.io to Cloudflare. Workers custom domains only work
+The services run on Cloudflare. Workers custom domains only work
 when the zone is on Cloudflare, so `meshlang.dev` has to move off Vercel DNS
 (`ns1/ns2.vercel-dns.com`) for `packages.meshlang.dev` and
 `api.packages.meshlang.dev` to resolve to the new Workers.
@@ -53,10 +53,8 @@ allowed, so Worker custom domains can get certificates without changing them.
 
 ## Records that are deliberately not recreated
 
-- `packages` A `66.241.125.44` and AAAA `2a09:8280:1::db:2b21:0` — the Fly app,
-  which no longer exists.
-- `api.packages` CNAME `o2501o9.mesh-registry.fly.dev` and
-  `_fly-ownership.api.packages` TXT `app-o2501o9` — same.
+- The `packages` A/AAAA records, the `api.packages` CNAME, and its ownership
+  TXT record — they pointed at the previous hosting, which no longer exists.
 - `*` ALIAS `cname.vercel-dns-016.com` — a Vercel wildcard that answers
   `DEPLOYMENT_NOT_FOUND` for every name, including ones that look real like
   `docs.` and `blog.`. Recreating it would shadow future subdomains with a 404.

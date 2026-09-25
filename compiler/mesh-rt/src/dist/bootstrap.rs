@@ -5,10 +5,6 @@ const CLUSTER_COOKIE_ENV: &str = "MESH_CLUSTER_COOKIE";
 const DISCOVERY_SEED_ENV: &str = "MESH_DISCOVERY_SEED";
 const NODE_NAME_ENV: &str = "MESH_NODE_NAME";
 const NODE_HOST_ENV: &str = "MESH_NODE_HOST";
-const FLY_APP_NAME_ENV: &str = "FLY_APP_NAME";
-const FLY_REGION_ENV: &str = "FLY_REGION";
-const FLY_MACHINE_ID_ENV: &str = "FLY_MACHINE_ID";
-const FLY_PRIVATE_IP_ENV: &str = "FLY_PRIVATE_IP";
 const DEFAULT_CLUSTER_PORT: u16 = 4370;
 
 /// Startup mode chosen by the runtime bootstrap helper.
@@ -51,10 +47,6 @@ pub(crate) struct BootstrapInputs {
     pub(crate) discovery_seed: Option<String>,
     pub(crate) node_name: Option<String>,
     pub(crate) node_host: Option<String>,
-    pub(crate) fly_app_name: Option<String>,
-    pub(crate) fly_region: Option<String>,
-    pub(crate) fly_machine_id: Option<String>,
-    pub(crate) fly_private_ip: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,10 +63,6 @@ impl BootstrapInputs {
             discovery_seed: read_utf8_env(DISCOVERY_SEED_ENV)?,
             node_name: read_utf8_env(NODE_NAME_ENV)?,
             node_host: read_utf8_env(NODE_HOST_ENV)?,
-            fly_app_name: read_utf8_env(FLY_APP_NAME_ENV)?,
-            fly_region: read_utf8_env(FLY_REGION_ENV)?,
-            fly_machine_id: read_utf8_env(FLY_MACHINE_ID_ENV)?,
-            fly_private_ip: read_utf8_env(FLY_PRIVATE_IP_ENV)?,
         })
     }
 }
@@ -124,21 +112,9 @@ fn resolve_bootstrap(inputs: BootstrapInputs) -> Result<BootstrapPlan, String> {
     let discovery_seed = trim_or_empty(inputs.discovery_seed.as_deref());
     let explicit_node_name = inputs.node_name.unwrap_or_default();
     let explicit_node_host = inputs.node_host.unwrap_or_default();
-    let fly_app_name = inputs.fly_app_name.unwrap_or_default();
-    let fly_region = inputs.fly_region.unwrap_or_default();
-    let fly_machine_id = inputs.fly_machine_id.unwrap_or_default();
-    let fly_private_ip = inputs.fly_private_ip.unwrap_or_default();
 
     if cookie.is_empty() {
-        if has_cluster_hint(
-            &discovery_seed,
-            &explicit_node_name,
-            &explicit_node_host,
-            &fly_app_name,
-            &fly_region,
-            &fly_machine_id,
-            &fly_private_ip,
-        ) {
+        if has_cluster_hint(&discovery_seed, &explicit_node_name, &explicit_node_host) {
             return Err(cluster_cookie_required().to_string());
         }
 
@@ -157,15 +133,7 @@ fn resolve_bootstrap(inputs: BootstrapInputs) -> Result<BootstrapPlan, String> {
         return Err(missing_required_env(DISCOVERY_SEED_ENV));
     }
 
-    let node_name = resolve_node_name(
-        &explicit_node_name,
-        &explicit_node_host,
-        &fly_app_name,
-        &fly_region,
-        &fly_machine_id,
-        &fly_private_ip,
-        cluster_port,
-    )?;
+    let node_name = resolve_node_name(&explicit_node_name, &explicit_node_host, cluster_port)?;
 
     Ok(BootstrapPlan {
         cookie,
@@ -207,40 +175,15 @@ fn trim_or_empty(value: Option<&str>) -> String {
     value.map(str::trim).unwrap_or_default().to_string()
 }
 
-fn has_cluster_hint(
-    discovery_seed: &str,
-    explicit_node_name: &str,
-    explicit_node_host: &str,
-    fly_app_name: &str,
-    fly_region: &str,
-    fly_machine_id: &str,
-    fly_private_ip: &str,
-) -> bool {
+fn has_cluster_hint(discovery_seed: &str, explicit_node_name: &str, explicit_node_host: &str) -> bool {
     !discovery_seed.is_empty()
         || !explicit_node_name.trim().is_empty()
         || !explicit_node_host.trim().is_empty()
-        || any_fly_identity_set(fly_app_name, fly_region, fly_machine_id, fly_private_ip)
-}
-
-fn any_fly_identity_set(
-    fly_app_name: &str,
-    fly_region: &str,
-    fly_machine_id: &str,
-    fly_private_ip: &str,
-) -> bool {
-    !fly_app_name.is_empty()
-        || !fly_region.is_empty()
-        || !fly_machine_id.is_empty()
-        || !fly_private_ip.is_empty()
 }
 
 fn resolve_node_name(
     explicit_node_name: &str,
     explicit_node_host: &str,
-    fly_app_name: &str,
-    fly_region: &str,
-    fly_machine_id: &str,
-    fly_private_ip: &str,
     cluster_port: u16,
 ) -> Result<String, String> {
     let trimmed_node_name = explicit_node_name.trim();
@@ -248,17 +191,6 @@ fn resolve_node_name(
         validate_explicit_node_name(trimmed_node_name, cluster_port)?;
         return Ok(trimmed_node_name.to_string());
     }
-
-    if any_fly_identity_set(fly_app_name, fly_region, fly_machine_id, fly_private_ip) {
-        return compose_fly_node_name(
-            fly_app_name,
-            fly_region,
-            fly_machine_id,
-            fly_private_ip,
-            cluster_port,
-        );
-    }
-
     compose_hostname_node_name(explicit_node_host, cluster_port)
 }
 
@@ -330,28 +262,6 @@ fn validate_cluster_port_match(raw_port: &str, cluster_port: u16) -> Result<(), 
         )));
     }
     Ok(())
-}
-
-fn compose_fly_node_name(
-    fly_app_name: &str,
-    fly_region: &str,
-    fly_machine_id: &str,
-    fly_private_ip: &str,
-    cluster_port: u16,
-) -> Result<String, String> {
-    let app_name = fly_app_name.trim();
-    let region = fly_region.trim();
-    let machine_id = fly_machine_id.trim();
-    let private_ip = fly_private_ip.trim();
-    if app_name.is_empty() || region.is_empty() || machine_id.is_empty() || private_ip.is_empty() {
-        return Err(invalid_cluster_identity(fly_identity_required()));
-    }
-
-    compose_node_name(
-        &format!("{app_name}-{region}-{machine_id}"),
-        private_ip,
-        cluster_port,
-    )
 }
 
 fn compose_hostname_node_name(
@@ -446,10 +356,6 @@ fn cluster_cookie_required() -> &'static str {
     "MESH_CLUSTER_COOKIE is required when discovery or identity env is set"
 }
 
-fn fly_identity_required() -> &'static str {
-    "Fly cluster identity requires FLY_APP_NAME, FLY_REGION, FLY_MACHINE_ID, and FLY_PRIVATE_IP"
-}
-
 fn invalid_cluster_identity(reason: &str) -> String {
     format!("Invalid cluster identity: {reason}")
 }
@@ -498,27 +404,13 @@ mod tests {
 
     #[test]
     fn resolve_node_name_prefers_explicit_over_hostname() {
-        let result = resolve_node_name("mynode@10.0.0.1:4370", "10.0.0.99", "", "", "", "", 4370);
+        let result = resolve_node_name("mynode@10.0.0.1:4370", "10.0.0.99", 4370);
         assert_eq!(result.unwrap(), "mynode@10.0.0.1:4370");
     }
 
     #[test]
-    fn resolve_node_name_prefers_fly_over_hostname() {
-        let result = resolve_node_name(
-            "",
-            "10.0.0.99",
-            "mesh-app",
-            "iad",
-            "m1",
-            "fdaa:0:1::10",
-            4370,
-        );
-        assert_eq!(result.unwrap(), "mesh-app-iad-m1@[fdaa:0:1::10]:4370");
-    }
-
-    #[test]
-    fn resolve_node_name_falls_through_to_hostname_when_no_explicit_or_fly() {
-        let result = resolve_node_name("", "10.0.0.5", "", "", "", "", 4370);
+    fn resolve_node_name_falls_through_to_hostname_when_not_explicit() {
+        let result = resolve_node_name("", "10.0.0.5", 4370);
         let node_name = result.expect("should fall through to hostname path");
         assert!(
             node_name.ends_with("@10.0.0.5:4370"),
@@ -528,7 +420,7 @@ mod tests {
 
     #[test]
     fn resolve_node_name_falls_through_to_hostname_only_when_all_empty() {
-        let result = resolve_node_name("", "", "", "", "", "", 4370);
+        let result = resolve_node_name("", "", 4370);
         let node_name = result.expect("should succeed using system hostname");
         assert!(node_name.contains('@'));
         assert!(node_name.ends_with(":4370"));
@@ -536,12 +428,12 @@ mod tests {
 
     #[test]
     fn cluster_hint_detects_node_host() {
-        assert!(has_cluster_hint("", "", "10.0.0.5", "", "", "", ""));
+        assert!(has_cluster_hint("", "", "10.0.0.5"));
     }
 
     #[test]
     fn cluster_hint_ignores_blank_node_host() {
-        assert!(!has_cluster_hint("", "", "  ", "", "", "", ""));
+        assert!(!has_cluster_hint("", "", "  "));
     }
 
     #[test]

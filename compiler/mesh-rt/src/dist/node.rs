@@ -9508,28 +9508,22 @@ mod tests {
     }
 
     #[test]
-    fn test_bootstrap_from_env_composes_fly_identity_without_explicit_node_name() {
+    fn test_bootstrap_from_env_composes_identity_from_node_host_without_explicit_node_name() {
         let inputs = BootstrapInputs {
             cookie: Some("shared-cookie".to_string()),
             discovery_seed: Some("mesh.internal".to_string()),
-            fly_app_name: Some("mesh-app".to_string()),
-            fly_region: Some("iad".to_string()),
-            fly_machine_id: Some("machine-1".to_string()),
-            fly_private_ip: Some("fdaa:0:1::10".to_string()),
+            node_host: Some("fdaa:0:1::10".to_string()),
             ..BootstrapInputs::default()
         };
 
         let status = super::start_from_inputs_for_test(inputs, |name, _| {
-            assert_eq!(name, "mesh-app-iad-machine-1@[fdaa:0:1::10]:4370");
+            assert!(name.ends_with("@[fdaa:0:1::10]:4370"), "{name}");
             0
         })
-        .expect("cluster bootstrap should succeed with Fly identity fallback");
+        .expect("cluster bootstrap should succeed with the host name identity");
 
         assert_eq!(status.mode, BootstrapMode::Cluster);
-        assert_eq!(
-            status.node_name,
-            "mesh-app-iad-machine-1@[fdaa:0:1::10]:4370"
-        );
+        assert!(status.node_name.ends_with("@[fdaa:0:1::10]:4370"));
         assert_eq!(status.cluster_port, 4370);
         assert_eq!(status.discovery_seed, "mesh.internal");
     }
@@ -9562,24 +9556,6 @@ mod tests {
         assert_eq!(
             error,
             "Missing required environment variable MESH_DISCOVERY_SEED"
-        );
-    }
-
-    #[test]
-    fn test_bootstrap_from_env_rejects_partial_fly_identity() {
-        let inputs = BootstrapInputs {
-            cookie: Some("shared-cookie".to_string()),
-            discovery_seed: Some("mesh.internal".to_string()),
-            fly_app_name: Some("mesh-app".to_string()),
-            fly_region: Some("iad".to_string()),
-            fly_machine_id: Some("machine-1".to_string()),
-            ..BootstrapInputs::default()
-        };
-
-        let error = super::start_from_inputs_for_test(inputs, |_, _| 0).unwrap_err();
-        assert_eq!(
-            error,
-            "Invalid cluster identity: Fly cluster identity requires FLY_APP_NAME, FLY_REGION, FLY_MACHINE_ID, and FLY_PRIVATE_IP"
         );
     }
 

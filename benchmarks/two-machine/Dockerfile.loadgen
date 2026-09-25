@@ -1,0 +1,17 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    curl bc \
+    && rm -rf /var/lib/apt/lists/*
+
+# hey: the HTTP load generator run-benchmarks.sh drives (IPv6-capable).
+RUN curl -L -o /usr/local/bin/hey \
+    https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64 \
+    && chmod +x /usr/local/bin/hey
+
+WORKDIR /app
+COPY benchmarks/two-machine/run-benchmarks.sh /app/run-benchmarks.sh
+RUN chmod +x /app/run-benchmarks.sh
+
+CMD ["/app/run-benchmarks.sh"]

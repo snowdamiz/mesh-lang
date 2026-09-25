@@ -32,24 +32,3 @@ cargo run -p meshc -- proof continuity-soak \
 A short result says `SMOKE PASS` and records `release_24h_pass: false`; it is never a release soak artifact.
 
 Chaos coverage is split deliberately. Deterministic unit/model tests cover reordering, duplication, fencing, bounds, and idempotency. `meshc proof docker-autoscaling` injects a slow worker, abrupt worker loss, controller leader loss, Docker timeout, create-response loss, unhealthy capacity, driver restart, orphan reconciliation, snapshot interruption, and high-load-to-idle transition against real containers and PostgreSQL.
-
-Fly has two separate gates. Credential-free conformance is always safe to run:
-
-```bash
-cargo run -p meshc -- proof fly-driver-conformance
-```
-
-A real staging certification creates and deletes one Machine and therefore requires an explicit acknowledgement:
-
-```bash
-FLY_API_TOKEN=... DATABASE_URL=... \
-cargo run -p meshc -- proof fly-driver-staging \
-  --app-name mesh-staging \
-  --image registry.fly.io/mesh-staging@sha256:... \
-  --cluster-id mesh-staging-cert \
-  --template-revision release-42 \
-  --worker-env DATABASE_URL \
-  --confirm-create-and-delete
-```
-
-The token and forwarded worker values are read from named environment variables and are not accepted as literal CLI secrets. Credential-free conformance does not replace a retained passing staging result for a production Fly certification.

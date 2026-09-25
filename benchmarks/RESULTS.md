@@ -1,6 +1,6 @@
 # Mesh HTTP Benchmark Results
 
-Measured on dedicated Fly.io `performance-2x` machines (2 vCPU, 4 GB RAM each), server and load generator in the same region (`ord`), communicating over Fly.io's private WireGuard network.
+Measured on two dedicated machines (2 vCPU, 4 GB RAM each), server and load generator in one datacenter (Chicago), communicating over a private network.
 
 See [METHODOLOGY.md](METHODOLOGY.md) for full setup details.
 
@@ -14,7 +14,7 @@ See [METHODOLOGY.md](METHODOLOGY.md) for full setup details.
 | Elixir   | 11,842     | 11,481     |
 
 100 concurrent connections, 30 s warmup + 5 timed runs × 30 s, first run excluded, runs 2–5 averaged.
-Hardware: Fly.io `performance-2x` (2 dedicated vCPU, 4 GB RAM), region `ord`.
+Hardware: 2 dedicated vCPU, 4 GB RAM per machine, one datacenter (Chicago).
 
 ---
 
@@ -57,7 +57,7 @@ _RSS captured from `/proc/PID/status` (VmRSS) at server startup. During-load pea
 
 ## Isolated Peak Throughput Results
 
-Each language benchmarked in isolation on a dedicated `performance-2x` VM (2 vCPU, 4 GB RAM).
+Each language benchmarked in isolation on a dedicated machine (2 vCPU, 4 GB RAM).
 Same protocol: 100 connections, 30s warmup + 5 × 30s timed runs, Run 1 excluded.
 
 ### /text endpoint
@@ -78,7 +78,7 @@ Same protocol: 100 connections, 30s warmup + 5 × 30s timed runs, Run 1 excluded
 | Rust     | 46,672       | **46,234**           | 2.08 ms  | 4.77 ms   | N/A¹     |
 | Elixir   | 13,391       | **12,733**           | 7.15 ms  | 23.41 ms  | N/A¹     |
 
-¹ _Peak RSS not captured during the isolated run — `fly logs --no-tail` completed before RSS sampling lines appeared. Pre-load baseline values in the [Peak RSS](#peak-rss-baseline-at-server-startup-before-load) section above still apply._
+¹ _Peak RSS not captured during the isolated run — the log read completed before RSS sampling lines appeared. Pre-load baseline values in the [Peak RSS](#peak-rss-baseline-at-server-startup-before-load) section above still apply._
 
 ### Comparison: Co-located vs Isolated
 
@@ -104,9 +104,9 @@ Same protocol: 100 connections, 30s warmup + 5 × 30s timed runs, Run 1 excluded
 
 ## Hardware & Topology
 
-- **Server VM:** Fly.io `performance-2x` (2 dedicated vCPU, 4 GB RAM), region `ord`
-- **Load gen VM:** Fly.io `performance-2x` (2 dedicated vCPU, 4 GB RAM), same region `ord`
-- **Network:** Fly.io private WireGuard (6PN IPv6), intra-datacenter — sub-millisecond RTT
+- **Server machine:** 2 dedicated vCPU, 4 GB RAM
+- **Load gen machine:** 2 dedicated vCPU, 4 GB RAM, same datacenter (Chicago)
+- **Network:** private IPv6 network, intra-datacenter — sub-millisecond RTT
 - **Tool:** `hey` (Go HTTP load tester) — 100 concurrent connections (`-c 100`), 30 s timed (`-z 30s`), 30 s per-request timeout
 - **Protocol:** HTTP/1.1
-- All 4 servers on one VM; load gen on a separate VM to avoid CPU contention
+- All 4 servers on one machine; load gen on a separate machine to avoid CPU contention

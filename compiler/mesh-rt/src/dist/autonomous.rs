@@ -18,8 +18,7 @@ use super::scaling::{
     Autoscaler, CapacityDriver, CapacityReconcileOutcome, CapacityReconciler,
     CommittedDesiredCapacity, ControlLogEntry, ControlMutation, ControlPlaneCommitter, ControlTerm,
     DesiredCapacity, DesiredRevision, DockerCapacityDriver, DockerDriverConfig,
-    DockerEnvironmentFileMount, FlyMachinesCapacityDriver, FlyMachinesDriverConfig,
-    ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety, ScalingDecision,
+    DockerEnvironmentFileMount, ProcessCapacityDriver, ProcessDriverConfig, ReconcileNodeSafety, ScalingDecision,
     ScalingSample,
 };
 use sha2::{Digest, Sha256};
@@ -268,18 +267,6 @@ pub enum RuntimeCapacityDriverConfig {
         network: Option<String>,
         environment: Vec<String>,
     },
-    Fly {
-        api_base_url: String,
-        app_name: String,
-        token_env: String,
-        image: String,
-        region: Option<String>,
-        pool: String,
-        environment: BTreeMap<String, String>,
-        cpu_kind: String,
-        cpus: u8,
-        memory_mb: u32,
-    },
 }
 
 impl std::fmt::Debug for RuntimeCapacityDriverConfig {
@@ -310,33 +297,6 @@ impl std::fmt::Debug for RuntimeCapacityDriverConfig {
                     &format_args!("[redacted; {}]", environment.len()),
                 )
                 .finish(),
-            Self::Fly {
-                api_base_url,
-                app_name,
-                token_env,
-                image,
-                region,
-                pool,
-                environment,
-                cpu_kind,
-                cpus,
-                memory_mb,
-            } => formatter
-                .debug_struct("Fly")
-                .field("api_base_url", api_base_url)
-                .field("app_name", app_name)
-                .field("token_env", token_env)
-                .field("image", image)
-                .field("region", region)
-                .field("pool", pool)
-                .field(
-                    "environment",
-                    &format_args!("[redacted; {}]", environment.len()),
-                )
-                .field("cpu_kind", cpu_kind)
-                .field("cpus", cpus)
-                .field("memory_mb", memory_mb)
-                .finish(),
         }
     }
 }
@@ -365,27 +325,6 @@ impl RuntimeCapacityDriverConfig {
                 && environment
                     .iter()
                     .all(|entry| entry.contains('=') && !entry.contains(['\n', '\r'])) =>
-            {
-                Ok(())
-            }
-            Self::Fly {
-                api_base_url,
-                app_name,
-                token_env,
-                image,
-                pool,
-                cpu_kind,
-                cpus,
-                memory_mb,
-                ..
-            } if api_base_url.trim_end_matches('/') == "https://api.machines.dev"
-                && !app_name.trim().is_empty()
-                && !token_env.trim().is_empty()
-                && !image.trim().is_empty()
-                && !pool.trim().is_empty()
-                && !cpu_kind.trim().is_empty()
-                && *cpus > 0
-                && *memory_mb >= 128 =>
             {
                 Ok(())
             }
@@ -629,50 +568,6 @@ fn build_capacity_driver(
                     operation_timeout,
                 })) as Arc<dyn CapacityDriver>)
             }
-        }
-        RuntimeCapacityDriverConfig::Fly {
-            api_base_url,
-            app_name,
-            token_env,
-            image,
-            region,
-            pool,
-            environment,
-            cpu_kind,
-            cpus,
-            memory_mb,
-        } => {
-            let api_token = std::env::var(token_env)
-                .map_err(|_| format!("fly_driver_token_environment_missing:{token_env}"))?;
-            let configured_environment = environment
-                .iter()
-                .map(|(name, value)| format!("{name}={value}"))
-                .collect::<Vec<_>>();
-            let environment =
-                capacity_worker_environment(&configured_environment, &config.managed_roles)?
-                    .into_iter()
-                    .map(|entry| {
-                        entry
-                            .split_once('=')
-                            .map(|(name, value)| (name.to_string(), value.to_string()))
-                            .ok_or_else(|| "fly_driver_environment_invalid".to_string())
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-            Ok(
-                Arc::new(FlyMachinesCapacityDriver::new(FlyMachinesDriverConfig {
-                    api_base_url: api_base_url.clone(),
-                    app_name: app_name.clone(),
-                    api_token,
-                    image: image.clone(),
-                    region: region.clone(),
-                    pool: pool.clone(),
-                    environment,
-                    cpu_kind: cpu_kind.clone(),
-                    cpus: *cpus,
-                    memory_mb: *memory_mb,
-                    operation_timeout,
-                })) as Arc<dyn CapacityDriver>,
-            )
         }
     }?;
     Ok(super::scaling::instrument_capacity_driver(driver))
@@ -1205,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_runtime_config_round_trips_without_credentials() {
+    fn embedded_runtime_config_round_trips() {
         let config = RuntimeAutonomousConfig {
             schema_version: AUTONOMOUS_CONFIG_SCHEMA_VERSION,
             enabled: true,
@@ -1233,24 +1128,17 @@ mod tests {
             scheduler: RuntimeSchedulerConfig::default(),
             routing: RuntimeRoutingConfig::default(),
             continuity: RuntimeContinuityConfig::default(),
-            driver: RuntimeCapacityDriverConfig::Fly {
-                api_base_url: "https://api.machines.dev".to_string(),
-                app_name: "mesh-app".to_string(),
-                token_env: "FLY_API_TOKEN".to_string(),
-                image: "registry.fly.io/app@sha256:abc".to_string(),
-                region: Some("lax".to_string()),
+            driver: RuntimeCapacityDriverConfig::Docker {
+                image: "registry.example.com/app@sha256:abc".to_string(),
                 pool: "workers".to_string(),
-                environment: BTreeMap::new(),
-                cpu_kind: "shared".to_string(),
-                cpus: 1,
-                memory_mb: 256,
+                network: Some("app-private".to_string()),
+                environment: vec!["PORT=8080".to_string()],
             },
         };
         let encoded = serde_json::to_vec(&config).unwrap();
         let decoded: RuntimeAutonomousConfig = serde_json::from_slice(&encoded).unwrap();
         decoded.validate().unwrap();
         assert_eq!(decoded, config);
-        assert!(!String::from_utf8(encoded).unwrap().contains("api_token"));
     }
 
     #[test]

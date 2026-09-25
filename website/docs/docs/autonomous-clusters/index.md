@@ -282,6 +282,6 @@ For declared work, the registered `@cluster` policy is authoritative. The final 
 ## Next steps
 
 - [Cluster Operations](/docs/cluster-operations/) — inspect, explain, pause, override, and drain safely
-- [Capacity Drivers](/docs/capacity-drivers/) — configure Process, Docker, and Fly drivers
+- [Capacity Drivers](/docs/capacity-drivers/) — configure the Process and Docker drivers
 - [Cluster Migration](/docs/cluster-migration/) — move from manual or primary/standby deployments
 - [Distributed Proof](/docs/distributed-proof/) — run the PostgreSQL-backed Docker release proof

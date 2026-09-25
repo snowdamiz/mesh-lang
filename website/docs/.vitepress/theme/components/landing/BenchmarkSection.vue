@@ -33,7 +33,7 @@ onUnmounted(() => io?.disconnect())
         <p class="l-label">Performance</p>
         <h2 class="l-h2 mt-5">Native speed, measured.</h2>
         <p class="l-lede mt-6 max-w-[27rem]">
-          One minimal HTTP endpoint on dedicated 2&nbsp;vCPU Fly.io machines, 100 connections. A benchmark, not a
+          One minimal HTTP endpoint on dedicated 2&nbsp;vCPU machines, 100 connections. A benchmark, not a
           promise about your app.
         </p>
         <a

@@ -7,7 +7,7 @@ description: Shipped behavior, compatibility window, gates, and rollout status f
 
 ## Mesh 14 autonomous-cluster candidate
 
-This release adds runtime-owned local scheduler elasticity, adaptive execution routing, durable replicated continuity, an embedded controller quorum, desired-capacity reconciliation, Process, Docker, and Fly capacity drivers, graceful drain, and the authenticated operator surface.
+This release adds runtime-owned local scheduler elasticity, adaptive execution routing, durable replicated continuity, an embedded controller quorum, desired-capacity reconciliation, Process and Docker capacity drivers, graceful drain, and the authenticated operator surface.
 
 The PostgreSQL Todo deployment is the reference application: PostgreSQL is shared application state, while each Mesh node owns a separate SQLite continuity store. The one-command local release proof creates Docker workers from policy decisions, routes through two gateways, fails a worker and controller leader, drains back to minimum, checks PostgreSQL integrity, retains evidence, and cleans itself up.
 
@@ -33,9 +33,9 @@ The feature is release-ready only when all of these artifacts are current:
 - chaos coverage for worker, controller, driver, snapshot, readiness, and orphan failures;
 - a completed bounded-retention soak record;
 - `meshc proof docker-autoscaling` and its passing evidence bundle;
-- a provider-specific certification result before naming any non-Docker driver production-certified.
+- a certification result for any driver other than Docker before naming it production-certified.
 
-Docker proof success does not certify Fly credentials or a production network. The Fly driver contract and deterministic conformance tests ship here, but a deployment must retain its own staging certification before active provider scaling.
+Docker proof success does not certify a production network. A deployment that adds its own driver must retain its own staging certification before active provider scaling.
 
 Current repository evidence for this candidate:
 
@@ -44,12 +44,10 @@ Current repository evidence for this candidate:
 | PostgreSQL-backed Docker proof | Passing: 36/36 assertions, including 1,000/1,000 synchronized remote requests with 5,307 ms p99 against a 6,000 ms budget |
 | Deterministic performance budget | Passing for all checked-in schema-two metrics |
 | Repeated chaos | Passing for five complete rotated rounds |
-| Fly fake-API conformance | Passing for all 13 credential-free contract tests |
 | Continuity smoke | Passing, explicitly non-release |
 | Full 24-hour continuity soak | Required release artifact; a short smoke does not satisfy it |
-| Credentialed Fly staging create/Ready/cordon/delete | Required before Fly is called production-certified; not implied by local conformance |
 
-Do not infer public-GA or Fly-production certification from a candidate build while either of the last two provider/time-bound artifacts is absent.
+Do not infer public-GA certification from a candidate build while the full continuity soak is absent.
 
 ## Security changes
 

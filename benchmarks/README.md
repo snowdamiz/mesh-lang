@@ -14,11 +14,10 @@ benchmarks/
 ├── go/                 Go HTTP server (net/http)
 ├── rust/               Rust HTTP server (axum + tokio)
 ├── elixir/             Elixir HTTP server (plug_cowboy)
-├── fly/                Fly.io two-VM infrastructure
-│   ├── README.md           Fly.io step-by-step instructions
-│   ├── Dockerfile.servers  Server VM image (builds all 4 languages)
-│   ├── Dockerfile.loadgen  Load generator VM image (hey)
-│   ├── start-servers.sh    Server VM entrypoint
+├── two-machine/        Two-machine images (any provider)
+│   ├── Dockerfile.servers  Server image (builds all 4 languages)
+│   ├── Dockerfile.loadgen  Load generator image (hey)
+│   ├── start-servers.sh    Server entrypoint
 │   └── run-benchmarks.sh   Load generator entrypoint
 ├── run_benchmarks.sh   Local runner (wrk-based, approximate)
 ├── RESULTS.md          Published benchmark results
@@ -39,7 +38,7 @@ benchmarks/
 Runs all four servers on your local machine and load-tests them with `wrk`. Takes about 15 minutes.
 
 **Results will differ from published numbers** because:
-- Your hardware is different from the Fly.io `performance-2x` VMs
+- Your hardware is different from the published runs' dedicated 2 vCPU / 4 GB machines
 - All four servers share your CPU (published results use a dedicated server VM with no load generator co-located)
 - The local script uses `wrk`; published results use `hey`
 
@@ -77,64 +76,37 @@ What happens:
 
 ---
 
-## Option 2 — Fly.io Run (Reproduces Published Results)
+## Option 2 — Two-Machine Run (Reproduces Published Results)
 
-Two dedicated Fly.io `performance-2x` VMs (2 vCPU, 4 GB RAM each) in the same region. One VM runs all four servers; a separate VM runs the `hey` load generator over Fly.io's private WireGuard network. This is the exact setup that produced the numbers in [RESULTS.md](RESULTS.md).
-
-**Cost:** Approximately $1–3 for a single run. Fly.io `performance-2x` machines bill by the second and are destroyed after the benchmark completes.
+Two dedicated machines (2 vCPU, 4 GB RAM each) on one private network, from any provider or on your own hardware. One machine runs all four servers; the other runs the `hey` load generator. This is the setup that produced the numbers in [RESULTS.md](RESULTS.md).
 
 ### Prerequisites
 
-- **flyctl** — `brew install flyctl` or `curl -L https://fly.io/install.sh | sh`
-- **Logged in** — `fly auth login`
-- **A Fly.io account** — free tier works; no paid plan required
-- **Docker with buildx** — verify with `docker buildx version`
+- **Two Linux machines** with Docker, reachable from each other on a private network
+- **Docker with buildx** on the machine that builds the images — verify with `docker buildx version`
 
-### Step 1 — Create the app
+### Step 1 — Build the images
 
-```bash
-fly apps create bench-mesh
-```
-
-If `bench-mesh` is taken, use any unique name and substitute it in every command below.
-
-### Step 2 — Build and push the server image
-
-The server image builds `meshc` from source (Rust + LLVM 21). This takes **10–15 minutes** on the first build.
+The server image builds `meshc` from source (Rust + LLVM 21). This takes **10–15 minutes** on the first build. Run from the repo root (the Dockerfiles need `compiler/` and `benchmarks/`); on Apple Silicon add `--platform linux/amd64`:
 
 ```bash
-# Run from the repo root (the Dockerfile needs compiler/ and benchmarks/)
-
-# Apple Silicon Mac: --platform linux/amd64 is required
-docker buildx build --platform linux/amd64 \
-  -f benchmarks/fly/Dockerfile.servers \
-  -t registry.fly.io/bench-mesh/servers:latest \
-  .
-
-# Authenticate with Fly.io's registry, then push
-fly auth docker
-docker push registry.fly.io/bench-mesh/servers:latest
+docker buildx build -f benchmarks/two-machine/Dockerfile.servers -t bench-servers --load .
+docker buildx build -f benchmarks/two-machine/Dockerfile.loadgen -t bench-loadgen --load .
 ```
 
-### Step 3 — Launch the server VM
+Copy each image to its machine (`docker save bench-servers | ssh server docker load`), or push both to a registry both machines can pull from.
+
+### Step 2 — Start the servers
+
+On the server machine:
 
 ```bash
-fly machine run registry.fly.io/bench-mesh/servers:latest \
-  --app bench-mesh \
-  --name bench-servers \
-  --vm-size performance-2x \
-  --region ord
+docker run -d --name bench-servers --network host bench-servers
+docker logs -f bench-servers
 ```
 
-Note the machine ID printed in the output (format: `<hex>`). Wait until all four language servers are up:
+Wait for `=== All servers running ===`. All four servers must be ready before the load generator starts, or the benchmark reports `N/A` for servers that have not started yet:
 
-```bash
-fly logs --machine <server-machine-id> --app bench-mesh
-```
-
-Look for the line `=== All servers running ===`. All four servers must be ready before launching the load generator, or the benchmark will report `N/A` for servers that haven't started yet.
-
-Expected startup sequence in the logs:
 ```
 Mesh ready on port 3000
 Go ready on port 3001
@@ -143,48 +115,16 @@ Elixir ready on port 3003
 === All servers running ===
 ```
 
-### Step 4 — Build and push the load generator image
+### Step 3 — Run the load generator
 
-The load generator image only contains `hey` (a Go binary) and the benchmark script — much faster to build:
-
-```bash
-# Run from the repo root:
-docker buildx build --platform linux/amd64 \
-  -f benchmarks/fly/Dockerfile.loadgen \
-  -t registry.fly.io/bench-mesh/loadgen:latest \
-  .
-
-docker push registry.fly.io/bench-mesh/loadgen:latest
-```
-
-### Step 5 — Launch the load generator VM
-
-Use the internal DNS hostname for `SERVER_HOST` — it resolves to the server VM's IPv6 address and avoids bracket notation issues:
+On the load generator machine, point `SERVER_HOST` at the server machine's private address (an IPv6 address goes in brackets, `[fd00::10]`):
 
 ```bash
-fly machine run registry.fly.io/bench-mesh/loadgen:latest \
-  --app bench-mesh \
-  --name bench-loadgen \
-  --vm-size performance-2x \
-  --region ord \
-  --env SERVER_HOST=bench-servers.vm.bench-mesh.internal
+docker run --rm --network host -e SERVER_HOST=10.0.0.10 bench-loadgen
 ```
 
-Note the load generator machine ID from the output.
+The benchmark runs sequentially (Mesh → Go → Rust → Elixir). For each language, it tests `/text` then `/json`, with a 30-second warmup followed by 5 × 30-second timed runs. Total run time is approximately 15–20 minutes. Progress looks like:
 
-> If internal DNS is not resolving, find the server VM's private IPv6 address with `fly machine list --app bench-mesh` and use `--env "SERVER_HOST=[fdaa:0:xxxx:...]"` (with brackets around the IPv6 address).
-
-### Step 6 — Watch the benchmark run
-
-Stream the load generator logs to watch progress in real time:
-
-```bash
-fly logs --machine <loadgen-machine-id> --app bench-mesh
-```
-
-The benchmark runs sequentially (Mesh → Go → Rust → Elixir). For each language, it tests `/text` then `/json`, with a 30-second warmup followed by 5 × 30-second timed runs. Total run time is approximately 15–20 minutes.
-
-Progress looks like:
 ```
 --- Benchmarking Mesh (port 3000) ---
   Endpoint: /text
@@ -194,48 +134,22 @@ Progress looks like:
     ...
 ```
 
-When complete, the output ends with a formatted results table:
-```
-/text endpoint:
-  Mesh        19718         ...
-  Go          26278         ...
-  Rust        27133         ...
-  Elixir      11842         ...
-```
+When complete, the output ends with a formatted results table.
 
-### Step 7 — Collect RSS memory data (optional)
+### Step 4 — Collect RSS memory data (optional)
 
-Peak resident memory is logged by the server VM throughout the run:
+Peak resident memory is logged by the server container throughout the run:
 
 ```bash
-fly logs --machine <server-machine-id> --app bench-mesh | grep '^RSS,'
+docker logs bench-servers | grep '^RSS,'
 ```
 
-Each line: `RSS,<Language>,<unix_timestamp>,<VmRSS_kB>`
+Each line: `RSS,<Language>,<unix_timestamp>,<VmRSS_kB>`. Take the maximum `VmRSS_kB` value per language and divide by 1024 for MB.
 
-Take the maximum `VmRSS_kB` value per language across all lines and divide by 1024 for MB.
-
-### Step 8 — Collect runtime version info (optional)
+### Step 5 — Clean up
 
 ```bash
-fly ssh console -s -a bench-mesh
-# Then inside the VM:
-go version
-rustc --version
-elixir --version
-meshc --version
-```
-
-### Step 9 — Destroy machines
-
-```bash
-fly machine destroy bench-servers bench-loadgen --app bench-mesh --yes
-```
-
-Or destroy the entire app (removes all machines and the app):
-
-```bash
-fly apps destroy bench-mesh --yes
+docker rm -f bench-servers
 ```
 
 ---
@@ -251,7 +165,7 @@ fly apps destroy bench-mesh --yes
 | Latency | p50 / p99 | From the last timed run |
 | Tool | `hey` | Go HTTP load tester; IPv6-capable |
 
-To change parameters, edit `benchmarks/fly/run-benchmarks.sh`:
+To change parameters, edit `benchmarks/two-machine/run-benchmarks.sh`:
 
 ```bash
 CONNECTIONS=100
@@ -281,4 +195,4 @@ All four servers implement identical logic: read the HTTP path, return a static 
 - **Req/s** — higher is better. Published averages exclude Run 1 to eliminate cold-start artifacts.
 - **p50 / p99** — lower is better. p99 shows worst-case latency tail.
 - **Peak RSS** — lower is better. Memory footprint under sustained load.
-- All four servers run on **one VM**. Results reflect co-located throughput, not each language's isolated maximum. See [METHODOLOGY.md](METHODOLOGY.md) for caveats.
+- All four servers run on **one machine**. Results reflect co-located throughput, not each language's isolated maximum. See [METHODOLOGY.md](METHODOLOGY.md) for caveats.
