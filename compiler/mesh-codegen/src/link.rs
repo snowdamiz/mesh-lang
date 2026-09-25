@@ -11,29 +11,6 @@ use std::process::{Command, Stdio};
 
 use crate::build_trace;
 
-/// Link an object file with the Mesh runtime to produce a native executable.
-///
-/// # Arguments
-///
-/// * `object_path` - Path to the compiled object file
-/// * `output_path` - Path for the output executable
-/// * `target_triple` - Optional target triple for linker/runtime selection
-/// * `rt_lib_path` - Optional path to the Mesh runtime static library; if None,
-///   attempts to locate it in the workspace target directory
-///
-/// # Errors
-///
-/// Returns an error string if the linker cannot be found or linking fails.
-pub fn link(
-    object_path: &Path,
-    output_path: &Path,
-    target_triple: Option<&str>,
-    rt_lib_path: Option<&Path>,
-) -> Result<(), String> {
-    let plan = prepare_link(target_triple, rt_lib_path)?;
-    link_with_plan(object_path, output_path, &plan)
-}
-
 pub fn effective_target_triple(target_triple: Option<&str>) -> Result<String, String> {
     LinkTarget::detect(target_triple).map(|target| target.display_triple())
 }
@@ -66,13 +43,6 @@ pub(crate) struct LinkPlan {
     rt_path: PathBuf,
     linker_program: PathBuf,
     native_archives: Vec<PathBuf>,
-}
-
-pub(crate) fn prepare_link(
-    target_triple: Option<&str>,
-    rt_lib_path: Option<&Path>,
-) -> Result<LinkPlan, String> {
-    prepare_link_for_runtime(target_triple, rt_lib_path, &[], RuntimeFlavor::Standard)
 }
 
 pub(crate) fn prepare_link_with_native(
@@ -109,45 +79,24 @@ fn prepare_link_for_runtime(
 ) -> Result<LinkPlan, String> {
     let target = LinkTarget::detect(target_triple)?;
     build_trace::set_stage("resolve-runtime-library");
+    // The build trace records the runtime this got to before `error`.
+    let fail = |error: String, runtime: Option<&Path>| {
+        let exists = runtime.is_some_and(Path::exists);
+        build_trace::set_link_context(&target.display_triple(), runtime, Some(exists), None);
+        build_trace::record_error(&error);
+        error
+    };
 
     let rt_path = match rt_lib_path {
-        Some(path) => match validate_runtime_override(path, &target, runtime_flavor) {
-            Ok(()) => path.to_path_buf(),
-            Err(error) => {
-                build_trace::set_link_context(
-                    &target.display_triple(),
-                    Some(path),
-                    Some(path.exists()),
-                    None,
-                );
-                build_trace::record_error(&error);
-                return Err(error);
-            }
-        },
-        None => match find_mesh_rt(&target, runtime_flavor) {
-            Ok(path) => path,
-            Err(error) => {
-                build_trace::set_link_context(&target.display_triple(), None, Some(false), None);
-                build_trace::record_error(&error);
-                return Err(error);
-            }
-        },
+        Some(path) => validate_runtime_override(path, &target, runtime_flavor)
+            .map(|()| path.to_path_buf())
+            .map_err(|error| fail(error, Some(path)))?,
+        None => find_mesh_rt(&target, runtime_flavor).map_err(|error| fail(error, None))?,
     };
-
+    let linker_program = target
+        .linker_program()
+        .map_err(|error| fail(error, Some(&rt_path)))?;
     let runtime_exists = rt_path.exists();
-    let linker_program = match target.linker_program() {
-        Ok(path) => path,
-        Err(error) => {
-            build_trace::set_link_context(
-                &target.display_triple(),
-                Some(&rt_path),
-                Some(runtime_exists),
-                None,
-            );
-            build_trace::record_error(&error);
-            return Err(error);
-        }
-    };
     build_trace::set_link_context(
         &target.display_triple(),
         Some(&rt_path),
@@ -432,16 +381,26 @@ fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<Pa
         &["release", "debug"]
     };
 
-    let mut searched_paths = Vec::new();
-
-    let workspace_candidates = [find_workspace_target_dir()]
+    let workspace_candidates = find_workspace_target_dir()
         .into_iter()
-        .flatten()
         .flat_map(|target_dir| mesh_rt_candidates(&target_dir, target, profiles, runtime_flavor));
-    for candidate in installed_mesh_rt_candidates(target, runtime_flavor)
-        .into_iter()
-        .chain(workspace_candidates)
-    {
+    first_existing_runtime(
+        installed_mesh_rt_candidates(target, runtime_flavor)
+            .into_iter()
+            .chain(workspace_candidates),
+        target,
+        runtime_flavor,
+    )
+}
+
+/// The first of `candidates` that exists, or an error naming each.
+fn first_existing_runtime(
+    candidates: impl IntoIterator<Item = PathBuf>,
+    target: &LinkTarget,
+    runtime_flavor: RuntimeFlavor,
+) -> Result<PathBuf, String> {
+    let mut searched_paths = Vec::new();
+    for candidate in candidates {
         if candidate.exists() {
             return Ok(candidate);
         }
@@ -1118,36 +1077,94 @@ mod tests {
         profiles: &[&str],
         runtime_flavor: RuntimeFlavor,
     ) -> Result<PathBuf, String> {
-        let mut searched_paths = Vec::new();
+        first_existing_runtime(
+            target_dirs
+                .iter()
+                .flat_map(|dir| mesh_rt_candidates(dir, target, profiles, runtime_flavor)),
+            target,
+            runtime_flavor,
+        )
+    }
 
-        for target_dir in target_dirs {
-            for candidate in mesh_rt_candidates(target_dir, target, profiles, runtime_flavor) {
-                if candidate.exists() {
-                    return Ok(candidate);
-                }
-                searched_paths.push(candidate);
-            }
+    fn plan_for(triple: &str) -> LinkPlan {
+        LinkPlan {
+            target: LinkTarget::detect(Some(triple)).unwrap(),
+            rt_path: PathBuf::from("/tmp/libmesh_rt.a"),
+            linker_program: PathBuf::from("cc"),
+            native_archives: Vec::new(),
         }
+    }
 
-        let mut message = format!(
-            "Could not locate {} static library for target '{}'. Expected {}. Run `cargo build -p {}{}` first.",
-            runtime_flavor.display_name(),
-            target.display_triple(),
-            target.runtime_filename(runtime_flavor),
-            runtime_flavor.package_name(),
-            target.cargo_build_hint(),
+    fn link_args(plan: &LinkPlan) -> Vec<String> {
+        build_link_command(Path::new("/tmp/main.o"), Path::new("/tmp/app"), plan)
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn each_target_links_its_own_system_libraries() {
+        let windows = link_args(&plan_for("x86_64-pc-windows-msvc"));
+        assert!(
+            windows.contains(&"-Wl,ws2_32.lib".to_string()),
+            "{windows:?}"
         );
-        if !searched_paths.is_empty() {
-            message.push_str("\nSearched:\n");
-            for path in searched_paths {
-                message.push_str("  - ");
-                message.push_str(&path.display().to_string());
-                message.push('\n');
-            }
-            message.pop();
-        }
+        assert!(windows.contains(&"-v".to_string()), "{windows:?}");
+        assert!(!windows.contains(&"-lm".to_string()), "{windows:?}");
+        let apple = link_args(&plan_for("aarch64-apple-darwin"));
+        let framework = apple.iter().position(|arg| arg == "-framework").unwrap();
+        assert_eq!(apple[framework + 1], "Security");
+        let linux = link_args(&plan_for("x86_64-unknown-linux-gnu"));
+        assert!(!linux.contains(&"-framework".to_string()), "{linux:?}");
+        assert!(!LinkTarget::detect(Some("x86_64-pc-windows-msvc"))
+            .unwrap()
+            .linker_help_suffix()
+            .is_empty());
+    }
 
-        Err(message)
+    /// Why a link could not start or failed, named for what went wrong.
+    #[test]
+    fn a_link_that_cannot_run_or_fails_says_why() {
+        let override_error = prepare_link_for_runtime(
+            None,
+            Some(Path::new("/nowhere/libwrong.a")),
+            &[],
+            RuntimeFlavor::Standard,
+        )
+        .unwrap_err();
+        assert!(
+            override_error.contains("does not match expected filename"),
+            "{override_error}"
+        );
+        let missing = prepare_link_for_runtime(
+            None,
+            Some(Path::new("/nowhere/libmesh_rt.a")),
+            &[],
+            RuntimeFlavor::Standard,
+        )
+        .unwrap_err();
+        assert!(
+            missing.contains("static library not found at '/nowhere/libmesh_rt.a'"),
+            "{missing}"
+        );
+        assert!(missing.contains("cargo build -p mesh-rt"), "{missing}");
+
+        let dir = unique_temp_target_dir("failing-link");
+        let host = LinkTarget::detect(None).unwrap();
+        let plan = LinkPlan {
+            linker_program: dir.join("no-such-linker"),
+            ..plan_for(&host.display_triple())
+        };
+        let error = link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err();
+        assert!(error.contains("Failed to invoke linker"), "{error}");
+        let plan = LinkPlan {
+            linker_program: PathBuf::from("cc"),
+            ..plan
+        };
+        let error = link_with_plan(&dir.join("missing.o"), &dir.join("app"), &plan).unwrap_err();
+        assert!(error.contains("Linking failed for target"), "{error}");
+        assert!(error.contains("stderr:"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     fn unique_temp_target_dir(name: &str) -> PathBuf {
