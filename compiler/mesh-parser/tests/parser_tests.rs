@@ -2651,7 +2651,7 @@ fn replica_counts_read_in_every_radix() {
 /// Every item and decorator gives back its own node.
 #[test]
 fn items_and_decorators_are_their_nodes() {
-    let source = "import Foo\nfrom Bar import baz\ninterface I do\n  fn f(self) -> Int\nend\nimpl I for Int do\n  fn f(self) -> Int do\n    1\n  end\nend\n@native(\"c_sym\") pub fn native_f() -> Int\n@export(\"exported\") pub fn export_f() -> Int do\n  1\nend\n@cluster fn work() do\n  1\nend\n";
+    let source = "import Foo\nfrom Bar import baz\ninterface I do\n  fn f(self) -> Int\nend\nimpl I for Int do\n  fn f(self) -> Int do\n    1\n  end\nend\n@native(\"c_sym\") pub fn native_f() -> Int\n@export(\"exported\") pub fn export_f() -> Int do\n  1\nend\n@cluster fn work() do\n  1\nend\nmodule M do\n  fn g() = 1\nend\ntype Alias = Int\nsupervisor Sup do\n  strategy: one_for_one\nend\n";
     let parse = parse(source);
     let kinds: Vec<SyntaxKind> = parse
         .tree()
@@ -2668,6 +2668,9 @@ fn items_and_decorators_are_their_nodes() {
             SyntaxKind::FN_DEF,
             SyntaxKind::FN_DEF,
             SyntaxKind::FN_DEF,
+            SyntaxKind::MODULE_DEF,
+            SyntaxKind::TYPE_ALIAS_DEF,
+            SyntaxKind::SUPERVISOR_DEF,
         ]
     );
     let fns: Vec<FnDef> = parse.tree().fn_defs().collect();
@@ -2682,6 +2685,44 @@ fn items_and_decorators_are_their_nodes() {
     assert_eq!(
         fns[2].clustered_decl().unwrap().syntax().kind(),
         SyntaxKind::CLUSTER_DECORATOR_DECL
+    );
+}
+
+/// A schema option's value reads as what it says.
+#[test]
+fn schema_options_read_their_values() {
+    let parse =
+        parse("struct S do\n  table \"people\"\n  primary_key :uuid\n  timestamps false\nend\n");
+    let def: StructDef = parse
+        .tree()
+        .items()
+        .find_map(|item| match item {
+            mesh_parser::ast::item::Item::StructDef(def) => Some(def),
+            _ => None,
+        })
+        .unwrap();
+    let options = def.schema_options();
+    let values: Vec<_> = options
+        .iter()
+        .map(|option| {
+            (
+                option.option_name(),
+                option.atom_value(),
+                option.bool_value(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        values,
+        [
+            (Some("table".to_string()), None, None),
+            (
+                Some("primary_key".to_string()),
+                Some("uuid".to_string()),
+                None
+            ),
+            (Some("timestamps".to_string()), None, Some(false)),
+        ]
     );
 }
 
