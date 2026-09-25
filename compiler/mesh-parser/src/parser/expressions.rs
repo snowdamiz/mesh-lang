@@ -1746,25 +1746,26 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     if super::patterns::at_destructuring_pattern(p) {
         super::patterns::parse_pattern(p);
     } else if p.at(SyntaxKind::L_BRACE) {
-        // Destructuring binding: {k, v}
+        // A map entry: `{key, value}`, exactly two names (the first is always
+        // the key, so `{, v}` would have bound `v` to it).
         let dm = p.open();
         p.advance(); // {
-        if p.at(SyntaxKind::IDENT) {
+        let mut names = 0;
+        for separator in [None, Some(SyntaxKind::COMMA)] {
+            if separator.is_some_and(|comma| !p.eat(comma)) || !p.at(SyntaxKind::IDENT) {
+                break;
+            }
             let n = p.open();
             p.advance();
             p.close(n, SyntaxKind::NAME);
+            names += 1;
         }
-        while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::R_BRACE) {
-                break;
-            }
-            if p.at(SyntaxKind::IDENT) {
-                let n = p.open();
-                p.advance();
-                p.close(n, SyntaxKind::NAME);
-            }
+        p.eat(SyntaxKind::COMMA);
+        if names == 2 && p.at(SyntaxKind::R_BRACE) {
+            p.advance();
+        } else {
+            p.error("expected `{key, value}`: a name for the key and one for the value");
         }
-        p.expect(SyntaxKind::R_BRACE);
         p.close(dm, SyntaxKind::DESTRUCTURE_BINDING);
     } else if p.at(SyntaxKind::IDENT) {
         let name = p.open();

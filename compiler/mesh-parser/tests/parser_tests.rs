@@ -4104,3 +4104,28 @@ fn operators_and_equals_continue_a_statement_across_lines() {
     assert_eq!(body_statements("fn f(s) do\n  s\n  %{s | x: 1}\nend"), 2);
     assert_eq!(body_statements("fn f(a, b) do\n  a\n    + b\nend"), 1);
 }
+
+/// A map entry binding names the key and then the value: nothing else.
+#[test]
+fn for_in_map_entry_binding_takes_two_names() {
+    for binding in ["{k, v}", "{_, v}", "{k, v,}"] {
+        let source = format!("fn f(m) do\n  for {binding} in m do\n    1\n  end\nend");
+        assert!(
+            parse(&source).ok(),
+            "{source}: {:?}",
+            parse(&source).errors()
+        );
+    }
+    for binding in ["{}", "{, v}", "{k}", "{k,,v}", "{a, b, c}"] {
+        let source = format!("fn f(m) do\n  for {binding} in m do\n    1\n  end\nend");
+        let parsed = parse(&source);
+        assert!(
+            parsed
+                .errors()
+                .first()
+                .is_some_and(|error| error.message.contains("expected `{key, value}`")),
+            "{source}: {:?}",
+            parsed.errors()
+        );
+    }
+}

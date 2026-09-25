@@ -11515,14 +11515,10 @@ fn infer_for_in(
             CollectionType::Map(key_ty, val_ty) => {
                 // Expect destructuring binding {k, v}.
                 if let Some(destr) = for_in.destructure_binding() {
-                    let names = destr.names();
-                    if names.len() >= 1 {
-                        let k_name = names[0].text().unwrap_or_else(|| "_".to_string());
-                        env.insert(k_name, Scheme::mono(key_ty));
-                    }
-                    if names.len() >= 2 {
-                        let v_name = names[1].text().unwrap_or_else(|| "_".to_string());
-                        env.insert(v_name, Scheme::mono(val_ty));
+                    for (name, ty) in destr.names().iter().zip([key_ty, val_ty]) {
+                        if let Some(name) = name.text() {
+                            env.insert(name, Scheme::mono(ty));
+                        }
                     }
                 } else {
                     // Single binding over map: bind as Int (key) as fallback.
