@@ -66,7 +66,7 @@ impl<'src> Lexer<'src> {
         match self.current_state().clone() {
             LexerState::Normal => self.lex_normal(),
             LexerState::InString { triple } => self.lex_string_content(triple),
-            LexerState::InInterpolation { .. } => self.lex_interpolation(),
+            LexerState::InInterpolation { brace_depth } => self.lex_interpolation(brace_depth),
         }
     }
 
@@ -304,15 +304,24 @@ impl<'src> Lexer<'src> {
     }
 
     /// `:` -> `Colon`, `::` -> `ColonColon`, `:ident` -> `Atom`
+    ///
+    /// A `:` right after a name or a closing bracket separates a key from its
+    /// value, so `x:y` in `Point { x:y }` is `x`, `:`, `y`, not `x` and the
+    /// atom `:y`.
     fn lex_colon(&mut self, start: u32) -> Token {
+        let after_operand = self.source[..start as usize]
+            .chars()
+            .next_back()
+            .is_some_and(|c| is_ident_continue(c) || matches!(c, ')' | ']' | '}'));
         self.cursor.advance(); // consume ':'
         if self.cursor.peek() == Some(':') {
             self.cursor.advance();
             Token::new(TokenKind::ColonColon, start, self.cursor.pos())
-        } else if self
-            .cursor
-            .peek()
-            .is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+        } else if !after_operand
+            && self
+                .cursor
+                .peek()
+                .is_some_and(|c| c.is_ascii_lowercase() || c == '_')
         {
             // Atom literal: `:name`, `:email`, `:asc`, `:_field`
             self.cursor.eat_while(is_ident_continue);
@@ -725,101 +734,42 @@ impl<'src> Lexer<'src> {
 
     // ── Interpolation ─────────────────────────────────────────────────
 
-    /// Lex tokens inside `${...}` interpolation.
+    /// Lex tokens inside `${...}` interpolation, `brace_depth` braces deep.
     ///
-    /// Tokenizes normally but tracks brace depth. When the closing `}` is
-    /// found (at depth 0), emits InterpolationEnd and pops back to InString.
-    fn lex_interpolation(&mut self) -> Token {
+    /// Tokenizes as in normal mode but tracks brace depth. When the closing
+    /// `}` is found (at depth 0), emits InterpolationEnd and pops back to
+    /// InString.
+    fn lex_interpolation(&mut self, brace_depth: u32) -> Token {
         self.skip_whitespace();
-
         let start = self.cursor.pos();
-
-        let Some(c) = self.cursor.peek() else {
+        match self.cursor.peek() {
             // EOF inside interpolation -- error
-            self.state_stack.pop();
-            return Token::new(TokenKind::Error, start, start);
-        };
-
-        match c {
-            '{' => {
-                // Increment brace depth
-                if let Some(LexerState::InInterpolation {
-                    ref mut brace_depth,
-                }) = self.state_stack.last_mut()
-                {
-                    *brace_depth += 1;
-                }
+            None => {
+                self.state_stack.pop();
+                Token::new(TokenKind::Error, start, start)
+            }
+            Some('{') => {
+                self.set_interpolation_depth(brace_depth + 1);
                 self.single_char_token(TokenKind::LBrace, start)
             }
-            '}' => {
-                let brace_depth = if let Some(LexerState::InInterpolation { brace_depth }) =
-                    self.state_stack.last()
-                {
-                    *brace_depth
-                } else {
-                    0
-                };
-
-                if brace_depth == 0 {
-                    // Closing interpolation
-                    self.cursor.advance();
-                    let end = self.cursor.pos();
-                    self.state_stack.pop(); // pop InInterpolation, back to InString
-                    Token::new(TokenKind::InterpolationEnd, start, end)
-                } else {
-                    // Decrement brace depth
-                    if let Some(LexerState::InInterpolation {
-                        ref mut brace_depth,
-                    }) = self.state_stack.last_mut()
-                    {
-                        *brace_depth -= 1;
-                    }
-                    self.single_char_token(TokenKind::RBrace, start)
-                }
-            }
-            // ── Newlines inside interpolation ───────────────────────────
-            '\n' => {
+            Some('}') if brace_depth == 0 => {
                 self.cursor.advance();
-                Token::new(TokenKind::Newline, start, self.cursor.pos())
+                self.state_stack.pop(); // back to InString
+                Token::new(TokenKind::InterpolationEnd, start, self.cursor.pos())
             }
-            '\r' => {
-                self.cursor.advance();
-                if self.cursor.peek() == Some('\n') {
-                    self.cursor.advance();
-                }
-                Token::new(TokenKind::Newline, start, self.cursor.pos())
+            Some('}') => {
+                self.set_interpolation_depth(brace_depth - 1);
+                self.single_char_token(TokenKind::RBrace, start)
             }
-            // All other tokens: delegate to normal tokenization helpers
-            '?' => self.single_char_token(TokenKind::Question, start),
-            '(' => self.single_char_token(TokenKind::LParen, start),
-            ')' => self.single_char_token(TokenKind::RParen, start),
-            '[' => self.single_char_token(TokenKind::LBracket, start),
-            ']' => self.single_char_token(TokenKind::RBracket, start),
-            '@' => self.single_char_token(TokenKind::At, start),
-            ',' => self.single_char_token(TokenKind::Comma, start),
-            ';' => self.single_char_token(TokenKind::Semicolon, start),
-            '=' => self.lex_eq(start),
-            '!' => self.lex_bang(start),
-            '<' => self.lex_lt(start),
-            '>' => self.lex_gt(start),
-            '&' => self.lex_amp(start),
-            '|' => self.lex_pipe(start),
-            '+' => self.lex_plus(start),
-            '-' => self.lex_minus(start),
-            ':' => self.lex_colon(start),
-            '.' => self.lex_dot(start),
-            '*' => self.single_char_token(TokenKind::Star, start),
-            '/' => self.single_char_token(TokenKind::Slash, start),
-            '%' => self.single_char_token(TokenKind::Percent, start),
-            '#' => self.lex_comment(start),
-            '0'..='9' => self.lex_number(start),
-            '"' => self.lex_string_start(start),
-            c if is_ident_start(c) => self.lex_ident(start),
-            _ => {
-                self.cursor.advance();
-                Token::new(TokenKind::Error, start, self.cursor.pos())
-            }
+            Some(_) => self.lex_normal(),
         }
+    }
+
+    /// Replace the innermost interpolation's brace depth.
+    fn set_interpolation_depth(&mut self, brace_depth: u32) {
+        self.state_stack.pop();
+        self.state_stack
+            .push(LexerState::InInterpolation { brace_depth });
     }
 
     // ── Identifiers and keywords ──────────────────────────────────────

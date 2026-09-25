@@ -273,3 +273,132 @@ fn test_self_expr_tokens() {
     let tokens = tokenize_snapshot("self()");
     assert_yaml_snapshot!(tokens);
 }
+
+/// `:name` is an atom, but a `:` right after a name or a closing bracket
+/// separates a key from its value: `x:y` is `x`, `:`, `y`.
+#[test]
+fn colon_after_an_operand_is_not_an_atom() {
+    let kinds = |source: &str| -> Vec<String> {
+        Lexer::tokenize(source)
+            .into_iter()
+            .map(|tok| format!("{:?}", tok.kind))
+            .filter(|kind| kind != "Eof")
+            .collect()
+    };
+    assert_eq!(kinds("x:y"), ["Ident", "Colon", "Ident"]);
+    assert_eq!(
+        kinds("f():y"),
+        ["Ident", "LParen", "RParen", "Colon", "Ident"]
+    );
+    assert_eq!(kinds("x: :ok"), ["Ident", "Colon", "Atom"]);
+    assert_eq!(kinds("[:ok]"), ["LBracket", "Atom", "RBracket"]);
+    assert_eq!(kinds("f(:ok)"), ["Ident", "LParen", "Atom", "RParen"]);
+}
+
+fn kinds(source: &str) -> Vec<String> {
+    Lexer::tokenize(source)
+        .into_iter()
+        .map(|tok| format!("{:?}", tok.kind))
+        .filter(|kind| kind != "Eof")
+        .collect()
+}
+
+/// Malformed input becomes `Error` tokens, and lexing goes on after them.
+#[test]
+fn malformed_input_lexes_as_error_tokens() {
+    assert_eq!(kinds("~x"), ["Error", "Ident"]);
+    assert_eq!(kinds("a & b"), ["Ident", "Error", "Ident"]);
+    assert_eq!(kinds("`"), ["Error"]);
+    // A slot pipe needs its `>` and a position from 2.
+    assert_eq!(kinds("|5 x"), ["Error", "Ident"]);
+    assert_eq!(kinds("|1>"), ["Error"]);
+    assert_eq!(kinds("|0>"), ["Error"]);
+    assert_eq!(kinds("|2>"), ["SlotPipe(2)"]);
+    // A regex needs `/`, an end, and only the flags i, m and s.
+    assert_eq!(kinds("~rx"), ["Error", "Ident"]);
+    assert_eq!(kinds("~r/abc"), ["Error"]);
+    assert_eq!(kinds("~r/a/q"), ["Error"]);
+    assert_eq!(
+        kinds("~r/a\\/b/ims"),
+        ["RegexLiteral(\"a\\\\/b\", \"ims\")"]
+    );
+}
+
+/// Inside `#{...}` the lexer reads code as it does outside a string, and
+/// counts braces to find the interpolation's end.
+#[test]
+fn interpolations_lex_as_code_until_their_closing_brace() {
+    assert_eq!(
+        kinds("\"#{f(@x; y) # c\r\n}\""),
+        [
+            "StringStart",
+            "InterpolationStart",
+            "Ident",
+            "LParen",
+            "At",
+            "Ident",
+            "Semicolon",
+            "Ident",
+            "RParen",
+            "Comment",
+            "Newline",
+            "InterpolationEnd",
+            "StringEnd"
+        ]
+    );
+    assert_eq!(
+        kinds("\"#{ %{a => 1}\n}\""),
+        [
+            "StringStart",
+            "InterpolationStart",
+            "Percent",
+            "LBrace",
+            "Ident",
+            "FatArrow",
+            "IntLiteral",
+            "RBrace",
+            "Newline",
+            "InterpolationEnd",
+            "StringEnd"
+        ]
+    );
+    assert_eq!(
+        kinds("\"#{`}\""),
+        [
+            "StringStart",
+            "InterpolationStart",
+            "Error",
+            "InterpolationEnd",
+            "StringEnd"
+        ]
+    );
+    // An interpolation cut off by the end of the file: the interpolation and
+    // then the string are unterminated.
+    assert_eq!(
+        kinds("\"#{x"),
+        [
+            "StringStart",
+            "InterpolationStart",
+            "Ident",
+            "Error",
+            "Error"
+        ]
+    );
+}
+
+/// Literal and comment forms the fixtures do not cover.
+#[test]
+fn exponents_block_comments_and_heredoc_quotes() {
+    // An integer with an exponent is a float.
+    assert_eq!(kinds("1e3 2.5e-1"), ["FloatLiteral", "FloatLiteral"]);
+    // `=` inside a block comment does not end it unless `#` follows.
+    assert_eq!(kinds("#= a = b =# x"), ["Comment", "Ident"]);
+    // Quotes inside a heredoc are content, escaped or not, until `"""`.
+    assert_eq!(
+        kinds("\"\"\"say \"hi\" \\\"x\\\" \"\" done\"\"\""),
+        ["StringStart", "StringContent", "StringEnd"]
+    );
+    assert_eq!(kinds("\"\"\"\"\"\""), ["StringStart", "StringEnd"]);
+    // A string cut off by the end of the file.
+    assert_eq!(kinds("\"abc"), ["StringStart", "StringContent", "Error"]);
+}
