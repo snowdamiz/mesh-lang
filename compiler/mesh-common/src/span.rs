@@ -17,24 +17,6 @@ impl Span {
         debug_assert!(start <= end, "span start ({start}) must be <= end ({end})");
         Self { start, end }
     }
-
-    /// Length of the span in bytes.
-    pub fn len(&self) -> u32 {
-        self.end - self.start
-    }
-
-    /// Whether the span is empty (zero-length).
-    pub fn is_empty(&self) -> bool {
-        self.start == self.end
-    }
-
-    /// Merge two spans into one that covers both.
-    pub fn merge(self, other: Span) -> Span {
-        Span {
-            start: self.start.min(other.start),
-            end: self.end.max(other.end),
-        }
-    }
 }
 
 /// Pre-computed index of line start positions for on-demand line/column lookup.
@@ -73,11 +55,6 @@ impl LineIndex {
         let col = offset - self.line_starts[line_idx] + 1; // 1-based
         (line, col)
     }
-
-    /// Return the number of lines in the source.
-    pub fn line_count(&self) -> usize {
-        self.line_starts.len()
-    }
 }
 
 #[cfg(test)]
@@ -85,28 +62,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn span_new_and_len() {
+    fn span_new() {
         let span = Span::new(5, 10);
         assert_eq!(span.start, 5);
         assert_eq!(span.end, 10);
-        assert_eq!(span.len(), 5);
-        assert!(!span.is_empty());
-    }
-
-    #[test]
-    fn span_empty() {
-        let span = Span::new(3, 3);
-        assert_eq!(span.len(), 0);
-        assert!(span.is_empty());
-    }
-
-    #[test]
-    fn span_merge() {
-        let a = Span::new(5, 10);
-        let b = Span::new(8, 15);
-        let merged = a.merge(b);
-        assert_eq!(merged.start, 5);
-        assert_eq!(merged.end, 15);
     }
 
     #[test]
@@ -138,11 +97,5 @@ mod tests {
         assert_eq!(idx.line_col(2), (1, 3));
         // 'c' is at offset 3 -> line 2, col 1
         assert_eq!(idx.line_col(3), (2, 1));
-    }
-
-    #[test]
-    fn line_index_line_count() {
-        let idx = LineIndex::new("a\nb\nc");
-        assert_eq!(idx.line_count(), 3);
     }
 }
