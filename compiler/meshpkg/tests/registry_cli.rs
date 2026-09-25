@@ -312,6 +312,37 @@ fn install_fetches_verifies_and_locks_packages() {
         .collect();
     assert_eq!(targets, ["/api/v1/packages/acme/widget/1.2.0/download"]);
 
+    // A path dependency is meshc's to fetch: install leaves it, and keeps
+    // its lock entry. A download that does not match its lock is refused.
+    std::fs::write(
+        dir.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\n\"acme/widget\" = \"1.2.0\"\nlocal = { path = \"../local\" }\n",
+    )
+    .unwrap();
+    let lock = std::fs::read_to_string(dir.join("mesh.lock")).unwrap();
+    let path_entry =
+        "\n[[packages]]\nname = \"local\"\nsource = \"../local\"\nrevision = \"local\"\n";
+    std::fs::write(
+        dir.join("mesh.lock"),
+        format!("{}{path_entry}", lock.replace(&sha, &"0".repeat(64))),
+    )
+    .unwrap();
+    let output = meshpkg(&["install", "--registry", &registry.url], dir, home.path());
+    assert!(!output.status.success());
+    assert!(
+        text(&output).contains("SHA-256 mismatch for acme/widget@1.2.0"),
+        "{}",
+        text(&output)
+    );
+    std::fs::write(dir.join("mesh.lock"), format!("{lock}{path_entry}")).unwrap();
+    let output = meshpkg(&["install", "--registry", &registry.url], dir, home.path());
+    assert!(output.status.success(), "{}", text(&output));
+    let lock = std::fs::read_to_string(dir.join("mesh.lock")).unwrap();
+    assert!(
+        lock.contains("name = \"local\"") && lock.contains(&sha),
+        "{lock}"
+    );
+
     // A registry that is not there.
     let output = meshpkg(
         &["install", "acme/widget", "--registry", "http://127.0.0.1:9"],
