@@ -23,6 +23,10 @@
 //! - `--json` - Output diagnostics as JSON (one object per line)
 //! - `--no-color` - Disable colorized output
 
+// The build pipeline threads its state through many parameters, and some
+// intermediate shapes are spelled out where they are built.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 #[cfg(target_env = "musl")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -899,7 +903,7 @@ pub(crate) fn prepare_project_build(
                 }
                 .with_index_type(ariadne::IndexType::Byte);
                 let range = mesh_typeck::diagnostics::report_span(
-                    &source,
+                    source,
                     error.span.start as usize..error.span.end as usize,
                 );
                 let span = (file_name.clone(), range);
@@ -1695,6 +1699,7 @@ fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io
 #[cfg(test)]
 mod autonomous_config_tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn library_exports_are_collected_as_reachability_roots_and_symbols_are_unique() {

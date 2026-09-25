@@ -3,6 +3,9 @@
 //! Tests string operations, module-qualified access (String.length),
 //! from/import resolution, IO operations, and HTTP server/client compilation.
 
+// 3.14 here is the fixtures' sample float, not an approximation of π.
+#![allow(clippy::approx_constant)]
+
 use std::io::{BufRead, BufReader, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -812,12 +815,10 @@ fn wait_for_server_ready(guard: &mut ServerGuard) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut ready = false;
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                if !ready && line.contains("HTTP server listening on") {
-                    ready = true;
-                    let _ = tx.send(true);
-                }
+        for line in stderr_reader.lines().map_while(Result::ok) {
+            if !ready && line.contains("HTTP server listening on") {
+                ready = true;
+                let _ = tx.send(true);
             }
         }
         if !ready {
@@ -852,12 +853,10 @@ fn get_from_served_fixture(fixture: &str, paths: &[&str]) -> Vec<String> {
     // Spawn a thread to read stderr and signal when server is ready.
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                if line.contains("HTTP server listening on") {
-                    let _ = tx.send(true);
-                    return;
-                }
+        for line in stderr_reader.lines().map_while(Result::ok) {
+            if line.contains("HTTP server listening on") {
+                let _ = tx.send(true);
+                return;
             }
         }
         let _ = tx.send(false);
@@ -1063,12 +1062,10 @@ fn e2e_http_crash_isolation() {
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                if line.contains("HTTP server listening on") {
-                    let _ = tx.send(true);
-                    return;
-                }
+        for line in stderr_reader.lines().map_while(Result::ok) {
+            if line.contains("HTTP server listening on") {
+                let _ = tx.send(true);
+                return;
             }
         }
         let _ = tx.send(false);
@@ -1691,12 +1688,10 @@ fn e2e_http_path_params() {
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                if line.contains("HTTP server listening on") {
-                    let _ = tx.send(true);
-                    return;
-                }
+        for line in stderr_reader.lines().map_while(Result::ok) {
+            if line.contains("HTTP server listening on") {
+                let _ = tx.send(true);
+                return;
             }
         }
         let _ = tx.send(false);
@@ -1817,12 +1812,10 @@ fn e2e_http_middleware() {
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                if line.contains("HTTP server listening on") {
-                    let _ = tx.send(true);
-                    return;
-                }
+        for line in stderr_reader.lines().map_while(Result::ok) {
+            if line.contains("HTTP server listening on") {
+                let _ = tx.send(true);
+                return;
             }
         }
         let _ = tx.send(false);

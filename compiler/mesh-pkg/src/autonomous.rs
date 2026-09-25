@@ -821,7 +821,7 @@ impl AutonomousClusterConfig {
                         // The driver writes each entry to the worker's env
                         // file as it is; a bare name would fail every create.
                         let malformed = docker.env.iter().find(|entry| {
-                            !entry.split_once('=').is_some_and(|(name, _)| !name.trim().is_empty())
+                            entry.split_once('=').is_none_or(|(name, _)| name.trim().is_empty())
                                 || entry.contains(['\n', '\r', '\0'])
                         });
                         if let Some(entry) = malformed {

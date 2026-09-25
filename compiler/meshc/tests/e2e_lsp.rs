@@ -474,7 +474,7 @@ impl LspSession {
     where
         F: FnMut(&Value) -> bool,
     {
-        if let Some(index) = self.pending.iter().position(|message| predicate(message)) {
+        if let Some(index) = self.pending.iter().position(&mut predicate) {
             return self
                 .pending
                 .remove(index)

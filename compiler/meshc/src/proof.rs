@@ -2385,12 +2385,14 @@ fn managed_labels_match_operations(
             let Some(operation) = operations.get(operation_id) else {
                 return false;
             };
+            let term = operation.control_term.0.to_string();
+            let revision = operation.desired_revision.0.to_string();
             labels["mesh.managed"] == "true"
                 && labels["mesh.cluster"] == cluster_id
                 && labels["mesh.pool"] == "workers"
                 && labels["mesh.template"] == operation.template_revision
-                && labels["mesh.term"] == operation.control_term.0.to_string()
-                && labels["mesh.revision"] == operation.desired_revision.0.to_string()
+                && labels["mesh.term"] == term.as_str()
+                && labels["mesh.revision"] == revision.as_str()
         })
 }
 

@@ -334,7 +334,7 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         store.compact(now)?;
         drain_log(&store)?;
 
-        if ordinal > 0 && ordinal % 1_000 == 0 {
+        if ordinal > 0 && ordinal.is_multiple_of(1_000) {
             let chunks = store.snapshot_chunks(64 * 1024)?;
             let target = SqliteContinuityStore::open(
                 Path::new(":memory:"),

@@ -642,17 +642,21 @@ fn removed_cluster_section_error(source_path: Option<&Path>) -> String {
     }
 }
 
+/// Parse a mesh.toml manifest from a string.
+impl std::str::FromStr for Manifest {
+    type Err = String;
+
+    fn from_str(content: &str) -> Result<Manifest, String> {
+        Self::parse(content, None)
+    }
+}
+
 impl Manifest {
     /// Read and parse a mesh.toml manifest from a file path.
     pub fn from_file(path: &Path) -> Result<Manifest, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
         Self::parse(content.as_str(), Some(path))
-    }
-
-    /// Parse a mesh.toml manifest from a string.
-    pub fn from_str(content: &str) -> Result<Manifest, String> {
-        Self::parse(content, None)
     }
 
     fn parse(content: &str, source_path: Option<&Path>) -> Result<Manifest, String> {
@@ -759,10 +763,9 @@ pub fn build_clustered_export_surface(
 ) -> ClusteredExportSurface {
     let mut surface = ClusteredExportSurface::default();
 
-    for idx in 0..graph.module_count() {
+    for (idx, parse) in parses.iter().enumerate() {
         let module_id = mesh_common::module_graph::ModuleId(idx as u32);
         let module_name = &graph.get(module_id).name;
-        let parse = &parses[idx];
         let tree = parse.tree();
         let mut public_fn_counts: HashMap<String, usize> = HashMap::new();
 
@@ -1068,6 +1071,7 @@ fn validate_declaration_shape(kind: ClusteredDeclarationKind, target: &str) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use std::{fs, path::PathBuf};
 
     use mesh_typeck::{

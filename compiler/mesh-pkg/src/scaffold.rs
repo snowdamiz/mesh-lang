@@ -2414,6 +2414,7 @@ end
 mod tests {
     use super::*;
     use crate::manifest::Manifest;
+    use std::str::FromStr;
     use tempfile::TempDir;
 
     #[test]

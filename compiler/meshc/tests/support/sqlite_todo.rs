@@ -408,7 +408,7 @@ pub fn send_http_request(
     let request = match body {
         Some(body) => format!(
             "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.as_bytes().len(),
+            body.len(),
             body
         ),
         None => format!(

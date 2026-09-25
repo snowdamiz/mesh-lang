@@ -568,7 +568,7 @@ fn civil_from_days(days: i64) -> (i64, u64, u64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    (y, m as u64, d as u64)
+    (y, m, d)
 }
 
 #[cfg(test)]

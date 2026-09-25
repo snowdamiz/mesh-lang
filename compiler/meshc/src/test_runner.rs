@@ -222,7 +222,7 @@ fn prepare_temp_test_project(
             e
         )
     })?;
-    if synthetic_entry != PathBuf::from(DEFAULT_ENTRYPOINT) {
+    if synthetic_entry != Path::new(DEFAULT_ENTRYPOINT) {
         return Err(format!(
             "Invalid synthetic test manifest state for '{}': resolved '{}' instead of '{}'.",
             test_project.project_dir.display(),
