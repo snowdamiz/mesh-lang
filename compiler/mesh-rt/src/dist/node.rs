@@ -1520,7 +1520,7 @@ fn handle_peer_list(data: &[u8]) {
 }
 
 // ---------------------------------------------------------------------------
-// DIST_LINK / DIST_UNLINK / DIST_EXIT send helpers
+// DIST_LINK / DIST_EXIT send helpers
 // ---------------------------------------------------------------------------
 
 /// Send DIST_LINK to register a bidirectional link on the remote node.
@@ -1548,37 +1548,6 @@ pub(crate) fn send_dist_link(from_pid: crate::actor::ProcessId, to_pid: crate::a
     };
     let mut payload = Vec::with_capacity(1 + 8 + 8);
     payload.push(DIST_LINK);
-    payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
-    payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
-    let _ = session.send(OutboundClass::Application, payload);
-}
-
-/// Send DIST_UNLINK to remove a bidirectional link on the remote node.
-/// Wire format: [DIST_UNLINK][u64 from_pid][u64 to_pid]
-/// Silently drops if session unavailable.
-#[allow(dead_code)]
-pub(crate) fn send_dist_unlink(from_pid: crate::actor::ProcessId, to_pid: crate::actor::ProcessId) {
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
-    let node_id = to_pid.node_id();
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return,
-        }
-    };
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => Arc::clone(s),
-            None => return,
-        }
-    };
-    let mut payload = Vec::with_capacity(1 + 8 + 8);
-    payload.push(DIST_UNLINK);
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
     let _ = session.send(OutboundClass::Application, payload);

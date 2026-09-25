@@ -293,10 +293,7 @@ pub extern "C" fn mesh_gc_collect() {
 
     let mut proc = proc_arc.lock();
 
-    // Read stack_base from the process object rather than the STACK_BASE
-    // thread-local. The thread-local may be stale if another coroutine ran
-    // on this thread and overwrote it. The process field is set once at
-    // coroutine startup and never changes.
+    // Set once, as the coroutine starts, and never changed.
     let stack_bottom = proc.stack_base;
     if stack_bottom.is_null() {
         return;

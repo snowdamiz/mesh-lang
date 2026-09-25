@@ -349,8 +349,8 @@ pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
 
 /// Clean up any mock actors registered during the test run.
 ///
-/// Drains `MOCK_ACTOR_PIDS` and calls `mesh_actor_exit` for each Pid.
-/// Plan 03 populates `MOCK_ACTOR_PIDS` when `Test.mock_actor` is called.
+/// Drains `MOCK_ACTOR_PIDS`, which `Test.mock_actor` adds to, and calls
+/// `mesh_actor_exit` for each Pid.
 #[no_mangle]
 pub extern "C" fn mesh_test_cleanup_actors() {
     let pids: Vec<i64> = MOCK_ACTOR_PIDS.with(|p| std::mem::take(&mut *p.borrow_mut()));
@@ -358,14 +358,6 @@ pub extern "C" fn mesh_test_cleanup_actors() {
         // Reason tag 0 = normal exit (same convention as actor/mod.rs).
         crate::actor::mesh_actor_exit(pid as u64, 0);
     }
-}
-
-/// Register a mock actor Pid for cleanup at the end of the run.
-///
-/// Called by the Plan 03 `Test.mock_actor` implementation.
-#[allow(dead_code)]
-pub fn register_mock_actor_pid(pid: i64) {
-    MOCK_ACTOR_PIDS.with(|p| p.borrow_mut().push(pid));
 }
 
 /// Return the current pass count (for use in test harness summary).
