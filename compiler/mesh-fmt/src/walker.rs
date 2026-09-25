@@ -631,10 +631,8 @@ fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
                 }
                 // Arms separated by `;` go on lines of their own.
                 SyntaxKind::END_KW | SyntaxKind::SEMICOLON => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    push_body_comment(&mut parts, &mut arms, &tok);
-                }
-                _ => add_token_with_context(&tok, &mut parts),
+                // The other tokens are comments.
+                _ => push_body_comment(&mut parts, &mut arms, &tok),
             },
             NodeOrToken::Node(n) => match n.kind() {
                 SyntaxKind::MATCH_ARM | SyntaxKind::RECEIVE_ARM | SyntaxKind::AFTER_CLAUSE => {
@@ -1404,54 +1402,27 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
     // Parenthesized: one name per indented line. A comment that ends a line
     // stays at the end of that line, after `(` or after the name it follows;
     // one on a line of its own stays on its own line, before the next name.
-    type Name = (Vec<FormatIR>, FormatIR, Vec<FormatIR>); // (comments before, name, after)
-    fn place(
-        tok: &SyntaxToken,
-        header: &mut Vec<FormatIR>,
-        before: &mut Vec<FormatIR>,
-        names: &mut [Name],
-    ) {
-        let comment = inline_comment(tok);
-        if !ends_a_line_of_code(tok) {
-            before.push(comment);
-        } else if let Some((_, _, after)) = names.last_mut() {
-            after.push(comment);
-        } else {
-            header.push(comment);
-        }
-    }
+    // (comments on lines of their own before, name, comments after)
+    let mut names: Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)> = Vec::new();
     let mut header = Vec::new();
     let mut before = Vec::new();
-    let mut names: Vec<Name> = Vec::new();
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::L_PAREN | SyntaxKind::R_PAREN | SyntaxKind::COMMA => {}
-                kind if kind.is_trivia() => place(&tok, &mut header, &mut before, &mut names),
-                _ => names.push((
-                    std::mem::take(&mut before),
-                    ir::text(tok.text()),
-                    Vec::new(),
-                )),
-            },
-            NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                for tok in n.children_with_tokens().filter_map(|e| e.into_token()) {
-                    match tok.kind() {
-                        SyntaxKind::NEWLINE | SyntaxKind::WHITESPACE => {}
-                        kind if kind.is_trivia() => {
-                            place(&tok, &mut header, &mut before, &mut names)
-                        }
-                        _ => names.push((
-                            std::mem::take(&mut before),
-                            ir::text(tok.text()),
-                            Vec::new(),
-                        )),
-                    }
+            NodeOrToken::Node(name) => {
+                names.push((std::mem::take(&mut before), walk_node(&name), Vec::new()))
+            }
+            NodeOrToken::Token(tok) if tok.kind().is_trivia() => {
+                let comment = inline_comment(&tok);
+                if !ends_a_line_of_code(&tok) {
+                    before.push(comment);
+                } else if let Some((_, _, after)) = names.last_mut() {
+                    after.push(comment);
+                } else {
+                    header.push(comment);
                 }
             }
-            NodeOrToken::Node(n) => {
-                names.push((std::mem::take(&mut before), walk_node(&n), Vec::new()));
-            }
+            // The parens and the commas.
+            NodeOrToken::Token(_) => {}
         }
     }
 
@@ -1495,13 +1466,10 @@ fn walk_from_import_decl(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
+                // `from`; the module is a PATH node.
                 SyntaxKind::IDENT => {
-                    if tok.text() == "from" {
-                        parts.push(ir::text("from"));
-                        parts.push(sp());
-                    } else {
-                        parts.push(ir::text(tok.text()));
-                    }
+                    parts.push(ir::text("from"));
+                    parts.push(sp());
                 }
                 SyntaxKind::IMPORT_KW => {
                     parts.push(sp());
@@ -1569,58 +1537,24 @@ fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
 
 fn walk_impl_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    let mut has_block = false;
-
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::IMPL_KW => {
-                    parts.push(ir::text("impl"));
-                    parts.push(sp());
-                }
-                SyntaxKind::FOR_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("for"));
-                    parts.push(sp());
-                }
-                SyntaxKind::DO_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("do"));
-                    has_block = true;
-                }
+                SyntaxKind::IMPL_KW => parts.extend([ir::text("impl"), sp()]),
+                SyntaxKind::FOR_KW => parts.extend([sp(), ir::text("for"), sp()]),
+                SyntaxKind::DO_KW => parts.extend([sp(), ir::text("do")]),
                 SyntaxKind::END_KW => {}
-                SyntaxKind::IDENT => {
-                    parts.push(ir::text(tok.text()));
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
+                _ => add_token_with_context(&tok, &mut parts),
             },
-            NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::BLOCK if has_block => {
-                    let body = walk_block_inner_items(&n);
-                    parts.push(ir::indent(body));
-                    parts.push(ir::hardline());
-                    parts.push(ir::text("end"));
-                }
-                SyntaxKind::NAME => {
-                    parts.push(walk_node(&n));
-                }
-                SyntaxKind::GENERIC_PARAM_LIST | SyntaxKind::GENERIC_ARG_LIST => {
-                    parts.push(walk_node(&n));
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
-            },
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::BLOCK => {
+                parts.push(ir::indent(walk_block_inner_items(&n)));
+                parts.push(ir::hardline());
+                parts.push(ir::text("end"));
+            }
+            // The interface, its type arguments and the type.
+            NodeOrToken::Node(n) => parts.push(walk_node(&n)),
         }
     }
-
-    if !has_block {
-        parts.push(ir::hardline());
-        parts.push(ir::text("end"));
-    }
-
     ir::concat(parts)
 }
 
