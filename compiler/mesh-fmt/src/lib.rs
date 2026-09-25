@@ -44,19 +44,21 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
         return Err("source contains parse errors".to_owned());
     }
     let formatted = printer::print(&walker::walk_node(&parse.syntax()), config);
+    preserves(&parse, &formatted).then_some(formatted).ok_or_else(|| {
+        "the formatter could not preserve it exactly (a formatter bug), so it was left unchanged"
+            .to_owned()
+    })
+}
 
-    // Formatting may only move whitespace. Output that parses to other tokens
-    // (a line comment swallowing the code after it, a dropped comment) or to
-    // another tree (new lines end statements) is a formatter bug, and writing
-    // it would change the program.
-    let reparsed = mesh_parser::parse(&formatted);
-    if !reparsed.errors().is_empty()
-        || significant_tokens(&parse) != significant_tokens(&reparsed)
-        || tree_shape(&parse) != tree_shape(&reparsed)
-    {
-        return Err("the formatter could not preserve it exactly (a formatter bug), so it was left unchanged".to_owned());
-    }
-    Ok(formatted)
+/// Whether `formatted` is the program `parse` holds. Formatting may only move
+/// whitespace: output that parses to other tokens (a line comment swallowing
+/// the code after it, a dropped comment) or to another tree (new lines end
+/// statements) is a formatter bug, and writing it would change the program.
+fn preserves(parse: &mesh_parser::Parse, formatted: &str) -> bool {
+    let reparsed = mesh_parser::parse(formatted);
+    reparsed.errors().is_empty()
+        && significant_tokens(parse) == significant_tokens(&reparsed)
+        && tree_shape(parse) == tree_shape(&reparsed)
 }
 
 /// Where each node starts (`Some(kind)`) and ends (`None`), in order.
@@ -135,7 +137,19 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
 
 #[cfg(test)]
 mod idempotency_tests {
-    use super::{format_source, FormatConfig};
+    use super::{format_source, preserves, FormatConfig};
+
+    /// Output with other tokens, another tree or a parse error is not the
+    /// same program, and the formatter would refuse it.
+    #[test]
+    fn output_must_be_the_same_program() {
+        let parse = mesh_parser::parse("fn f(a, b) do\n  a - b\nend\n");
+        assert!(preserves(&parse, "fn f(a, b) do\n  a -\n    b\nend\n"));
+        // `-b` on a line of its own is a statement of its own.
+        assert!(!preserves(&parse, "fn f(a, b) do\n  a\n  -b\nend\n"));
+        assert!(!preserves(&parse, "fn f(a, b) do\n  a + b\nend\n"));
+        assert!(!preserves(&parse, "fn f(a, b) do\n  a -\n"));
+    }
 
     #[test]
     fn invalid_source_is_preserved_including_following_declarations() {
