@@ -61,13 +61,10 @@ pub fn compute_signature_help(
         .children()
         .find(|child| child.kind() != SyntaxKind::ARG_LIST)?;
     let callee_name = extract_callee_name(&callee)?;
-    let fn_type = resolve_callee_type(&callee, &analysis.typeck)?;
-
-    // Steps 6-7: Build SignatureInformation.
-    let sig_info = build_signature_info(&root, &callee_name, &fn_type)?;
+    let (params, ret) = resolve_callee_type(&callee, &analysis.typeck)?;
 
     Some(SignatureHelp {
-        signatures: vec![sig_info],
+        signatures: vec![build_signature_info(&root, &callee_name, params, ret)],
         active_signature: Some(0),
         active_parameter: Some(active_parameter),
     })
@@ -94,15 +91,18 @@ fn extract_callee_name(callee: &SyntaxNode) -> Option<String> {
     }
 }
 
-/// Resolve the callee's function type from the TypeckResult: the first
-/// function type recorded for the callee or a node inside it, in tree order.
-/// Only the callee: an argument can be a closure, whose type is a function
-/// too.
-fn resolve_callee_type(callee: &SyntaxNode, typeck: &mesh_typeck::TypeckResult) -> Option<Ty> {
+/// Resolve the callee's function type from the TypeckResult, as its
+/// parameter and return types: the first function type recorded for the
+/// callee or a node inside it, in tree order. Only the callee: an argument
+/// can be a closure, whose type is a function too.
+fn resolve_callee_type<'a>(
+    callee: &SyntaxNode,
+    typeck: &'a mesh_typeck::TypeckResult,
+) -> Option<(&'a [Ty], &'a Ty)> {
     callee
         .descendants()
         .find_map(|node| match typeck.types.get(&node.text_range()) {
-            Some(ty @ Ty::Fun(..)) => Some(ty.clone()),
+            Some(Ty::Fun(params, ret)) => Some((params.as_slice(), &**ret)),
             _ => None,
         })
 }
@@ -126,46 +126,42 @@ fn find_fn_def_param_names(root: &SyntaxNode, callee_name: &str) -> Option<Vec<O
     )
 }
 
-/// Build the SignatureInformation from the function type and optional param names.
+/// Build the SignatureInformation from the function's types and, for a
+/// function defined in the source, its parameter names.
 fn build_signature_info(
     root: &SyntaxNode,
     callee_name: &str,
-    fn_type: &Ty,
-) -> Option<SignatureInformation> {
-    match fn_type {
-        Ty::Fun(params, ret) => {
-            let param_names = find_fn_def_param_names(root, callee_name);
+    params: &[Ty],
+    ret: &Ty,
+) -> SignatureInformation {
+    let param_names = find_fn_def_param_names(root, callee_name);
+    let param_labels: Vec<String> = params
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| {
+            match param_names
+                .as_ref()
+                .and_then(|names| names.get(i)?.as_ref())
+            {
+                Some(name) => format!("{name}: {ty}"),
+                None => format!("{ty}"),
+            }
+        })
+        .collect();
+    let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret);
+    let param_infos = param_labels
+        .into_iter()
+        .map(|label| ParameterInformation {
+            label: ParameterLabel::Simple(label),
+            documentation: None,
+        })
+        .collect();
 
-            let param_labels: Vec<String> = params
-                .iter()
-                .enumerate()
-                .map(|(i, ty)| {
-                    match param_names
-                        .as_ref()
-                        .and_then(|names| names.get(i)?.as_ref())
-                    {
-                        Some(name) => format!("{name}: {ty}"),
-                        None => format!("{ty}"),
-                    }
-                })
-                .collect();
-            let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret);
-            let param_infos = param_labels
-                .into_iter()
-                .map(|label| ParameterInformation {
-                    label: ParameterLabel::Simple(label),
-                    documentation: None,
-                })
-                .collect();
-
-            Some(SignatureInformation {
-                label,
-                documentation: None,
-                parameters: Some(param_infos),
-                active_parameter: None,
-            })
-        }
-        _ => None,
+    SignatureInformation {
+        label,
+        documentation: None,
+        parameters: Some(param_infos),
+        active_parameter: None,
     }
 }
 
@@ -218,6 +214,14 @@ mod tests {
             "fn pick(0, y :: Int) -> Int do\n  y\nend\n\nfn main() do\n  pick(0, 1)\nend\n";
         let help = sig_help_after(source, "  pick(").unwrap();
         assert_eq!(label(&help), "pick(Int, y: Int) -> Int");
+    }
+
+    /// A function with no definition in the source is labelled by its types.
+    #[test]
+    fn a_standard_library_function_is_labelled_by_its_types() {
+        let source = "fn main() do\n  String.length(\"abc\")\nend\n";
+        let help = sig_help_after(source, "String.length(").unwrap();
+        assert_eq!(label(&help), "String.length(String) -> Int");
     }
 
     /// A callee with no name, or no type, has no signature to show.

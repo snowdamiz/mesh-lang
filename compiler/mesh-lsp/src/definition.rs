@@ -12,7 +12,7 @@
 //! The CST keeps whitespace as WHITESPACE tokens, so rowan `TextRange` offsets
 //! are source byte offsets.
 
-use crate::syntax::{field_access_parts, first_ident_text, module_items, param_names};
+use crate::syntax::{defined_names, field_access_parts, module_items, param_names};
 use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 use rowan::TextRange;
@@ -127,10 +127,7 @@ fn search_block_for_def(
                 | SyntaxKind::SERVICE_DEF
                 | SyntaxKind::MODULE_DEF
         );
-        if let Some(range) = defines
-            .then(|| name_child_if_matches(&child, name))
-            .flatten()
-        {
+        if let Some(range) = defines.then(|| defined_name_range(&child, name)).flatten() {
             return Some(range);
         }
     }
@@ -155,23 +152,22 @@ fn find_type_def(root: &SyntaxNode, name: &str) -> Option<TextRange> {
                 SyntaxKind::STRUCT_DEF | SyntaxKind::SUM_TYPE_DEF | SyntaxKind::TYPE_ALIAS_DEF
             )
         })
-        .find_map(|definition| name_child_if_matches(&definition, name))
+        .find_map(|definition| defined_name_range(&definition, name))
 }
 
 /// Find a function definition inside a MODULE_DEF with the given module name.
 fn find_in_module(root: &SyntaxNode, module_name: &str, fn_name: &str) -> Option<TextRange> {
     module_items(root, module_name)
         .filter(|item| item.kind() == SyntaxKind::FN_DEF)
-        .find_map(|function| name_child_if_matches(&function, fn_name))
+        .find_map(|function| defined_name_range(&function, fn_name))
 }
 
-/// If a node has a NAME child whose text matches `name`, return the NAME's range.
-fn name_child_if_matches(node: &SyntaxNode, name: &str) -> Option<TextRange> {
-    node.children()
-        .find(|child| {
-            child.kind() == SyntaxKind::NAME && first_ident_text(child).as_deref() == Some(name)
-        })
-        .map(|name| name.text_range())
+/// The range of the name a definition binds that is `name`, if it binds it.
+fn defined_name_range(node: &SyntaxNode, name: &str) -> Option<TextRange> {
+    defined_names(node)
+        .into_iter()
+        .find(|defined| defined.text() == name)
+        .map(|defined| defined.text_range())
 }
 
 #[cfg(test)]
@@ -181,6 +177,17 @@ mod tests {
     /// Helper: parse source and find the definition at an offset.
     fn def_at(source: &str, offset: usize) -> Option<TextRange> {
         find_definition(&mesh_parser::parse(source).syntax(), offset)
+    }
+
+    /// A name a `let` pattern binds goes to where the pattern binds it.
+    #[test]
+    fn a_name_a_let_pattern_binds_has_a_definition() {
+        let source = "fn main() do\n  let (a, (b, _)) = (1, (2, 3))\n  a + b\nend\n";
+        let use_of_b = source.rfind('b').unwrap();
+        assert_eq!(
+            def_at(source, use_of_b).map(|range| usize::from(range.start())),
+            Some(source.find('b').unwrap())
+        );
     }
 
     /// A field of something other than a module name has no definition to

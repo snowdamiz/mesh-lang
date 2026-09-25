@@ -12,7 +12,7 @@ use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 
 use crate::analysis::AnalysisResult;
-use crate::syntax::{name_child_text, param_names};
+use crate::syntax::{defined_names, param_names};
 
 /// Mesh keywords and contextual syntax.
 const KEYWORDS: &[&str] = &[
@@ -263,13 +263,11 @@ fn collect_block_names(
             SyntaxKind::INTERFACE_DEF => CompletionItemKind::INTERFACE,
             _ => continue,
         };
-        let Some(name) = name_child_text(&child) else {
-            continue;
-        };
-
-        // Deduplicate: inner-scope names shadow outer-scope names.
-        if seen.insert(name.clone()) {
-            names.push((name, kind));
+        for name in defined_names(&child) {
+            // Deduplicate: inner-scope names shadow outer-scope names.
+            if seen.insert(name.text().to_string()) {
+                names.push((name.text().to_string(), kind));
+            }
         }
     }
 }
@@ -355,6 +353,28 @@ mod tests {
     #[test]
     fn a_position_past_the_document_offers_nothing() {
         assert!(completions_at("fn main() do\n  1\nend\n", 40, 0).is_empty());
+    }
+
+    /// The names a `let` pattern binds are offered, and not the fields it
+    /// matches them against.
+    #[test]
+    fn names_a_let_pattern_binds_are_offered() {
+        let source = "struct Point do\n  x :: Int\n  y :: Int\nend\n\nfn main() do\n  let (a, (b, _)) = (1, (2, 3))\n  let Point { x, y: py } = Point { x: 1, y: 2 }\n  a\nend\n";
+        let names: Vec<String> = scope_names_at(source, 8, 2)
+            .into_iter()
+            .filter(|(_, kind)| *kind == CompletionItemKind::VARIABLE)
+            .map(|(name, _)| name)
+            .collect();
+        for bound in ["a", "b", "x", "py"] {
+            assert!(
+                names.iter().any(|name| name == bound),
+                "{bound} in {names:?}"
+            );
+        }
+        assert!(
+            !names.iter().any(|name| name == "y" || name == "_"),
+            "{names:?}"
+        );
     }
 
     #[test]
