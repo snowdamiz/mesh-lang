@@ -35,20 +35,7 @@ fn check_with_module(module_name: &str, module_source: &str, source: &str) -> Ty
         module_typeck.errors
     );
     let exports = mesh_typeck::collect_exports(&module_parse, &module_typeck);
-    let mut module = ModuleExports {
-        module_name: module_name.to_string(),
-        ..ModuleExports::default()
-    };
-    module.functions = exports.functions;
-    module.struct_defs = exports.struct_defs;
-    module.sum_type_defs = exports.sum_type_defs;
-    module.service_defs = exports.service_defs;
-    module.actor_defs = exports.actor_defs;
-    module.private_names = exports.private_names;
-    module.type_aliases = exports.type_aliases;
-    module.resource_types = exports.resource_types;
-    module.function_ownership = exports.function_ownership;
-    module.interfaces = exports.trait_defs.iter().map(|t| t.name.clone()).collect();
+    let module = ModuleExports::new(module_name.to_string(), &exports);
 
     let mut imports = ImportContext::empty();
     imports

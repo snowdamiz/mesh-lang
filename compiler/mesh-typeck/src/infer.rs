@@ -409,12 +409,14 @@ fn require_inferred_bounds(
     }
 }
 
-/// Per-function metadata for where-clause enforcement.
+/// What a function requires of a call's arguments beyond their types (see
+/// `check_call`): exported with its scheme, for calls from other modules.
 #[derive(Clone, Debug)]
-struct FnConstraints {
+pub struct FnConstraints {
     /// Where-clause constraints: (type_param_name, trait_name).
     where_constraints: Vec<(String, String)>,
-    /// Type parameter names mapped to their inference type variables.
+    /// Type parameter names mapped to their inference type variables. Empty
+    /// once exported: another module's variables mean nothing to a caller.
     type_params: FxHashMap<String, Ty>,
     /// For each function parameter (by index), the type parameter name it
     /// was annotated with (if any). Used to resolve type params from call-site
@@ -4700,6 +4702,19 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         clustered_route_wrappers: ctx.clustered_route_wrappers,
         discarded_callback_results: ctx.discarded_callback_results,
         function_ownership: ownership.function_ownership,
+        fn_constraints: fn_constraints
+            .into_iter()
+            .map(|(name, constraints)| {
+                let type_params = FxHashMap::default();
+                (
+                    name,
+                    FnConstraints {
+                        type_params,
+                        ..constraints
+                    },
+                )
+            })
+            .collect(),
         assoc_projections,
     }
 }
@@ -5775,6 +5790,10 @@ fn infer_item(
                     // Register the module namespace for qualified access
                     ctx.qualified_modules
                         .insert(last_segment.clone(), mod_exports.functions.clone());
+                    for (name, constraints) in &mod_exports.function_constraints {
+                        fn_constraints
+                            .insert(format!("{last_segment}.{name}"), constraints.clone());
+                    }
                     ctx.qualified_module_origins
                         .insert(last_segment.clone(), mod_exports.module_name.clone());
                     ctx.qualified_module_private_names
@@ -5861,6 +5880,11 @@ fn infer_item(
                                 // Check functions
                                 if let Some(scheme) = mod_exports.functions.get(&name) {
                                     env.insert(name.clone(), scheme.clone());
+                                    if let Some(constraints) =
+                                        mod_exports.function_constraints.get(&name)
+                                    {
+                                        fn_constraints.insert(name.clone(), constraints.clone());
+                                    }
                                     ctx.imported_functions.push(name.clone());
                                     ctx.imported_function_origins
                                         .insert(name.clone(), mod_exports.module_name.clone());
@@ -5878,6 +5902,12 @@ fn infer_item(
                                                 .all(|c| c.is_ascii_digit())
                                         {
                                             env.insert(key.clone(), scheme.clone());
+                                            if let Some(constraints) =
+                                                mod_exports.function_constraints.get(key)
+                                            {
+                                                fn_constraints
+                                                    .insert(key.clone(), constraints.clone());
+                                            }
                                             ctx.imported_functions.push(key.clone());
                                             ctx.imported_function_origins.insert(
                                                 key.clone(),
@@ -10551,19 +10581,25 @@ fn check_call(
 
     // What the callee requires of its arguments: the bounds its body infers
     // of them, and its where-clause, checked against the argument types
-    // unification has settled. An overloaded callee's are its arity's (`name__N`).
-    let callee_name = match callee_expr {
-        Expr::NameRef(name_ref) => name_ref.text(),
-        _ => None,
-    };
-    let constraints = callee_name.and_then(|name| {
-        let key = ctx
-            .overloaded_call_targets
+    // unification has settled. An overloaded callee's are its arity's
+    // (`name__N`), an imported module's function's under `Module.name`.
+    let callee_name = |name: String| {
+        ctx.overloaded_call_targets
             .get(&call_range)
             .cloned()
-            .unwrap_or(name);
-        fn_constraints.get(&key)
-    });
+            .unwrap_or(name)
+    };
+    let key = match callee_expr {
+        Expr::NameRef(name_ref) => name_ref.text().map(callee_name),
+        Expr::FieldAccess(fa) => match (fa.base(), fa.field()) {
+            (Some(Expr::NameRef(module)), Some(field)) => module
+                .text()
+                .map(|module| format!("{module}.{}", callee_name(field.text().to_string()))),
+            _ => None,
+        },
+        _ => None,
+    };
+    let constraints = key.and_then(|key| fn_constraints.get(&key));
     if let Some(constraints) = constraints {
         require_inferred_bounds(ctx, constraints, &arg_types, &origin, call_range);
         if !constraints.where_constraints.is_empty() {

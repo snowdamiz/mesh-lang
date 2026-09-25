@@ -18185,19 +18185,7 @@ mod tests {
             module_typeck.errors
         );
         let exports = mesh_typeck::collect_exports(&module_parse, &module_typeck);
-        let mut module = ModuleExports {
-            module_name: "Secrets".to_string(),
-            ..ModuleExports::default()
-        };
-        module.functions = exports.functions;
-        module.struct_defs = exports.struct_defs;
-        module.sum_type_defs = exports.sum_type_defs;
-        module.service_defs = exports.service_defs;
-        module.actor_defs = exports.actor_defs;
-        module.private_names = exports.private_names;
-        module.type_aliases = exports.type_aliases;
-        module.resource_types = exports.resource_types;
-        module.function_ownership = exports.function_ownership;
+        let module = ModuleExports::new("Secrets".to_string(), &exports);
 
         let mut imports = ImportContext::empty();
         imports.module_exports.insert("Secrets".to_string(), module);

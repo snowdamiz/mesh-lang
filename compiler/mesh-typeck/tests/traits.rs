@@ -3,7 +3,7 @@
 
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
-use mesh_typeck::TypeckResult;
+use mesh_typeck::{ImportContext, ModuleExports, TypeckResult};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -296,4 +296,35 @@ fn a_parameters_inferred_bounds_hold_for_every_call_form() {
         "{prelude}fn main() do\n  println(1 |> show_eq())\n  println(2 |2> pair(\"a\"))\nend\n"
     );
     assert!(check_source(&fine).errors.is_empty());
+}
+
+/// An imported function requires of its callers' arguments what it would
+/// of calls in its own module: its where-clause and the bounds its body
+/// infers. Neither crossed the module boundary, and a `Box` with no
+/// `Display` was interpolated anyway.
+#[test]
+fn an_imported_functions_requirements_hold_for_its_callers() {
+    let util = mesh_parser::parse(
+        "pub fn show(x) do\n  \"#{x}\"\nend\n\npub fn show_eq(x) = \"#{x}\"\n\npub fn show_where<T>(x :: T) -> String where T: Display do\n  \"#{x}\"\nend\n",
+    );
+    let exports = mesh_typeck::collect_exports(&util, &mesh_typeck::check(&util));
+    let mut imports = ImportContext::empty();
+    imports
+        .module_exports
+        .insert("Util".into(), ModuleExports::new("Util".into(), &exports));
+    let check = |body: &str| {
+        let src = format!("import Util\nfrom Util import show\n\nstruct Box do\n  n :: Int\nend\n\nfn main() do\n  let b = Box {{ n: 1 }}\n  {body}\nend\n");
+        mesh_typeck::check_with_imports(&mesh_parser::parse(&src), &imports)
+    };
+    for call in [
+        "show(b)",
+        "Util.show(b)",
+        "b |> Util.show()",
+        "Util.show_eq(b)",
+        "Util.show_where(b)",
+    ] {
+        assert_has_error(&check(&format!("println({call})")), box_lacks_display, call);
+    }
+    let fine = check("println(show(1))\n  println(Util.show_where(b.n))");
+    assert!(fine.errors.is_empty(), "{:?}", fine.errors);
 }

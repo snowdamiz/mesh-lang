@@ -644,23 +644,7 @@ pub fn build_import_context(
             .to_string();
         ctx.module_exports.insert(
             last_segment,
-            mesh_typeck::ModuleExports {
-                module_name,
-                functions: exports.functions.clone(),
-                struct_defs: exports.struct_defs.clone(),
-                sum_type_defs: exports.sum_type_defs.clone(),
-                service_defs: exports.service_defs.clone(),
-                actor_defs: exports.actor_defs.clone(),
-                private_names: exports.private_names.clone(),
-                type_aliases: exports.type_aliases.clone(),
-                resource_types: exports.resource_types.clone(),
-                function_ownership: exports.function_ownership.clone(),
-                interfaces: exports
-                    .trait_defs
-                    .iter()
-                    .map(|interface| interface.name.clone())
-                    .collect(),
-            },
+            mesh_typeck::ModuleExports::new(module_name, exports),
         );
     }
     ctx

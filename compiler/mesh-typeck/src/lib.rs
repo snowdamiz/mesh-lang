@@ -47,8 +47,8 @@ use crate::ty::{Scheme, Ty};
 
 // Re-export type registry types for downstream crate consumption (codegen).
 pub use crate::infer::{
-    register_variant_constructors, StructDefInfo, SumTypeDefInfo, TypeAliasInfo, TypeRegistry,
-    VariantFieldInfo, VariantInfo,
+    register_variant_constructors, FnConstraints, StructDefInfo, SumTypeDefInfo, TypeAliasInfo,
+    TypeRegistry, VariantFieldInfo, VariantInfo,
 };
 // Re-export trait registry for downstream trait resolution (codegen dispatch).
 pub use crate::traits::TraitRegistry;
@@ -124,8 +124,36 @@ pub struct ModuleExports {
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 
+    /// What exported functions require of a call's arguments beyond their
+    /// types: a where-clause, the bounds a body infers of them.
+    pub function_constraints: FxHashMap<String, FnConstraints>,
+
     /// Names of the public interfaces this module declares.
     pub interfaces: FxHashSet<String>,
+}
+
+impl ModuleExports {
+    /// What an importer of `module_name` sees of its `exports`.
+    pub fn new(module_name: String, exports: &ExportedSymbols) -> Self {
+        Self {
+            module_name,
+            functions: exports.functions.clone(),
+            struct_defs: exports.struct_defs.clone(),
+            sum_type_defs: exports.sum_type_defs.clone(),
+            service_defs: exports.service_defs.clone(),
+            actor_defs: exports.actor_defs.clone(),
+            private_names: exports.private_names.clone(),
+            type_aliases: exports.type_aliases.clone(),
+            resource_types: exports.resource_types.clone(),
+            function_ownership: exports.function_ownership.clone(),
+            function_constraints: exports.function_constraints.clone(),
+            interfaces: exports
+                .trait_defs
+                .iter()
+                .map(|interface| interface.name.clone())
+                .collect(),
+        }
+    }
 }
 
 /// Symbols exported by a module after type checking.
@@ -153,6 +181,9 @@ pub struct ExportedSymbols {
     pub resource_types: FxHashSet<String>,
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// What exported functions require of a call's arguments beyond their
+    /// types: a where-clause, the bounds a body infers of them.
+    pub function_constraints: FxHashMap<String, FnConstraints>,
 }
 
 /// Information about an exported service, containing the helper function
@@ -272,6 +303,10 @@ pub struct TypeckResult {
     pub discarded_callback_results: FxHashSet<TextRange>,
     /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// What each function requires of a call's arguments beyond their types
+    /// (its where-clause, the bounds its body infers of them), by the name
+    /// `collect_exports` exports it under.
+    pub fn_constraints: FxHashMap<String, FnConstraints>,
     /// Associated types reached through a type parameter: (the variable
     /// standing for the type, trait, associated type name, receiver type).
     /// A specialization knows the receiver, and so the associated type.
@@ -344,6 +379,11 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                         } else {
                             name
                         };
+                        if let Some(constraints) = typeck.fn_constraints.get(&export_name) {
+                            exports
+                                .function_constraints
+                                .insert(export_name.clone(), constraints.clone());
+                        }
                         exports
                             .functions
                             .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
