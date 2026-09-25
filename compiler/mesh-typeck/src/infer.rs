@@ -4652,6 +4652,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // was done, and those outside any function (top-level code, actors).
     let pending_fields = std::mem::take(&mut ctx.pending_fields);
     resolve_pending_fields(&mut ctx, &type_registry, pending_fields, true);
+    check_method_params_typed(&mut ctx, &tree, &types);
     // The same for what an interpolation or operator needs of its operand's
     // type, and for `<>`: outside a function nothing else checks them.
     let concat = std::mem::take(&mut ctx.concat_operands);
@@ -7502,11 +7503,7 @@ fn method_param_types(
 ) -> Option<Vec<Ty>> {
     let mut types = Vec::new();
     for param in param_list?.params() {
-        let is_self = param
-            .syntax()
-            .children_with_tokens()
-            .any(|tok| tok.kind() == SyntaxKind::SELF_KW);
-        if is_self {
+        if param.is_self() {
             continue;
         }
         let ann = param.type_annotation()?;
@@ -7554,11 +7551,7 @@ fn interface_trait_def(
 
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
                 if is_self {
                     has_self = true;
                 } else {
@@ -7635,11 +7628,7 @@ fn infer_interface_def(
         let mut param_tys = Vec::new();
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
                 let param_ty = if is_self {
                     Ty::Con(TyCon::new("Self"))
                 } else {
@@ -7863,11 +7852,7 @@ fn impl_signature(
         let mut param_types = Some(Vec::new());
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
                 if is_self {
                     has_self = true;
                     continue;
@@ -7960,6 +7945,49 @@ fn register_impl_signature(
 /// Type-check an impl's method bodies (the impl itself was registered by
 /// `register_impl_signature`), filling in the return types of methods that
 /// declare none from their bodies.
+/// A method is compiled once, for the type it is implemented for, so each
+/// of its parameters needs a type by the module's end: one nothing fixed was
+/// compiled as `()` (a `Box` argument read as `()`, an `Int` one failing in
+/// LLVM).
+fn check_method_params_typed(
+    ctx: &mut InferCtx,
+    tree: &mesh_parser::ast::item::SourceFile,
+    types: &FxHashMap<TextRange, Ty>,
+) {
+    for item in tree.items() {
+        let Item::ImplDef(impl_) = item else {
+            continue;
+        };
+        for method in impl_.methods() {
+            let Some(Ty::Fun(fn_params, _)) = types
+                .get(&method.syntax().text_range())
+                .map(|ty| ctx.resolve(ty.clone()))
+            else {
+                continue;
+            };
+            let params: Vec<_> = method
+                .param_list()
+                .iter()
+                .flat_map(|list| list.params())
+                .collect();
+            let has_self = params.iter().any(|param| param.is_self());
+            let named = params
+                .iter()
+                .filter(|param| !param.is_self())
+                .filter_map(|param| Some((param, param.name()?)));
+            for ((param, name), ty) in named.zip(fn_params.iter().skip(usize::from(has_self))) {
+                if ctx.resolve(ty.clone()).has_type_vars() {
+                    ctx.errors.push(TypeError::UntypedMethodParam {
+                        method: method.name().and_then(|n| n.text()).unwrap_or_default(),
+                        param: name.text().to_string(),
+                        span: param.syntax().text_range(),
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn infer_impl_def(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -7989,11 +8017,7 @@ fn infer_impl_def(
 
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
                 if is_self {
                     has_self = true;
                 } else {
@@ -8024,11 +8048,7 @@ fn infer_impl_def(
 
         if let Some(param_list) = method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
                 if !is_self {
                     if let Some(name_tok) = param.name() {
                         let name_text = name_tok.text().to_string();

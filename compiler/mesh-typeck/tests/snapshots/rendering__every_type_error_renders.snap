@@ -676,6 +676,17 @@ expression: rendered
 ───╯
 {"code":"E0070","severity":"error","message":"cannot tell which type has the field `field`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing here fixes the type of this value"}],"fix":"annotate the value's type, such as a parameter `p :: Point`"}
 
+[E0082] Error: the type of `param` in method `method` is not known
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing fixes the type of this parameter
+   │
+   │ Help: annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call
+───╯
+{"code":"E0082","severity":"error","message":"the type of `param` in method `method` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes the type of this parameter"}],"fix":"annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call"}
+
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
    │

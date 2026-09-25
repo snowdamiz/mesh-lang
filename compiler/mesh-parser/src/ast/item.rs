@@ -308,6 +308,11 @@ pub enum ParamOwnership {
 }
 
 impl Param {
+    /// Whether this is a method's `self` parameter.
+    pub fn is_self(&self) -> bool {
+        child_token(&self.syntax, SyntaxKind::SELF_KW).is_some()
+    }
+
     /// The parameter name token (IDENT).
     ///
     /// For regular parameters like `fn foo(x)`, returns the IDENT token.

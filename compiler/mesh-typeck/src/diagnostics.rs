@@ -193,6 +193,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ActorMessageTypeUnknown { .. } => "E0079",
         TypeError::TopLevelLet { .. } => "E0080",
         TypeError::ModuleNotImported { .. } => "E0081",
+        TypeError::UntypedMethodParam { .. } => "E0082",
     }
 }
 
@@ -1763,6 +1764,21 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                 "nothing here fixes the type of this value",
             )
             .with_help("annotate the value's type, such as a parameter `p :: Point`")
+        }
+        TypeError::UntypedMethodParam {
+            method,
+            param,
+            span,
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("the type of `{param}` in method `{method}` is not known"),
+                "nothing fixes the type of this parameter",
+            )
+            .with_help(format!(
+                "annotate it, `{param} :: Type`: a method is compiled once, for the type it is implemented for, not for each call"
+            ))
         }
         TypeError::RigidTypeParam { param, found, span } => {
             let range = clamp(text_range_to_range(*span));

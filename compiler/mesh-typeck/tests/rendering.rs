@@ -320,6 +320,11 @@ fn one_of_each() -> Vec<TypeError> {
             field: "field".to_string(),
             span: span(19, 24),
         },
+        TypeError::UntypedMethodParam {
+            method: "method".to_string(),
+            param: "param".to_string(),
+            span: span(19, 24),
+        },
         TypeError::UnknownInterface {
             name: "name".to_string(),
             span: span(19, 24),

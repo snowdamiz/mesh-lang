@@ -402,6 +402,13 @@ pub enum TypeError {
     UnknownType { name: String, span: TextRange },
     /// A field read from a value whose type nothing determines.
     UnknownFieldOwner { field: String, span: TextRange },
+    /// A method parameter whose type nothing fixes: a method is compiled
+    /// once, for the type it is implemented for, not for each call.
+    UntypedMethodParam {
+        method: String,
+        param: String,
+        span: TextRange,
+    },
     /// An `impl` names an interface that does not exist.
     UnknownInterface { name: String, span: TextRange },
     /// A numeric literal that is malformed or does not fit its type.
@@ -566,6 +573,7 @@ impl TypeError {
             | TypeError::DuplicateDefinition { span, .. }
             | TypeError::UnknownType { span, .. }
             | TypeError::UnknownFieldOwner { span, .. }
+            | TypeError::UntypedMethodParam { span, .. }
             | TypeError::UnknownInterface { span, .. }
             | TypeError::InvalidLiteral { span, .. }
             | TypeError::InvalidConcat { span, .. }
@@ -1115,6 +1123,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownFieldOwner { field, .. } => {
                 write!(f, "cannot tell which type has the field `{field}`")
+            }
+            TypeError::UntypedMethodParam { method, param, .. } => {
+                write!(f, "the type of `{param}` in method `{method}` is not known")
             }
             TypeError::RigidTypeParam { param, found, .. } => {
                 write!(

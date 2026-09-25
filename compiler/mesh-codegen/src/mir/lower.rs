@@ -5285,8 +5285,8 @@ impl<'a> Lowerer<'a> {
     // ── Impl method lowering ───────────────────────────────────────
 
     /// Lower a single impl method to a MirFunction with a mangled name.
-    /// The `self` parameter is detected via SELF_KW and named "self" with
-    /// the concrete implementing struct type.
+    /// The `self` parameter is named "self", with the concrete implementing
+    /// struct type.
     fn lower_impl_method(&mut self, method: &FnDef, mangled_name: &str, type_name: &str) {
         // Get function type from typeck.
         let fn_range = method.syntax().text_range();
@@ -5299,12 +5299,7 @@ impl<'a> Lowerer<'a> {
         if let Some(param_list) = method.param_list() {
             if let Some(Ty::Fun(param_tys, _)) = &fn_ty_raw {
                 for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
-                    // Detect self parameter via SELF_KW token.
-                    let is_self = param.syntax().children_with_tokens().any(|tok| {
-                        tok.as_token()
-                            .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                            .unwrap_or(false)
-                    });
+                    let is_self = param.is_self();
 
                     let param_name = if is_self {
                         "self".to_string()
@@ -5324,11 +5319,7 @@ impl<'a> Lowerer<'a> {
             } else {
                 // Fallback: use range-based type lookup for each param.
                 for param in param_list.params() {
-                    let is_self = param.syntax().children_with_tokens().any(|tok| {
-                        tok.as_token()
-                            .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                            .unwrap_or(false)
-                    });
+                    let is_self = param.is_self();
 
                     let param_name = if is_self {
                         "self".to_string()
@@ -5467,17 +5458,13 @@ impl<'a> Lowerer<'a> {
             _ => (Vec::new(), None),
         };
 
-        // Build parameters: detect self via SELF_KW, bind to concrete type.
+        // Build parameters: bind `self` to the concrete type.
         let mut params = Vec::new();
         self.push_scope();
 
         if let Some(param_list) = interface_method.param_list() {
             for param in param_list.params() {
-                let is_self = param.syntax().children_with_tokens().any(|tok| {
-                    tok.as_token()
-                        .map(|t| t.kind() == SyntaxKind::SELF_KW)
-                        .unwrap_or(false)
-                });
+                let is_self = param.is_self();
 
                 let param_name = if is_self {
                     "self".to_string()

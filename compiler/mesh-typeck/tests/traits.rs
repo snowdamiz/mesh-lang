@@ -362,3 +362,30 @@ fn a_where_clause_holds_for_an_expression_bodied_function() {
     let src = "struct Box do\n  n :: Int\nend\n\nfn show<T>(x :: T) -> String where T: Display = \"shown\"\n\nfn main() do\n  show(Box { n: 1 })\nend\n";
     assert_has_error(&check_source(src), box_lacks_display, "show(Box)");
 }
+
+/// A method is compiled once, for the type it is implemented for, so a
+/// parameter whose type nothing fixes cannot be compiled: `label(self, x)`
+/// read a `Box` argument as `()`, and an `Int` one failed in LLVM. A type
+/// the body fixes, or an annotation, is enough.
+#[test]
+fn a_method_parameter_needs_a_type() {
+    let prelude = "struct Wrap do\n  tag :: String\nend\n\ninterface Labeler do\n  fn label(self, x) -> String\nend\n\n";
+    let open = format!("{prelude}impl Labeler for Wrap do\n  fn label(self, x) -> String do\n    \"#{{self.tag}}: #{{x}}\"\n  end\nend\n\nfn main() do\n  println(Wrap {{ tag: \"t\" }}.label(5))\nend\n");
+    let result = check_source(&open);
+    assert!(
+        result.errors.iter().any(|error| matches!(
+            error,
+            TypeError::UntypedMethodParam { method, param, .. } if method == "label" && param == "x"
+        )),
+        "{:?}",
+        result.errors
+    );
+    for body in [
+        "x :: Int) -> String do\n    \"#{self.tag}: #{x}\"",
+        "x) -> String do\n    \"#{self.tag}: #{x + 1}\"",
+    ] {
+        let typed = format!("{prelude}impl Labeler for Wrap do\n  fn label(self, {body}\n  end\nend\n\nfn main() do\n  println(Wrap {{ tag: \"t\" }}.label(5))\nend\n");
+        let result = check_source(&typed);
+        assert!(result.errors.is_empty(), "{body}: {:?}", result.errors);
+    }
+}
