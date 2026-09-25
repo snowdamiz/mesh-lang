@@ -926,8 +926,10 @@ pub fn render_diagnostic(
                     "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
                      Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
                         .to_string()
-                } else {
+                } else if matches!(ty, Ty::Con(_)) {
                     format!("add `impl {} for {} do ... end`", trait_name, ty)
+                } else {
+                    "only a named type without type parameters can have an `impl`".to_string()
                 })
                 .finish()
         }

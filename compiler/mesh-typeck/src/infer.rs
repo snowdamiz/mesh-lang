@@ -16104,15 +16104,18 @@ fn check_type_param_bounds(
             }
             continue;
         }
-        // A type fixed only later must still implement the trait.
+        // A type fixed only later must still implement the trait, and one
+        // left partly open must have an instance that could: no `Queue`
+        // implements Display, whatever it holds.
+        if !is_type_var(&used) && !trait_registry.has_impl(&trait_name, &used) {
+            ctx.errors.push(TypeError::TraitNotSatisfied {
+                ty: used.with_holes(),
+                trait_name,
+                origin,
+            });
+            continue;
+        }
         if !used.has_type_vars() {
-            if !trait_registry.has_impl(&trait_name, &used) {
-                ctx.errors.push(TypeError::TraitNotSatisfied {
-                    ty: used,
-                    trait_name,
-                    origin,
-                });
-            }
             continue;
         }
         let Some(param) = type_params

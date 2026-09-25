@@ -4645,7 +4645,7 @@ fn interpolating_a_value_without_display_is_a_type_error() {
     for (value, name) in [
         ("Sq { s: 1 }", "Sq"),
         ("A", "Sh"),
-        ("Queue.new()", "Queue"),
+        ("Queue.new()", "Queue<_>"),
         ("fn x -> x + 1 end", "(Int) -> Int"),
     ] {
         let err = build_error(&format!(
