@@ -1972,7 +1972,7 @@ mod tests {
                         || cases.iter().any(|(_, t)| contains_tuple_field_test(t))
                         || default
                             .as_ref()
-                            .map_or(false, |d| contains_tuple_field_test(d))
+                            .is_some_and(|d| contains_tuple_field_test(d))
                 }
                 DecisionTree::Guard {
                     success, failure, ..

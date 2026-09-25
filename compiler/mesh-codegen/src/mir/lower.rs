@@ -948,7 +948,7 @@ impl<'a> Lowerer<'a> {
                             })
                     })
                     .collect::<Vec<_>>();
-                (!resource_fields.is_empty()).then(|| MirResourceVariant {
+                (!resource_fields.is_empty()).then_some(MirResourceVariant {
                     tag: tag as u8,
                     field_types,
                     resource_fields,
@@ -1820,10 +1820,10 @@ impl<'a> Lowerer<'a> {
                     // Check if this inner pipe step zips with string keys.
                     // Pattern: <key_iter> |> Iter.zip(<val_iter>)
                     // If the RHS is a call to Iter.zip, check the LHS (key source).
-                    if Self::rhs_is_iter_zip(&inner_pipe) {
-                        if self.pipe_source_has_string_list(inner_pipe.lhs()) {
-                            return true;
-                        }
+                    if Self::rhs_is_iter_zip(&inner_pipe)
+                        && self.pipe_source_has_string_list(inner_pipe.lhs())
+                    {
+                        return true;
                     }
                     current_lhs = inner_pipe.lhs();
                 }
@@ -1843,19 +1843,16 @@ impl<'a> Lowerer<'a> {
     fn rhs_is_iter_zip(pipe: &PipeExpr) -> bool {
         match pipe.rhs() {
             Some(Expr::CallExpr(call)) => {
-                if let Some(callee) = call.callee() {
-                    if let Expr::FieldAccess(fa) = callee {
-                        let module = fa.base().and_then(|b| {
-                            if let Expr::NameRef(nr) = b {
-                                nr.text()
-                            } else {
-                                None
-                            }
-                        });
-                        let field = fa.field().map(|t| t.text().to_string());
-                        return module.as_deref() == Some("Iter")
-                            && field.as_deref() == Some("zip");
-                    }
+                if let Some(Expr::FieldAccess(fa)) = call.callee() {
+                    let module = fa.base().and_then(|b| {
+                        if let Expr::NameRef(nr) = b {
+                            nr.text()
+                        } else {
+                            None
+                        }
+                    });
+                    let field = fa.field().map(|t| t.text().to_string());
+                    return module.as_deref() == Some("Iter") && field.as_deref() == Some("zip");
                 }
                 false
             }
@@ -1872,13 +1869,11 @@ impl<'a> Lowerer<'a> {
                 self.pipe_source_has_string_list(inner.lhs())
             }
             Some(ref e) => {
-                if let Some(ty) = self.types.get(&e.syntax().text_range()) {
+                if let Some(Ty::App(con, args)) = self.types.get(&e.syntax().text_range()) {
                     // List<String>: the elements are string keys.
-                    if let Ty::App(con, args) = ty {
-                        if let Ty::Con(ref tc) = **con {
-                            if tc.name == "List" && !args.is_empty() {
-                                return args[0] == Ty::string();
-                            }
+                    if let Ty::Con(ref tc) = **con {
+                        if tc.name == "List" && !args.is_empty() {
+                            return args[0] == Ty::string();
                         }
                     }
                 }
@@ -2349,7 +2344,7 @@ impl<'a> Lowerer<'a> {
                     }
                 }
                 Item::ImplDef(impl_def) => {
-                    let (trait_name, trait_type_args, type_name) = extract_impl_names(&impl_def);
+                    let (trait_name, trait_type_args, type_name) = extract_impl_names(impl_def);
                     let mut provided_methods = std::collections::HashSet::new();
                     for method in impl_def.methods() {
                         if let Some(method_name) = method.name().and_then(|n| n.text()) {
@@ -5132,7 +5127,7 @@ impl<'a> Lowerer<'a> {
         );
 
         // Also register variant constructors as known functions.
-        for (_, sum_info) in &self.registry.sum_type_defs {
+        for sum_info in self.registry.sum_type_defs.values() {
             for variant in &sum_info.variants {
                 if !variant.fields.is_empty() {
                     // Variant constructor is a function
@@ -5948,7 +5943,7 @@ impl<'a> Lowerer<'a> {
             .registry
             .struct_defs
             .get(&name)
-            .map_or(false, |info| !info.generic_params.is_empty());
+            .is_some_and(|info| !info.generic_params.is_empty());
 
         if struct_def.is_declared_resource() {
             if !has_generic_params {
@@ -8610,9 +8605,9 @@ impl<'a> Lowerer<'a> {
             Expr::MapLiteral(map_lit) => self.lower_map_literal(map_lit),
             Expr::ListLiteral(list_lit) => self.lower_list_literal(list_lit),
             // Actor expressions
-            Expr::SpawnExpr(spawn) => self.lower_spawn_expr(&spawn),
-            Expr::SendExpr(send) => self.lower_send_expr(&send),
-            Expr::ReceiveExpr(recv) => self.lower_receive_expr(&recv),
+            Expr::SpawnExpr(spawn) => self.lower_spawn_expr(spawn),
+            Expr::SendExpr(send) => self.lower_send_expr(send),
+            Expr::ReceiveExpr(recv) => self.lower_receive_expr(recv),
             Expr::SelfExpr(_) => {
                 let ty = self.resolve_range(expr.syntax().text_range());
                 let ty = if matches!(ty, MirType::Unit) {
@@ -8622,14 +8617,14 @@ impl<'a> Lowerer<'a> {
                 };
                 MirExpr::ActorSelf { ty }
             }
-            Expr::LinkExpr(link) => self.lower_link_expr(&link),
+            Expr::LinkExpr(link) => self.lower_link_expr(link),
             // Loop expressions
             Expr::WhileExpr(w) => self.lower_while_expr(w),
             Expr::BreakExpr(_) => MirExpr::Break,
             Expr::ContinueExpr(_) => MirExpr::Continue,
-            Expr::ForInExpr(for_in) => self.lower_for_in_expr(&for_in),
+            Expr::ForInExpr(for_in) => self.lower_for_in_expr(for_in),
             // Try expression -- desugar to Match + Return (Phase 45)
-            Expr::TryExpr(try_expr) => self.lower_try_expr(&try_expr),
+            Expr::TryExpr(try_expr) => self.lower_try_expr(try_expr),
             // Atom literal -- lower to string constant at runtime
             Expr::AtomLiteral(atom) => {
                 let name = atom.atom_text().unwrap_or_default();
@@ -9528,157 +9523,145 @@ impl<'a> Lowerer<'a> {
         // through trait dispatch. This MUST happen BEFORE lower_expr on the callee,
         // because lower_expr would route to lower_field_access which produces a
         // struct GEP (MirExpr::FieldAccess), not a callable.
-        if let Some(callee_expr) = call.callee() {
-            if let Expr::FieldAccess(ref fa) = callee_expr {
-                // Check if this is a module/service/variant/struct access (NOT a method call).
-                // Module-qualified calls (String.length), service methods (Counter.start),
-                // variant constructors (Shape.Circle), and struct-qualified calls are
-                // handled by lower_field_access.
-                let is_module_or_special = if let Some(base) = fa.base() {
-                    if let Expr::NameRef(ref name_ref) = base {
-                        if let Some(base_name) = name_ref.text() {
-                            STDLIB_MODULES.contains(&base_name.as_str())
-                                || self.user_modules.contains_key(&base_name)
-                                || self.service_modules.contains_key(&base_name)
-                                || self.is_sum_type_name(&base_name)
-                                || self.is_struct_type_name(&base_name)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
+        if let Some(Expr::FieldAccess(ref fa)) = call.callee() {
+            // Check if this is a module/service/variant/struct access (NOT a method call).
+            // Module-qualified calls (String.length), service methods (Counter.start),
+            // variant constructors (Shape.Circle), and struct-qualified calls are
+            // handled by lower_field_access.
+            let is_module_or_special = match fa.base() {
+                Some(Expr::NameRef(ref name_ref)) => name_ref.text().is_some_and(|base_name| {
+                    STDLIB_MODULES.contains(&base_name.as_str())
+                        || self.user_modules.contains_key(&base_name)
+                        || self.service_modules.contains_key(&base_name)
+                        || self.is_sum_type_name(&base_name)
+                        || self.is_struct_type_name(&base_name)
+                }),
+                _ => false,
+            };
 
-                if !is_module_or_special && stdlib_method.is_none() {
-                    let method_name = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+            if !is_module_or_special && stdlib_method.is_none() {
+                let method_name = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
 
-                    // `record.field(args)` where the field holds a function
-                    // value calls that value; no receiver is passed.
-                    let field_holds_function = fa
-                        .base()
-                        .and_then(|base| self.get_ty(base.syntax().text_range()))
-                        .and_then(|ty| match ty {
-                            Ty::App(con, _) => match con.as_ref() {
-                                Ty::Con(tc) => Some(tc.name.clone()),
-                                _ => None,
-                            },
+                // `record.field(args)` where the field holds a function
+                // value calls that value; no receiver is passed.
+                let field_holds_function = fa
+                    .base()
+                    .and_then(|base| self.get_ty(base.syntax().text_range()))
+                    .and_then(|ty| match ty {
+                        Ty::App(con, _) => match con.as_ref() {
                             Ty::Con(tc) => Some(tc.name.clone()),
                             _ => None,
-                        })
-                        .and_then(|name| self.registry.struct_defs.get(&name))
-                        .is_some_and(|info| {
-                            info.fields.iter().any(|(field, ty)| {
-                                *field == method_name && matches!(ty, Ty::Fun(..))
-                            })
-                        });
-                    if field_holds_function {
-                        let func = self.lower_field_access(fa);
-                        let args = call.args().iter().map(|arg| self.lower_expr(arg)).collect();
-                        let ty = self.resolve_range(call.syntax().text_range());
-                        return MirExpr::Call {
-                            func: Box::new(func),
-                            args,
-                            ty,
-                        };
-                    }
-
-                    // Lower the receiver expression
-                    let receiver = fa
-                        .base()
-                        .map(|e| self.lower_expr(&e))
-                        .unwrap_or(MirExpr::Unit);
-
-                    // Lower explicit arguments
-                    let mut args = vec![receiver];
-                    for arg in call.args() {
-                        args.push(self.lower_expr(&arg));
-                    }
-
+                        },
+                        Ty::Con(tc) => Some(tc.name.clone()),
+                        _ => None,
+                    })
+                    .and_then(|name| self.registry.struct_defs.get(&name))
+                    .is_some_and(|info| {
+                        info.fields
+                            .iter()
+                            .any(|(field, ty)| *field == method_name && matches!(ty, Ty::Fun(..)))
+                    });
+                if field_holds_function {
+                    let func = self.lower_field_access(fa);
+                    let args = call.args().iter().map(|arg| self.lower_expr(arg)).collect();
                     let ty = self.resolve_range(call.syntax().text_range());
-
-                    // An instantiated generic sum type (`Option<Int>`) gets
-                    // its trait functions on first use.
-                    let receiver_source = fa
-                        .base()
-                        .and_then(|base| self.get_ty(base.syntax().text_range()).cloned());
-                    if let Some(source) = &receiver_source {
-                        self.ensure_instantiation_traits(source);
-                    }
-
-                    // Route through the shared trait dispatch helper
-                    let first_arg_ty = args[0].ty().clone();
-                    let callee_var_ty = MirType::FnPtr(
-                        args.iter().map(|a| a.ty().clone()).collect(),
-                        Box::new(ty.clone()),
-                    );
-                    if method_name == "compare" && args.len() == 2 {
-                        if let Some(source) = receiver_source
-                            .as_ref()
-                            .filter(|ty| !matches!(ty, Ty::Var(_)))
-                        {
-                            return self.compare_call(source, args);
-                        }
-                    }
-                    let call_result = self.get_ty(call.syntax().text_range()).cloned();
-                    let callee = receiver_source
-                        .as_ref()
-                        .and_then(|source| {
-                            self.parameterized_impl_callee(
-                                &method_name,
-                                source,
-                                call_result.as_ref(),
-                                &callee_var_ty,
-                            )
-                        })
-                        .or_else(|| {
-                            receiver_source.as_ref().and_then(|source| {
-                                self.instantiation_trait_callee(
-                                    &method_name,
-                                    source,
-                                    &callee_var_ty,
-                                )
-                            })
-                        })
-                        .unwrap_or_else(|| {
-                            self.resolve_trait_callee(&method_name, &callee_var_ty, &first_arg_ty)
-                        });
-
-                    // Apply the same post-dispatch optimizations as bare-name calls:
-                    // Display__to_string__String identity short-circuit
-                    if let MirExpr::Var(ref name, _) = callee {
-                        if name == "Display__to_string__String" && !args.is_empty() {
-                            return args.into_iter().next().unwrap();
-                        }
-                        // Debug__inspect__String quotes and escapes
-                        if name == "Debug__inspect__String" && !args.is_empty() {
-                            return Self::inspect_string(args.into_iter().next().unwrap());
-                        }
-                    }
-
-                    // `to_string` / `inspect` on a value whose type, not a
-                    // nominal impl, decides how it prints.
-                    if let MirExpr::Var(ref name, _) = callee {
-                        if (name == "to_string" || name == "debug" || name == "inspect")
-                            && args.len() == 1
-                        {
-                            if let Some(shown) = receiver_source.as_ref().and_then(|ty| {
-                                self.display_by_type(&args[0], ty, name == "inspect")
-                            }) {
-                                return shown;
-                            }
-                        }
-                    }
-
-                    let args = self.apply_direct_resource_modes(&callee, args);
                     return MirExpr::Call {
-                        func: Box::new(callee),
+                        func: Box::new(func),
                         args,
                         ty,
                     };
                 }
+
+                // Lower the receiver expression
+                let receiver = fa
+                    .base()
+                    .map(|e| self.lower_expr(&e))
+                    .unwrap_or(MirExpr::Unit);
+
+                // Lower explicit arguments
+                let mut args = vec![receiver];
+                for arg in call.args() {
+                    args.push(self.lower_expr(&arg));
+                }
+
+                let ty = self.resolve_range(call.syntax().text_range());
+
+                // An instantiated generic sum type (`Option<Int>`) gets
+                // its trait functions on first use.
+                let receiver_source = fa
+                    .base()
+                    .and_then(|base| self.get_ty(base.syntax().text_range()).cloned());
+                if let Some(source) = &receiver_source {
+                    self.ensure_instantiation_traits(source);
+                }
+
+                // Route through the shared trait dispatch helper
+                let first_arg_ty = args[0].ty().clone();
+                let callee_var_ty = MirType::FnPtr(
+                    args.iter().map(|a| a.ty().clone()).collect(),
+                    Box::new(ty.clone()),
+                );
+                if method_name == "compare" && args.len() == 2 {
+                    if let Some(source) = receiver_source
+                        .as_ref()
+                        .filter(|ty| !matches!(ty, Ty::Var(_)))
+                    {
+                        return self.compare_call(source, args);
+                    }
+                }
+                let call_result = self.get_ty(call.syntax().text_range()).cloned();
+                let callee = receiver_source
+                    .as_ref()
+                    .and_then(|source| {
+                        self.parameterized_impl_callee(
+                            &method_name,
+                            source,
+                            call_result.as_ref(),
+                            &callee_var_ty,
+                        )
+                    })
+                    .or_else(|| {
+                        receiver_source.as_ref().and_then(|source| {
+                            self.instantiation_trait_callee(&method_name, source, &callee_var_ty)
+                        })
+                    })
+                    .unwrap_or_else(|| {
+                        self.resolve_trait_callee(&method_name, &callee_var_ty, &first_arg_ty)
+                    });
+
+                // Apply the same post-dispatch optimizations as bare-name calls:
+                // Display__to_string__String identity short-circuit
+                if let MirExpr::Var(ref name, _) = callee {
+                    if name == "Display__to_string__String" && !args.is_empty() {
+                        return args.into_iter().next().unwrap();
+                    }
+                    // Debug__inspect__String quotes and escapes
+                    if name == "Debug__inspect__String" && !args.is_empty() {
+                        return Self::inspect_string(args.into_iter().next().unwrap());
+                    }
+                }
+
+                // `to_string` / `inspect` on a value whose type, not a
+                // nominal impl, decides how it prints.
+                if let MirExpr::Var(ref name, _) = callee {
+                    if (name == "to_string" || name == "debug" || name == "inspect")
+                        && args.len() == 1
+                    {
+                        if let Some(shown) = receiver_source
+                            .as_ref()
+                            .and_then(|ty| self.display_by_type(&args[0], ty, name == "inspect"))
+                        {
+                            return shown;
+                        }
+                    }
+                }
+
+                let args = self.apply_direct_resource_modes(&callee, args);
+                return MirExpr::Call {
+                    func: Box::new(callee),
+                    args,
+                    ty,
+                };
             }
         }
 
@@ -9915,11 +9898,9 @@ impl<'a> Lowerer<'a> {
         // the typeck resolved to a Tuple type, use Ptr. This prevents LLVM
         // struct/pointer mismatches where typeck resolves e.g. List.head on
         // List<(A,B)> as Tuple([A,B]) but the runtime returns an opaque Ptr.
-        if let MirExpr::Var(ref _name, ref callee_ty) = callee {
-            if let MirType::FnPtr(_, ref ret_ty) = callee_ty {
-                if matches!(ty, MirType::Tuple(_)) && matches!(**ret_ty, MirType::Ptr) {
-                    ty = MirType::Ptr;
-                }
+        if let MirExpr::Var(ref _name, MirType::FnPtr(_, ref ret_ty)) = callee {
+            if matches!(ty, MirType::Tuple(_)) && matches!(**ret_ty, MirType::Ptr) {
+                ty = MirType::Ptr;
             }
         }
 
@@ -9941,11 +9922,9 @@ impl<'a> Lowerer<'a> {
                 // This handles cases where the callee Var's type was also
                 // resolved from an unresolved typeck variable.
                 if matches!(ty, MirType::Unit) {
-                    if let Some(known_ty) = self.known_functions.get(name) {
-                        if let MirType::FnPtr(_, ref ret_ty) = known_ty {
-                            if !matches!(**ret_ty, MirType::Unit) {
-                                ty = *ret_ty.clone();
-                            }
+                    if let Some(MirType::FnPtr(_, ref ret_ty)) = self.known_functions.get(name) {
+                        if !matches!(**ret_ty, MirType::Unit) {
+                            ty = *ret_ty.clone();
                         }
                     }
                 }
@@ -10605,220 +10584,213 @@ impl<'a> Lowerer<'a> {
         // resolve as a function reference instead of a struct field access.
         // User-defined modules take precedence over stdlib modules to allow
         // user code with modules named "Math", "Int", "Float", etc.
-        if let Some(base_expr) = fa.base() {
-            if let Expr::NameRef(ref name_ref) = base_expr {
-                if let Some(base_name) = name_ref.text() {
-                    // Check service modules FIRST -- service methods map to generated
-                    // function names (e.g., Counter.start -> __service_counter_start).
-                    // Must come before user_modules which would resolve to bare names.
-                    if let Some(methods) = self.service_modules.get(&base_name).cloned() {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        for (method_name, generated_fn) in &methods {
-                            if *method_name == field {
-                                let ty = self.resolve_range(fa.syntax().text_range());
-                                // Return the generated function name as a Var reference.
-                                return MirExpr::Var(generated_fn.clone(), ty);
-                            }
-                        }
-                    }
-
-                    // Check user-defined modules (Phase 39) -- they shadow stdlib.
-                    if let Some(func_names) = self.user_modules.get(&base_name) {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        if func_names.contains(&field) {
-                            let ty = self.resolve_range(fa.syntax().text_range());
-                            let lowered_name = self.lowered_fn_symbol_name(
-                                &field,
-                                &field,
-                                fa.syntax().text_range(),
-                            );
-                            return MirExpr::Var(lowered_name, ty);
-                        }
-                    }
-
-                    // A qualified variant constructor (`Color.Red`, `Result.Ok`)
-                    // lowers like the unqualified one. Qualified by the module
-                    // exporting its type (`Geo.Dot`), the type is the one the
-                    // checker gave it.
+        if let Some(Expr::NameRef(ref name_ref)) = fa.base() {
+            if let Some(base_name) = name_ref.text() {
+                // Check service modules FIRST -- service methods map to generated
+                // function names (e.g., Counter.start -> __service_counter_start).
+                // Must come before user_modules which would resolve to bare names.
+                if let Some(methods) = self.service_modules.get(&base_name).cloned() {
                     let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    let owner = if self.user_modules.contains_key(&base_name) {
+                    for (method_name, generated_fn) in &methods {
+                        if *method_name == field {
+                            let ty = self.resolve_range(fa.syntax().text_range());
+                            // Return the generated function name as a Var reference.
+                            return MirExpr::Var(generated_fn.clone(), ty);
+                        }
+                    }
+                }
+
+                // Check user-defined modules (Phase 39) -- they shadow stdlib.
+                if let Some(func_names) = self.user_modules.get(&base_name) {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    if func_names.contains(&field) {
+                        let ty = self.resolve_range(fa.syntax().text_range());
+                        let lowered_name =
+                            self.lowered_fn_symbol_name(&field, &field, fa.syntax().text_range());
+                        return MirExpr::Var(lowered_name, ty);
+                    }
+                }
+
+                // A qualified variant constructor (`Color.Red`, `Result.Ok`)
+                // lowers like the unqualified one. Qualified by the module
+                // exporting its type (`Geo.Dot`), the type is the one the
+                // checker gave it.
+                let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                let owner = if self.user_modules.contains_key(&base_name) {
+                    let result = match self.get_ty(fa.syntax().text_range()) {
+                        Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
+                        other => other.cloned(),
+                    };
+                    match result {
+                        Some(Ty::App(con, _)) => match *con {
+                            Ty::Con(tc) => tc.name,
+                            _ => base_name.clone(),
+                        },
+                        Some(Ty::Con(tc)) => tc.name,
+                        _ => base_name.clone(),
+                    }
+                } else {
+                    base_name.clone()
+                };
+                let variant_arity = self.registry.sum_type_defs.get(&owner).and_then(|info| {
+                    info.variants
+                        .iter()
+                        .find(|v| v.name == field)
+                        .map(|v| v.fields.len())
+                });
+                if let Some(arity) = variant_arity {
+                    let ty = self.resolve_range(fa.syntax().text_range());
+                    if arity > 0 {
+                        // The call around it constructs the variant.
+                        return MirExpr::Var(field, ty);
+                    }
+                    let concrete = match &ty {
+                        MirType::SumType(name)
+                            if name == &owner || name.starts_with(&format!("{owner}_")) =>
+                        {
+                            name.clone()
+                        }
+                        _ => owner.clone(),
+                    };
+                    return MirExpr::ConstructVariant {
+                        type_name: concrete.clone(),
+                        variant: field,
+                        fields: vec![],
+                        ty: MirType::SumType(concrete),
+                    };
+                }
+
+                // Check stdlib modules (after user modules so user code can shadow).
+                if STDLIB_MODULES.contains(&base_name.as_str()) {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    let range = fa.syntax().text_range();
+                    let fn_ty = self.get_ty(range).cloned();
+                    let fallback = self.resolve_range(range);
+                    return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
+                }
+
+                // Check if this is StructName.from_json or SumTypeName.from_json
+                // (static trait method). Resolves to __json_decode__TypeName which
+                // chains parse + from_json.
+                if self.registry.struct_defs.contains_key(&base_name)
+                    || self.registry.sum_type_defs.contains_key(&base_name)
+                {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    if field == "from_json" {
+                        // A generic type decodes as the instantiation
+                        // the call returns (`Result<Box<Int>, String>`).
                         let result = match self.get_ty(fa.syntax().text_range()) {
                             Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-                            other => other.cloned(),
+                            _ => fa
+                                .syntax()
+                                .parent()
+                                .and_then(|call| self.get_ty(call.text_range()).cloned()),
                         };
-                        match result {
-                            Some(Ty::App(con, _)) => match *con {
-                                Ty::Con(tc) => tc.name,
-                                _ => base_name.clone(),
-                            },
-                            Some(Ty::Con(tc)) => tc.name,
-                            _ => base_name.clone(),
-                        }
-                    } else {
-                        base_name.clone()
-                    };
-                    let variant_arity = self.registry.sum_type_defs.get(&owner).and_then(|info| {
-                        info.variants
-                            .iter()
-                            .find(|v| v.name == field)
-                            .map(|v| v.fields.len())
-                    });
-                    if let Some(arity) = variant_arity {
-                        let ty = self.resolve_range(fa.syntax().text_range());
-                        if arity > 0 {
-                            // The call around it constructs the variant.
-                            return MirExpr::Var(field, ty);
-                        }
-                        let concrete = match &ty {
-                            MirType::SumType(name)
-                                if name == &owner || name.starts_with(&format!("{owner}_")) =>
-                            {
-                                name.clone()
-                            }
-                            _ => owner.clone(),
+                        let decoded = match result {
+                            Some(Ty::App(_, args)) => args.first().cloned(),
+                            _ => None,
                         };
-                        return MirExpr::ConstructVariant {
-                            type_name: concrete.clone(),
-                            variant: field,
-                            fields: vec![],
-                            ty: MirType::SumType(concrete),
-                        };
-                    }
-
-                    // Check stdlib modules (after user modules so user code can shadow).
-                    if STDLIB_MODULES.contains(&base_name.as_str()) {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        let range = fa.syntax().text_range();
-                        let fn_ty = self.get_ty(range).cloned();
-                        let fallback = self.resolve_range(range);
-                        return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
-                    }
-
-                    // Check if this is StructName.from_json or SumTypeName.from_json
-                    // (static trait method). Resolves to __json_decode__TypeName which
-                    // chains parse + from_json.
-                    if self.registry.struct_defs.contains_key(&base_name)
-                        || self.registry.sum_type_defs.contains_key(&base_name)
-                    {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        if field == "from_json" {
-                            // A generic type decodes as the instantiation
-                            // the call returns (`Result<Box<Int>, String>`).
-                            let result = match self.get_ty(fa.syntax().text_range()) {
-                                Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-                                _ => fa
-                                    .syntax()
-                                    .parent()
-                                    .and_then(|call| self.get_ty(call.text_range()).cloned()),
-                            };
-                            let decoded = match result {
-                                Some(Ty::App(_, args)) => args.first().cloned(),
-                                _ => None,
-                            };
-                            let instance = decoded.and_then(|ty| match &ty {
-                                Ty::App(_, args) if !args.is_empty() => {
-                                    self.ensure_instantiation_traits(&ty);
-                                    Some(self.instantiation_helper_name(&base_name, args))
-                                }
-                                _ => None,
-                            });
-                            let wrapper_name =
-                                format!("__json_decode__{}", instance.unwrap_or(base_name.clone()));
-                            if let Some(fn_ty) = self.known_functions.get(&wrapper_name).cloned() {
-                                return MirExpr::Var(wrapper_name, fn_ty);
+                        let instance = decoded.and_then(|ty| match &ty {
+                            Ty::App(_, args) if !args.is_empty() => {
+                                self.ensure_instantiation_traits(&ty);
+                                Some(self.instantiation_helper_name(&base_name, args))
                             }
+                            _ => None,
+                        });
+                        let wrapper_name =
+                            format!("__json_decode__{}", instance.unwrap_or(base_name.clone()));
+                        if let Some(fn_ty) = self.known_functions.get(&wrapper_name).cloned() {
+                            return MirExpr::Var(wrapper_name, fn_ty);
                         }
                     }
+                }
 
-                    // Check if this is StructName.from_row (FromRow trait method).
-                    // Resolves to FromRow__from_row__StructName.
-                    if self.registry.struct_defs.contains_key(&base_name) {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        if field == "from_row" {
-                            let fn_name = format!("FromRow__from_row__{}", base_name);
-                            if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
-                                return MirExpr::Var(fn_name, fn_ty);
-                            }
-                        }
-                    }
-
-                    // Check if this is StructName.from (From trait method, Phase 77).
-                    // Look up mangled From_X__from__StructName in known_functions.
-                    if self.registry.struct_defs.contains_key(&base_name)
-                        || self.registry.sum_type_defs.contains_key(&base_name)
-                    {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        if field == "from" {
-                            // Find the From impl function by scanning known_functions
-                            // for any key matching From_*__from__{base_name}.
-                            let suffix = format!("__from__{}", base_name);
-                            for (fn_name, fn_ty) in self.known_functions.iter() {
-                                if fn_name.starts_with("From_") && fn_name.ends_with(&suffix) {
-                                    return MirExpr::Var(fn_name.clone(), fn_ty.clone());
-                                }
-                            }
-                            // Fallback: try unparameterized name.
-                            let unparameterized = format!("From__from__{}", base_name);
-                            if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned()
-                            {
-                                return MirExpr::Var(unparameterized, fn_ty);
-                            }
-                        }
-                        // Phase 128: StructName.try_from() dispatch (TryFrom trait).
-                        // Mirrors the From.from() pattern above.
-                        if field == "try_from" {
-                            let suffix = format!("__try_from__{}", base_name);
-                            for (fn_name, fn_ty) in self.known_functions.iter() {
-                                if fn_name.starts_with("TryFrom_") && fn_name.ends_with(&suffix) {
-                                    return MirExpr::Var(fn_name.clone(), fn_ty.clone());
-                                }
-                            }
-                            // Fallback: unparameterized name.
-                            let unparameterized = format!("TryFrom__try_from__{}", base_name);
-                            if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned()
-                            {
-                                return MirExpr::Var(unparameterized, fn_ty);
-                            }
-                        }
-                    }
-
-                    // Any other static interface method: `Type.method(...)` is the
-                    // impl's `Trait__method__Type` function.
-                    if self.registry.struct_defs.contains_key(&base_name)
-                        || self.registry.sum_type_defs.contains_key(&base_name)
-                    {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        let suffix = format!("__{}__{}", field, base_name);
-                        let found = self
-                            .known_functions
-                            .iter()
-                            .filter(|(fn_name, _)| {
-                                fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
-                            })
-                            .min_by(|a, b| a.0.cmp(b.0))
-                            .map(|(fn_name, fn_ty)| (fn_name.clone(), fn_ty.clone()));
-                        if let Some((fn_name, fn_ty)) = found {
+                // Check if this is StructName.from_row (FromRow trait method).
+                // Resolves to FromRow__from_row__StructName.
+                if self.registry.struct_defs.contains_key(&base_name) {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    if field == "from_row" {
+                        let fn_name = format!("FromRow__from_row__{}", base_name);
+                        if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
                             return MirExpr::Var(fn_name, fn_ty);
                         }
                     }
+                }
 
-                    // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
-                    // __field_types__ or __*_col__ (Schema metadata functions from deriving(Schema)).
-                    // Mangled name: {Name}____{method} e.g. User____table__
-                    if self.registry.struct_defs.contains_key(&base_name) {
-                        let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                        if field == "__table__"
-                            || field == "__fields__"
-                            || field == "__primary_key__"
-                            || field == "__relationships__"
-                            || field == "__field_types__"
-                            || field == "__relationship_meta__"
-                            || (field.starts_with("__") && field.ends_with("_col__"))
-                        {
-                            let fn_name = format!("{}__{}", base_name, field);
-                            if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
-                                return MirExpr::Var(fn_name, fn_ty);
+                // Check if this is StructName.from (From trait method, Phase 77).
+                // Look up mangled From_X__from__StructName in known_functions.
+                if self.registry.struct_defs.contains_key(&base_name)
+                    || self.registry.sum_type_defs.contains_key(&base_name)
+                {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    if field == "from" {
+                        // Find the From impl function by scanning known_functions
+                        // for any key matching From_*__from__{base_name}.
+                        let suffix = format!("__from__{}", base_name);
+                        for (fn_name, fn_ty) in self.known_functions.iter() {
+                            if fn_name.starts_with("From_") && fn_name.ends_with(&suffix) {
+                                return MirExpr::Var(fn_name.clone(), fn_ty.clone());
                             }
+                        }
+                        // Fallback: try unparameterized name.
+                        let unparameterized = format!("From__from__{}", base_name);
+                        if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
+                            return MirExpr::Var(unparameterized, fn_ty);
+                        }
+                    }
+                    // Phase 128: StructName.try_from() dispatch (TryFrom trait).
+                    // Mirrors the From.from() pattern above.
+                    if field == "try_from" {
+                        let suffix = format!("__try_from__{}", base_name);
+                        for (fn_name, fn_ty) in self.known_functions.iter() {
+                            if fn_name.starts_with("TryFrom_") && fn_name.ends_with(&suffix) {
+                                return MirExpr::Var(fn_name.clone(), fn_ty.clone());
+                            }
+                        }
+                        // Fallback: unparameterized name.
+                        let unparameterized = format!("TryFrom__try_from__{}", base_name);
+                        if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
+                            return MirExpr::Var(unparameterized, fn_ty);
+                        }
+                    }
+                }
+
+                // Any other static interface method: `Type.method(...)` is the
+                // impl's `Trait__method__Type` function.
+                if self.registry.struct_defs.contains_key(&base_name)
+                    || self.registry.sum_type_defs.contains_key(&base_name)
+                {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    let suffix = format!("__{}__{}", field, base_name);
+                    let found = self
+                        .known_functions
+                        .iter()
+                        .filter(|(fn_name, _)| {
+                            fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
+                        })
+                        .min_by(|a, b| a.0.cmp(b.0))
+                        .map(|(fn_name, fn_ty)| (fn_name.clone(), fn_ty.clone()));
+                    if let Some((fn_name, fn_ty)) = found {
+                        return MirExpr::Var(fn_name, fn_ty);
+                    }
+                }
+
+                // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
+                // __field_types__ or __*_col__ (Schema metadata functions from deriving(Schema)).
+                // Mangled name: {Name}____{method} e.g. User____table__
+                if self.registry.struct_defs.contains_key(&base_name) {
+                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                    if field == "__table__"
+                        || field == "__fields__"
+                        || field == "__primary_key__"
+                        || field == "__relationships__"
+                        || field == "__field_types__"
+                        || field == "__relationship_meta__"
+                        || (field.starts_with("__") && field.ends_with("_col__"))
+                    {
+                        let fn_name = format!("{}__{}", base_name, field);
+                        if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
+                            return MirExpr::Var(fn_name, fn_ty);
                         }
                     }
                 }
@@ -12143,7 +12115,7 @@ impl<'a> Lowerer<'a> {
                     let text = t.text().to_string();
                     // The last line of the last STRING_CONTENT is the closing indent line
                     text.split('\n')
-                        .last()
+                        .next_back()
                         .unwrap_or("")
                         .chars()
                         .take_while(|c| *c == ' ' || *c == '\t')
@@ -12405,7 +12377,7 @@ impl<'a> Lowerer<'a> {
                 })
             }
             "Map" => {
-                let key_fn = if args.len() >= 1 {
+                let key_fn = if !args.is_empty() {
                     self.resolve_to_string_callback(&args[0], debug)
                 } else {
                     self.resolve_to_string_callback(&Ty::int(), debug)
@@ -17068,13 +17040,9 @@ fn to_snake_case(name: &str) -> String {
 fn apply_heredoc_content(text: String, is_first: bool, is_last: bool, trim_level: usize) -> String {
     // Strip leading newline from first segment
     let s: String = if is_first {
-        if text.starts_with("\r\n") {
-            text[2..].to_string()
-        } else if text.starts_with('\n') {
-            text[1..].to_string()
-        } else {
-            text
-        }
+        text.strip_prefix("\r\n")
+            .or_else(|| text.strip_prefix('\n'))
+            .map_or_else(|| text.clone(), str::to_string)
     } else {
         text
     };
@@ -17185,7 +17153,7 @@ fn extract_simple_string_content(node: &mesh_parser::cst::SyntaxNode) -> String 
     }
     let trim_level = contents
         .last()
-        .and_then(|last| last.split('\n').last())
+        .and_then(|last| last.split('\n').next_back())
         .map(|line| line.chars().take_while(|c| *c == ' ' || *c == '\t').count())
         .unwrap_or(0);
     let count = contents.len();
@@ -18111,26 +18079,27 @@ pub fn lower_module_to_mir<'a>(
             // ToJson: register known_functions entry for ToJson__to_json__StructName
             // The actual function body is generated in the defining module's MIR.
             let to_json_name = format!("ToJson__to_json__{}", name);
-            if !lowerer.known_functions.contains_key(&to_json_name) {
+            if let std::collections::hash_map::Entry::Vacant(e) =
+                lowerer.known_functions.entry(to_json_name)
+            {
                 let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
                 if typeck.trait_registry.has_impl("ToJson", &struct_ty) {
-                    lowerer.known_functions.insert(
-                        to_json_name,
-                        MirType::FnPtr(vec![MirType::Struct(name.clone())], Box::new(MirType::Ptr)),
-                    );
+                    e.insert(MirType::FnPtr(
+                        vec![MirType::Struct(name.clone())],
+                        Box::new(MirType::Ptr),
+                    ));
                 }
             }
 
             // FromRow: register known_functions entry for FromRow__from_row__StructName
             // The actual function body is generated in the defining module's MIR.
             let from_row_name = format!("FromRow__from_row__{}", name);
-            if !lowerer.known_functions.contains_key(&from_row_name) {
+            if let std::collections::hash_map::Entry::Vacant(e) =
+                lowerer.known_functions.entry(from_row_name)
+            {
                 let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
                 if typeck.trait_registry.has_impl("FromRow", &struct_ty) {
-                    lowerer.known_functions.insert(
-                        from_row_name,
-                        MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
-                    );
+                    e.insert(MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
                 }
             }
         }
@@ -18209,10 +18178,8 @@ pub fn lower_module_to_mir<'a>(
     let unlowered_clustered_routes = typeck
         .clustered_route_wrappers
         .iter()
-        .filter_map(|(range, metadata)| {
-            (!lowerer.consumed_clustered_route_wrappers.contains(range))
-                .then(|| metadata.runtime_name.clone())
-        })
+        .filter(|&(range, _metadata)| !lowerer.consumed_clustered_route_wrappers.contains(range))
+        .map(|(_range, metadata)| metadata.runtime_name.clone())
         .collect::<Vec<_>>();
     if !unlowered_clustered_routes.is_empty() {
         return Err(unlowered_clustered_routes

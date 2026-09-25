@@ -2223,7 +2223,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .builder
                                 .build_bit_cast(iv, self.context.f64_type(), "i64_to_f64")
                                 .map_err(|e| e.to_string())?;
-                            return Ok(f64_val.into());
+                            return Ok(f64_val);
                         }
                     }
                 }
@@ -3739,7 +3739,7 @@ impl<'ctx> CodeGen<'ctx> {
         // The actual stored value is an i64 (string pointer). Reload as i64 directly
         // from the local alloca to recover the correct runtime value.
         let node_val = match &args[0] {
-            MirExpr::Var(name, mir_ty) if matches!(mir_ty, MirType::Unit) => {
+            MirExpr::Var(name, MirType::Unit) => {
                 // Variable has unresolved type -- load as i64 from the alloca directly
                 if let Some(alloca) = self.locals.get(name).copied() {
                     self.builder
@@ -3806,7 +3806,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map(|(i, arg)| {
                     let expected_ty = expected_arg_types.get(i).unwrap_or(arg.ty());
                     match arg {
-                        MirExpr::Var(name, mir_ty) if matches!(mir_ty, MirType::Unit) => {
+                        MirExpr::Var(name, MirType::Unit) => {
                             if let Some(alloca) = self.locals.get(name).copied() {
                                 self.builder
                                     .build_load(
@@ -5484,7 +5484,7 @@ impl<'ctx> CodeGen<'ctx> {
         let mut call_args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> =
             Vec::with_capacity(num_params);
 
-        for i in 0..num_params {
+        for (i, &body_param_type) in body_param_types.iter().enumerate() {
             let idx = self.context.i32_type().const_int(i as u64, false);
             let zero = self.context.i32_type().const_int(0, false);
             let element_ptr = unsafe {
@@ -5500,8 +5500,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Convert BasicMetadataTypeEnum to BasicTypeEnum for type checking.
             let param_ty: inkwell::types::BasicTypeEnum<'ctx> =
-                inkwell::types::BasicTypeEnum::try_from(body_param_types[i])
-                    .unwrap_or(i64_ty.into());
+                inkwell::types::BasicTypeEnum::try_from(body_param_type).unwrap_or(i64_ty.into());
 
             let loaded_val = if param_ty.is_pointer_type() {
                 // Load as i64 then inttoptr

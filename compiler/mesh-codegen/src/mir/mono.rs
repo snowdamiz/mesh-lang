@@ -89,10 +89,10 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
         if let Some(func) = module.functions.iter().find(|f| f.name == name) {
             if func.params.len() == 1 && func.params[0].0 == "__args_ptr" {
                 let body_fn_name = format!("__actor_{}_body", name);
-                if module.functions.iter().any(|f| f.name == body_fn_name) {
-                    if !reachable.contains(&body_fn_name) {
-                        worklist.push(body_fn_name);
-                    }
+                if module.functions.iter().any(|f| f.name == body_fn_name)
+                    && !reachable.contains(&body_fn_name)
+                {
+                    worklist.push(body_fn_name);
                 }
             }
         }

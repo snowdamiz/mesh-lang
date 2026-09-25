@@ -16,6 +16,10 @@
 //! Parse + TypeckResult -> MIR -> DecisionTree -> LLVM IR -> Object file -> Native binary
 //! ```
 
+// Lowering and code generation thread their state through many parameters,
+// and some intermediate shapes are spelled out where they are built.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 pub mod codegen;
 pub mod declared;
 pub mod link;

@@ -956,7 +956,7 @@ mod tests {
 
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
         let found = find_mesh_rt_in(
-            &[temp_target.clone()],
+            std::slice::from_ref(&temp_target),
             &target,
             &["debug", "release"],
             RuntimeFlavor::Standard,
@@ -976,7 +976,7 @@ mod tests {
 
         let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
         let found = find_mesh_rt_in(
-            &[temp_target.clone()],
+            std::slice::from_ref(&temp_target),
             &target,
             &["debug", "release"],
             RuntimeFlavor::Standard,
@@ -996,7 +996,7 @@ mod tests {
 
         let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
         let found = find_mesh_rt_in(
-            &[temp_target.clone()],
+            std::slice::from_ref(&temp_target),
             &target,
             &["debug", "release"],
             RuntimeFlavor::Test,
@@ -1006,7 +1006,7 @@ mod tests {
 
         fs::remove_file(&runtime).unwrap();
         let error = find_mesh_rt_in(
-            &[temp_target.clone()],
+            std::slice::from_ref(&temp_target),
             &target,
             &["debug", "release"],
             RuntimeFlavor::Test,
@@ -1024,7 +1024,7 @@ mod tests {
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
 
         let error = find_mesh_rt_in(
-            &[temp_target.clone()],
+            std::slice::from_ref(&temp_target),
             &target,
             &["debug", "release"],
             RuntimeFlavor::Standard,
