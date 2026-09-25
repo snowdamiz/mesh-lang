@@ -634,4 +634,45 @@ mod tests {
         };
         assert_eq!(format_result(&result), "");
     }
+
+    #[test]
+    fn open_brackets_and_braces_continue_the_input() {
+        assert!(!is_input_complete("[1,"));
+        assert!(is_input_complete("[1, 2]"));
+        assert!(!is_input_complete("%{\"a\" => 1"));
+        assert!(is_input_complete("%{\"a\" => 1}"));
+    }
+
+    #[test]
+    fn type_command_sees_definitions_and_reports_errors() {
+        let mut session = ReplSession::default();
+        session.add_definition("fn one() -> Int do 1 end");
+        match process_command(":type one() + 1", &mut session) {
+            CommandResult::TypeInfo(info) => assert_eq!(info, "one() + 1 :: Int"),
+            _ => panic!("expected the type of `one() + 1`"),
+        }
+        assert!(matches!(
+            process_command(":type 1 + \"a\"", &mut session),
+            CommandResult::Error(_)
+        ));
+        assert!(matches!(
+            process_command(":type (1", &mut session),
+            CommandResult::Error(message) if message.starts_with("Parse error")
+        ));
+    }
+
+    #[test]
+    fn load_reports_a_file_that_does_not_parse() {
+        let path = std::env::temp_dir().join(format!("mesh-repl-load-{}.mpl", std::process::id()));
+        std::fs::write(&path, "fn broken( do\n").unwrap();
+        let result = process_command(
+            &format!(":load {}", path.display()),
+            &mut ReplSession::new(),
+        );
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            result,
+            CommandResult::Error(message) if message.starts_with("Parse error in")
+        ));
+    }
 }

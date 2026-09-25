@@ -2578,39 +2578,19 @@ fn jit_execute(
         .create_jit_execution_engine(inkwell::OptimizationLevel::None)
         .map_err(|e| format!("Failed to create JIT engine: {}", e))?;
 
+    // `get_function` checks no signature: it fails only when the symbol is
+    // missing. A Unit wrapper returns nothing, and the register read as its
+    // result is ignored (`format_jit_result` prints `()`).
+    let not_found = |e| format!("Failed to find JIT function '{}': {}", wrapper_fn_name, e);
     // A Float comes back in a floating-point register, not where an i64 does.
     if result_type == "Float" {
-        let jit_fn =
-            unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>(wrapper_fn_name) }
-                .map_err(|e| format!("Failed to find JIT function '{}': {}", wrapper_fn_name, e))?;
+        let jit_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>(wrapper_fn_name) }
+            .map_err(not_found)?;
         return Ok(format!("{:?}", unsafe { jit_fn.call() }));
     }
-
-    // Look up the wrapper function
-    let maybe_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> i64>(wrapper_fn_name) };
-
-    match maybe_fn {
-        Ok(jit_fn) => {
-            let result = unsafe { jit_fn.call() };
-            let formatted = format_jit_result(result, result_type);
-            Ok(formatted)
-        }
-        Err(_) => {
-            // Function might return void (Unit type)
-            let maybe_void_fn =
-                unsafe { ee.get_function::<unsafe extern "C" fn()>(wrapper_fn_name) };
-            match maybe_void_fn {
-                Ok(jit_fn) => {
-                    unsafe { jit_fn.call() };
-                    Ok("()".to_string())
-                }
-                Err(e) => Err(format!(
-                    "Failed to find JIT function '{}': {}",
-                    wrapper_fn_name, e
-                )),
-            }
-        }
-    }
+    let jit_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> i64>(wrapper_fn_name) }
+        .map_err(not_found)?;
+    Ok(format_jit_result(unsafe { jit_fn.call() }, result_type))
 }
 
 /// Format a raw JIT result value based on its Mesh type.
@@ -2654,6 +2634,26 @@ fn extract_definition_name(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn errors_are_reported_before_anything_runs() {
+        let mut session = ReplSession::new();
+        for (input, expected) in [("fn broken( do 1 end", "Parse error"), (")", "Parse error")] {
+            let error = jit_eval(input, &mut session).err().unwrap();
+            assert!(error.starts_with(expected), "{input}: {error}");
+        }
+        let error = jit_eval("fn f() -> Int do \"a\" end", &mut session)
+            .err()
+            .unwrap();
+        assert!(error.contains("expected Int"), "{error}");
+    }
+
+    #[test]
+    fn results_of_other_types_and_nameless_definitions_are_described() {
+        assert_eq!(format_jit_result(16, "List<Int>"), "<List<Int> at 0x10>");
+        assert_eq!(extract_definition_name("fn"), "<anonymous>");
+        assert_eq!(extract_definition_name("fn add(a, b) = a + b"), "add");
+    }
 
     #[test]
     fn every_declared_runtime_function_is_registered() {
