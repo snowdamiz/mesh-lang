@@ -610,7 +610,21 @@ impl LspSession {
 }
 
 impl Drop for LspSession {
+    /// Ask the server to exit, as an editor does, so it ends normally (and a
+    /// coverage-instrumented build writes what it recorded); kill it only if
+    /// it has not ended within a few seconds.
     fn drop(&mut self) {
+        // Not `notify`, which panics on a failed write: the server may be gone.
+        let body = json!({"jsonrpc": "2.0", "method": "exit"}).to_string();
+        let _ = write!(self.stdin, "Content-Length: {}\r\n\r\n{body}", body.len());
+        let _ = self.stdin.flush();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if matches!(self.child.try_wait(), Ok(Some(_))) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
         self.persist_observability();

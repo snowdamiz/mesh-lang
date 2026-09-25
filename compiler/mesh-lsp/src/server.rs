@@ -309,13 +309,9 @@ impl LanguageServer for MeshBackend {
         }
 
         // Full-document replacement: single TextEdit covering entire document.
-        let line_count = doc.source.lines().count() as u32;
-        let last_line_len = doc.source.lines().last().map_or(0, |l| l.len()) as u32;
+        let end = analysis::offset_to_position(&doc.source, doc.source.len());
         Ok(Some(vec![TextEdit {
-            range: Range::new(
-                Position::new(0, 0),
-                Position::new(line_count, last_line_len),
-            ),
+            range: Range::new(Position::new(0, 0), end),
             new_text: formatted,
         }]))
     }
