@@ -996,22 +996,11 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                     past_do = true;
                 }
-                SyntaxKind::END_KW => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    if past_do {
-                        push_body_comment(&mut parts, &mut inner_items, &tok);
-                    } else {
-                        parts.push(sp());
-                        parts.push(inline_comment(&tok));
-                    }
-                }
-                _ => {
-                    if past_do {
-                        inner_items.push(ir::text(tok.text()));
-                    } else {
-                        add_token_with_context(&tok, &mut parts);
-                    }
-                }
+                // Items separated by `;` go on lines of their own.
+                SyntaxKind::END_KW | SyntaxKind::SEMICOLON => {}
+                // After `do`, the only other tokens are comments.
+                _ if past_do => push_body_comment(&mut parts, &mut inner_items, &tok),
+                _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => {
                 if n.kind() == SyntaxKind::DERIVING_CLAUSE {
@@ -1210,40 +1199,24 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                     in_body = true;
                 }
-                SyntaxKind::END_KW => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    if in_body {
-                        push_body_comment(&mut parts, &mut fields, &tok);
-                    } else {
-                        add_token_with_context(&tok, &mut parts);
-                    }
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
+                // Fields separated by `;` go on lines of their own.
+                SyntaxKind::END_KW | SyntaxKind::SEMICOLON => {}
+                // After `do`, the only other tokens are comments.
+                _ if in_body => push_body_comment(&mut parts, &mut fields, &tok),
+                _ => add_token_with_context(&tok, &mut parts),
             },
+            // Emitted after `end`.
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::DERIVING_CLAUSE => {}
+            NodeOrToken::Node(n) if in_body || n.kind() == SyntaxKind::STRUCT_FIELD => {
+                fields.push(walk_node(&n));
+            }
             NodeOrToken::Node(n) => {
-                if n.kind() == SyntaxKind::DERIVING_CLAUSE {
-                    // Handled after "end" is emitted
-                } else if in_body || n.kind() == SyntaxKind::STRUCT_FIELD {
-                    fields.push(walk_node(&n));
-                } else {
-                    match n.kind() {
-                        SyntaxKind::VISIBILITY => {
-                            parts.push(walk_node(&n));
-                            parts.push(sp());
-                        }
-                        SyntaxKind::RESOURCE_MODIFIER => {
-                            parts.push(walk_node(&n));
-                            parts.push(sp());
-                        }
-                        SyntaxKind::NAME | SyntaxKind::GENERIC_PARAM_LIST => {
-                            parts.push(walk_node(&n));
-                        }
-                        _ => {
-                            parts.push(walk_node(&n));
-                        }
-                    }
+                parts.push(walk_node(&n));
+                if matches!(
+                    n.kind(),
+                    SyntaxKind::VISIBILITY | SyntaxKind::RESOURCE_MODIFIER
+                ) {
+                    parts.push(sp());
                 }
             }
         }
@@ -2599,6 +2572,18 @@ mod tests {
         assert_eq!(
             fmt("fn f(x) do\ncase x do 1 -> 2; _ -> 4 end\nend"),
             "fn f(x) do\n  case x do\n    1 -> 2\n    _ -> 4\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn items_separated_by_semicolons_go_on_lines_of_their_own() {
+        assert_eq!(
+            fmt("type T do\nA; B\nend\n\nstruct S do\na :: Int; b :: Int\nend"),
+            "type T do\n  A\n  B\nend\n\nstruct S do\n  a :: Int\n  b :: Int\nend\n"
+        );
+        assert_eq!(
+            fmt("interface I do\nfn f(self) -> Int; fn g(self) -> Int\nend"),
+            "interface I do\n  fn f(self) -> Int\n\n  fn g(self) -> Int\nend\n"
         );
     }
 
