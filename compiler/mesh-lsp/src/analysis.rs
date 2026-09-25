@@ -11,13 +11,14 @@ use std::path::{Path, PathBuf};
 use rowan::TextRange;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
 
-use mesh_common::module_graph::ModuleGraph;
+use mesh_common::module_graph::{ModuleGraph, ModuleId};
 use mesh_pkg::manifest::{
     build_clustered_export_surface, collect_source_cluster_declarations, resolve_entrypoint,
     validate_cluster_declarations_with_source, ClusteredDeclarationError, Manifest,
 };
 use mesh_pkg::project::{
-    build_import_context, build_project, check_project, CheckedProject, ProjectData,
+    build_import_context, build_project, check_project, single_source_project, CheckedProject,
+    ProjectData,
 };
 use mesh_typeck::error::{ConstraintOrigin, TypeError};
 use mesh_typeck::ty::Ty;
@@ -56,7 +57,18 @@ pub fn analyze_document(
     }
 }
 
+/// A document outside any project, analyzed as meshc builds a directory
+/// holding only it.
 fn analyze_single_document(source: &str) -> AnalysisResult {
+    match single_source_project(source) {
+        Ok(project) => analyze_module(&project, ModuleId(0), None),
+        // A module block that conflicts with another, or an import cycle.
+        Err(error) => project_failure_analysis(source, error),
+    }
+}
+
+/// The document parsed and checked on its own, when it cannot be built.
+fn analyze_source_alone(source: &str) -> AnalysisResult {
     let parse = mesh_parser::parse(source);
     let typeck = mesh_typeck::check(&parse);
     let diagnostics = diagnostics_from_parse_and_typeck(source, &parse, &typeck);
@@ -76,7 +88,7 @@ enum ProjectAnalysis {
 }
 
 fn project_failure_analysis(source: &str, message: impl Into<String>) -> AnalysisResult {
-    let mut result = analyze_single_document(source);
+    let mut result = analyze_source_alone(source);
     result.diagnostics.insert(0, project_diagnostic(message));
     result
 }
@@ -408,98 +420,88 @@ fn analyze_project_document(
         return analyze_test_document(&project, source);
     }
 
-    let current_id = match project
+    let Some(current_id) = project
         .graph
         .modules
         .iter()
         .find(|module| module.path == relative_path)
         .map(|module| module.id)
-    {
-        Some(current_id) => current_id,
-        None => {
-            return ProjectAnalysis::Failed(project_failure_analysis(
-                source,
-                format!(
-                    "Document '{}' was not discovered under project root '{}'",
-                    doc_path.display(),
-                    project_root.display()
-                ),
-            ));
-        }
+    else {
+        return ProjectAnalysis::Failed(project_failure_analysis(
+            source,
+            format!(
+                "Document '{}' was not discovered under project root '{}'",
+                doc_path.display(),
+                project_root.display()
+            ),
+        ));
     };
+    ProjectAnalysis::Success(analyze_module(&project, current_id, manifest))
+}
 
+/// One module of a built project: its own diagnostics and those of the
+/// `module ... do ... end` blocks in its file (modules of their own over the
+/// same text), and, when the project has no other errors, its clustered
+/// declarations'.
+fn analyze_module(
+    project: &ProjectData,
+    current_id: ModuleId,
+    manifest: Option<Manifest>,
+) -> AnalysisResult {
     let CheckedProject {
-        typeck: all_typeck,
+        typeck: mut all_typeck,
         exports: all_exports,
-    } = check_project(&project, false);
-
-    let source_cluster_declarations =
-        collect_source_cluster_declarations(&project.graph, &project.module_parses);
+    } = check_project(project, false);
     let has_project_errors = project
         .module_parses
         .iter()
         .any(|parse| !parse.errors().is_empty())
         || all_typeck
             .iter()
-            .filter_map(|typeck| typeck.as_ref())
+            .flatten()
             .any(|typeck| !typeck.errors.is_empty());
 
+    let path = &project.graph.get(current_id).path;
     let current_idx = current_id.0 as usize;
-    let Some(current_source) = project.module_sources.get(current_idx).cloned() else {
-        return ProjectAnalysis::Failed(project_failure_analysis(
-            source,
-            format!(
-                "Project analysis for '{}' resolved an invalid module index {}",
-                doc_path.display(),
-                current_idx
-            ),
-        ));
-    };
-    // The type errors of the file's `module ... do ... end` blocks, which
-    // are modules of their own over the same text.
+    let current_source = project.module_sources[current_idx].clone();
     let inline_errors: Vec<_> = project
         .graph
         .modules
         .iter()
-        .filter(|module| module.path == relative_path && module.id != current_id)
+        .filter(|module| module.path == *path && module.id != current_id)
         .filter_map(|module| all_typeck[module.id.0 as usize].as_ref())
         .flat_map(|typeck| typeck.errors.iter().cloned())
         .collect();
-    let Some(mut current_typeck) = all_typeck.into_iter().nth(current_idx).flatten() else {
-        return ProjectAnalysis::Failed(project_failure_analysis(
-            source,
-            format!(
-                "Project analysis for '{}' did not produce type-check data for '{}'",
-                doc_path.display(),
-                relative_path.display()
-            ),
-        ));
-    };
+    let mut current_typeck = all_typeck[current_idx]
+        .take()
+        .expect("check_project checks every module");
     current_typeck.errors.extend(inline_errors);
     let current_parse = mesh_parser::parse(&current_source);
     let mut diagnostics =
         diagnostics_from_parse_and_typeck(&current_source, &current_parse, &current_typeck);
 
     if !has_project_errors {
+        let source_cluster_declarations =
+            collect_source_cluster_declarations(&project.graph, &project.module_parses);
         if let Some(cluster_diagnostics) = cluster_diagnostics(
             manifest.map(Ok),
             &source_cluster_declarations,
             &project.graph,
             &project.module_parses,
             &all_exports,
-            &relative_path,
+            path,
             &current_source,
         ) {
             diagnostics.extend(cluster_diagnostics);
         }
     }
 
-    ProjectAnalysis::Success(AnalysisResult {
+    AnalysisResult {
         diagnostics,
         parse: current_parse,
         typeck: current_typeck,
         source: current_source,
-    })
+    }
 }
 
 /// A `.test.mpl` document, analyzed as the program `meshc test` makes of it.
@@ -699,7 +701,7 @@ mod tests {
             .collect()
     }
 
-    fn entry_module<'a>(graph: &'a ModuleGraph) -> &'a mesh_common::module_graph::ModuleInfo {
+    fn entry_module(graph: &ModuleGraph) -> &mesh_common::module_graph::ModuleInfo {
         graph
             .modules
             .iter()
@@ -740,7 +742,7 @@ mod tests {
         std::fs::create_dir_all(&project_dir).unwrap();
         std::fs::write(project_dir.join("mesh.toml"), manifest).unwrap();
         std::fs::write(
-            &project_dir.join("main.mpl"),
+            project_dir.join("main.mpl"),
             source_declared_work_project_main_source(),
         )
         .unwrap();
@@ -902,7 +904,7 @@ mod tests {
             .graph
             .modules
             .iter()
-            .find(|module| module.path == PathBuf::from(DEFAULT_ENTRYPOINT))
+            .find(|module| module.path == Path::new(DEFAULT_ENTRYPOINT))
             .expect("root main.mpl should still be discovered");
 
         assert_eq!(entry.path, PathBuf::from("lib/start.mpl"));
@@ -1187,6 +1189,25 @@ mod tests {
         );
     }
 
+    /// A file outside any project is analyzed as meshc builds a directory
+    /// holding only it: its module blocks are modules (the editor reported
+    /// `import Geo` unknown), and a `let` outside a function is an error.
+    #[test]
+    fn a_document_outside_a_project_is_built_like_one() {
+        let source = "import Geo\n\nmodule Geo do\n  pub fn area(w :: Int, h :: Int) -> Int do\n    w * h\n  end\nend\n\nfn main() do\n  println(\"${Geo.area(1, 2)}\")\nend\n";
+        let result = analyze_document("file:///nowhere/main.mpl", source, &[]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{:?}",
+            diagnostic_messages(&result)
+        );
+        let result = analyze_document("file:///nowhere/main.mpl", "let x = 1\n", &[]);
+        assert_eq!(
+            diagnostic_messages(&result),
+            ["`let x` outside a function is not supported"]
+        );
+    }
+
     /// meshc refuses a `let` outside a function; the editor said nothing.
     #[test]
     fn a_top_level_let_is_reported_in_a_project() {
@@ -1366,7 +1387,7 @@ mod tests {
 
     #[test]
     fn analyze_valid_source_no_diagnostics() {
-        let source = "let x = 42";
+        let source = "fn main() do\n  let x = 42\n  x\nend\n";
         let result = analyze_document("file:///test.mpl", source, &[]);
         assert!(
             result.diagnostics.is_empty(),

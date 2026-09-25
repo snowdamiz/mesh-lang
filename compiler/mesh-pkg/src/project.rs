@@ -408,6 +408,28 @@ pub fn build_project(
         module_parses.push(parse);
     }
 
+    link(graph, module_sources, module_parses)
+}
+
+/// A file outside any project, built as meshc builds a directory holding
+/// only it: the entry module `Main`, with its module blocks and imports.
+pub fn single_source_project(source: &str) -> Result<ProjectData, String> {
+    let mut graph = ModuleGraph::new();
+    graph.add_module("Main".to_string(), PathBuf::from(DEFAULT_ENTRYPOINT), true);
+    link(
+        graph,
+        vec![source.to_string()],
+        vec![mesh_parser::parse(source)],
+    )
+}
+
+/// Make each `module` block a module of its own, connect every module to
+/// those it imports or whose interfaces it uses, and order them.
+fn link(
+    mut graph: ModuleGraph,
+    mut module_sources: Vec<String>,
+    mut module_parses: Vec<mesh_parser::Parse>,
+) -> Result<ProjectData, String> {
     // Phase 1c: a `module Name do ... end` block is a module of its own,
     // which files import like any other (the file holding it too). Its
     // source is the file with the rest blanked, so diagnostics point into
