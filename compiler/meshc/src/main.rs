@@ -28,7 +28,6 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
-mod discovery;
 mod library_bindings;
 mod migrate;
 mod proof;
@@ -841,27 +840,15 @@ pub(crate) fn prepare_project_build(
     };
     let entry_relative_path = resolve_entrypoint(dir, manifest.as_ref())?;
 
-    // Build the project: discover all files, parse, build module graph
-    let native_sources = native_bindings
-        .iter()
-        .map(|binding| discovery::ExtraMeshSource {
-            path: binding.path.clone(),
-            relative_path: binding.relative_path.clone(),
-        })
-        .collect::<Vec<_>>();
-    let project = if test_builtins {
-        discovery::build_test_project_with_entrypoint_and_sources(
-            dir,
-            &entry_relative_path,
-            &native_sources,
-        )?
-    } else {
-        discovery::build_project_with_entrypoint_and_sources(
-            dir,
-            &entry_relative_path,
-            &native_sources,
-        )?
-    };
+    // Build the project: discover all files, parse, build module graph.
+    // `meshc test` builds the helpers under `tests/` too.
+    let project = mesh_pkg::project::build_project(
+        dir,
+        &entry_relative_path,
+        &native_bindings,
+        test_builtins,
+        &mesh_pkg::project::read_file,
+    )?;
 
     // Find the entry module
     let entry_id = project
@@ -966,91 +953,29 @@ pub(crate) fn prepare_project_build(
 
     reject_duplicate_type_names(&project)?;
 
-    // Type-check ALL modules in topological order (Phase 39)
-    let module_count = project.graph.module_count();
-    let mut all_exports: Vec<Option<mesh_typeck::ExportedSymbols>> =
-        (0..module_count).map(|_| None).collect();
-    let mut all_typeck: Vec<Option<mesh_typeck::TypeckResult>> =
-        (0..module_count).map(|_| None).collect();
+    // Type-check every module in compilation order, and report each one's
+    // errors and warnings.
+    let mesh_pkg::project::CheckedProject {
+        typeck: mut all_typeck,
+        exports: all_exports,
+    } = mesh_pkg::project::check_project(&project, test_builtins);
     let mut has_type_errors = false;
-
     for &id in &project.compilation_order {
         let idx = id.0 as usize;
-        let parse = &project.module_parses[idx];
         let source = &project.module_sources[idx];
-        let module_path = dir.join(&project.graph.get(id).path);
-
-        // Build ImportContext from already-checked dependencies
-        let mut import_ctx = build_import_context(&project.graph, &all_exports, parse, id);
-
-        // Thread the current module's name (clustered route handlers are
-        // named with it).
-        let module_name = &project.graph.get(id).name;
-        import_ctx.current_module = Some(module_name.clone());
-        import_ctx.test_builtins = test_builtins;
-
-        // Type-check this module with imports
-        let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
-
-        // Report type-check diagnostics for this module
-        let file_name = diag_opts.display_path(&module_path);
-        for error in &typeck.errors {
-            has_type_errors = true;
-            let rendered = mesh_typeck::diagnostics::render_diagnostic(
-                error, source, &file_name, diag_opts, None,
-            );
-            eprint!("{}", rendered);
-        }
-
-        // Nothing evaluates a `let` outside a function: a function naming one
-        // failed to compile with "Undefined variable". (The REPL runs its
-        // bindings inside each evaluation instead.)
-        for let_ in parse.syntax().descendants().filter(|node| {
-            node.kind() == mesh_parser::SyntaxKind::LET_BINDING
-                && !node.ancestors().any(|ancestor| {
-                    use mesh_parser::SyntaxKind as K;
-                    matches!(
-                        ancestor.kind(),
-                        K::FN_DEF
-                            | K::ACTOR_DEF
-                            | K::SERVICE_DEF
-                            | K::SUPERVISOR_DEF
-                            | K::IMPL_DEF
-                            | K::INTERFACE_DEF
-                            | K::CLOSURE_EXPR
-                            | K::TRAILING_CLOSURE
-                    )
-                })
-        }) {
-            has_type_errors = true;
-            let name = let_
-                .children()
-                .find(|child| child.kind() == mesh_parser::SyntaxKind::NAME)
-                .map_or_else(|| "_".to_string(), |name| name.text().to_string());
-            let error = mesh_typeck::error::TypeError::TopLevelLet {
-                name,
-                span: let_.text_range(),
-            };
+        let file_name = diag_opts.display_path(&dir.join(&project.graph.get(id).path));
+        let Some(typeck) = &all_typeck[idx] else {
+            continue;
+        };
+        has_type_errors |= !typeck.errors.is_empty();
+        for diagnostic in typeck.errors.iter().chain(&typeck.warnings) {
             eprint!(
                 "{}",
                 mesh_typeck::diagnostics::render_diagnostic(
-                    &error, source, &file_name, diag_opts, None,
+                    diagnostic, source, &file_name, diag_opts, None,
                 )
             );
         }
-
-        // Report warnings
-        for warning in &typeck.warnings {
-            let rendered = mesh_typeck::diagnostics::render_diagnostic(
-                warning, source, &file_name, diag_opts, None,
-            );
-            eprint!("{}", rendered);
-        }
-
-        // Collect exports for downstream modules
-        let exports = mesh_typeck::collect_exports(parse, &typeck);
-        all_exports[idx] = Some(exports);
-        all_typeck[idx] = Some(typeck);
     }
 
     if has_type_errors {
@@ -1216,7 +1141,7 @@ pub(crate) fn prepare_project_build(
 /// for one type and codegen emitted one of them, so `Z.run_z()` showed its
 /// `State` laid out as `A`'s, and a module's `spawn(worker)` could start
 /// another module's `worker`.
-fn reject_duplicate_type_names(project: &discovery::ProjectData) -> Result<(), String> {
+fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Result<(), String> {
     use mesh_parser::ast::item::Item;
 
     // A struct or sum type copied verbatim into several modules (a private
@@ -1298,7 +1223,7 @@ fn reject_duplicate_type_names(project: &discovery::ProjectData) -> Result<(), S
 }
 
 fn reject_duplicate_pub_functions(
-    project: &discovery::ProjectData,
+    project: &mesh_pkg::project::ProjectData,
     all_exports: &[Option<mesh_typeck::ExportedSymbols>],
 ) -> Result<(), String> {
     // Export keys are exactly the `pub_fns` handed to the lowerer, so a key collision
@@ -1491,79 +1416,6 @@ fn collect_inferred_fn_usage_types(
     }
 
     usage
-}
-
-/// Build an ImportContext for a module from already-checked dependency exports.
-///
-/// Reads the module's import declarations to determine which modules are imported,
-/// then constructs an ImportContext with the exports of those modules. Trait defs
-/// and impls from ALL already-checked modules are included (XMOD-05: globally visible).
-fn build_import_context(
-    graph: &mesh_common::module_graph::ModuleGraph,
-    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-    parse: &mesh_parser::Parse,
-    _module_id: mesh_common::module_graph::ModuleId,
-) -> mesh_typeck::ImportContext {
-    use mesh_parser::ast::item::Item;
-    use mesh_typeck::{ImportContext, ModuleExports};
-
-    let mut ctx = ImportContext::empty();
-
-    // Collect ALL trait defs and impls from ALL already-checked modules (XMOD-05)
-    for exports_opt in all_exports.iter() {
-        if let Some(exports) = exports_opt {
-            ctx.all_trait_defs
-                .extend(exports.trait_defs.iter().cloned());
-            ctx.all_trait_impls
-                .extend(exports.trait_impls.iter().cloned());
-        }
-    }
-
-    // For each import declaration in this module, find the corresponding
-    // module's exports and add them to the ImportContext.
-    let tree = parse.tree();
-    for item in tree.items() {
-        let segments = match &item {
-            Item::ImportDecl(import_decl) => import_decl.module_path().map(|p| p.segments()),
-            Item::FromImportDecl(from_import) => from_import.module_path().map(|p| p.segments()),
-            _ => None,
-        };
-
-        if let Some(segments) = segments {
-            let full_name = segments.join(".");
-            let last_segment = segments.last().cloned().unwrap_or_default();
-
-            // Look up the module in the graph
-            if let Some(dep_id) = graph.resolve(&full_name) {
-                let idx = dep_id.0 as usize;
-                if let Some(Some(exports)) = all_exports.get(idx) {
-                    // Build ModuleExports from ExportedSymbols
-                    let mod_exports = ModuleExports {
-                        module_name: full_name.clone(),
-                        functions: exports.functions.clone(),
-                        struct_defs: exports.struct_defs.clone(),
-                        sum_type_defs: exports.sum_type_defs.clone(),
-                        service_defs: exports.service_defs.clone(),
-                        actor_defs: exports.actor_defs.clone(),
-                        private_names: exports.private_names.clone(),
-                        type_aliases: exports.type_aliases.clone(),
-                        resource_types: exports.resource_types.clone(),
-                        function_ownership: exports.function_ownership.clone(),
-                        interfaces: exports
-                            .trait_defs
-                            .iter()
-                            .map(|interface| interface.name.clone())
-                            .collect(),
-                    };
-                    ctx.module_exports.insert(last_segment, mod_exports);
-                }
-            }
-            // If module not found in graph, that's fine -- the type checker
-            // will emit ImportModuleNotFound when it processes the import.
-        }
-    }
-
-    ctx
 }
 
 fn clustered_issue_file_and_span(

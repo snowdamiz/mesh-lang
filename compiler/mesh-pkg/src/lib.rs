@@ -2,6 +2,7 @@ pub mod autonomous;
 pub mod lockfile;
 pub mod manifest;
 pub mod native;
+pub mod project;
 pub mod resolver;
 pub mod scaffold;
 pub mod toolchain_update;

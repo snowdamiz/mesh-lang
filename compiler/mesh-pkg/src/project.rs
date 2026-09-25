@@ -1,15 +1,17 @@
-//! File discovery, import extraction, and module graph construction for Mesh projects.
-//!
-//! Provides utilities to recursively discover `.mpl` files in a project
-//! directory, convert file paths to PascalCase module names, extract import
-//! declarations from parsed ASTs, and build a complete module dependency graph.
+//! A Mesh project's modules: its files, its dependencies' and installed
+//! packages' files, its native bindings and its `module` blocks, parsed and
+//! ordered so each comes after the modules it uses. `meshc` builds a project
+//! and the language server analyses one through this one path, so an editor
+//! sees the program the compiler builds.
 
 use std::path::{Component, Path, PathBuf};
 
 use mesh_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
 use mesh_parser::ast::item::{Item, SourceFile};
 use mesh_parser::syntax_kind::SyntaxKind;
-use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
+
+use crate::manifest::DEFAULT_ENTRYPOINT;
+use crate::native::ResolvedNativeBinding;
 
 /// Convert a snake_case string to PascalCase.
 ///
@@ -210,11 +212,6 @@ fn discover_installed_package_roots_recursive(
     Ok(())
 }
 
-/// Extract import module paths from a parsed source file.
-///
-/// Walks the top-level items and collects module paths from both
-/// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
-/// Returns PascalCase dot-separated module names.
 /// Whether module `from` depends on `to`, directly or through others.
 fn module_reaches(graph: &ModuleGraph, from: ModuleId, to: ModuleId) -> bool {
     let mut stack = vec![from];
@@ -230,6 +227,11 @@ fn module_reaches(graph: &ModuleGraph, from: ModuleId, to: ModuleId) -> bool {
     false
 }
 
+/// Extract import module paths from a parsed source file.
+///
+/// Walks the top-level items and collects module paths from both
+/// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
+/// Returns PascalCase dot-separated module names.
 pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
     let mut imports = Vec::new();
     for item in source_file.items() {
@@ -271,65 +273,49 @@ pub struct ProjectData {
     pub module_parses: Vec<mesh_parser::Parse>,
 }
 
-pub struct ExtraMeshSource {
-    pub path: PathBuf,
-    pub relative_path: PathBuf,
+/// Read a project file from disk.
+pub fn read_file(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
 }
 
 /// Build a complete project: discover files, parse all, build dependency graph.
 ///
-/// This is the main entry point for the multi-file build pipeline.
-/// Unlike [`build_module_graph`], this function retains the per-file
-/// Parse results and source strings for downstream compilation phases.
-///
 /// Pipeline:
-/// 1. Discover all `.mpl` files in the project.
-/// 2. Register each file as a module, read and parse source.
+/// 1. Discover all `.mpl` files in the project (with the helpers under the
+///    top-level `tests/` when `include_test_helpers`, as `meshc test` builds).
+/// 2. Register each file as a module, read it with `read_source` and parse it,
+///    and the same for dependencies, installed packages and native bindings.
 /// 3. Extract imports from parsed ASTs to build dependency edges.
 /// 4. Run topological sort to get compilation order.
+///
+/// `read_source` is [`read_file`] for a build; an editor passes one that
+/// returns the text of open documents instead.
 ///
 /// Unknown imports (stdlib, typos) are silently skipped.
 /// Self-imports produce a specific error.
 /// Circular dependencies produce an error with the cycle path.
-pub fn build_project_with_entrypoint(
+pub fn build_project(
     project_root: &Path,
     entry_relative_path: &Path,
-) -> Result<ProjectData, String> {
-    build_project_with_entrypoint_and_sources(project_root, entry_relative_path, &[])
-}
-
-pub fn build_project_with_entrypoint_and_sources(
-    project_root: &Path,
-    entry_relative_path: &Path,
-    extra_sources: &[ExtraMeshSource],
-) -> Result<ProjectData, String> {
-    build_project_with_entrypoint_and_sources_in_scope(
-        project_root,
-        entry_relative_path,
-        extra_sources,
-        false,
-    )
-}
-
-pub fn build_test_project_with_entrypoint_and_sources(
-    project_root: &Path,
-    entry_relative_path: &Path,
-    extra_sources: &[ExtraMeshSource],
-) -> Result<ProjectData, String> {
-    build_project_with_entrypoint_and_sources_in_scope(
-        project_root,
-        entry_relative_path,
-        extra_sources,
-        true,
-    )
-}
-
-fn build_project_with_entrypoint_and_sources_in_scope(
-    project_root: &Path,
-    entry_relative_path: &Path,
-    extra_sources: &[ExtraMeshSource],
+    native_bindings: &[ResolvedNativeBinding],
     include_test_helpers: bool,
+    read_source: &dyn Fn(&Path) -> Result<String, String>,
 ) -> Result<ProjectData, String> {
+    if entry_relative_path.as_os_str().is_empty()
+        || entry_relative_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!(
+            "Resolved entrypoint '{}' must stay within project '{}'",
+            entry_relative_path.display(),
+            project_root.display()
+        ));
+    }
+
     // Phase 1: Discover files, register modules, read and parse source.
     let files = discover_mesh_files_with_test_helpers(project_root, include_test_helpers)?;
     if !files
@@ -347,10 +333,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
     let mut module_parses = Vec::new();
 
     for relative_path in &files {
-        let full_path = project_root.join(relative_path);
-        let source = std::fs::read_to_string(&full_path)
-            .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
-
+        let source = read_source(&project_root.join(relative_path))?;
         let is_entry = relative_path == entry_relative_path;
         let name = if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
             "Main".to_string()
@@ -372,7 +355,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
 
     // Phase 1b: Discover declared path and git dependencies and installed
     // package modules under .mesh/packages.
-    let mut package_roots = mesh_pkg::manifest::source_dependency_roots(project_root)?;
+    let mut package_roots = crate::manifest::source_dependency_roots(project_root)?;
     let packages_dir = project_root.join(".mesh").join("packages");
     if packages_dir.exists() {
         package_roots.extend(discover_installed_package_roots(&packages_dir)?);
@@ -387,8 +370,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
                 None => continue, // skip package-root main.mpl
             };
             let full_path = package_root.join(relative_path);
-            let source = std::fs::read_to_string(&full_path)
-                .map_err(|e| format!("Failed to read '{}': {}", full_path.display(), e))?;
+            let source = read_source(&full_path)?;
             let parse = mesh_parser::parse(&source);
             let _id = graph.add_module(name, full_path, false);
             module_sources.push(source);
@@ -396,7 +378,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
         }
     }
 
-    for extra in extra_sources {
+    for extra in native_bindings {
         let name = path_to_module_name(&extra.relative_path).ok_or_else(|| {
             format!(
                 "Cannot determine native binding module name for '{}'",
@@ -419,8 +401,7 @@ fn build_project_with_entrypoint_and_sources_in_scope(
                 existing_full_path.display()
             ));
         }
-        let source = std::fs::read_to_string(&extra.path)
-            .map_err(|error| format!("Failed to read '{}': {error}", extra.path.display()))?;
+        let source = read_source(&extra.path)?;
         let parse = mesh_parser::parse(&source);
         graph.add_module(name, extra.path.clone(), false);
         module_sources.push(source);
@@ -464,10 +445,9 @@ fn build_project_with_entrypoint_and_sources_in_scope(
     }
 
     // Phase 2: Build dependency edges from import declarations.
-    for id_val in 0..graph.module_count() {
-        let id = ModuleId(id_val as u32);
-        let tree = module_parses[id_val].tree();
-        let imports = extract_imports(&tree);
+    for (index, parse) in module_parses.iter().enumerate() {
+        let id = ModuleId(index as u32);
+        let imports = extract_imports(&parse.tree());
         let module_name = graph.get(id).name.clone();
 
         for import_name in imports {
@@ -502,23 +482,23 @@ fn build_project_with_entrypoint_and_sources_in_scope(
     // left out.
     let mut interface_homes: std::collections::HashMap<String, Vec<ModuleId>> =
         std::collections::HashMap::new();
-    for id_val in 0..graph.module_count() {
-        for item in module_parses[id_val].tree().items() {
+    for (index, parse) in module_parses.iter().enumerate() {
+        for item in parse.tree().items() {
             if let Item::InterfaceDef(interface) = item {
                 if interface.visibility().is_some() {
                     if let Some(name) = interface.name().and_then(|name| name.text()) {
                         interface_homes
                             .entry(name)
                             .or_default()
-                            .push(ModuleId(id_val as u32));
+                            .push(ModuleId(index as u32));
                     }
                 }
             }
         }
     }
-    for id_val in 0..graph.module_count() {
-        let id = ModuleId(id_val as u32);
-        let root = module_parses[id_val].syntax();
+    for (index, parse) in module_parses.iter().enumerate() {
+        let id = ModuleId(index as u32);
+        let root = parse.syntax();
         let used = root.descendants_with_tokens().filter_map(|element| {
             let token = element.into_token()?;
             let in_use = token.parent_ancestors().any(|node| {
@@ -556,25 +536,139 @@ fn build_project_with_entrypoint_and_sources_in_scope(
     })
 }
 
-pub fn build_project(project_root: &Path) -> Result<ProjectData, String> {
-    build_project_with_entrypoint(project_root, Path::new(DEFAULT_ENTRYPOINT))
+/// Each module's type-check result and exports, indexed by `ModuleId.0`
+/// (every entry is `Some`; the shape is what the export surface takes).
+pub struct CheckedProject {
+    pub typeck: Vec<Option<mesh_typeck::TypeckResult>>,
+    pub exports: Vec<Option<mesh_typeck::ExportedSymbols>>,
 }
 
-/// Build a complete module dependency graph from a Mesh project directory.
+/// Type-check every module in compilation order, each with the exports of
+/// the modules it imports. `test_builtins` gives `meshc test`'s builtins.
 ///
-/// Convenience wrapper around [`build_project`] that returns only the graph
-/// and compilation order (no parse data). Preserves the Phase 37 API for
-/// existing tests and callers that don't need per-file parse results.
-#[allow(dead_code)]
-pub fn build_module_graph(project_root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
-    let project = build_project(project_root)?;
-    Ok((project.graph, project.compilation_order))
+/// A `let` outside a function is an error here, not in the type checker: the
+/// REPL runs its bindings inside each evaluation, but in a project nothing
+/// evaluates one, and a function naming it failed with "Undefined variable".
+pub fn check_project(project: &ProjectData, test_builtins: bool) -> CheckedProject {
+    let module_count = project.graph.module_count();
+    let mut exports: Vec<Option<mesh_typeck::ExportedSymbols>> = vec![None; module_count];
+    let mut typeck: Vec<Option<mesh_typeck::TypeckResult>> =
+        (0..module_count).map(|_| None).collect();
+    for &id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let mut import_ctx = build_import_context(&project.graph, &exports, parse);
+        // Clustered route handlers are named with the module's name.
+        import_ctx.current_module = Some(project.graph.get(id).name.clone());
+        import_ctx.test_builtins = test_builtins;
+        let mut result = mesh_typeck::check_with_imports(parse, &import_ctx);
+        result.errors.extend(top_level_lets(parse));
+        exports[idx] = Some(mesh_typeck::collect_exports(parse, &result));
+        typeck[idx] = Some(result);
+    }
+    CheckedProject { typeck, exports }
+}
+
+/// The `let`s outside every function, actor, service and closure.
+fn top_level_lets(parse: &mesh_parser::Parse) -> Vec<mesh_typeck::error::TypeError> {
+    parse
+        .syntax()
+        .descendants()
+        .filter(|node| {
+            node.kind() == SyntaxKind::LET_BINDING
+                && !node.ancestors().any(|ancestor| {
+                    matches!(
+                        ancestor.kind(),
+                        SyntaxKind::FN_DEF
+                            | SyntaxKind::ACTOR_DEF
+                            | SyntaxKind::SERVICE_DEF
+                            | SyntaxKind::SUPERVISOR_DEF
+                            | SyntaxKind::IMPL_DEF
+                            | SyntaxKind::INTERFACE_DEF
+                            | SyntaxKind::CLOSURE_EXPR
+                            | SyntaxKind::TRAILING_CLOSURE
+                    )
+                })
+        })
+        .map(|let_| mesh_typeck::error::TypeError::TopLevelLet {
+            name: let_
+                .children()
+                .find(|child| child.kind() == SyntaxKind::NAME)
+                .map_or_else(|| "_".to_string(), |name| name.text().to_string()),
+            span: let_.text_range(),
+        })
+        .collect()
+}
+
+/// A module's import context: the exports of the modules it imports, and the
+/// interfaces and implementations of every module checked before it (those
+/// are visible everywhere).
+pub fn build_import_context(
+    graph: &ModuleGraph,
+    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
+    parse: &mesh_parser::Parse,
+) -> mesh_typeck::ImportContext {
+    let mut ctx = mesh_typeck::ImportContext::empty();
+    for exports in all_exports.iter().flatten() {
+        ctx.all_trait_defs
+            .extend(exports.trait_defs.iter().cloned());
+        ctx.all_trait_impls
+            .extend(exports.trait_impls.iter().cloned());
+    }
+    for module_name in extract_imports(&parse.tree()) {
+        // A module not in the graph is reported by the type checker.
+        let Some(Some(exports)) = graph
+            .resolve(&module_name)
+            .and_then(|dep_id| all_exports.get(dep_id.0 as usize))
+        else {
+            continue;
+        };
+        let last_segment = module_name
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        ctx.module_exports.insert(
+            last_segment,
+            mesh_typeck::ModuleExports {
+                module_name,
+                functions: exports.functions.clone(),
+                struct_defs: exports.struct_defs.clone(),
+                sum_type_defs: exports.sum_type_defs.clone(),
+                service_defs: exports.service_defs.clone(),
+                actor_defs: exports.actor_defs.clone(),
+                private_names: exports.private_names.clone(),
+                type_aliases: exports.type_aliases.clone(),
+                resource_types: exports.resource_types.clone(),
+                function_ownership: exports.function_ownership.clone(),
+                interfaces: exports
+                    .trait_defs
+                    .iter()
+                    .map(|interface| interface.name.clone())
+                    .collect(),
+            },
+        );
+    }
+    ctx
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    fn build_project_with_entrypoint(root: &Path, entry: &Path) -> Result<ProjectData, String> {
+        super::build_project(root, entry, &[], false, &read_file)
+    }
+
+    fn build_project(root: &Path) -> Result<ProjectData, String> {
+        build_project_with_entrypoint(root, Path::new(DEFAULT_ENTRYPOINT))
+    }
+
+    fn build_module_graph(root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
+        let project = build_project(root)?;
+        Ok((project.graph, project.compilation_order))
+    }
 
     #[test]
     fn test_to_pascal_case() {
