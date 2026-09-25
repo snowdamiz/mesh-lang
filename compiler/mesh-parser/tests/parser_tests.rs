@@ -1539,6 +1539,117 @@ fn lossless_leading_whitespace() {
     }
 }
 
+/// A program cut off anywhere still parses, losslessly: every line prefix
+/// of the e2e fixtures, and every token prefix of the formatter's torture
+/// file, which uses every construct. Cut-off input reaches the recovery and
+/// look-past-the-end paths a whole program never does.
+#[test]
+fn every_prefix_of_a_program_parses_losslessly() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut fixtures: Vec<_> = std::fs::read_dir(root.join("tests/e2e"))
+        .expect("tests/e2e is readable")
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "mpl"))
+        .collect();
+    fixtures.sort();
+    assert!(fixtures.len() > 100, "found {} fixtures", fixtures.len());
+    for path in fixtures {
+        let source = std::fs::read_to_string(&path).expect("a fixture is UTF-8");
+        let ends = source.match_indices('\n').map(|(i, _)| i + 1);
+        for end in ends.chain([source.len()]) {
+            assert_lossless_roundtrip(&source[..end]);
+        }
+    }
+    let torture = std::fs::read_to_string(root.join("compiler/mesh-fmt/tests/comments.mpl"))
+        .expect("the torture file is readable");
+    for token in mesh_lexer::Lexer::tokenize(&torture) {
+        let start = token.span.start as usize;
+        assert_lossless_roundtrip(&torture[..start]);
+        let _ = mesh_parser::inline_modules(&torture[..start], &parse(&torture[..start]));
+    }
+}
+
+/// Forms that are valid but rare: trailing commas, fields separated by new
+/// lines, `;` between statements, and closures with pattern parameters.
+#[test]
+fn less_common_forms_parse_without_errors() {
+    let sources = [
+        "fn f() do\n  (1, 2,)\nend",
+        "fn f(p) do\n  %{p | x: 1\n    y: 2}\nend",
+        "fn f() do\n  json {}\nend",
+        "fn f(p) do\n  %{p | x: 1, y: 2}\nend",
+        "fn f() do\n  P { x: 0\n    y: 0 }\nend",
+        "fn f() do\n  [1, 2,]\nend",
+        "fn f() do\n  g(1, 2,)\nend",
+        "fn f(p) do\n  case p do\n    Point { x: 0, y } ->\n      y\n    _ -> 0\n  end\nend",
+        "fn f(x) do\n  case x do\n    1 ->\n      g(\n        2\n      )\n    _ -> 0\n  end\nend",
+        "fn f() do\n  fn 0 -> 1 | n when n > 0 -> n | _ -> 0 end\nend",
+        "fn f() do\n  fn 0 -> 1 | -1 -> 2 | n -> n end\nend",
+        "fn f([]) = 0",
+        "struct S do\n  has_many :posts, Post\n  belongs_to :user, User\nend",
+        "struct S do\n  table \"people\"\n  primary_key :uuid\nend",
+        "fn f<T, U>(x :: T, y :: U) -> String where T: Show, U: Eq do\n  x\nend",
+        "impl Convert<Int, String> for Meters do\nend",
+        "pub interface I do\n  fn f(self) -> Int\nend",
+        "pub supervisor S do\n  strategy: one_for_one\nend",
+        "fn f(p) do\n  let Geo.Point { x } = p\n  x\nend",
+        "fn f(x) do\n  case x do\n    (a, b,) -> a\n    [c, d,] -> c\n  end\nend",
+        "fn f(\"a\") = 1",
+        "fn f(h :: []) = h",
+        "actor A(x :: Int,) do\n  x\nend",
+        "fn f() do\n  g() do |x,|\n    x\n  end\nend",
+        "fn f() do\n  json { a: 1\n    b: 2 }\nend",
+        "fn f() do\n  g(a: 1, b: 2,)\nend",
+        "fn f() do\n  1;; 2\n  3; 4\nend",
+        "fn f(x) do\n  case x do\n    1 ->\n      2; 3\n    _ -> 4\n  end\nend",
+        "fn f() do\n  fn 0 -> 1 | n do\n    n\n  end end\nend",
+        "fn f() do\n  fn -1 -> 1 | n -> n end\nend",
+        "fn f(a, b,) do\n  a\nend",
+        "fn f() do\n  fn (a, b,) -> a end\nend",
+        "fn f() do\n  fn (-1) -> 1 | (n) -> n end\nend",
+        "fn f() do\n  g() do |x, y|\n    x\n  end\nend",
+        "fn f(m) do\n  for {k, v,} in m do\n    k\n  end\nend",
+        "struct S<T,> do\n  x :: T\nend",
+        "fn f(g :: Fun(Int,) -> Int, t :: (Int, String,)) do\n  1\nend",
+        "fn f(x :: List<Int,>) do\n  1\nend",
+        "type T do\n  A(Int, String,)\nend",
+        "struct S do\n  timestamps false\nend",
+        "impl Show for Int do\n  pub fn show(self) -> String do\n    \"i\"\n  end;\nend",
+        "actor A() do\n  receive do\n    _ -> 1\n  end;\nend",
+        "service S do\n  fn init() -> Int do\n    0\n  end;\n  call Get() :: Int do |s|\n    (s, s)\n  end\nend",
+        "supervisor S do\n  strategy: one_for_one;\n  child c do\n    start: fn -> 1 end;\n    restart: permanent\n    shutdown: brutal_kill\n  end\nend",
+        "interface I do\n  fn f(self) -> Int do\n    1\n  end;\nend",
+    ];
+    for source in sources {
+        let parse = parse(source);
+        assert!(parse.ok(), "{source:?}: {:?}", parse.errors());
+        assert_eq!(parse.syntax().text().to_string(), source);
+    }
+}
+
+/// Inputs at the edge of the grammar parse, whatever they report.
+#[test]
+fn edge_inputs_parse_losslessly() {
+    for source in [
+        "fn f(x :: List<>) do\n  1\nend",
+        "impl Convert<Int,> for Meters do\nend",
+        "type T do\n  A()\nend",
+        "fn f<T>(x :: T) -> String where T: Fmt.Show do\n  x\nend",
+        "fn f(xs) do\n  case xs do\n    h :: [] -> h\n  end\nend",
+        "fn f() do\n  \"abc\\",
+        "fn f() do\n  g() do | |\n    1\n  end\nend",
+        "fn f() do\n  fn x, -> x end\nend",
+        "struct S<> do\nend",
+        "impl Convert<> for Meters do\nend",
+        "struct S do\n  has_many :posts Post\nend",
+        "struct S do\n  table \"people\nend",
+        "fn f(p) do\n  case p do\n    Point { x: } -> 1\n  end\nend",
+        "impl Show for Int where T: Show do\nend",
+    ] {
+        assert_lossless_roundtrip(source);
+    }
+}
+
 #[test]
 fn lossless_if_else() {
     assert_lossless_roundtrip("if true do\n  1\nelse\n  2\nend");
@@ -3573,6 +3684,34 @@ fn malformed_constructs_report_what_was_expected() {
             "a closure of several statements is `fn params do ... end`, without `->`",
         ),
         ("fn f() 1", "expected `=` or `do` for function body"),
+        (
+            "interface I do\n  fn f(self) do\n    1\n",
+            "expected `end` to close default method body",
+        ),
+        (
+            "fn f() do\n  fn 0 -> 1 | n do\n    n\n",
+            "unclosed closure clause -- expected `end`",
+        ),
+        (
+            "impl Show for Int do\n  pub let x = 1\nend",
+            "expected `fn` or `type` in impl body",
+        ),
+        (
+            "clustered(work) fn f() do\nend",
+            "`clustered(work)` declarations are not supported",
+        ),
+        (
+            "struct S do\n  has_many :posts, 1\nend",
+            "expected target type name after comma in relationship declaration",
+        ),
+        (
+            "impl Show for List<Int, String> do\nend",
+            "an `impl` for a type with type arguments is not supported",
+        ),
+        (
+            "fn f<T>(x :: T) where T: 1 do\n  x\nend",
+            "expected trait name",
+        ),
         ("@x fn f() do\n  1\nend", "expected `cluster` after `@`"),
         (
             "fn f(x) do\n  case x do\n    1 -> do\n      2",

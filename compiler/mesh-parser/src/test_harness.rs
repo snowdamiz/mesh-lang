@@ -411,4 +411,26 @@ mod tests {
         let broken = "test(\"a\") do\n  let x = (1\nend\n";
         assert_eq!(preprocess_test_source(broken).unwrap(), broken);
     }
+
+    #[test]
+    fn preprocess_test_source_leaves_what_is_not_a_test() {
+        // No tests: the file is returned as it is.
+        let plain = "fn f() -> Int do\n  1\nend\n";
+        assert_eq!(preprocess_test_source(plain).unwrap(), plain);
+        // A block call other than a test or a describe, at the top or in a
+        // describe, and a statement in a describe, stay as they are; a file
+        // that does not end with a new line gets one before `main`.
+        let source = "run() do\n  1\nend\ndescribe(\"g\") do\n  let x = 1\n  run() do\n    x\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\nend";
+        let out = preprocess_test_source(source).unwrap();
+        assert!(out.starts_with("run() do\n  1\nend\n"), "{out}");
+        assert!(out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"), "{out}");
+        assert!(out.contains("  end) end\nend\n\nfn main() do"), "{out}");
+    }
+
+    #[test]
+    fn preprocess_test_source_refuses_a_second_teardown() {
+        let source = "describe(\"g\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\n  test(\"a\") do\n    assert(true)\n  end\nend\n";
+        let err = preprocess_test_source(source).unwrap_err();
+        assert!(err.starts_with("line 5: a describe has one `teardown`"), "{err}");
+    }
 }

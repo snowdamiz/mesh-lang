@@ -858,4 +858,67 @@ mod tests {
             node_kinds.len()
         );
     }
+
+    /// A parse error names a token by what it looks like.
+    #[test]
+    fn tokens_are_described_as_written() {
+        let named = [
+            (SyntaxKind::IDENT, "a name"),
+            (SyntaxKind::INT_LITERAL, "an integer"),
+            (SyntaxKind::FLOAT_LITERAL, "a float"),
+            (SyntaxKind::STRING_START, "a string"),
+            (SyntaxKind::STRING_END, "the closing `\"` of the string"),
+            (
+                SyntaxKind::INTERPOLATION_END,
+                "`}` to close the interpolation",
+            ),
+            (SyntaxKind::NEWLINE, "a new line"),
+            (SyntaxKind::EOF, "the end of the file"),
+            (SyntaxKind::DO_KW, "`do`"),
+            (SyntaxKind::MATCH_ARM, "match arm"),
+        ];
+        for (kind, text) in named {
+            assert_eq!(kind.describe(), text);
+        }
+        let punctuation = [
+            (SyntaxKind::PLUS, "+"),
+            (SyntaxKind::MINUS, "-"),
+            (SyntaxKind::STAR, "*"),
+            (SyntaxKind::SLASH, "/"),
+            (SyntaxKind::PERCENT, "%"),
+            (SyntaxKind::EQ_EQ, "=="),
+            (SyntaxKind::NOT_EQ, "!="),
+            (SyntaxKind::LT, "<"),
+            (SyntaxKind::GT, ">"),
+            (SyntaxKind::LT_EQ, "<="),
+            (SyntaxKind::GT_EQ, ">="),
+            (SyntaxKind::AMP_AMP, "&&"),
+            (SyntaxKind::PIPE_PIPE, "||"),
+            (SyntaxKind::BANG, "!"),
+            (SyntaxKind::PIPE, "|>"),
+            (SyntaxKind::DOT_DOT, ".."),
+            (SyntaxKind::DIAMOND, "<>"),
+            (SyntaxKind::PLUS_PLUS, "++"),
+            (SyntaxKind::EQ, "="),
+            (SyntaxKind::ARROW, "->"),
+            (SyntaxKind::FAT_ARROW, "=>"),
+            (SyntaxKind::COLON_COLON, "::"),
+            (SyntaxKind::QUESTION, "?"),
+            (SyntaxKind::BAR, "|"),
+            (SyntaxKind::L_PAREN, "("),
+            (SyntaxKind::R_PAREN, ")"),
+            (SyntaxKind::L_BRACKET, "["),
+            (SyntaxKind::R_BRACKET, "]"),
+            (SyntaxKind::L_BRACE, "{"),
+            (SyntaxKind::R_BRACE, "}"),
+            (SyntaxKind::COMMA, ","),
+            (SyntaxKind::DOT, "."),
+            (SyntaxKind::COLON, ":"),
+            (SyntaxKind::SEMICOLON, ";"),
+            (SyntaxKind::AT, "@"),
+        ];
+        for (kind, text) in punctuation {
+            assert_eq!(kind.describe(), format!("`{text}`"));
+        }
+    }
 }
