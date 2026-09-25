@@ -245,3 +245,24 @@ fn interface_methods_may_share_a_test_dsl_name() {
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// What an interpolation or operator needs of its operand is checked in an
+/// actor's body and in a multi-clause function as in any other function:
+/// it went unchecked there, and code generation failed with no location.
+#[test]
+fn operand_traits_are_checked_outside_single_clause_functions() {
+    for src in [
+        "struct Box do\n  n :: Int\nend\n\nactor shower() do\n  receive do\n    n -> println(\"#{Box { n: n }}\")\n  end\nend\n\nfn main() do\n  let pid = spawn(shower)\n  send(pid, 1)\nend\n",
+        "struct Box do\n  n :: Int\nend\n\nfn show(0) = \"zero\"\nfn show(n) = \"#{Box { n: n }}\"\n\nfn main() do\n  println(show(1))\nend\n",
+    ] {
+        let result = check_source(src);
+        assert_has_error(
+            &result,
+            |error| {
+                matches!(error, TypeError::TraitNotSatisfied { ty, trait_name, .. }
+                    if trait_name == "Display" && ty.to_string() == "Box")
+            },
+            src,
+        );
+    }
+}

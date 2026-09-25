@@ -393,6 +393,23 @@ fn test_json_one_line() {
     );
 }
 
+/// A struct missing a derivable trait is told to derive it.
+#[test]
+fn test_a_struct_without_display_is_told_to_derive_it() {
+    let src = "struct Box do\n  n :: Int\nend\n\nfn main() do\n  println(\"#{Box { n: 1 }}\")\nend\n";
+    let result = mesh_typeck::check(&mesh_parser::parse(src));
+    let err = result
+        .errors
+        .iter()
+        .find(|error| matches!(error, TypeError::TraitNotSatisfied { .. }))
+        .unwrap_or_else(|| panic!("{:?}", result.errors));
+    let output = render_diagnostic(err, src, "test.mpl", &opts(), None);
+    assert!(
+        output.contains("add `deriving(Display)` to the definition of `Box`"),
+        "{output}"
+    );
+}
+
 #[test]
 fn test_calling_a_value_is_not_a_function() {
     let src = "fn main() do\n  let x = 42\n  x(1)\nend\n";

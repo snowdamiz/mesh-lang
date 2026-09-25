@@ -4481,6 +4481,18 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // was done, and those outside any function (top-level code, actors).
     let pending_fields = std::mem::take(&mut ctx.pending_fields);
     resolve_pending_fields(&mut ctx, &type_registry, pending_fields, true);
+    // The same for what an interpolation or operator needs of its operand's
+    // type, and for `<>`: outside a function nothing else checks them.
+    let concat = std::mem::take(&mut ctx.concat_operands);
+    check_concat_operands(&mut ctx, concat, &FxHashMap::default());
+    let operand_traits = std::mem::take(&mut ctx.operand_traits);
+    check_type_param_bounds(
+        &mut ctx,
+        &FxHashMap::default(),
+        &[],
+        &trait_registry,
+        operand_traits,
+    );
 
     // Associated types reached through a type parameter are known wherever
     // the receiver ended up concrete (a call of a generic function).
@@ -5338,6 +5350,7 @@ fn infer_multi_clause_fn(
     );
     let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
     let saved_concat = std::mem::take(&mut ctx.concat_operands);
+    let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5496,6 +5509,14 @@ fn infer_multi_clause_fn(
     let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
     let unresolved = check_concat_operands(ctx, concat, &type_params);
     ctx.concat_operands.extend(unresolved);
+    let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
+    check_type_param_bounds(
+        ctx,
+        &type_params,
+        &where_constraints,
+        trait_registry,
+        operand_traits,
+    );
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }

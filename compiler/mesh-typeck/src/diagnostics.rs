@@ -209,6 +209,16 @@ fn severity(err: &TypeError) -> &'static str {
 // ── Span Helpers ───────────────────────────────────────────────────────
 
 /// Convert a rowan TextRange to a Rust Range<usize> for ariadne.
+/// A type named with no type arguments, as a struct or `Int` is: one an
+/// `impl` can be written for.
+fn is_named_type(ty: &Ty) -> bool {
+    match ty {
+        Ty::Con(_) => true,
+        Ty::App(con, args) => args.is_empty() && matches!(con.as_ref(), Ty::Con(_)),
+        _ => false,
+    }
+}
+
 fn text_range_to_range(range: rowan::TextRange) -> Range<usize> {
     let start: usize = range.start().into();
     let end: usize = range.end().into();
@@ -829,7 +839,13 @@ pub fn render_diagnostic(
                     "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
                      Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
                         .to_string()
-                } else if matches!(ty, Ty::Con(_)) {
+                } else if is_named_type(ty)
+                    && matches!(trait_name.as_str(), "Eq" | "Ord" | "Display" | "Debug" | "Hash")
+                {
+                    format!(
+                        "add `deriving({trait_name})` to the definition of `{ty}`, or `impl {trait_name} for {ty} do ... end`"
+                    )
+                } else if is_named_type(ty) {
                     format!("add `impl {} for {} do ... end`", trait_name, ty)
                 } else {
                     "only a named type without type parameters can have an `impl`".to_string()
