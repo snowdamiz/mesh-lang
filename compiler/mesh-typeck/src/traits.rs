@@ -222,6 +222,16 @@ impl TraitRegistry {
 
         // Look up the trait definition.
         if let Some(trait_def) = self.traits.get(&impl_def.trait_name).cloned() {
+            // The interface's `Self` is the implementing type, and its
+            // `Self.Item` the impl's `type Item`.
+            let impl_type = impl_def.impl_type.clone();
+            let assoc_types = impl_def.associated_types.clone();
+            let in_impl = |ty: &Ty| {
+                ty.replace_cons(&mut |con| match con.name.strip_prefix("Self.") {
+                    Some(assoc) => assoc_types.get(assoc).cloned(),
+                    None => (con.name == "Self").then(|| impl_type.clone()),
+                })
+            };
             // Check that all required methods are present.
             for method in &trait_def.methods {
                 match impl_def.methods.get(&method.name) {
@@ -235,10 +245,7 @@ impl TraitRegistry {
                                 ImplMethodSig {
                                     has_self: method.has_self,
                                     param_count: method.param_count,
-                                    return_type: method
-                                        .return_type
-                                        .as_ref()
-                                        .map(|ret| replace_self(ret, &impl_def.impl_type)),
+                                    return_type: method.return_type.as_ref().map(in_impl),
                                     param_types: None,
                                 },
                             );
@@ -270,7 +277,8 @@ impl TraitRegistry {
                         let types_differ = match (&method.param_types, &impl_method.param_types) {
                             (Some(expected), Some(found)) => {
                                 expected.iter().zip(found).any(|(expected, found)| {
-                                    !ty_contains_self(expected) && expected != found
+                                    let expected = in_impl(expected);
+                                    !ty_contains_self(&expected) && expected != *found
                                 })
                             }
                             _ => false,
@@ -297,25 +305,15 @@ impl TraitRegistry {
                         if let (Some(expected_ret), Some(actual_ret)) =
                             (&method.return_type, &impl_method.return_type)
                         {
-                            // Skip comparison when the trait's return type involves `Self`
-                            // (e.g., `-> Self.Item`). The interface stores Self.Item as
-                            // Ty::Con("Self") because the associated type projection is only
-                            // resolved in impl context. The method body type-checking already
-                            // validates the concrete return type against the resolved type.
-                            // `Self.Item` is the impl's own `type Item = ...`.
-                            let expected_ret = match expected_ret {
-                                Ty::Con(con) if con.name.starts_with("Self.") => impl_def
-                                    .associated_types
-                                    .get(&con.name["Self.".len()..])
-                                    .unwrap_or(expected_ret),
-                                other => other,
-                            };
-                            let expected_involves_self = ty_contains_self(expected_ret);
-                            if !expected_involves_self && expected_ret != actual_ret {
+                            // Generic, or naming an associated type the impl
+                            // does not bind (reported below): not comparable.
+                            let expected_ret = in_impl(expected_ret);
+                            let expected_involves_self = ty_contains_self(&expected_ret);
+                            if !expected_involves_self && expected_ret != *actual_ret {
                                 errors.push(TypeError::TraitMethodSignatureMismatch {
                                     trait_name: impl_def.trait_name.clone(),
                                     method_name: method.name.clone(),
-                                    expected: expected_ret.clone(),
+                                    expected: expected_ret,
                                     found: actual_ret.clone(),
                                     span: None,
                                 });
@@ -799,22 +797,6 @@ impl TraitRegistry {
 }
 
 /// Replace `Self` in an interface signature with the implementing type.
-fn replace_self(ty: &Ty, impl_ty: &Ty) -> Ty {
-    match ty {
-        Ty::Con(tc) if tc.name == "Self" => impl_ty.clone(),
-        Ty::Con(_) | Ty::Var(_) | Ty::Never => ty.clone(),
-        Ty::Fun(params, ret) => Ty::Fun(
-            params.iter().map(|p| replace_self(p, impl_ty)).collect(),
-            Box::new(replace_self(ret, impl_ty)),
-        ),
-        Ty::App(con, args) => Ty::App(
-            Box::new(replace_self(con, impl_ty)),
-            args.iter().map(|a| replace_self(a, impl_ty)).collect(),
-        ),
-        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|e| replace_self(e, impl_ty)).collect()),
-    }
-}
-
 /// Copy a query type into a private unification table.
 ///
 /// Inference variables in `ty` belong to the caller's table; resolving them

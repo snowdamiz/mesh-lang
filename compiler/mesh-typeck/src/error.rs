@@ -1036,11 +1036,7 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::UnresolvedAssocType { assoc_name, .. } => {
-                write!(
-                    f,
-                    "cannot resolve associated type `{}` -- Self.Item can only be used inside an impl block",
-                    assoc_name
-                )
+                write!(f, "no associated type `{}` is declared", assoc_name)
             }
             TypeError::UndefinedType {
                 alias_name,

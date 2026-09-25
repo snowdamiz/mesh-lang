@@ -96,6 +96,31 @@ pub enum Ty {
 }
 
 impl Ty {
+    /// This type with each constructor `replace` gives a type for replaced.
+    pub fn replace_cons(&self, replace: &mut dyn FnMut(&TyCon) -> Option<Ty>) -> Ty {
+        match self {
+            Ty::Con(con) => replace(con).unwrap_or_else(|| self.clone()),
+            Ty::App(con, args) => Ty::App(
+                Box::new(con.replace_cons(replace)),
+                args.iter().map(|arg| arg.replace_cons(replace)).collect(),
+            ),
+            Ty::Fun(params, ret) => Ty::Fun(
+                params
+                    .iter()
+                    .map(|param| param.replace_cons(replace))
+                    .collect(),
+                Box::new(ret.replace_cons(replace)),
+            ),
+            Ty::Tuple(elems) => Ty::Tuple(
+                elems
+                    .iter()
+                    .map(|elem| elem.replace_cons(replace))
+                    .collect(),
+            ),
+            Ty::Var(_) | Ty::Never => self.clone(),
+        }
+    }
+
     /// This type as a diagnostic shows it: the parts inference has not
     /// determined (`?9`) as `_`.
     pub fn with_holes(&self) -> Ty {

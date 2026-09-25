@@ -252,3 +252,53 @@ fn test_interface_no_assoc_types_compat() {
         result.errors
     );
 }
+
+/// `Self.X` naming no declared associated type is an error at the name, in
+/// an interface and in an impl, reported once.
+#[test]
+fn test_undeclared_assoc_type_is_an_error() {
+    for src in [
+        "interface Container do\n  type Item\n  fn first(self) -> Self.Missing\nend\n",
+        "interface Container do\n  type Item\n  fn put(self, x :: Self.Missing) -> Int\nend\n",
+        "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n\n\
+         struct Bag do\n  n :: Int\nend\n\n\
+         impl Container for Bag do\n  type Item = Int\n  fn first(self) -> Self.Missing do\n    self.n\n  end\nend\n",
+    ] {
+        let result = check_source(src);
+        let unresolved: Vec<_> = result
+            .errors
+            .iter()
+            .filter_map(|error| match error {
+                TypeError::UnresolvedAssocType { assoc_name, span } => {
+                    Some((assoc_name.as_str(), &src[span.start().into()..span.end().into()]))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(unresolved, [("Missing", "Missing")], "{src}\n{:?}", result.errors);
+    }
+}
+
+/// An impl's signature is checked against the interface's with `Self.Item`
+/// read as the impl's `type Item` wherever it appears, not only as the
+/// whole type.
+#[test]
+fn test_nested_assoc_types_are_checked_against_the_impl() {
+    let interface = "interface Container do\n  type Item\n  fn all(self) -> List<Self.Item>\n  fn put(self, items :: List<Self.Item>) -> Int\nend\n\n\
+                     struct Bag do\n  n :: Int\nend\n\n";
+    let impl_with = |all: &str, put: &str| {
+        format!(
+            "{interface}impl Container for Bag do\n  type Item = Int\n  fn all(self) -> {all} do\n    [self.n]\n  end\n  fn put(self, items :: {put}) -> Int do\n    self.n\n  end\nend\n"
+        )
+    };
+    let mismatches = |src: &str| {
+        check_source(src)
+            .errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::TraitMethodSignatureMismatch { .. }))
+            .count()
+    };
+    assert_eq!(mismatches(&impl_with("List<Int>", "List<Int>")), 0);
+    assert_eq!(mismatches(&impl_with("List<String>", "List<Int>")), 1);
+    assert_eq!(mismatches(&impl_with("List<Int>", "List<String>")), 1);
+}

@@ -1891,9 +1891,12 @@ pub fn render_diagnostic(
                 .with_config(config)
                 .with_label(
                     Label::new((fname.clone(), span))
-                        .with_message("Self.Item can only be used inside an impl block")
+                        .with_message(format!("no associated type `{assoc_name}` is declared"))
                         .with_color(Color::Red),
                 )
+                .with_help(format!(
+                    "declare it in the interface with `type {assoc_name}`, and bind it in each impl"
+                ))
                 .finish()
         }
 

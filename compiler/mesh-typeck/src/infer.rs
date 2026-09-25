@@ -7353,10 +7353,12 @@ fn method_param_types(
             continue;
         }
         let ann = param.type_annotation()?;
-        types.push(
-            resolve_self_assoc_type(&ann, self_assoc)
-                .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))?,
-        );
+        types.push(resolve_method_annotation(
+            ctx,
+            &ann,
+            self_assoc,
+            type_registry,
+        )?);
     }
     Some(types)
 }
@@ -7376,6 +7378,13 @@ fn interface_trait_def(
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<unnamed>".to_string());
 
+    // `Self.Item` names the implementing type's associated type; other
+    // annotations are types in full (`List<Int>`, not `List`).
+    let self_assoc: FxHashMap<String, Ty> = iface
+        .assoc_types()
+        .filter_map(|assoc| assoc.name().and_then(|n| n.text()))
+        .map(|name| (name.clone(), Ty::Con(TyCon::new(format!("Self.{name}")))))
+        .collect();
     let mut methods = Vec::new();
     for method in iface.methods() {
         let method_name = method
@@ -7401,16 +7410,8 @@ fn interface_trait_def(
             }
         }
 
-        // `Self.Item` names the implementing type's associated type; other
-        // annotations are types in full (`List<Int>`, not `List`).
-        let self_assoc: FxHashMap<String, Ty> = iface
-            .assoc_types()
-            .filter_map(|assoc| assoc.name().and_then(|n| n.text()))
-            .map(|name| (name.clone(), Ty::Con(TyCon::new(format!("Self.{name}")))))
-            .collect();
         let return_type = method.return_type().and_then(|ann| {
-            resolve_self_assoc_type(&ann, &self_assoc)
-                .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+            resolve_method_annotation(ctx, &ann, &self_assoc, type_registry)
                 .or_else(|| resolve_type_name(&ann))
         });
         let param_types = method_param_types(ctx, method.param_list(), &self_assoc, type_registry);
@@ -7590,77 +7591,69 @@ fn resolve_assoc_type_binding(
     Some(resolve_alias(ty, type_registry))
 }
 
-/// Resolve a Self.X reference in a type annotation to the concrete associated type.
-///
-/// Returns Some(Ty) if the annotation contains a Self.X pattern where X is found
-/// in the assoc_types map. Returns None if no Self.X pattern is found.
+/// A method annotation in an interface or impl: `Self.Item` is the
+/// associated type it names, anything else a type in full. `Self.X` naming no
+/// associated type is an error (reported once, though signatures are read in
+/// two passes), and its type unknown.
 ///
 /// Note: uppercase `Self` is parsed as an IDENT token (not SELF_KW, which is
 /// lowercase `self`).
-fn resolve_self_assoc_type(
+fn resolve_method_annotation(
+    ctx: &mut InferCtx,
     ann: &mesh_parser::ast::item::TypeAnnotation,
     assoc_types: &FxHashMap<String, Ty>,
+    type_registry: &TypeRegistry,
 ) -> Option<Ty> {
-    // Look for Self.X pattern in annotation tokens:
-    // IDENT("Self") followed by DOT followed by IDENT(name)
-    // Filter out whitespace/trivia tokens first.
-    let tokens: Vec<_> = ann
-        .syntax()
-        .children_with_tokens()
-        .filter_map(|t| t.into_token())
-        .filter(|t| !t.kind().is_trivia())
-        .collect();
-
-    // Skip leading ARROW (return type annotation prefix)
-    let mut i = 0;
-    while i < tokens.len() && tokens[i].kind() == SyntaxKind::ARROW {
-        i += 1;
-    }
-
-    // Look for IDENT("Self") DOT IDENT pattern
-    while i + 2 < tokens.len() {
-        if tokens[i].kind() == SyntaxKind::IDENT
-            && tokens[i].text() == "Self"
-            && tokens[i + 1].kind() == SyntaxKind::DOT
-            && tokens[i + 2].kind() == SyntaxKind::IDENT
-        {
-            let assoc_name = tokens[i + 2].text().to_string();
-            return assoc_types.get(&assoc_name).cloned();
+    let ty = resolve_type_annotation(ctx, ann, type_registry)?;
+    let mut unknown = Vec::new();
+    let ty = ty.replace_cons(&mut |con| {
+        let name = con.name.strip_prefix("Self.")?;
+        Some(match assoc_types.get(name) {
+            Some(ty) => ty.clone(),
+            None => {
+                unknown.push(name.to_string());
+                ctx.fresh_var()
+            }
+        })
+    });
+    for name in unknown {
+        // The name's own token, after `Self` and `.`.
+        let tokens: Vec<_> = ann
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|t| t.into_token())
+            .filter(|t| !t.kind().is_trivia())
+            .collect();
+        let span = tokens
+            .windows(3)
+            .find(|window| {
+                window[0].text() == "Self"
+                    && window[1].kind() == SyntaxKind::DOT
+                    && window[2].text() == name
+            })
+            .map_or(ann.syntax().text_range(), |window| window[2].text_range());
+        let reported = ctx.errors.iter().any(
+            |error| matches!(error, TypeError::UnresolvedAssocType { span: at, .. } if *at == span),
+        );
+        if !reported {
+            ctx.errors.push(TypeError::UnresolvedAssocType {
+                assoc_name: name,
+                span,
+            });
         }
-        i += 1;
     }
-    None
+    Some(ty)
+}
+
+/// `ty` with `Self` as the implementing type: in an impl, `-> Self` is the
+/// type the impl is for.
+fn with_self(ty: &Ty, impl_type: &Ty) -> Ty {
+    ty.replace_cons(&mut |con| (con.name == "Self").then(|| impl_type.clone()))
 }
 
 /// An impl's registry entry from its signatures alone. A method without a
 /// return annotation has no return type here; `infer_impl_def` fills it in
 /// from the body.
-/// `ty` with `Self` as the implementing type: in an impl, `-> Self` is the
-/// type the impl is for.
-fn with_self(ty: &Ty, impl_type: &Ty) -> Ty {
-    match ty {
-        Ty::Con(tc) if tc.name == "Self" => impl_type.clone(),
-        Ty::App(con, args) => Ty::App(
-            Box::new(with_self(con, impl_type)),
-            args.iter().map(|arg| with_self(arg, impl_type)).collect(),
-        ),
-        Ty::Fun(params, ret) => Ty::Fun(
-            params
-                .iter()
-                .map(|param| with_self(param, impl_type))
-                .collect(),
-            Box::new(with_self(ret, impl_type)),
-        ),
-        Ty::Tuple(elems) => Ty::Tuple(
-            elems
-                .iter()
-                .map(|elem| with_self(elem, impl_type))
-                .collect(),
-        ),
-        other => other.clone(),
-    }
-}
-
 fn impl_signature(
     ctx: &mut InferCtx,
     impl_: &AstImplDef,
@@ -7723,8 +7716,7 @@ fn impl_signature(
                     continue;
                 }
                 let declared = param.type_annotation().and_then(|ann| {
-                    resolve_self_assoc_type(&ann, &assoc_types)
-                        .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                    resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
                         .or_else(|| resolve_type_name(&ann))
                         .map(|ty| with_self(&ty, &impl_type))
                 });
@@ -7742,8 +7734,7 @@ fn impl_signature(
         let return_type = method
             .return_type()
             .and_then(|ann| {
-                resolve_self_assoc_type(&ann, &assoc_types)
-                    .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
                     .or_else(|| resolve_type_name(&ann))
             })
             .map(|ty| with_self(&ty, &impl_type))
@@ -7855,11 +7846,8 @@ fn infer_impl_def(
         }
 
         let return_type = method.return_type().and_then(|ann| {
-            // Try Self.Item resolution first, then full generic type resolution
-            // (handles Result<T,E>, Option<T>, and other parameterized return types).
-            // Fallback to simple name resolution only if annotation fails to parse.
-            resolve_self_assoc_type(&ann, &assoc_types)
-                .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+            // Simple name resolution only if the annotation fails to parse.
+            resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
                 .or_else(|| resolve_type_name(&ann))
                 .map(|ty| with_self(&ty, &impl_type))
         });
@@ -7890,9 +7878,7 @@ fn infer_impl_def(
                         let param_ty = param
                             .type_annotation()
                             .and_then(|ann| {
-                                // Try Self.Item resolution first for impl method params.
-                                resolve_self_assoc_type(&ann, &assoc_types)
-                                    .or_else(|| resolve_type_annotation(ctx, &ann, type_registry))
+                                resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
                                     .or_else(|| resolve_type_name(&ann))
                                     .map(|ty| with_self(&ty, &impl_type))
                             })
