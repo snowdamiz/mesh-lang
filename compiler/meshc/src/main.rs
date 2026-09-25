@@ -446,6 +446,8 @@ fn run() {
         Commands::Lsp => {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(mesh_lsp::run_server());
+            // Its stdin read cannot be cancelled: do not wait for it.
+            rt.shutdown_background();
         }
         Commands::Test {
             path,

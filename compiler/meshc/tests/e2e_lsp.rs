@@ -23,6 +23,9 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 const MESSAGE_TIMEOUT: Duration = Duration::from_secs(8);
+/// The first message waits for the server to start too, which a host that
+/// assesses each new process (macOS under cargo) can hold for seconds.
+const FIRST_MESSAGE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_ENTRYPOINT: &str = "main.mpl";
 
 fn meshc_bin() -> PathBuf {
@@ -312,6 +315,8 @@ struct LspSession {
     artifacts: PathBuf,
     session_label: String,
     next_id: u64,
+    /// Whether the server has said anything yet.
+    started: bool,
 }
 
 impl LspSession {
@@ -400,6 +405,7 @@ impl LspSession {
             artifacts,
             session_label: session_label.to_string(),
             next_id: 1,
+            started: false,
         }
     }
 
@@ -481,7 +487,12 @@ impl LspSession {
                 .expect("pending index should exist");
         }
 
-        let deadline = Instant::now() + MESSAGE_TIMEOUT;
+        let timeout = if self.started {
+            MESSAGE_TIMEOUT
+        } else {
+            FIRST_MESSAGE_TIMEOUT
+        };
+        let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline
                 .checked_duration_since(Instant::now())
@@ -496,6 +507,7 @@ impl LspSession {
 
             match self.rx.recv_timeout(remaining) {
                 Ok(LspEvent::Message(message)) => {
+                    self.started = true;
                     if predicate(&message) {
                         return message;
                     }
@@ -609,22 +621,31 @@ impl LspSession {
     }
 }
 
-impl Drop for LspSession {
-    /// Ask the server to exit, as an editor does, so it ends normally (and a
-    /// coverage-instrumented build writes what it recorded); kill it only if
-    /// it has not ended within a few seconds.
-    fn drop(&mut self) {
+impl LspSession {
+    /// Say `exit`, as an editor does, with stdin left open: whether the
+    /// server then ends within `within`.
+    fn exits_within(&mut self, within: Duration) -> bool {
         // Not `notify`, which panics on a failed write: the server may be gone.
         let body = json!({"jsonrpc": "2.0", "method": "exit"}).to_string();
         let _ = write!(self.stdin, "Content-Length: {}\r\n\r\n{body}", body.len());
         let _ = self.stdin.flush();
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + within;
         while Instant::now() < deadline {
             if matches!(self.child.try_wait(), Ok(Some(_))) {
-                break;
+                return true;
             }
             thread::sleep(Duration::from_millis(20));
         }
+        false
+    }
+}
+
+impl Drop for LspSession {
+    /// Ask the server to exit, so it ends normally (and a
+    /// coverage-instrumented build writes what it recorded); kill it only if
+    /// it has not ended within a few seconds.
+    fn drop(&mut self) {
+        self.exits_within(Duration::from_secs(5));
         let _ = self.child.kill();
         let _ = self.child.wait();
         self.persist_observability();
@@ -824,5 +845,11 @@ fn lsp_json_rpc_override_entry_flow() {
     assert!(
         shutdown.get("result").is_some(),
         "shutdown should return a JSON-RPC result for override-entry flow, got: {shutdown:?}"
+    );
+    // It kept reading stdin after `exit` until the client closed it.
+    assert!(
+        session.exits_within(Duration::from_secs(5)),
+        "the server should end when told to exit\n{}",
+        session.failure_context("exit")
     );
 }

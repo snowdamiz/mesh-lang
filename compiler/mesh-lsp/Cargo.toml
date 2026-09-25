@@ -12,6 +12,7 @@ mesh-common = { path = "../mesh-common" }
 mesh-fmt = { path = "../mesh-fmt" }
 mesh-pkg = { path = "../mesh-pkg" }
 tower-lsp = { workspace = true }
+tower-service = { workspace = true }
 tokio = { workspace = true }
 rowan = { workspace = true }
 serde_json = { workspace = true }
