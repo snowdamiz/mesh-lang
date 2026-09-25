@@ -275,8 +275,6 @@ fn walk_source_file(node: &SyntaxNode) -> FormatIR {
 
 fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-    let mut has_block = false;
-    let mut has_expr_body = false;
 
     for child in node.elements() {
         match child {
@@ -289,18 +287,10 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                     SyntaxKind::DO_KW => {
                         parts.push(sp());
                         parts.push(ir::text("do"));
-                        has_block = true;
                     }
-                    SyntaxKind::END_KW => {}
-                    SyntaxKind::EQ if !has_block => {
-                        // `= expr` body form -- the EQ token before FN_EXPR_BODY.
-                        // Don't emit here; it's handled with the FN_EXPR_BODY node.
-                    }
-                    SyntaxKind::WHEN_KW => {
-                        parts.push(sp());
-                        parts.push(ir::text("when"));
-                        parts.push(sp());
-                    }
+                    // `end` closes the BLOCK below; the `=` of an expression
+                    // body goes with FN_EXPR_BODY.
+                    SyntaxKind::END_KW | SyntaxKind::EQ => {}
                     // A comment after a decorator on its own line: one that
                     // ends the decorator's line stays there.
                     SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT
@@ -336,25 +326,9 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         parts.push(walk_node(&n));
                         parts.push(sp());
                     }
-                    SyntaxKind::NAME => {
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::PARAM_LIST => {
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::TYPE_ANNOTATION => {
-                        parts.push(sp());
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::WHERE_CLAUSE => {
-                        parts.push(sp());
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::GENERIC_PARAM_LIST => {
-                        parts.push(walk_node(&n));
-                    }
-                    SyntaxKind::GUARD_CLAUSE => {
-                        // Guard clause: emit space + walk tokens inline.
+                    SyntaxKind::TYPE_ANNOTATION
+                    | SyntaxKind::WHERE_CLAUSE
+                    | SyntaxKind::GUARD_CLAUSE => {
                         parts.push(sp());
                         parts.push(walk_node(&n));
                     }
@@ -367,19 +341,15 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                         for body_child in n.children() {
                             parts.push(walk_node(&body_child));
                         }
-                        has_expr_body = true;
                     }
-                    SyntaxKind::BLOCK if has_block => {
+                    SyntaxKind::BLOCK => {
                         let body = walk_block_body(&n);
                         parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                         parts.push(ir::hardline());
                         parts.push(ir::text("end"));
                     }
-                    _ => {
-                        if !has_expr_body {
-                            parts.push(walk_node(&n));
-                        }
-                    }
+                    // The name, generic parameters and parameters.
+                    _ => parts.push(walk_node(&n)),
                 }
             }
         }
