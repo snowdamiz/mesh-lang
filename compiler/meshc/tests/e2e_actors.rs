@@ -196,10 +196,9 @@ fn actors_preemption() {
 fn actors_linking() {
     let source = read_fixture("actors_linking.mpl");
     let output = compile_and_run_with_timeout(&source, 10);
-    assert!(
-        output.contains("link test done"),
-        "Expected 'link test done' in output, got: {}",
-        output
+    assert_eq!(
+        output,
+        "linked to a normal exit: still running\nlink test done\n"
     );
 }
 

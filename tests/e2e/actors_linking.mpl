@@ -1,22 +1,37 @@
-# Process linking test.
-# Verifies actors can be spawned and linked without crashing.
+# Linked actors: an abnormal exit ends the actor linked to it, a normal exit
+# only removes the link.
 
-actor linked_worker() do
+actor crasher() do
   receive do
-    msg -> println("linked worker done")
+    n -> panic("crash #{n}")
   end
 end
 
-actor linker() do
+actor finisher() do
   receive do
-    msg -> println("linker done")
+    _ -> 0
   end
+end
+
+actor linked_to_crash() do
+  let worker = spawn(crasher)
+  link(worker)
+  send(worker, 1)
+  Timer.sleep(300)
+  println("linked to a crash: still running")
+end
+
+actor linked_to_finish() do
+  let worker = spawn(finisher)
+  link(worker)
+  send(worker, 1)
+  Timer.sleep(300)
+  println("linked to a normal exit: still running")
 end
 
 fn main() do
-  let w = spawn(linked_worker)
-  let l = spawn(linker)
-  send(w, 1)
-  send(l, 1)
+  spawn(linked_to_crash)
+  spawn(linked_to_finish)
+  Timer.sleep(600)
   println("link test done")
 end
