@@ -217,20 +217,14 @@ fn measure_flat(ir: &FormatIR) -> usize {
         FormatIR::Indent(child) => measure_flat(child),
         FormatIR::Group(child) => measure_flat(child),
         FormatIR::IfBreak { flat, .. } => measure_flat(flat),
-        FormatIR::Concat(parts) => {
-            let mut total: usize = 0;
-            for part in parts {
-                let w = measure_flat(part);
-                if w == usize::MAX {
-                    return usize::MAX;
-                }
-                total = total.saturating_add(w);
-                if total == usize::MAX {
-                    return usize::MAX;
-                }
-            }
-            total
-        }
+        // A forced break anywhere ends the measuring.
+        FormatIR::Concat(parts) => parts
+            .iter()
+            .try_fold(0usize, |total, part| match measure_flat(part) {
+                usize::MAX => None,
+                width => Some(total.saturating_add(width)),
+            })
+            .unwrap_or(usize::MAX),
     }
 }
 

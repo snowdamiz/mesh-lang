@@ -1101,10 +1101,7 @@ fn walk_child_spec_body(block: &SyntaxNode, header: &mut Vec<FormatIR>, lines: &
             NodeOrToken::Node(n) => (walk_node(&n), false),
         };
         match lines.last_mut() {
-            Some(line) if !at_key => {
-                let code = std::mem::replace(line, FormatIR::Empty);
-                *line = ir::concat(vec![code, piece]);
-            }
+            Some(line) if !at_key => append(line, piece),
             _ => lines.push(piece),
         }
         // After a key or `:` the pair goes on; a value ends it.
@@ -1281,7 +1278,7 @@ fn walk_closure_params(params: &SyntaxNode) -> FormatIR {
 /// one short expression (`fn() do 1 end`), indented on the lines below
 /// otherwise.
 fn closure_do_body(block: &SyntaxNode) -> FormatIR {
-    let multiline = count_block_stmts(block) > 1
+    let multiline = block.children().count() > 1
         || block.children().next().is_some_and(|stmt| {
             matches!(
                 stmt.kind(),
@@ -1818,13 +1815,11 @@ fn walk_delimited_items(node: &SyntaxNode, open: &str, close: &str) -> FormatIR 
         match child {
             NodeOrToken::Node(n) => items.push(walk_node(&n)),
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::COMMA => match items.last_mut() {
-                    Some(last) => {
-                        let item = std::mem::replace(last, FormatIR::Empty);
-                        *last = ir::concat(vec![item, ir::text(",")]);
+                SyntaxKind::COMMA => {
+                    if let Some(last) = items.last_mut() {
+                        append(last, ir::text(","));
                     }
-                    None => items.push(ir::text(",")),
-                },
+                }
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => match items.last_mut() {
                     Some(last) if ends_a_line_of_code(&tok) => append_comment(last, &tok),
                     _ => items.push(inline_comment(&tok)),
@@ -1890,31 +1885,23 @@ fn walk_block_inner_items(node: &SyntaxNode) -> FormatIR {
 
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    push_comment(&mut items, &tok);
-                }
-                _ => {}
-            },
-            NodeOrToken::Node(n) => {
-                items.push(walk_node(&n));
-            }
+            NodeOrToken::Token(tok) if tok.kind().is_trivia() => push_comment(&mut items, &tok),
+            // Items separated by `;` go on lines of their own.
+            NodeOrToken::Token(_) => {}
+            NodeOrToken::Node(n) => items.push(walk_node(&n)),
         }
     }
 
-    if items.is_empty() {
-        FormatIR::Empty
-    } else {
-        let mut parts = Vec::new();
-        for (i, item) in items.into_iter().enumerate() {
-            if i > 0 {
-                parts.push(ir::hardline());
-            }
+    // Each item on a line of its own, with a blank line between two.
+    let mut parts = Vec::new();
+    for (i, item) in items.into_iter().enumerate() {
+        if i > 0 {
             parts.push(ir::hardline());
-            parts.push(item);
         }
-        ir::concat(parts)
+        parts.push(ir::hardline());
+        parts.push(item);
     }
+    ir::concat(parts)
 }
 
 // ── Helper: walk tokens inline with smart spacing ────────────────────
@@ -1943,9 +1930,6 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => {
                 let kind = tok.kind();
-                if kind == SyntaxKind::EOF {
-                    continue;
-                }
                 if kind.is_trivia() {
                     add_token_with_context(&tok, &mut parts);
                     continue;
@@ -2105,8 +2089,13 @@ fn ends_a_line_of_code(comment: &SyntaxToken) -> bool {
 }
 
 fn append_comment(line: &mut FormatIR, comment: &SyntaxToken) {
+    append(line, ir::concat(vec![sp(), inline_comment(comment)]));
+}
+
+/// Add `more` to the end of `line`.
+fn append(line: &mut FormatIR, more: FormatIR) {
     let code = std::mem::replace(line, FormatIR::Empty);
-    *line = ir::concat(vec![code, sp(), inline_comment(comment)]);
+    *line = ir::concat(vec![code, more]);
 }
 
 fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
@@ -2133,26 +2122,6 @@ fn add_token_with_context(tok: &SyntaxToken, parts: &mut Vec<FormatIR>) {
         return;
     }
     parts.push(ir::text(tok.text()));
-}
-
-/// Count non-trivia children (statements) in a block.
-fn count_block_stmts(node: &SyntaxNode) -> usize {
-    let mut count = 0;
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => {
-                if !tok.kind().is_trivia()
-                    && !matches!(tok.kind(), SyntaxKind::EOF | SyntaxKind::SEMICOLON)
-                {
-                    count += 1;
-                }
-            }
-            NodeOrToken::Node(_) => {
-                count += 1;
-            }
-        }
-    }
-    count
 }
 
 #[cfg(test)]
@@ -2256,6 +2225,12 @@ mod tests {
             fmt("interface I do\nfn f(self) -> Int; fn g(self) -> Int\nend"),
             "interface I do\n  fn f(self) -> Int\n\n  fn g(self) -> Int\nend\n"
         );
+        for header in ["module M", "impl I for Int"] {
+            assert_eq!(
+                fmt(&format!("{header} do\nfn f() = 1; fn g() = 2\nend")),
+                format!("{header} do\n  fn f() = 1\n\n  fn g() = 2\nend\n")
+            );
+        }
     }
 
     #[test]

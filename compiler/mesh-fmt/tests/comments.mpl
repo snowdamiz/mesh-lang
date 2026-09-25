@@ -190,6 +190,8 @@ fn more(xs, pid, m) do
   end
   let e = %{"a" => # value
     1}
+  let w = %{s | # field
+    a: 3}
   for {k, # key
     v} in m do
     k
