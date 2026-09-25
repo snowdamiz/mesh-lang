@@ -53,7 +53,12 @@ fn a_short_soak_is_not_a_release_run() {
             "continuity_soak_release_requires_86400_seconds",
         ),
         (
-            vec!["continuity-soak", "--duration-seconds", "0", "--allow-short"],
+            vec![
+                "continuity-soak",
+                "--duration-seconds",
+                "0",
+                "--allow-short",
+            ],
             "continuity_soak_duration_or_cycle_zero",
         ),
         (

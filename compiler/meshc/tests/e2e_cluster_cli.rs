@@ -211,7 +211,13 @@ fn cluster_commands_explain_what_is_missing() {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&cookie, fs::Permissions::from_mode(0o644)).unwrap();
         let output = meshc(
-            &["cluster", "status", &target, "--cookie-file", cookie.to_str().unwrap()],
+            &[
+                "cluster",
+                "status",
+                &target,
+                "--cookie-file",
+                cookie.to_str().unwrap(),
+            ],
             dir,
         );
         assert!(!output.status.success(), "{}", command_output_text(&output));
