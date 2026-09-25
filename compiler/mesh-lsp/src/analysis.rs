@@ -6,21 +6,22 @@
 //! parse errors and type errors into `lsp_types::Diagnostic`.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use rowan::TextRange;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
 
-use mesh_common::module_graph::{self, ModuleGraph, ModuleId};
-use mesh_parser::ast::item::{Item, SourceFile};
+use mesh_common::module_graph::ModuleGraph;
 use mesh_pkg::manifest::{
     build_clustered_export_surface, collect_source_cluster_declarations, resolve_entrypoint,
     validate_cluster_declarations_with_source, ClusteredDeclarationError, Manifest,
-    DEFAULT_ENTRYPOINT,
+};
+use mesh_pkg::project::{
+    build_import_context, build_project, check_project, CheckedProject, ProjectData,
 };
 use mesh_typeck::error::{ConstraintOrigin, TypeError};
 use mesh_typeck::ty::Ty;
-use mesh_typeck::{ImportContext, ModuleExports, TypeckResult};
+use mesh_typeck::TypeckResult;
 
 /// The result of analyzing a Mesh document.
 pub struct AnalysisResult {
@@ -375,19 +376,34 @@ fn analyze_project_document(
         }
     };
 
-    let project = match build_project_with_overlays(&project_root, &entry_relative_path, &overlays)
-    {
+    // A test file is not a module: `meshc test` compiles it on its own,
+    // with the project's modules, the helpers under `tests/` and the test
+    // builtins.
+    let is_test_file = relative_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"));
+    let with_test_helpers = is_test_file || relative_path.starts_with("tests");
+    let native_bindings = if manifest.is_some() {
+        match mesh_pkg::resolve_native_bindings(&project_root) {
+            Ok(bindings) => bindings,
+            Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
+        }
+    } else {
+        Vec::new()
+    };
+    let project = match build_project(
+        &project_root,
+        &entry_relative_path,
+        &native_bindings,
+        with_test_helpers,
+        &|path| read_source_with_overlays(path, &overlays),
+    ) {
         Ok(project) => project,
         Err(error) => {
             return ProjectAnalysis::Failed(project_failure_analysis(source, error));
         }
     };
-    // A test file is not a module: `meshc test` compiles it on its own,
-    // with the project's modules to import and the test builtins.
-    let is_test_file = relative_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.mpl"));
     if is_test_file {
         return analyze_test_document(&project, source);
     }
@@ -412,21 +428,10 @@ fn analyze_project_document(
         }
     };
 
-    let module_count = project.graph.module_count();
-    let mut all_exports = vec![None; module_count];
-    let mut all_typeck = (0..module_count).map(|_| None).collect::<Vec<_>>();
-
-    for &id in &project.compilation_order {
-        let idx = id.0 as usize;
-        let parse = &project.module_parses[idx];
-        let mut import_ctx = build_import_context(&project.graph, &all_exports, parse);
-        import_ctx.current_module = Some(project.graph.get(id).name.clone());
-
-        let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
-        let exports = mesh_typeck::collect_exports(parse, &typeck);
-        all_exports[idx] = Some(exports);
-        all_typeck[idx] = Some(typeck);
-    }
+    let CheckedProject {
+        typeck: all_typeck,
+        exports: all_exports,
+    } = check_project(&project, false);
 
     let source_cluster_declarations =
         collect_source_cluster_declarations(&project.graph, &project.module_parses);
@@ -498,20 +503,12 @@ fn analyze_project_document(
 }
 
 /// A `.test.mpl` document, analyzed as the program `meshc test` makes of it.
-fn analyze_test_document(project: &ProjectAnalysisData, source: &str) -> ProjectAnalysis {
+fn analyze_test_document(project: &ProjectData, source: &str) -> ProjectAnalysis {
     let program = match mesh_parser::test_harness::preprocess_test_source(source) {
         Ok(program) => program,
         Err(message) => return ProjectAnalysis::Failed(project_failure_analysis(source, message)),
     };
-    let mut all_exports = vec![None; project.graph.module_count()];
-    for &id in &project.compilation_order {
-        let idx = id.0 as usize;
-        let parse = &project.module_parses[idx];
-        let mut import_ctx = build_import_context(&project.graph, &all_exports, parse);
-        import_ctx.current_module = Some(project.graph.get(id).name.clone());
-        let typeck = mesh_typeck::check_with_imports(parse, &import_ctx);
-        all_exports[idx] = Some(mesh_typeck::collect_exports(parse, &typeck));
-    }
+    let all_exports = check_project(project, true).exports;
     let parse = mesh_parser::parse(&program);
     let mut import_ctx = build_import_context(&project.graph, &all_exports, &parse);
     import_ctx.current_module = Some("Main".to_string());
@@ -609,149 +606,6 @@ fn clustered_declaration_diagnostic(
     })
 }
 
-struct ProjectAnalysisData {
-    graph: ModuleGraph,
-    compilation_order: Vec<ModuleId>,
-    module_sources: Vec<String>,
-    module_parses: Vec<mesh_parser::Parse>,
-}
-
-fn build_project_with_overlays(
-    project_root: &Path,
-    entry_relative_path: &Path,
-    overlays: &HashMap<PathBuf, String>,
-) -> Result<ProjectAnalysisData, String> {
-    if entry_relative_path.as_os_str().is_empty()
-        || entry_relative_path.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-    {
-        return Err(format!(
-            "Resolved entrypoint '{}' must stay within project '{}'",
-            entry_relative_path.display(),
-            project_root.display()
-        ));
-    }
-
-    let files = discover_mesh_files(project_root)?;
-    if !files
-        .iter()
-        .any(|relative_path| relative_path == entry_relative_path)
-    {
-        return Err(format!(
-            "Resolved entrypoint '{}' was not found under project '{}'",
-            entry_relative_path.display(),
-            project_root.display()
-        ));
-    }
-
-    let mut graph = ModuleGraph::new();
-    let mut module_sources = Vec::new();
-    let mut module_parses = Vec::new();
-
-    for relative_path in &files {
-        let full_path = project_root.join(relative_path);
-        let source = read_source_with_overlays(&full_path, overlays)?;
-        let is_entry = relative_path == entry_relative_path;
-        let name = if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
-            "Main".to_string()
-        } else {
-            path_to_module_name(relative_path).ok_or_else(|| {
-                format!(
-                    "Cannot determine module name for '{}'",
-                    relative_path.display()
-                )
-            })?
-        };
-
-        let parse = mesh_parser::parse(&source);
-        graph.add_module(name, relative_path.clone(), is_entry);
-        module_sources.push(source);
-        module_parses.push(parse);
-    }
-
-    // Path and git dependencies and installed packages, as meshc finds them: a
-    // project using a path dependency had "module not found" in the editor.
-    let mut package_roots = mesh_pkg::manifest::source_dependency_roots(project_root)?;
-    let packages_dir = project_root.join(".mesh").join("packages");
-    if packages_dir.exists() {
-        package_roots.extend(discover_installed_package_roots(&packages_dir)?);
-    }
-    package_roots.sort();
-    package_roots.dedup();
-    for package_root in package_roots {
-        let pkg_files = discover_mesh_files(&package_root)?;
-        for relative_path in &pkg_files {
-            let name = match path_to_module_name(relative_path) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            let full_path = package_root.join(relative_path);
-            let source = read_source_with_overlays(&full_path, overlays)?;
-            let parse = mesh_parser::parse(&source);
-            // The full path: a package file's relative path may equal a
-            // project file's, which the document is found by.
-            graph.add_module(name, full_path, false);
-            module_sources.push(source);
-            module_parses.push(parse);
-        }
-    }
-
-    // `module Name do ... end` blocks are modules of their own, as meshc
-    // builds them (see its discovery).
-    let mut next = 0;
-    while next < graph.module_count() {
-        let owner = ModuleId(next as u32);
-        let inline = if module_parses[next].ok() {
-            mesh_parser::inline_modules(&module_sources[next], &module_parses[next])
-        } else {
-            Vec::new()
-        };
-        for module in inline {
-            if graph.resolve(&module.name).is_some() {
-                continue;
-            }
-            let path = graph.get(owner).path.clone();
-            let parse = mesh_parser::parse(&module.source);
-            graph.add_module(module.name, path, false);
-            module_sources.push(module.source);
-            module_parses.push(parse);
-        }
-        next += 1;
-    }
-
-    for id_val in 0..graph.module_count() {
-        let id = ModuleId(id_val as u32);
-        let tree = module_parses[id_val].tree();
-        let imports = extract_imports(&tree);
-        let module_name = graph.get(id).name.clone();
-
-        for import_name in imports {
-            match graph.resolve(&import_name) {
-                None => {}
-                Some(dep_id) if dep_id == id => {
-                    return Err(format!("Module '{}' cannot import itself", module_name));
-                }
-                Some(dep_id) => graph.add_dependency(id, dep_id),
-            }
-        }
-    }
-
-    let compilation_order = module_graph::topological_sort(&graph)
-        .map_err(|e| format!("Circular dependency: {}", e))?;
-
-    Ok(ProjectAnalysisData {
-        graph,
-        compilation_order,
-        module_sources,
-        module_parses,
-    })
-}
-
 fn read_source_with_overlays(
     path: &Path,
     overlays: &HashMap<PathBuf, String>,
@@ -786,228 +640,10 @@ fn find_project_root(path: &Path) -> Option<PathBuf> {
     }
 }
 
-fn path_to_module_name(relative_path: &Path) -> Option<String> {
-    let stem = relative_path.file_stem()?.to_str()?;
-    let parent = relative_path.parent();
-    let parent_is_empty = match parent {
-        None => true,
-        Some(parent) => parent.as_os_str().is_empty() || parent == Path::new("."),
-    };
-
-    if stem == "main" && parent_is_empty {
-        return None;
-    }
-
-    let mut parts = Vec::new();
-    if let Some(parent) = parent {
-        for component in parent.components() {
-            if let Component::Normal(os_str) = component {
-                if let Some(segment) = os_str.to_str() {
-                    parts.push(to_pascal_case(segment));
-                }
-            }
-        }
-    }
-    parts.push(to_pascal_case(stem));
-    Some(parts.join("."))
-}
-
-fn to_pascal_case(segment: &str) -> String {
-    segment
-        .split('_')
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => {
-                    let upper: String = first.to_uppercase().collect();
-                    upper + chars.as_str()
-                }
-                None => String::new(),
-            }
-        })
-        .collect()
-}
-
-fn discover_mesh_files(project_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    discover_recursive(project_root, project_root, &mut files).map_err(|e| {
-        format!(
-            "Failed to walk directory '{}': {}",
-            project_root.display(),
-            e
-        )
-    })?;
-    files.sort();
-    Ok(files)
-}
-
-fn discover_recursive(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-
-        if name.starts_with('.') {
-            continue;
-        }
-
-        if path.is_dir() {
-            discover_recursive(root, &path, files)?;
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("mpl") {
-            if name.ends_with(".test.mpl") || name.ends_with(".test-support.mpl") {
-                continue;
-            }
-            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            files.push(relative);
-        }
-    }
-
-    Ok(())
-}
-
-fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut package_roots = Vec::new();
-    discover_installed_package_roots_recursive(packages_dir, &mut package_roots).map_err(|e| {
-        format!(
-            "Failed to walk installed packages under '{}': {}",
-            packages_dir.display(),
-            e
-        )
-    })?;
-    package_roots.sort();
-    Ok(package_roots)
-}
-
-fn discover_installed_package_roots_recursive(
-    dir: &Path,
-    package_roots: &mut Vec<PathBuf>,
-) -> std::io::Result<()> {
-    let mut child_dirs = Vec::new();
-    let mut has_manifest = false;
-
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-
-        if name.starts_with('.') {
-            continue;
-        }
-
-        if path.is_dir() {
-            child_dirs.push(path);
-        } else if name == "mesh.toml" {
-            has_manifest = true;
-        }
-    }
-
-    if has_manifest {
-        package_roots.push(dir.to_path_buf());
-        return Ok(());
-    }
-
-    child_dirs.sort();
-    for child_dir in child_dirs {
-        discover_installed_package_roots_recursive(&child_dir, package_roots)?;
-    }
-
-    Ok(())
-}
-
-fn extract_imports(source_file: &SourceFile) -> Vec<String> {
-    let mut imports = Vec::new();
-    for item in source_file.items() {
-        match item {
-            Item::ImportDecl(decl) => {
-                if let Some(path) = decl.module_path() {
-                    let segments = path.segments();
-                    if !segments.is_empty() {
-                        imports.push(segments.join("."));
-                    }
-                }
-            }
-            Item::FromImportDecl(decl) => {
-                if let Some(path) = decl.module_path() {
-                    let segments = path.segments();
-                    if !segments.is_empty() {
-                        imports.push(segments.join("."));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    imports
-}
-
-fn build_import_context(
-    graph: &ModuleGraph,
-    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-    parse: &mesh_parser::Parse,
-) -> ImportContext {
-    let mut context = ImportContext::empty();
-
-    for exports_opt in all_exports {
-        if let Some(exports) = exports_opt {
-            context
-                .all_trait_defs
-                .extend(exports.trait_defs.iter().cloned());
-            context
-                .all_trait_impls
-                .extend(exports.trait_impls.iter().cloned());
-        }
-    }
-
-    let tree = parse.tree();
-    for item in tree.items() {
-        let segments = match &item {
-            Item::ImportDecl(import_decl) => import_decl.module_path().map(|path| path.segments()),
-            Item::FromImportDecl(from_import) => {
-                from_import.module_path().map(|path| path.segments())
-            }
-            _ => None,
-        };
-
-        if let Some(segments) = segments {
-            let full_name = segments.join(".");
-            let last_segment = segments.last().cloned().unwrap_or_default();
-            if let Some(dep_id) = graph.resolve(&full_name) {
-                let idx = dep_id.0 as usize;
-                if let Some(Some(exports)) = all_exports.get(idx) {
-                    context.module_exports.insert(
-                        last_segment,
-                        ModuleExports {
-                            module_name: full_name,
-                            functions: exports.functions.clone(),
-                            struct_defs: exports.struct_defs.clone(),
-                            sum_type_defs: exports.sum_type_defs.clone(),
-                            service_defs: exports.service_defs.clone(),
-                            actor_defs: exports.actor_defs.clone(),
-                            private_names: exports.private_names.clone(),
-                            type_aliases: exports.type_aliases.clone(),
-                            resource_types: exports.resource_types.clone(),
-                            function_ownership: exports.function_ownership.clone(),
-                            interfaces: exports
-                                .trait_defs
-                                .iter()
-                                .map(|interface| interface.name.clone())
-                                .collect(),
-                        },
-                    );
-                }
-            }
-        }
-    }
-
-    context
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
     use std::path::PathBuf;
 
     fn package_manifest(name: &str) -> String {
@@ -1200,9 +836,14 @@ mod tests {
 
         let manifest = Manifest::from_file(&project_dir.join("mesh.toml")).unwrap();
         let entry_relative_path = resolve_entrypoint(&project_dir, Some(&manifest)).unwrap();
-        let project =
-            build_project_with_overlays(&project_dir, &entry_relative_path, &HashMap::new())
-                .unwrap();
+        let project = build_project(
+            &project_dir,
+            &entry_relative_path,
+            &[],
+            false,
+            &mesh_pkg::project::read_file,
+        )
+        .unwrap();
         let entry = entry_module(&project.graph);
 
         assert_eq!(entry_relative_path, PathBuf::from("lib/start.mpl"));
@@ -1248,9 +889,14 @@ mod tests {
 
         let manifest = Manifest::from_file(&project_dir.join("mesh.toml")).unwrap();
         let entry_relative_path = resolve_entrypoint(&project_dir, Some(&manifest)).unwrap();
-        let project =
-            build_project_with_overlays(&project_dir, &entry_relative_path, &HashMap::new())
-                .unwrap();
+        let project = build_project(
+            &project_dir,
+            &entry_relative_path,
+            &[],
+            false,
+            &mesh_pkg::project::read_file,
+        )
+        .unwrap();
         let entry = entry_module(&project.graph);
         let root_main = project
             .graph
@@ -1514,64 +1160,55 @@ mod tests {
         assert_eq!(diag.range.start, Position::new(0, 0));
     }
 
-    // ── Scoped installed package regressions ────────────────────────────
+    // ── The editor sees the program meshc builds ─────────────────────────
 
+    /// A module that implements another's `pub interface` without importing
+    /// it is checked after that module, as meshc orders them; the editor
+    /// checked `App` first and reported `Area` unknown.
     #[test]
-    fn project_discovery_skips_test_only_sources() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("main.mpl"), "").unwrap();
-        std::fs::write(tmp.path().join("account.mpl"), "").unwrap();
-        std::fs::write(tmp.path().join("account.test.mpl"), "").unwrap();
-        std::fs::write(tmp.path().join("account.test-support.mpl"), "").unwrap();
-
-        assert_eq!(
-            discover_mesh_files(tmp.path()).unwrap(),
-            vec![PathBuf::from("account.mpl"), PathBuf::from("main.mpl")]
+    fn a_module_implementing_an_unimported_interface_analyzes_cleanly() {
+        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+            Some(&package_manifest("shapes")),
+            &[
+                ("shapes.mpl", "pub interface Area do\n  fn area(self) -> Int\nend\n"),
+                (
+                    "app.mpl",
+                    "pub struct Square do\n  side :: Int\nend\n\nimpl Area for Square do\n  fn area(self) -> Int do\n    self.side * self.side\n  end\nend\n",
+                ),
+                ("main.mpl", "fn main() do\n  println(\"ok\")\nend\n"),
+            ],
+            "app.mpl",
+        );
+        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{:?}",
+            diagnostic_messages(&result)
         );
     }
 
+    /// meshc refuses a `let` outside a function; the editor said nothing.
     #[test]
-    fn scoped_installed_package_discovery_skips_owner_dirs_hidden_paths_and_manifestless_trees() {
-        let tmp = tempfile::tempdir().unwrap();
-        let packages_dir = tmp.path().join(".mesh/packages");
-
-        std::fs::create_dir_all(packages_dir.join("acme/greeter@1.0.0")).unwrap();
-        std::fs::write(
-            packages_dir.join("acme/greeter@1.0.0/mesh.toml"),
-            package_manifest("acme/greeter"),
-        )
-        .unwrap();
-
-        std::fs::create_dir_all(packages_dir.join("flat@1.0.0")).unwrap();
-        std::fs::write(
-            packages_dir.join("flat@1.0.0/mesh.toml"),
-            package_manifest("flat"),
-        )
-        .unwrap();
-
-        std::fs::create_dir_all(packages_dir.join("owner-only/inner")).unwrap();
-        std::fs::write(packages_dir.join("owner-only/inner/main.mpl"), "").unwrap();
-
-        std::fs::create_dir_all(packages_dir.join(".hidden/ignored@1.0.0")).unwrap();
-        std::fs::write(
-            packages_dir.join(".hidden/ignored@1.0.0/mesh.toml"),
-            package_manifest("ignored"),
-        )
-        .unwrap();
-
-        let roots = discover_installed_package_roots(&packages_dir).unwrap();
-        let relative_roots: Vec<String> = roots
-            .iter()
-            .map(|path| {
-                path.strip_prefix(&packages_dir)
-                    .unwrap()
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
-            .collect();
-
-        assert_eq!(relative_roots, vec!["acme/greeter@1.0.0", "flat@1.0.0"]);
+    fn a_top_level_let_is_reported_in_a_project() {
+        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+            Some(&package_manifest("lets")),
+            &[(
+                "main.mpl",
+                "let limit = 3\n\nfn main() do\n  println(\"${limit}\")\nend\n",
+            )],
+            "main.mpl",
+        );
+        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        assert!(
+            diagnostic_messages(&result)
+                .iter()
+                .any(|message| message.contains("`let limit` outside a function")),
+            "{:?}",
+            diagnostic_messages(&result)
+        );
     }
+
+    // ── Scoped installed package regressions ────────────────────────────
 
     #[test]
     fn scoped_installed_package_analyzes_cleanly() {
