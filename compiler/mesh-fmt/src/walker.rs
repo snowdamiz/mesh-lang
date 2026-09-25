@@ -1127,6 +1127,13 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                             parts.push(walk_node(&n));
                         }
                     }
+                } else if n.kind() == SyntaxKind::BLOCK && node.kind() == SyntaxKind::ACTOR_DEF {
+                    // An actor's body is statements, one per line, as in a
+                    // function; the other bodies hold definitions.
+                    let body = walk_block_body(&n);
+                    if !matches!(body, FormatIR::Empty) {
+                        inner_items.push(body);
+                    }
                 } else if n.kind() == SyntaxKind::BLOCK {
                     for block_child in n.elements() {
                         match block_child {
@@ -2773,6 +2780,17 @@ mod tests {
             fmt(long),
             "let Account {\n  identifier: identifier,\n  display_name: display_name,\n  created_at: created,\n  flags: f,\n  owner_id: o\n} = a\n"
         );
+    }
+
+    /// An actor's body is statements, one per line like a function's; it
+    /// had a blank line after each, as the definitions in a module do.
+    #[test]
+    fn actor_bodies_have_a_statement_per_line() {
+        assert_eq!(
+            fmt("actor a() do\nlet x = 1\n\nprintln(\"x\")\nterminate do\nprintln(\"bye\")\nend\nend"),
+            "actor a() do\n  let x = 1\n  println(\"x\")\n  terminate do\n    println(\"bye\")\n  end\nend\n"
+        );
+        assert_eq!(fmt("actor b() do\nend"), "actor b() do\nend\n");
     }
 
     #[test]

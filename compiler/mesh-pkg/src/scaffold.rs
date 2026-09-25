@@ -1686,9 +1686,7 @@ end
 
 actor rate_window_ticker(limiter_pid, interval_ms :: Int) do
   Timer.sleep(interval_ms)
-
   TodoWriteRateLimiter.reset(limiter_pid)
-
   rate_window_ticker(limiter_pid, interval_ms)
 end
 
@@ -2198,9 +2196,7 @@ end
 
 actor rate_window_ticker(limiter_pid, interval_ms :: Int) do
   Timer.sleep(interval_ms)
-
   TodoWriteRateLimiter.reset(limiter_pid)
-
   rate_window_ticker(limiter_pid, interval_ms)
 end
 
