@@ -52,7 +52,7 @@ supported.
 | Documentation comment | `## item documentation` |
 | Module documentation | `##! module documentation` |
 | Nested block comment | `#= outer #= inner =# outer =#` |
-| Statements | A newline ends a statement; two statements on one line need `;` between them |
+| Statements | A newline ends a statement, unless the line ends in `=` or an infix operator or the next line starts with one (other than `-` and `%`); two statements on one line need `;` between them |
 | Identifier | Starts with `_` or a Unicode alphabetic code point; later characters may be `_` or a Unicode alphanumeric code point |
 | Integer | Decimal, `0x` hexadecimal, `0b` binary, or `0o` octal (prefixes may be uppercase); `_` separators are accepted; at most `9223372036854775807` in any radix, and `-9223372036854775808` may be written |
 | Float | Decimal and scientific notation; any literal with an exponent, such as `1e3`, is a `Float` |

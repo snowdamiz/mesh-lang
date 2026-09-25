@@ -159,13 +159,10 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             let m = p.open_before(lhs);
             p.advance(); // operator
 
-            // ── Trailing-pipe newline skip ──
-            // If the operator just consumed is |> or |N> and we are outside
-            // delimiters (newlines are significant), skip any newlines before
-            // parsing the RHS. This allows: `x |>\n  f()`.
-            if matches!(current, SyntaxKind::PIPE | SyntaxKind::SLOT_PIPE)
-                && !p.is_newline_insignificant()
-            {
+            // ── Trailing-operator continuation ──
+            // A line that ends in an operator goes on to the next one:
+            // `x |>\n  f()`, `a +\n  b`, `ready and\n  valid`.
+            if !p.is_newline_insignificant() {
                 p.skip_newlines_for_continuation();
             }
 
@@ -180,23 +177,20 @@ fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
             continue;
         }
 
-        // ── Multi-line pipe continuation ──
+        // ── Leading-operator continuation ──
         // At the top level (outside delimiters), newlines are significant.
-        // When the current token is NEWLINE and the next non-newline token
-        // is PIPE (|>), treat the newline as a continuation rather than a
-        // statement terminator. This allows multi-line pipe chains like:
+        // A line that starts with an infix operator continues the previous
+        // one, as in multi-line pipe chains:
         //   users
         //     |> filter(fn u -> u.active end)
         //     |> map(fn u -> u.name end)
-        if current == SyntaxKind::NEWLINE
-            && matches!(
-                p.peek_past_newlines(),
-                SyntaxKind::PIPE | SyntaxKind::SLOT_PIPE
-            )
-        {
-            // PIPE / SLOT_PIPE have binding power (3, 4). Check if we can continue.
-            if 3 >= min_bp {
-                // Skip the newlines so the Pratt loop sees the PIPE/SLOT_PIPE operator.
+        // except `-` and `%`, which also start a statement (`-x`, `%{..}`).
+        if current == SyntaxKind::NEWLINE {
+            let next = p.peek_past_newlines();
+            let continues = !matches!(next, SyntaxKind::MINUS | SyntaxKind::PERCENT)
+                && infix_binding_power(next).is_some_and(|(l_bp, _)| l_bp >= min_bp);
+            if continues {
+                // Skip the newlines so the Pratt loop sees the operator.
                 p.skip_newlines_for_continuation();
                 continue;
             }
@@ -885,9 +879,12 @@ pub(crate) fn parse_let_binding(p: &mut Parser) {
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
     }
 
-    // Expect `=` and initializer.
+    // Expect `=` and initializer, which may start on the next line.
     p.expect(SyntaxKind::EQ);
     if !p.has_error() {
+        if !p.is_newline_insignificant() {
+            p.skip_newlines_for_continuation();
+        }
         expr(p);
     }
 
@@ -1236,9 +1233,7 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
         // Use expr() instead of parse_block_body() so the Pratt parser exits
         // at BAR (not an infix operator), enabling multi-clause detection.
         if !p.has_error() {
-            let block = p.open();
-            expr(p);
-            p.close(block, SyntaxKind::BLOCK);
+            parse_closure_arrow_body(p);
         }
 
         // Multi-clause: BAR follows the body expression
@@ -1280,6 +1275,30 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
     }
 }
 
+/// A closure clause's body after `->`: one expression, on the same line or
+/// the next, wrapped in a BLOCK. The closure's next clause (`| ...`) or its
+/// `end` may start the line after it:
+///
+/// ```text
+/// fn 0 ->
+///   "zero"
+/// | n -> "other"
+/// end
+/// ```
+fn parse_closure_arrow_body(p: &mut Parser) {
+    if !p.is_newline_insignificant() {
+        p.skip_newlines_for_continuation();
+    }
+    let block = p.open();
+    expr(p);
+    p.close(block, SyntaxKind::BLOCK);
+    if !p.is_newline_insignificant()
+        && matches!(p.peek_past_newlines(), SyntaxKind::BAR | SyntaxKind::END_KW)
+    {
+        p.skip_newlines_for_continuation();
+    }
+}
+
 /// Parse a single additional closure clause: `| params [when guard] -> body`
 ///
 /// Called for the 2nd, 3rd, ... clauses in a multi-clause closure.
@@ -1307,9 +1326,7 @@ fn parse_closure_clause(p: &mut Parser) {
     if p.at(SyntaxKind::ARROW) {
         p.advance(); // ARROW
         if !p.has_error() {
-            let block = p.open();
-            expr(p);
-            p.close(block, SyntaxKind::BLOCK);
+            parse_closure_arrow_body(p);
         }
     } else if p.at(SyntaxKind::DO_KW) {
         let do_span = p.current_span();

@@ -3647,3 +3647,33 @@ fn malformed_constructs_report_what_was_expected() {
     }
     assert!(misses.is_empty(), "{} misses:\n{}", misses.len(), misses.join("\n"));
 }
+
+/// A line that ends in an infix operator or `=`, or a line that starts with
+/// an infix operator other than `-` and `%`, continues the statement.
+#[test]
+fn operators_and_equals_continue_a_statement_across_lines() {
+    for source in [
+        "fn f(a, b) do\n  let x =\n    a\n  let y = a +\n    b\n  let z = a\n    + b\n  let w = a and\n    b\n  let v = a\n    and b\n  let u = a ==\n    b\n  x\nend",
+        "fn f(a) =\n  a * 2",
+        "fn f(a) do\n  a\n    |> g()\n    |> h()\nend",
+        "fn f() do\n  let g = fn x ->\n    x * 2\n  end\n  let h = fn 0 ->\n    \"zero\"\n  | n -> \"other\"\n  end\n  g\nend",
+    ] {
+        let parsed = parse(source);
+        assert!(parsed.errors().is_empty(), "{source}\n{:?}", parsed.errors());
+    }
+    // `-` and `%` start statements of their own.
+    let parsed = parse("fn f(a) do\n  a\n  -1\nend");
+    assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+    let body_statements = |source: &str| {
+        let parsed = parse(source);
+        let block = parsed
+            .syntax()
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::BLOCK)
+            .unwrap();
+        block.children().count()
+    };
+    assert_eq!(body_statements("fn f(a) do\n  a\n  -1\nend"), 2);
+    assert_eq!(body_statements("fn f(s) do\n  s\n  %{s | x: 1}\nend"), 2);
+    assert_eq!(body_statements("fn f(a, b) do\n  a\n    + b\nend"), 1);
+}

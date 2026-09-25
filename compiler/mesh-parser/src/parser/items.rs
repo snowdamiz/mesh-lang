@@ -387,8 +387,10 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
     } else if declaration_prefix.is_export() && !p.at(SyntaxKind::EQ) && !p.at(SyntaxKind::DO_KW) {
         p.error("exported functions require a Mesh body");
     } else if p.at(SyntaxKind::EQ) {
-        // Expression body form: fn name(pattern) = expr
+        // Expression body form: fn name(pattern) = expr, the expression
+        // on the same line or the next.
         p.advance(); // EQ
+        p.skip_newlines_for_continuation();
 
         let body = p.open();
         super::expressions::expr(p);

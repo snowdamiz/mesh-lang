@@ -103,7 +103,7 @@ A newline ends a statement. To put two statements on one line, separate them wit
 let x = 1; let y = 2
 ```
 
-Newlines are not statement boundaries inside parentheses, brackets, or braces. Pipe expressions also support explicit leading and trailing continuation forms, described in [Multi-Line Pipes](#multi-line-pipes).
+Newlines are not statement boundaries inside parentheses, brackets, or braces. A line that ends in `=` or an infix operator continues on the next one (`let total = price +`), and so does a line followed by one that starts with an infix operator other than `-` and `%` (`and ready`, `|> f()`), which both start statements of their own; see also [Multi-Line Pipes](#multi-line-pipes).
 
 ## Basic Types
 
