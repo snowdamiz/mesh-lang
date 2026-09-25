@@ -1212,8 +1212,6 @@ fn walk_struct_field(node: &SyntaxNode) -> FormatIR {
 
 fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-
-    // Detect whether this closure uses do/end body form.
     let has_do = node.elements().any(|c| c.kind() == SyntaxKind::DO_KW);
     // A comment after `->` ends its line: the body goes on the next one, and
     // `end` on its own.
@@ -1221,165 +1219,119 @@ fn walk_closure_expr(node: &SyntaxNode) -> FormatIR {
 
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => {
-                match tok.kind() {
-                    SyntaxKind::FN_KW => {
-                        parts.push(ir::text("fn"));
-                        // Add space before params (or before do/arrow if no params).
-                        // The space is needed before PARAM_LIST, GUARD_CLAUSE, ARROW, DO_KW, etc.
+            NodeOrToken::Token(tok) => match tok.kind() {
+                SyntaxKind::FN_KW => {
+                    parts.push(ir::text("fn"));
+                    // `fn(x)`, spelled like the function type `fn(Int)`;
+                    // `fn x ->`, `fn ->` and `fn do` keep their space.
+                    let parens = node
+                        .children()
+                        .next()
+                        .is_some_and(|first| has_parens(&first));
+                    if !parens {
                         parts.push(sp());
-                    }
-                    SyntaxKind::ARROW => {
-                        // For multi-clause closures, subsequent clauses have their
-                        // own ARROW inside CLOSURE_CLAUSE -- this is the first clause's arrow.
-                        parts.push(ir::text("->"));
-                        parts.push(sp());
-                    }
-                    SyntaxKind::END_KW => {
-                        if broken {
-                            parts.push(ir::hardline());
-                        } else if !has_do {
-                            // A do/end body places its `end` itself (below).
-                            parts.push(sp());
-                        }
-                        parts.push(ir::text("end"));
-                    }
-                    SyntaxKind::DO_KW => {
-                        parts.push(ir::text("do"));
-                    }
-                    SyntaxKind::BAR => {
-                        // BAR between inline first clause and a CLOSURE_CLAUSE
-                        // is handled by the CLOSURE_CLAUSE formatter; skip here.
-                    }
-                    _ => {
-                        broken |= !has_do && tok.kind() == SyntaxKind::COMMENT;
-                        add_token_with_context(&tok, &mut parts);
                     }
                 }
-            }
-            NodeOrToken::Node(n) => {
-                match n.kind() {
-                    SyntaxKind::PARAM_LIST => {
-                        // Check if this is a bare param list (no parens) or parenthesized.
-                        let has_parens = n.elements().any(|c| c.kind() == SyntaxKind::L_PAREN);
-                        if has_parens {
-                            // `fn(x)`, spelled like the function type `fn(Int)`.
-                            if matches!(parts.as_slice(), [.., FormatIR::Text(f), FormatIR::Text(s)] if f == "fn" && s == " ")
-                            {
-                                parts.pop();
-                            }
-                            parts.push(walk_paren_list(&n));
-                            parts.push(sp());
-                        } else {
-                            // Bare params: walk inline (params separated by ", ").
-                            parts.push(walk_bare_param_list(&n));
-                            parts.push(sp());
-                        }
-                    }
-                    SyntaxKind::GUARD_CLAUSE => {
-                        parts.push(walk_node(&n));
+                SyntaxKind::ARROW => parts.extend([ir::text("->"), sp()]),
+                SyntaxKind::DO_KW => parts.push(ir::text("do")),
+                SyntaxKind::END_KW => {
+                    if broken {
+                        parts.push(ir::hardline());
+                    } else if !has_do {
+                        // A `do` body places its `end` itself.
                         parts.push(sp());
                     }
-                    SyntaxKind::BLOCK if has_do => {
-                        // do/end body: indent multi-statement blocks.
-                        let stmt_count = count_block_stmts(&n);
-                        let single_expr_kind = n.children().next().map(|child| child.kind());
-                        let force_multiline = stmt_count > 1
-                            || matches!(
-                                single_expr_kind,
-                                Some(
-                                    SyntaxKind::STRUCT_LITERAL
-                                        | SyntaxKind::MAP_LITERAL
-                                        | SyntaxKind::PIPE_EXPR
-                                        // Block constructs keep their lines.
-                                        | SyntaxKind::IF_EXPR
-                                        | SyntaxKind::CASE_EXPR
-                                        | SyntaxKind::FOR_IN_EXPR
-                                        | SyntaxKind::WHILE_EXPR
-                                        | SyntaxKind::RECEIVE_EXPR
-                                )
-                            );
-
-                        if force_multiline {
-                            let body = walk_block_body(&n);
-                            parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                            parts.push(ir::hardline());
-                        } else {
-                            parts.push(sp());
-                            let body = walk_block_body(&n);
-                            parts.push(body);
-                            parts.push(sp());
-                        }
-                    }
-                    SyntaxKind::BLOCK if broken => {
-                        let body = walk_block_body(&n);
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                    }
-                    SyntaxKind::BLOCK => {
-                        // Arrow body: single expression inline.
-                        let body = walk_block_body(&n);
-                        parts.push(body);
-                    }
-                    SyntaxKind::CLOSURE_CLAUSE => {
-                        parts.push(sp());
-                        parts.push(walk_closure_clause(&n));
-                    }
-                    _ => {
-                        parts.push(walk_node(&n));
-                    }
+                    parts.push(ir::text("end"));
                 }
-            }
+                _ => {
+                    broken |= !has_do && tok.kind() == SyntaxKind::COMMENT;
+                    add_token_with_context(&tok, &mut parts);
+                }
+            },
+            NodeOrToken::Node(n) => match n.kind() {
+                SyntaxKind::PARAM_LIST => parts.push(walk_closure_params(&n)),
+                SyntaxKind::GUARD_CLAUSE => parts.extend([walk_node(&n), sp()]),
+                SyntaxKind::CLOSURE_CLAUSE => parts.extend([sp(), walk_closure_clause(&n)]),
+                _ if has_do => parts.push(closure_do_body(&n)),
+                _ if broken => {
+                    let body = walk_block_body(&n);
+                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                }
+                // An arrow body, on the arrow's line.
+                _ => parts.push(walk_block_body(&n)),
+            },
         }
     }
 
     ir::concat(parts)
 }
 
-/// Walk a CLOSURE_CLAUSE node (2nd+ clause in multi-clause closures).
+fn has_parens(params: &SyntaxNode) -> bool {
+    params.kind() == SyntaxKind::PARAM_LIST
+        && params.elements().any(|c| c.kind() == SyntaxKind::L_PAREN)
+}
+
+/// A closure clause's parameters, `(x, y)` or bare `x, y`, and the space
+/// after them.
+fn walk_closure_params(params: &SyntaxNode) -> FormatIR {
+    let list = if has_parens(params) {
+        walk_paren_list(params)
+    } else {
+        walk_bare_param_list(params)
+    };
+    ir::concat(vec![list, sp()])
+}
+
+/// A closure clause's `do` body up to its `end`: on the `do` line when it is
+/// one short expression (`fn() do 1 end`), indented on the lines below
+/// otherwise.
+fn closure_do_body(block: &SyntaxNode) -> FormatIR {
+    let multiline = count_block_stmts(block) > 1
+        || block.children().next().is_some_and(|stmt| {
+            matches!(
+                stmt.kind(),
+                SyntaxKind::STRUCT_LITERAL
+                    | SyntaxKind::MAP_LITERAL
+                    | SyntaxKind::PIPE_EXPR
+                    // Block constructs keep their lines.
+                    | SyntaxKind::IF_EXPR
+                    | SyntaxKind::CASE_EXPR
+                    | SyntaxKind::FOR_IN_EXPR
+                    | SyntaxKind::WHILE_EXPR
+                    | SyntaxKind::RECEIVE_EXPR
+            )
+        });
+    let body = walk_block_body(block);
+    if multiline {
+        ir::concat(vec![
+            ir::indent(ir::concat(vec![ir::hardline(), body])),
+            ir::hardline(),
+        ])
+    } else {
+        ir::concat(vec![sp(), body, sp()])
+    }
+}
+
+/// `| pattern -> body` or `| pattern do body end`: a closure's clauses after
+/// its first.
 fn walk_closure_clause(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
-
+    let has_do = node.elements().any(|c| c.kind() == SyntaxKind::DO_KW);
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::BAR => {
-                    parts.push(ir::text("|"));
-                    parts.push(sp());
-                }
-                SyntaxKind::ARROW => {
-                    parts.push(ir::text("->"));
-                    parts.push(sp());
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
+                SyntaxKind::BAR | SyntaxKind::ARROW => parts.extend([ir::text(tok.text()), sp()]),
+                SyntaxKind::DO_KW | SyntaxKind::END_KW => parts.push(ir::text(tok.text())),
+                _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::PARAM_LIST => {
-                    let has_parens = n.elements().any(|c| c.kind() == SyntaxKind::L_PAREN);
-                    if has_parens {
-                        parts.push(walk_paren_list(&n));
-                        parts.push(sp());
-                    } else {
-                        parts.push(walk_bare_param_list(&n));
-                        parts.push(sp());
-                    }
-                }
-                SyntaxKind::GUARD_CLAUSE => {
-                    parts.push(walk_node(&n));
-                    parts.push(sp());
-                }
-                SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(body);
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
+                SyntaxKind::PARAM_LIST => parts.push(walk_closure_params(&n)),
+                SyntaxKind::GUARD_CLAUSE => parts.extend([walk_node(&n), sp()]),
+                _ if has_do => parts.push(closure_do_body(&n)),
+                _ => parts.push(walk_block_body(&n)),
             },
         }
     }
-
     ir::concat(parts)
 }
 
@@ -2542,6 +2494,18 @@ mod tests {
         assert_eq!(
             fmt("supervisor S do\nchild w do\nstart: fn -> case 1 do\n1 -> 2\nend end\nend\nend"),
             "supervisor S do\n  child w do\n    start: fn -> case 1 do\n      1 -> 2\n    end end\n  end\nend\n"
+        );
+    }
+
+    #[test]
+    fn closure_clauses_keep_guards_parens_and_do_bodies() {
+        assert_eq!(
+            fmt("fn main() do\nlet f = fn (x) when x > 0 -> x | (y) -> 0 - y end\nf\nend"),
+            "fn main() do\n  let f = fn(x) when x > 0 -> x | (y) -> 0 - y end\n  f\nend\n"
+        );
+        assert_eq!(
+            fmt("fn main() do\nlet f = fn 0 -> 1 | (n) do\nn\nend end\nlet g = fn 0 -> 1 | n do\nlet m = n\nm\nend end\ng\nend"),
+            "fn main() do\n  let f = fn 0 -> 1 | (n) do n end end\n  let g = fn 0 -> 1 | n do\n    let m = n\n    m\n  end end\n  g\nend\n"
         );
     }
 
