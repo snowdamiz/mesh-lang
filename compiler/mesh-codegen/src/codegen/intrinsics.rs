@@ -1284,6 +1284,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    // mesh_channel_try_send_shaped(handle, slot, shape) -> ptr: a value
+    // that references heap objects, copied out of the sender's heap.
+    module.add_function(
+        "mesh_channel_try_send_shaped",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     for name in [
         "mesh_channel_depth",
         "mesh_channel_byte_depth",

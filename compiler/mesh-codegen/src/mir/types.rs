@@ -66,7 +66,10 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
     // These nominal types are opaque to Mesh code, but their runtime ABI is an
     // unboxed u64 handle. Keep that representation even when a handle is also
     // registered as an affine resource for ownership checking.
-    if matches!(con.name.as_str(), "SqliteConn" | "PgConn" | "PoolHandle") {
+    if matches!(
+        con.name.as_str(),
+        "SqliteConn" | "PgConn" | "PoolHandle" | "Channel"
+    ) {
         return MirType::Int;
     }
 
@@ -139,6 +142,11 @@ fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
         "List" | "Map" | "Set" | "Range" | "Queue" | "Iter" | mesh_typeck::ty::TUPLE_ROW
     ) {
         return MirType::Ptr;
+    }
+
+    // A channel is a runtime handle whatever it carries.
+    if base_name == "Channel" {
+        return MirType::Int;
     }
 
     // Handle Pid<M> -> MirType::Pid(Some(M))

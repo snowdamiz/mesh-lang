@@ -47,6 +47,8 @@ test('public docs cover the current Mesh surface', () => {
   // Sets and queues are generic, and Iter.from takes any built-in collection.
   assert.match(typeSystem, /\bSet<T>/)
   assert.match(typeSystem, /\bQueue<T>/)
+  assert.match(concurrency, /\bChannel<T>/)
+  assert.doesNotMatch(reference, /Channel` payloads are currently `Int`/)
   assert.match(iterators, /`Iter\.from\(source\)`.*`Map<K, V>`/)
   assert.match(languageBasics, /Unicode alphabetic code point/)
   assert.match(languageBasics, /Reserved keywords are exact ASCII words/)

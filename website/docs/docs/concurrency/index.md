@@ -461,7 +461,7 @@ The function runs in its own actor, which is not linked to the caller: a failing
 
 ## Bounded Channels
 
-`Channel` provides bounded, in-process queues for `Int` values. Creation and queue operations return `Result`; producers use `try_send` and never wait for space.
+`Channel` provides bounded, in-process queues. A `Channel<T>` carries values of one type `T`, of any type; creation and queue operations return `Result`, and producers use `try_send` and never wait for space.
 
 ```mesh
 fn round_trip(value :: Int) -> Int!String do
@@ -481,10 +481,10 @@ end
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `Channel.bounded(item_capacity, policy)` | `Result<Int, String>` | Create a queue bounded by item count |
-| `Channel.bounded_bytes(item_capacity, byte_capacity, policy)` | `Result<Int, String>` | Apply both item and byte bounds |
-| `Channel.try_send(channel, value)` | `Result<Int, String>` | Enqueue an `Int` immediately or report backpressure |
-| `Channel.recv(channel, timeout_nanos)` | `Result<Int, String>` | Dequeue, waiting for at most that many nanoseconds; `0` polls |
+| `Channel.bounded(item_capacity, policy)` | `Result<Channel<T>, String>` | Create a queue bounded by item count |
+| `Channel.bounded_bytes(item_capacity, byte_capacity, policy)` | `Result<Channel<T>, String>` | Apply both item and byte bounds |
+| `Channel.try_send(channel, value)` | `Result<Int, String>` | Enqueue a value immediately or report backpressure |
+| `Channel.recv(channel, timeout_nanos)` | `Result<T, String>` | Dequeue, waiting for at most that many nanoseconds; `0` polls |
 | `Channel.depth(channel)` | `Int` | Current item count, or `-1` for an unknown handle |
 | `Channel.byte_depth(channel)` | `Int` | Current queued bytes, or `-1` for an unknown handle |
 | `Channel.dropped(channel)` | `Int` | Values rejected or replaced, or `-1` for an unknown handle |
@@ -497,7 +497,7 @@ Overflow policies are:
 
 `Channel.recv` takes nanoseconds. Use `Duration.millis` or `Duration.seconds` to make the unit explicit and to detect overflow.
 
-Each queued `Int` consumes eight bytes, so `bounded_bytes` uses the smaller of `item_capacity` and `byte_capacity / 8`. `try_send` returns `Ok(0)` on acceptance and may return `"channel busy"` instead of waiting for the shared registry lock. `recv` polls synchronously, so keep waits short when calling it from an actor; a long wait occupies that scheduler worker.
+A queued value takes eight bytes plus the size of whatever it references: a `String`, a list, or a struct is copied out of the sender's heap as it is sent, and into the receiver's as it is received, so actors can share a channel. `bounded_bytes` bounds that total too; a value larger than the whole byte capacity is rejected, whatever the policy, with `Err("value exceeds the channel byte capacity")`. `try_send` returns `Ok(0)` on acceptance and may return `"channel busy"` instead of waiting for the shared registry lock. An actor waiting in `recv` is suspended until a value arrives or the timeout passes, so its scheduler worker runs other actors meanwhile.
 
 ## Process Names and Shutdown
 

@@ -8334,11 +8334,18 @@ impl<'a> Lowerer<'a> {
             ("mesh_job_async" | "mesh_job_map", _) => None,
             _ => return None,
         };
-        // The representation, not the type, says whether the word is a
-        // reference at all: the runtime boxes a scalar result and hands a
-        // reference on as it is.
+        self.slot_shape(result, result_ty)
+    }
+
+    /// The shape of a value of type `ty` held in a uniform slot
+    /// (`__mesh_uniform_encode`) that crosses to another actor, or `None`
+    /// when the slot holds plain bits. The representation `rep`, not the
+    /// type, says whether the word is a reference at all: the runtime boxes
+    /// a scalar and hands a reference on as it is, so a reference always
+    /// gets a shape, `Shared` when nothing more is known.
+    fn slot_shape(&self, rep: &MirType, ty: Option<&Ty>) -> Option<MsgShape> {
         if matches!(
-            result,
+            rep,
             MirType::Int
                 | MirType::Float
                 | MirType::Bool
@@ -8348,11 +8355,9 @@ impl<'a> Lowerer<'a> {
         ) {
             return None;
         }
-        let shape = result_ty.map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()));
-        Some(if shape.is_scalar() {
-            MsgShape::Shared
-        } else {
-            shape
+        Some(match ty.map(|ty| self.msg_shape(ty, &mut Vec::new())) {
+            None | Some(MsgShape::Scalar) => MsgShape::Shared,
+            Some(shape) => shape,
         })
     }
 
@@ -10542,6 +10547,17 @@ impl<'a> Lowerer<'a> {
                     constructor.to_string(),
                     MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
                 );
+            }
+        }
+        if runtime_name == "mesh_channel_try_send" {
+            if let Some(Ty::Fun(params, _)) = &fn_ty {
+                if let Some(helper) = params
+                    .get(1)
+                    .and_then(|value| self.resolve_channel_send(value))
+                {
+                    let ty = self.known_functions[&helper].clone();
+                    return MirExpr::Var(helper, ty);
+                }
             }
         }
         if runtime_name == "mesh_queue_pop" {
@@ -13802,6 +13818,60 @@ impl<'a> Lowerer<'a> {
             body,
         );
         name
+    }
+
+    /// `Channel.try_send` of a value of type `value_ty` that references heap
+    /// objects: its slot goes with its shape, so the channel holds a copy
+    /// the sender's collector cannot free. `None` for plain bits, which the
+    /// runtime takes as they are.
+    fn resolve_channel_send(&mut self, value_ty: &Ty) -> Option<String> {
+        if Self::ty_contains_var(value_ty) {
+            return None;
+        }
+        let value_mir = self.binding_type(value_ty);
+        let shape = self.slot_shape(&value_mir, Some(value_ty))?;
+        let name = format!(
+            "__channel_try_send_{}",
+            Self::ty_specialization_component(value_ty)
+        );
+        if self.known_functions.contains_key(&name) {
+            return Some(name);
+        }
+        self.known_functions.insert(
+            name.clone(),
+            MirType::FnPtr(
+                vec![MirType::Int, value_mir.clone()],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        let slot = Self::call_named(
+            "__mesh_uniform_encode",
+            vec![value_mir.clone()],
+            vec![MirExpr::Var("__value".to_string(), value_mir.clone())],
+            MirType::Int,
+        );
+        let body = Self::call_named(
+            "mesh_channel_try_send",
+            vec![MirType::Int, MirType::Int],
+            vec![
+                MirExpr::Var("__channel".to_string(), MirType::Int),
+                MirExpr::Shaped {
+                    value: Box::new(slot),
+                    shape,
+                },
+            ],
+            MirType::Ptr,
+        );
+        self.push_helper_fn(
+            &name,
+            vec![
+                ("__channel".to_string(), MirType::Int),
+                ("__value".to_string(), value_mir),
+            ],
+            MirType::Ptr,
+            body,
+        );
+        Some(name)
     }
 
     /// `List.contains` for elements of type `elem_ty`: the runtime scan

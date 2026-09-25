@@ -1,4 +1,4 @@
-fn exercise(channel :: Int) do
+fn exercise(channel :: Channel<Int>) do
   let _ = channel |> Channel.try_send(10)
   let _ = channel |> Channel.try_send(20)
   let _ = channel |> Channel.try_send(30)
@@ -12,7 +12,7 @@ fn exercise(channel :: Int) do
   end
 end
 
-fn exercise_byte_bound(channel :: Int) do
+fn exercise_byte_bound(channel :: Channel<Int>) do
   let _ = channel |> Channel.try_send(10)
   let _ = channel |> Channel.try_send(20)
   case channel |> Channel.try_send(30) do

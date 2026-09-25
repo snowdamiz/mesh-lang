@@ -6460,6 +6460,93 @@ fn e2e_bounded_channel() {
     assert_eq!(output, "1\n8\n2\n30\nchannel full\n2\n16\n1\n");
 }
 
+/// A channel carries any one type. What a value references is copied out
+/// of the sender's heap as it is sent: the producer exits before anything is
+/// received. With one scheduler worker, the producer only runs if the
+/// consumer's wait on an empty channel yields that worker.
+#[test]
+fn e2e_channels_carry_any_type_and_waits_yield() {
+    let source = r##"
+struct Job do
+  name :: String
+  tags :: List<String>
+end
+
+fn describe(job :: Job) -> String do
+  "${job.name}: ${String.join(job.tags, ",")}"
+end
+
+actor producer(jobs :: Channel<Job>, names :: Channel<String>) do
+  let _ = Channel.try_send(jobs, Job { name: "job-${40 + 2}", tags: ["x-${1}", "y-${2}"] })
+  let _ = Channel.try_send(names, "name-${6 * 7}")
+  0
+end
+
+actor consumer(jobs :: Channel<Job>, results :: Channel<String>) do
+  let reply = case Channel.recv(jobs, 5_000_000_000) do
+    Ok(job) -> describe(job)
+    Err(error) -> error
+  end
+  let _ = Channel.try_send(results, reply)
+  0
+end
+
+fn run() -> Int!String do
+  let jobs = Channel.bounded(4, :reject_newest)?
+  let names = Channel.bounded(4, :reject_newest)?
+  let results = Channel.bounded(4, :reject_newest)?
+  spawn(consumer, jobs, results)
+  Timer.sleep(20)
+  spawn(producer, jobs, names)
+  println(Channel.recv(results, 5_000_000_000)?)
+  let name = Channel.recv(names, 5_000_000_000)?
+  println(name)
+  let texts = Channel.bounded(2, :drop_oldest)?
+  let _ = Channel.try_send(texts, "text ${name}")?
+  println("${Channel.byte_depth(texts) > 8}")
+  println(Channel.recv(texts, 0)?)
+
+  let floats = Channel.bounded(2, :drop_oldest)?
+  let _ = Channel.try_send(floats, 2.5)?
+  println("${Channel.recv(floats, 0)?}")
+  let options = Channel.bounded(2, :drop_oldest)?
+  let _ = Channel.try_send(options, Some(3))?
+  let _ = Channel.try_send(options, None)?
+  let first = Channel.recv(options, 0)?
+  let second = Channel.recv(options, 0)?
+  println("${first} ${second}")
+  let pairs = Channel.bounded(2, :drop_oldest)?
+  let _ = Channel.try_send(pairs, (1, "one"))?
+  let (n, word) = Channel.recv(pairs, 0)?
+  println("${n} ${word}")
+
+  let small = Channel.bounded_bytes(4, 8, :reject_newest)?
+  # A literal is static data, which is shared rather than copied; a string
+  # built at run time is copied, and counts.
+  let _ = Channel.try_send(small, "static")?
+  let _ = Channel.recv(small, 0)?
+  case Channel.try_send(small, "built at ${n} run time") do
+    Ok(_) -> println("accepted")
+    Err(error) -> println(error)
+  end
+  println("${Channel.dropped(small)}")
+  Ok(0)
+end
+
+fn main() do
+  case run() do
+    Ok(_) -> println("done")
+    Err(error) -> println("error: ${error}")
+  end
+end
+"##;
+    let output = compile_and_run_with_env(source, &[("MESH_SCHEDULER_MIN_WORKERS", "1")]);
+    assert_eq!(
+        output,
+        "job-42: x-1,y-2\nname-42\ntrue\ntext name-42\n2.5\nSome(3) None\n1 one\nvalue exceeds the channel byte capacity\n1\ndone\n"
+    );
+}
+
 /// MESH-TEST-002: seeded random sequences are stable and explicitly stateful.
 #[test]
 fn e2e_deterministic_random() {

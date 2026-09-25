@@ -1058,34 +1058,10 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     }
     modules.insert("Duration".to_string(), duration_mod);
 
-    let mut channel_mod = HashMap::new();
-    let channel_result = Ty::result(Ty::int(), Ty::string());
-    channel_mod.insert(
-        "bounded".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::int(), Ty::Con(TyCon::new("Atom"))],
-            channel_result.clone(),
-        )),
-    );
-    channel_mod.insert(
-        "bounded_bytes".to_string(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::int(), Ty::int(), Ty::Con(TyCon::new("Atom"))],
-            channel_result.clone(),
-        )),
-    );
-    for name in ["try_send", "recv"] {
-        channel_mod.insert(
-            name.to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
-        );
-    }
-    for name in ["depth", "byte_depth", "dropped"] {
-        channel_mod.insert(
-            name.to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
-        );
-    }
+    let channel_mod: HashMap<String, Scheme> = crate::builtins::channel_functions()
+        .into_iter()
+        .map(|(name, scheme)| (name.to_string(), scheme))
+        .collect();
     modules.insert("Channel".to_string(), channel_mod);
 
     let mut random_mod = HashMap::new();

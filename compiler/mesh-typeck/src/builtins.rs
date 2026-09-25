@@ -1079,27 +1079,8 @@ pub fn register_builtins(
             )),
         );
     }
-    let channel_result = Ty::result(Ty::int(), Ty::string());
-    env.insert(
-        "channel_bounded".into(),
-        Scheme::mono(Ty::fun(
-            vec![Ty::int(), Ty::Con(TyCon::new("Atom"))],
-            channel_result.clone(),
-        )),
-    );
-    env.insert(
-        "channel_try_send".into(),
-        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
-    );
-    env.insert(
-        "channel_recv".into(),
-        Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], channel_result.clone())),
-    );
-    for name in ["depth", "dropped"] {
-        env.insert(
-            format!("channel_{name}"),
-            Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
-        );
+    for (name, scheme) in channel_functions() {
+        env.insert(format!("channel_{name}"), scheme);
     }
     env.insert(
         "random_seed".into(),
@@ -3699,6 +3680,53 @@ mod tests {
 /// The `Set` and `Queue` module functions, by name, over any element type:
 /// `Set.add(Set<T>, T) -> Set<T>`, `Queue.pop(Queue<T>) -> (T, Queue<T>)`.
 #[allow(clippy::type_complexity)]
+/// The `Channel` module: a `Channel<T>` carries values of any one type.
+pub(crate) fn channel_functions() -> Vec<(&'static str, Scheme)> {
+    let var = TyVar(93200);
+    let t = Ty::Var(var);
+    let channel = Ty::App(Box::new(Ty::Con(TyCon::new("Channel"))), vec![t.clone()]);
+    let atom = Ty::Con(TyCon::new("Atom"));
+    let created = Ty::result(channel.clone(), Ty::string());
+    [
+        (
+            "bounded",
+            Ty::fun(vec![Ty::int(), atom.clone()], created.clone()),
+        ),
+        (
+            "bounded_bytes",
+            Ty::fun(vec![Ty::int(), Ty::int(), atom], created),
+        ),
+        (
+            "try_send",
+            Ty::fun(
+                vec![channel.clone(), t.clone()],
+                Ty::result(Ty::int(), Ty::string()),
+            ),
+        ),
+        (
+            "recv",
+            Ty::fun(
+                vec![channel.clone(), Ty::int()],
+                Ty::result(t, Ty::string()),
+            ),
+        ),
+        ("depth", Ty::fun(vec![channel.clone()], Ty::int())),
+        ("byte_depth", Ty::fun(vec![channel.clone()], Ty::int())),
+        ("dropped", Ty::fun(vec![channel], Ty::int())),
+    ]
+    .into_iter()
+    .map(|(name, ty)| {
+        (
+            name,
+            Scheme {
+                vars: vec![var],
+                ty,
+            },
+        )
+    })
+    .collect()
+}
+
 pub(crate) fn set_and_queue_functions() -> (Vec<(&'static str, Scheme)>, Vec<(&'static str, Scheme)>)
 {
     let generic = |t_var: TyVar, ty: Ty| Scheme {

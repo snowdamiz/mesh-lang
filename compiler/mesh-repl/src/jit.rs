@@ -339,6 +339,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::channel::mesh_channel_try_send as *const (),
         ),
         (
+            "mesh_channel_try_send_shaped",
+            mesh_rt::channel::mesh_channel_try_send_shaped as *const (),
+        ),
+        (
             "mesh_checked_abs",
             mesh_rt::finance::mesh_checked_abs as *const (),
         ),

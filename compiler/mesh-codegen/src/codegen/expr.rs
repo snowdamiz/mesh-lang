@@ -1522,6 +1522,23 @@ impl<'ctx> CodeGen<'ctx> {
                         .ok_or_else(|| format!("{name}_shaped returned void"));
                 }
             }
+            // Channel.try_send of a value that references heap objects: the
+            // slot goes with its shape (`resolve_channel_send`).
+            if let (true, Some(MirExpr::Shaped { shape, .. })) =
+                (name == "mesh_channel_try_send", args.get(1))
+            {
+                if let Some(shape_table) = self.shape_table_for_element(shape) {
+                    arg_vals.push(shape_table.into());
+                    let shaped_fn = get_intrinsic(&self.module, "mesh_channel_try_send_shaped");
+                    return self
+                        .builder
+                        .build_call(shaped_fn, &arg_vals, "sent")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value()
+                        .basic()
+                        .ok_or_else(|| "mesh_channel_try_send_shaped returned void".to_string());
+                }
+            }
             // Timer.send_after(pid, ms, msg) -> mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
             // The 3rd arg (msg) needs message serialization like codegen_actor_send.
             if name == "mesh_timer_send_after" && args.len() == 3 {

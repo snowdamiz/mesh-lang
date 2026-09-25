@@ -465,7 +465,7 @@ See [Panics](/docs/language-basics/#panics).
 | `supervisor` | Child restart tree |
 | `Job` | Short-lived async result |
 | `Timer` | Sleep and delayed message delivery |
-| `Channel` | Bounded, nonblocking integer delivery |
+| `Channel` | Bounded, nonblocking queues between actors |
 
 Actor definitions accept arguments. Receive arms match the next message like
 `case` arms: patterns, guards, and multi-line bodies are allowed, and the arms
@@ -651,7 +651,6 @@ language features. Use:
   `Json.array_get`.
 - Wide integers use checked module functions instead of ordinary literal
   operators.
-- `Channel` payloads are currently `Int`.
 - `Random` is deterministic, not cryptographic.
 - Inbound WebSocket TLS is not exposed at the Mesh source API.
 - SQLite is a local/single-node application database.
