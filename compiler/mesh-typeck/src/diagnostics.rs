@@ -258,10 +258,10 @@ fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<String> {
     }
 
     if exp_str == "Int" && found_str == "Float" {
-        return Some("use Int conversion".to_string());
+        return Some("convert it with `Float.to_int(...)`".to_string());
     }
     if exp_str == "Float" && found_str == "Int" {
-        return Some("use Float conversion".to_string());
+        return Some("convert it with `Int.to_float(...)`".to_string());
     }
     if exp_str == "String" && found_str == "Int" {
         return Some("use to_string()".to_string());
