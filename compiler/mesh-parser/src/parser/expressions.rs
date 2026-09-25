@@ -1289,6 +1289,10 @@ fn parse_closure_arrow_body(p: &mut Parser) {
     if !p.is_newline_insignificant() {
         p.skip_newlines_for_continuation();
     }
+    if p.at(SyntaxKind::DO_KW) {
+        p.error("a closure of several statements is `fn params do ... end`, without `->`");
+        return;
+    }
     let block = p.open();
     expr(p);
     p.close(block, SyntaxKind::BLOCK);
