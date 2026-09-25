@@ -50,20 +50,18 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::STRUCT_UPDATE_EXPR => walk_struct_update(node),
         SyntaxKind::LET_BINDING => walk_let_binding(node),
         SyntaxKind::IF_EXPR => walk_if_expr(node),
-        SyntaxKind::CASE_EXPR => walk_case_expr(node),
+        SyntaxKind::CASE_EXPR | SyntaxKind::RECEIVE_EXPR => walk_arms_expr(node),
         SyntaxKind::MATCH_ARM => walk_match_arm(node),
         SyntaxKind::BINARY_EXPR => walk_binary_expr(node),
         SyntaxKind::UNARY_EXPR => walk_unary_expr(node),
         SyntaxKind::CALL_EXPR => walk_call_expr(node),
         SyntaxKind::PIPE_EXPR => walk_pipe_expr(node),
-        SyntaxKind::BLOCK => walk_block(node),
         SyntaxKind::PARAM_LIST => walk_paren_list(node),
         SyntaxKind::ARG_LIST => walk_paren_list(node),
         SyntaxKind::MODULE_DEF => walk_block_def(node),
         SyntaxKind::STRUCT_DEF => walk_struct_def(node),
         SyntaxKind::STRUCT_FIELD => walk_struct_field(node),
         SyntaxKind::CLOSURE_EXPR => walk_closure_expr(node),
-        SyntaxKind::CLOSURE_CLAUSE => walk_closure_clause(node),
         SyntaxKind::TRAILING_CLOSURE => walk_trailing_closure(node),
         SyntaxKind::RETURN_EXPR => walk_return_expr(node),
         SyntaxKind::IMPORT_DECL => walk_import_decl(node),
@@ -82,7 +80,6 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::ACTOR_DEF => walk_block_def(node),
         SyntaxKind::SERVICE_DEF => walk_block_def(node),
         SyntaxKind::SUPERVISOR_DEF => walk_block_def(node),
-        SyntaxKind::RECEIVE_EXPR => walk_receive_expr(node),
         SyntaxKind::RECEIVE_ARM => walk_match_arm(node),
         SyntaxKind::SPAWN_EXPR => walk_spawn_send_link(node),
         SyntaxKind::SEND_EXPR => walk_spawn_send_link(node),
@@ -91,13 +88,13 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::FOR_IN_EXPR => walk_for_in_expr(node),
         SyntaxKind::BREAK_EXPR => walk_break_expr(node),
         SyntaxKind::CONTINUE_EXPR => walk_continue_expr(node),
-        SyntaxKind::DESTRUCTURE_BINDING => walk_destructure_binding(node),
         SyntaxKind::SELF_EXPR => walk_self_expr(node),
         SyntaxKind::CALL_HANDLER => walk_call_handler(node),
         SyntaxKind::CAST_HANDLER => walk_cast_handler(node),
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
         SyntaxKind::STRUCT_LITERAL => walk_struct_literal(node),
+        SyntaxKind::STRUCT_PAT => walk_struct_pat(node),
         SyntaxKind::MAP_LITERAL => walk_map_literal(node),
         SyntaxKind::JSON_EXPR => walk_json_expr(node),
         SyntaxKind::MAP_ENTRY => walk_map_entry(node),
@@ -115,7 +112,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         | SyntaxKind::WILDCARD_PAT
         | SyntaxKind::IDENT_PAT
         | SyntaxKind::TUPLE_PAT
-        | SyntaxKind::STRUCT_PAT
+        | SyntaxKind::STRUCT_PAT_FIELD
         | SyntaxKind::CONSTRUCTOR_PAT
         | SyntaxKind::OR_PAT
         | SyntaxKind::AS_PAT
@@ -662,39 +659,39 @@ fn walk_continue_expr(_node: &SyntaxNode) -> FormatIR {
 
 // ── Case/match expression ────────────────────────────────────────────
 
-fn walk_case_expr(node: &SyntaxNode) -> FormatIR {
+/// `case`/`match subject do <arms> end` and `receive do <arms> end`: each arm
+/// (`after` included) on its own line, and a comment between arms kept where
+/// it was, after an arm's line or on a line of its own.
+fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
     let mut parts = Vec::new();
     let mut arms: Vec<FormatIR> = Vec::new();
 
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW => {
+                SyntaxKind::CASE_KW | SyntaxKind::MATCH_KW | SyntaxKind::RECEIVE_KW => {
                     parts.push(ir::text(tok.text()));
-                    parts.push(sp());
                 }
                 SyntaxKind::DO_KW => {
                     parts.push(sp());
                     parts.push(ir::text("do"));
                 }
-                SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
+                SyntaxKind::END_KW | SyntaxKind::NEWLINE => {}
                 SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
                     push_comment(&mut arms, &tok);
                 }
-                _ => {}
+                _ => add_token_with_context(&tok, &mut parts),
             },
-            NodeOrToken::Node(n) => {
-                match n.kind() {
-                    SyntaxKind::MATCH_ARM => {
-                        arms.push(walk_node(&n));
-                    }
-                    _ => {
-                        // Scrutinee expression.
-                        parts.push(walk_node(&n));
-                    }
+            NodeOrToken::Node(n) => match n.kind() {
+                SyntaxKind::MATCH_ARM | SyntaxKind::RECEIVE_ARM | SyntaxKind::AFTER_CLAUSE => {
+                    arms.push(walk_node(&n));
                 }
-            }
+                // The scrutinee of a `case`.
+                _ => {
+                    parts.push(sp());
+                    parts.push(walk_node(&n));
+                }
+            },
         }
     }
 
@@ -960,10 +957,6 @@ fn walk_call_expr(node: &SyntaxNode) -> FormatIR {
 }
 
 // ── Block ─────────────────────────────────────────────────────────
-
-fn walk_block(node: &SyntaxNode) -> FormatIR {
-    walk_block_body(node)
-}
 
 /// Walk the children of a BLOCK node, producing statements separated by hardlines.
 fn walk_block_body(node: &SyntaxNode) -> FormatIR {
@@ -2030,55 +2023,6 @@ fn walk_variant_def(node: &SyntaxNode) -> FormatIR {
 
 // ── Receive expression ──────────────────────────────────────────────
 
-fn walk_receive_expr(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-    let mut arms: Vec<FormatIR> = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::RECEIVE_KW => {
-                    parts.push(ir::text("receive"));
-                }
-                SyntaxKind::DO_KW => {
-                    parts.push(sp());
-                    parts.push(ir::text("do"));
-                }
-                SyntaxKind::END_KW => {}
-                SyntaxKind::NEWLINE => {}
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::RECEIVE_ARM => {
-                    arms.push(walk_node(&n));
-                }
-                SyntaxKind::AFTER_CLAUSE => {
-                    arms.push(walk_node(&n));
-                }
-                _ => {
-                    parts.push(walk_node(&n));
-                }
-            },
-        }
-    }
-
-    if !arms.is_empty() {
-        let mut arm_parts = Vec::new();
-        for arm in arms {
-            arm_parts.push(ir::hardline());
-            arm_parts.push(arm);
-        }
-        parts.push(ir::indent(ir::concat(arm_parts)));
-    }
-
-    parts.push(ir::hardline());
-    parts.push(ir::text("end"));
-
-    ir::concat(parts)
-}
-
 // ── Spawn/Send/Link expressions ──────────────────────────────────────
 
 fn walk_spawn_send_link(node: &SyntaxNode) -> FormatIR {
@@ -2332,6 +2276,40 @@ fn walk_struct_literal(node: &SyntaxNode) -> FormatIR {
     parts.push(ir::text("}"));
 
     ir::concat(parts)
+}
+
+/// `Point { x, y: 0 }` on one line when it fits, one field per line when
+/// it does not.
+fn walk_struct_pat(node: &SyntaxNode) -> FormatIR {
+    let mut name = Vec::new();
+    let mut fields = Vec::new();
+    for child in node.elements() {
+        match child {
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::STRUCT_PAT_FIELD => {
+                fields.push(walk_node(&n));
+            }
+            NodeOrToken::Token(tok)
+                if matches!(tok.kind(), SyntaxKind::IDENT | SyntaxKind::DOT) =>
+            {
+                name.push(ir::text(tok.text()));
+            }
+            // Braces, the commas between fields, new lines.
+            _ => {}
+        }
+    }
+    let mut inner = Vec::new();
+    for (i, field) in fields.into_iter().enumerate() {
+        if i > 0 {
+            inner.push(ir::text(","));
+        }
+        inner.push(ir::space());
+        inner.push(field);
+    }
+    name.push(ir::text(" {"));
+    name.push(ir::indent(ir::concat(inner)));
+    name.push(ir::space());
+    name.push(ir::text("}"));
+    ir::group(ir::concat(name))
 }
 
 // ── JSON literal ────────────────────────────────────────────────────
@@ -2614,10 +2592,14 @@ fn walk_tokens_inline(node: &SyntaxNode) -> FormatIR {
                 }
                 parts.push(ir::text(tok.text()));
                 prev_kind = Some(kind);
-                // `!` here is only ever the result sugar, `Int!String`.
+                // `!` here is only ever the result sugar, `Int!String`; a
+                // name follows its qualifier's `.` directly (`Shape.Circle`).
                 after_open = matches!(
                     kind,
-                    SyntaxKind::L_PAREN | SyntaxKind::L_BRACKET | SyntaxKind::BANG
+                    SyntaxKind::L_PAREN
+                        | SyntaxKind::L_BRACKET
+                        | SyntaxKind::BANG
+                        | SyntaxKind::DOT
                 ) || (angles && kind == SyntaxKind::LT);
             }
             NodeOrToken::Node(n) => {
@@ -2778,6 +2760,39 @@ mod tests {
 
     fn fmt(source: &str) -> String {
         format_source(source, &FormatConfig::default())
+    }
+
+    #[test]
+    fn struct_patterns_fit_on_one_line_or_take_a_line_per_field() {
+        assert_eq!(
+            fmt("case p do\nPoint{x:0,y} -> y\nGeo.Point {  x ,  y: (a,_)  } -> x\nend"),
+            "case p do\n  Point { x: 0, y } -> y\n  Geo.Point { x, y: (a, _) } -> x\nend\n"
+        );
+        let long = "let Account { identifier: identifier, display_name: display_name, created_at: created, flags: f, owner_id: o } = a";
+        assert_eq!(
+            fmt(long),
+            "let Account {\n  identifier: identifier,\n  display_name: display_name,\n  created_at: created,\n  flags: f,\n  owner_id: o\n} = a\n"
+        );
+    }
+
+    #[test]
+    fn qualified_constructor_patterns_keep_their_dot() {
+        assert_eq!(
+            fmt("case s do\nShape.Circle(r) -> r\nShape.Dot -> 0\nend"),
+            "case s do\n  Shape.Circle(r) -> r\n  Shape.Dot -> 0\nend\n"
+        );
+    }
+
+    #[test]
+    fn fields_separated_by_new_lines_get_commas() {
+        assert_eq!(
+            fmt("case p do\nPoint {\nx\ny: 0\n} -> x\nend"),
+            "case p do\n  Point { x, y: 0 } -> x\nend\n"
+        );
+        assert_eq!(
+            fmt("let p = Point {\nx: 1\ny: 2\n}"),
+            "let p = Point {\n  x: 1,\n  y: 2\n}\n"
+        );
     }
 
     #[test]

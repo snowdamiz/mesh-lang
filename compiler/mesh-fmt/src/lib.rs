@@ -58,9 +58,20 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
 
 /// Every token but whitespace, with the trailing blanks the printer trims and
 /// without trailing commas, which the formatter may drop (`import (a, b,)`),
-/// and without semicolons: a statement separated by `;` goes on its own line.
+/// without semicolons: a statement separated by `;` goes on its own line, and
+/// without the commas between the fields of a struct literal or pattern or a
+/// `json` literal, where a new line may separate fields instead.
 fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKind, String)> {
     use mesh_parser::SyntaxKind;
+    let optional_comma = |token: &mesh_parser::SyntaxToken| {
+        token.kind() == SyntaxKind::COMMA
+            && token.parent().is_some_and(|parent| {
+                matches!(
+                    parent.kind(),
+                    SyntaxKind::STRUCT_LITERAL | SyntaxKind::STRUCT_PAT | SyntaxKind::JSON_EXPR
+                )
+            })
+    };
     let tokens: Vec<_> = parse
         .syntax()
         .descendants_with_tokens()
@@ -72,7 +83,7 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
                     | SyntaxKind::NEWLINE
                     | SyntaxKind::SEMICOLON
                     | SyntaxKind::EOF
-            )
+            ) && !optional_comma(token)
         })
         .map(|token| (token.kind(), token.text().trim_end().to_owned()))
         .collect();
