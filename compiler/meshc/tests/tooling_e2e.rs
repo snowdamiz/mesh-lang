@@ -585,6 +585,44 @@ fn test_fmt_and_lint_skip_hidden_entries() {
     }
 }
 
+/// What `meshc init` writes is what a user starts from: every template is
+/// formatted and lint-clean as generated.
+#[test]
+fn test_init_templates_are_formatted_and_lint_clean() {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, flags) in [
+        ("plain", vec![]),
+        ("clustered", vec!["--clustered"]),
+        ("todo_sqlite", vec!["--template", "todo-api"]),
+        (
+            "todo_postgres",
+            vec!["--template", "todo-api", "--db", "postgres"],
+        ),
+    ] {
+        let init = Command::new(meshc_bin())
+            .arg("init")
+            .args(&flags)
+            .arg(name)
+            .current_dir(dir.path())
+            .output()
+            .expect("failed to run meshc init");
+        assert!(init.status.success(), "meshc init {flags:?}: {init:?}");
+        for args in [vec!["fmt", "--check"], vec!["lint"]] {
+            let output = Command::new(meshc_bin())
+                .args(&args)
+                .arg(dir.path().join(name))
+                .output()
+                .expect("failed to run meshc");
+            assert!(
+                output.status.success(),
+                "meshc {args:?} on `meshc init {flags:?}`: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+}
+
 #[test]
 fn test_build_parse_error_names_the_file() {
     let dir = tempfile::tempdir().unwrap();
