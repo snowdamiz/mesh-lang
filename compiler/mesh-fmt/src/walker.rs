@@ -94,6 +94,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::TERMINATE_CLAUSE => walk_terminate_clause(node),
         SyntaxKind::CHILD_SPEC_DEF => walk_child_spec_def(node),
         SyntaxKind::DESTRUCTURE_BINDING => walk_destructure_binding(node),
+        SyntaxKind::DERIVING_CLAUSE => walk_deriving_clause(node),
         SyntaxKind::STRUCT_LITERAL | SyntaxKind::STRUCT_PAT | SyntaxKind::JSON_EXPR => {
             walk_braced_fields(node)
         }
@@ -933,27 +934,7 @@ fn walk_paren_list(node: &SyntaxNode) -> FormatIR {
                 }
                 SyntaxKind::COMMA => {
                     parts.push(ir::text(","));
-                    // Suppress trailing space when the next non-trivia token is R_PAREN
-                    // (i.e. trailing comma before closing paren).
-                    let mut next = tok.next_sibling_or_token();
-                    while let Some(ref sib) = next {
-                        match sib {
-                            NodeOrToken::Token(t)
-                                if matches!(
-                                    t.kind(),
-                                    SyntaxKind::NEWLINE | SyntaxKind::WHITESPACE
-                                ) =>
-                            {
-                                next = t.next_sibling_or_token();
-                            }
-                            _ => break,
-                        }
-                    }
-                    let is_trailing = matches!(
-                        next,
-                        Some(NodeOrToken::Token(ref t)) if t.kind() == SyntaxKind::R_PAREN
-                    );
-                    if !is_trailing {
+                    if !is_trailing_comma(&tok) {
                         parts.push(ir::space());
                     }
                 }
@@ -1057,21 +1038,13 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     parts.push(ir::hardline());
     parts.push(ir::text("end"));
 
-    // Emit deriving clause after "end" if present
-    if let Some(dc) = node
+    // `deriving(...)` follows `end`.
+    if let Some(deriving) = node
         .children()
         .find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
     {
         parts.push(sp());
-        parts.push(ir::text("deriving("));
-        let traits: Vec<String> = dc
-            .elements()
-            .filter_map(|it| it.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
-            .map(|t| t.text().to_string())
-            .collect();
-        parts.push(ir::text(&traits.join(", ")));
-        parts.push(ir::text(")"));
+        parts.push(walk_node(&deriving));
     }
 
     ir::concat(parts)
@@ -1237,23 +1210,28 @@ fn walk_struct_def(node: &SyntaxNode) -> FormatIR {
     parts.push(ir::hardline());
     parts.push(ir::text("end"));
 
-    // Emit deriving clause after "end" if present
-    if let Some(dc) = node
+    // `deriving(...)` follows `end`.
+    if let Some(deriving) = node
         .children()
         .find(|n| n.kind() == SyntaxKind::DERIVING_CLAUSE)
     {
         parts.push(sp());
-        parts.push(ir::text("deriving("));
-        let traits: Vec<String> = dc
-            .elements()
-            .filter_map(|it| it.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT && t.text() != "deriving")
-            .map(|t| t.text().to_string())
-            .collect();
-        parts.push(ir::text(&traits.join(", ")));
-        parts.push(ir::text(")"));
+        parts.push(walk_node(&deriving));
     }
 
+    ir::concat(parts)
+}
+
+/// `deriving(Eq, Show)`; a trailing comma goes.
+fn walk_deriving_clause(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for tok in node.elements().filter_map(|e| e.into_token()) {
+        match tok.kind() {
+            SyntaxKind::COMMA if is_trailing_comma(&tok) => {}
+            SyntaxKind::COMMA => parts.extend([ir::text(","), sp()]),
+            _ => add_token_with_context(&tok, &mut parts),
+        }
+    }
     ir::concat(parts)
 }
 
@@ -2422,6 +2400,19 @@ fn push_body_comment(header: &mut Vec<FormatIR>, lines: &mut Vec<FormatIR>, tok:
     }
 }
 
+/// Whether a comma is the last thing before its list's closing bracket,
+/// comments aside.
+fn is_trailing_comma(comma: &SyntaxToken) -> bool {
+    std::iter::successors(comma.next_sibling_or_token(), |e| e.next_sibling_or_token())
+        .find(|e| !e.kind().is_trivia())
+        .is_some_and(|e| {
+            matches!(
+                e.kind(),
+                SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE
+            )
+        })
+}
+
 fn ends_a_line_of_code(comment: &SyntaxToken) -> bool {
     let mut prev = comment.prev_token();
     while prev
@@ -2584,6 +2575,18 @@ mod tests {
         assert_eq!(
             fmt("interface I do\nfn f(self) -> Int; fn g(self) -> Int\nend"),
             "interface I do\n  fn f(self) -> Int\n\n  fn g(self) -> Int\nend\n"
+        );
+    }
+
+    #[test]
+    fn a_deriving_clause_keeps_comments_and_drops_a_trailing_comma() {
+        assert_eq!(
+            fmt("type T do\nA\nend deriving( Eq , Show, )"),
+            "type T do\n  A\nend deriving(Eq, Show)\n"
+        );
+        assert_eq!(
+            fmt("struct S do\na :: Int\nend deriving(Eq, # c\nShow)"),
+            "struct S do\n  a :: Int\nend deriving(Eq, # c\n  Show)\n"
         );
     }
 
