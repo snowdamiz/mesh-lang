@@ -99,6 +99,17 @@ fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
     }
 }
 
+/// How a call of `Base.method(...)` whose base names an interface or a type
+/// is lowered (see `Lowerer::qualified_route`).
+enum QualifiedRoute {
+    /// `Iface.method(value, ...)`: the interface's impl for the value's type.
+    Interface(String, String),
+    /// `Type.method(value, ...)`: `value.method(...)`.
+    TypeMethod(String),
+    /// A static method: the impl function called.
+    Static(String),
+}
+
 /// Extract the trait name, trait type args, and type name from an ImplDef's PATH children.
 /// Returns `(trait_name, trait_type_args, type_name)`, e.g. `("From", vec!["Int"], "Float")`.
 /// For non-parameterized traits, trait_type_args is empty.
@@ -8879,10 +8890,14 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// `Type.method(...)` for a static interface method of the type the base
-    /// names: a type (`Int.tag()`, `Config.default()`) or, in a generic
-    /// body, a type parameter (`T.version()`, bound per specialization).
-    fn lower_static_method_call(&mut self, call: &CallExpr, fa: &FieldAccess) -> Option<MirExpr> {
+    /// How a call of `fa` (`Base.method(...)`) is lowered when its base
+    /// names an interface or a type rather than a module or a value: an
+    /// interface's method (`Iface.method(value, ...)`), a type's instance
+    /// method (`Type.method(value, ...)`, as `value.method(...)`), or a
+    /// static method of a type (`Int.tag()`, `Config.default()`) or, in a
+    /// generic body, of a type parameter (`T.version()`, bound per
+    /// specialization). `None` for any other call.
+    fn qualified_route(&self, fa: &FieldAccess) -> Option<QualifiedRoute> {
         let Some(Expr::NameRef(base)) = fa.base() else {
             return None;
         };
@@ -8891,93 +8906,192 @@ impl<'a> Lowerer<'a> {
             return None;
         }
         let method = fa.field()?.text().to_string();
+        let is_type = self.is_struct_type_name(&base_name) || self.is_sum_type_name(&base_name);
+        let is_module = STDLIB_MODULES.contains(&base_name.as_str())
+            || self.user_modules.contains_key(&base_name)
+            || self.service_modules.contains_key(&base_name);
+        if !is_type && !is_module {
+            if let Some(trait_def) = self.trait_registry.get_trait(&base_name) {
+                if trait_def
+                    .methods
+                    .iter()
+                    .any(|m| m.name == method && m.has_self)
+                {
+                    return Some(QualifiedRoute::Interface(base_name, method));
+                }
+            }
+        }
         let ty = match base_name.as_str() {
             "Int" | "Float" | "String" | "Bool" => Ty::Con(mesh_typeck::ty::TyCon::new(&base_name)),
-            _ if self.is_struct_type_name(&base_name) || self.is_sum_type_name(&base_name) => {
-                Ty::Con(mesh_typeck::ty::TyCon::new(&base_name))
-            }
+            _ if is_type => Ty::Con(mesh_typeck::ty::TyCon::new(&base_name)),
             _ => self
                 .get_ty(base.syntax().text_range())
                 .filter(|ty| !Self::ty_contains_var(ty))?
                 .clone(),
         };
-        let callee = self.static_impl_method(&method, &ty)?;
-        let args: Vec<MirExpr> = call
-            .arg_list()
-            .map(|list| list.args().map(|arg| self.lower_expr(&arg)).collect())
-            .unwrap_or_default();
-        let ret = self.resolve_range(call.syntax().text_range());
-        let var_ty = MirType::FnPtr(
-            args.iter().map(|arg| arg.ty().clone()).collect(),
-            Box::new(ret.clone()),
-        );
-        Some(MirExpr::Call {
-            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
-            args,
-            ty: ret,
-        })
+        if is_type
+            && self
+                .trait_registry
+                .find_method_sig(&method, &ty)
+                .is_some_and(|sig| sig.has_self)
+        {
+            return Some(QualifiedRoute::TypeMethod(method));
+        }
+        self.static_impl_method(&method, &ty)
+            .map(QualifiedRoute::Static)
     }
 
-    /// `Iface.method(value, ...)`: the call of interface `Iface`'s impl of
-    /// `method` for the first argument's type; `None` when the callee does
-    /// not name an interface.
-    fn lower_interface_qualified_call(
+    /// A call routed by `qualified_route`, of the lowered `args`; `first_ty`
+    /// is the first argument's type, the receiver of a method.
+    fn lower_qualified_call(
         &mut self,
-        call: &CallExpr,
-        fa: &FieldAccess,
-    ) -> Option<MirExpr> {
-        let Some(Expr::NameRef(base)) = fa.base() else {
-            return None;
+        call_range: TextRange,
+        route: QualifiedRoute,
+        args: Vec<MirExpr>,
+        first_ty: Option<Ty>,
+    ) -> MirExpr {
+        let ty = self.resolve_range(call_range);
+        let callee = match route {
+            QualifiedRoute::TypeMethod(method) => {
+                let mut args = args.into_iter();
+                let receiver = args.next().unwrap_or(MirExpr::Unit);
+                return self.lower_method_call(
+                    call_range,
+                    &method,
+                    receiver,
+                    first_ty,
+                    args.collect(),
+                );
+            }
+            QualifiedRoute::Static(callee) => callee,
+            QualifiedRoute::Interface(trait_name, method) => {
+                let name_of = |ty: &Ty| match ty {
+                    Ty::Con(tc) => tc.name.clone(),
+                    other => format!("{other}"),
+                };
+                first_ty
+                    .and_then(|receiver| {
+                        self.trait_registry
+                            .impls_providing(&method, &receiver)
+                            .into_iter()
+                            .find(|(imp, _)| imp.trait_name == trait_name)
+                            .map(|(imp, _)| {
+                                let type_args: Vec<String> =
+                                    imp.trait_type_args.iter().map(name_of).collect();
+                                mangle_trait_method(
+                                    &trait_name,
+                                    &type_args,
+                                    &method,
+                                    &imp.impl_type_name,
+                                )
+                            })
+                    })
+                    .unwrap_or_else(|| {
+                        let type_name = args
+                            .first()
+                            .map(|arg| mir_type_to_impl_name(arg.ty()))
+                            .unwrap_or_default();
+                        format!("{trait_name}__{method}__{type_name}")
+                    })
+            }
         };
-        let trait_name = base.text()?;
-        if self.lookup_non_global_var(&trait_name).is_some()
-            || STDLIB_MODULES.contains(&trait_name.as_str())
-            || self.user_modules.contains_key(&trait_name)
-            || self.service_modules.contains_key(&trait_name)
-            || self.is_sum_type_name(&trait_name)
-            || self.is_struct_type_name(&trait_name)
-        {
-            return None;
-        }
-        let method = fa.field()?.text().to_string();
-        let trait_def = self.trait_registry.get_trait(&trait_name)?;
-        if !trait_def
-            .methods
-            .iter()
-            .any(|m| m.name == method && m.has_self)
-        {
-            return None;
-        }
-        let args = call.args();
-        let receiver = self.get_ty(args.first()?.syntax().text_range())?.clone();
-        let lowered: Vec<MirExpr> = args.iter().map(|arg| self.lower_expr(arg)).collect();
-        let ty = self.resolve_range(call.syntax().text_range());
         let var_ty = MirType::FnPtr(
-            lowered.iter().map(|arg| arg.ty().clone()).collect(),
+            args.iter().map(|arg| arg.ty().clone()).collect(),
             Box::new(ty.clone()),
         );
-        let name_of = |ty: &Ty| match ty {
-            Ty::Con(tc) => tc.name.clone(),
-            other => format!("{other}"),
-        };
-        let callee = self
-            .trait_registry
-            .impls_providing(&method, &receiver)
-            .into_iter()
-            .find(|(imp, _)| imp.trait_name == trait_name)
-            .map(|(imp, _)| {
-                let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
-                mangle_trait_method(&trait_name, &args, &method, &imp.impl_type_name)
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
+            args,
+            ty,
+        }
+    }
+
+    /// A call of the trait method `method_name` on `receiver` (of type
+    /// `receiver_source`, as far as it is known) with the arguments `rest`:
+    /// `value.method(...)`, and `Type.method(value, ...)` routed here.
+    fn lower_method_call(
+        &mut self,
+        call_range: TextRange,
+        method_name: &str,
+        receiver: MirExpr,
+        receiver_source: Option<Ty>,
+        rest: Vec<MirExpr>,
+    ) -> MirExpr {
+        let mut args = vec![receiver];
+        args.extend(rest);
+
+        let ty = self.resolve_range(call_range);
+
+        // An instantiated generic sum type (`Option<Int>`) gets
+        // its trait functions on first use.
+        if let Some(source) = &receiver_source {
+            self.ensure_instantiation_traits(source);
+        }
+
+        // Route through the shared trait dispatch helper
+        let first_arg_ty = args[0].ty().clone();
+        let callee_var_ty = MirType::FnPtr(
+            args.iter().map(|a| a.ty().clone()).collect(),
+            Box::new(ty.clone()),
+        );
+        if method_name == "compare" && args.len() == 2 {
+            if let Some(source) = receiver_source
+                .as_ref()
+                .filter(|ty| !matches!(ty, Ty::Var(_)))
+            {
+                return self.compare_call(source, args);
+            }
+        }
+        let call_result = self.get_ty(call_range).cloned();
+        let callee = receiver_source
+            .as_ref()
+            .and_then(|source| {
+                self.parameterized_impl_callee(
+                    method_name,
+                    source,
+                    call_result.as_ref(),
+                    &callee_var_ty,
+                )
+            })
+            .or_else(|| {
+                receiver_source.as_ref().and_then(|source| {
+                    self.instantiation_trait_callee(method_name, source, &callee_var_ty)
+                })
             })
             .unwrap_or_else(|| {
-                let type_name = mir_type_to_impl_name(lowered[0].ty());
-                format!("{trait_name}__{method}__{type_name}")
+                self.resolve_trait_callee(method_name, &callee_var_ty, &first_arg_ty)
             });
-        Some(MirExpr::Call {
-            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
-            args: lowered,
+
+        // Apply the same post-dispatch optimizations as bare-name calls:
+        // Display__to_string__String identity short-circuit
+        if let MirExpr::Var(ref name, _) = callee {
+            if name == "Display__to_string__String" && !args.is_empty() {
+                return args.into_iter().next().unwrap();
+            }
+            // Debug__inspect__String quotes and escapes
+            if name == "Debug__inspect__String" && !args.is_empty() {
+                return Self::inspect_string(args.into_iter().next().unwrap());
+            }
+        }
+
+        // `to_string` / `inspect` on a value whose type, not a
+        // nominal impl, decides how it prints.
+        if let MirExpr::Var(ref name, _) = callee {
+            if (name == "to_string" || name == "debug" || name == "inspect") && args.len() == 1 {
+                if let Some(shown) = receiver_source
+                    .as_ref()
+                    .and_then(|ty| self.display_by_type(&args[0], ty, name == "inspect"))
+                {
+                    return shown;
+                }
+            }
+        }
+        let args = self.apply_direct_resource_modes(&callee, args);
+        MirExpr::Call {
+            func: Box::new(callee),
+            args,
             ty,
-        })
+        }
     }
 
     /// The impl method a call of `method` on a `receiver` goes to when its
@@ -9222,15 +9336,21 @@ impl<'a> Lowerer<'a> {
             };
         }
 
-        // `Iface.method(value, ...)` calls the interface's impl for the
-        // value's type; `Type.method(...)` a static method of the type's
-        // (`Int.tag()`, `T.version()` in a generic body).
+        // `Iface.method(value, ...)`, `Type.method(value, ...)` and
+        // `Type.method(...)`: see `qualified_route`.
         if let Some(Expr::FieldAccess(fa)) = call.callee() {
-            if let Some(lowered) = self.lower_interface_qualified_call(call, &fa) {
-                return lowered;
-            }
-            if let Some(lowered) = self.lower_static_method_call(call, &fa) {
-                return lowered;
+            if let Some(route) = self.qualified_route(&fa) {
+                let exprs = call.args();
+                let first_ty = exprs
+                    .first()
+                    .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
+                let args = exprs.iter().map(|arg| self.lower_expr(arg)).collect();
+                return self.lower_qualified_call(
+                    call.syntax().text_range(),
+                    route,
+                    args,
+                    first_ty,
+                );
             }
         }
 
@@ -9297,96 +9417,21 @@ impl<'a> Lowerer<'a> {
                     };
                 }
 
-                // Lower the receiver expression
+                let receiver_source = fa
+                    .base()
+                    .and_then(|base| self.get_ty(base.syntax().text_range()).cloned());
                 let receiver = fa
                     .base()
                     .map(|e| self.lower_expr(&e))
                     .unwrap_or(MirExpr::Unit);
-
-                // Lower explicit arguments
-                let mut args = vec![receiver];
-                for arg in call.args() {
-                    args.push(self.lower_expr(&arg));
-                }
-
-                let ty = self.resolve_range(call.syntax().text_range());
-
-                // An instantiated generic sum type (`Option<Int>`) gets
-                // its trait functions on first use.
-                let receiver_source = fa
-                    .base()
-                    .and_then(|base| self.get_ty(base.syntax().text_range()).cloned());
-                if let Some(source) = &receiver_source {
-                    self.ensure_instantiation_traits(source);
-                }
-
-                // Route through the shared trait dispatch helper
-                let first_arg_ty = args[0].ty().clone();
-                let callee_var_ty = MirType::FnPtr(
-                    args.iter().map(|a| a.ty().clone()).collect(),
-                    Box::new(ty.clone()),
+                let rest = call.args().iter().map(|arg| self.lower_expr(arg)).collect();
+                return self.lower_method_call(
+                    call.syntax().text_range(),
+                    &method_name,
+                    receiver,
+                    receiver_source,
+                    rest,
                 );
-                if method_name == "compare" && args.len() == 2 {
-                    if let Some(source) = receiver_source
-                        .as_ref()
-                        .filter(|ty| !matches!(ty, Ty::Var(_)))
-                    {
-                        return self.compare_call(source, args);
-                    }
-                }
-                let call_result = self.get_ty(call.syntax().text_range()).cloned();
-                let callee = receiver_source
-                    .as_ref()
-                    .and_then(|source| {
-                        self.parameterized_impl_callee(
-                            &method_name,
-                            source,
-                            call_result.as_ref(),
-                            &callee_var_ty,
-                        )
-                    })
-                    .or_else(|| {
-                        receiver_source.as_ref().and_then(|source| {
-                            self.instantiation_trait_callee(&method_name, source, &callee_var_ty)
-                        })
-                    })
-                    .unwrap_or_else(|| {
-                        self.resolve_trait_callee(&method_name, &callee_var_ty, &first_arg_ty)
-                    });
-
-                // Apply the same post-dispatch optimizations as bare-name calls:
-                // Display__to_string__String identity short-circuit
-                if let MirExpr::Var(ref name, _) = callee {
-                    if name == "Display__to_string__String" && !args.is_empty() {
-                        return args.into_iter().next().unwrap();
-                    }
-                    // Debug__inspect__String quotes and escapes
-                    if name == "Debug__inspect__String" && !args.is_empty() {
-                        return Self::inspect_string(args.into_iter().next().unwrap());
-                    }
-                }
-
-                // `to_string` / `inspect` on a value whose type, not a
-                // nominal impl, decides how it prints.
-                if let MirExpr::Var(ref name, _) = callee {
-                    if (name == "to_string" || name == "debug" || name == "inspect")
-                        && args.len() == 1
-                    {
-                        if let Some(shown) = receiver_source
-                            .as_ref()
-                            .and_then(|ty| self.display_by_type(&args[0], ty, name == "inspect"))
-                        {
-                            return shown;
-                        }
-                    }
-                }
-
-                let args = self.apply_direct_resource_modes(&callee, args);
-                return MirExpr::Call {
-                    func: Box::new(callee),
-                    args,
-                    ty,
-                };
             }
         }
 
@@ -9994,56 +10039,7 @@ impl<'a> Lowerer<'a> {
     // ── Pipe expression lowering (DESUGARING) ────────────────────────
 
     fn lower_pipe_expr(&mut self, pipe: &PipeExpr) -> MirExpr {
-        // Desugar: `x |> f` -> `f(x)`
-        //          `x |> f(a, b)` -> `f(x, a, b)`
-        let lhs = pipe
-            .lhs()
-            .map(|e| self.lower_expr(&e))
-            .unwrap_or(MirExpr::Unit);
-
-        let rhs = pipe.rhs();
-        let ty = self.resolve_range(pipe.syntax().text_range());
-        if let Some(Expr::SendExpr(send)) = &rhs {
-            return self.lower_piped_send(send, lhs, pipe.lhs(), 0);
-        }
-        if let Some(shown) = self.piped_string_from(&rhs, &lhs, pipe.lhs()) {
-            return shown;
-        }
-
-        let mut result = match rhs {
-            Some(Expr::CallExpr(call)) => {
-                // `x |> f(a, b)` -> `f(x, a, b)` -- prepend lhs to existing args.
-                let callee = call
-                    .callee()
-                    .map(|e| self.lower_call_target(call.syntax().text_range(), &e));
-                let mut args: Vec<MirExpr> = Vec::new();
-                args.push(lhs);
-                for arg in call.args() {
-                    args.push(self.lower_expr(&arg));
-                }
-                let callee = match callee {
-                    Some(c) => c,
-                    None => return MirExpr::Unit,
-                };
-                let args = self.apply_direct_resource_modes(&callee, args);
-                MirExpr::Call {
-                    ty: tuple_slot_type(&callee, ty),
-                    func: Box::new(callee),
-                    args,
-                }
-            }
-            Some(rhs_expr) => {
-                // `x |> f` -> `f(x)` -- bare function reference.
-                let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
-                let args = self.apply_direct_resource_modes(&func, vec![lhs]);
-                MirExpr::Call {
-                    ty: tuple_slot_type(&func, ty),
-                    func: Box::new(func),
-                    args,
-                }
-            }
-            None => MirExpr::Unit,
-        };
+        let mut result = self.lower_piped(pipe.syntax().text_range(), pipe.lhs(), pipe.rhs(), 0);
 
         // Phase 96 / 129: Map.collect string key detection.
         // Walk the pipe chain source types: if the source is List<(String,V)>,
@@ -10068,48 +10064,85 @@ impl<'a> Lowerer<'a> {
     // ── Slot pipe expression lowering (DESUGARING) ───────────────────
 
     fn lower_slot_pipe_expr(&mut self, pipe: &SlotPipeExpr) -> MirExpr {
-        // Desugar: `x |N> f(a, b, c)` -> `f(a[0..N-2], x, a[N-2..])`
-        // where N is 1-indexed slot position and a[i] are the explicit args.
-        let lhs = pipe
-            .lhs()
-            .map(|e| self.lower_expr(&e))
-            .unwrap_or(MirExpr::Unit);
+        // 1-indexed, >= 2 by parse guarantee.
+        let slot = pipe.slot().unwrap_or(2) as usize;
+        self.lower_piped(pipe.syntax().text_range(), pipe.lhs(), pipe.rhs(), slot - 1)
+    }
 
-        let slot = pipe.slot().unwrap_or(2) as usize; // 1-indexed
-        let insert_idx = slot - 1; // 0-indexed position to insert lhs
-        let ty = self.resolve_range(pipe.syntax().text_range());
-        if let Some(Expr::SendExpr(send)) = pipe.rhs() {
-            return self.lower_piped_send(&send, lhs, pipe.lhs(), insert_idx);
+    /// `lhs |> rhs` (`index` 0) and `lhs |N> rhs` (`index` N - 1) desugar to
+    /// a call of `rhs` with `lhs` inserted among its arguments at `index`,
+    /// clamped to the end: `x |> f(a)` is `f(x, a)`, `x |2> f(a, b)` is
+    /// `f(a, x, b)`. A bare `rhs` is called with `lhs` alone.
+    fn lower_piped(
+        &mut self,
+        pipe_range: TextRange,
+        lhs_expr: Option<Expr>,
+        rhs: Option<Expr>,
+        index: usize,
+    ) -> MirExpr {
+        let lhs = lhs_expr
+            .as_ref()
+            .map(|e| self.lower_expr(e))
+            .unwrap_or(MirExpr::Unit);
+        let ty = self.resolve_range(pipe_range);
+        if let Some(Expr::SendExpr(send)) = &rhs {
+            return self.lower_piped_send(send, lhs, lhs_expr, index);
         }
-        if let Some(shown) = self.piped_string_from(&pipe.rhs(), &lhs, pipe.lhs()) {
+        if let Some(shown) = self.piped_string_from(&rhs, &lhs, lhs_expr.clone()) {
             return shown;
         }
+        let lhs_ty = lhs_expr
+            .as_ref()
+            .and_then(|e| self.get_ty(e.syntax().text_range()).cloned());
 
-        match pipe.rhs() {
+        match rhs {
             Some(Expr::CallExpr(call)) => {
-                let callee = call
-                    .callee()
-                    .map(|e| self.lower_call_target(call.syntax().text_range(), &e));
-                let mut explicit_args: Vec<MirExpr> = Vec::new();
-                for arg in call.args() {
-                    explicit_args.push(self.lower_expr(&arg));
-                }
-                // Insert lhs at insert_idx (0-indexed), clamping to length
-                let actual_idx = insert_idx.min(explicit_args.len());
-                explicit_args.insert(actual_idx, lhs);
-                let callee = match callee {
-                    Some(c) => c,
-                    None => return MirExpr::Unit,
+                let route = match call.callee() {
+                    Some(Expr::FieldAccess(fa)) => self.qualified_route(&fa),
+                    _ => None,
                 };
-                let explicit_args = self.apply_direct_resource_modes(&callee, explicit_args);
+                let callee = match route {
+                    Some(_) => None,
+                    None => call
+                        .callee()
+                        .map(|e| self.lower_call_target(call.syntax().text_range(), &e)),
+                };
+                let explicit = call.args();
+                let index = index.min(explicit.len());
+                let mut args: Vec<MirExpr> =
+                    explicit.iter().map(|arg| self.lower_expr(arg)).collect();
+                args.insert(index, lhs);
+                if let Some(route) = route {
+                    let first_ty = match index {
+                        0 => lhs_ty,
+                        _ => explicit
+                            .first()
+                            .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned()),
+                    };
+                    return self.lower_qualified_call(
+                        call.syntax().text_range(),
+                        route,
+                        args,
+                        first_ty,
+                    );
+                }
+                let Some(callee) = callee else {
+                    return MirExpr::Unit;
+                };
+                let args = self.apply_direct_resource_modes(&callee, args);
                 MirExpr::Call {
                     ty: tuple_slot_type(&callee, ty),
                     func: Box::new(callee),
-                    args: explicit_args,
+                    args,
                 }
             }
             Some(rhs_expr) => {
-                // Bare function reference with slot — treat as regular pipe (insert at position 0)
+                // `x |> f`: `f(x)`.
+                if let Expr::FieldAccess(fa) = &rhs_expr {
+                    if let Some(route) = self.qualified_route(fa) {
+                        return self.lower_qualified_call(pipe_range, route, vec![lhs], lhs_ty);
+                    }
+                }
                 let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {

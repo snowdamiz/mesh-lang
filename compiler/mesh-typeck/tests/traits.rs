@@ -389,3 +389,39 @@ fn a_method_parameter_needs_a_type() {
         assert!(result.errors.is_empty(), "{body}: {:?}", result.errors);
     }
 }
+
+/// A struct's name is no value: `let x = Wrap` and `Wrap.tag` type checked
+/// as a `Wrap` value and failed in code generation, and `Wrap.label(5)` in
+/// LLVM. An instance method named on the type takes the value first, as
+/// one named on its interface does: `Wrap.label(w, 5)` said "expected 2
+/// argument(s), found 3".
+#[test]
+fn a_type_is_not_a_value_but_names_its_methods() {
+    let prelude = "struct Wrap do\n  tag :: String\nend\n\ninterface Labeler do\n  fn label(self, x :: Int) -> String\nend\n\nimpl Labeler for Wrap do\n  fn label(self, x :: Int) -> String do\n    \"#{self.tag}: #{x}\"\n  end\nend\n\n";
+    let check = |body: &str| {
+        check_source(&format!(
+            "{prelude}fn main() do\n  let w = Wrap {{ tag: \"t\" }}\n  {body}\nend\n"
+        ))
+    };
+    let not_value = check("let x = Wrap\n  x");
+    assert!(
+        not_value.errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeNotValue { name, .. } if name == "Wrap"
+        )),
+        "{:?}",
+        not_value.errors
+    );
+    for body in ["Wrap.tag", "Wrap.label(5)"] {
+        assert!(!check(body).errors.is_empty(), "{body}");
+    }
+    for body in [
+        "Wrap.label(w, 5)",
+        "w |> Wrap.label(5)",
+        "w |> Labeler.label(5)",
+        "5 |2> Wrap.label(w)",
+    ] {
+        let result = check(body);
+        assert!(result.errors.is_empty(), "{body}: {:?}", result.errors);
+    }
+}

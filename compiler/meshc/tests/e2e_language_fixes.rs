@@ -2952,6 +2952,69 @@ end
     );
 }
 
+/// An instance method named on its type takes the value first, as one named
+/// on its interface does, and a pipe can go into either: `Dog.hello(d)`
+/// said "expected 1 argument(s), found 2", and `d |> A.hello()` failed in
+/// code generation on the interface's name as a variable.
+#[test]
+fn methods_are_called_through_their_type_and_piped_into_qualified_names() {
+    let source = r##"
+interface A do
+  fn hello(self, n :: Int) -> String
+end
+
+interface B do
+  fn hello(self, n :: Int) -> String
+end
+
+struct Cat do
+  n :: Int
+end
+
+struct Dog do
+  n :: Int
+end
+
+impl A for Cat do
+  fn hello(self, n :: Int) -> String do
+    "A#{self.n + n}"
+  end
+end
+
+impl B for Cat do
+  fn hello(self, n :: Int) -> String do
+    "B#{self.n + n}"
+  end
+end
+
+impl A for Dog do
+  fn hello(self, n :: Int) -> String do
+    "dog#{self.n + n}"
+  end
+end
+
+fn main() do
+  let cat = Cat { n: 1 }
+  let dog = Dog { n: 5 }
+  println(Dog.hello(dog, 1))
+  println(dog |> Dog.hello(2))
+  println(3 |2> Dog.hello(dog))
+  println(cat |> A.hello(1))
+  println(cat |> B.hello(2))
+end
+"##;
+    assert_eq!(run(source), "dog6\ndog7\ndog8\nA2\nB3\n");
+    // Two interfaces give Cat a `hello`: naming the type picks neither.
+    let err =
+        build_error(&source.replace("println(Dog.hello(dog, 1))", "println(Cat.hello(cat, 1))"));
+    assert!(err.contains("E0027"), "{err}");
+    let err = build_error(&source.replace("println(Dog.hello(dog, 1))", "println(Dog)"));
+    assert!(
+        err.contains("E0083") && err.contains("`Dog` is a type, not a value"),
+        "{err}"
+    );
+}
+
 #[test]
 fn static_interface_methods_are_called_on_types_and_type_parameters() {
     let source = r##"

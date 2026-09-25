@@ -8804,7 +8804,10 @@ fn infer_expr_here(
             }
             infer_literal(lit)
         }
-        Expr::NameRef(name_ref) => infer_name_ref(ctx, env, name_ref)?,
+        Expr::NameRef(name_ref) => {
+            reject_type_as_value(ctx, env, type_registry, name_ref)?;
+            infer_name_ref(ctx, env, name_ref)?
+        }
         Expr::BinaryExpr(bin) => infer_binary(
             ctx,
             env,
@@ -9181,6 +9184,107 @@ fn infer_literal(lit: &Literal) -> Ty {
         }
     } else {
         Ty::Tuple(vec![])
+    }
+}
+
+/// Whether `name` is a struct or sum type of the program's.
+fn is_named_type(type_registry: &TypeRegistry, name: &str) -> bool {
+    type_registry.lookup_struct(name).is_some() || type_registry.lookup_sum_type(name).is_some()
+}
+
+/// A struct or sum type's name names no value: it is the base of a
+/// qualified name (`Point.origin()`, `Shape.Circle`) or an error. It type
+/// checked as a value of the type, and code generation failed on it.
+fn reject_type_as_value(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    type_registry: &TypeRegistry,
+    name_ref: &NameRef,
+) -> Result<(), TypeError> {
+    let Some(name) = name_ref.text() else {
+        return Ok(());
+    };
+    let is_base = name_ref
+        .syntax()
+        .parent()
+        .and_then(FieldAccess::cast)
+        .and_then(|fa| fa.base())
+        .is_some_and(|base| base.syntax() == name_ref.syntax());
+    if is_base || env.is_local(&name) || !is_named_type(type_registry, &name) {
+        return Ok(());
+    }
+    let err = TypeError::TypeNotValue {
+        name,
+        span: name_ref.syntax().text_range(),
+    };
+    ctx.errors.push(err.clone());
+    Err(err)
+}
+
+/// `Type.method` for a struct or sum type `Type`: an instance method named
+/// on the type takes the value first (`Wrap.label(w, 5)` is `w.label(5)`,
+/// as `Labeler.label(w, 5)` is). `None` for a static method
+/// (`Config.version()`), which the caller resolves. A type is no value, so
+/// a name that is neither is no method rather than a field of a `Type` value.
+fn type_qualified_method(
+    ctx: &mut InferCtx,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    type_name: &str,
+    method: &str,
+    span: TextRange,
+) -> Result<Option<Ty>, TypeError> {
+    let generic_count = type_registry
+        .lookup_struct(type_name)
+        .map(|info| info.generic_params.len())
+        .or_else(|| {
+            type_registry
+                .lookup_sum_type(type_name)
+                .map(|info| info.generic_params.len())
+        })
+        .unwrap_or(0);
+    let con = Ty::Con(TyCon::new(type_name));
+    let ty = if generic_count == 0 {
+        con
+    } else {
+        Ty::App(
+            Box::new(con),
+            (0..generic_count).map(|_| ctx.fresh_var()).collect(),
+        )
+    };
+    let traits = trait_registry.find_method_traits(method, &ty);
+    if traits.len() > 1 {
+        let err = TypeError::AmbiguousMethod {
+            method_name: method.to_string(),
+            candidate_traits: traits,
+            ty,
+            span,
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
+    match trait_registry.find_method_sig(method, &ty) {
+        Some(sig) if !sig.has_self => Ok(None),
+        Some(_) => {
+            let ret = method_return_type(ctx, trait_registry, method, &ty, span)
+                .unwrap_or_else(|| ctx.fresh_var());
+            Ok(Some(build_method_fn_type(
+                trait_registry,
+                method,
+                &ty,
+                &ret,
+                ctx,
+            )))
+        }
+        None => {
+            let err = TypeError::NoSuchMethod {
+                ty,
+                method_name: method.to_string(),
+                span,
+            };
+            ctx.errors.push(err.clone());
+            Err(err)
+        }
     }
 }
 
@@ -12698,6 +12802,19 @@ fn infer_field_access(
                 let qualified = format!("{}.{}", base_name, field_name);
                 if let Some(scheme) = env.lookup(&qualified) {
                     let ty = ctx.instantiate(scheme);
+                    return Ok(ty);
+                }
+            }
+
+            if !env.is_local(&base_name) && is_named_type(type_registry, &base_name) {
+                if let Some(ty) = type_qualified_method(
+                    ctx,
+                    type_registry,
+                    trait_registry,
+                    &base_name,
+                    &field_name,
+                    fa.syntax().text_range(),
+                )? {
                     return Ok(ty);
                 }
             }

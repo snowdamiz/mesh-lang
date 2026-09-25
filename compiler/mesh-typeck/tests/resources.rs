@@ -480,7 +480,7 @@ fn opaque_resource_names_are_not_value_constructors() {
 
     assert!(
         result.errors.iter().any(
-            |error| matches!(error, TypeError::UnboundVariable { name, .. } if name == "SecretHandle")
+            |error| matches!(error, TypeError::TypeNotValue { name, .. } if name == "SecretHandle")
         ),
         "opaque resource was forgeable from its type name: {:?}",
         result.errors

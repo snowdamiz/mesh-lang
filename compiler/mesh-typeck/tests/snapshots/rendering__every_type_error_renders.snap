@@ -687,6 +687,17 @@ expression: rendered
 ───╯
 {"code":"E0082","severity":"error","message":"the type of `param` in method `method` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes the type of this parameter"}],"fix":"annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call"}
 
+[E0083] Error: `Name` is a type, not a value
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a type names no value
+   │
+   │ Help: build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`
+───╯
+{"code":"E0083","severity":"error","message":"`Name` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`"}
+
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
    │

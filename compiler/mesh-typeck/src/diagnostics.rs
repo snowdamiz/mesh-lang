@@ -194,6 +194,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TopLevelLet { .. } => "E0080",
         TypeError::ModuleNotImported { .. } => "E0081",
         TypeError::UntypedMethodParam { .. } => "E0082",
+        TypeError::TypeNotValue { .. } => "E0083",
     }
 }
 
@@ -1764,6 +1765,17 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                 "nothing here fixes the type of this value",
             )
             .with_help("annotate the value's type, such as a parameter `p :: Point`")
+        }
+        TypeError::TypeNotValue { name, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(
+                range,
+                format!("`{name}` is a type, not a value"),
+                "a type names no value",
+            )
+            .with_help(format!(
+                "build a value of it (`{name} {{ ... }}` for a struct, a variant for a sum type), or call one of its methods, `{name}.method(...)`"
+            ))
         }
         TypeError::UntypedMethodParam {
             method,
