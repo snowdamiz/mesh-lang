@@ -104,7 +104,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::ASSOC_TYPE_BINDING => walk_assoc_type_binding(node),
         SyntaxKind::SCHEMA_OPTION => walk_tokens_inline(node),
         SyntaxKind::TRY_EXPR | SyntaxKind::ASSERT_RECEIVE_EXPR => walk_tokens_inline(node),
-        SyntaxKind::PATH => walk_path(node),
+        SyntaxKind::PATH => walk_concat(node),
         // Simple leaf-like nodes: just emit their tokens inline.
         SyntaxKind::LITERAL
         | SyntaxKind::NAME
@@ -1428,32 +1428,6 @@ fn walk_return_expr(node: &SyntaxNode) -> FormatIR {
 
 fn walk_import_decl(node: &SyntaxNode) -> FormatIR {
     walk_tokens_inline(node)
-}
-
-fn walk_path(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::EOF => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    if !parts.is_empty() {
-                        parts.push(sp());
-                    }
-                    parts.push(inline_comment(&tok));
-                }
-                _ => {
-                    parts.push(ir::text(tok.text()));
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
 }
 
 fn walk_import_list(node: &SyntaxNode) -> FormatIR {
