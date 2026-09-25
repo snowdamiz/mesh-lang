@@ -4,16 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn find_meshc() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("cannot find current exe")
-        .parent()
-        .expect("cannot find parent dir")
-        .to_path_buf();
-    // Walk up from deps dir to the debug dir.
-    if path.ends_with("deps") {
-        path.pop();
-    }
-    path.join("meshc")
+    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
 fn fmt_file_contents(source: &str) -> String {

@@ -5,21 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn find_meshc() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("cannot find current exe")
-        .parent()
-        .expect("cannot find parent dir")
-        .to_path_buf();
-    if path.file_name().is_some_and(|n| n == "deps") {
-        path = path.parent().unwrap().to_path_buf();
-    }
-    let meshc = path.join("meshc");
-    assert!(
-        meshc.exists(),
-        "meshc binary not found at {}",
-        meshc.display()
-    );
-    meshc
+    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
 struct Build {

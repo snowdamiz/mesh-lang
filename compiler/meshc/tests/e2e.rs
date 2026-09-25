@@ -8,43 +8,7 @@ use std::process::Command;
 
 /// Helper: compile a Mesh source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
-    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-    let project_dir = temp_dir.path().join("project");
-    std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
-
-    // Write the source file
-    let main_mesh = project_dir.join("main.mpl");
-    std::fs::write(&main_mesh, source).expect("failed to write main.mpl");
-
-    // Build with meshc
-    let meshc = find_meshc();
-    let output = Command::new(&meshc)
-        .args(["build", project_dir.to_str().unwrap()])
-        .output()
-        .expect("failed to invoke meshc");
-
-    assert!(
-        output.status.success(),
-        "meshc build failed:\nstdout: {}\nstderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Run the compiled binary
-    let binary = project_dir.join("project");
-    let run_output = Command::new(&binary)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to run binary at {}: {}", binary.display(), e));
-
-    assert!(
-        run_output.status.success(),
-        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
-        run_output.status.code(),
-        String::from_utf8_lossy(&run_output.stdout),
-        String::from_utf8_lossy(&run_output.stderr)
-    );
-
-    String::from_utf8_lossy(&run_output.stdout).to_string()
+    compile_and_run_with_env(source, &[])
 }
 
 /// Helper: compile a Mesh source file and run the resulting binary with environment variables set.
@@ -80,7 +44,8 @@ fn compile_and_run_with_env(source: &str, env_vars: &[(&str, &str)]) -> String {
 
     assert!(
         run_output.status.success(),
-        "binary execution failed:\nstdout: {}\nstderr: {}",
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        run_output.status.code(),
         String::from_utf8_lossy(&run_output.stdout),
         String::from_utf8_lossy(&run_output.stderr)
     );
@@ -111,26 +76,8 @@ fn compile_expect_error(source: &str) -> String {
     String::from_utf8_lossy(&output.stderr).to_string()
 }
 
-/// Find the meshc binary in the target directory.
 fn find_meshc() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("cannot find current exe")
-        .parent()
-        .expect("cannot find parent dir")
-        .to_path_buf();
-
-    // Navigate from `deps/` to the target directory
-    if path.file_name().map_or(false, |n| n == "deps") {
-        path = path.parent().unwrap().to_path_buf();
-    }
-
-    let meshc = path.join("meshc");
-    assert!(
-        meshc.exists(),
-        "meshc binary not found at {}. Run `cargo build -p meshc` first.",
-        meshc.display()
-    );
-    meshc
+    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 
 /// Read a test fixture from the tests/e2e/ directory.
