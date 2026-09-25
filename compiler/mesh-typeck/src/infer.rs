@@ -12,9 +12,9 @@
 
 use mesh_parser::ast::expr::{
     BinaryExpr, BreakExpr, CallExpr, CaseExpr, ClosureExpr, ContinueExpr, Expr, FieldAccess,
-    ForInExpr, IfExpr, JsonExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, PipeExpr,
-    ReceiveExpr, ReturnExpr, SelfExpr, SendExpr, SlotPipeExpr, SpawnExpr, StructLiteral,
-    StructUpdate, TryExpr, TupleExpr, UnaryExpr, WhileExpr,
+    ForInExpr, IfExpr, JsonExpr, LinkExpr, ListLiteral, Literal, MapLiteral, NameRef, ReceiveExpr,
+    ReturnExpr, SelfExpr, SendExpr, SpawnExpr, StructLiteral, StructUpdate, TryExpr, TupleExpr,
+    UnaryExpr, WhileExpr,
 };
 use mesh_parser::ast::item::{
     ActorDef, Block, FnDef, ImplDef as AstImplDef, InterfaceDef, Item, LetBinding, ServiceDef,
@@ -274,6 +274,116 @@ fn significant_range(node: &mesh_parser::SyntaxNode) -> TextRange {
     }
 }
 
+/// What a function's body leaves to check until all of it is inferred (see
+/// `InferCtx`): the enclosing function's, set aside while a function's body
+/// is inferred so that each checks its own against its own type parameters.
+struct EnclosingFn {
+    where_bounds: Vec<(Ty, String)>,
+    rigid_params: Vec<(Ty, String)>,
+    operand_traits: Vec<(Ty, String, ConstraintOrigin)>,
+    pending_fields: Vec<PendingField>,
+    concat_operands: Vec<(Ty, &'static str, TextRange)>,
+    default_calls: Vec<(Ty, TextRange)>,
+    impl_choices: Vec<ImplChoice>,
+}
+
+/// Starts inferring the body of a function with these type parameters and
+/// where-clause.
+fn enter_fn_body(
+    ctx: &mut InferCtx,
+    where_constraints: &[(String, String)],
+    type_params: &FxHashMap<String, Ty>,
+) -> EnclosingFn {
+    let rigid_params = ctx.rigid_params.clone();
+    ctx.rigid_params.extend(
+        type_params
+            .iter()
+            .map(|(name, ty)| (ty.clone(), name.clone())),
+    );
+    EnclosingFn {
+        where_bounds: std::mem::replace(
+            &mut ctx.where_bounds,
+            where_bounds(where_constraints, type_params),
+        ),
+        rigid_params,
+        operand_traits: std::mem::take(&mut ctx.operand_traits),
+        pending_fields: std::mem::take(&mut ctx.pending_fields),
+        concat_operands: std::mem::take(&mut ctx.concat_operands),
+        default_calls: std::mem::take(&mut ctx.default_calls),
+        impl_choices: std::mem::take(&mut ctx.impl_choices),
+    }
+}
+
+/// Finishes the body of `def` (the first clause of a multi-clause
+/// function): checks what the body left to check, records under `env_key`
+/// what it requires of the arguments of parameters whose type is still open
+/// (an operator's trait, being joinable) for calls to check, and restores
+/// the enclosing function's.
+#[allow(clippy::too_many_arguments)]
+fn finish_fn_body(
+    ctx: &mut InferCtx,
+    enclosing: EnclosingFn,
+    def: &FnDef,
+    where_constraints: &[(String, String)],
+    type_params: &FxHashMap<String, Ty>,
+    param_types: &[Ty],
+    env_key: &str,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+) {
+    ctx.where_bounds = enclosing.where_bounds;
+    let operand_traits = std::mem::replace(&mut ctx.operand_traits, enclosing.operand_traits);
+    let default_calls = std::mem::replace(&mut ctx.default_calls, enclosing.default_calls);
+    let impl_choices = std::mem::replace(&mut ctx.impl_choices, enclosing.impl_choices);
+    let pending_fields = std::mem::replace(&mut ctx.pending_fields, enclosing.pending_fields);
+    let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
+    ctx.pending_fields.extend(unresolved);
+    let concat = std::mem::replace(&mut ctx.concat_operands, enclosing.concat_operands);
+    let unresolved_concat = check_concat_operands(ctx, concat, type_params);
+    let inferred_bounds = check_type_param_bounds(
+        ctx,
+        type_params,
+        where_constraints,
+        trait_registry,
+        operand_traits,
+    );
+    let param_of = |ctx: &mut InferCtx, ty: &Ty| {
+        let ty = ctx.resolve(ty.clone());
+        (0..param_types.len()).find(|&i| ctx.resolve(param_types[i].clone()) == ty)
+    };
+    let mut inferred = Vec::new();
+    for (ty, trait_name) in inferred_bounds {
+        if let Some(index) = param_of(ctx, &ty) {
+            inferred.push((index, trait_name));
+        }
+    }
+    let mut concat_params = Vec::new();
+    for (ty, op, _) in &unresolved_concat {
+        if let Some(index) = param_of(ctx, ty) {
+            concat_params.push((index, *op));
+        }
+    }
+    ctx.concat_operands.extend(unresolved_concat);
+    if !inferred.is_empty() || !concat_params.is_empty() {
+        let entry = fn_constraints
+            .entry(env_key.to_string())
+            .or_insert_with(|| FnConstraints {
+                where_constraints: Vec::new(),
+                type_params: FxHashMap::default(),
+                param_type_param_names: vec![None; param_types.len()],
+                inferred_bounds: Vec::new(),
+                concat_params: Vec::new(),
+            });
+        entry.inferred_bounds.extend(inferred);
+        entry.concat_params.extend(concat_params);
+    }
+    check_rigid_type_params(ctx, def, type_params);
+    check_default_calls(ctx, type_params, trait_registry, default_calls);
+    check_impl_choices(ctx, impl_choices);
+    ctx.rigid_params = enclosing.rigid_params;
+}
+
 /// What a function with inferred parameter types needs of them (an
 /// operator's trait, being joinable), required of this call's arguments:
 /// checked once the calling function is done, or handed on to its own
@@ -283,7 +393,7 @@ fn require_inferred_bounds(
     constraints: &FnConstraints,
     arg_types: &[Ty],
     origin: &ConstraintOrigin,
-    call: &CallExpr,
+    call_range: TextRange,
 ) {
     for (index, trait_name) in &constraints.inferred_bounds {
         if let Some(arg) = arg_types.get(*index) {
@@ -294,8 +404,7 @@ fn require_inferred_bounds(
     for (index, op) in &constraints.concat_params {
         if let Some(arg) = arg_types.get(*index) {
             let arg = ctx.resolve(arg.clone());
-            ctx.concat_operands
-                .push((arg, op, call.syntax().text_range()));
+            ctx.concat_operands.push((arg, op, call_range));
         }
     }
 }
@@ -317,6 +426,26 @@ struct FnConstraints {
     inferred_bounds: Vec<(usize, String)>,
     /// Parameters, by index, that the body joins with `<>` or `++`.
     concat_params: Vec<(usize, &'static str)>,
+}
+
+impl FnConstraints {
+    /// The type parameters bound to what a call gives them: the argument
+    /// types at the parameters they annotate, else what inference made of them.
+    fn type_args(&self, ctx: &mut InferCtx, arg_types: &[Ty]) -> FxHashMap<String, Ty> {
+        let mut type_args = FxHashMap::default();
+        for (name, arg) in self.param_type_param_names.iter().zip(arg_types) {
+            if let Some(name) = name {
+                type_args.insert(name.clone(), ctx.resolve(arg.clone()));
+            }
+        }
+        for (name, ty) in &self.type_params {
+            if !type_args.contains_key(name) {
+                let ty = ctx.resolve(ty.clone());
+                type_args.insert(name.clone(), ty);
+            }
+        }
+        type_args
+    }
 }
 
 // ── Standard Library Module Resolution (Phase 8) ──────────────────────
@@ -5338,19 +5467,7 @@ fn infer_multi_clause_fn(
 
     // ── Step 3: Infer each clause (like case arms) ─────────────────────
 
-    let saved_bounds = std::mem::replace(
-        &mut ctx.where_bounds,
-        where_bounds(&where_constraints, &type_params),
-    );
-    let saved_rigid = ctx.rigid_params.clone();
-    ctx.rigid_params.extend(
-        type_params
-            .iter()
-            .map(|(name, ty)| (ty.clone(), name.clone())),
-    );
-    let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
-    let saved_concat = std::mem::take(&mut ctx.concat_operands);
-    let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
+    let enclosing = enter_fn_body(ctx, &where_constraints, &type_params);
     ctx.push_fn_return_type(return_type_annotation.clone());
 
     let mut result_ty: Option<Ty> = None;
@@ -5501,21 +5618,17 @@ fn infer_multi_clause_fn(
         env.pop_scope();
     }
 
-    ctx.where_bounds = saved_bounds;
-    ctx.rigid_params = saved_rigid;
-    let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
-    let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
-    ctx.pending_fields.extend(unresolved);
-    let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
-    let unresolved = check_concat_operands(ctx, concat, &type_params);
-    ctx.concat_operands.extend(unresolved);
-    let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
-    check_type_param_bounds(
+    finish_fn_body(
         ctx,
-        &type_params,
+        enclosing,
+        first,
         &where_constraints,
+        &type_params,
+        &param_types,
+        &env_key,
+        fn_constraints,
+        type_registry,
         trait_registry,
-        operand_traits,
     );
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
@@ -8292,21 +8405,7 @@ fn infer_fn_def(
         validate_export_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
 
-    let saved_bounds = std::mem::replace(
-        &mut ctx.where_bounds,
-        where_bounds(&where_constraints, &type_params),
-    );
-    let saved_rigid = ctx.rigid_params.clone();
-    ctx.rigid_params.extend(
-        type_params
-            .iter()
-            .map(|(name, ty)| (ty.clone(), name.clone())),
-    );
-    let saved_operand_traits = std::mem::take(&mut ctx.operand_traits);
-    let saved_pending_fields = std::mem::take(&mut ctx.pending_fields);
-    let saved_concat = std::mem::take(&mut ctx.concat_operands);
-    let saved_default_calls = std::mem::take(&mut ctx.default_calls);
-    let saved_impl_choices = std::mem::take(&mut ctx.impl_choices);
+    let enclosing = enter_fn_body(ctx, &where_constraints, &type_params);
     // `main` without a declared return type returns nothing: a `?` in it
     // has nowhere to send its error.
     let returns_to = match &return_type_annotation {
@@ -8332,62 +8431,21 @@ fn infer_fn_def(
         Ty::Tuple(vec![])
     };
     let returns = ctx.pop_fn_return_type();
-    ctx.where_bounds = saved_bounds;
-    let operand_traits = std::mem::replace(&mut ctx.operand_traits, saved_operand_traits);
-    let default_calls = std::mem::replace(&mut ctx.default_calls, saved_default_calls);
-    let impl_choices = std::mem::replace(&mut ctx.impl_choices, saved_impl_choices);
-
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
-    let pending_fields = std::mem::replace(&mut ctx.pending_fields, saved_pending_fields);
-    let unresolved = resolve_pending_fields(ctx, type_registry, pending_fields, false);
-    ctx.pending_fields.extend(unresolved);
-    let concat = std::mem::replace(&mut ctx.concat_operands, saved_concat);
-    let unresolved_concat = check_concat_operands(ctx, concat, &type_params);
-    let inferred_bounds = check_type_param_bounds(
+    finish_fn_body(
         ctx,
-        &type_params,
+        enclosing,
+        fn_,
         &where_constraints,
+        &type_params,
+        &param_types,
+        &env_key,
+        fn_constraints,
+        type_registry,
         trait_registry,
-        operand_traits,
     );
-    // What the body needs of parameters whose type is still open, for the
-    // calls to check against their arguments.
-    let param_of = |ctx: &mut InferCtx, ty: &Ty| {
-        let ty = ctx.resolve(ty.clone());
-        (0..param_types.len()).find(|&i| ctx.resolve(param_types[i].clone()) == ty)
-    };
-    let mut inferred = Vec::new();
-    for (ty, trait_name) in inferred_bounds {
-        if let Some(index) = param_of(ctx, &ty) {
-            inferred.push((index, trait_name));
-        }
-    }
-    let mut concat_params = Vec::new();
-    for (ty, op, _) in &unresolved_concat {
-        if let Some(index) = param_of(ctx, ty) {
-            concat_params.push((index, *op));
-        }
-    }
-    ctx.concat_operands.extend(unresolved_concat);
-    if !inferred.is_empty() || !concat_params.is_empty() {
-        let entry = fn_constraints
-            .entry(env_key.clone())
-            .or_insert_with(|| FnConstraints {
-                where_constraints: Vec::new(),
-                type_params: FxHashMap::default(),
-                param_type_param_names: vec![None; param_types.len()],
-                inferred_bounds: Vec::new(),
-                concat_params: Vec::new(),
-            });
-        entry.inferred_bounds.extend(inferred);
-        entry.concat_params.extend(concat_params);
-    }
-    check_rigid_type_params(ctx, fn_, &type_params);
-    check_default_calls(ctx, &type_params, trait_registry, default_calls);
-    check_impl_choices(ctx, impl_choices);
-    ctx.rigid_params = saved_rigid;
 
     env.pop_scope();
 
@@ -8744,10 +8802,13 @@ fn infer_expr_here(
                 ty
             }
         }
-        Expr::PipeExpr(pipe) => infer_pipe(
+        Expr::PipeExpr(pipe) => infer_piped(
             ctx,
             env,
-            pipe,
+            pipe.lhs(),
+            pipe.rhs(),
+            None,
+            pipe.syntax().text_range(),
             types,
             type_registry,
             trait_registry,
@@ -8966,10 +9027,14 @@ fn infer_expr_here(
             trait_registry,
             fn_constraints,
         )?,
-        Expr::SlotPipeExpr(pipe) => infer_slot_pipe(
+        // 1-indexed, >= 2 by parse guarantee.
+        Expr::SlotPipeExpr(pipe) => infer_piped(
             ctx,
             env,
-            pipe,
+            pipe.lhs(),
+            pipe.rhs(),
+            Some(pipe.slot().unwrap_or(2)),
+            pipe.syntax().text_range(),
             types,
             type_registry,
             trait_registry,
@@ -10322,16 +10387,55 @@ fn infer_call_inner(
         }
     }; // close else { match ... } and the let binding
 
-    let args = call.args();
+    check_call(
+        ctx,
+        env,
+        &callee_expr,
+        callee_ty,
+        &call.args(),
+        None,
+        call.syntax().text_range(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )
+}
+
+/// Checks a call of `callee_expr`, of type `callee_ty`, with the arguments
+/// `written` in it and a value piped in (`x |> f(a)`, `x |2> f(a)`): its
+/// expression, position and type. The arguments are checked against the
+/// parameters, then against what the callee requires of them: its
+/// where-clause, the bounds its body infers of them, `Display` for
+/// `String.from`. `call_range` is the call's. Returns the call's type.
+#[allow(clippy::too_many_arguments)]
+fn check_call(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    callee_expr: &Expr,
+    callee_ty: Ty,
+    written: &[Expr],
+    piped: Option<(&Expr, usize, Ty)>,
+    call_range: TextRange,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    // Every argument in order; the piped one's type is known already.
+    let mut args: Vec<(&Expr, Option<Ty>)> = written.iter().map(|arg| (arg, None)).collect();
+    if let Some((expr, index, ty)) = piped {
+        args.insert(index.min(args.len()), (expr, Some(ty)));
+    }
 
     let ret_var = ctx.fresh_var();
     let origin = ConstraintOrigin::FnArg {
-        call_site: call.syntax().text_range(),
+        call_site: call_range,
         param_idx: 0,
     };
     let mut arg_types = Vec::with_capacity(args.len());
 
-    let accessor = tuple_accessor(ctx, &callee_expr, args.get(1));
+    let accessor = tuple_accessor(ctx, callee_expr, args.get(1).map(|(arg, _)| *arg));
     if matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_)) {
         let param_types: Vec<Ty> = (0..args.len()).map(|_| ctx.fresh_var()).collect();
         // A tuple accessor is typed by `tuple_element_type`, not by its
@@ -10347,41 +10451,57 @@ fn infer_call_inner(
             None => Ty::Fun(param_types.clone(), Box::new(ret_var.clone())),
         };
 
-        // Establish the callee's parameter types first, then constrain arguments in source
-        // order. This lets an earlier argument specialize the expected type of a later closure.
+        // Establish the callee's parameter types first, then the piped value,
+        // then the written arguments in source order. This lets an earlier
+        // argument specialize the expected type of a later closure.
         ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-
-        for (param_idx, arg) in args.iter().enumerate() {
-            let arg_ty = infer_call_argument(
-                ctx,
-                env,
-                arg,
-                param_types[param_idx].clone(),
-                ConstraintOrigin::FnArg {
-                    call_site: significant_range(arg.syntax()),
+        for (param_idx, (_, piped_ty)) in args.iter().enumerate() {
+            if let Some(ty) = piped_ty {
+                let origin = ConstraintOrigin::FnArg {
+                    call_site: call_range,
                     param_idx,
-                },
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
+                };
+                ctx.unify(param_types[param_idx].clone(), ty.clone(), origin)?;
+            }
+        }
+        for (param_idx, (arg, piped_ty)) in args.iter().enumerate() {
+            let arg_ty = match piped_ty {
+                Some(ty) => ty.clone(),
+                None => infer_call_argument(
+                    ctx,
+                    env,
+                    arg,
+                    param_types[param_idx].clone(),
+                    ConstraintOrigin::FnArg {
+                        call_site: significant_range(arg.syntax()),
+                        param_idx,
+                    },
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
             arg_types.push(arg_ty);
         }
     } else {
         // The arguments' own errors come first; then the callee, which is a
         // value that cannot be called (unless an earlier error left it
         // `Never`, which is callable as anything).
-        for arg in &args {
-            arg_types.push(infer_expr(
-                ctx,
-                env,
-                arg,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?);
+        for (arg, piped_ty) in &args {
+            let arg_ty = match piped_ty {
+                Some(ty) => ty.clone(),
+                None => infer_expr(
+                    ctx,
+                    env,
+                    arg,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?,
+            };
+            arg_types.push(arg_ty);
         }
         let callee_ty = ctx.resolve(callee_ty);
         if callee_ty != Ty::Never {
@@ -10401,89 +10521,61 @@ fn infer_call_inner(
         ctx.unify(ret_var.clone(), element, origin.clone())?;
     }
     if let Some(source) = arg_types.first() {
-        settle_iter_source(ctx, env, &callee_expr, source, &ret_var, &origin)?;
+        settle_iter_source(ctx, env, callee_expr, source, &ret_var, &origin)?;
     }
 
-    if is_http_route_registration_callee(&callee_expr) {
-        if let Some(handler_arg) = call.arg_list().and_then(|args| args.args().nth(2)) {
-            mark_http_clustered_wrapper_consumed(ctx, &handler_arg);
+    if is_http_route_registration_callee(callee_expr) {
+        if let Some((handler, None)) = args.get(2) {
+            mark_http_clustered_wrapper_consumed(ctx, handler);
         }
     }
 
-    // Check where-clause constraints at the call site.
-    // After unification, arg_types hold the resolved concrete types for each
-    // parameter. Use param_type_param_names to map from arg position back to
-    // type parameter name, then check trait constraints on the resolved types.
-    // An overloaded callee's constraints are its arity's (`name__N`).
-    let constraints_key = |ctx: &InferCtx, name: String| {
-        ctx.overloaded_call_targets
-            .get(&call.syntax().text_range())
-            .cloned()
-            .unwrap_or(name)
-    };
-    if let Expr::NameRef(name_ref) = &callee_expr {
-        if let Some(fn_name) = name_ref.text() {
-            if let Some(constraints) = fn_constraints.get(&constraints_key(ctx, fn_name)) {
-                require_inferred_bounds(ctx, constraints, &arg_types, &origin, call);
-            }
-        }
-    }
     // `String.from(x)` shows `x` as interpolating it would: x needs Display.
-    if let Expr::FieldAccess(fa) = &callee_expr {
-        let is_string_from = fa.field().is_some_and(|f| f.text() == "from")
-            && matches!(fa.base(), Some(Expr::NameRef(base)) if base.text().as_deref() == Some("String"));
-        if is_string_from {
-            if let Some(arg) = arg_types.first() {
-                ctx.operand_traits
-                    .push((arg.clone(), "Display".to_string(), origin.clone()));
-            }
-        }
-        // `Json.encode(x)`: x must be something JSON holds (checked with the
-        // operators' traits, see `check_type_param_bounds`).
-        let is_json_encode = fa.field().is_some_and(|f| f.text() == "encode")
-            && matches!(fa.base(), Some(Expr::NameRef(base)) if matches!(base.text().as_deref(), Some("Json" | "JSON")));
-        if is_json_encode {
-            if let Some(arg) = arg_types.first() {
-                ctx.operand_traits
-                    .push((arg.clone(), "Json".to_string(), origin.clone()));
-            }
+    // `Json.encode(x)`: x must be something JSON holds (checked with the
+    // operators' traits, see `check_type_param_bounds`).
+    if let (Expr::FieldAccess(fa), Some(arg)) = (callee_expr, arg_types.first()) {
+        let module = match fa.base() {
+            Some(Expr::NameRef(base)) => base.text(),
+            _ => None,
+        };
+        let required = match (module.as_deref(), fa.field().map(|f| f.text().to_string())) {
+            (Some("String"), Some(field)) if field == "from" => Some("Display"),
+            (Some("Json" | "JSON"), Some(field)) if field == "encode" => Some("Json"),
+            _ => None,
+        };
+        if let Some(trait_name) = required {
+            ctx.operand_traits
+                .push((arg.clone(), trait_name.to_string(), origin.clone()));
         }
     }
-    if let Expr::NameRef(name_ref) = &callee_expr {
-        if let Some(fn_name) = name_ref.text() {
-            if let Some(constraints) = fn_constraints.get(&constraints_key(ctx, fn_name)) {
-                if !constraints.where_constraints.is_empty() {
-                    let mut resolved_type_args: FxHashMap<String, Ty> = FxHashMap::default();
 
-                    // Build type param -> resolved type mapping from call-site args.
-                    for (i, tp_name_opt) in constraints.param_type_param_names.iter().enumerate() {
-                        if let Some(tp_name) = tp_name_opt {
-                            if i < arg_types.len() {
-                                let resolved = ctx.resolve(arg_types[i].clone());
-                                resolved_type_args.insert(tp_name.clone(), resolved);
-                            }
-                        }
-                    }
-
-                    // Fallback: also try definition-time vars (may work for non-generic cases).
-                    for (param_name, param_ty) in &constraints.type_params {
-                        if !resolved_type_args.contains_key(param_name) {
-                            let resolved = ctx.resolve(param_ty.clone());
-                            resolved_type_args.insert(param_name.clone(), resolved);
-                        }
-                    }
-
-                    let errors = trait_registry.check_where_constraints(
-                        &constraints.where_constraints,
-                        &resolved_type_args,
-                        origin.clone(),
-                    );
-                    ctx.errors.extend(errors.clone());
-
-                    if let Some(first_err) = errors.into_iter().next() {
-                        return Err(first_err);
-                    }
-                }
+    // What the callee requires of its arguments: the bounds its body infers
+    // of them, and its where-clause, checked against the argument types
+    // unification has settled. An overloaded callee's are its arity's (`name__N`).
+    let callee_name = match callee_expr {
+        Expr::NameRef(name_ref) => name_ref.text(),
+        _ => None,
+    };
+    let constraints = callee_name.and_then(|name| {
+        let key = ctx
+            .overloaded_call_targets
+            .get(&call_range)
+            .cloned()
+            .unwrap_or(name);
+        fn_constraints.get(&key)
+    });
+    if let Some(constraints) = constraints {
+        require_inferred_bounds(ctx, constraints, &arg_types, &origin, call_range);
+        if !constraints.where_constraints.is_empty() {
+            let type_args = constraints.type_args(ctx, &arg_types);
+            let errors = trait_registry.check_where_constraints(
+                &constraints.where_constraints,
+                &type_args,
+                origin.clone(),
+            );
+            ctx.errors.extend(errors.clone());
+            if let Some(first_err) = errors.into_iter().next() {
+                return Err(first_err);
             }
         }
     }
@@ -10492,74 +10584,42 @@ fn infer_call_inner(
     // When apply(show, 42) is called, show has fn_constraints but f inside
     // apply's body does not. Check show's constraints HERE at the outer call site
     // where unification has connected type variables to concrete argument types.
-    if let Some(arg_list) = call.arg_list() {
-        for (arg_idx, arg) in arg_list.args().enumerate() {
-            if let Expr::NameRef(ref name_ref) = arg {
-                if let Some(arg_fn_name) = name_ref.text() {
-                    if let Some(arg_constraints) = fn_constraints.get(&arg_fn_name) {
-                        if !arg_constraints.where_constraints.is_empty()
-                            && arg_idx < arg_types.len()
-                        {
-                            // Resolve the argument's type (a function type after unification)
-                            let resolved_arg_ty = ctx.resolve(arg_types[arg_idx].clone());
-
-                            if let Ty::Fun(ref param_tys, _) = resolved_arg_ty {
-                                let mut resolved_type_args: FxHashMap<String, Ty> =
-                                    FxHashMap::default();
-
-                                // Map parameter positions to type param names, resolve types
-                                for (j, tp_name_opt) in
-                                    arg_constraints.param_type_param_names.iter().enumerate()
-                                {
-                                    if let Some(tp_name) = tp_name_opt {
-                                        if j < param_tys.len() {
-                                            let resolved = ctx.resolve(param_tys[j].clone());
-                                            resolved_type_args.insert(tp_name.clone(), resolved);
-                                        }
-                                    }
-                                }
-
-                                // Fallback: definition-time vars (may be connected via unification)
-                                for (param_name, param_ty) in &arg_constraints.type_params {
-                                    if !resolved_type_args.contains_key(param_name) {
-                                        let resolved = ctx.resolve(param_ty.clone());
-                                        resolved_type_args.insert(param_name.clone(), resolved);
-                                    }
-                                }
-
-                                // Only check constraints where type resolved to concrete (not Ty::Var)
-                                let checkable: Vec<(String, String)> = arg_constraints
-                                    .where_constraints
-                                    .iter()
-                                    .filter(|(pn, _)| {
-                                        resolved_type_args
-                                            .get(pn)
-                                            .map(|ty| !matches!(ty, Ty::Var(_)))
-                                            .unwrap_or(false)
-                                    })
-                                    .cloned()
-                                    .collect();
-
-                                if !checkable.is_empty() {
-                                    let errors = trait_registry.check_where_constraints(
-                                        &checkable,
-                                        &resolved_type_args,
-                                        origin.clone(),
-                                    );
-                                    ctx.errors.extend(errors);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    for ((arg, _), arg_ty) in args.iter().zip(&arg_types) {
+        let Expr::NameRef(name_ref) = arg else {
+            continue;
+        };
+        let Some(arg_constraints) = name_ref.text().and_then(|name| fn_constraints.get(&name))
+        else {
+            continue;
+        };
+        if arg_constraints.where_constraints.is_empty() {
+            continue;
+        }
+        let Ty::Fun(param_tys, _) = ctx.resolve(arg_ty.clone()) else {
+            continue;
+        };
+        let type_args = arg_constraints.type_args(ctx, &param_tys);
+        // Only the constraints whose type is known by now.
+        let checkable: Vec<(String, String)> = arg_constraints
+            .where_constraints
+            .iter()
+            .filter(|(param, _)| {
+                type_args
+                    .get(param)
+                    .is_some_and(|ty| !matches!(ty, Ty::Var(_)))
+            })
+            .cloned()
+            .collect();
+        if !checkable.is_empty() {
+            let errors =
+                trait_registry.check_where_constraints(&checkable, &type_args, origin.clone());
+            ctx.errors.extend(errors);
         }
     }
 
     Ok(ret_var)
 }
 
-/// Infer the type of a pipe expression: `lhs |> rhs`
 /// A call to a fn defined at more than one arity (`area(2)`, `Geo.area(2)`,
 /// `x |> area(3)`, `x |> area`): the type of the arity `arg_count` names,
 /// `name__N`, recorded as the target of the call at `call_range`. `None`
@@ -10609,17 +10669,26 @@ fn incomplete() -> TypeError {
     }
 }
 
-fn infer_pipe(
+/// Infer a pipe, `lhs |> rhs` or `lhs |N> rhs` (`slot` N): a call of `rhs`
+/// with `lhs` inserted among its arguments, first or at position N (the
+/// end, when the call has fewer). A bare `rhs` (`x |> f`, `x |2> f` alike)
+/// is called with `lhs` alone.
+#[allow(clippy::too_many_arguments)]
+fn infer_piped(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    pipe: &PipeExpr,
+    lhs: Option<Expr>,
+    rhs: Option<Expr>,
+    slot: Option<u32>,
+    pipe_range: TextRange,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let lhs = pipe.lhs().ok_or_else(incomplete)?;
-    let rhs = pipe.rhs().ok_or_else(incomplete)?;
+    let lhs = lhs.ok_or_else(incomplete)?;
+    let rhs = rhs.ok_or_else(incomplete)?;
+    let index = slot.map_or(0, |slot| slot as usize - 1);
 
     let lhs_ty = infer_expr(
         ctx,
@@ -10631,16 +10700,14 @@ fn infer_pipe(
         fn_constraints,
     )?;
 
-    let ret_var = ctx.fresh_var();
-
     if let Expr::SendExpr(send) = &rhs {
         return infer_piped_send(
             ctx,
             env,
             send,
             lhs_ty,
-            0,
-            pipe.syntax().text_range(),
+            index,
+            pipe_range,
             types,
             type_registry,
             trait_registry,
@@ -10648,517 +10715,92 @@ fn infer_pipe(
         );
     }
 
-    match &rhs {
-        Expr::CallExpr(call) => {
-            // Pipe-aware call inference: `x |> f(a, b)` desugars to `f(x, a, b)`.
-            // The piped argument constrains parameter zero before explicit arguments are
-            // inferred, so later closures see types established by the lhs.
-            let callee_expr = call.callee().ok_or_else(incomplete)?;
-
-            if is_http_clustered_callee(&callee_expr) {
-                let err = TypeError::HttpClusteredOutsideRouteHandlerPosition {
-                    span: call.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-
-            let callee_ty = match infer_overloaded_callee(
-                ctx,
-                env,
-                &callee_expr,
-                call.args().len() + 1,
-                call.syntax().text_range(),
-                types,
-            ) {
-                Some(ty) => ty,
-                None => infer_expr(
-                    ctx,
-                    env,
-                    &callee_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?,
-            };
-
-            let args = call.args();
-
-            let origin = ConstraintOrigin::FnArg {
-                call_site: call.syntax().text_range(),
-                param_idx: 0,
-            };
-            let mut arg_types = Vec::with_capacity(args.len());
-            let callee_is_callable =
-                matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_));
-
-            let accessor = tuple_accessor(ctx, &callee_expr, args.first());
-            if callee_is_callable {
-                let param_types: Vec<Ty> = (0..=args.len()).map(|_| ctx.fresh_var()).collect();
-                if accessor.is_some() {
-                    if let Some(index_ty) = param_types.get(1) {
-                        ctx.unify(Ty::int(), index_ty.clone(), origin.clone())?;
-                    }
-                }
-                let expected_fn_ty = match accessor {
-                    Some(_) => callee_ty.clone(),
-                    None => Ty::Fun(param_types.clone(), Box::new(ret_var.clone())),
-                };
-                ctx.unify(callee_ty.clone(), expected_fn_ty, origin.clone())?;
-                ctx.unify(lhs_ty.clone(), param_types[0].clone(), origin.clone())?;
-
-                for (arg_idx, arg) in args.iter().enumerate() {
-                    let param_idx = arg_idx + 1;
-                    let arg_ty = infer_call_argument(
-                        ctx,
-                        env,
-                        arg,
-                        param_types[param_idx].clone(),
-                        ConstraintOrigin::FnArg {
-                            call_site: significant_range(arg.syntax()),
-                            param_idx,
-                        },
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    )?;
-                    arg_types.push(arg_ty);
-                }
-            } else {
-                for arg in &args {
-                    arg_types.push(infer_expr(
-                        ctx,
-                        env,
-                        arg,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    )?);
-                }
-            }
-
-            if is_http_route_registration_callee(&callee_expr) {
-                if let Some(handler_arg) = call.arg_list().and_then(|args| args.args().nth(1)) {
-                    mark_http_clustered_wrapper_consumed(ctx, &handler_arg);
-                }
-            }
-
-            // Build full arg list: [lhs_ty, ...explicit_arg_types]
-            let mut full_args = vec![lhs_ty.clone()];
-            full_args.extend(arg_types.clone());
-
-            if !callee_is_callable {
-                let expected_fn_ty = Ty::Fun(full_args.clone(), Box::new(ret_var.clone()));
-                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-            }
-
-            if let (Some(index), true) = (accessor, callee_is_callable) {
-                let element = tuple_element_type(ctx, &lhs_ty, index, origin.clone())?;
-                ctx.unify(ret_var.clone(), element, origin.clone())?;
-            }
-            settle_iter_source(ctx, env, &callee_expr, &lhs_ty, &ret_var, &origin)?;
-
-            // Record type for the CallExpr node so MIR lowering can resolve it.
-            let resolved_call = ctx.resolve(ret_var.clone());
-            types.insert(call.syntax().text_range(), resolved_call);
-
-            // Check where-clause constraints at the call site (mirrors infer_call).
-            if let Expr::NameRef(name_ref) = &callee_expr {
-                if let Some(fn_name) = name_ref.text() {
-                    if let Some(constraints) = fn_constraints.get(
-                        ctx.overloaded_call_targets
-                            .get(&call.syntax().text_range())
-                            .unwrap_or(&fn_name),
-                    ) {
-                        if !constraints.where_constraints.is_empty() {
-                            let mut resolved_type_args: FxHashMap<String, Ty> =
-                                FxHashMap::default();
-
-                            // Build type param -> resolved type mapping from full arg list
-                            // (including the piped argument at position 0).
-                            for (i, tp_name_opt) in
-                                constraints.param_type_param_names.iter().enumerate()
-                            {
-                                if let Some(tp_name) = tp_name_opt {
-                                    if i < full_args.len() {
-                                        let resolved = ctx.resolve(full_args[i].clone());
-                                        resolved_type_args.insert(tp_name.clone(), resolved);
-                                    }
-                                }
-                            }
-
-                            // Fallback: definition-time vars.
-                            for (param_name, param_ty) in &constraints.type_params {
-                                if !resolved_type_args.contains_key(param_name) {
-                                    let resolved = ctx.resolve(param_ty.clone());
-                                    resolved_type_args.insert(param_name.clone(), resolved);
-                                }
-                            }
-
-                            let errors = trait_registry.check_where_constraints(
-                                &constraints.where_constraints,
-                                &resolved_type_args,
-                                origin.clone(),
-                            );
-                            ctx.errors.extend(errors.clone());
-
-                            if let Some(first_err) = errors.into_iter().next() {
-                                return Err(first_err);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Check constraints on function-typed ARGUMENTS (higher-order case, pipe variant).
-            // For `value |> apply(show)`, the explicit args are [show] in arg_types.
-            // The piped lhs is NOT in arg_list.args(), so we iterate only explicit args.
-            if let Some(arg_list) = call.arg_list() {
-                for (arg_idx, arg) in arg_list.args().enumerate() {
-                    if let Expr::NameRef(ref name_ref) = arg {
-                        if let Some(arg_fn_name) = name_ref.text() {
-                            if let Some(arg_constraints) = fn_constraints.get(&arg_fn_name) {
-                                if !arg_constraints.where_constraints.is_empty()
-                                    && arg_idx < arg_types.len()
-                                {
-                                    let resolved_arg_ty = ctx.resolve(arg_types[arg_idx].clone());
-
-                                    if let Ty::Fun(ref param_tys, _) = resolved_arg_ty {
-                                        let mut resolved_type_args: FxHashMap<String, Ty> =
-                                            FxHashMap::default();
-
-                                        for (j, tp_name_opt) in arg_constraints
-                                            .param_type_param_names
-                                            .iter()
-                                            .enumerate()
-                                        {
-                                            if let Some(tp_name) = tp_name_opt {
-                                                if j < param_tys.len() {
-                                                    let resolved =
-                                                        ctx.resolve(param_tys[j].clone());
-                                                    resolved_type_args
-                                                        .insert(tp_name.clone(), resolved);
-                                                }
-                                            }
-                                        }
-
-                                        for (param_name, param_ty) in &arg_constraints.type_params {
-                                            if !resolved_type_args.contains_key(param_name) {
-                                                let resolved = ctx.resolve(param_ty.clone());
-                                                resolved_type_args
-                                                    .insert(param_name.clone(), resolved);
-                                            }
-                                        }
-
-                                        let checkable: Vec<(String, String)> = arg_constraints
-                                            .where_constraints
-                                            .iter()
-                                            .filter(|(pn, _)| {
-                                                resolved_type_args
-                                                    .get(pn)
-                                                    .map(|ty| !matches!(ty, Ty::Var(_)))
-                                                    .unwrap_or(false)
-                                            })
-                                            .cloned()
-                                            .collect();
-
-                                        if !checkable.is_empty() {
-                                            let errors = trait_registry.check_where_constraints(
-                                                &checkable,
-                                                &resolved_type_args,
-                                                origin.clone(),
-                                            );
-                                            ctx.errors.extend(errors);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        _ => {
-            // Existing behavior: infer rhs as function, unify with Fun([lhs_ty], ret).
-            let rhs_ty = match infer_overloaded_callee(
+    let Expr::CallExpr(call) = &rhs else {
+        let rhs_range = rhs.syntax().text_range();
+        let callee_ty = match infer_overloaded_callee(ctx, env, &rhs, 1, rhs_range, types) {
+            Some(ty) => ty,
+            None => infer_expr(
                 ctx,
                 env,
                 &rhs,
-                1,
-                rhs.syntax().text_range(),
                 types,
-            ) {
-                Some(ty) => ty,
-                None => infer_expr(
-                    ctx,
-                    env,
-                    &rhs,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?,
+        };
+        return check_call(
+            ctx,
+            env,
+            &rhs,
+            callee_ty,
+            &[],
+            Some((&lhs, 0, lhs_ty)),
+            rhs_range,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
+    };
+
+    let callee_expr = call.callee().ok_or_else(incomplete)?;
+    if is_http_clustered_callee(&callee_expr) {
+        let err = TypeError::HttpClusteredOutsideRouteHandlerPosition {
+            span: call.syntax().text_range(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
+
+    let args = call.args();
+    let call_range = call.syntax().text_range();
+    let callee_ty =
+        match infer_overloaded_callee(ctx, env, &callee_expr, args.len() + 1, call_range, types) {
+            Some(ty) => ty,
+            None => infer_expr(
+                ctx,
+                env,
+                &callee_expr,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?,
+        };
+
+    if let (Some(slot), Ty::Fun(params, _)) = (slot, ctx.resolve(callee_ty.clone())) {
+        if slot as usize > params.len() {
+            let err = TypeError::SlotPipeOutOfRange {
+                slot,
+                fn_name: match &callee_expr {
+                    Expr::NameRef(name_ref) => name_ref.text().unwrap_or_default(),
+                    _ => String::new(),
+                },
+                arity: params.len(),
+                span: pipe_range,
             };
-            match tuple_accessor(ctx, &rhs, None) {
-                Some(index) => {
-                    let element =
-                        tuple_element_type(ctx, &lhs_ty, index, ConstraintOrigin::Builtin)?;
-                    ctx.unify(ret_var.clone(), element, ConstraintOrigin::Builtin)?;
-                }
-                None => {
-                    let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
-                    ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
-                }
-            }
+            ctx.errors.push(err.clone());
+            return Err(err);
         }
     }
 
-    Ok(ret_var)
-}
-
-/// Infer the type of a slot pipe expression: `lhs |N> rhs`
-///
-/// `x |N> f(a, b)` desugars to a call where `x` is inserted at 0-indexed position (N-1)
-/// among the explicit arguments. Example: `x |2> f(a, b)` = `f(a, x, b)`.
-fn infer_slot_pipe(
-    ctx: &mut InferCtx,
-    env: &mut TypeEnv,
-    pipe: &SlotPipeExpr,
-    types: &mut FxHashMap<TextRange, Ty>,
-    type_registry: &TypeRegistry,
-    trait_registry: &TraitRegistry,
-    fn_constraints: &FxHashMap<String, FnConstraints>,
-) -> Result<Ty, TypeError> {
-    let lhs = pipe.lhs().ok_or_else(incomplete)?;
-    let rhs = pipe.rhs().ok_or_else(incomplete)?;
-
-    let slot = pipe.slot().unwrap_or(2); // 1-indexed, >= 2 by parse guarantee
-    let insert_idx = (slot - 1) as usize; // 0-indexed insert position in the final arg list
-
-    let lhs_ty = infer_expr(
+    let ty = check_call(
         ctx,
         env,
-        &lhs,
+        &callee_expr,
+        callee_ty,
+        &args,
+        Some((&lhs, index, lhs_ty)),
+        call_range,
         types,
         type_registry,
         trait_registry,
         fn_constraints,
     )?;
-    let ret_var = ctx.fresh_var();
-
-    if let Expr::SendExpr(send) = &rhs {
-        return infer_piped_send(
-            ctx,
-            env,
-            send,
-            lhs_ty,
-            insert_idx,
-            pipe.syntax().text_range(),
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        );
-    }
-
-    match &rhs {
-        Expr::CallExpr(call) => {
-            let callee_expr = call.callee().ok_or_else(incomplete)?;
-
-            if is_http_clustered_callee(&callee_expr) {
-                let err = TypeError::HttpClusteredOutsideRouteHandlerPosition {
-                    span: call.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-
-            let callee_ty = match infer_overloaded_callee(
-                ctx,
-                env,
-                &callee_expr,
-                call.args().len() + 1,
-                call.syntax().text_range(),
-                types,
-            ) {
-                Some(ty) => ty,
-                None => infer_expr(
-                    ctx,
-                    env,
-                    &callee_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?,
-            };
-
-            let explicit_args = call.args();
-            // `x |2> f(a, b, c)` means f(a, x, b, c): insert at index 1 (slot-1).
-            // If the requested position exceeds the explicit argument list, MIR lowering
-            // clamps it to the end, so inference must do the same.
-            let actual_idx = insert_idx.min(explicit_args.len());
-
-            // Arity-range check: if callee has a known Fun type, validate slot <= arity
-            let resolved_callee = ctx.resolve(callee_ty.clone());
-            if let Ty::Fun(ref params, _) = resolved_callee {
-                if (slot as usize) > params.len() {
-                    let fn_name = if let Expr::NameRef(ref nr) = callee_expr {
-                        nr.text().unwrap_or_default()
-                    } else {
-                        String::new()
-                    };
-                    let err = TypeError::SlotPipeOutOfRange {
-                        slot,
-                        fn_name,
-                        arity: params.len(),
-                        span: pipe.syntax().text_range(),
-                    };
-                    ctx.errors.push(err.clone());
-                    return Err(err);
-                }
-            }
-
-            let origin = ConstraintOrigin::FnArg {
-                call_site: call.syntax().text_range(),
-                param_idx: actual_idx,
-            };
-            let callee_is_callable = matches!(resolved_callee, Ty::Fun(_, _) | Ty::Var(_));
-            let mut explicit_arg_types = Vec::with_capacity(explicit_args.len());
-
-            if callee_is_callable {
-                let param_types: Vec<Ty> =
-                    (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
-                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
-                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-
-                // The piped value is already known, so let it specialize the callee before
-                // any explicit closure argument is inferred, regardless of its slot.
-                ctx.unify(
-                    lhs_ty.clone(),
-                    param_types[actual_idx].clone(),
-                    origin.clone(),
-                )?;
-
-                for (arg_idx, arg) in explicit_args.iter().enumerate() {
-                    let param_idx = if arg_idx < actual_idx {
-                        arg_idx
-                    } else {
-                        arg_idx + 1
-                    };
-                    explicit_arg_types.push(infer_call_argument(
-                        ctx,
-                        env,
-                        arg,
-                        param_types[param_idx].clone(),
-                        ConstraintOrigin::FnArg {
-                            call_site: significant_range(arg.syntax()),
-                            param_idx,
-                        },
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    )?);
-                }
-            } else {
-                for arg in &explicit_args {
-                    explicit_arg_types.push(infer_expr(
-                        ctx,
-                        env,
-                        arg,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        fn_constraints,
-                    )?);
-                }
-                let mut full_args = explicit_arg_types.clone();
-                full_args.insert(actual_idx, lhs_ty.clone());
-                let expected_fn_ty = Ty::Fun(full_args, Box::new(ret_var.clone()));
-                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-            }
-
-            let mut full_args = explicit_arg_types.clone();
-            full_args.insert(actual_idx, lhs_ty.clone());
-
-            // Record type for the CallExpr node (mirrors infer_pipe)
-            let resolved_call = ctx.resolve(ret_var.clone());
-            types.insert(call.syntax().text_range(), resolved_call);
-
-            // Where-clause constraint checking (mirrors infer_pipe's CallExpr arm)
-            if let Expr::NameRef(ref name_ref) = callee_expr {
-                if let Some(fn_name) = name_ref.text() {
-                    if let Some(constraints) = fn_constraints.get(
-                        ctx.overloaded_call_targets
-                            .get(&call.syntax().text_range())
-                            .unwrap_or(&fn_name),
-                    ) {
-                        if !constraints.where_constraints.is_empty() {
-                            let mut resolved_type_args: FxHashMap<String, Ty> =
-                                FxHashMap::default();
-                            for (i, tp_name_opt) in
-                                constraints.param_type_param_names.iter().enumerate()
-                            {
-                                if let Some(tp_name) = tp_name_opt {
-                                    if i < full_args.len() {
-                                        resolved_type_args.insert(
-                                            tp_name.clone(),
-                                            ctx.resolve(full_args[i].clone()),
-                                        );
-                                    }
-                                }
-                            }
-                            for (param_name, param_ty) in &constraints.type_params {
-                                if !resolved_type_args.contains_key(param_name) {
-                                    resolved_type_args
-                                        .insert(param_name.clone(), ctx.resolve(param_ty.clone()));
-                                }
-                            }
-                            let errors = trait_registry.check_where_constraints(
-                                &constraints.where_constraints,
-                                &resolved_type_args,
-                                origin.clone(),
-                            );
-                            ctx.errors.extend(errors.clone());
-                            if let Some(first_err) = errors.into_iter().next() {
-                                return Err(first_err);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        _ => {
-            // Bare function reference: treat like regular pipe (insert lhs at position 0)
-            let rhs_ty = match infer_overloaded_callee(
-                ctx,
-                env,
-                &rhs,
-                1,
-                rhs.syntax().text_range(),
-                types,
-            ) {
-                Some(ty) => ty,
-                None => infer_expr(
-                    ctx,
-                    env,
-                    &rhs,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?,
-            };
-            let expected_fn = Ty::Fun(vec![lhs_ty], Box::new(ret_var.clone()));
-            ctx.unify(rhs_ty, expected_fn, ConstraintOrigin::Builtin)?;
-        }
-    }
-
-    Ok(ret_var)
+    // Recorded for MIR lowering, which lowers the call itself.
+    types.insert(call_range, ctx.resolve(ty.clone()));
+    Ok(ty)
 }
 
 /// Infer the type of an if expression.

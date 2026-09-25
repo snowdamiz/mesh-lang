@@ -44,6 +44,12 @@ fn assert_has_error<F: Fn(&TypeError) -> bool>(result: &TypeckResult, pred: F, d
     );
 }
 
+/// The error for a `Box` shown without a `Display` impl.
+fn box_lacks_display(error: &TypeError) -> bool {
+    matches!(error, TypeError::TraitNotSatisfied { ty, trait_name, .. }
+        if trait_name == "Display" && ty.to_string() == "Box")
+}
+
 // ── Interface definition and impl ────────────────────────────────────
 
 /// 1. Parse `interface Printable do fn to_string(self) -> String end`.
@@ -258,11 +264,36 @@ fn operand_traits_are_checked_outside_single_clause_functions() {
         let result = check_source(src);
         assert_has_error(
             &result,
-            |error| {
-                matches!(error, TypeError::TraitNotSatisfied { ty, trait_name, .. }
-                    if trait_name == "Display" && ty.to_string() == "Box")
-            },
+            box_lacks_display,
             src,
         );
     }
+}
+
+/// What a function's body needs of a parameter it leaves generic is
+/// required of the argument however the call is written: piped (`|>`,
+/// `|N>`, a bare `|> f`) as well as direct, and of a function written
+/// `fn f(x) = ...` as of one with a `do` body. Pipes and the `=` form let a
+/// `Box` with no `Display` through to code generation.
+#[test]
+fn a_parameters_inferred_bounds_hold_for_every_call_form() {
+    let prelude = "struct Box do\n  n :: Int\nend\n\nfn show_block(x) do\n  \"#{x}\"\nend\n\nfn show_eq(x) = \"#{x}\"\n\nfn pair(a, x) do\n  \"#{a} #{x}\"\nend\n\n";
+    for call in [
+        "show_block(b)",
+        "b |> show_block()",
+        "b |> show_block",
+        "show_eq(b)",
+        "b |> show_eq",
+        "1 |2> pair(b)",
+        "b |> String.from()",
+    ] {
+        let src =
+            format!("{prelude}fn main() do\n  let b = Box {{ n: 1 }}\n  println({call})\nend\n");
+        let result = check_source(&src);
+        assert_has_error(&result, box_lacks_display, call);
+    }
+    let fine = format!(
+        "{prelude}fn main() do\n  println(1 |> show_eq())\n  println(2 |2> pair(\"a\"))\nend\n"
+    );
+    assert!(check_source(&fine).errors.is_empty());
 }
