@@ -218,7 +218,7 @@ fn parse_abi_symbol_decorator_decl(
             ));
             valid = false;
         }
-        if !p.at(SyntaxKind::R_PAREN) {
+        if p.at(SyntaxKind::COMMA) {
             p.error(&format!("expected exactly one literal {decorator} symbol"));
             recover_cluster_decorator_args(p);
             valid = false;
@@ -229,7 +229,8 @@ fn parse_abi_symbol_decorator_decl(
         valid = false;
     }
 
-    if !p.eat(SyntaxKind::R_PAREN) {
+    // A missing `)` after a malformed argument is already reported.
+    if !p.eat(SyntaxKind::R_PAREN) && valid {
         p.error_with_related(
             &format!("expected `)` to close `@{decorator}(...)`"),
             start_span,
@@ -816,9 +817,7 @@ fn parse_schema_option(p: &mut Parser) {
                 p.error("expected `true` or `false` after `timestamps`");
             }
         }
-        _ => {
-            p.error(&format!("unknown schema option `{}`", option_name));
-        }
+        _ => unreachable!("the struct body parses only known schema options"),
     }
 
     p.close(m, SyntaxKind::SCHEMA_OPTION);
@@ -1297,6 +1296,37 @@ fn parse_impl_body(p: &mut Parser) {
 }
 
 // ── Sum Type Definition ──────────────────────────────────────────────────
+
+/// A `type` declaration, `type` at lookahead `at` (after an optional `pub`):
+/// `type Name[<...>] do ... end` is a sum type, anything else (`= ...`) an
+/// alias. A missing name is reported by the declaration it would be.
+pub(crate) fn parse_type_decl(p: &mut Parser, at: usize) {
+    let mut lookahead = at + 1;
+    if p.nth(lookahead) == SyntaxKind::IDENT {
+        lookahead += 1;
+    }
+    if p.nth(lookahead) == SyntaxKind::LT {
+        // Skip generic params: <T, U, ...>
+        let mut depth = 0u32;
+        loop {
+            match p.nth(lookahead) {
+                SyntaxKind::LT => depth += 1,
+                SyntaxKind::GT => depth -= 1,
+                SyntaxKind::EOF => break,
+                _ => {}
+            }
+            lookahead += 1;
+            if depth == 0 {
+                break;
+            }
+        }
+    }
+    if p.nth(lookahead) == SyntaxKind::DO_KW {
+        parse_sum_type_def(p);
+    } else {
+        parse_type_alias(p);
+    }
+}
 
 /// Parse a sum type definition: `[pub] type Name [<T>] do Variant1(Type) ... end`
 ///

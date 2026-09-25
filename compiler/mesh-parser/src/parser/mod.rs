@@ -52,9 +52,6 @@ enum Event {
     Close,
     /// Consume the current token, advancing the token position.
     Advance,
-    /// Emit an error message (wrapped in an ERROR_NODE in the tree).
-    #[allow(dead_code)]
-    Error { message: String },
 }
 
 /// An opaque marker for a started but not-yet-closed CST node.
@@ -226,13 +223,6 @@ impl<'src> Parser<'src> {
         self.current() == kind
     }
 
-    /// Check if the current significant token matches any of the given kinds.
-    #[allow(dead_code)]
-    pub(crate) fn at_any(&self, kinds: &[SyntaxKind]) -> bool {
-        let current = self.current();
-        kinds.contains(&current)
-    }
-
     // ── Mutation: node management ──────────────────────────────────────
 
     /// Start a new CST node. Returns a marker that must be passed to
@@ -307,16 +297,6 @@ impl<'src> Parser<'src> {
             self.events.push(Event::Advance);
             self.pos += 1;
         }
-    }
-
-    /// Consume the current token wrapped in an ERROR_NODE, advancing past it.
-    /// Used when encountering an unexpected token.
-    #[allow(dead_code)]
-    pub(crate) fn advance_with_error(&mut self, message: &str) {
-        let m = self.open();
-        self.error(message);
-        self.advance();
-        self.close(m, SyntaxKind::ERROR_NODE);
     }
 
     /// If the current token matches `kind`, consume it and return true.
@@ -647,10 +627,6 @@ impl<'src> Parser<'src> {
                         token_pos += 1;
                     }
                 }
-                Event::Error { .. } => {
-                    // Errors are tracked in self.errors; the node wrapping
-                    // is handled by advance_with_error using Open/Close events.
-                }
             }
             i += 1;
         }
@@ -763,35 +739,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             SyntaxKind::IDENT if p.nth_text(1) == "resource" => items::parse_resource_def(p),
             SyntaxKind::INTERFACE_KW => items::parse_interface_def(p),
             SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
-            SyntaxKind::TYPE_KW if p.nth(2) == SyntaxKind::IDENT => {
-                // pub type Name ... -- disambiguate sum type vs type alias
-                let mut lookahead = 3; // past PUB, TYPE_KW, IDENT
-                if p.nth(lookahead) == SyntaxKind::LT {
-                    lookahead += 1; // past <
-                    let mut depth = 1u32;
-                    while depth > 0 {
-                        match p.nth(lookahead) {
-                            SyntaxKind::LT => {
-                                depth += 1;
-                                lookahead += 1;
-                            }
-                            SyntaxKind::GT => {
-                                depth -= 1;
-                                lookahead += 1;
-                            }
-                            SyntaxKind::EOF => break,
-                            _ => {
-                                lookahead += 1;
-                            }
-                        }
-                    }
-                }
-                if p.nth(lookahead) == SyntaxKind::DO_KW {
-                    items::parse_sum_type_def(p);
-                } else {
-                    items::parse_type_alias(p);
-                }
-            }
+            SyntaxKind::TYPE_KW => items::parse_type_decl(p, 1),
             _ => {
                 p.error("expected `fn`, `module`, `struct`, `resource`, `interface`, `type`, or `supervisor` after `pub`");
             }
@@ -799,9 +747,11 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 
         // fn/def: named function definition (`fn name(` / `fn name<`) vs a
         // closure expression (`fn x -> ...`, `fn x, y do ...`, `fn(x) -> ...`).
+        // `def` never starts a closure.
         SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
-            if p.nth(1) == SyntaxKind::IDENT
-                && matches!(p.nth(2), SyntaxKind::L_PAREN | SyntaxKind::LT)
+            if p.at(SyntaxKind::DEF_KW)
+                || (p.nth(1) == SyntaxKind::IDENT
+                    && matches!(p.nth(2), SyntaxKind::L_PAREN | SyntaxKind::LT))
             {
                 items::parse_fn_def(p);
             } else {
@@ -842,38 +792,7 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
         SyntaxKind::SUPERVISOR_KW => items::parse_supervisor_def(p),
 
         // type at top level followed by IDENT -> sum type def or type alias
-        // Distinguish: type Name do ... end (sum type) vs type Name = ... (alias)
-        // Also handles generics: type Name<T> do/= ...
-        SyntaxKind::TYPE_KW if p.nth(1) == SyntaxKind::IDENT => {
-            // Look past name and optional generic params to find `do` or `=`
-            let mut lookahead = 2; // past TYPE_KW and IDENT
-            if p.nth(lookahead) == SyntaxKind::LT {
-                // Skip generic params: <T, U, ...>
-                lookahead += 1; // past <
-                let mut depth = 1u32;
-                while depth > 0 {
-                    match p.nth(lookahead) {
-                        SyntaxKind::LT => {
-                            depth += 1;
-                            lookahead += 1;
-                        }
-                        SyntaxKind::GT => {
-                            depth -= 1;
-                            lookahead += 1;
-                        }
-                        SyntaxKind::EOF => break,
-                        _ => {
-                            lookahead += 1;
-                        }
-                    }
-                }
-            }
-            if p.nth(lookahead) == SyntaxKind::DO_KW {
-                items::parse_sum_type_def(p);
-            } else {
-                items::parse_type_alias(p);
-            }
-        }
+        SyntaxKind::TYPE_KW => items::parse_type_decl(p, 0),
 
         SyntaxKind::LET_KW => expressions::parse_let_binding(p),
 

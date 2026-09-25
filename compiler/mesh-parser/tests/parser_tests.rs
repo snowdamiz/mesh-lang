@@ -3546,3 +3546,104 @@ fn struct_pattern_errors_name_what_is_missing() {
     )
     .is_empty());
 }
+
+/// Every malformed construct is reported with a message that names what was
+/// expected, and parsing goes on.
+#[test]
+fn malformed_constructs_report_what_was_expected() {
+    let cases: &[(&str, &str)] = &[
+        ("fn f() do\n  link x\nend", "expected `(` after `link`"),
+        ("fn f() do\n  send x\nend", "expected `(` after `send`"),
+        ("fn f() do\n  spawn x\nend", "expected `(` after `spawn`"),
+        ("fn f() do\n  let g = fn x, y end\nend", "expected `->` or `do` after closure parameters"),
+        ("fn f() do\n  let g = fn 1 -> 2 | x end\nend", "expected `->` or `do` after closure clause parameters"),
+        ("fn f() do\n  let g = fn end\nend", "expected closure parameters, `->`, or `do`"),
+        ("fn f() 1", "expected `=` or `do` for function body"),
+        ("@x fn f() do\n  1\nend", "expected `cluster` after `@`"),
+        ("fn f(x) do\n  case x do\n    1 -> do\n      2", "expected `end` to close arm `do` block"),
+        ("@cluster struct S do\nend", "expected `fn` or `def`"),
+        ("impl Show for Int do\n  let x = 1\nend", "in impl body"),
+        ("service S do\n  let x = 1\nend", "expected `fn`, `call`, `cast`, or `end` in service body"),
+        ("pub let x = 1", "after `pub`"),
+        ("supervisor S do\n  child c do\n    bogus: 1\n  end\nend", "in child spec body"),
+        ("supervisor S do\n  bogus: 1\nend", "in supervisor body"),
+        ("struct S do\n  timestamps 3\nend", "expected `true` or `false` after `timestamps`"),
+        ("fn f() do\n  g() do |x\n    x\n  end\nend", "expected `|` to close trailing closure parameters"),
+        ("fn f(p) do\n  case p do\n    Point { 1 } -> 0\n  end\nend", "expected a field name in the struct pattern"),
+        ("fn f() do\n  let a = 1 let b = 2\nend", "expected a newline or `;` after the statement"),
+        ("actor do\nend", "expected actor name"),
+        ("interface I do\n  type\nend", "expected associated type name"),
+        ("struct S do\n  belongs_to user\nend", "expected atom literal (e.g., :user) after relationship kind"),
+        ("struct S do\n  primary_key uuid\nend", "expected atom literal after `primary_key`"),
+        ("service S do\n  call do |s|\n    s\n  end\nend", "expected call handler name"),
+        ("service S do\n  cast do |s|\n    s\n  end\nend", "expected cast handler name"),
+        ("supervisor S do\n  child do\n  end\nend", "expected child spec name"),
+        ("@cluster(1, 2) fn f() do\n  1\nend", "expected exactly one replication count in `@cluster(N)`"),
+        ("@cluster(x) fn f() do\n  1\nend", "expected integer replication count inside `@cluster(...)`"),
+        ("@native(\"a\", \"b\") fn f() -> Int", "expected exactly one literal native symbol"),
+        ("@native(\"\") fn f() -> Int", "expected one non-empty literal native symbol"),
+        ("@native(x) fn f() -> Int", "expected one literal native symbol"),
+        ("@native \"x\" fn f() -> Int", "expected `(` and one literal native symbol after `@native`"),
+        ("@native(\"a#{b}\") fn f() -> Int", "expected one literal native symbol without interpolation"),
+        ("@native(\"a\"", "expected `)` to close `@native(...)`"),
+        ("fn f(x) do\n  case x do\n    1 ->\n  end\nend", "expected expression after `->`"),
+        ("fn f() do\n  let x = \nend", "expected expression"),
+        ("fn f() do\n  S { 1 }\nend", "expected field name in struct literal"),
+        ("fn f(s) do\n  %{s | 1: 2}\nend", "expected field name in struct update"),
+        ("struct S do\n  1 :: Int\nend", "expected field name"),
+        ("def () do\n  1\nend", "expected function name"),
+        ("pub fn () do\n  1\nend", "expected function name"),
+        ("fn f(x) do\n  case x do\n    y as -> 1\n  end\nend", "expected identifier after `as`"),
+        ("fn f() do\n  json { 1: 2 }\nend", "expected identifier key in json literal"),
+        ("fn f() do\n  let 1 = 2\nend", "expected identifier or pattern after `let`"),
+        ("from Foo import", "expected import name"),
+        ("supervisor S do\n  max_restarts: x\nend", "expected integer for max_restarts"),
+        ("supervisor S do\n  max_seconds: x\nend", "expected integer for max_seconds"),
+        ("interface do\nend", "expected interface name"),
+        ("fn f() do\n  for 1 in xs do\n    1\n  end\nend", "expected loop variable name, pattern, or {key, value} destructuring after `for`"),
+        ("interface I do\n  fn () -> Int\nend", "expected method name"),
+        ("interface I do\n  let x = 1\nend", "expected method signature (fn)"),
+        ("module do\nend", "expected module name"),
+        ("fn f(+) do\n  1\nend", "expected parameter name or pattern"),
+        ("service S do\n  call Get(1) :: Int do |s|\n    s\n  end\nend", "expected parameter name"),
+        ("fn f(x) do\n  case x do\n    ) -> 1\n  end\nend", "expected pattern"),
+        ("pub resource 1", "expected resource name"),
+        ("supervisor S do\n  child c do\n    restart: 5\n  end\nend", "expected restart strategy (permanent, transient, temporary)"),
+        ("service do\nend", "expected service name"),
+        ("supervisor S do\n  child c do\n    shutdown: \"soon\"\n  end\nend", "expected shutdown timeout (integer or brutal_kill)"),
+        ("service S do\n  cast Reset() do |(s)|\n    0\n  end\nend", "expected state parameter name"),
+        ("service S do\n  call Get() :: Int do |(s)|\n    (s, s)\n  end\nend", "expected state parameter name"),
+        ("struct S do\n  table users\nend", "expected string literal after `table`"),
+        ("struct do\nend", "expected struct name"),
+        ("type do\n  A\nend", "expected sum type name"),
+        ("supervisor do\nend", "expected supervisor name"),
+        ("struct S do\n  has_many :posts,\nend", "expected target type name after comma in relationship declaration"),
+        ("struct S do\n  x :: Int\nend deriving(1)", "expected trait name in deriving clause"),
+        ("impl for Int do\nend", "expected trait name"),
+        ("type = Int", "expected type alias name"),
+        ("fn f(x :: ) do\n  1\nend", "expected type name"),
+        ("type T do\n  1\nend", "expected variant name"),
+        ("@export(\"x\") fn f(b :: Bytes) -> Bytes!String", "exported functions require a Mesh body"),
+        ("@native(\"x\") fn f() -> Int do\n  1\nend", "native function declarations must not have a Mesh body"),
+        ("from Foo import *", "glob imports are not allowed; import names explicitly"),
+        ("actor a() do\n  terminate do\n    1\n  end\n  terminate do\n    2\n  end\nend", "only one `terminate` clause is allowed per actor block"),
+        ("fn f(x) do\n  case x do\n    \"a#{b}\" -> 1\n  end\nend", "string interpolation not allowed in patterns"),
+        ("fn f(x) do\n  case x do\n    \"abc", "unterminated string in pattern"),
+        ("supervisor S do\n  child c do\n    start: fn -> 1 end\n    1\n  end\nend", "in child spec body"),
+        ("supervisor S do\n  1\nend", "in supervisor body"),
+                ("struct S do\n  table \"users", "unterminated string in table option"),
+        ("fn f(p) do\n  case p do\n    Point { x, .. } -> 0\n  end\nend", "`..` is not needed"),
+    ];
+    let mut misses = Vec::new();
+    for (source, expected) in cases {
+        let messages: Vec<String> = parse(source)
+            .errors()
+            .iter()
+            .map(|e| e.message.clone())
+            .collect();
+        if !messages.iter().any(|m| m.contains(expected)) {
+            misses.push(format!("{source:?}\n  wanted: {expected}\n  got: {messages:?}"));
+        }
+    }
+    assert!(misses.is_empty(), "{} misses:\n{}", misses.len(), misses.join("\n"));
+}

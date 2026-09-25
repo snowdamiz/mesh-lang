@@ -153,13 +153,12 @@ fn parse_primary_pattern(p: &mut Parser) -> Option<MarkClosed> {
                         p.advance();
                         break;
                     }
-                    SyntaxKind::EOF => {
-                        p.error("unterminated string in pattern");
+                    SyntaxKind::INTERPOLATION_START => {
+                        p.error("string interpolation not allowed in patterns");
                         break;
                     }
                     _ => {
-                        // Interpolated strings are not valid patterns
-                        p.error("string interpolation not allowed in patterns");
+                        p.error("unterminated string in pattern");
                         break;
                     }
                 }
