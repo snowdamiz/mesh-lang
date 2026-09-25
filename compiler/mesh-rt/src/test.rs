@@ -86,19 +86,19 @@ fn quiet() -> bool {
 // ── Per-process test state ────────────────────────────────────────────────────
 
 thread_local! {
-    static PASS_COUNT: Cell<i64> = Cell::new(0);
-    static FAIL_COUNT: Cell<i64> = Cell::new(0);
-    static CURRENT_TEST: RefCell<String> = RefCell::new(String::new());
+    static PASS_COUNT: Cell<i64> = const { Cell::new(0) };
+    static FAIL_COUNT: Cell<i64> = const { Cell::new(0) };
+    static CURRENT_TEST: RefCell<String> = const { RefCell::new(String::new()) };
     /// Accumulates failure messages for the end-of-run `Failures:` reprint.
-    static FAIL_MESSAGES: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    static FAIL_MESSAGES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// Pids of mock actors spawned during the run; drained by cleanup_actors.
-    static MOCK_ACTOR_PIDS: RefCell<Vec<i64>> = RefCell::new(Vec::new());
+    static MOCK_ACTOR_PIDS: RefCell<Vec<i64>> = const { RefCell::new(Vec::new()) };
 
     /// Set while `assert_raises` runs its closure: a failed assertion there
     /// is the expected raise, not a test failure.
-    static IN_ASSERT_RAISES: Cell<bool> = Cell::new(false);
+    static IN_ASSERT_RAISES: Cell<bool> = const { Cell::new(false) };
     /// Whether the current test has failed (a step's assertion or panic).
-    static CURRENT_FAILED: Cell<bool> = Cell::new(false);
+    static CURRENT_FAILED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// When the file's first test began (set by that first call).
@@ -216,6 +216,10 @@ pub extern "C" fn mesh_test_pass() {
 
 /// `test_fail_msg(msg)` (what `assert_receive` expands to on a miss): fail
 /// the current test with `msg`.
+///
+/// # Safety
+///
+/// `msg` must point to a live `MeshString`.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_fail_msg(msg: *const MeshString) {
     assertion_failed(|| mesh_str(msg).to_owned())
@@ -223,6 +227,10 @@ pub unsafe extern "C-unwind" fn mesh_test_fail_msg(msg: *const MeshString) {
 
 /// Assert that `cond` is non-zero; a failure ends the test (see
 /// `assertion_failed`).
+///
+/// # Safety
+///
+/// `expr_src` must point to a live `MeshString`.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert(
     cond: i8,
@@ -238,6 +246,10 @@ pub unsafe extern "C-unwind" fn mesh_test_assert(
 
 /// Assert that `lhs` and `rhs` (already converted to strings by the lowerer)
 /// are equal. Fails with an `expected`/`actual` diagnostic.
+///
+/// # Safety
+///
+/// `lhs`, `rhs` and `expr_src` must point to live `MeshString`s.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_eq(
     lhs: *const MeshString,
@@ -258,6 +270,10 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_eq(
 }
 
 /// Assert that `lhs` and `rhs` are NOT equal. Fails when they are equal.
+///
+/// # Safety
+///
+/// `lhs`, `rhs` and `expr_src` must point to live `MeshString`s.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_ne(
     lhs: *const MeshString,
@@ -283,6 +299,10 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_ne(
 ///
 /// The closure ABI matches the Mesh runtime closure convention:
 /// `extern "C" fn(*const u8) -> i64`.
+///
+/// # Safety
+///
+/// `fn_ptr` and `env_ptr` must be a Mesh closure taking no arguments.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
     fn_ptr: *const u8,
@@ -397,6 +417,10 @@ unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(
 
 /// Run a test (the harness calls this with a closure), or its body when a
 /// teardown follows: a failed assertion or a panic fails the test.
+///
+/// # Safety
+///
+/// `fn_ptr` and `env_ptr` must be a Mesh closure taking no arguments.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_test_run_body(fn_ptr: *const u8, env_ptr: *const u8) {
     if let Err(Some(message)) = call_catching_panic(fn_ptr, env_ptr) {
@@ -420,9 +444,14 @@ pub extern "C" fn mesh_test_end() {
 /// The spawned actor runs the closure for every message it receives.
 /// The Pid is tracked in `MOCK_ACTOR_PIDS` for cleanup between tests.
 ///
-/// Closure ABI: `extern "C" fn(env_ptr: *const u8) -> i64`.
+/// It is called with each message, a `String`: a closure as `(env, message)`,
+/// a named function (null env) as `(message)`; the reply is ignored.
 ///
 /// Requires `mesh_rt_init_actor` to have been called first.
+///
+/// # Safety
+///
+/// `fn_ptr` and `env_ptr` must be a Mesh function value taking one `String`.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_test_mock_actor(fn_ptr: *const u8, env_ptr: *const u8) -> i64 {
     // Build a small args block: {fn_ptr, env_ptr} so the spawned actor

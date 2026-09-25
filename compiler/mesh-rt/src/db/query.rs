@@ -802,8 +802,8 @@ pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *m
             let cols: Vec<String> = sub_select
                 .iter()
                 .map(|f| {
-                    if f.starts_with("RAW:") {
-                        f[4..].to_string()
+                    if let Some(raw) = f.strip_prefix("RAW:") {
+                        raw.to_string()
                     } else {
                         format!("\"{}\"", f.replace('"', "\"\""))
                     }
@@ -818,9 +818,9 @@ pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *m
             sub_sql.push_str(" WHERE ");
             let mut conditions = Vec::new();
             for clause in &sub_where_clauses {
-                if clause.starts_with("RAW:") {
+                if let Some(raw) = clause.strip_prefix("RAW:") {
                     // Pass raw clauses through as-is
-                    conditions.push(clause[4..].to_string());
+                    conditions.push(raw.to_string());
                 } else if let Some(space_pos) = clause.find(' ') {
                     let col = &clause[..space_pos];
                     let op = clause[space_pos + 1..].trim();

@@ -2074,7 +2074,7 @@ pub extern "C" fn mesh_hex_encode(s: *const MeshString) -> *mut MeshString {
 pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
     unsafe {
         let text = (*s).as_str().to_lowercase();
-        if text.len() % 2 != 0 {
+        if !text.len().is_multiple_of(2) {
             let e = "invalid hex";
             return alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8);
         }

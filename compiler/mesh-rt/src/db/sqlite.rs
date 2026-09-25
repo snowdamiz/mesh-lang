@@ -133,9 +133,9 @@ unsafe fn bind_params(
     let (len, data_ptr) = crate::collections::list::list_slots(params);
 
     // We need to keep CStrings alive until all binds are complete.
-    let mut cstrings = Vec::with_capacity(len as usize);
+    let mut cstrings = Vec::with_capacity(len);
 
-    for i in 0..len as usize {
+    for i in 0..len {
         let param_ptr = *data_ptr.add(i) as *const MeshString;
         let param_str = mesh_str_to_rust(param_ptr);
         let cstr = match CString::new(param_str) {
@@ -507,7 +507,7 @@ pub extern "C" fn mesh_sqlite_query(
             // Create a string-keyed map for this row (key_type = 1 = string)
             let mut row_map = mesh_map_new_typed(1);
 
-            for col in 0..col_count {
+            for (col, col_name) in col_names.iter().enumerate() {
                 let col_type = sqlite3_column_type(stmt, col as c_int);
                 let value_str = if col_type == SQLITE_NULL {
                     String::new()
@@ -522,7 +522,7 @@ pub extern "C" fn mesh_sqlite_query(
                     }
                 };
 
-                let key_mesh = rust_str_to_mesh(&col_names[col]);
+                let key_mesh = rust_str_to_mesh(col_name);
                 let val_mesh = rust_str_to_mesh(&value_str);
                 row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
             }

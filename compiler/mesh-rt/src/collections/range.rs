@@ -239,7 +239,7 @@ mod tests {
         let r = mesh_range_new(1, 6);
 
         unsafe extern "C-unwind" fn is_even(x: u64) -> u64 {
-            if x % 2 == 0 {
+            if x.is_multiple_of(2) {
                 1
             } else {
                 0

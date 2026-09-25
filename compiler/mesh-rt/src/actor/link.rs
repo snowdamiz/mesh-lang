@@ -243,10 +243,10 @@ where
                 proc.mailbox.push(Message { buffer });
 
                 // Wake if Waiting.
-                if matches!(proc.state, ProcessState::Waiting) {
-                    if proc.set_live_state(ProcessState::Ready) {
-                        woken.push(*linked_pid);
-                    }
+                if matches!(proc.state, ProcessState::Waiting)
+                    && proc.set_live_state(ProcessState::Ready)
+                {
+                    woken.push(*linked_pid);
                 }
             } else if !is_non_crashing {
                 // Crash the linked process with a Linked exit reason.

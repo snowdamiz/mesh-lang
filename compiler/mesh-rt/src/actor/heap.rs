@@ -204,7 +204,7 @@ impl FreeBins {
             }
             let header = unsafe { &mut *current };
             let fits = (size..=max_size).contains(&(header.size as usize));
-            if fits && header.data_ptr() as usize % align == 0 {
+            if fits && (header.data_ptr() as usize).is_multiple_of(align) {
                 if prev.is_null() {
                     self.heads[bin] = header.next;
                 } else {
@@ -490,7 +490,7 @@ impl ActorHeap {
     /// Size of the live allocation that starts exactly at `data`, if there is one.
     pub(crate) fn live_allocation_size(&self, data: *const u8) -> Option<usize> {
         let header = self.find_object_containing(data)?;
-        unsafe { ((*header).data_ptr() as *const u8 == data).then(|| (*header).size as usize) }
+        unsafe { std::ptr::eq((*header).data_ptr(), data).then(|| (*header).size as usize) }
     }
 
     /// Whether `ptr` lies in one of this heap's pages.
@@ -1159,7 +1159,7 @@ mod tests {
     fn test_free_list_reuse_respects_requested_alignment() {
         let mut heap = ActorHeap::new();
         let mut candidate = heap.alloc(64, 8);
-        if candidate as usize % 64 == 0 {
+        if (candidate as usize).is_multiple_of(64) {
             candidate = heap.alloc(64, 8);
         }
         assert_ne!(candidate as usize % 64, 0);

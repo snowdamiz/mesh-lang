@@ -115,8 +115,10 @@ pub extern "C" fn mesh_row_parse_bool(s: *mut u8) -> *mut u8 {
         let raw = (*(s as *const MeshString)).as_str().trim();
         let lower = raw.to_lowercase();
         match lower.as_str() {
-            "true" | "t" | "1" | "yes" => alloc_result(0, 1i64 as *mut u8) as *mut u8,
-            "false" | "f" | "0" | "no" => alloc_result(0, 0i64 as *mut u8) as *mut u8,
+            "true" | "t" | "1" | "yes" => {
+                alloc_result(0, std::ptr::dangling_mut::<u8>()) as *mut u8
+            }
+            "false" | "f" | "0" | "no" => alloc_result(0, std::ptr::null_mut::<u8>()) as *mut u8,
             _ => {
                 let msg = format!("cannot parse '{}' as Bool", raw);
                 let err_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
@@ -217,13 +219,13 @@ mod tests {
     #[test]
     fn test_parse_float_normal() {
         mesh_rt_init();
-        let s = make_mesh_string("3.14");
+        let s = make_mesh_string("2.75");
         let r = mesh_row_parse_float(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
             let bits = result_value_i64(r) as u64;
             let val = f64::from_bits(bits);
-            assert!((val - 3.14).abs() < 1e-10, "got: {}", val);
+            assert!((val - 2.75).abs() < 1e-10, "got: {}", val);
         }
     }
 

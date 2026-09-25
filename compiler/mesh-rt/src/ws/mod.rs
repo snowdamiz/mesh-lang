@@ -14,7 +14,7 @@ pub mod rooms;
 pub mod server;
 
 pub use close::{
-    build_close_payload, parse_close_payload, process_frame, send_close, validate_text_payload,
+    build_close_payload, is_valid_text_payload, parse_close_payload, process_frame, send_close,
     WsCloseCode,
 };
 pub use frame::{apply_mask, read_frame, write_frame, WsFrame, WsOpcode};

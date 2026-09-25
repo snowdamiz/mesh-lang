@@ -641,10 +641,7 @@ mod tests {
         }
 
         let mut state = SupervisorState::new(strategy, 3, 5);
-        state.children = child_specs
-            .into_iter()
-            .map(|spec| test_child_state(spec))
-            .collect();
+        state.children = child_specs.into_iter().map(test_child_state).collect();
 
         // Start all children.
         let result = start_children(&mut state, sched, sup_pid);
@@ -725,10 +722,10 @@ mod tests {
         assert!(result.is_ok());
 
         // ALL children should have new PIDs (all restarted).
-        for i in 0..3 {
+        for (i, initial_pid) in initial_pids.iter().enumerate() {
             assert_ne!(
                 state.children[i].pid.unwrap(),
-                initial_pids[i],
+                *initial_pid,
                 "child{} should have a new PID",
                 i + 1
             );
@@ -845,7 +842,7 @@ mod tests {
         }
 
         let mut state = SupervisorState::new(Strategy::OneForOne, 2, 5);
-        state.children = specs.into_iter().map(|s| test_child_state(s)).collect();
+        state.children = specs.into_iter().map(test_child_state).collect();
         start_children(&mut state, &sched, sup_pid).unwrap();
 
         // Trigger 2 restarts (should succeed).
@@ -1262,10 +1259,10 @@ mod tests {
         assert!(result.is_ok());
 
         // All children should have new PIDs (first child = all subsequent).
-        for i in 0..3 {
+        for (i, initial_pid) in initial_pids.iter().enumerate() {
             assert_ne!(
                 state.children[i].pid.unwrap(),
-                initial_pids[i],
+                *initial_pid,
                 "child{} should have a new PID",
                 i + 1
             );

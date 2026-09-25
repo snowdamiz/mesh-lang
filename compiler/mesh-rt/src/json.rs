@@ -402,7 +402,7 @@ pub extern "C-unwind" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
             JSON_FLOAT => {
                 let f = f64::from_bits((*j).value);
                 if f.fract() == 0.0
-                    && (-9.223_372_036_854_775_808e18..9.223_372_036_854_775_808e18).contains(&f)
+                    && (-9.223_372_036_854_776e18..9.223_372_036_854_776e18).contains(&f)
                 {
                     alloc_result(0, f as i64 as *mut u8) as *mut u8
                 } else {
@@ -506,7 +506,7 @@ pub extern "C-unwind" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
     unsafe {
         let result = mesh_json_as_bool(json) as *mut MeshResult;
         if (*result).tag == 0 {
-            boxed_scalar_result((*result).value != std::ptr::null_mut())
+            boxed_scalar_result(!(*result).value.is_null())
         } else {
             result.cast()
         }
@@ -520,7 +520,7 @@ pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
         if (*json).tag != JSON_ARRAY {
             return err_result("expected Array").cast();
         }
-        boxed_scalar_result(list::mesh_list_length((*json).value as *mut u8) as i64)
+        boxed_scalar_result(list::mesh_list_length((*json).value as *mut u8))
     }
 }
 
@@ -546,7 +546,7 @@ pub extern "C-unwind" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *
         }
         let inner_list = (*j).value as *mut u8;
         let len = list::mesh_list_length(inner_list);
-        if index < 0 || index >= len as i64 {
+        if index < 0 || index >= len {
             return err_result(&format!(
                 "array index {} out of bounds (length {})",
                 index, len
@@ -623,7 +623,7 @@ pub extern "C-unwind" fn mesh_json_to_list(
             }
             result_list = list::mesh_list_builder_push(result_list, (*res).value as u64);
         }
-        alloc_result(0, result_list as *mut u8) as *mut u8
+        alloc_result(0, result_list) as *mut u8
     }
 }
 
@@ -657,7 +657,7 @@ pub extern "C-unwind" fn mesh_json_to_map(
             }
             result_map = map::mesh_map_put(result_map, key, (*res).value as u64);
         }
-        alloc_result(0, result_map as *mut u8) as *mut u8
+        alloc_result(0, result_map) as *mut u8
     }
 }
 
@@ -768,7 +768,7 @@ mod tests {
         let result = mesh_json_parse(input);
         unsafe {
             assert_eq!((*result).tag, 0);
-            let json = (*result).value as *mut u8;
+            let json = (*result).value;
             let encoded = mesh_json_encode(json);
             let text = (*encoded).as_str();
             // Parse again to verify valid JSON
@@ -1143,7 +1143,7 @@ mod tests {
         unsafe {
             let res = result as *mut MeshResult;
             assert_eq!((*res).tag, 0, "should be Ok");
-            let decoded_list = (*res).value as *mut u8;
+            let decoded_list = (*res).value;
             assert_eq!(list::mesh_list_length(decoded_list), 3);
             assert_eq!(list::mesh_list_get(decoded_list, 0) as i64, 1);
             assert_eq!(list::mesh_list_get(decoded_list, 1) as i64, 2);
@@ -1170,12 +1170,12 @@ mod tests {
     fn test_json_float_roundtrip() {
         mesh_rt_init();
         // Create a float, encode it, re-parse, verify it comes back as float
-        let json = mesh_json_from_float(3.14);
-        let encoded = mesh_json_encode(json as *mut u8);
+        let json = mesh_json_from_float(2.75);
+        let encoded = mesh_json_encode(json);
         unsafe {
             let text = (*encoded).as_str();
             let parsed: f64 = text.parse().unwrap();
-            assert!((parsed - 3.14).abs() < 0.001);
+            assert!((parsed - 2.75).abs() < 0.001);
         }
     }
 

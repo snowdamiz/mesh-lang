@@ -673,12 +673,10 @@ fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId, code: u
     if proc.mailbox.try_push_control(Message { buffer }).is_err() {
         return;
     }
-    if matches!(proc.state, ProcessState::Waiting) {
-        if proc.set_live_state(ProcessState::Ready) {
-            drop(proc);
-            let sched = global_scheduler();
-            sched.wake_process(actor_pid);
-        }
+    if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
+        drop(proc);
+        let sched = global_scheduler();
+        sched.wake_process(actor_pid);
     }
 }
 
@@ -864,6 +862,11 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
     }
 }
 
+// The reactor must not admit a message its actor mailbox cannot hold, nor
+// the pre-attach sink more bytes than attachment can deliver.
+const _: () = assert!(SERVER_MAX_MESSAGE_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES);
+const _: () = assert!(SERVER_PENDING_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -893,12 +896,12 @@ mod tests {
                 (*(env as *const AtomicU64)).fetch_add(1, Ordering::SeqCst);
             }
         }
-        1 as *mut u8
+        std::ptr::dangling_mut::<u8>()
     }
 
     /// on_connect: accept without counting (env=null calling convention).
     extern "C" fn accept_on_connect(_conn: *mut u8, _path: *mut u8, _headers: *mut u8) -> *mut u8 {
-        1 as *mut u8
+        std::ptr::dangling_mut::<u8>()
     }
 
     extern "C" fn join_then_reject_on_connect(
@@ -1185,18 +1188,6 @@ mod tests {
     }
 
     #[test]
-    fn admitted_server_messages_fit_the_default_actor_mailbox() {
-        assert!(
-            SERVER_MAX_MESSAGE_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES,
-            "the reactor must not admit a message that its actor mailbox cannot hold"
-        );
-        assert!(
-            SERVER_PENDING_BYTES <= crate::actor::mailbox::DEFAULT_MAILBOX_MAX_BYTES,
-            "the pre-attach sink must not admit more bytes than attachment can deliver"
-        );
-    }
-
-    #[test]
     fn tls_server_rejects_null_certificate_paths() {
         mesh_ws_serve_tls(
             std::ptr::null_mut(),
@@ -1361,7 +1352,7 @@ mod tests {
     fn failed_room_broadcast_disconnects_the_recipient() {
         extern "C" fn join_on_connect(conn: *mut u8, path: *mut u8, _headers: *mut u8) -> *mut u8 {
             crate::ws::rooms::mesh_ws_join(conn, path as *const MeshString);
-            1 as *mut u8
+            std::ptr::dangling_mut::<u8>()
         }
 
         crate::actor::mesh_rt_init_actor(0);

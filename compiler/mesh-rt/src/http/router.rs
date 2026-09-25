@@ -63,8 +63,8 @@ fn match_segments(pattern: &str, path: &str) -> Option<Vec<(String, String)>> {
     }
     let mut params = Vec::new();
     for (pat, actual) in pat_segs.iter().zip(path_segs.iter()) {
-        if pat.starts_with(':') {
-            params.push((pat[1..].to_string(), actual.to_string()));
+        if let Some(name) = pat.strip_prefix(':') {
+            params.push((name.to_string(), actual.to_string()));
         } else if pat != actual {
             return None;
         }
@@ -99,6 +99,7 @@ impl MeshRouter {
     ///   1. Exact routes (no `:param`, no `*`) -- highest priority
     ///   2. Parameterized routes (`:param` segments) -- medium priority
     ///   3. Wildcard routes (`/*`) -- lowest priority (catch-all fallback)
+    ///
     /// Within each pass, also checks method filtering.
     pub fn match_route(
         &self,

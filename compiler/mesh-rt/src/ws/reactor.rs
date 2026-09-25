@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use rustls::{ClientConnection, ServerConnection, StreamOwned};
 
 use super::close::{
-    build_close_payload, is_valid_close_code, parse_close_payload_strict, validate_text_payload,
+    build_close_payload, is_valid_close_code, is_valid_text_payload, parse_close_payload_strict,
     WsCloseCode,
 };
 use super::frame::{
@@ -947,7 +947,7 @@ impl Entry {
                         };
                         let event = match message.opcode {
                             WsOpcode::Text => {
-                                if validate_text_payload(&message.payload).is_err() {
+                                if !is_valid_text_payload(&message.payload) {
                                     return Err("invalid UTF-8 in text message".to_string());
                                 }
                                 ReactorEvent::Text(message.payload, permit)

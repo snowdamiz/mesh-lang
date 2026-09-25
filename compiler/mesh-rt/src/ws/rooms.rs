@@ -37,6 +37,7 @@ use crate::string::MeshString;
 ///
 /// Maps room names to sets of connection handles (WsConnection pointer as
 /// usize), with a reverse index for O(rooms_per_conn) cleanup on disconnect.
+#[derive(Default)]
 pub struct RoomRegistry {
     /// room_name -> set of connection handles
     rooms: RwLock<FxHashMap<String, HashSet<usize>>>,
@@ -47,10 +48,7 @@ pub struct RoomRegistry {
 impl RoomRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
-        RoomRegistry {
-            rooms: RwLock::new(FxHashMap::default()),
-            conn_rooms: RwLock::new(FxHashMap::default()),
-        }
+        Self::default()
     }
 
     /// Subscribe a connection to a named room.
@@ -200,7 +198,7 @@ pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
     // Collect session references, then drop sessions lock before writing.
     let sessions: Vec<std::sync::Arc<crate::dist::node::NodeSession>> = {
         let map = state.sessions.read();
-        map.values().map(|s| std::sync::Arc::clone(s)).collect()
+        map.values().map(std::sync::Arc::clone).collect()
     };
 
     for session in &sessions {

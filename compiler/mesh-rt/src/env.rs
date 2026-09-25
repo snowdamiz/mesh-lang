@@ -32,7 +32,7 @@ fn decode_secret_hex(encoded: &str) -> Result<Zeroizing<Box<[u8]>>, SecretHexErr
     if decoded_length > MAX_SECRET_BYTES {
         return Err(SecretHexError::TooLong(decoded_length));
     }
-    if encoded.is_empty() || encoded.len() % 2 != 0 {
+    if encoded.is_empty() || !encoded.len().is_multiple_of(2) {
         return Err(SecretHexError::Invalid);
     }
     let mut decoded = Zeroizing::new(vec![0; decoded_length].into_boxed_slice());
@@ -172,7 +172,7 @@ mod tests {
             assert_eq!((*result).tag, 0, "PATH should exist");
             let value = (*result).value as *const MeshString;
             assert!(!value.is_null());
-            assert!((*value).as_str().len() > 0, "PATH should be non-empty");
+            assert!(!(*value).as_str().is_empty(), "PATH should be non-empty");
         }
     }
 

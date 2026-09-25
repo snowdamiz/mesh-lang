@@ -776,7 +776,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
         let count_val = mesh_map_get(first_row, count_key as u64);
         if count_val == 0 {
             // No "count" key found -- try first value by any key
-            return ok_result(0i64 as *mut u8);
+            return ok_result(std::ptr::null_mut::<u8>());
         }
 
         // Parse the string value as an integer
@@ -808,7 +808,7 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
         let list = r.value;
         let list_len = mesh_list_length(list);
         if list_len == 0 {
-            return ok_result(0i64 as *mut u8); // false
+            return ok_result(std::ptr::null_mut::<u8>()); // false
         }
 
         // Get the first row, extract the "exists" column
@@ -816,7 +816,7 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
         let exists_key = rust_str_to_mesh("exists");
         let exists_val = mesh_map_get(first_row, exists_key as u64);
         if exists_val == 0 {
-            return ok_result(0i64 as *mut u8); // false
+            return ok_result(std::ptr::null_mut::<u8>()); // false
         }
 
         let exists_str = mesh_str_ref(exists_val as *mut u8);
@@ -1863,8 +1863,8 @@ fn build_where_from_query_parts(
             let op = clause[space_pos + 1..].trim();
             if op == "IS NULL" || op == "IS NOT NULL" {
                 conditions.push(format!("{} {}", quote_ident(col), op));
-            } else if op.starts_with("IN:") {
-                let count: usize = op[3..].parse().unwrap_or(0);
+            } else if let Some(count) = op.strip_prefix("IN:") {
+                let count: usize = count.parse().unwrap_or(0);
                 let placeholders: Vec<String> =
                     (0..count).map(|i| format!("${}", param_idx + i)).collect();
                 conditions.push(format!(
@@ -1879,8 +1879,8 @@ fn build_where_from_query_parts(
                     }
                     param_idx += 1;
                 }
-            } else if op.starts_with("NOT_IN:") {
-                let count: usize = op[7..].parse().unwrap_or(0);
+            } else if let Some(count) = op.strip_prefix("NOT_IN:") {
+                let count: usize = count.parse().unwrap_or(0);
                 let placeholders: Vec<String> =
                     (0..count).map(|i| format!("${}", param_idx + i)).collect();
                 conditions.push(format!(

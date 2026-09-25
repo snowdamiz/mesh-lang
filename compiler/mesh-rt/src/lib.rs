@@ -20,6 +20,19 @@
 //! function signatures must remain stable across Mesh compiler versions
 //! (or at least across a single phase).
 
+// The `extern "C"` entry points take raw pointers from generated code, which
+// guarantees them; declaring each `unsafe fn` would change nothing for that
+// code and only wrap every Rust caller in `unsafe`.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+// Runtime state is threaded through many parameters, and some shapes are
+// spelled out where they are built; errors are rare and built once.
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::result_large_err,
+    clippy::large_enum_variant
+)]
+
 /// `eprintln!` for the runtime: a failed write to stderr is ignored. Stderr
 /// may be a pipe whose reader has gone, and `std`'s `eprintln!` panics then,
 /// which aborts inside a runtime function that cannot unwind. Defined before

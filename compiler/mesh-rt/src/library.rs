@@ -264,6 +264,12 @@ fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> R
     Ok(output_len)
 }
 
+/// Run an exported Mesh function on `input` and hand its result to `output`.
+///
+/// # Safety
+///
+/// `input` must point to `input_len` readable bytes (or be null with a
+/// length of zero), and `output` to a writable `MeshLibraryBytes`.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_library_invoke(
     entrypoint: MeshLibraryEntrypoint,

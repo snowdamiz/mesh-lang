@@ -242,8 +242,8 @@ pub extern "C-unwind" fn mesh_map_hash_by(
 ) -> i64 {
     type SlotHash = unsafe extern "C-unwind" fn(u64) -> i64;
     unsafe {
-        let (k, v): (SlotHash, SlotHash) =
-            (std::mem::transmute(key_hash), std::mem::transmute(val_hash));
+        let k = std::mem::transmute::<*mut u8, SlotHash>(key_hash);
+        let v = std::mem::transmute::<*mut u8, SlotHash>(val_hash);
         let (entries, len) = entries(map);
         let sum = (0..len).fold(0i64, |acc, i| {
             let [key, value] = *entries.add(i);
@@ -447,7 +447,7 @@ pub extern "C-unwind" fn mesh_map_iter_next(iter_ptr: *mut u8) -> *mut u8 {
             let val = mesh_map_entry_value((*iter).map, (*iter).index);
             (*iter).index += 1;
             let pair = alloc_pair(key, val);
-            crate::option::alloc_option(0, pair as *mut u8) as *mut u8
+            crate::option::alloc_option(0, pair) as *mut u8
         }
     }
 }

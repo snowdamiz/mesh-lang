@@ -7,7 +7,7 @@
 //! - [`parse_close_payload`]: Extract status code + reason from close frame payload
 //! - [`parse_close_payload_strict`]: Validate an inbound close frame payload
 //! - [`build_close_payload`]: Build a close frame payload from code + reason
-//! - [`validate_text_payload`]: UTF-8 validation for text frames (PROTO-05)
+//! - [`is_valid_text_payload`]: UTF-8 validation for text frames (PROTO-05)
 //! - [`send_close`]: Send a close frame with a given status code and reason
 //! - [`process_frame`]: Handle one frame at the protocol level
 
@@ -53,7 +53,7 @@ pub fn parse_close_payload(payload: &[u8]) -> (u16, String) {
 
 /// Whether a close code may appear on the wire.
 pub(crate) fn is_valid_close_code(code: u16) -> bool {
-    matches!(code, 1000..=1014 | 3000..=4999) && !matches!(code, 1004 | 1005 | 1006)
+    matches!(code, 1000..=1014 | 3000..=4999) && !matches!(code, 1004..=1006)
 }
 
 /// Parse and validate an inbound close frame payload per RFC 6455 Section 7.4.
@@ -92,12 +92,12 @@ pub fn build_close_payload(code: u16, reason: &str) -> Vec<u8> {
     payload
 }
 
-/// Validate that a text frame payload is valid UTF-8.
+/// Whether a text frame payload is valid UTF-8.
 ///
 /// Per RFC 6455 Section 5.6, text frames MUST contain valid UTF-8.
 /// Invalid UTF-8 triggers close code 1007 (PROTO-05).
-pub fn validate_text_payload(payload: &[u8]) -> Result<(), ()> {
-    std::str::from_utf8(payload).map(|_| ()).map_err(|_| ())
+pub fn is_valid_text_payload(payload: &[u8]) -> bool {
+    std::str::from_utf8(payload).is_ok()
 }
 
 /// Send a close frame with the given status code and reason.
@@ -118,7 +118,7 @@ pub fn send_close<W: Write>(writer: &mut W, code: u16, reason: &str) -> Result<(
 pub fn process_frame<S: Write>(stream: &mut S, frame: WsFrame) -> Result<Option<WsFrame>, String> {
     match frame.opcode {
         WsOpcode::Text => {
-            if validate_text_payload(&frame.payload).is_err() {
+            if !is_valid_text_payload(&frame.payload) {
                 send_close(stream, WsCloseCode::INVALID_DATA, "invalid UTF-8")?;
                 return Err("invalid UTF-8 in text frame".to_string());
             }
@@ -241,12 +241,12 @@ mod tests {
 
     #[test]
     fn test_validate_text_valid_utf8() {
-        assert!(validate_text_payload(b"Hello").is_ok());
+        assert!(is_valid_text_payload(b"Hello"));
     }
 
     #[test]
     fn test_validate_text_invalid_utf8() {
-        assert!(validate_text_payload(&[0xFF, 0xFE]).is_err());
+        assert!(!is_valid_text_payload(&[0xFF, 0xFE]));
     }
 
     #[test]

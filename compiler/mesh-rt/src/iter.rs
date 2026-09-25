@@ -307,7 +307,7 @@ pub extern "C-unwind" fn mesh_iter_enumerate_next(adapter_ptr: *mut u8) -> *mut 
         let idx = (*adapter).index as u64;
         (*adapter).index += 1;
         let pair = alloc_pair(idx, elem);
-        alloc_option(0, pair as *mut u8) as *mut u8
+        alloc_option(0, pair) as *mut u8
     }
 }
 
@@ -355,7 +355,7 @@ pub extern "C-unwind" fn mesh_iter_zip_next(adapter_ptr: *mut u8) -> *mut u8 {
         let a_val = (*opt_a_ref).value as u64;
         let b_val = (*opt_b_ref).value as u64;
         let pair = alloc_pair(a_val, b_val);
-        alloc_option(0, pair as *mut u8) as *mut u8
+        alloc_option(0, pair) as *mut u8
     }
 }
 
@@ -563,7 +563,7 @@ pub extern "C-unwind" fn mesh_map_collect_by(
             if (*opt_ref).tag == 1 {
                 break; // None
             }
-            let tuple_ptr = (*opt_ref).value as *mut u8;
+            let tuple_ptr = (*opt_ref).value;
             // Tuple layout: { u64 len=2, u64 key, u64 value }
             let key = *((tuple_ptr as *const u64).add(1));
             let val = *((tuple_ptr as *const u64).add(2));

@@ -468,10 +468,10 @@ mod tests {
     #[test]
     fn test_float_to_string() {
         mesh_rt_init();
-        let s = mesh_float_to_string(3.14);
+        let s = mesh_float_to_string(2.75);
         unsafe {
             let text = (*s).as_str();
-            assert!(text.starts_with("3.14"), "got: {}", text);
+            assert!(text.starts_with("2.75"), "got: {}", text);
         }
         // A Float reads as one in exponent form too (it printed `1e20`).
         for (val, text) in [

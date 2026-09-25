@@ -368,6 +368,15 @@ pub extern "C-unwind" fn mesh_reduction_check() {
     }
 }
 
+/// Collect the main thread's heap from a reduction check. Out of line and
+/// cold: the check itself runs at every call site and loop back-edge.
+#[cold]
+#[inline(never)]
+fn collect_at_safepoint() {
+    stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
+    try_trigger_gc();
+}
+
 /// Attempt to trigger garbage collection on the current actor's heap.
 ///
 /// Checks if the current actor's heap exceeds its GC pressure threshold
@@ -380,15 +389,6 @@ pub extern "C-unwind" fn mesh_reduction_check() {
 /// - No actor context is available (not in a coroutine)
 /// - The heap is below the pressure threshold
 /// - GC is already in progress
-/// Collect the main thread's heap from a reduction check. Out of line and
-/// cold: the check itself runs at every call site and loop back-edge.
-#[cold]
-#[inline(never)]
-fn collect_at_safepoint() {
-    stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
-    try_trigger_gc();
-}
-
 fn try_trigger_gc() {
     let pid = match stack::get_current_pid() {
         Some(pid) => pid,

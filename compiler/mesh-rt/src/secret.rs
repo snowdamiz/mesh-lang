@@ -1584,9 +1584,7 @@ impl ResourceTable {
                 return Err(ConcatSecretError::Resource(error));
             }
         };
-        let total_length = first_length
-            .checked_add(second_length)
-            .unwrap_or(usize::MAX);
+        let total_length = first_length.saturating_add(second_length);
         let first_bytes = self
             .consume(owner, first, ResourceKind::SecretBytes)
             .map_err(ConcatSecretError::Resource)?;
@@ -2301,10 +2299,13 @@ mod tests {
         assert!(diagnostic.contains("[REDACTED]"));
 
         let panic = std::panic::catch_unwind(|| {
-            Result::<(), _>::Err(RetypeError::<&'static str>::GenerationExhausted {
-                removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
-            })
-            .expect("forced secret-resource panic");
+            panic!(
+                "{1}: {:?}",
+                RetypeError::<&'static str>::GenerationExhausted {
+                    removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
+                },
+                "forced secret-resource panic"
+            );
         })
         .expect_err("the sentinel panic path must panic");
         let panic_message = panic
@@ -2752,7 +2753,7 @@ mod tests {
                 actual: 9
             })
         ));
-        assert!(bounded.usage.get(&owner).is_none());
+        assert!(!bounded.usage.contains_key(&owner));
     }
 
     #[test]

@@ -427,7 +427,7 @@ fn write_bind_values(
 /// Write Describe (Portal) message: Byte1('D') Int32(len) Byte1('P') String("")
 fn write_describe_portal(buf: &mut Vec<u8>) {
     buf.push(b'D');
-    let len = (4 + 1 + 1) as i32; // length_field + 'P' + null byte
+    let len: i32 = 4 + 1 + 1; // length_field + 'P' + null byte
     buf.extend_from_slice(&len.to_be_bytes());
     buf.push(b'P'); // Portal variant
     buf.push(0); // unnamed portal
@@ -445,7 +445,7 @@ fn write_describe_statement(buf: &mut Vec<u8>) {
 fn write_execute(buf: &mut Vec<u8>) {
     buf.push(b'E');
     let body_len = 1 + 4; // empty string (1 null byte) + max_rows (4 bytes)
-    let len = (body_len + 4) as i32;
+    let len: i32 = body_len + 4;
     buf.extend_from_slice(&len.to_be_bytes());
     buf.push(0); // unnamed portal
     buf.extend_from_slice(&0_i32.to_be_bytes()); // 0 = no limit
@@ -1068,8 +1068,8 @@ fn err_result(msg: &str) -> *mut u8 {
 /// list is read through `list_slots`: it may be a view of another's buffer.
 unsafe fn extract_params(params: *mut u8) -> Vec<String> {
     let (len, data_ptr) = crate::collections::list::list_slots(params);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len as usize {
+    let mut result = Vec::with_capacity(len);
+    for i in 0..len {
         let param_ptr = *data_ptr.add(i) as *const MeshString;
         let param_str = mesh_str_to_rust(param_ptr);
         result.push(param_str.to_string());
@@ -1993,7 +1993,7 @@ pub extern "C" fn mesh_pg_query_as(
             result_list = mesh_list_append(result_list, mapped as u64);
         }
 
-        alloc_result(0, result_list as *mut u8) as *mut u8
+        alloc_result(0, result_list) as *mut u8
     }
 }
 
@@ -2087,7 +2087,7 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
             let server_first = std::str::from_utf8(authentication_body(tag, &body, 11)?)
                 .map_err(|_| "invalid SCRAM server-first encoding")?;
             let (client_final, expected_sig) =
-                scram_client_final(&pg_url.password, &client_nonce, &server_first)?;
+                scram_client_final(&pg_url.password, &client_nonce, server_first)?;
 
             let mut buf = Vec::new();
             write_sasl_response(&mut buf, client_final.as_bytes());

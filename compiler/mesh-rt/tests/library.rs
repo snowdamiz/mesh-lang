@@ -131,8 +131,10 @@ fn embedded_lifecycle_contains_failures_and_bounds_callback_ownership() {
     assert_eq!(mesh_library_init(), MESH_LIBRARY_OK);
     assert_eq!(mesh_library_init(), MESH_LIBRARY_OK);
 
-    let mut invalid_callbacks = MeshLibraryHostCallbacksV1::default();
-    invalid_callbacks.abi_version = MESH_LIBRARY_ABI_VERSION + 1;
+    let invalid_callbacks = MeshLibraryHostCallbacksV1 {
+        abi_version: MESH_LIBRARY_ABI_VERSION + 1,
+        ..Default::default()
+    };
     assert_eq!(
         mesh_library_register_host_callbacks(&invalid_callbacks),
         MESH_LIBRARY_ERR_ABI

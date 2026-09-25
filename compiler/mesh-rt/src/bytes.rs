@@ -617,7 +617,7 @@ pub extern "C" fn mesh_bytes_to_hex(bytes: *const MeshBytes) -> *mut MeshString 
 pub extern "C" fn mesh_bytes_from_hex(text: *const MeshString) -> *mut MeshResult {
     unsafe {
         let text = (*text).as_str();
-        if text.len() % 2 != 0 {
+        if !text.len().is_multiple_of(2) {
             return error("invalid hex");
         }
         let mut decoded = Vec::with_capacity(text.len() / 2);

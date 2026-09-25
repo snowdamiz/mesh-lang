@@ -402,11 +402,9 @@ pub extern "C" fn mesh_changeset_validate_inclusion(
             let allowed = list_to_strings(allowed_values);
             let is_valid = allowed.iter().any(|a| a == val_str);
 
-            if !is_valid {
-                if mesh_map_has_key(errors, key_u64) == 0 {
-                    let msg = rust_str_to_mesh("is invalid");
-                    errors = mesh_map_put(errors, key_u64, msg as u64);
-                }
+            if !is_valid && mesh_map_has_key(errors, key_u64) == 0 {
+                let msg = rust_str_to_mesh("is invalid");
+                errors = mesh_map_put(errors, key_u64, msg as u64);
             }
         }
 
