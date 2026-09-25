@@ -61,7 +61,7 @@ pub fn analyze_document(
 /// holding only it.
 fn analyze_single_document(source: &str) -> AnalysisResult {
     match single_source_project(source) {
-        Ok(project) => analyze_module(&project, ModuleId(0), None),
+        Ok(project) => analyze_module(&project, ModuleId(0)),
         // A module block that conflicts with another, or an import cycle.
         Err(error) => project_failure_analysis(source, error),
     }
@@ -263,19 +263,13 @@ fn analyze_project_document(
     }
     overlays.insert(doc_path.clone(), source.to_string());
 
-    let manifest_path = project_root.join("mesh.toml");
-    let manifest = if manifest_path.exists() {
-        match Manifest::from_file(&manifest_path) {
-            Ok(manifest) => Some(manifest),
-            Err(error) => {
-                return ProjectAnalysis::Failed(project_failure_analysis(source, error));
-            }
-        }
-    } else {
-        None
+    // The root is where a mesh.toml is.
+    let manifest = match Manifest::from_file(&project_root.join("mesh.toml")) {
+        Ok(manifest) => manifest,
+        Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
     };
 
-    let entry_relative_path = match resolve_entrypoint(&project_root, manifest.as_ref()) {
+    let entry_relative_path = match resolve_entrypoint(&project_root, Some(&manifest)) {
         Ok(entry_relative_path) => entry_relative_path,
         Err(error) => {
             return ProjectAnalysis::Failed(project_failure_analysis(source, error));
@@ -290,13 +284,9 @@ fn analyze_project_document(
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.ends_with(".test.mpl"));
     let with_test_helpers = is_test_file || relative_path.starts_with("tests");
-    let native_bindings = if manifest.is_some() {
-        match mesh_pkg::resolve_native_bindings(&project_root) {
-            Ok(bindings) => bindings,
-            Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
-        }
-    } else {
-        Vec::new()
+    let native_bindings = match mesh_pkg::resolve_native_bindings(&project_root) {
+        Ok(bindings) => bindings,
+        Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
     };
     let project = match build_project(
         &project_root,
@@ -330,18 +320,14 @@ fn analyze_project_document(
             ),
         ));
     };
-    ProjectAnalysis::Success(analyze_module(&project, current_id, manifest))
+    ProjectAnalysis::Success(analyze_module(&project, current_id))
 }
 
 /// One module of a built project: its own diagnostics and those of the
 /// `module ... do ... end` blocks in its file (modules of their own over the
 /// same text), and, when the project has no other errors, its clustered
 /// declarations'.
-fn analyze_module(
-    project: &ProjectData,
-    current_id: ModuleId,
-    manifest: Option<Manifest>,
-) -> AnalysisResult {
+fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult {
     let CheckedProject {
         typeck: mut all_typeck,
         exports: all_exports,
@@ -378,7 +364,6 @@ fn analyze_module(
         let source_cluster_declarations =
             collect_source_cluster_declarations(&project.graph, &project.module_parses);
         if let Some(cluster_diagnostics) = cluster_diagnostics(
-            manifest.map(Ok),
             &source_cluster_declarations,
             &project.graph,
             &project.module_parses,
@@ -430,7 +415,6 @@ fn project_diagnostic(message: impl Into<String>) -> Diagnostic {
 }
 
 fn cluster_diagnostics(
-    manifest: Option<Result<Manifest, Vec<Diagnostic>>>,
     source_cluster_declarations: &[mesh_pkg::manifest::SourceClusteredDeclaration],
     graph: &ModuleGraph,
     parses: &[mesh_parser::Parse],
@@ -438,10 +422,6 @@ fn cluster_diagnostics(
     current_relative_path: &Path,
     current_source: &str,
 ) -> Option<Vec<Diagnostic>> {
-    if let Some(Err(errors)) = manifest {
-        return Some(errors);
-    }
-
     if source_cluster_declarations.is_empty() {
         return None;
     }
@@ -1099,6 +1079,115 @@ mod tests {
         assert_eq!(
             diagnostic_messages(&result),
             ["`let x` outside a function is not supported"]
+        );
+    }
+
+    /// A document that cannot be analyzed as a module of its project says
+    /// why, first thing.
+    #[test]
+    fn documents_that_cannot_be_analyzed_as_modules_say_why() {
+        // A standalone file whose module blocks conflict.
+        let result = analyze_document(
+            "file:///nowhere/main.mpl",
+            "module A do\nend\n\nmodule A do\nend\n",
+            &[],
+        );
+        assert!(
+            diagnostic_messages(&result)[0].contains("conflicts"),
+            "{:?}",
+            diagnostic_messages(&result)
+        );
+        // An editor buffer that is not a file is analyzed on its own.
+        let result = analyze_document("untitled:Untitled-1", "fn main() do\n  1\nend\n", &[]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{:?}",
+            diagnostic_messages(&result)
+        );
+
+        for (files, open, expected) in [
+            (
+                vec![
+                    ("a.mpl", "import B\n\npub fn a() = 1\n"),
+                    ("b.mpl", "import A\n\npub fn b() = 2\n"),
+                    ("main.mpl", "fn main() do\n  1\nend\n"),
+                ],
+                "a.mpl",
+                "Circular dependency",
+            ),
+            (
+                vec![
+                    ("main.mpl", "fn main() do\n  1\nend\n"),
+                    (".scratch/note.mpl", "fn note() = 1\n"),
+                ],
+                ".scratch/note.mpl",
+                "was not discovered",
+            ),
+            (
+                vec![
+                    ("main.mpl", "fn main() do\n  1\nend\n"),
+                    (
+                        "math.test.mpl",
+                        "describe(\"math\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\nend\n",
+                    ),
+                ],
+                "math.test.mpl",
+                "one `teardown`",
+            ),
+        ] {
+            let (_tmp, _project_dir, open_path, source) =
+                write_mesh_project(Some(&package_manifest("failing")), &files, open);
+            let result = analyze_document(&file_uri(&open_path), &source, &[]);
+            assert!(
+                diagnostic_messages(&result)[0].contains(expected),
+                "{expected}: {:?}",
+                diagnostic_messages(&result)
+            );
+        }
+    }
+
+    #[test]
+    fn warnings_are_reported_as_warnings() {
+        let result = analyze_document(
+            "file:///nowhere/main.mpl",
+            "fn main() do\n  case 1 do\n    _ -> 1\n    2 -> 2\n  end\nend\n",
+            &[],
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.severity == Some(DiagnosticSeverity::WARNING)),
+            "{:?}",
+            diagnostic_messages(&result)
+        );
+    }
+
+    /// An open document is read as the editor holds it, not as it was saved.
+    #[test]
+    fn open_documents_are_read_in_place_of_their_files() {
+        let (_tmp, project_dir, open_path, source) = write_mesh_project(
+            Some(&package_manifest("overlays")),
+            &[
+                (
+                    "main.mpl",
+                    "from Util import helper\n\nfn main() do\n  println(helper())\nend\n",
+                ),
+                ("util.mpl", "pub fn other() = 1\n"),
+            ],
+            "main.mpl",
+        );
+        let saved = analyze_document(&file_uri(&open_path), &source, &[]);
+        assert!(!saved.diagnostics.is_empty());
+        let open = [(
+            file_uri(&project_dir.join("util.mpl")),
+            "pub fn helper() -> String do\n  \"h\"\nend\n".to_string(),
+        )];
+        let edited = analyze_document(&file_uri(&open_path), &source, &open);
+        assert!(
+            edited.diagnostics.is_empty(),
+            "{:?}",
+            diagnostic_messages(&edited)
         );
     }
 
