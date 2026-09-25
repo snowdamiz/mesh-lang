@@ -57,7 +57,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::MATCH_ARM => walk_match_arm(node),
         SyntaxKind::BINARY_EXPR => walk_binary_expr(node),
         SyntaxKind::UNARY_EXPR => walk_unary_expr(node),
-        SyntaxKind::CALL_EXPR => walk_call_expr(node),
+        SyntaxKind::CALL_EXPR => walk_concat(node),
         SyntaxKind::PIPE_EXPR => walk_pipe_expr(node),
         SyntaxKind::PARAM_LIST => walk_paren_list(node),
         SyntaxKind::ARG_LIST => walk_paren_list(node),
@@ -72,8 +72,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::IMPORT_LIST => walk_import_list(node),
         SyntaxKind::STRING_EXPR => walk_string_expr(node),
         SyntaxKind::TUPLE_EXPR => walk_paren_list(node),
-        SyntaxKind::FIELD_ACCESS => walk_field_access(node),
-        SyntaxKind::INDEX_EXPR => walk_index_expr(node),
+        SyntaxKind::FIELD_ACCESS | SyntaxKind::INDEX_EXPR => walk_concat(node),
         SyntaxKind::ELSE_BRANCH => walk_else_branch(node),
         SyntaxKind::INTERFACE_DEF => walk_block_def(node),
         SyntaxKind::IMPL_DEF => walk_impl_def(node),
@@ -84,9 +83,7 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::SERVICE_DEF => walk_block_def(node),
         SyntaxKind::SUPERVISOR_DEF => walk_block_def(node),
         SyntaxKind::RECEIVE_ARM => walk_match_arm(node),
-        SyntaxKind::SPAWN_EXPR => walk_spawn_send_link(node),
-        SyntaxKind::SEND_EXPR => walk_spawn_send_link(node),
-        SyntaxKind::LINK_EXPR => walk_spawn_send_link(node),
+        SyntaxKind::SPAWN_EXPR | SyntaxKind::SEND_EXPR | SyntaxKind::LINK_EXPR => walk_concat(node),
         SyntaxKind::WHILE_EXPR => walk_while_expr(node),
         SyntaxKind::FOR_IN_EXPR => walk_for_in_expr(node),
         SyntaxKind::BREAK_EXPR => walk_break_expr(node),
@@ -847,31 +844,32 @@ fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
 // ── Unary expression ────────────────────────────────────────────────
 
 fn walk_unary_expr(node: &SyntaxNode) -> FormatIR {
+    // `not x`; `-x` and `!x` take no space.
     let mut parts = Vec::new();
-
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::NOT_KW => {
-                    parts.push(ir::text("not"));
+            NodeOrToken::Token(tok) => {
+                add_token_with_context(&tok, &mut parts);
+                if tok.kind() == SyntaxKind::NOT_KW {
                     parts.push(sp());
                 }
-                SyntaxKind::MINUS => {
-                    parts.push(ir::text("-"));
-                }
-                SyntaxKind::BANG => {
-                    parts.push(ir::text("!"));
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
             }
+            NodeOrToken::Node(n) => parts.push(walk_node(&n)),
         }
     }
+    ir::concat(parts)
+}
 
+/// The elements as they are, spaced as `add_token_with_context` spaces
+/// tokens: a call `f(x)`, a field access `a.b`, an index `a[0]`, `spawn(...)`.
+fn walk_concat(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    for child in node.elements() {
+        match child {
+            NodeOrToken::Token(tok) => add_token_with_context(&tok, &mut parts),
+            NodeOrToken::Node(n) => parts.push(walk_node(&n)),
+        }
+    }
     ir::concat(parts)
 }
 
@@ -939,25 +937,6 @@ fn walk_pipe_expr(node: &SyntaxNode) -> FormatIR {
 }
 
 // ── Call expression ──────────────────────────────────────────────────
-
-fn walk_call_expr(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
 
 // ── Block ─────────────────────────────────────────────────────────
 
@@ -1821,50 +1800,7 @@ fn walk_string_interpolation(node: &SyntaxNode) -> FormatIR {
 
 // ── Field access ────────────────────────────────────────────────────
 
-fn walk_field_access(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::DOT => {
-                    parts.push(ir::text("."));
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
-
 // ── Index expression ────────────────────────────────────────────────
-
-fn walk_index_expr(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::L_BRACKET => parts.push(ir::text("[")),
-                SyntaxKind::R_BRACKET => parts.push(ir::text("]")),
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
 
 // ── Impl definition ──────────────────────────────────────────────────
 
@@ -2022,34 +1958,6 @@ fn walk_variant_def(node: &SyntaxNode) -> FormatIR {
 // ── Receive expression ──────────────────────────────────────────────
 
 // ── Spawn/Send/Link expressions ──────────────────────────────────────
-
-fn walk_spawn_send_link(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
-
-    for child in node.elements() {
-        match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::SPAWN_KW | SyntaxKind::SEND_KW | SyntaxKind::LINK_KW => {
-                    parts.push(ir::text(tok.text()));
-                }
-                SyntaxKind::L_PAREN => parts.push(ir::text("(")),
-                SyntaxKind::R_PAREN => parts.push(ir::text(")")),
-                SyntaxKind::COMMA => {
-                    parts.push(ir::text(","));
-                    parts.push(sp());
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-            },
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
-        }
-    }
-
-    ir::concat(parts)
-}
 
 // ── Self expression ──────────────────────────────────────────────────
 
