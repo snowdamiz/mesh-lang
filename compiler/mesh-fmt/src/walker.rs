@@ -681,33 +681,24 @@ fn walk_match_arm(node: &SyntaxNode) -> FormatIR {
                     parts.push(ir::text("do"));
                 }
                 SyntaxKind::END_KW => {}
+                // A guard is `when` and its condition, no node of its own.
                 SyntaxKind::WHEN_KW => {
                     parts.push(sp());
                     parts.push(ir::text("when"));
                     parts.push(sp());
                 }
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    add_token_with_context(&tok, &mut parts);
-                }
-                _ => {
-                    add_token_with_context(&tok, &mut parts);
-                }
+                _ => add_token_with_context(&tok, &mut parts),
             },
             NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::GUARD_CLAUSE => {
-                    parts.push(sp());
-                    parts.push(walk_node(&n));
-                }
+                // A `do ... end` body, or statements on the lines after `->`:
+                // those stay there, indented, so the arm stays a block when
+                // re-parsed.
                 SyntaxKind::BLOCK => {
                     let body = walk_block_body(&n);
+                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                     if has_do {
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                         parts.push(ir::hardline());
                         parts.push(ir::text("end"));
-                    } else {
-                        // Statements on the lines after `->`: keep them there,
-                        // indented, so the arm stays a block when re-parsed.
-                        parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
                     }
                 }
                 _ => {
@@ -741,16 +732,16 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
                 SyntaxKind::END_KW => {}
                 _ => add_token_with_context(&tok, &mut parts),
             },
-            NodeOrToken::Node(n) => match n.kind() {
-                SyntaxKind::PARAM_LIST => parts.push(walk_bare_param_list(&n)),
-                SyntaxKind::BLOCK => {
-                    let body = walk_block_body(&n);
-                    parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
-                    parts.push(ir::hardline());
-                    parts.push(ir::text("end"));
-                }
-                _ => parts.push(walk_node(&n)),
-            },
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::PARAM_LIST => {
+                parts.push(walk_bare_param_list(&n))
+            }
+            // The body.
+            NodeOrToken::Node(n) => {
+                let body = walk_block_body(&n);
+                parts.push(ir::indent(ir::concat(vec![ir::hardline(), body])));
+                parts.push(ir::hardline());
+                parts.push(ir::text("end"));
+            }
         }
     }
 
@@ -872,19 +863,14 @@ fn walk_pipe_expr(node: &SyntaxNode) -> FormatIR {
         }
     }
 
-    let mut lines = lines.into_iter();
-    let Some(first) = lines.next() else {
-        return FormatIR::Empty;
-    };
-    let rest: Vec<FormatIR> = lines.flat_map(|line| [ir::hardline(), line]).collect();
-    if rest.is_empty() {
-        first
-    } else {
-        ir::concat(vec![first, ir::indent(ir::concat(rest))])
-    }
+    // The first line, then the others indented under it.
+    let rest: Vec<FormatIR> = lines
+        .split_off(lines.len().min(1))
+        .into_iter()
+        .flat_map(|line| [ir::hardline(), line])
+        .collect();
+    ir::concat(vec![ir::concat(lines), ir::indent(ir::concat(rest))])
 }
-
-// ── Call expression ──────────────────────────────────────────────────
 
 // ── Block ─────────────────────────────────────────────────────────
 
@@ -894,19 +880,11 @@ fn walk_block_body(node: &SyntaxNode) -> FormatIR {
 
     for child in node.elements() {
         match child {
-            NodeOrToken::Token(tok) => match tok.kind() {
-                // Statements separated by `;` go on lines of their own.
-                SyntaxKind::SEMICOLON => {}
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT | SyntaxKind::MODULE_DOC_COMMENT => {
-                    push_comment(&mut stmts, &tok);
-                }
-                _ => {
-                    stmts.push(ir::text(tok.text()));
-                }
-            },
-            NodeOrToken::Node(n) => {
-                stmts.push(walk_node(&n));
-            }
+            // Statements separated by `;` go on lines of their own.
+            NodeOrToken::Token(tok) if tok.kind() == SyntaxKind::SEMICOLON => {}
+            // The other tokens in a block are comments.
+            NodeOrToken::Token(tok) => push_comment(&mut stmts, &tok),
+            NodeOrToken::Node(n) => stmts.push(walk_node(&n)),
         }
     }
 
@@ -1004,10 +982,6 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
     for child in node.elements() {
         match child {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::VISIBILITY => {
-                    parts.push(ir::text(tok.text()));
-                    parts.push(sp());
-                }
                 SyntaxKind::MODULE_KW
                 | SyntaxKind::ACTOR_KW
                 | SyntaxKind::SERVICE_KW
@@ -1043,17 +1017,9 @@ fn walk_block_def(node: &SyntaxNode) -> FormatIR {
                 if n.kind() == SyntaxKind::DERIVING_CLAUSE {
                     // Handled after "end" is emitted
                 } else if !past_do {
-                    match n.kind() {
-                        SyntaxKind::VISIBILITY => {
-                            parts.push(walk_node(&n));
-                            parts.push(sp());
-                        }
-                        SyntaxKind::NAME | SyntaxKind::GENERIC_PARAM_LIST => {
-                            parts.push(walk_node(&n));
-                        }
-                        _ => {
-                            parts.push(walk_node(&n));
-                        }
+                    parts.push(walk_node(&n));
+                    if n.kind() == SyntaxKind::VISIBILITY {
+                        parts.push(sp());
                     }
                 } else if n.kind() == SyntaxKind::BLOCK && node.kind() == SyntaxKind::ACTOR_DEF {
                     // An actor's body is statements, one per line, as in a
