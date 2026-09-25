@@ -45,7 +45,7 @@ impl fmt::Display for CycleError {
 ///
 /// Modules are stored in insertion order and identified by [`ModuleId`].
 /// Name-based lookup is provided via an internal hash map.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ModuleGraph {
     /// All modules in the graph, indexed by `ModuleId.0`.
     pub modules: Vec<ModuleInfo>,
@@ -56,10 +56,7 @@ pub struct ModuleGraph {
 impl ModuleGraph {
     /// Create an empty module graph.
     pub fn new() -> Self {
-        Self {
-            modules: Vec::new(),
-            name_to_id: FxHashMap::default(),
-        }
+        Self::default()
     }
 
     /// Add a module to the graph and return its assigned [`ModuleId`].

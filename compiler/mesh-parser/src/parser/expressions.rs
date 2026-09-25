@@ -437,10 +437,8 @@ fn parse_map_literal(p: &mut Parser) -> MarkClosed {
             }
 
             // Separator: comma or implicit (newlines inside braces are insignificant).
-            if !p.eat(SyntaxKind::COMMA) {
-                if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
-                    break;
-                }
+            if !p.eat(SyntaxKind::COMMA) && (p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF)) {
+                break;
             }
         }
 
@@ -532,10 +530,8 @@ fn parse_json_literal(p: &mut Parser) -> MarkClosed {
             break;
         }
 
-        if !p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF) {
-                break;
-            }
+        if !p.eat(SyntaxKind::COMMA) && (p.at(SyntaxKind::R_BRACE) || p.at(SyntaxKind::EOF)) {
+            break;
         }
     }
 
@@ -705,9 +701,7 @@ fn invalid_escape(text: &str) -> Option<(usize, usize, String)> {
         if c != '\\' {
             continue;
         }
-        let Some((_, escaped)) = chars.next() else {
-            return None;
-        };
+        let (_, escaped) = chars.next()?;
         match escaped {
             'n' | 't' | 'r' | '0' | '\\' | '"' | '$' | '#' => {}
             'u' => {
@@ -900,14 +894,14 @@ pub(crate) fn parse_return_expr(p: &mut Parser) -> MarkClosed {
 /// Whether the current token could start an expression.
 /// Used to determine if `return` has a value.
 fn looks_like_expr_start(p: &Parser) -> bool {
-    match p.current() {
+    !matches!(
+        p.current(),
         SyntaxKind::NEWLINE
-        | SyntaxKind::END_KW
-        | SyntaxKind::ELSE_KW
-        | SyntaxKind::EOF
-        | SyntaxKind::SEMICOLON => false,
-        _ => true,
-    }
+            | SyntaxKind::END_KW
+            | SyntaxKind::ELSE_KW
+            | SyntaxKind::EOF
+            | SyntaxKind::SEMICOLON
+    )
 }
 
 // ── If/Else Expression ────────────────────────────────────────────────
@@ -1220,24 +1214,15 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
             parse_closure_arrow_body(p);
         }
 
-        // Multi-clause: BAR follows the body expression
-        if p.at(SyntaxKind::BAR) {
-            // First clause's children are already direct children of CLOSURE_EXPR.
-            // Parse subsequent clauses wrapped in CLOSURE_CLAUSE nodes.
-            while p.at(SyntaxKind::BAR) {
-                parse_closure_clause(p);
-                if p.has_error() {
-                    break;
-                }
+        // Further clauses follow a `|`, each a CLOSURE_CLAUSE; the first
+        // clause's children are CLOSURE_EXPR's own.
+        while p.at(SyntaxKind::BAR) {
+            parse_closure_clause(p);
+            if p.has_error() {
+                break;
             }
-
-            expect_closure_end(p, fn_span);
-            return p.close(m, SyntaxKind::CLOSURE_EXPR);
         }
-
-        // Single-clause arrow closure
         expect_closure_end(p, fn_span);
-        return p.close(m, SyntaxKind::CLOSURE_EXPR);
     } else if p.at(SyntaxKind::DO_KW) {
         // do/end body: `fn x do body end` -- single `end` for both block and closure.
         let do_span = p.current_span();
@@ -1252,11 +1237,10 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
         } else {
             p.advance(); // END_KW
         }
-        return p.close(m, SyntaxKind::CLOSURE_EXPR);
     } else {
         p.error("expected `->` or `do` after closure parameters");
-        return p.close(m, SyntaxKind::CLOSURE_EXPR);
     }
+    p.close(m, SyntaxKind::CLOSURE_EXPR)
 }
 
 /// A closure clause's body after `->`: one expression, on the same line or
