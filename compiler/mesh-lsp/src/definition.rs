@@ -10,40 +10,20 @@
 //! ## Coordinate system
 //!
 //! The CST keeps whitespace as WHITESPACE tokens, so rowan `TextRange` offsets
-//! are source byte offsets. The two conversion functions below only bounds-check.
+//! are source byte offsets.
 
-use crate::syntax::{field_access_parts, first_ident_text, module_items};
+use crate::syntax::{field_access_parts, first_ident_text, module_items, param_names};
 use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 use rowan::TextRange;
 
-/// Convert a source byte offset to a rowan tree offset.
-///
-/// The CST is lossless (whitespace is kept as WHITESPACE tokens), so tree
-/// offsets are source offsets. This only rejects offsets past the end.
-pub fn source_to_tree_offset(source: &str, source_offset: usize) -> Option<usize> {
-    (source_offset < source.len()).then_some(source_offset)
-}
-
-/// Convert a rowan tree offset to a source byte offset.
-///
-/// Identity for the same reason as [`source_to_tree_offset`].
-pub fn tree_to_source_offset(source: &str, tree_offset: usize) -> Option<usize> {
-    (tree_offset <= source.len()).then_some(tree_offset)
-}
-
-/// Find the definition site of the identifier at the given source byte offset.
-///
-/// Converts the source offset to a rowan tree offset, traverses the CST,
-/// and returns the `TextRange` of the definition's NAME node (in rowan
-/// coordinates). The caller must convert back to source coordinates using
-/// `tree_to_source_offset` if needed for LSP position computation.
-pub fn find_definition(source: &str, root: &SyntaxNode, source_offset: usize) -> Option<TextRange> {
-    let tree_offset = source_to_tree_offset(source, source_offset)?;
-    let target_offset = rowan::TextSize::from(tree_offset as u32);
-
-    // Find the token at the given offset.
-    let token = root.token_at_offset(target_offset).right_biased()?;
+/// Find the definition site of the identifier at the given source byte
+/// offset: the range of the definition's name. The CST is lossless, so tree
+/// offsets are source offsets.
+pub fn find_definition(root: &SyntaxNode, offset: usize) -> Option<TextRange> {
+    let token = root
+        .token_at_offset(rowan::TextSize::from(offset as u32))
+        .right_biased()?;
 
     // Only resolve IDENT tokens that are inside NAME_REF nodes or type annotation contexts.
     let parent = token.parent()?;
@@ -160,27 +140,10 @@ fn search_block_for_def(
 
 /// Search parameter list of a FN_DEF or CLOSURE_EXPR for a matching name.
 fn search_params_for_name(fn_node: &SyntaxNode, name: &str) -> Option<TextRange> {
-    fn_node
-        .children()
-        .filter(|child| child.kind() == SyntaxKind::PARAM_LIST)
-        .flat_map(|list| list.children())
-        .filter(|param| param.kind() == SyntaxKind::PARAM)
-        .find_map(|param| {
-            // A PARAM holds its name as an IDENT token or a NAME node.
-            param
-                .children_with_tokens()
-                .find_map(|element| match element {
-                    rowan::NodeOrToken::Token(t)
-                        if t.kind() == SyntaxKind::IDENT && t.text() == name =>
-                    {
-                        Some(t.text_range())
-                    }
-                    rowan::NodeOrToken::Node(n) if n.kind() == SyntaxKind::NAME => {
-                        (first_ident_text(&n).as_deref() == Some(name)).then(|| n.text_range())
-                    }
-                    _ => None,
-                })
-        })
+    param_names(fn_node)
+        .flatten()
+        .find(|param| param.text() == name)
+        .map(|param| param.text_range())
 }
 
 /// Find a type definition (struct, sum type, type alias) with a matching name.
@@ -215,31 +178,17 @@ fn name_child_if_matches(node: &SyntaxNode, name: &str) -> Option<TextRange> {
 mod tests {
     use super::*;
 
-    /// Helper: parse source, convert source offset to tree offset, and find definition.
-    fn def_at(source: &str, source_offset: usize) -> Option<TextRange> {
-        let parse = mesh_parser::parse(source);
-        let root = parse.syntax();
-        find_definition(source, &root, source_offset)
+    /// Helper: parse source and find the definition at an offset.
+    fn def_at(source: &str, offset: usize) -> Option<TextRange> {
+        find_definition(&mesh_parser::parse(source).syntax(), offset)
     }
 
-    /// Helper: get the source byte offset of a tree TextRange start.
-    fn tree_range_to_source(source: &str, range: TextRange) -> Option<usize> {
-        tree_to_source_offset(source, range.start().into())
-    }
-
+    /// A field of something other than a module name has no definition to
+    /// go to.
     #[test]
-    fn tree_offsets_are_source_offsets() {
-        let source = "let x = 42";
-        let parse = mesh_parser::parse(source);
-        assert_eq!(parse.syntax().text().to_string(), source);
-        assert_eq!(source_to_tree_offset(source, 4), Some(4)); // 'x'
-        assert_eq!(source_to_tree_offset(source, source.len()), None);
-        assert_eq!(tree_to_source_offset(source, 8), Some(8)); // '4'
-        assert_eq!(
-            tree_to_source_offset(source, source.len()),
-            Some(source.len())
-        );
-        assert_eq!(tree_to_source_offset(source, source.len() + 1), None);
+    fn a_field_of_an_expression_has_no_definition() {
+        let source = "fn pair() do\n  (1, 2)\nend\n\nfn main() do\n  pair().first\nend\n";
+        assert_eq!(def_at(source, source.find("first").unwrap()), None);
     }
 
     #[test]
@@ -252,8 +201,7 @@ mod tests {
         let result = def_at(source, use_offset);
         assert!(result.is_some(), "Should find definition of x");
         let range = result.unwrap();
-        // Convert the result back to source offset to verify.
-        let def_source_offset = tree_range_to_source(source, range).unwrap();
+        let def_source_offset = usize::from(range.start());
         assert_eq!(
             def_source_offset, 4,
             "Definition of x should be at source offset 4"
@@ -264,7 +212,7 @@ mod tests {
     /// (counting from 0) starts, as a source offset.
     fn def_of(source: &str, name: &str, occurrence: usize) -> Option<usize> {
         let at = source.match_indices(name).nth(occurrence)?.0;
-        tree_range_to_source(source, def_at(source, at)?)
+        Some(def_at(source, at)?.start().into())
     }
 
     #[test]
@@ -290,7 +238,7 @@ mod tests {
         let result = def_at(source, call_offset);
         assert!(result.is_some(), "Should find definition of add");
         let range = result.unwrap();
-        let def_source_offset = tree_range_to_source(source, range).unwrap();
+        let def_source_offset = usize::from(range.start());
         // "fn add" -- NAME for "add" starts at source offset 3.
         assert_eq!(
             def_source_offset, 3,
@@ -331,7 +279,7 @@ mod tests {
         let result = def_at(source, x_use);
         assert!(result.is_some(), "Should find inner x definition");
         let range = result.unwrap();
-        let def_source_offset = tree_range_to_source(source, range).unwrap();
+        let def_source_offset = usize::from(range.start());
         // The inner `let x = 2` NAME "x" should be at the source offset of that x.
         let inner_x_def = source.find("let x = 2").unwrap() + "let ".len();
         assert_eq!(def_source_offset, inner_x_def);

@@ -12,7 +12,7 @@ use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 
 use crate::analysis::AnalysisResult;
-use crate::syntax::{name_child_text, param_name};
+use crate::syntax::{name_child_text, param_names};
 
 /// Mesh keywords and contextual syntax.
 const KEYWORDS: &[&str] = &[
@@ -122,7 +122,7 @@ pub fn compute_completions(
     position: &Position,
 ) -> Vec<CompletionItem> {
     // Convert LSP position to source byte offset.
-    let source_offset = match crate::analysis::position_to_offset_pub(source, position) {
+    let source_offset = match crate::analysis::position_to_offset(source, position) {
         Some(o) => o,
         None => return Vec::new(),
     };
@@ -174,7 +174,7 @@ pub fn compute_completions(
 
     // Tier 4: Scope-aware name completions from CST walk.
     let root = analysis.parse.syntax();
-    let scope_names = collect_in_scope_names(source, &root, source_offset);
+    let scope_names = collect_in_scope_names(&root, source_offset);
     for (name, kind) in scope_names {
         if prefix.is_empty() || name.starts_with(&prefix) {
             items.push(CompletionItem {
@@ -209,46 +209,17 @@ fn extract_prefix(source: &str, offset: usize) -> String {
 /// Walks upward through the CST from the cursor position, collecting
 /// names from let bindings, function definitions, parameters, and
 /// top-level definitions. Inner-scope names shadow outer-scope names.
-///
-/// When the cursor is in whitespace or past the end of tokens (i.e.,
-/// `source_to_tree_offset` returns None), falls back to collecting all
-/// top-level names from SOURCE_FILE.
-fn collect_in_scope_names(
-    source: &str,
-    root: &SyntaxNode,
-    source_offset: usize,
-) -> Vec<(String, CompletionItemKind)> {
-    // Convert source offset to tree offset for CST traversal.
-    let tree_offset = match crate::definition::source_to_tree_offset(source, source_offset) {
-        Some(o) => o,
-        None => {
-            // Cursor is in whitespace or past the end. Collect all top-level
-            // names from the root SOURCE_FILE node.
-            let mut seen = std::collections::HashSet::new();
-            let mut names = Vec::new();
-            // Use a very large offset so all definitions are "before" cursor.
-            let max_offset = rowan::TextSize::from(u32::MAX);
-            collect_block_names(root, max_offset, true, &mut seen, &mut names);
-            return names;
-        }
-    };
-
-    let target = rowan::TextSize::from(tree_offset as u32);
-
-    // Find the token at the cursor position.
-    let token = match root.token_at_offset(target).right_biased() {
-        Some(t) => t,
-        None => return Vec::new(),
-    };
-
+fn collect_in_scope_names(root: &SyntaxNode, offset: usize) -> Vec<(String, CompletionItemKind)> {
+    let target = rowan::TextSize::from(offset as u32);
     let mut seen_names = std::collections::HashSet::new();
     let mut names = Vec::new();
-    let mut current = match token.parent() {
-        Some(p) => p,
-        None => return Vec::new(),
-    };
-
-    loop {
+    // Outward from the token at the cursor.
+    let scopes = root
+        .token_at_offset(target)
+        .right_biased()
+        .into_iter()
+        .flat_map(|token| token.parent_ancestors());
+    for current in scopes {
         match current.kind() {
             SyntaxKind::BLOCK | SyntaxKind::SOURCE_FILE => {
                 let search_all = current.kind() == SyntaxKind::SOURCE_FILE;
@@ -259,11 +230,6 @@ fn collect_in_scope_names(
             }
             _ => {}
         }
-
-        current = match current.parent() {
-            Some(p) => p,
-            None => break,
-        };
     }
 
     names
@@ -314,18 +280,9 @@ fn collect_param_names(
     seen: &mut std::collections::HashSet<String>,
     names: &mut Vec<(String, CompletionItemKind)>,
 ) {
-    for child in fn_node.children() {
-        if child.kind() == SyntaxKind::PARAM_LIST {
-            for param in child.children() {
-                if param.kind() == SyntaxKind::PARAM {
-                    // Extract the parameter name from IDENT token or NAME child.
-                    if let Some(name) = param_name(&param) {
-                        if seen.insert(name.clone()) {
-                            names.push((name, CompletionItemKind::VARIABLE));
-                        }
-                    }
-                }
-            }
+    for name in param_names(fn_node).flatten() {
+        if seen.insert(name.text().to_string()) {
+            names.push((name.text().to_string(), CompletionItemKind::VARIABLE));
         }
     }
 }
@@ -339,6 +296,65 @@ mod tests {
         let analysis = crate::analysis::analyze_document("file:///test.mpl", source, &[]);
         let position = Position { line, character };
         compute_completions(source, &analysis, &position)
+    }
+
+    /// The scope names at the cursor, with their kinds.
+    fn scope_names_at(
+        source: &str,
+        line: u32,
+        character: u32,
+    ) -> Vec<(String, CompletionItemKind)> {
+        completions_at(source, line, character)
+            .into_iter()
+            .filter(|item| {
+                item.sort_text
+                    .as_deref()
+                    .is_some_and(|sort| sort.starts_with("0_"))
+            })
+            .map(|item| (item.label, item.kind.unwrap()))
+            .collect()
+    }
+
+    #[test]
+    fn every_kind_of_definition_is_offered_as_what_it_is() {
+        let source = "module Geometry do\nend\n\nstruct Point do\n  x :: Int\nend\n\ntype Shape do\n  Circle\nend\n\ninterface Area do\n  fn area(self) -> Int\nend\n\nfn main() do\n  1\nend\n";
+        let names = scope_names_at(source, 16, 2);
+        for expected in [
+            ("Geometry", CompletionItemKind::MODULE),
+            ("Point", CompletionItemKind::STRUCT),
+            ("Shape", CompletionItemKind::ENUM),
+            ("Area", CompletionItemKind::INTERFACE),
+            ("main", CompletionItemKind::FUNCTION),
+        ] {
+            assert!(
+                names.contains(&(expected.0.to_string(), expected.1)),
+                "{expected:?} in {names:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_binding_shadowing_a_parameter_is_offered_once() {
+        let source = "fn f(x :: Int) do\n  let x = 2\n  x\nend\n";
+        let names = scope_names_at(source, 2, 3);
+        assert_eq!(
+            names.iter().filter(|(name, _)| name == "x").count(),
+            1,
+            "{names:?}"
+        );
+    }
+
+    #[test]
+    fn a_definition_still_being_typed_offers_no_name() {
+        // `fn` with no name yet, before a function that has one.
+        let source = "fn\n\nfn main() do\n  1\nend\n";
+        let names = scope_names_at(source, 3, 2);
+        assert!(names.iter().all(|(name, _)| name == "main"), "{names:?}");
+    }
+
+    #[test]
+    fn a_position_past_the_document_offers_nothing() {
+        assert!(completions_at("fn main() do\n  1\nend\n", 40, 0).is_empty());
     }
 
     #[test]

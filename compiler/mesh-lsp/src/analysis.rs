@@ -94,6 +94,14 @@ fn project_failure_analysis(source: &str, message: impl Into<String>) -> Analysi
 /// The LSP specification requires positions in UTF-16 code units. For ASCII-only
 /// sources, UTF-16 offset == byte offset within the line. For non-ASCII sources,
 /// we count UTF-16 code units properly.
+/// The LSP range of a syntax tree range: tree offsets are source offsets.
+pub fn text_range_to_range(source: &str, range: rowan::TextRange) -> Range {
+    Range::new(
+        offset_to_position(source, range.start().into()),
+        offset_to_position(source, range.end().into()),
+    )
+}
+
 pub fn offset_to_position(source: &str, offset: usize) -> Position {
     let offset = offset.min(source.len());
     let before = &source[..offset];
@@ -142,14 +150,10 @@ pub fn type_at_position(
 /// Convert an LSP Position back to a byte offset in the source.
 ///
 /// Public wrapper for go-to-definition support.
-pub fn position_to_offset_pub(source: &str, position: &Position) -> Option<usize> {
-    position_to_offset(source, position)
-}
-
 /// Convert an LSP Position back to a byte offset in the source. A character
 /// past the end of its line is the line's end; a line past the end of the
 /// source has no offset.
-fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
+pub fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
     let mut line_start = 0;
     for _ in 0..position.line {
         line_start += source[line_start..].find('\n')? + 1;
@@ -173,18 +177,8 @@ fn type_error_to_diagnostic(
     error: &TypeError,
     severity: DiagnosticSeverity,
 ) -> Option<Diagnostic> {
-    let range = error.span()?;
-    let start_tree: usize = range.start().into();
-    let end_tree: usize = range.end().into();
-    let start_offset =
-        crate::definition::tree_to_source_offset(source, start_tree).unwrap_or(start_tree);
-    let end_offset = crate::definition::tree_to_source_offset(source, end_tree).unwrap_or(end_tree);
-
-    let start = offset_to_position(source, start_offset);
-    let end = offset_to_position(source, end_offset);
-
     Some(Diagnostic {
-        range: Range::new(start, end),
+        range: text_range_to_range(source, error.span()?),
         severity: Some(severity),
         source: Some("mesh".to_string()),
         message: format!("{}", error),
@@ -410,15 +404,15 @@ fn read_source_with_overlays(
     std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
 }
 
-/// The nearest directory above the document holding a mesh.toml: one of
-/// its ancestors as spelled, so the document's path is under it even when
-/// the document is not on disk and could not be canonicalized.
 fn canonical_file_path(uri: &str) -> Option<PathBuf> {
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
     Some(std::fs::canonicalize(&path).unwrap_or(path))
 }
 
+/// The nearest directory above the document holding a mesh.toml: one of
+/// its ancestors as spelled, so the document's path is under it even when
+/// the document is not on disk and could not be canonicalized.
 fn find_project_root(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .skip(1)
@@ -1055,6 +1049,12 @@ mod tests {
                     ("main.mpl", "fn main() do\n  1\nend\n"),
                     (
                         "math.test.mpl",
+                        "describe(\"math\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\nend\n",
+                    ),
+                ],
+                "math.test.mpl",
+                "one `teardown`",
+            ),
             (
                 vec![
                     ("main.mpl", "fn main() do\n  1\nend\n"),
@@ -1062,12 +1062,6 @@ mod tests {
                 ],
                 "main.mpl",
                 "Failed to parse lockfile",
-            ),
-                        "describe(\"math\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\nend\n",
-                    ),
-                ],
-                "math.test.mpl",
-                "one `teardown`",
             ),
         ] {
             let (_tmp, _project_dir, open_path, source) =
@@ -1451,15 +1445,9 @@ mod tests {
         let root = result.parse.syntax();
         // Find the call to "greet" in `greet(42)`.
         let call_offset = source.rfind("greet").unwrap();
-        let def = crate::definition::find_definition(source, &root, call_offset);
-        assert!(def.is_some(), "Should find definition of greet");
-        // Verify it resolves to the fn definition, not the call.
-        let range = def.unwrap();
-        let def_source = crate::definition::tree_to_source_offset(source, range.start().into());
-        assert!(def_source.is_some());
-        let offset = def_source.unwrap();
-        // "fn greet" -- "greet" starts at offset 3.
-        assert_eq!(offset, 3);
+        let def = crate::definition::find_definition(&root, call_offset);
+        // The fn definition, not the call: "greet" in "fn greet" is at 3.
+        assert_eq!(def.map(|range| usize::from(range.start())), Some(3));
     }
 
     #[test]
@@ -1469,13 +1457,9 @@ mod tests {
         let root = result.parse.syntax();
         // Find "count" in the second let binding.
         let second_count = source.find("count + count").unwrap();
-        let def = crate::definition::find_definition(source, &root, second_count);
-        assert!(def.is_some(), "Should find definition of count");
-        let range = def.unwrap();
-        let def_source =
-            crate::definition::tree_to_source_offset(source, range.start().into()).unwrap();
+        let def = crate::definition::find_definition(&root, second_count);
         // "let count" -- "count" starts at offset 4.
-        assert_eq!(def_source, 4);
+        assert_eq!(def.map(|range| usize::from(range.start())), Some(4));
     }
 
     #[test]
@@ -1485,14 +1469,11 @@ mod tests {
         let root = result.parse.syntax();
         let y_binding = source.find("let y = x").unwrap();
         let x_use = y_binding + "let y = ".len();
-        let def = crate::definition::find_definition(source, &root, x_use);
-        assert!(def.is_some(), "Should find inner x definition");
-        let range = def.unwrap();
-        let def_source =
-            crate::definition::tree_to_source_offset(source, range.start().into()).unwrap();
+        let def = crate::definition::find_definition(&root, x_use);
         let inner_x = source.find("let x = 2").unwrap() + "let ".len();
         assert_eq!(
-            def_source, inner_x,
+            def.map(|range| usize::from(range.start())),
+            Some(inner_x),
             "Should resolve to inner binding, not outer"
         );
     }
@@ -1503,7 +1484,7 @@ mod tests {
         let result = analyze_document("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         let unknown_offset = source.find("completely_unknown").unwrap();
-        let def = crate::definition::find_definition(source, &root, unknown_offset);
+        let def = crate::definition::find_definition(&root, unknown_offset);
         assert!(def.is_none(), "Unknown identifier should return None");
     }
 
@@ -1516,7 +1497,7 @@ mod tests {
         let point_offset = source.find("Point").unwrap();
         // "Point" at the definition site is in a NAME node, not NAME_REF,
         // so it won't resolve to anything (it IS the definition).
-        let def = crate::definition::find_definition(source, &root, point_offset);
+        let def = crate::definition::find_definition(&root, point_offset);
         // This should return None since the user is clicking on the definition itself.
         assert!(
             def.is_none(),
@@ -1699,35 +1680,6 @@ mod tests {
             },
         );
         assert!(result.is_none(), "Position past EOF should return None");
-    }
-
-    // ── Source/Tree Offset Conversion Tests ────────────────────────────────
-
-    #[test]
-    fn source_tree_offset_roundtrip() {
-        let source = "let x = 42\nlet y = x";
-        // For each non-EOF token in the source, verify the roundtrip.
-        let tokens = mesh_lexer::Lexer::tokenize(source);
-        for token in &tokens {
-            // Skip EOF (zero-length token at end).
-            if token.kind == mesh_common::token::TokenKind::Eof {
-                continue;
-            }
-            let src_start = token.span.start as usize;
-            let tree = crate::definition::source_to_tree_offset(source, src_start);
-            assert!(
-                tree.is_some(),
-                "source_to_tree_offset should succeed for offset {}",
-                src_start
-            );
-            let back = crate::definition::tree_to_source_offset(source, tree.unwrap());
-            assert_eq!(
-                back,
-                Some(src_start),
-                "Roundtrip failed for source offset {}",
-                src_start
-            );
-        }
     }
 
     #[test]

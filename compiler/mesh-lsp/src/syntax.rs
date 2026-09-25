@@ -1,8 +1,9 @@
 //! Reading names out of syntax nodes, for completion, definitions and
 //! signature help.
 
-use mesh_parser::{SyntaxKind, SyntaxNode};
-use rowan::NodeOrToken;
+use mesh_parser::ast::item::Param;
+use mesh_parser::ast::AstNode;
+use mesh_parser::{SyntaxKind, SyntaxNode, SyntaxToken};
 
 /// The text of a node's first IDENT token.
 pub(crate) fn first_ident_text(node: &SyntaxNode) -> Option<String> {
@@ -19,21 +20,15 @@ pub(crate) fn name_child_text(node: &SyntaxNode) -> Option<String> {
         .and_then(|name| first_ident_text(&name))
 }
 
-/// A parameter's name: its IDENT, or the name in its NAME child, whichever
-/// comes first.
-pub(crate) fn param_name(param: &SyntaxNode) -> Option<String> {
-    param
-        .children_with_tokens()
-        .find_map(|element| match element {
-            NodeOrToken::Token(token) if token.kind() == SyntaxKind::IDENT => {
-                Some(Some(token.text().to_string()))
-            }
-            NodeOrToken::Node(node) if node.kind() == SyntaxKind::NAME => {
-                Some(first_ident_text(&node))
-            }
-            _ => None,
-        })
-        .flatten()
+/// A function's or closure's parameters, each with its name: none for a
+/// pattern or `self`.
+pub(crate) fn param_names(fn_node: &SyntaxNode) -> impl Iterator<Item = Option<SyntaxToken>> {
+    fn_node
+        .children()
+        .filter(|child| child.kind() == SyntaxKind::PARAM_LIST)
+        .flat_map(|list| list.children())
+        .filter_map(Param::cast)
+        .map(|param| param.name())
 }
 
 /// The items in the body of the top-level `module <name> do ... end`.

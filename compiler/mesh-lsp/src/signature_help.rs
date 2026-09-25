@@ -8,12 +8,12 @@
 use tower_lsp::lsp_types::*;
 
 use mesh_parser::SyntaxKind;
-use mesh_parser::SyntaxNode;
+use mesh_parser::{SyntaxNode, SyntaxToken};
 use mesh_typeck::ty::Ty;
 
 use crate::analysis::AnalysisResult;
 use crate::syntax::{
-    field_access_parts, first_ident_text, module_items, name_child_text, param_name,
+    field_access_parts, first_ident_text, module_items, name_child_text, param_names,
 };
 
 /// Compute signature help at the given LSP position.
@@ -27,23 +27,41 @@ pub fn compute_signature_help(
     analysis: &AnalysisResult,
     position: &Position,
 ) -> Option<SignatureHelp> {
-    // Step 1: Position conversion.
-    let source_offset = crate::analysis::position_to_offset_pub(source, position)?;
-    let tree_offset = crate::definition::source_to_tree_offset(source, source_offset)?;
-    let target = rowan::TextSize::from(tree_offset as u32);
-
+    // Tree offsets are source offsets.
+    let target =
+        rowan::TextSize::from(crate::analysis::position_to_offset(source, position)? as u32);
     let root = analysis.parse.syntax();
-
-    // Step 2: Find enclosing CALL_EXPR via ARG_LIST walk.
-    let token = root.token_at_offset(target).right_biased()?;
-    let start_node = token.parent()?;
-    let (call_expr, arg_list, active_parameter) = find_enclosing_call(&start_node, target)?;
-
-    // Step 4: Extract callee name.
-    let callee_name = extract_callee_name(&call_expr, &arg_list)?;
-
-    // Step 5: Look up function type from TypeckResult.
-    let fn_type = resolve_callee_type(&call_expr, &analysis.typeck)?;
+    let tokens = root.token_at_offset(target);
+    // The innermost call whose argument list holds the token after the
+    // cursor, or an argument list not closed yet that the cursor follows:
+    // the whitespace after it is outside it.
+    let (call_expr, arg_list) = tokens
+        .clone()
+        .right_biased()
+        .and_then(|token| enclosing_call(&token))
+        .or_else(|| {
+            let mut token = tokens.left_biased()?;
+            while token.kind().is_trivia() {
+                token = token.prev_token()?;
+            }
+            enclosing_call(&token).filter(|(_, arg_list)| {
+                !arg_list
+                    .children_with_tokens()
+                    .any(|element| element.kind() == SyntaxKind::R_PAREN)
+            })
+        })?;
+    // The argument the cursor is in: the commas before it.
+    let active_parameter = arg_list
+        .children_with_tokens()
+        .filter(|element| {
+            element.kind() == SyntaxKind::COMMA && element.text_range().end() <= target
+        })
+        .count() as u32;
+    let callee = call_expr
+        .children()
+        .find(|child| child.kind() != SyntaxKind::ARG_LIST)?;
+    let callee_name = extract_callee_name(&callee)?;
+    let fn_type = resolve_callee_type(&callee, &analysis.typeck)?;
 
     // Steps 6-7: Build SignatureInformation.
     let sig_info = build_signature_info(&root, &callee_name, &fn_type)?;
@@ -55,89 +73,32 @@ pub fn compute_signature_help(
     })
 }
 
-/// Walk upward from a node to find the innermost enclosing CALL_EXPR.
-///
-/// Returns the CALL_EXPR node, the ARG_LIST node, and the active parameter
-/// index (number of commas before the cursor in the ARG_LIST).
-fn find_enclosing_call(
-    start: &SyntaxNode,
-    cursor_offset: rowan::TextSize,
-) -> Option<(SyntaxNode, SyntaxNode, u32)> {
-    let mut node = start.clone();
-
-    loop {
-        if node.kind() == SyntaxKind::ARG_LIST {
-            // Found an arg list -- check that parent is a CALL_EXPR.
-            if let Some(parent) = node.parent() {
-                if parent.kind() == SyntaxKind::CALL_EXPR {
-                    // Count commas before the cursor within this ARG_LIST.
-                    let mut comma_count = 0u32;
-                    for child_or_tok in node.children_with_tokens() {
-                        if let rowan::NodeOrToken::Token(t) = child_or_tok {
-                            if t.kind() == SyntaxKind::COMMA
-                                && t.text_range().end() <= cursor_offset
-                            {
-                                comma_count += 1;
-                            }
-                        }
-                    }
-
-                    return Some((parent, node, comma_count));
-                }
-            }
-        }
-
-        node = node.parent()?;
-    }
+/// The innermost call whose argument list a token is in, and the list.
+fn enclosing_call(token: &SyntaxToken) -> Option<(SyntaxNode, SyntaxNode)> {
+    token.parent_ancestors().find_map(|node| {
+        let parent = node.parent()?;
+        (node.kind() == SyntaxKind::ARG_LIST && parent.kind() == SyntaxKind::CALL_EXPR)
+            .then_some((parent, node))
+    })
 }
 
-/// Extract the callee name from a CALL_EXPR node.
-///
-/// Handles simple calls (`add(x, y)`), qualified calls (`Module.func(x)`),
-/// and method-style calls (`expr.method(args)`).
-fn extract_callee_name(call_expr: &SyntaxNode, arg_list: &SyntaxNode) -> Option<String> {
-    let arg_list_range = arg_list.text_range();
-
-    // The callee is the child of CALL_EXPR that is NOT the ARG_LIST.
-    for child in call_expr.children() {
-        if child.text_range() == arg_list_range {
-            continue;
-        }
-
-        match child.kind() {
-            SyntaxKind::NAME_REF => {
-                // Simple call: `add(x, y)` -- NAME_REF contains the IDENT.
-                return first_ident_text(&child);
-            }
-            // Qualified call: `Module.func(x)`, or a method call:
-            // `expr.method(args)`.
-            SyntaxKind::FIELD_ACCESS => {
-                return match field_access_parts(&child) {
-                    (Some(base), Some(field)) => Some(format!("{base}.{field}")),
-                    (None, field) => field,
-                    (Some(_), None) => None,
-                };
-            }
-            _ => {
-                // Try to extract an IDENT token directly from this node.
-                if let Some(name) = first_ident_text(&child) {
-                    return Some(name);
-                }
-            }
-        }
+/// The callee's name: `add`, `Module.func`, or for a method call on an
+/// expression, `method`.
+fn extract_callee_name(callee: &SyntaxNode) -> Option<String> {
+    match callee.kind() {
+        SyntaxKind::FIELD_ACCESS => match field_access_parts(callee) {
+            (Some(base), Some(field)) => Some(format!("{base}.{field}")),
+            (_, field) => field,
+        },
+        _ => first_ident_text(callee),
     }
-
-    None
 }
 
 /// Resolve the callee's function type from the TypeckResult: the first
 /// function type recorded for the callee or a node inside it, in tree order.
 /// Only the callee: an argument can be a closure, whose type is a function
 /// too.
-fn resolve_callee_type(call_expr: &SyntaxNode, typeck: &mesh_typeck::TypeckResult) -> Option<Ty> {
-    let callee = call_expr
-        .children()
-        .find(|child| child.kind() != SyntaxKind::ARG_LIST)?;
+fn resolve_callee_type(callee: &SyntaxNode, typeck: &mesh_typeck::TypeckResult) -> Option<Ty> {
     callee
         .descendants()
         .find_map(|node| match typeck.types.get(&node.text_range()) {
@@ -147,8 +108,9 @@ fn resolve_callee_type(call_expr: &SyntaxNode, typeck: &mesh_typeck::TypeckResul
 }
 
 /// Find parameter names for a user-defined function from the CST: a
-/// top-level `fn`, or for `Module.f` the `fn f` in that module's body.
-fn find_fn_def_param_names(root: &SyntaxNode, callee_name: &str) -> Option<Vec<String>> {
+/// top-level `fn`, or for `Module.f` the `fn f` in that module's body. A
+/// pattern parameter has none.
+fn find_fn_def_param_names(root: &SyntaxNode, callee_name: &str) -> Option<Vec<Option<String>>> {
     let fn_name = callee_name.rsplit('.').next().unwrap_or(callee_name);
     let is_named = |item: &SyntaxNode| {
         item.kind() == SyntaxKind::FN_DEF && name_child_text(item).as_deref() == Some(fn_name)
@@ -158,12 +120,8 @@ fn find_fn_def_param_names(root: &SyntaxNode, callee_name: &str) -> Option<Vec<S
         None => root.children().find(is_named),
     }?;
     Some(
-        function
-            .children()
-            .filter(|child| child.kind() == SyntaxKind::PARAM_LIST)
-            .flat_map(|list| list.children())
-            .filter(|param| param.kind() == SyntaxKind::PARAM)
-            .filter_map(|param| param_name(&param))
+        param_names(&function)
+            .map(|name| name.map(|name| name.text().to_string()))
             .collect(),
     )
 }
@@ -181,12 +139,15 @@ fn build_signature_info(
             let param_labels: Vec<String> = params
                 .iter()
                 .enumerate()
-                .map(
-                    |(i, ty)| match param_names.as_ref().and_then(|names| names.get(i)) {
+                .map(|(i, ty)| {
+                    match param_names
+                        .as_ref()
+                        .and_then(|names| names.get(i)?.as_ref())
+                    {
                         Some(name) => format!("{name}: {ty}"),
                         None => format!("{ty}"),
-                    },
-                )
+                    }
+                })
                 .collect();
             let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret);
             let param_infos = param_labels
@@ -230,6 +191,41 @@ mod tests {
 
     fn label(help: &SignatureHelp) -> &str {
         &help.signatures[0].label
+    }
+
+    /// Typing a call with no closing parenthesis yet: at the end of the
+    /// document, or before the next line.
+    #[test]
+    fn an_unclosed_call_has_signature_help() {
+        let definition = "fn add(a :: Int, b :: Int) -> Int do\n  a + b\nend\n\nfn main() do\n";
+        for rest in ["  add(1, ", "  add(1, \n  add(2, 3)\nend\n"] {
+            let source = format!("{definition}{rest}");
+            let help = sig_help_after(&source, "  add(1, ")
+                .unwrap_or_else(|| panic!("no help in {source:?}"));
+            assert_eq!(label(&help), "add(a: Int, b: Int) -> Int");
+            assert_eq!(help.active_parameter, Some(1));
+        }
+        // After a closed call there is none.
+        let source = format!("{definition}  add(1, 2) \nend\n");
+        assert!(sig_help_after(&source, "add(1, 2) ").is_none());
+    }
+
+    /// A pattern parameter has no name, and the names after it stay with
+    /// their parameters.
+    #[test]
+    fn a_pattern_parameter_leaves_the_other_names_in_place() {
+        let source =
+            "fn pick(0, y :: Int) -> Int do\n  y\nend\n\nfn main() do\n  pick(0, 1)\nend\n";
+        let help = sig_help_after(source, "  pick(").unwrap();
+        assert_eq!(label(&help), "pick(Int, y: Int) -> Int");
+    }
+
+    /// A callee with no name, or no type, has no signature to show.
+    #[test]
+    fn a_callee_without_a_name_or_type_has_no_help() {
+        let source = "fn main() do\n  (fn(x :: Int) -> x end)(1)\n  let r :: Result<Int, String> = (-5).try_into()\nend\n";
+        assert!(sig_help_after(source, "end)(").is_none());
+        assert!(sig_help_after(source, "try_into(").is_none());
     }
 
     #[test]

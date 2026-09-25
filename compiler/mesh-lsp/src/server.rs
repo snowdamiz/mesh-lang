@@ -16,10 +16,13 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
+use mesh_parser::ast::item::ImplDef;
+use mesh_parser::ast::AstNode;
 use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 
 use crate::analysis::{self, AnalysisResult};
+use crate::syntax::name_child_text;
 
 /// Per-document state stored in the server.
 struct DocumentState {
@@ -198,34 +201,21 @@ impl LanguageServer for MeshBackend {
         };
 
         // Convert LSP position to byte offset.
-        let offset = match analysis::position_to_offset_pub(&doc.analysis.source, &position) {
+        let offset = match analysis::position_to_offset(&doc.analysis.source, &position) {
             Some(o) => o,
             None => return Ok(None),
         };
 
         // Traverse the CST to find the definition.
         let root = doc.analysis.parse.syntax();
-        let def_range =
-            match crate::definition::find_definition(&doc.analysis.source, &root, offset) {
-                Some(r) => r,
-                None => return Ok(None),
-            };
-
-        // Convert the definition range (in rowan tree coordinates) back to
-        // source byte offsets, then to LSP positions.
-        let start_tree: usize = def_range.start().into();
-        let end_tree: usize = def_range.end().into();
-        let start_source =
-            crate::definition::tree_to_source_offset(&doc.analysis.source, start_tree)
-                .unwrap_or(start_tree);
-        let end_source = crate::definition::tree_to_source_offset(&doc.analysis.source, end_tree)
-            .unwrap_or(end_tree);
-        let start = analysis::offset_to_position(&doc.analysis.source, start_source);
-        let end = analysis::offset_to_position(&doc.analysis.source, end_source);
+        let def_range = match crate::definition::find_definition(&root, offset) {
+            Some(r) => r,
+            None => return Ok(None),
+        };
 
         let location = Location {
             uri,
-            range: Range::new(start, end),
+            range: analysis::text_range_to_range(&doc.analysis.source, def_range),
         };
 
         Ok(Some(GotoDefinitionResponse::Scalar(location)))
@@ -340,14 +330,13 @@ fn collect_symbols(source: &str, node: &SyntaxNode) -> Vec<DocumentSymbol> {
                 SyntaxKind::TYPE_ALIAS_DEF => SymbolKind::TYPE_PARAMETER,
                 _ => return None,
             };
-            let mut symbol = if child.kind() == SyntaxKind::IMPL_DEF {
-                // An impl has no NAME child: it is named for its interface and type.
-                let name = extract_impl_name(&child);
+            // An impl has no NAME child: it is named for its interface and
+            // type, and selected at its interface.
+            let override_name = ImplDef::cast(child.clone()).map(|impl_def| {
                 let path = child.children().find(|n| n.kind() == SyntaxKind::PATH);
-                make_symbol(source, &child, kind, Some((&name, path.as_ref())))
-            } else {
-                make_symbol(source, &child, kind, None)
-            }?;
+                (impl_name(&impl_def), path)
+            });
+            let mut symbol = make_symbol(source, &child, kind, override_name)?;
             // An interface's members are its methods; a module's, an actor's,
             // a service's and an impl's are the definitions in their bodies.
             let members: Vec<DocumentSymbol> = match child.kind() {
@@ -374,12 +363,8 @@ fn collect_symbols(source: &str, node: &SyntaxNode) -> Vec<DocumentSymbol> {
         .collect()
 }
 
-/// Extract a display name for an IMPL_DEF node: `impl Show for Point`.
-fn extract_impl_name(node: &SyntaxNode) -> String {
-    use mesh_parser::ast::AstNode;
-    let Some(impl_def) = mesh_parser::ast::item::ImplDef::cast(node.clone()) else {
-        return "impl".to_string();
-    };
+/// An impl's display name: `impl Show for Point`.
+fn impl_name(impl_def: &ImplDef) -> String {
     match (impl_def.interface_name(), impl_def.type_name()) {
         (Some(interface), Some(ty)) => format!("impl {} for {}", interface.text(), ty.text()),
         (Some(interface), None) => format!("impl {}", interface.text()),
@@ -387,74 +372,29 @@ fn extract_impl_name(node: &SyntaxNode) -> String {
     }
 }
 
-/// Construct a `DocumentSymbol` from a CST node.
-///
-/// Computes the full range (entire definition) and selection range (name only)
-/// using the rowan-to-source offset conversion chain.
+/// Construct a `DocumentSymbol` from a CST node: its whole range, and its
+/// name's for the selection.
 ///
 /// The `override_name` parameter allows callers (e.g., for IMPL_DEF) to provide
-/// a custom name and an alternative node for the selection range.
+/// a custom name and an alternative node for the selection range; without
+/// one, the selection is the whole node.
 fn make_symbol(
     source: &str,
     node: &SyntaxNode,
     kind: SymbolKind,
-    override_name: Option<(&str, Option<&SyntaxNode>)>,
+    override_name: Option<(String, Option<SyntaxNode>)>,
 ) -> Option<DocumentSymbol> {
-    let (name, sel_range_node) = match override_name {
-        Some((n, sel_node)) => (n.to_string(), sel_node),
-        None => {
-            // Find the NAME child and extract the IDENT token text.
-            let name_text = node
-                .children()
-                .find(|n| n.kind() == SyntaxKind::NAME)
-                .and_then(|name_node| {
-                    name_node
-                        .children_with_tokens()
-                        .filter_map(|it| it.into_token())
-                        .find(|t| t.kind() == SyntaxKind::IDENT)
-                        .map(|t| t.text().to_string())
-                })?;
-            (name_text, None)
-        }
+    let (name, selection) = match override_name {
+        Some(name_and_selection) => name_and_selection,
+        None => (
+            name_child_text(node)?,
+            node.children().find(|n| n.kind() == SyntaxKind::NAME),
+        ),
     };
-
-    // Compute the full range of the node.
-    let node_range = node.text_range();
-    let range_start_tree: usize = node_range.start().into();
-    let range_end_tree: usize = node_range.end().into();
-    let range_start_source = crate::definition::tree_to_source_offset(source, range_start_tree)?;
-    let range_end_source = crate::definition::tree_to_source_offset(source, range_end_tree)?;
-
-    let range = Range::new(
-        analysis::offset_to_position(source, range_start_source),
-        analysis::offset_to_position(source, range_end_source),
-    );
-
-    // Compute the selection range (name identifier only).
-    let selection_range = if let Some(sel_node) = sel_range_node {
-        // Use the provided node (e.g., PATH for IMPL_DEF).
-        let sel_text_range = sel_node.text_range();
-        let sel_start_tree: usize = sel_text_range.start().into();
-        let sel_end_tree: usize = sel_text_range.end().into();
-        let sel_start_source = crate::definition::tree_to_source_offset(source, sel_start_tree)?;
-        let sel_end_source = crate::definition::tree_to_source_offset(source, sel_end_tree)?;
-        Range::new(
-            analysis::offset_to_position(source, sel_start_source),
-            analysis::offset_to_position(source, sel_end_source),
-        )
-    } else {
-        // Find the NAME child for selection range.
-        let name_node = node.children().find(|n| n.kind() == SyntaxKind::NAME)?;
-        let name_text_range = name_node.text_range();
-        let sel_start_tree: usize = name_text_range.start().into();
-        let sel_end_tree: usize = name_text_range.end().into();
-        let sel_start_source = crate::definition::tree_to_source_offset(source, sel_start_tree)?;
-        let sel_end_source = crate::definition::tree_to_source_offset(source, sel_end_tree)?;
-        Range::new(
-            analysis::offset_to_position(source, sel_start_source),
-            analysis::offset_to_position(source, sel_end_source),
-        )
-    };
+    let range = analysis::text_range_to_range(source, node.text_range());
+    let selection_range = selection.map_or(range, |selection| {
+        analysis::text_range_to_range(source, selection.text_range())
+    });
 
     #[allow(deprecated)] // `deprecated` field is deprecated but required by the struct
     Some(DocumentSymbol {
@@ -473,7 +413,6 @@ fn make_symbol(
 mod tests {
     use super::*;
 
-    /// Verify that the server advertises the expected capabilities.
     /// Every kind of definition is a symbol, with its members nested.
     #[test]
     fn every_definition_kind_is_a_document_symbol() {
@@ -514,6 +453,24 @@ mod tests {
         }
     }
 
+    /// An impl still being typed is named for as much of it as there is.
+    #[test]
+    fn an_incomplete_impl_is_named_for_what_it_has() {
+        for (source, expected) in [
+            ("impl Named do\nend\n", "impl Named"),
+            ("impl do\nend\n", "impl"),
+        ] {
+            let parse = mesh_parser::parse(source);
+            let names: Vec<_> = collect_symbols(source, &parse.syntax())
+                .into_iter()
+                .map(|symbol| symbol.name)
+                .collect();
+            assert_eq!(names, [expected], "{source:?}");
+        }
+    }
+
+    /// Verify that the server advertises the expected capabilities, and
+    /// shuts down when asked.
     #[tokio::test]
     async fn server_capabilities() {
         let (service, _) = tower_lsp::LspService::new(MeshBackend::new);
@@ -530,5 +487,6 @@ mod tests {
         assert!(caps.completion_provider.is_some());
         assert!(caps.signature_help_provider.is_some());
         assert!(caps.document_formatting_provider.is_some());
+        assert!(server.shutdown().await.is_ok());
     }
 }
