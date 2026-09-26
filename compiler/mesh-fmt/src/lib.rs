@@ -43,11 +43,22 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
     if !parse.errors().is_empty() {
         return Err("source contains parse errors".to_owned());
     }
-    let formatted = printer::print(&walker::walk_node(&parse.syntax()), config);
-    preserves(&parse, &formatted).then_some(formatted).ok_or_else(|| {
-        "the formatter could not preserve it exactly (a formatter bug), so it was left unchanged"
-            .to_owned()
-    })
+    checked(
+        &parse,
+        printer::print(&walker::walk_node(&parse.syntax()), config),
+    )
+}
+
+/// `formatted`, if it is the program `parse` holds (see [`preserves`]).
+fn checked(parse: &mesh_parser::Parse, formatted: String) -> Result<String, String> {
+    if preserves(parse, &formatted) {
+        Ok(formatted)
+    } else {
+        Err(
+            "the formatter could not preserve it exactly (a formatter bug), so it was left unchanged"
+                .to_owned(),
+        )
+    }
 }
 
 /// Whether `formatted` is the program `parse` holds. Formatting may only move
@@ -137,7 +148,7 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
 
 #[cfg(test)]
 mod idempotency_tests {
-    use super::{format_source, preserves, FormatConfig};
+    use super::{checked, format_source, preserves, FormatConfig};
 
     /// Output with other tokens, another tree or a parse error is not the
     /// same program, and the formatter would refuse it.
@@ -149,6 +160,27 @@ mod idempotency_tests {
         assert!(!preserves(&parse, "fn f(a, b) do\n  a\n  -b\nend\n"));
         assert!(!preserves(&parse, "fn f(a, b) do\n  a + b\nend\n"));
         assert!(!preserves(&parse, "fn f(a, b) do\n  a -\n"));
+        // Output that is not the program is refused, and says why.
+        let refused = checked(&parse, "fn f(a, b) do\n  a + b\nend\n".to_string());
+        assert!(refused.unwrap_err().contains("a formatter bug"));
+    }
+
+    #[test]
+    fn empty_bodies_and_comments_among_keyword_arguments() {
+        let format = |source: &str| format_source(source, &FormatConfig::default());
+        assert_eq!(format("struct Empty do\nend\n"), "struct Empty do\nend\n");
+        assert_eq!(
+            format("fn f(x) do\ncase x do\nend\nend\n"),
+            "fn f(x) do\n  case x do\n  end\nend\n"
+        );
+        // A comment among keyword arguments breaks the call, and stays.
+        let call = "fn g() do\n  h(1, name: 2, # note\n    other: 3)\nend\n";
+        let formatted = format(call);
+        assert_eq!(
+            formatted,
+            "fn g() do\n  h(1,\n    name: 2, # note\n    other: 3)\nend\n"
+        );
+        assert_idempotent("keyword argument comment", call);
     }
 
     #[test]
