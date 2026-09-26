@@ -6343,7 +6343,7 @@ end
 "#,
     );
     assert!(
-        error.contains("expected String, found Bytes"),
+        error.contains("expected `String`, found `Bytes`"),
         "expected the Bytes/String boundary to fail type checking, got:\n{error}"
     );
 }
@@ -6387,7 +6387,7 @@ end
 "##,
     );
     assert!(
-        error.contains("expected Int, found U64"),
+        error.contains("expected `Int`, found `U64`"),
         "expected the U64/Int boundary to fail type checking, got:\n{error}"
     );
 }

@@ -1404,7 +1404,7 @@ end
         "actor echo() do\n  receive do\n    m -> println(\"#{m}\")\n  end\nend\nfn main() do\n  let p = spawn(echo)\n  send(p, 1)\n  send(p, \"two\")\nend\n",
     );
     assert!(
-        err.contains("message type mismatch: expected Int, found String"),
+        err.contains("message type mismatch: expected `Int`, found `String`"),
         "mixed message types:\n{err}"
     );
 }
@@ -2049,7 +2049,7 @@ fn ill_typed_programs_that_used_to_build_are_rejected() {
     for (source, message) in [
         (
             "fn f(n :: Int) -> Int do\n  if n > 0 do\n    return \"x\"\n  end\n  0\nend\nfn main() do\n  println(\"#{f(1)}\")\nend\n",
-            "expected Int, found String",
+            "expected `Int`, found `String`",
         ),
         (
             "fn f(n :: Int) -> Int do\n  if n > 0 do\n    return\n  end\n  0\nend\nfn main() do\n  println(\"#{f(1)}\")\nend\n",
@@ -2061,7 +2061,7 @@ fn ill_typed_programs_that_used_to_build_are_rejected() {
         ),
         (
             "fn double(n :: Int) -> Int = n * 2\nfn main() do\n  case (5, \"hello\") do\n    (a, \"x\") | (5, a) -> println(\"#{double(a)}\")\n    _ -> println(\"y\")\n  end\nend\n",
-            "expected Int, found String",
+            "expected `Int`, found `String`",
         ),
         (
             "fn main() do\n  case (1, 2) do\n    (a, a) -> println(\"#{a}\")\n  end\nend\n",
@@ -2069,11 +2069,11 @@ fn ill_typed_programs_that_used_to_build_are_rejected() {
         ),
         (
             "fn main() do\n  for x in \"hello\" do\n    println(x)\n  end\nend\n",
-            "String does not implement Iterable",
+            "`String` does not implement `Iterable`",
         ),
         (
             "fn main() do\n  for x in 5 do\n    println(\"#{x}\")\n  end\nend\n",
-            "Int does not implement Iterable",
+            "`Int` does not implement `Iterable`",
         ),
     ] {
         let err = build_error(source);
@@ -2214,7 +2214,7 @@ end
         "fn main() do",
         "fn plus<T>(c :: T) -> Int where T: Container do\n  c.first() + 1\nend\n\nfn main() do\n  println(\"#{plus(StrBox { s: \"x\" })}\")",
     ));
-    assert!(err.contains("expected Int, found String"), "{err}");
+    assert!(err.contains("expected `Int`, found `String`"), "{err}");
 }
 
 #[test]
@@ -2223,7 +2223,7 @@ fn method_arguments_and_impl_signatures_are_checked_against_the_interface() {
     let err = build_error(&format!(
         "{interface}impl Scale for Cat do\n  fn scale(self, k :: Int) -> String do\n    \"${{k}}\"\n  end\nend\n\nfn main() do\n  println(Cat {{ n: \"a\" }}.scale(\"oops\"))\nend\n"
     ));
-    assert!(err.contains("expected Int, found String"), "{err}");
+    assert!(err.contains("expected `Int`, found `String`"), "{err}");
     for (method, found) in [
         (
             "fn scale(self, k :: String) -> String do\n    k\n  end",
@@ -2245,7 +2245,7 @@ fn method_arguments_and_impl_signatures_are_checked_against_the_interface() {
     let err = build_error(
         "struct V do\n  x :: Int\nend\n\nimpl Mul for V do\n  type Output = Int\n  fn mul(self, other :: V) -> V do\n    V { x: self.x * other.x }\n  end\nend\n\nfn main() do\n  println(\"#{(V { x: 2 } * V { x: 3 }).x}\")\nend\n",
     );
-    assert!(err.contains("expected Int, found V"), "{err}");
+    assert!(err.contains("expected `Int`, found `V`"), "{err}");
 }
 
 // ── Derived traits follow the source types ─────────────────────────────
@@ -2619,7 +2619,7 @@ fn a_function_field_takes_no_value_derives() {
     let source = "struct Op do\n  run :: Fun(Int) -> Int\nend\n\nfn main() do\n  let o = Op { run: fn x -> x * 2 end }\n  println(\"#{o.run(10)}\")\nend\n";
     assert_eq!(run(source), "20\n");
     let err = build_error(&source.replace("#{o.run(10)}", "#{o == o}"));
-    assert!(err.contains("does not implement Eq"), "{err}");
+    assert!(err.contains("does not implement `Eq`"), "{err}");
     // Deriving one explicitly is an error at the field.
     let err = build_error(&source.replace("end\n\nfn main", "end deriving(Eq)\n\nfn main"));
     assert!(err.contains("E0060") && err.contains(":2:3"), "{err}");
@@ -2772,7 +2772,7 @@ fn default_needs_a_known_type_with_a_default() {
     let err = build_error(
         "struct NoDef do\n  n :: Int\nend\n\nfn main() do\n  let x :: NoDef = default()\n  println(\"#{x.n}\")\nend\n",
     );
-    assert!(err.contains("NoDef does not implement Default"), "{err}");
+    assert!(err.contains("`NoDef` does not implement `Default`"), "{err}");
     let source = r##"
 struct Cfg do
   n :: Int
@@ -3309,7 +3309,7 @@ end
         ]
     );
     let err = build_error("fn main() do\n  let y :: String = 5\nend\n");
-    assert!(err.contains("expected String, found Int"), "{err}");
+    assert!(err.contains("expected `String`, found `Int`"), "{err}");
 }
 
 #[test]
@@ -3327,7 +3327,7 @@ fn an_operator_on_a_type_without_it_names_the_left_operand() {
     // It said "expected Option<Int>, found Int", blaming the `1`.
     let err =
         build_error("fn main() do\n  let v :: Int? = Some(3)\n  println(\"#{v + 1}\")\nend\n");
-    assert!(err.contains("Option<Int> does not implement Add"), "{err}");
+    assert!(err.contains("`Option<Int>` does not implement `Add`"), "{err}");
 }
 
 #[test]
@@ -3457,8 +3457,8 @@ fn a_generic_function_must_keep_its_type_parameters_generic() {
     let err = build_error(
         "fn first<T>(xs :: List<T>) -> Option<T> do\n  List.head(xs)\nend\n\nfn unwrap<T>(xs :: List<T>) -> T do\n  xs\nend\n\nfn main() do\n  println(\"x\")\nend\n",
     );
-    assert!(err.contains("expected Option<T>, found T"), "{err}");
-    assert!(err.contains("expected T, found List<T>"), "{err}");
+    assert!(err.contains("expected `Option<T>`, found `T`"), "{err}");
+    assert!(err.contains("expected `T`, found `List<T>`"), "{err}");
     assert!(!err.contains("infinite type"), "{err}");
 }
 
@@ -3699,7 +3699,7 @@ fn a_value_from_a_function_defined_later_has_one_type() {
         );
         let err = build_error(&source);
         assert!(
-            err.contains("expected String, found Int"),
+            err.contains("expected `String`, found `Int`"),
             "{source}\n{err}"
         );
     }
@@ -3803,7 +3803,7 @@ end
     let err = build_error(
         "fn with_value(value :: Int, block :: Fun(Int) -> Int) -> Int do\n  block(value)\nend\n\nfn main() do\n  let r = with_value(10, fn x -> x + 1 end) do |v|\n    v\n  end\n  println(\"#{r}\")\nend\n",
     );
-    assert!(err.contains("expected 2 argument(s), found 3"), "{err}");
+    assert!(err.contains("expected 2 arguments, found 3"), "{err}");
 }
 
 #[test]
@@ -4028,7 +4028,7 @@ fn main() do
 end
 "##;
     let err = build_error(source);
-    assert!(err.contains("String does not implement Add"), "{err}");
+    assert!(err.contains("`String` does not implement `Add`"), "{err}");
     assert!(
         err.contains("`<>` joins strings or lists, not `Int`"),
         "{err}"
@@ -4062,7 +4062,7 @@ end
         "struct Q do\n  x :: Int\nend\n\nfn main() do\n  println(String.from(Q { x: 1 }))\nend\n",
     );
     // The type as written (it said `Main.Q`).
-    assert!(err.contains("Error: Q does not implement Display"), "{err}");
+    assert!(err.contains("Error: `Q` does not implement `Display`"), "{err}");
 }
 
 #[test]
@@ -4202,7 +4202,7 @@ fn types_inference_has_not_determined_show_as_holes() {
     let err = build_error(
         "fn f(x :: Int) -> String do\n  case x do\n    Some(_) -> \"opt\"\n    _ -> \"other\"\n  end\nend\n\nfn main() do\n  println(f(1))\nend\n",
     );
-    assert!(err.contains("expected Int, found Option<_>"), "{err}");
+    assert!(err.contains("expected `Int`, found `Option<_>`"), "{err}");
     assert!(!err.contains("?"), "{err}");
 }
 
@@ -4234,7 +4234,7 @@ fn float_has_to_string_like_int() {
 fn an_error_is_reported_once() {
     // A failed callee was inferred again as a method call and reported twice.
     let err = build_error("fn main() do\n  println(Foo.bar(1))\nend\n");
-    assert_eq!(err.matches("undefined variable: Foo").count(), 1, "{err}");
+    assert_eq!(err.matches("undefined variable `Foo`").count(), 1, "{err}");
 }
 
 #[test]
@@ -4481,7 +4481,7 @@ fn a_misspelled_name_suggests_the_one_in_scope() {
     let err = build_error(
         "fn main() do\n  let r = case Some(1) do\n    Sme(n) -> n\n    None -> 0\n  end\n  println(\"#{r}\")\nend\n",
     );
-    assert!(err.contains("unknown variant: Sme"), "{err}");
+    assert!(err.contains("unknown variant `Sme`"), "{err}");
     assert!(err.contains("did you mean `Some`?"), "{err}");
 }
 
@@ -4511,9 +4511,9 @@ fn main() do
 end
 "##,
     );
-    assert!(err.contains("unknown variant: Grean"), "{err}");
+    assert!(err.contains("unknown variant `Grean`"), "{err}");
     assert!(err.contains("did you mean `Green`?"), "{err}");
-    assert!(err.contains("unknown variant: Five"), "{err}");
+    assert!(err.contains("unknown variant `Five`"), "{err}");
 }
 
 #[test]
@@ -4813,8 +4813,8 @@ fn a_bad_struct_field_leaves_the_value_typed() {
         "struct S do\n  a :: Int\n  b :: Int\nend\n\nfn main() do\n  let s = S { a: \"s\", b: 1 }\n  let t = %{s | b: \"x\"}\n  let u = S { c: 1, a: 2 }\n  println(\"#{t.a} #{u.a}\")\nend\n",
     );
     assert_eq!(err.matches("[E0001]").count(), 2, "{err}");
-    assert!(err.contains("unknown field c"), "{err}");
-    assert!(err.contains("missing field b"), "{err}");
+    assert!(err.contains("unknown field `c`"), "{err}");
+    assert!(err.contains("missing field `b`"), "{err}");
     assert!(!err.contains("E0059") && !err.contains("E0070"), "{err}");
 }
 
@@ -4832,7 +4832,7 @@ fn interpolating_a_value_without_display_is_a_type_error() {
             "struct Sq do\n  s :: Int\nend\n\ntype Sh do\n  A\n  B(Int)\nend\n\nfn main() do\n  let v = {value}\n  println(\"<#{{v}}>\")\nend\n"
         ));
         assert!(
-            err.contains(&format!("{name} does not implement Display")),
+            err.contains(&format!("`{name}` does not implement `Display`")),
             "{value}: {err}"
         );
         assert!(err.contains("main.mpl:12:15"), "{value}: {err}");
@@ -4869,7 +4869,7 @@ fn a_mismatch_of_two_collection_types_names_both_whole() {
         "fn main() do\n  let m :: Map<String, Int> = [1]\n  println(\"#{Map.size(m)}\")\nend\n",
     );
     assert!(
-        err.contains("expected Map<String, Int>, found List<Int>"),
+        err.contains("expected `Map<String, Int>`, found `List<Int>`"),
         "{err}"
     );
 }
@@ -4881,7 +4881,7 @@ fn map_destructuring_over_a_list_is_a_type_error() {
     let err = build_error(
         "fn main() do\n  for {k, v} in [1, 2, 3] do\n    println(\"#{k} #{v}\")\n  end\nend\n",
     );
-    assert!(err.contains("expected Map<_, _>, found List<Int>"), "{err}");
+    assert!(err.contains("expected `Map<_, _>`, found `List<Int>`"), "{err}");
     assert!(!err.contains("undefined variable"), "{err}");
 }
 
@@ -4953,7 +4953,7 @@ end
     );
     let err = build_error("fn main() do\n  println(Json.encode(%{1 => 2}))\nend\n");
     assert!(
-        err.contains("Map<Int, Int> does not implement Json"),
+        err.contains("`Map<Int, Int>` does not implement `Json`"),
         "{err}"
     );
 }
@@ -5223,7 +5223,7 @@ fn struct_pattern_errors_and_coverage() {
     );
     let mismatch = build_error(&program("    Point { x: \"s\" } -> 1\n    _ -> 0"));
     assert!(
-        mismatch.contains("expected Int, found String"),
+        mismatch.contains("expected `Int`, found `String`"),
         "{mismatch}"
     );
     let missing = build_error(&program("    Point { x: 0 } -> 1"));

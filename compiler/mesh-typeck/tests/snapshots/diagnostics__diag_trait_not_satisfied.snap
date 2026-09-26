@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0006] Error: String does not implement Add
+[E0006] Error: `String` does not implement `Add`
    ╭─[ test.mpl:1:1 ]
    │
  1 │ "hello" + "world"

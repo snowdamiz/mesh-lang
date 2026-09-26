@@ -487,6 +487,30 @@ fn one_of_each() -> Vec<TypeError> {
     ]
 }
 
+/// Each error is worded once: the terminal report's headline is the JSON
+/// diagnostic's message, the error's `Display` text, which the language
+/// server shows too. They used to be written twice, and most differed.
+#[test]
+fn every_type_error_has_one_headline() {
+    let terminal = DiagnosticOptions::colorless();
+    let json = DiagnosticOptions {
+        json: true,
+        ..DiagnosticOptions::colorless()
+    };
+    for error in one_of_each() {
+        let report = render_diagnostic(&error, SOURCE, "main.mpl", &terminal, None);
+        let headline = report.lines().next().unwrap_or_default();
+        let message = error.to_string();
+        assert!(
+            headline.ends_with(&format!(": {message}")),
+            "{headline} / {message}"
+        );
+        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(parsed["message"], message.as_str());
+    }
+}
+
 #[test]
 fn every_type_error_renders() {
     let terminal = DiagnosticOptions::colorless();

@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0005] Error: type Int is not callable
+[E0005] Error: `Int` is not a function
    ╭─[ test.mpl:2:1 ]
    │
  2 │ x(1)

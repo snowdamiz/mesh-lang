@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0009] Error: missing field y in struct Point
+[E0009] Error: missing field `y` in struct `Point`
    ╭─[ test.mpl:5:1 ]
    │
  5 │ Point { x: 1 }

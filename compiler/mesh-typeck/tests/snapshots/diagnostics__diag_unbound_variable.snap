@@ -1,8 +1,8 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0004] Error: undefined variable: x
+[E0004] Error: undefined variable `x`
    ╭─[ test.mpl:1:1 ]
    │
  1 │ x + 1

@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0009] Error: unknown field z in struct Point
+[E0009] Error: unknown field `z` in struct `Point`
    ╭─[ test.mpl:5:15 ]
    │
  5 │ Point { x: 1, z: 2 }

@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0001] Error: expected Int, found String
+[E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ test.mpl:1:7 ]
    │
  1 │ let x :: Int = "hello"

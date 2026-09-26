@@ -632,10 +632,10 @@ impl fmt::Display for TypeError {
             TypeError::ArityMismatch {
                 expected, found, ..
             } => {
+                let plural = if *expected == 1 { "" } else { "s" };
                 write!(
                     f,
-                    "arity mismatch: expected {} arguments, found {}",
-                    expected, found
+                    "arity mismatch: expected {expected} argument{plural}, found {found}"
                 )
             }
             TypeError::SlotPipeOutOfRange {
@@ -659,13 +659,13 @@ impl fmt::Display for TypeError {
                 }
             }
             TypeError::UnboundVariable { name, .. } => {
-                write!(f, "unbound variable `{}`", name)
+                write!(f, "undefined variable `{}`", name)
             }
             TypeError::NotAFunction { ty, .. } => {
                 write!(f, "`{}` is not a function", ty)
             }
             TypeError::TraitNotSatisfied { ty, trait_name, .. } => {
-                write!(f, "type `{}` does not satisfy trait `{}`", ty, trait_name)
+                write!(f, "`{}` does not implement `{}`", ty, trait_name)
             }
             TypeError::MissingTraitMethod {
                 trait_name,
@@ -768,7 +768,7 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::RedundantArm { arm_index, .. } => {
-                write!(f, "redundant match arm at index {}", arm_index)
+                write!(f, "redundant match arm (arm {})", arm_index + 1)
             }
             TypeError::SendTypeMismatch {
                 expected, found, ..
@@ -1182,6 +1182,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateField { field_name, .. } => {
                 write!(f, "field `{field_name}` is given more than once")
+            }
+            TypeError::NotAStruct { ty: Ty::Var(_), .. } => {
+                write!(f, "a struct update needs a struct value")
             }
             TypeError::NotAStruct { ty, .. } => {
                 write!(f, "`{ty}` is not a struct")

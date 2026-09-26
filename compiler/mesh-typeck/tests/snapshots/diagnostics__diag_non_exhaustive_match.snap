@@ -1,8 +1,8 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0012] Error: non-exhaustive match on `Option<Int>`
+[E0012] Error: non-exhaustive match on `Option<Int>`: missing patterns [None]
    ╭─[ test.mpl:1:1 ]
    │
  1 │ case x do Some(v) -> v end

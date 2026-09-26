@@ -1,8 +1,8 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0014] Error: message type mismatch: expected String, found Int
+[E0014] Error: message type mismatch: expected `String`, found `Int`
    ╭─[ test.mpl:1:1 ]
    │
  1 │ send(pid, 42)

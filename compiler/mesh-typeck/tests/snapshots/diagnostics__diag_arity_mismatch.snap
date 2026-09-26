@@ -2,7 +2,7 @@
 source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
-[E0003] Error: expected 2 argument(s), found 1
+[E0003] Error: arity mismatch: expected 2 arguments, found 1
    ╭─[ test.mpl:2:1 ]
    │
  2 │ f(1)

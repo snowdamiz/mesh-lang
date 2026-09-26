@@ -297,8 +297,9 @@ For `let x :: Int = "abc"` in `main.mpl`, `meshc build . --json` prints:
 {"code":"C0001","file":"","fix":null,"message":"Compilation failed due to errors above.","severity":"error","spans":[]}
 ```
 
-`spans` hold byte offsets into `file`, which is named as the build argument
-names it. The first span is where the error is and the others are places it
+`message` is the headline the terminal report shows, and the language server
+shows the same text. `spans` hold byte offsets into `file`, which is named as
+the build argument names it. The first span is where the error is and the others are places it
 relates to, each labelled as the terminal report labels it; `fix` is the
 report's help, or `null`. Codes starting with `E` are type errors and `W` warnings from the
 type checker; `P0001` is a parse error and `CFG0001` an invalid cluster

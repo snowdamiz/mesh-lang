@@ -427,7 +427,7 @@ fn test_calling_a_value_is_not_a_function() {
     assert_eq!(ty.to_string(), "Int");
     assert_eq!(&src[span.start().into()..span.end().into()], "x");
     let output = render_diagnostic(err, src, "test.mpl", &opts(), None);
-    assert!(output.contains("type Int is not callable"), "{output}");
+    assert!(output.contains("`Int` is not a function"), "{output}");
     assert!(output.contains("remove the parentheses"), "{output}");
 }
 

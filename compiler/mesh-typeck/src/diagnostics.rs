@@ -474,11 +474,6 @@ impl Description {
         }
     }
 
-    fn with_message(mut self, message: impl ToString) -> Self {
-        self.message = message.to_string();
-        self
-    }
-
     fn with_label(mut self, label: Label) -> Self {
         self.add_label(label);
         self
@@ -504,14 +499,9 @@ impl Description {
         self
     }
 
-    fn set_note(&mut self, note: impl ToString) {
-        self.notes = vec![note.to_string()];
-    }
-
     /// An error at `span`, labelled there.
-    fn error(span: Range<usize>, message: impl ToString, label: impl ToString) -> Self {
+    fn error(span: Range<usize>, label: impl ToString) -> Self {
         Description::build(ReportKind::Error, span.clone())
-            .with_message(message)
             .with_label(Label::new(span).with_message(label).with_color(Color::Red))
     }
 
@@ -547,7 +537,17 @@ impl Description {
 }
 
 /// What `error` shows: see [`Description`].
+/// How an error is reported: its headline, the error's `Display` text,
+/// which JSON diagnostics and the language server show too, and the labels,
+/// helps and notes at its spans.
 fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> Description {
+    let mut description = describe_spans(error, source, suggestions);
+    description.message = error.to_string();
+    description
+}
+
+/// Everything `describe` reports about `error` but its headline.
+fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> Description {
     let source_len = source.len();
     // Spans are byte offsets into the source.
     let clamp = |r: Range<usize>| report_span(source, r);
@@ -559,12 +559,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             origin,
         } => {
             let (expected, found) = (&expected.with_holes(), &found.with_holes());
-            let msg = format!("expected {}, found {}", expected, found);
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            let mut builder =
-                Description::build(ReportKind::Error, span.clone()).with_message(&msg);
+            let mut builder = Description::build(ReportKind::Error, span.clone());
 
             match origin {
                 ConstraintOrigin::IfBranches {
@@ -667,12 +665,11 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             builder
         }
 
-        TypeError::InfiniteType { var, ty, origin } => {
-            let msg = format!("infinite type: ?{} occurs in {}", var.0, ty);
+        TypeError::InfiniteType { origin, .. } => {
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            Description::error(span, &msg, "recursive type here")
+            Description::error(span, "recursive type here")
                 .with_help("a value cannot have a type that refers to itself")
         }
 
@@ -681,12 +678,11 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             found,
             origin,
         } => {
-            let msg = format!("expected {} argument(s), found {}", expected, found);
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
             let mut builder =
-                Description::error(span, &msg, format!("expected {} argument(s)", expected));
+                Description::error(span, format!("expected {} argument(s)", expected));
 
             if *expected > *found {
                 builder.set_help(format!("missing {} argument(s)", expected - found));
@@ -697,11 +693,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             builder
         }
 
-        TypeError::UnboundVariable { name, span, .. } => {
-            let msg = format!("undefined variable: {}", name);
+        TypeError::UnboundVariable { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Description::error(range, &msg, "not found in this scope");
+            let mut builder = Description::error(range, "not found in this scope");
 
             if let Some(fix) = error_fix_suggestion(error, suggestions) {
                 builder.set_help(fix);
@@ -711,10 +706,9 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::NotAFunction { ty, span } => {
-            let msg = format!("type {} is not callable", ty);
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Description::error(range, &msg, format!("{} is not a function", ty));
+            let mut builder = Description::error(range, format!("{} is not a function", ty));
 
             if let Some(fix) = error_fix_suggestion(error, None) {
                 builder.set_help(fix);
@@ -728,11 +722,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             trait_name,
             origin,
         } => {
-            let msg = format!("{} does not implement {}", ty, trait_name);
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            Description::error(span, &msg, format!("{} does not satisfy {}", ty, trait_name))
+            Description::error(span, format!("{} does not satisfy {}", ty, trait_name))
                 .with_help(if trait_name == "Json" {
                     "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
                      Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
@@ -757,9 +750,7 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         } => {
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
-            Description::error(span, format!(
-                    "`{param}` is not known to implement {trait_name}"
-                ), format!("this needs {param}: {trait_name}"))
+            Description::error(span, format!("this needs {param}: {trait_name}"))
                 .with_help(format!(
                     "add `where {param}: {trait_name}` to the function, so every call is checked for it"
                 ))
@@ -768,19 +759,15 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         TypeError::MissingTraitMethod {
             trait_name,
             method_name,
-            impl_ty,
             span,
+            ..
         } => {
-            let msg = format!(
-                "impl {} for {} is missing method {}",
-                trait_name, impl_ty, method_name
-            );
             let span = clamp(
                 span.map(text_range_to_range)
                     .unwrap_or(0..source_len.max(1).min(source_len)),
             );
 
-            Description::error(span, &msg, format!("missing `{}`", method_name)).with_help(format!(
+            Description::error(span, format!("missing `{}`", method_name)).with_help(format!(
                 "add `fn {}` as `{}` declares it to the impl block",
                 method_name, trait_name
             ))
@@ -788,15 +775,11 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
 
         TypeError::TraitMethodSignatureMismatch {
             trait_name,
-            method_name,
             expected,
             found,
             span,
+            ..
         } => {
-            let msg = format!(
-                "method {} in impl {} has wrong signature: expected {}, found {}",
-                method_name, trait_name, expected, found
-            );
             let span = clamp(
                 span.map(text_range_to_range)
                     .unwrap_or(0..source_len.max(1).min(source_len)),
@@ -804,20 +787,16 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
 
             Description::error(
                 span,
-                &msg,
                 format!("`{}` declares {}, this is {}", trait_name, expected, found),
             )
         }
 
         TypeError::MissingField {
-            struct_name,
-            field_name,
-            span,
+            field_name, span, ..
         } => {
-            let msg = format!("missing field {} in struct {}", field_name, struct_name);
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("field `{}` is required", field_name))
+            Description::error(range, format!("field `{}` is required", field_name))
                 .with_help(format!("add `{}: <value>`", field_name))
         }
 
@@ -826,25 +805,20 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             field_name,
             span,
         } => {
-            let msg = format!("unknown field {} in struct {}", field_name, struct_name);
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                &msg,
                 format!("`{}` has no field `{}`", struct_name, field_name),
             )
         }
 
         TypeError::NoSuchField {
-            ty,
-            field_name,
-            span,
+            field_name, span, ..
         } => {
-            let msg = format!("type {} has no field {}", ty, field_name);
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("no field `{}`", field_name))
+            Description::error(range, format!("no field `{}`", field_name))
         }
 
         TypeError::NoSuchMethod {
@@ -852,31 +826,29 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             method_name,
             span,
         } => {
-            let msg = format!("no method `{}` on type `{}`", method_name, ty);
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("method `{}` not found", method_name))
-                .with_help(format!(
+            Description::error(range, format!("method `{}` not found", method_name)).with_help(
+                format!(
                     "type `{}` has no trait impl providing `{}`",
                     ty, method_name
-                ))
+                ),
+            )
         }
 
         TypeError::ManualContinuityPromotionDisabled { span } => {
-            let msg = "`Continuity.promote()` is disabled";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, msg, "manual authority changes are no longer part of the Mesh surface")
+            Description::error(range, "manual authority changes are no longer part of the Mesh surface")
                 .with_help(
                     "failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state",
                 )
         }
 
-        TypeError::UnknownVariant { name, span, .. } => {
-            let msg = format!("unknown variant: {}", name);
+        TypeError::UnknownVariant { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            let mut builder = Description::error(range, &msg, "not a known variant");
+            let mut builder = Description::error(range, "not a known variant");
 
             if let Some(fix) = error_fix_suggestion(error, suggestions) {
                 builder.set_help(fix);
@@ -885,49 +857,33 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             builder
         }
 
-        TypeError::OrPatternBindingMismatch {
-            expected_bindings,
-            found_bindings,
-            span,
-        } => {
-            let msg = format!(
-                "or-pattern alternatives bind different variables: [{}] vs [{}]",
-                expected_bindings.join(", "),
-                found_bindings.join(", ")
-            );
+        TypeError::OrPatternBindingMismatch { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, "alternatives must bind the same variables").with_help(
+            Description::error(range, "alternatives must bind the same variables").with_help(
                 "all alternatives in an or-pattern must bind the same set of variable names",
             )
         }
 
         TypeError::NonExhaustiveMatch {
-            scrutinee_type,
             missing_patterns,
             span,
+            ..
         } => {
-            let msg = format!("non-exhaustive match on `{}`", scrutinee_type);
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(
-                range,
-                &msg,
-                format!("missing: {}", missing_patterns.join(", ")),
-            )
-            .with_help("add the missing patterns or a wildcard `_` arm")
+            Description::error(range, format!("missing: {}", missing_patterns.join(", ")))
+                .with_help("add the missing patterns or a wildcard `_` arm")
         }
 
         TypeError::NonExhaustiveClauses {
-            scrutinee_type,
             missing_patterns,
             span,
+            ..
         } => {
-            let msg = format!("clauses do not cover every `{}`", scrutinee_type);
             let range = clamp(text_range_to_range(*span));
 
             Description::build(ReportKind::Warning, range.clone())
-                .with_message(&msg)
                 .with_label(
                     Label::new(range)
                         .with_message(format!("missing: {}", missing_patterns.join(", ")))
@@ -936,12 +892,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                 .with_help("add a clause for the missing patterns: a call no clause matches panics")
         }
 
-        TypeError::RedundantArm { arm_index, span } => {
-            let msg = format!("redundant match arm (arm {})", arm_index + 1);
+        TypeError::RedundantArm { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
             Description::build(ReportKind::Warning, range.clone())
-                .with_message(&msg)
                 .with_label(
                     Label::new(range)
                         .with_message("this arm is unreachable")
@@ -955,129 +909,74 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             found,
             span,
         } => {
-            let msg = format!(
-                "message type mismatch: expected {}, found {}",
-                expected, found
-            );
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(
-                range,
-                &msg,
-                format!("expected {}, found {}", expected, found),
-            )
-            .with_help(format!("this Pid accepts messages of type {}", expected))
+            Description::error(range, format!("expected {}, found {}", expected, found))
+                .with_help(format!("this Pid accepts messages of type {}", expected))
         }
 
         TypeError::SelfOutsideActor { span } => {
-            let msg = "self() used outside actor block";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, msg, "self() is only available inside an actor block")
+            Description::error(range, "self() is only available inside an actor block")
         }
 
         TypeError::SpawnNonFunction { found, span } => {
-            let msg = format!("cannot spawn non-function: found {}", found);
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("expected a function, found {}", found))
+            Description::error(range, format!("expected a function, found {}", found))
         }
 
         TypeError::ReceiveOutsideActor { span } => {
-            let msg = "receive used outside actor block";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(
-                range,
-                msg,
-                "receive is only available inside an actor block",
-            )
-            .with_help("move this receive expression into an actor block")
+            Description::error(range, "receive is only available inside an actor block")
+                .with_help("move this receive expression into an actor block")
         }
 
-        TypeError::InvalidChildStart {
-            child_name,
-            found,
-            span,
-        } => {
-            let msg = format!(
-                "child `{}` start function must return Pid, found `{}`",
-                child_name, found
-            );
+        TypeError::InvalidChildStart { found, span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("expected Pid<M>, found {}", found))
+            Description::error(range, format!("expected Pid<M>, found {}", found))
                 .with_help("the start function must call spawn() and return a Pid")
         }
 
-        TypeError::InvalidStrategy { found, span } => {
-            let msg = format!("unknown supervision strategy `{}`", found);
+        TypeError::InvalidStrategy { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                &msg,
                 "expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
             )
         }
 
-        TypeError::InvalidRestartType {
-            found,
-            child_name,
-            span,
-        } => {
-            let msg = format!(
-                "invalid restart type `{}` for child `{}`",
-                found, child_name
-            );
+        TypeError::InvalidRestartType { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, "expected permanent, transient, or temporary")
+            Description::error(range, "expected permanent, transient, or temporary")
         }
 
-        TypeError::InvalidShutdownValue {
-            found,
-            child_name,
-            span,
-        } => {
-            let msg = format!(
-                "invalid shutdown value `{}` for child `{}`",
-                found, child_name
-            );
+        TypeError::InvalidShutdownValue { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, "expected a positive integer or brutal_kill")
+            Description::error(range, "expected a positive integer or brutal_kill")
         }
 
         // ── Multi-clause function diagnostics (11-02) ──────────────────
-        TypeError::CatchAllNotLast {
-            fn_name,
-            arity,
-            span,
-        } => {
-            let msg = format!(
-                "catch-all clause must be the last clause of function `{}/{}`",
-                fn_name, arity
-            );
+        TypeError::CatchAllNotLast { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, "clauses after a catch-all are unreachable")
+            Description::error(range, "clauses after a catch-all are unreachable")
         }
         TypeError::NonConsecutiveClauses {
-            fn_name,
-            arity,
             first_span,
             second_span,
+            ..
         } => {
-            let msg = format!(
-                "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
-                fn_name, arity
-            );
             let range = clamp(text_range_to_range(*second_span));
             let first_range = clamp(text_range_to_range(*first_span));
 
             Description::build(ReportKind::Error, range.clone())
-                .with_message(&msg)
                 .with_label(
                     Label::new(first_range)
                         .with_message("first definition here")
@@ -1089,52 +988,28 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                         .with_color(Color::Red),
                 )
         }
-        TypeError::NonFirstClauseAnnotation {
-            fn_name,
-            what,
-            span,
-        } => {
-            let msg = format!(
-                "{} on non-first clause of `{}` will be ignored",
-                what, fn_name
-            );
+        TypeError::NonFirstClauseAnnotation { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::build(ReportKind::Warning, range.clone())
-                .with_message(&msg)
-                .with_label(
-                    Label::new(range)
-                        .with_message("only the first clause should have this annotation")
-                        .with_color(Color::Yellow),
-                )
+            Description::build(ReportKind::Warning, range.clone()).with_label(
+                Label::new(range)
+                    .with_message("only the first clause should have this annotation")
+                    .with_color(Color::Yellow),
+            )
         }
-        TypeError::DuplicateImpl {
-            trait_name,
-            impl_type,
-            first_impl,
-        } => {
-            let msg = format!(
-                "duplicate impl: `{}` is already implemented for `{}`",
-                trait_name, impl_type
-            );
+        TypeError::DuplicateImpl { first_impl, .. } => {
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Description::error(span, &msg, first_impl.to_string())
+            Description::error(span, first_impl.to_string())
                 .with_help("remove one of the conflicting impl blocks")
         }
 
         TypeError::AmbiguousMethod {
             method_name,
             candidate_traits,
-            ty,
             span,
+            ..
         } => {
-            let msg = format!(
-                "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
-                method_name,
-                ty,
-                candidate_traits.join(", ")
-            );
             let range = clamp(text_range_to_range(*span));
 
             let suggestions: Vec<String> = candidate_traits
@@ -1143,23 +1018,16 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                 .collect();
             let help = format!("use qualified syntax: {}", suggestions.join(" or "));
 
-            Description::error(
-                range,
-                &msg,
-                format!("multiple traits provide `{}`", method_name),
-            )
-            .with_help(help)
+            Description::error(range, format!("multiple traits provide `{}`", method_name))
+                .with_help(help)
         }
 
         TypeError::UnsupportedDerive {
-            trait_name,
-            type_name,
-            span,
+            trait_name, span, ..
         } => {
-            let msg = format!("cannot derive `{}` for `{}`", trait_name, type_name);
             let span = clamp(text_range_to_range(*span));
 
-            Description::error(span, &msg, format!("`{}` cannot be derived here", trait_name))
+            Description::error(span, format!("`{}` cannot be derived here", trait_name))
                 .with_help(
                     "structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
                 )
@@ -1168,18 +1036,13 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         TypeError::MissingDerivePrerequisite {
             trait_name,
             requires,
-            type_name,
             span,
+            ..
         } => {
-            let msg = format!(
-                "cannot derive `{}` for `{}` without `{}`",
-                trait_name, type_name, requires
-            );
             let span = clamp(text_range_to_range(*span));
 
             Description::error(
                 span,
-                &msg,
                 format!(
                     "`{}` requires `{}` for its implementation",
                     trait_name, requires
@@ -1192,67 +1055,33 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::BreakOutsideLoop { span } => {
-            let msg = "`break` outside of loop";
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                msg,
                 "`break` can only be used inside a `while` or `for` loop",
             )
             .with_help("move this `break` inside a loop body")
         }
 
         TypeError::ContinueOutsideLoop { span } => {
-            let msg = "`continue` outside of loop";
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                msg,
                 "`continue` can only be used inside a `while` or `for` loop",
             )
             .with_help("move this `continue` inside a loop body")
         }
 
-        TypeError::ImportModuleNotFound {
-            module_name,
-            span,
-            suggestion,
-        } => {
-            let msg = "module not found";
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder =
-                Description::error(range, msg, format!("module `{}` not found", module_name));
-
-            if let Some(sug) = suggestion {
-                builder.set_note(format!("did you mean `{}`?", sug));
-            }
-
-            builder
+        // The headline names the module and any near miss, or the name and
+        // what the module exports.
+        TypeError::ImportModuleNotFound { span, .. } => {
+            Description::error(clamp(text_range_to_range(*span)), "no module has this name")
         }
 
-        TypeError::ImportNameNotFound {
-            module_name,
-            name,
-            span,
-            available,
-        } => {
-            let msg = "name not found in module";
-            let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Description::error(
-                range,
-                msg,
-                format!("`{}` is not exported by module `{}`", name, module_name),
-            );
-
-            if !available.is_empty() {
-                builder.set_note(format!("available exports: {}", available.join(", ")));
-            }
-
-            builder
+        TypeError::ImportNameNotFound { span, .. } => {
+            Description::error(clamp(text_range_to_range(*span)), "not exported")
         }
 
         TypeError::PrivateItem {
@@ -1260,37 +1089,28 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             name,
             span,
         } => {
-            let msg = "private item cannot be imported";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(
-                range,
-                msg,
-                format!("`{}` is private in module `{}`", name, module_name),
-            )
-            .with_help(format!(
+            Description::error(range, "private to its module").with_help(format!(
                 "add `pub` to `{}` in module `{}` to make it accessible",
                 name, module_name
             ))
         }
 
-        TypeError::HttpClusteredInvalidArguments { reason, span } => {
-            let msg = "invalid HTTP.clustered(...) usage";
+        TypeError::HttpClusteredInvalidArguments { span, .. } => {
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, msg, reason.clone())
+            Description::error(range, "this wrapper")
                 .with_help(
                     "use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference",
                 )
         }
 
         TypeError::HttpClusteredPrivateHandler { handler_name, span } => {
-            let msg = "clustered route handler must be public";
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                msg,
                 format!(
                     "`{}` is private and cannot cross the clustered route boundary",
                     handler_name
@@ -1303,14 +1123,11 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => {
-            let msg = "HTTP.clustered(...) is only valid in route handler position";
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                msg,
-                "use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`",
-            )
+                "use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`")
         }
 
         TypeError::HttpClusteredConflictingReplicationCount {
@@ -1320,12 +1137,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             first_span,
             span,
         } => {
-            let msg = "conflicting clustered route replication counts";
             let first_range = clamp(text_range_to_range(*first_span));
             let current_range = clamp(text_range_to_range(*span));
 
             Description::build(ReportKind::Error, current_range.clone())
-                .with_message(msg)
                 .with_label(
                     Label::new(first_range)
                         .with_message(format!(
@@ -1346,10 +1161,9 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::HttpClusteredImportedOriginMissing { handler_name, span } => {
-            let msg = "imported clustered route handler is missing origin metadata";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, msg, format!(
+            Description::error(range, format!(
                             "cannot determine the defining module for imported handler `{}`",
                             handler_name
                         ))
@@ -1363,10 +1177,9 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             fn_return_ty,
             span,
         } => {
-            let msg = "`?` operand is incompatible with the function return type";
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, msg, "cannot use `?` here")
+            Description::error(range, "cannot use `?` here")
                 .with_note(format!(
                     "cannot propagate `{}` from a function returning `{}`; Result errors must match or have a From conversion, and Option requires an Option return type",
                     operand_ty, fn_return_ty
@@ -1374,12 +1187,10 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::TryOnNonResultOption { operand_ty, span } => {
-            let msg = "`?` requires `Result` or `Option`";
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
                 range,
-                msg,
                 format!("type `{}` is not `Result` or `Option`", operand_ty),
             )
             .with_help("the `?` operator can only be used on `Result<T, E>` or `Option<T>` values")
@@ -1387,17 +1198,13 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
 
         TypeError::NonSerializableField {
             struct_name: _,
-            field_name,
             field_type,
             span,
+            ..
         } => {
-            let msg = format!(
-                "field `{}` of type `{}` is not JSON-serializable",
-                field_name, field_type
-            );
             let span = clamp(text_range_to_range(*span));
 
-            Description::error(span, &msg, format!("`{}` is not serializable", field_type))
+            Description::error(span, format!("`{}` is not serializable", field_type))
                 .with_help(format!(
                     "type `{}` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)",
                     field_type
@@ -1406,92 +1213,55 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
 
         TypeError::NonMappableField {
             struct_name: _,
-            field_name,
             field_type,
             span,
+            ..
         } => {
-            let msg = format!(
-                "field `{}` has type `{}` which cannot be mapped from a database row",
-                field_name, field_type
-            );
             let span = clamp(text_range_to_range(*span));
 
-            Description::error(span, &msg, format!("`{}` is not row-mappable", field_type))
+            Description::error(span, format!("`{}` is not row-mappable", field_type))
                 .with_help("only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)")
         }
 
-        TypeError::MissingAssocType {
-            trait_name,
-            assoc_name,
-            impl_ty,
-        } => {
-            let msg = format!(
-                "impl `{}` for `{}` is missing associated type `{}`",
-                trait_name, impl_ty, assoc_name
-            );
+        TypeError::MissingAssocType { assoc_name, .. } => {
             let span = clamp(0..source_len.max(1).min(source_len));
 
-            Description::error(span, &msg, format!("missing `type {} = ...`", assoc_name))
-                .with_help(format!(
+            Description::error(span, format!("missing `type {} = ...`", assoc_name)).with_help(
+                format!(
                     "add `type {} = <ConcreteType>` to the impl block",
                     assoc_name
-                ))
+                ),
+            )
         }
 
         TypeError::ExtraAssocType {
             trait_name,
             assoc_name,
-            impl_ty,
+            ..
         } => {
-            let msg = format!(
-                "impl `{}` for `{}` provides associated type `{}` which is not declared by the trait",
-                trait_name, impl_ty, assoc_name
-            );
             let span = clamp(0..source_len.max(1).min(source_len));
 
             Description::error(
                 span,
-                &msg,
                 format!("`{}` is not declared by `{}`", assoc_name, trait_name),
             )
         }
 
         TypeError::UnresolvedAssocType { assoc_name, span } => {
-            let msg = format!("cannot resolve associated type `{}`", assoc_name);
             let span = clamp(text_range_to_range(*span));
 
-            Description::error(
-                span,
-                &msg,
-                format!("no associated type `{assoc_name}` is declared"),
-            )
-            .with_help(format!(
+            Description::error(span, "not declared").with_help(format!(
                 "declare it in the interface with `type {assoc_name}`, and bind it in each impl"
             ))
         }
 
         TypeError::SlotPipeOutOfRange {
-            slot,
-            fn_name,
-            arity,
-            span,
+            slot, arity, span, ..
         } => {
-            let msg = if *arity <= 1 {
-                format!(
-                    "slot position {} is out of range: `{}` takes {} argument(s)",
-                    slot, fn_name, arity
-                )
-            } else {
-                format!(
-                    "slot position {} is out of range: `{}` takes {} arguments, so valid slot positions are 2\u{2013}{}",
-                    slot, fn_name, arity, arity
-                )
-            };
             let range = clamp(text_range_to_range(*span));
 
             let mut builder = Description::error(
                 range,
-                &msg,
                 format!("slot {} exceeds function arity {}", slot, arity),
             );
 
@@ -1508,75 +1278,51 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
 
         TypeError::UndefinedType {
-            alias_name,
-            target_name,
-            span,
+            target_name, span, ..
         } => {
-            let msg = format!(
-                "type alias `{}` references undefined type `{}`",
-                alias_name, target_name
-            );
             let range = clamp(text_range_to_range(*span));
 
-            Description::error(range, &msg, format!("`{}` is not defined", target_name)).with_help(
+            Description::error(range, format!("`{}` is not defined", target_name)).with_help(
                 format!(
                     "define `{}` as a struct, sum type, or type alias before using it here",
                     target_name
                 ),
             )
         }
-        TypeError::NativeDeclarationInvalid { reason, span } => {
+        TypeError::NativeDeclarationInvalid { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "invalid native function declaration", reason).with_help(
+            Description::error(range, "this declaration").with_help(
                 "use a public, fully annotated, non-generic signature and a C identifier symbol",
             )
         }
-        TypeError::ExportDeclarationInvalid { reason, span } => {
+        TypeError::ExportDeclarationInvalid { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "invalid exported function declaration", reason).with_help(
+            Description::error(range, "this declaration").with_help(
                 "use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`",
             )
         }
-        TypeError::InvalidLetPattern { reason, span } => {
+        TypeError::InvalidLetPattern { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "invalid let destructuring pattern", reason)
+            Description::error(range, "this pattern")
                 .with_help(
                     "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
                 )
         }
-        TypeError::DuplicateField { field_name, span } => {
+        TypeError::DuplicateField { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("field `{field_name}` is given more than once"),
-                "given again here",
-            )
-            .with_help("give each field one value")
+            Description::error(range, "given again here").with_help("give each field one value")
         }
         TypeError::UnderivableField {
-            trait_name,
-            type_name,
-            field_name,
-            span,
+            trait_name, span, ..
         } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, format!(
-                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` holds a function"
-                ), "functions cannot be compared, hashed or shown")
+            Description::error(range, "functions cannot be compared, hashed or shown")
                 .with_help(format!("remove `{trait_name}` from the deriving list"))
         }
-        TypeError::DuplicateVariant {
-            variant,
-            first_type,
-            second_type,
-            span,
-        } => {
+        TypeError::DuplicateVariant { variant, span, .. } => {
             let range = clamp(text_range_to_range(*span));
             Description::error(
                 range,
-                format!(
-                    "variant `{variant}` of `{second_type}` is already a variant of `{first_type}`"
-                ),
                 format!("`{variant}` would name either type's variant"),
             )
             .with_help("give one of the variants another name")
@@ -1616,38 +1362,26 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                     format!("give the argument a type, such as `{first}`"),
                 ),
             };
-            Description::error(range, error.to_string(), label).with_help(help)
+            Description::error(range, label).with_help(help)
         }
-        TypeError::DuplicateDefinition { kind, name, span } => {
+        TypeError::DuplicateDefinition { name, span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("{kind} `{name}` is defined twice"),
-                "defined again here",
-            )
-            .with_help(format!("rename or remove one of the two `{name}`s"))
+            Description::error(range, "defined again here")
+                .with_help(format!("rename or remove one of the two `{name}`s"))
         }
-        TypeError::UnknownType { name, span } => {
+        TypeError::UnknownType { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("unknown type `{name}`"),
-                "no type has this name",
-            )
-            .with_help("check the spelling, or define or import the type")
+            Description::error(range, "no type has this name")
+                .with_help("check the spelling, or define or import the type")
         }
         TypeError::NoSuchModuleFunction {
             module,
-            name,
             available,
             span,
+            ..
         } => {
             let range = clamp(text_range_to_range(*span));
-            let mut report = Description::error(
-                range,
-                format!("module `{module}` has no function `{name}`"),
-                format!("not a function of `{module}`"),
-            );
+            let mut report = Description::error(range, format!("not a function of `{module}`"));
             if !available.is_empty() {
                 report = report.with_help(format!("`{module}` has {}", available.join(", ")));
             }
@@ -1655,17 +1389,12 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
         TypeError::AssertReceiveOutsideTest { span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, error.to_string(), "not in a test file")
+            Description::error(range, "not in a test file")
                 .with_help("elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for")
         }
         TypeError::GenericImplTarget { name, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                error.to_string(),
-                format!("`{name}` takes type parameters"),
-            )
-            .with_help(format!(
+            Description::error(range, format!("`{name}` takes type parameters")).with_help(format!(
                 "implement it for a type without type parameters, such as a struct \
                      holding the `{name}` you mean"
             ))
@@ -1684,76 +1413,54 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             let shown = arities.iter().copied().find(|&a| a > 0).unwrap_or(0);
             let params: Vec<String> = (0..shown).map(|i| format!("a{i}")).collect();
             let params = params.join(", ");
-            Description::error(range, error.to_string(), "each arity is its own function")
-                .with_help(format!(
-                    "call it with {counts} arguments; as a value, use a closure \
+            Description::error(range, "each arity is its own function").with_help(format!(
+                "call it with {counts} arguments; as a value, use a closure \
                      that calls one: `fn {params} -> {name}({params}) end`"
-                ))
+            ))
         }
-        TypeError::InvalidConcat { op, ty, span } => {
+        TypeError::InvalidConcat { ty, span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("`{op}` joins strings or lists, not `{ty}`"),
-                format!("these operands are `{ty}`"),
-            )
-            .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
+            Description::error(range, format!("these operands are `{ty}`"))
+                .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
         }
         TypeError::TopLevelLet { name, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, format!("`let {name}` outside a function is not supported"), "a module has no global bindings")
+            Description::error(range, "a module has no global bindings")
                 .with_help(format!(
                     "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
                 ))
         }
-        TypeError::ModuleNotImported { name, module, span } => {
+        TypeError::ModuleNotImported { module, span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("module `{name}` is not imported"),
-                "a module of this project",
-            )
-            .with_help(format!("add `import {module}` at the top of the file"))
+            Description::error(range, "a module of this project")
+                .with_help(format!("add `import {module}` at the top of the file"))
         }
         TypeError::ActorMessageTypeUnknown { actor, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, format!("cannot tell what type of message `{actor}` receives"), "only untyped `Pid`s reach this actor")
+            Description::error(range, "only untyped `Pid`s reach this actor")
                 .with_help(format!(
                     "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`"
                 ))
         }
         TypeError::IndexingUnsupported { span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                "`value[index]` indexing is not supported",
-                "no indexing syntax",
-            )
-            .with_help(
+            Description::error(range, "no indexing syntax").with_help(
                 "use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`",
             )
         }
-        TypeError::InvalidLiteral { reason, span } => {
+        TypeError::InvalidLiteral { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, reason, "invalid literal")
+            Description::error(range, "invalid literal")
         }
-        TypeError::UnknownInterface { name, span } => {
+        TypeError::UnknownInterface { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("unknown interface `{name}`"),
-                "no interface has this name",
-            )
-            .with_help("check the spelling, or declare the interface or import its module")
+            Description::error(range, "no interface has this name")
+                .with_help("check the spelling, or declare the interface or import its module")
         }
-        TypeError::UnknownFieldOwner { field, span } => {
+        TypeError::UnknownFieldOwner { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("cannot tell which type has the field `{field}`"),
-                "nothing here fixes the type of this value",
-            )
-            .with_help("annotate the value's type, such as a parameter `p :: Point`")
+            Description::error(range, "nothing here fixes the type of this value")
+                .with_help("annotate the value's type, such as a parameter `p :: Point`")
         }
         TypeError::NestedDefinition { keyword, span } => {
             let range = clamp(text_range_to_range(*span));
@@ -1762,39 +1469,29 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
             } else {
                 "move it to the top level of the module"
             };
-            Description::error(range, error.to_string(), "inside a function").with_help(help)
+            Description::error(range, "inside a function").with_help(help)
         }
         TypeError::TypeNotValue { name, span } => {
             let range = clamp(text_range_to_range(*span));
             Description::error(
                 range,
-                format!("`{name}` is a type, not a value"),
-                "a type names no value",
-            )
+                "a type names no value")
             .with_help(format!(
                 "build a value of it (`{name} {{ ... }}` for a struct, a variant for a sum type), or call one of its methods, `{name}.method(...)`"
             ))
         }
-        TypeError::UntypedMethodParam {
-            method,
-            param,
-            span,
-        } => {
+        TypeError::UntypedMethodParam { param, span, .. } => {
             let range = clamp(text_range_to_range(*span));
             Description::error(
                 range,
-                format!("the type of `{param}` in method `{method}` is not known"),
-                "nothing fixes the type of this parameter",
-            )
+                "nothing fixes the type of this parameter")
             .with_help(format!(
                 "annotate it, `{param} :: Type`: a method is compiled once, for the type it is implemented for, not for each call"
             ))
         }
         TypeError::RigidTypeParam { param, found, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, format!(
-                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
-                ), format!("`{param}` is declared here"))
+            Description::error(range, format!("`{param}` is declared here"))
                 .with_help(format!(
                     "a generic function must work for every `{param}`: use `{found}` in its signature instead, or keep `{param}` values as they are"
                 ))
@@ -1806,73 +1503,43 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         } => {
             let range = clamp(text_range_to_range(*span));
             let example = types.first().cloned().unwrap_or_else(|| "Type".to_string());
-            Description::error(
-                range,
-                format!(
-                    "`{method}` is a static method of several types: {}",
-                    types.join(", ")
-                ),
-                "which type's is meant?",
-            )
-            .with_help(format!("call it on the type: `{example}.{method}()`"))
+            Description::error(range, "which type's is meant?")
+                .with_help(format!("call it on the type: `{example}.{method}()`"))
         }
         TypeError::AmbiguousDefault { span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                "cannot tell which type `default()` builds here",
-                "nothing fixes this value's type",
-            )
-            .with_help("annotate it: `let x :: Int = default()`")
+            Description::error(range, "nothing fixes this value's type")
+                .with_help("annotate it: `let x :: Int = default()`")
         }
-        TypeError::CyclicAlias { alias_name, span } => {
+        TypeError::CyclicAlias { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("type alias `{alias_name}` refers to itself"),
-                "expanding it never ends",
-            )
-            .with_help(
+            Description::error(range, "expanding it never ends").with_help(
                 "an alias names an existing type; use a struct or sum type for a recursive type",
             )
         }
         TypeError::NotAStruct { ty, span } => {
             let range = clamp(text_range_to_range(*span));
-            let (message, label) = if matches!(ty, Ty::Var(_)) {
-                (
-                    "a struct update needs a struct value".to_string(),
-                    "the type of this value is not known here".to_string(),
-                )
+            let label = if matches!(ty, Ty::Var(_)) {
+                "the type of this value is not known here"
             } else {
-                (
-                    format!("`{ty}` is not a struct"),
-                    "not a struct".to_string(),
-                )
+                "not a struct"
             };
-            Description::error(range, message, label)
+            Description::error(range, label)
                 .with_help("`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one")
         }
-        TypeError::DuplicateBinding { name, span } => {
+        TypeError::DuplicateBinding { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                format!("`{name}` is bound twice in one pattern"),
-                "each name in a pattern binds one value",
-            )
-            .with_help("rename one of them, or compare the values in a `when` guard")
+            Description::error(range, "each name in a pattern binds one value")
+                .with_help("rename one of them, or compare the values in a `when` guard")
         }
-        TypeError::InvalidPassThroughArm { reason, span } => {
+        TypeError::InvalidPassThroughArm { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                "this arm has no `->`, so its pattern must also be its value",
-                reason,
-            )
-            .with_help("write the value after `->`: `pattern -> value`")
+            Description::error(range, "this arm")
+                .with_help("write the value after `->`: `pattern -> value`")
         }
-        TypeError::ResourceViolation { reason, span } => {
+        TypeError::ResourceViolation { span, .. } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "resource ownership violation", reason)
+            Description::error(range, "here")
                 .with_help("move each resource once, or pass it to a direct `borrow` parameter")
         }
     }

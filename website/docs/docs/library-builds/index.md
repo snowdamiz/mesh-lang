@@ -232,14 +232,14 @@ The function must:
 Anything else is error E0055:
 
 ```text
-[E0055] Error: invalid exported function declaration
+[E0055] Error: invalid exported function declaration: stable exports require exactly `(Bytes) -> Result<Bytes, String>`
    ╭─[ main.mpl:1:1 ]
    │
  1 │ ╭─▶ @export("bad_sig")
    ┆ ┆
  4 │ ├─▶ end
    │ │
-   │ ╰───────── stable exports require exactly `(Bytes) -> Result<Bytes, String>`
+   │ ╰───────── this declaration
    │
    │     Help: use `@export("c_symbol") pub fn name(request :: Bytes) -> Bytes!String`
 ───╯
