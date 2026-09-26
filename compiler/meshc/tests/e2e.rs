@@ -2654,6 +2654,67 @@ end
     assert_eq!(output, "42\nhello\n");
 }
 
+/// An inferred generic function called through its module's name is
+/// specialized for each type it is called at, also from generic functions
+/// of other modules, and through them; field accesses beside it name no
+/// module, or no generic function.
+#[test]
+fn e2e_cross_module_inferred_generic_called_qualified() {
+    let output = compile_multifile_and_run(&[
+        (
+            "utils.mpl",
+            r#"
+pub fn pair_up(x) do
+  (x, x)
+end
+
+pub fn twice(n :: Int) -> Int do
+  n * 2
+end
+"#,
+        ),
+        (
+            "mid.mpl",
+            r#"
+import Utils
+
+pub fn wrap(x) do
+  Utils.pair_up(x)
+end
+"#,
+        ),
+        (
+            "main.mpl",
+            r#"
+import Mid
+import Utils
+
+struct Box do
+  size :: Int
+end
+
+fn boxed() -> Box do
+  Box { size: 4 }
+end
+
+fn both(x) do
+  Utils.pair_up(x)
+end
+
+fn main() do
+  let (n, _) = Utils.pair_up(3)
+  let (s, _) = Utils.pair_up("hi")
+  let (t, _) = both(true)
+  let (f, _) = Mid.wrap(1.5)
+  let b = boxed()
+  println("${n} ${s} ${t} ${f} ${Utils.twice(b.size)} ${boxed().size}")
+end
+"#,
+        ),
+    ]);
+    assert_eq!(output, "3 hi true 1.5 8 4\n");
+}
+
 /// Comprehensive multi-module binary: structs, imports, pub items, private
 /// functions, cross-module function calls, and a 3-module project.
 #[test]

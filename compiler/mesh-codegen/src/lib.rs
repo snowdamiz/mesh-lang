@@ -31,6 +31,7 @@ pub use declared::{
     prepare_declared_runtime_handlers, prepare_startup_work_registrations, DeclaredHandlerKind,
     DeclaredHandlerPlanEntry, DeclaredRuntimeRegistration, StartupWorkRegistration,
 };
+pub use mir::lower::imported_specializations;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

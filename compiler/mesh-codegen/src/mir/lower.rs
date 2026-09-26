@@ -422,6 +422,10 @@ struct Lowerer<'a> {
     /// Multi-signature entries require per-signature MIR clones so each call site can
     /// reference a concrete symbol instead of collapsing to the first observed ABI.
     inferred_fn_specializations: HashMap<String, Vec<Ty>>,
+    /// The concrete types this module's generic functions call other
+    /// modules' generic functions at, in their specializations: the
+    /// defining modules must emit those (`imported_specializations`).
+    imported_specializations: HashMap<String, Vec<Ty>>,
     /// Current enclosing function's return type (Phase 45).
     /// Set when entering a function body, used by lower_try_expr for early-return
     /// variant construction. Save/restore pattern for nested functions and closures.
@@ -736,6 +740,7 @@ impl<'a> Lowerer<'a> {
             user_fn_defs: HashSet::new(),
             fn_value_usage_types: inferred_fn_usage_types.clone(),
             inferred_fn_specializations: inferred_fn_usage_types.clone(),
+            imported_specializations: HashMap::new(),
             current_fn_return_type: None,
             current_fn_return_typeck: None,
             try_counter: 0,
@@ -1725,10 +1730,12 @@ impl<'a> Lowerer<'a> {
     /// whose type is still open (`size([])`) is taken with Unit for what
     /// nothing fixed. Without this, `fn wrap(a) = ident(a)` called with a
     /// String ran `ident`'s Int version, and `size([])` beside two other
-    /// uses called a function that was never emitted.
+    /// uses called a function that was never emitted. A generic function
+    /// of another module called here at an open type is recorded in
+    /// `imported_specializations` at the types that call takes.
     fn close_specializations(&mut self, sf: &SourceFile) {
         // Each top-level function: its checked type and the calls it makes
-        // to generic functions of this module (every clause of a group).
+        // to generic functions (every clause of a group).
         let mut fns: Vec<(String, Ty, Vec<(String, TextRange)>)> = Vec::new();
         let mut bodies: Vec<(usize, mesh_parser::SyntaxNode)> = Vec::new();
         for item in sf.items() {
@@ -1751,13 +1758,7 @@ impl<'a> Lowerer<'a> {
         for (index, body) in bodies {
             let calls: Vec<(String, TextRange)> = body
                 .descendants()
-                .filter_map(NameRef::cast)
-                .filter_map(|name_ref| {
-                    let callee = self.name_ref_fn_name(&name_ref)?;
-                    fns.iter()
-                        .any(|(name, ty, _)| *name == callee && Self::ty_contains_var(ty))
-                        .then(|| (callee, name_ref.syntax().text_range()))
-                })
+                .filter_map(|node| self.generic_callee(&node, &fns))
                 .collect();
             fns[index].2.extend(calls);
         }
@@ -1802,11 +1803,112 @@ impl<'a> Lowerer<'a> {
             }
             for (callee, concrete) in found {
                 Self::push_usage_type(&mut self.inferred_fn_specializations, &callee, &concrete);
-                if let Some(callee_index) = fns.iter().position(|(name, _, _)| *name == callee) {
-                    worklist.push((callee_index, Some(concrete)));
+                match fns.iter().position(|(name, _, _)| *name == callee) {
+                    Some(callee_index) => worklist.push((callee_index, Some(concrete))),
+                    None => Self::push_usage_type(
+                        &mut self.imported_specializations,
+                        &callee,
+                        &concrete,
+                    ),
                 }
             }
         }
+    }
+
+    /// The generic function `node` names, with the range its type is at:
+    /// one of this module's `fns`, or another module's reached through an
+    /// import (`ident(x)`) or its module (`Utils.ident(x)`) at an open type.
+    fn generic_callee(
+        &self,
+        node: &mesh_parser::SyntaxNode,
+        fns: &[(String, Ty, Vec<(String, TextRange)>)],
+    ) -> Option<(String, TextRange)> {
+        let open_at = |range: TextRange| self.types.get(&range).is_some_and(Self::ty_contains_var);
+        if let Some(name_ref) = NameRef::cast(node.clone()) {
+            let callee = self.name_ref_fn_name(&name_ref)?;
+            let range = name_ref.syntax().text_range();
+            let generic = match fns.iter().find(|(name, _, _)| *name == callee) {
+                Some((_, ty, _)) => Self::ty_contains_var(ty),
+                None => {
+                    name_ref
+                        .text()
+                        .is_some_and(|name| self.imported_functions.contains(&name))
+                        && open_at(range)
+                }
+            };
+            return generic.then_some((callee, range));
+        }
+        let field_access = FieldAccess::cast(node.clone())?;
+        let Some(Expr::NameRef(base)) = field_access.base() else {
+            return None;
+        };
+        let exports = self.user_modules.get(&base.text()?)?;
+        let range = field_access.syntax().text_range();
+        let field = field_access.field()?.text().to_string();
+        if !exports.contains(&field) || !open_at(range) {
+            return None;
+        }
+        // A call to an overloaded function names its arity (`name__N`).
+        let callee = field_access
+            .syntax()
+            .parent()
+            .and_then(CallExpr::cast)
+            .and_then(|call| {
+                self.overloaded_call_targets
+                    .get(&call.syntax().text_range())
+            })
+            .cloned()
+            .unwrap_or(field);
+        Some((callee, range))
+    }
+
+    /// The specializations generic functions need, before any is lowered:
+    /// the types functions are used at as values, the concrete types
+    /// generic functions are called at, and what those calls need in turn.
+    fn prepare_specializations(&mut self, sf: &SourceFile) {
+        // `build_fn_value_usage_types` counts only calls of functions defined
+        // here (lowering registers them again as it declares them).
+        for item in sf.items() {
+            if let Item::FnDef(fn_def) = item {
+                if let Some(name) = self.fn_def_name(&fn_def) {
+                    self.user_fn_defs.insert(name);
+                }
+            }
+        }
+
+        // Function value usage types, so that lower_fn_def can recover
+        // concrete parameter types for functions whose params were
+        // generalized away (Ty::Var) before call sites like
+        // `HTTP.use(r, pass)` constrained them.
+        let syntax = self.parse.syntax();
+        let usage_types = self.build_fn_value_usage_types(&syntax);
+        self.merge_usage_types(usage_types);
+
+        // Identify locally-defined inferred functions whose definition type still
+        // contains TyVars. These need concrete call-site evidence to repair their
+        // ABI, and multi-signature cases need per-signature MIR clones.
+        for item in sf.items() {
+            if let Item::FnDef(fn_def) = item {
+                if let Some(name) = self.fn_def_name(&fn_def) {
+                    let range = fn_def.syntax().text_range();
+                    if let Some(fn_ty) = self.get_ty(range) {
+                        if Self::ty_contains_var(fn_ty) {
+                            if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
+                                for usage_ty in usage_tys {
+                                    Self::push_usage_type(
+                                        &mut self.inferred_fn_specializations,
+                                        &name,
+                                        &usage_ty,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self.close_specializations(sf);
     }
 
     fn ty_contains_var(ty: &Ty) -> bool {
@@ -4889,40 +4991,7 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Pre-pass: build function value usage types map so that lower_fn_def can
-        // recover concrete parameter types for functions whose params were generalized
-        // away (Ty::Var) before call sites like `HTTP.use(r, pass)` constrained them.
-        {
-            let syntax = self.parse.syntax();
-            let usage_types = self.build_fn_value_usage_types(&syntax);
-            self.merge_usage_types(usage_types);
-        }
-
-        // Identify locally-defined inferred functions whose definition type still
-        // contains TyVars. These need concrete call-site evidence to repair their
-        // ABI, and multi-signature cases need per-signature MIR clones.
-        for item in sf.items() {
-            if let Item::FnDef(fn_def) = item {
-                if let Some(name) = self.fn_def_name(&fn_def) {
-                    let range = fn_def.syntax().text_range();
-                    if let Some(fn_ty) = self.get_ty(range) {
-                        if Self::ty_contains_var(fn_ty) {
-                            if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
-                                for usage_ty in usage_tys {
-                                    Self::push_usage_type(
-                                        &mut self.inferred_fn_specializations,
-                                        &name,
-                                        &usage_ty,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        self.close_specializations(&sf);
+        self.prepare_specializations(&sf);
 
         // Second pass: lower all items. Consecutive FnDefs with one name and
         // arity are the clauses of one function, as the type checker groups
@@ -17705,6 +17774,27 @@ pub fn lower_to_mir(
         inferred_fn_usage_types,
         &[],
     )
+}
+
+/// The specializations one module of a project needs of the other modules'
+/// generic functions, by name: a call in one of its generic functions takes
+/// a concrete type in each specialization `inferred_fn_usage_types` gives
+/// that function. Importers come before what they import in reverse
+/// compilation order, so taken in that order every module is asked for what
+/// its callers need before it asks its own imports.
+pub fn imported_specializations(
+    parse: &Parse,
+    typeck: &TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
+) -> HashMap<String, Vec<Ty>> {
+    let Some(source_file) = SourceFile::cast(parse.syntax()) else {
+        return HashMap::new();
+    };
+    let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
+    lowerer.prepare_specializations(&source_file);
+    lowerer.imported_specializations
 }
 
 /// A default method body of an interface declared in another module.

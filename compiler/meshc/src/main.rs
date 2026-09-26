@@ -911,7 +911,7 @@ pub(crate) fn prepare_project_build(
             })
         })
         .collect();
-    let inferred_fn_usage_types = collect_inferred_fn_usage_types(
+    let mut inferred_fn_usage_types = collect_inferred_fn_usage_types(
         &project.module_parses,
         &all_typeck,
         &inferred_export_names,
@@ -946,6 +946,24 @@ pub(crate) fn prepare_project_build(
             .map(|e| e.functions.keys().cloned().collect())
             .unwrap_or_default()
     };
+
+    // A generic function called from another module's generic function
+    // needs a specialization for each type that one is specialized at.
+    for &id in project.compilation_order.iter().rev() {
+        let idx = id.0 as usize;
+        let requests = mesh_codegen::imported_specializations(
+            &project.module_parses[idx],
+            &all_typeck[idx],
+            &project.graph.get(id).name,
+            &pub_fns_of(idx),
+            &inferred_fn_usage_types,
+        );
+        for (name, tys) in requests {
+            for ty in &tys {
+                push_usage_type(&mut inferred_fn_usage_types, &name, ty);
+            }
+        }
+    }
 
     // Lower ALL modules to MIR and merge into a single module for codegen.
     let mut mir_modules = Vec::new();
