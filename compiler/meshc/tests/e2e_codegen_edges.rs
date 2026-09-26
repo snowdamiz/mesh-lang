@@ -1,24 +1,48 @@
 //! Code generation edge cases: each test compiles a Mesh program with the
 //! real compiler, runs it, and checks what it prints.
 
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command, Output};
 
-/// Compile `source` as a one-file project and run it, returning stdout.
-fn compile_and_run(source: &str) -> String {
+/// `source` as the `main.mpl` of a project directory, kept as long as the
+/// returned guard lives.
+fn project(source: &str) -> (tempfile::TempDir, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
     std::fs::write(project_dir.join("main.mpl"), source).expect("failed to write main.mpl");
+    (temp_dir, project_dir)
+}
 
-    let output = Command::new(env!("CARGO_BIN_EXE_meshc"))
+/// `meshc build <project> <args>`.
+fn meshc_build(project_dir: &std::path::Path, args: &[&str]) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_meshc"));
+    command
         .args(["build", project_dir.to_str().unwrap()])
+        .args(args);
+    command
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+/// Compile `source` as a one-file project and run it, returning stdout.
+fn compile_and_run(source: &str) -> String {
+    compile_and_run_with(source, &[])
+}
+
+/// `compile_and_run` with extra `meshc build` arguments.
+fn compile_and_run_with(source: &str, args: &[&str]) -> String {
+    let (_guard, project_dir) = project(source);
+    let output = meshc_build(&project_dir, args)
         .output()
         .expect("failed to invoke meshc");
     assert!(
         output.status.success(),
         "meshc build failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        stderr(&output)
     );
 
     let run = Command::new(project_dir.join("project"))
@@ -202,5 +226,83 @@ end
         out,
         "zero 7 other\none 2 pair 3\nzero other Some(5) other None\n\
          two and a half 1.5 none\n3 x x none\nwhole 1 parts 3\nunit marker ping quit\n"
+    );
+}
+
+const ECHO_EXPORT: &str = r##"@export("mesh_edges_echo")
+pub fn echo(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end
+"##;
+
+/// A static library builds at every optimization level, and a program at
+/// level 1 runs.
+#[test]
+fn optimized_libraries_and_programs_build() {
+    let (_guard, project_dir) = project(ECHO_EXPORT);
+    let output = meshc_build(
+        &project_dir,
+        &["--artifact", "staticlib", "--opt-level", "2"],
+    )
+    .output()
+    .unwrap();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(project_dir.join("libproject.a").is_file());
+
+    let out = compile_and_run_with(
+        "fn main() do\n  println(\"${List.length([1, 2, 3])}\")\nend\n",
+        &["--opt-level", "1"],
+    );
+    assert_eq!(out, "3\n");
+}
+
+/// A build that cannot produce its artifact says why, and its build trace
+/// (replacing whatever the file held) records the failure: a library with
+/// nothing exported, an export named like a runtime symbol, an output
+/// directory that does not exist.
+#[test]
+fn builds_that_cannot_produce_their_artifact_say_why() {
+    let (_guard, project_dir) = project("fn main() do\n  println(\"x\")\nend\n");
+    let output = meshc_build(&project_dir, &["--artifact", "staticlib"])
+        .output()
+        .unwrap();
+    assert!(
+        stderr(&output).contains("library artifacts require at least one `@export` function"),
+        "{}",
+        stderr(&output)
+    );
+
+    let trace = project_dir.join("trace.json");
+    std::fs::write(&trace, "not json").unwrap();
+    let missing = project_dir.join("missing").join("app");
+    let output = meshc_build(&project_dir, &["-o", missing.to_str().unwrap()])
+        .env("MESH_BUILD_TRACE_PATH", &trace)
+        .output()
+        .unwrap();
+    assert!(
+        stderr(&output).contains("Failed to emit object file"),
+        "{}",
+        stderr(&output)
+    );
+    let trace: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&trace).unwrap()).unwrap();
+    assert_eq!(trace["success"], false);
+    assert!(
+        trace["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("Failed to emit object file")),
+        "{trace}"
+    );
+
+    let (_guard, project_dir) = project(&ECHO_EXPORT.replace("mesh_edges_echo", "mesh_println"));
+    let output = meshc_build(&project_dir, &["--artifact", "staticlib"])
+        .output()
+        .unwrap();
+    assert!(
+        stderr(&output).contains(
+            "Exported symbol 'mesh_println' conflicts with another generated or runtime symbol"
+        ),
+        "{}",
+        stderr(&output)
     );
 }

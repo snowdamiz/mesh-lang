@@ -65,23 +65,20 @@ pub(crate) mod build_trace {
         std::env::var_os(TRACE_ENV).map(PathBuf::from)
     }
 
+    /// The trace so far: empty when there is none or it is not a JSON object.
     fn read_trace(path: &Path) -> Map<String, Value> {
-        let Some(raw) = std::fs::read_to_string(path).ok() else {
-            return Map::new();
-        };
-        let Some(value) = serde_json::from_str::<Value>(&raw).ok() else {
-            return Map::new();
-        };
-        value.as_object().cloned().unwrap_or_default()
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default()
     }
 
     fn write_trace(path: &Path, doc: &Map<String, Value>) {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let Ok(rendered) = serde_json::to_string_pretty(doc) else {
-            return;
-        };
+        let rendered = serde_json::to_string_pretty(doc).expect("a JSON object always renders");
         let _ = std::fs::write(path, rendered);
     }
 
@@ -230,15 +227,17 @@ pub fn lower_to_mir_module(
 ) -> Result<mir::MirModule, String> {
     let empty_pub_fns = HashSet::new();
     let empty_inferred_fn_usage_types: HashMap<String, Vec<mesh_typeck::ty::Ty>> = HashMap::new();
-    let mut module = lower_to_mir(
+    lower_to_mir(
         parse,
         typeck,
         "",
         &empty_pub_fns,
         &empty_inferred_fn_usage_types,
-    )?;
-    monomorphize(&mut module);
-    Ok(module)
+    )
+    .map(|mut module| {
+        monomorphize(&mut module);
+        module
+    })
 }
 
 /// Lower one module of a project to MIR without monomorphization, which
@@ -322,10 +321,8 @@ pub fn compile_mir_to_binary(
         build_trace::set_stage("compile-llvm-module");
         codegen.compile(mir)?;
 
-        if opt_level > 0 {
-            build_trace::set_stage("run-optimization-passes");
-            codegen.run_optimization_passes(opt_level)?;
-        }
+        build_trace::set_stage("run-optimization-passes");
+        codegen.run_optimization_passes(opt_level)?;
 
         build_trace::mark_object_emission_started();
         codegen.emit_object(&obj_path)?;
@@ -335,16 +332,14 @@ pub fn compile_mir_to_binary(
         Ok(())
     })();
 
-    match result {
-        Ok(()) => {
-            build_trace::mark_success();
-            Ok(())
-        }
-        Err(error) => {
-            build_trace::record_error(&error);
-            Err(error)
-        }
-    }
+    finish_trace(result)
+}
+
+/// Record how the build ended in the build trace.
+fn finish_trace(result: Result<(), String>) -> Result<(), String> {
+    result
+        .inspect(|()| build_trace::mark_success())
+        .inspect_err(|error| build_trace::record_error(error))
 }
 
 pub fn compile_mir_to_library(
@@ -378,9 +373,7 @@ pub fn compile_mir_to_library(
         let mut library_mir = mir.clone();
         library_mir.entry_function = None;
         codegen.compile(&library_mir)?;
-        if opt_level > 0 {
-            codegen.run_optimization_passes(opt_level)?;
-        }
+        codegen.run_optimization_passes(opt_level)?;
         codegen.emit_object(&obj_path)?;
         match artifact {
             LibraryArtifact::Static => link::archive_with_plan(&obj_path, output, &link_plan),
@@ -388,16 +381,7 @@ pub fn compile_mir_to_library(
         }
     })();
 
-    match result {
-        Ok(()) => {
-            build_trace::mark_success();
-            Ok(())
-        }
-        Err(error) => {
-            build_trace::record_error(&error);
-            Err(error)
-        }
-    }
+    finish_trace(result)
 }
 
 /// Compile a pre-built MIR module to LLVM IR text.

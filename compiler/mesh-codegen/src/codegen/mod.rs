@@ -369,16 +369,8 @@ impl<'ctx> CodeGen<'ctx> {
         let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke");
 
         for export in exports {
-            let function = self
-                .functions
-                .get(&export.function)
-                .copied()
-                .ok_or_else(|| {
-                    format!(
-                        "Exported Mesh function '{}' was not lowered into the LLVM module",
-                        export.function
-                    )
-                })?;
+            // Type checking made the export a lowered, public function.
+            let function = self.functions[&export.function];
             if self.module.get_function(&export.symbol).is_some() {
                 return Err(format!(
                     "Exported symbol '{}' conflicts with another generated or runtime symbol",
@@ -456,10 +448,10 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Run LLVM optimization passes on the module.
+    /// Run LLVM optimization passes on the module (none at level 0).
     pub fn run_optimization_passes(&self, opt_level: u8) -> Result<(), String> {
         let passes = match opt_level {
-            0 => "default<O0>",
+            0 => return Ok(()),
             1 => "default<O1>",
             _ => "default<O2>",
         };
