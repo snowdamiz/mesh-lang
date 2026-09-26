@@ -240,16 +240,8 @@ pub(crate) fn broadcast_global_register(name: &str, pid: ProcessId, node_name: &
         None => return,
     };
 
-    // Build payload: [tag 0x1B][u16 name_len][name][u64 pid][u16 node_name_len][node_name]
-    let name_bytes = name.as_bytes();
-    let node_bytes = node_name.as_bytes();
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 8 + 2 + node_bytes.len());
-    payload.push(super::node::DIST_GLOBAL_REGISTER);
-    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(name_bytes);
-    payload.extend_from_slice(&pid.as_u64().to_le_bytes());
-    payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(node_bytes);
+    let mut payload = vec![super::node::DIST_GLOBAL_REGISTER];
+    encode_entry(&mut payload, name, pid, node_name);
 
     // Collect session references, then drop sessions lock before writing.
     let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
@@ -271,12 +263,8 @@ pub(crate) fn broadcast_global_unregister(name: &str) {
         None => return,
     };
 
-    // Build payload: [tag 0x1C][u16 name_len][name]
-    let name_bytes = name.as_bytes();
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len());
-    payload.push(super::node::DIST_GLOBAL_UNREGISTER);
-    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(name_bytes);
+    let mut payload = vec![super::node::DIST_GLOBAL_UNREGISTER];
+    encode_str(&mut payload, name);
 
     // Collect session references, then drop sessions lock before writing.
     let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
@@ -303,21 +291,59 @@ pub(crate) fn send_global_sync(session: &std::sync::Arc<super::node::NodeSession
     let registry = global_name_registry();
     let snapshot = registry.snapshot();
 
-    let mut payload = Vec::new();
-    payload.push(super::node::DIST_GLOBAL_SYNC);
+    let mut payload = vec![super::node::DIST_GLOBAL_SYNC];
     payload.extend_from_slice(&(snapshot.len() as u32).to_le_bytes());
-
     for (name, pid, node_name) in &snapshot {
-        let name_bytes = name.as_bytes();
-        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-        payload.extend_from_slice(name_bytes);
-        payload.extend_from_slice(&pid.as_u64().to_le_bytes());
-        let node_bytes = node_name.as_bytes();
-        payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
-        payload.extend_from_slice(node_bytes);
+        encode_entry(&mut payload, name, *pid, node_name);
     }
 
     let _ = session.send(super::node::OutboundClass::Snapshot, payload);
+}
+
+// ---------------------------------------------------------------------------
+// Wire format: a string is `[u16 len][bytes]`; a name's entry is its name,
+// `[u64 pid]` and its node's name.
+// ---------------------------------------------------------------------------
+
+fn encode_str(payload: &mut Vec<u8>, text: &str) {
+    payload.extend_from_slice(&(text.len() as u16).to_le_bytes());
+    payload.extend_from_slice(text.as_bytes());
+}
+
+fn encode_entry(payload: &mut Vec<u8>, name: &str, pid: ProcessId, node_name: &str) {
+    encode_str(payload, name);
+    payload.extend_from_slice(&pid.as_u64().to_le_bytes());
+    encode_str(payload, node_name);
+}
+
+/// The string at `bytes[*pos..]`, moving `pos` past it; `None` when it is
+/// cut short or not UTF-8.
+pub(crate) fn decode_str(bytes: &[u8], pos: &mut usize) -> Option<String> {
+    let len = u16::from_le_bytes(bytes.get(*pos..*pos + 2)?.try_into().ok()?) as usize;
+    let text = std::str::from_utf8(bytes.get(*pos + 2..*pos + 2 + len)?).ok()?;
+    *pos += 2 + len;
+    Some(text.to_string())
+}
+
+/// The entry at `bytes[*pos..]`, with its pid as the sender wrote it.
+pub(crate) fn decode_entry(bytes: &[u8], pos: &mut usize) -> Option<(String, u64, String)> {
+    let name = decode_str(bytes, pos)?;
+    let pid = u64::from_le_bytes(bytes.get(*pos..*pos + 8)?.try_into().ok()?);
+    *pos += 8;
+    Some((name, pid, decode_str(bytes, pos)?))
+}
+
+/// A `DIST_GLOBAL_SYNC` frame's entries, as many as decode. Its count is the
+/// peer's word; the frame's length is what bounds them.
+pub(crate) fn decode_sync(msg: &[u8]) -> Vec<(String, u64, String)> {
+    let Some(count) = msg.get(1..5) else {
+        return Vec::new();
+    };
+    let count = u32::from_le_bytes(count.try_into().unwrap());
+    let mut pos = 5;
+    (0..count)
+        .map_while(|_| decode_entry(msg, &mut pos))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -595,161 +621,34 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Wire format roundtrip tests
+    // Wire format
     // -----------------------------------------------------------------------
-    //
-    // These follow the in-memory Cursor pattern used by the node.rs wire tests.
-    // No network I/O, no NODE_STATE dependency -- pure encode/decode verification.
 
     #[test]
-    fn test_dist_global_register_wire_format() {
-        use super::super::node::DIST_GLOBAL_REGISTER;
-
-        let name = "my_service";
-        let pid = ProcessId(42);
-        let node_name = "node1@host";
-
-        // Encode: [tag][u16 name_len][name][u64 pid][u16 node_name_len][node_name]
-        let name_bytes = name.as_bytes();
-        let node_bytes = node_name.as_bytes();
-        let mut payload = Vec::new();
-        payload.push(DIST_GLOBAL_REGISTER);
-        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-        payload.extend_from_slice(name_bytes);
-        payload.extend_from_slice(&pid.as_u64().to_le_bytes());
-        payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
-        payload.extend_from_slice(node_bytes);
-
-        // Decode using the same logic as the reader loop handler.
-        let msg = &payload;
-        assert_eq!(msg[0], DIST_GLOBAL_REGISTER);
-
-        let decoded_name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(decoded_name_len, name.len());
-
-        let decoded_name = std::str::from_utf8(&msg[3..3 + decoded_name_len]).unwrap();
-        assert_eq!(decoded_name, name);
-
-        let decoded_pid = u64::from_le_bytes(
-            msg[3 + decoded_name_len..3 + decoded_name_len + 8]
-                .try_into()
-                .unwrap(),
+    fn entries_round_trip_and_stop_where_the_frame_ends() {
+        let mut payload = vec![super::super::node::DIST_GLOBAL_SYNC];
+        payload.extend_from_slice(&3u32.to_le_bytes());
+        encode_entry(&mut payload, "svc_alpha", ProcessId(100), "node_a@host");
+        encode_entry(&mut payload, "svc_beta", ProcessId(200), "node_b@host");
+        assert_eq!(
+            decode_sync(&payload),
+            [
+                ("svc_alpha".to_string(), 100, "node_a@host".to_string()),
+                ("svc_beta".to_string(), 200, "node_b@host".to_string()),
+            ],
+            "a third entry the count promised is not there"
         );
-        assert_eq!(decoded_pid, pid.as_u64());
+        // A count no frame could hold allocates nothing up front.
+        payload[1..5].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(decode_sync(&payload).len(), 2);
+        assert!(decode_sync(&payload[..3]).is_empty());
 
-        let node_name_len = u16::from_le_bytes(
-            msg[3 + decoded_name_len + 8..3 + decoded_name_len + 10]
-                .try_into()
-                .unwrap(),
-        ) as usize;
-        assert_eq!(node_name_len, node_name.len());
-
-        let decoded_node = std::str::from_utf8(
-            &msg[3 + decoded_name_len + 10..3 + decoded_name_len + 10 + node_name_len],
-        )
-        .unwrap();
-        assert_eq!(decoded_node, node_name);
-
-        // Verify total payload length matches expected.
-        assert_eq!(msg.len(), 1 + 2 + name.len() + 8 + 2 + node_name.len());
-    }
-
-    #[test]
-    fn test_dist_global_unregister_wire_format() {
-        use super::super::node::DIST_GLOBAL_UNREGISTER;
-
-        let name = "old_service";
-
-        // Encode: [tag][u16 name_len][name]
-        let name_bytes = name.as_bytes();
-        let mut payload = Vec::new();
-        payload.push(DIST_GLOBAL_UNREGISTER);
-        payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-        payload.extend_from_slice(name_bytes);
-
-        // Decode and verify.
-        let msg = &payload;
-        assert_eq!(msg[0], DIST_GLOBAL_UNREGISTER);
-
-        let decoded_name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(decoded_name_len, name.len());
-
-        let decoded_name = std::str::from_utf8(&msg[3..3 + decoded_name_len]).unwrap();
-        assert_eq!(decoded_name, name);
-
-        // Verify total payload length.
-        assert_eq!(msg.len(), 1 + 2 + name.len());
-    }
-
-    #[test]
-    fn test_dist_global_sync_wire_format() {
-        use super::super::node::DIST_GLOBAL_SYNC;
-
-        let entries = vec![
-            ("svc_alpha", ProcessId(100), "node_a@host"),
-            ("svc_beta", ProcessId(200), "node_b@host"),
-            ("svc_gamma", ProcessId(300), "node_a@host"),
-        ];
-
-        // Encode: [tag][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node)*]
-        let mut payload = Vec::new();
-        payload.push(DIST_GLOBAL_SYNC);
-        payload.extend_from_slice(&(entries.len() as u32).to_le_bytes());
-        for (name, pid, node_name) in &entries {
-            let name_bytes = name.as_bytes();
-            payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-            payload.extend_from_slice(name_bytes);
-            payload.extend_from_slice(&pid.as_u64().to_le_bytes());
-            let node_bytes = node_name.as_bytes();
-            payload.extend_from_slice(&(node_bytes.len() as u16).to_le_bytes());
-            payload.extend_from_slice(node_bytes);
-        }
-
-        // Decode using the same logic as the reader loop DIST_GLOBAL_SYNC handler.
-        let msg = &payload;
-        assert_eq!(msg[0], DIST_GLOBAL_SYNC);
-
-        let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
-        assert_eq!(count, entries.len());
-
-        let mut pos = 5;
-        for (expected_name, expected_pid, expected_node) in &entries {
-            let name_len = u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            let decoded_name = std::str::from_utf8(&msg[pos..pos + name_len]).unwrap();
-            assert_eq!(decoded_name, *expected_name);
-            pos += name_len;
-
-            let decoded_pid = u64::from_le_bytes(msg[pos..pos + 8].try_into().unwrap());
-            assert_eq!(decoded_pid, expected_pid.as_u64());
-            pos += 8;
-
-            let node_len = u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            let decoded_node = std::str::from_utf8(&msg[pos..pos + node_len]).unwrap();
-            assert_eq!(decoded_node, *expected_node);
-            pos += node_len;
-        }
-
-        // Should have consumed entire payload.
-        assert_eq!(pos, msg.len());
-    }
-
-    #[test]
-    fn test_dist_global_sync_empty() {
-        use super::super::node::DIST_GLOBAL_SYNC;
-
-        // Encode: [tag][u32 count=0]
-        let mut payload = Vec::new();
-        payload.push(DIST_GLOBAL_SYNC);
-        payload.extend_from_slice(&0u32.to_le_bytes());
-
-        // Decode and verify.
-        let msg = &payload;
-        assert_eq!(msg[0], DIST_GLOBAL_SYNC);
-
-        let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
-        assert_eq!(count, 0);
-        assert_eq!(msg.len(), 5); // tag + u32 count, no entries
+        let mut pos = 0;
+        let mut cut = Vec::new();
+        encode_entry(&mut cut, "name", ProcessId(1), "node");
+        assert_eq!(decode_entry(&cut[..cut.len() - 1], &mut pos), None);
+        let mut not_utf8 = vec![1, 0, 0xFF];
+        not_utf8.extend_from_slice(&[0; 10]);
+        assert_eq!(decode_str(&not_utf8, &mut 0), None);
     }
 }

@@ -2606,7 +2606,8 @@ pub(crate) fn decode_sync_payload(data: &[u8]) -> Result<ContinuitySnapshot, Str
     let next_attempt_token = u64::from_le_bytes(data[1..9].try_into().unwrap());
     let count = u32::from_le_bytes(data[9..13].try_into().unwrap()) as usize;
     let mut pos = 13;
-    let mut records = Vec::with_capacity(count);
+    // `count` is the peer's word: the frame bounds the records, not it.
+    let mut records = Vec::new();
     for _ in 0..count {
         if pos + 4 > data.len() {
             return Err("continuity sync payload truncated".to_string());
@@ -3303,6 +3304,17 @@ mod tests {
             cluster_role: ContinuityClusterRole::Primary,
             promotion_epoch: epoch,
         }
+    }
+
+    #[test]
+    fn a_sync_payload_counting_more_records_than_it_holds_is_truncated() {
+        let mut data = vec![super::super::node::DIST_CONTINUITY_SYNC];
+        data.extend_from_slice(&7u64.to_le_bytes());
+        data.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            decode_sync_payload(&data).err().as_deref(),
+            Some("continuity sync payload truncated")
+        );
     }
 
     #[test]

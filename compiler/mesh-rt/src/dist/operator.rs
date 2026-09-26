@@ -2164,7 +2164,8 @@ fn decode_continuity_list(payload: &[u8]) -> Result<OperatorContinuityList, Stri
     let total_records = decode_u32(payload, &mut pos)? as usize;
     let truncated = decode_bool(payload, &mut pos)?;
     let count = decode_u32(payload, &mut pos)? as usize;
-    let mut records = Vec::with_capacity(count);
+    // Counts are the sender's word: the payload bounds what they allocate.
+    let mut records = Vec::new();
     for _ in 0..count {
         let record_len = decode_u32(payload, &mut pos)? as usize;
         if pos + record_len > payload.len() {
@@ -2215,7 +2216,7 @@ fn decode_diagnostics_snapshot(payload: &[u8]) -> Result<OperatorDiagnosticsSnap
     let buffer_capacity = decode_u32(payload, &mut pos)? as usize;
     let truncated = decode_bool(payload, &mut pos)?;
     let count = decode_u32(payload, &mut pos)? as usize;
-    let mut entries = Vec::with_capacity(count);
+    let mut entries = Vec::new();
     for _ in 0..count {
         entries.push(decode_diagnostic_entry(payload, &mut pos)?);
     }
@@ -2275,7 +2276,7 @@ fn decode_diagnostic_entry(
     let replica_status = decode_optional_string(payload, pos)?;
     let reason = decode_optional_string(payload, pos)?;
     let metadata_count = decode_u32(payload, pos)? as usize;
-    let mut metadata = Vec::with_capacity(metadata_count);
+    let mut metadata = Vec::new();
     for _ in 0..metadata_count {
         let key = decode_string(payload, pos)?;
         let value = decode_string(payload, pos)?;
@@ -2330,7 +2331,7 @@ fn encode_string_list(payload: &mut Vec<u8>, values: &[String]) -> Result<(), St
 
 fn decode_string_list(payload: &[u8], pos: &mut usize) -> Result<Vec<String>, String> {
     let count = decode_u32(payload, pos)? as usize;
-    let mut values = Vec::with_capacity(count);
+    let mut values = Vec::new();
     for _ in 0..count {
         values.push(decode_string(payload, pos)?);
     }
@@ -2443,6 +2444,26 @@ fn u32_from_usize(value: usize, label: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A count is the sender's word: one no payload could hold is a
+    /// truncation, not an allocation of that size.
+    #[test]
+    fn counts_beyond_the_payload_are_truncations() {
+        let impossible = u32::MAX.to_le_bytes();
+        let mut list = 0u32.to_le_bytes().to_vec();
+        list.push(0);
+        list.extend_from_slice(&impossible);
+        assert!(decode_continuity_list(&list).is_err());
+
+        let mut snapshot = 0u32.to_le_bytes().to_vec();
+        snapshot.extend_from_slice(&0u64.to_le_bytes());
+        snapshot.extend_from_slice(&0u32.to_le_bytes());
+        snapshot.push(0);
+        snapshot.extend_from_slice(&impossible);
+        assert!(decode_diagnostics_snapshot(&snapshot).is_err());
+
+        assert!(decode_string_list(&impossible, &mut 0).is_err());
+    }
 
     static OPERATOR_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

@@ -2339,100 +2339,29 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         }
                     }
                     DIST_GLOBAL_REGISTER => {
-                        // Wire format: [tag][u16 name_len][name][u64 pid][u16 node_name_len][node_name]
-                        if msg.len() >= 3 {
-                            let name_len =
-                                u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-                            if msg.len() >= 3 + name_len + 8 + 2 {
-                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
-                                    let pid_raw = u64::from_le_bytes(
-                                        msg[3 + name_len..3 + name_len + 8].try_into().unwrap(),
-                                    );
-                                    let node_name_len = u16::from_le_bytes(
-                                        msg[3 + name_len + 8..3 + name_len + 10]
-                                            .try_into()
-                                            .unwrap(),
-                                    )
-                                        as usize;
-                                    if msg.len() >= 3 + name_len + 10 + node_name_len {
-                                        if let Ok(node_name) = std::str::from_utf8(
-                                            &msg[3 + name_len + 10
-                                                ..3 + name_len + 10 + node_name_len],
-                                        ) {
-                                            // Reconstruct the PID for our local view.
-                                            // If the PID has node_id=0 (local to sender), replace
-                                            // with this session's node_id so it routes correctly.
-                                            let pid = session.peer_pid(pid_raw);
-                                            let _ = crate::dist::global::global_name_registry()
-                                                .register(
-                                                    name.to_string(),
-                                                    pid,
-                                                    node_name.to_string(),
-                                                );
-                                            // Silently drop errors (name conflict).
-                                        }
-                                    }
-                                }
-                            }
+                        if let Some((name, pid, node_name)) =
+                            crate::dist::global::decode_entry(&msg, &mut 1)
+                        {
+                            // A name already taken stays with its holder.
+                            let _ = crate::dist::global::global_name_registry().register(
+                                name,
+                                session.peer_pid(pid),
+                                node_name,
+                            );
                         }
                     }
                     DIST_GLOBAL_UNREGISTER => {
-                        // Wire format: [tag][u16 name_len][name]
-                        if msg.len() >= 3 {
-                            let name_len =
-                                u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-                            if msg.len() >= 3 + name_len {
-                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
-                                    crate::dist::global::global_name_registry().unregister(name);
-                                }
-                            }
+                        if let Some(name) = crate::dist::global::decode_str(&msg, &mut 1) {
+                            crate::dist::global::global_name_registry().unregister(&name);
                         }
                     }
                     DIST_GLOBAL_SYNC => {
-                        // Wire format: [tag][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node)*]
-                        if msg.len() >= 5 {
-                            let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
-                            let mut pos = 5;
-                            let mut entries = Vec::with_capacity(count);
-                            for _ in 0..count {
-                                if pos + 2 > msg.len() {
-                                    break;
-                                }
-                                let name_len =
-                                    u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap())
-                                        as usize;
-                                pos += 2;
-                                if pos + name_len + 8 + 2 > msg.len() {
-                                    break;
-                                }
-                                let name = match std::str::from_utf8(&msg[pos..pos + name_len]) {
-                                    Ok(s) => s,
-                                    Err(_) => break,
-                                };
-                                pos += name_len;
-                                let pid_raw =
-                                    u64::from_le_bytes(msg[pos..pos + 8].try_into().unwrap());
-                                pos += 8;
-                                let node_len =
-                                    u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap())
-                                        as usize;
-                                pos += 2;
-                                if pos + node_len > msg.len() {
-                                    break;
-                                }
-                                let node_name = match std::str::from_utf8(&msg[pos..pos + node_len])
-                                {
-                                    Ok(s) => s,
-                                    Err(_) => break,
-                                };
-                                pos += node_len;
-
-                                let pid = session.peer_pid(pid_raw);
-                                entries.push((name.to_string(), pid, node_name.to_string()));
-                            }
-                            crate::dist::global::global_name_registry().merge_snapshot(entries);
-                            session.global_names_received.store(true, Ordering::Release);
-                        }
+                        let entries = crate::dist::global::decode_sync(&msg)
+                            .into_iter()
+                            .map(|(name, pid, node_name)| (name, session.peer_pid(pid), node_name))
+                            .collect();
+                        crate::dist::global::global_name_registry().merge_snapshot(entries);
+                        session.global_names_received.store(true, Ordering::Release);
                     }
                     DIST_CONTINUITY_UPSERT => {
                         match crate::dist::continuity::decode_upsert_payload(&msg) {
