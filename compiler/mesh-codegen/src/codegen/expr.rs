@@ -292,11 +292,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Step 2: Store all evaluated values into parameter allocas.
                 for (slot, value) in self.tce_param_slots.clone().into_iter().zip(new_vals) {
-                    if let Some(slot) = slot {
-                        self.builder
-                            .build_store(slot, value)
-                            .map_err(|e| e.to_string())?;
-                    }
+                    self.builder
+                        .build_store(slot, value)
+                        .map_err(|e| e.to_string())?;
                 }
 
                 // Step 3: Emit reduction check for preemptive scheduling.
@@ -1527,18 +1525,17 @@ impl<'ctx> CodeGen<'ctx> {
         // The callee's own parameter types decide the representation each
         // argument is passed in (a runtime `Option` box becomes the by-value
         // `{ i8, ptr }` a Mesh function receives).
-        let declared_params = match closure.ty() {
-            MirType::Closure(params, _) | MirType::FnPtr(params, _)
-                if params.len() == args.len() =>
-            {
-                Some(params.clone())
-            }
-            _ => None,
+        let (MirType::Closure(declared_params, _) | MirType::FnPtr(declared_params, _)) =
+            closure.ty()
+        else {
+            return Err(format!("calling a value of type {:?}", closure.ty()));
         };
-        for (index, arg) in args.iter().enumerate() {
-            let param_ty = declared_params
-                .as_ref()
-                .map_or_else(|| arg.ty().clone(), |params| params[index].clone());
+        debug_assert_eq!(
+            declared_params.len(),
+            args.len(),
+            "type checking checks arity"
+        );
+        for (arg, param_ty) in args.iter().zip(declared_params.clone()) {
             let expected = self.llvm_type(&param_ty);
             let val = self.codegen_expr(arg)?;
             let val = if val.get_type() != expected {
@@ -1604,13 +1601,11 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(self.context.struct_type(&[], false).const_zero().into());
         }
 
-        let (bare_val, closure_val) = match (
-            bare_call.try_as_basic_value().basic(),
-            closure_call.try_as_basic_value().basic(),
-        ) {
-            (Some(bare_val), Some(closure_val)) => (bare_val, closure_val),
-            _ => return Err("Closure call returned void".to_string()),
-        };
+        let (bare_val, closure_val) = bare_call
+            .try_as_basic_value()
+            .basic()
+            .zip(closure_call.try_as_basic_value().basic())
+            .ok_or("Closure call returned void")?;
         // The phi has to lead its block, so the reduction check follows it.
         let result = self
             .builder
@@ -2379,29 +2374,14 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn codegen_return(&mut self, inner: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
         let val = self.codegen_expr(inner)?;
-
-        // When the inner expression produces a pointer but the function returns
-        // a struct type (e.g., Result's { i8, ptr }), load the struct value
-        // from the pointer before the return instruction. This handles cases
-        // where variant construction or other codegen paths return a pointer
-        // instead of the value itself.
-        let fn_val = self.current_function();
-        let ret_ty = fn_val.get_type().get_return_type();
-        let return_val = if val.is_pointer_value() {
-            if let Some(ret_ty) = ret_ty {
-                if ret_ty.is_struct_type() {
-                    self.builder
-                        .build_load(ret_ty, val.into_pointer_value(), "ret_load")
-                        .map_err(|e| e.to_string())?
-                } else {
-                    val
-                }
-            } else {
-                val
-            }
-        } else {
-            val
-        };
+        // The value in the function's own return representation, as a
+        // function's last expression is (`compile_function`).
+        let ret_ty = self
+            .current_function()
+            .get_type()
+            .get_return_type()
+            .expect("a Mesh function returns a value");
+        let return_val = self.coerce_value_to_type(val, ret_ty)?;
 
         self.builder
             .build_return(Some(&return_val))
@@ -2424,18 +2404,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Get function pointer for the actor entry function: by name, since a
         // function evaluated as a value is a closure.
-        let fn_ptr_val = match self.fn_item_arg(func) {
-            Some(fn_ptr) => fn_ptr.into(),
-            None => self.codegen_expr(func)?,
-        };
-        let fn_ptr = if fn_ptr_val.is_pointer_value() {
-            fn_ptr_val.into_pointer_value()
-        } else {
-            // Cast to pointer if needed
-            self.builder
-                .build_int_to_ptr(fn_ptr_val.into_int_value(), ptr_ty, "fn_ptr")
-                .map_err(|e| e.to_string())?
-        };
+        let fn_ptr = self
+            .fn_item_arg(func)
+            .ok_or("an actor is spawned by its function's name")?;
 
         // Serialize arguments into a buffer of 8-byte slots, which is how the
         // actor wrapper reads them back. An aggregate that fits a word travels
@@ -2522,14 +2493,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // If terminate callback exists, call mesh_actor_set_terminate(pid, callback_fn_ptr)
         if let Some(cb_expr) = terminate_callback {
-            let cb_val = self.codegen_expr(cb_expr)?;
-            let cb_ptr = if cb_val.is_pointer_value() {
-                cb_val.into_pointer_value()
-            } else {
-                self.builder
-                    .build_int_to_ptr(cb_val.into_int_value(), ptr_ty, "cb_ptr")
-                    .map_err(|e| e.to_string())?
-            };
+            // The callback is a function, called by its bare pointer.
+            let cb_ptr = self.codegen_expr(cb_expr)?.into_pointer_value();
             let set_terminate_fn = get_intrinsic(&self.module, "mesh_actor_set_terminate");
             self.builder
                 .build_call(set_terminate_fn, &[pid_val.into(), cb_ptr.into()], "")

@@ -122,7 +122,7 @@ pub struct CodeGen<'ctx> {
     /// order, which a TailCall stores its arguments into. Taken at entry, not
     /// looked up by name at the call: a `let` shadowing a parameter took the
     /// new value, and the loop read the parameter unchanged.
-    pub(crate) tce_param_slots: Vec<Option<PointerValue<'ctx>>>,
+    pub(crate) tce_param_slots: Vec<PointerValue<'ctx>>,
 }
 
 /// Whether a variant field of type `ty` can be laid out yet: a sum type held
@@ -740,7 +740,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.tce_param_slots = func
                 .params
                 .iter()
-                .map(|(name, _)| self.locals.get(name).copied())
+                .map(|(name, _)| self.locals[name])
                 .collect();
         }
 
