@@ -304,6 +304,50 @@ end
     );
 }
 
+// ── Error recovery ─────────────────────────────────────────────────────
+
+/// An expression given up on midway does not leave the checker inside it:
+/// after a loop whose filter, pattern or condition failed, `break` and
+/// `continue` were taken for inside the loop and the loop's names stayed
+/// bound.
+#[test]
+fn a_failed_loop_is_left_behind() {
+    assert_eq!(
+        errors(
+            r#"
+fn filtered(xs :: List<Int>) do
+  let r = for x in xs when nope(x) do
+    x
+  end
+  break
+end
+
+fn destructured(xs :: List<Int>) do
+  let r = for (a, b) in xs do
+    a
+  end
+  a
+end
+
+fn condition(n :: Int) do
+  while nope() do
+    1
+  end
+  continue
+end
+"#
+        ),
+        [
+            "undefined variable `nope`",
+            "`break` outside of loop",
+            "type mismatch: expected `(_, _)`, found `Int`",
+            "undefined variable `a`",
+            "undefined variable `nope`",
+            "`continue` outside of loop",
+        ]
+    );
+}
+
 // ── The `?` operator ───────────────────────────────────────────────────
 
 /// `?` on an Option returns its `None` early from a function returning an

@@ -4576,8 +4576,12 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // function, top-level `let`, actor or service comes after those it names
     // further down (see `dependency_order`, which gives each multi-clause
     // function once).
+    // Each starts at the module's own nesting, however the one before it
+    // failed (see `InferCtx::nesting`).
     let mut child_types: Vec<Option<Ty>> = vec![None; children_ordered.len()];
+    let module_nesting = ctx.nesting(&env);
     for child in dependency_order(&children_ordered, &item_idx_to_grouped, &grouped) {
+        ctx.restore(&mut env, module_nesting);
         child_types[child] = match &children_ordered[child].1 {
             ChildKind::ItemIndex(item) => match &grouped[item_idx_to_grouped[item]] {
                 GroupedItem::Single(item) => infer_item(
@@ -8849,6 +8853,7 @@ fn infer_expr(
     // Constraints without a more specific origin are reported at the
     // innermost expression being inferred.
     ctx.expr_spans.push(expr.syntax().text_range());
+    let nesting = ctx.nesting(env);
     let result = infer_expr_here(
         ctx,
         env,
@@ -8858,6 +8863,12 @@ fn infer_expr(
         trait_registry,
         fn_constraints,
     );
+    // An expression given up on midway leaves what it entered: a loop
+    // (`break` after it was taken for inside one), a scope (its bindings
+    // stayed visible), a `let` level.
+    if result.is_err() {
+        ctx.restore(env, nesting);
+    }
     ctx.expr_spans.pop();
     result
 }
@@ -11713,7 +11724,8 @@ fn infer_block(
                 reject_nested_definition(ctx, &item);
                 continue;
             };
-            let _ = infer_let_binding(
+            let nesting = ctx.nesting(env);
+            if infer_let_binding(
                 ctx,
                 env,
                 &let_,
@@ -11721,7 +11733,11 @@ fn infer_block(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            );
+            )
+            .is_err()
+            {
+                ctx.restore(env, nesting);
+            }
         } else if let Some(expr) = Expr::cast(child.clone()) {
             // An expression reported already has no known type, neither
             // the previous statement's nor unit.

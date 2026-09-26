@@ -8,6 +8,7 @@ use ena::unify::InPlaceUnificationTable;
 use rowan::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::env::TypeEnv;
 use crate::error::{ConstraintOrigin, TypeError};
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::{ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata};
@@ -67,6 +68,15 @@ fn first_of(ty: &Ty, vars: &[TyVar]) -> Option<TyVar> {
         Ty::Var(var) => vars.contains(var).then_some(*var),
         _ => ty.parts().find_map(|part| first_of(part, vars)),
     }
+}
+
+/// Where the checker is nested (see `InferCtx::nesting`).
+#[derive(Clone, Copy)]
+pub struct Nesting {
+    level: u32,
+    loop_depth: u32,
+    returns: usize,
+    scopes: usize,
 }
 
 /// The inference context -- owns the unification table, level state, and errors.
@@ -692,6 +702,28 @@ impl InferCtx {
     }
 
     // ── Level Management ────────────────────────────────────────────────
+
+    /// How deep the checker is nested (let levels, loops, function bodies)
+    /// and how many scopes `env` has. An error abandons an expression or a
+    /// definition midway, past the ends of what it entered; `restore` goes
+    /// back to where it was before.
+    pub fn nesting(&self, env: &TypeEnv) -> Nesting {
+        Nesting {
+            level: self.current_level,
+            loop_depth: self.loop_depth,
+            returns: self.fn_return_type_stack.len(),
+            scopes: env.depth(),
+        }
+    }
+
+    /// Go back to a `nesting` taken before an error.
+    pub fn restore(&mut self, env: &mut TypeEnv, nesting: Nesting) {
+        self.current_level = nesting.level;
+        self.loop_depth = nesting.loop_depth;
+        self.fn_return_type_stack.truncate(nesting.returns);
+        self.fn_returned_types.truncate(nesting.returns);
+        env.truncate(nesting.scopes);
+    }
 
     /// Enter a new let-binding level (increases nesting depth).
     pub fn enter_level(&mut self) {

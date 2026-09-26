@@ -98,6 +98,11 @@ impl TypeEnv {
     pub fn depth(&self) -> usize {
         self.scopes.len()
     }
+
+    /// Pop the scopes above the first `depth`.
+    pub fn truncate(&mut self, depth: usize) {
+        self.scopes.truncate(depth);
+    }
 }
 
 impl Default for TypeEnv {
