@@ -1397,6 +1397,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| "Function call returned void".to_string())?;
                 return match result {
                     BasicValueEnum::IntValue(word) => self.runtime_word_as(name, word, ty),
+                    // A scalar handed back as a pointer-sized word
+                    // (`Changeset.valid`'s Bool) is that word.
+                    BasicValueEnum::PointerValue(word)
+                        if matches!(
+                            ty,
+                            MirType::Int | MirType::Bool | MirType::Float | MirType::Pid(_)
+                        ) =>
+                    {
+                        let word = self
+                            .builder
+                            .build_ptr_to_int(word, self.context.i64_type(), "word")
+                            .map_err(|e| e.to_string())?;
+                        self.runtime_word_as(name, word, ty)
+                    }
                     other => Ok(other),
                 };
             }

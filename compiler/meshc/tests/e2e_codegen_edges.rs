@@ -1475,3 +1475,28 @@ end
         "[3.0, 5.0] [false] [] [] [] [] [] [b2]\nk v 100 20 0\n"
     );
 }
+
+/// A runtime function that hands back a Bool as a pointer-sized word
+/// (`Changeset.valid`) is read as that word. Used as a condition it
+/// crashed the build, and bound by a `let` it was stored whole into the
+/// Bool's one-byte slot, overwriting the locals beside it.
+#[test]
+fn runtime_booleans_returned_as_words_read_as_booleans() {
+    let output = compile_and_run(
+        r##"import Changeset
+
+fn main() do
+  let cs = Changeset.cast(%{}, %{"name" => ""}, [:name])
+    |> Changeset.validate_required([:name])
+  if Changeset.valid(cs) do
+    println("valid")
+  else
+    println("invalid")
+  end
+  let ok = Changeset.valid(cs)
+  println("#{ok} #{not Changeset.valid(cs)} #{Changeset.get_error(cs, :name)}")
+end
+"##,
+    );
+    assert_eq!(output, "invalid\nfalse true can't be blank\n");
+}
