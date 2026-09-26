@@ -500,3 +500,61 @@ end
         "alpha 2 2 big\nmissing no b\ncode -3\nmissing small\nfound 1\n"
     );
 }
+
+/// `Type.from` and `Type.try_from` named as values (not called) go to the
+/// impl converting the value's parameter type. The first `From` impl found
+/// in a hash map was taken, so a `Fun(String) -> Wrapper` doubled a string's
+/// address as if it were an `Int`.
+#[test]
+fn conversions_named_as_values_use_the_impl_for_their_type() {
+    let out = compile_and_run(
+        r##"struct Wrapper do
+  value :: Int
+end
+
+impl From<Int> for Wrapper do
+  fn from(n :: Int) -> Wrapper do
+    Wrapper { value: n * 2 }
+  end
+end
+
+impl From<String> for Wrapper do
+  fn from(s :: String) -> Wrapper do
+    Wrapper { value: String.length(s) }
+  end
+end
+
+struct Even do
+  n :: Int
+end
+
+impl TryFrom<Int> for Even do
+  fn try_from(n :: Int) -> Result<Even, String> do
+    if n % 2 == 0 do
+      Ok(Even { n: n })
+    else
+      Err("odd")
+    end
+  end
+end
+
+fn show(r :: Result<Even, String>) -> String do
+  case r do
+    Ok(e) -> "even ${e.n}"
+    Err(m) -> m
+  end
+end
+
+fn main() do
+  let f :: Fun(Int) -> Wrapper = Wrapper.from
+  let g :: Fun(String) -> Wrapper = Wrapper.from
+  println("${f(21).value} ${g("abc").value}")
+  let ws = List.map(["ab", "cde"], Wrapper.from)
+  println("${List.map(ws, fn(w) -> w.value end)}")
+  let h = Even.try_from
+  println("${show(h(4))} ${show(h(5))}")
+end
+"##,
+    );
+    assert_eq!(out, "42 3\n[2, 3]\neven 4 odd\n");
+}

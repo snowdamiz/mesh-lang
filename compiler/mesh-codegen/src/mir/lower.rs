@@ -122,6 +122,15 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
     (trait_name, trait_type_args, type_name)
 }
 
+/// A trait's type argument as the impl's mangled name spells it: a named
+/// type by its bare name.
+fn trait_arg_name(ty: &Ty) -> String {
+    match ty {
+        Ty::Con(tc) => tc.name.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// The runtime function a built-in impl's method is (`Hash__hash__Int` is
 /// `mesh_hash_int`), else `mangled` itself.
 fn builtin_trait_redirect(mangled: String) -> String {
@@ -8581,10 +8590,6 @@ impl<'a> Lowerer<'a> {
     /// (`From`, `TryFrom`, derived Json and Row decoding) have their own
     /// lowering, which picks by argument and wraps the decoders.
     fn static_impl_method(&self, method: &str, ty: &Ty) -> Option<String> {
-        let name_of = |ty: &Ty| match ty {
-            Ty::Con(tc) => tc.name.clone(),
-            other => format!("{other}"),
-        };
         let impls: Vec<_> = self
             .trait_registry
             .impls_providing(method, ty)
@@ -8602,9 +8607,50 @@ impl<'a> Lowerer<'a> {
             return None;
         }
         impls.into_iter().next().map(|(imp, _)| {
-            let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
+            let args: Vec<String> = imp.trait_type_args.iter().map(trait_arg_name).collect();
             mangle_trait_method(&imp.trait_name, &args, method, &imp.impl_type_name)
         })
+    }
+
+    /// The function of `type_name`'s `trait_name` (`From` or `TryFrom`)
+    /// impl that converts a `source`: `Meters.from(5)`, with `From<Int>` and
+    /// `From<String>`, is `From_Int__from__Meters`.
+    fn conversion_fn(
+        &self,
+        trait_name: &str,
+        method: &str,
+        type_name: &str,
+        source: Option<&Ty>,
+    ) -> String {
+        let key = |ty: &Ty| match ty {
+            Ty::App(con, args) if args.is_empty() => format!("{con}"),
+            other => format!("{other}"),
+        };
+        let target = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
+        let impls: Vec<_> = self
+            .trait_registry
+            .impls_providing(method, &target)
+            .into_iter()
+            .map(|(imp, _)| imp)
+            .filter(|imp| imp.trait_name == trait_name)
+            .collect();
+        let chosen = source
+            .and_then(|source| {
+                impls.iter().find(|imp| {
+                    imp.trait_type_args
+                        .first()
+                        .is_some_and(|arg| key(arg) == key(source))
+                })
+            })
+            .or(impls.first());
+        match chosen {
+            Some(imp) => {
+                let type_args: Vec<String> =
+                    imp.trait_type_args.iter().map(trait_arg_name).collect();
+                mangle_trait_method(trait_name, &type_args, method, &imp.impl_type_name)
+            }
+            None => format!("{trait_name}__{method}__{type_name}"),
+        }
     }
 
     /// How a call of `fa` (`Base.method(...)`) is lowered when its base
@@ -8689,10 +8735,6 @@ impl<'a> Lowerer<'a> {
     ) -> MirExpr {
         let ty = self.resolve_range(call_range);
         let is_method = matches!(route, QualifiedRoute::Interface(..));
-        let name_of = |ty: &Ty| match ty {
-            Ty::Con(tc) => tc.name.clone(),
-            other => format!("{other}"),
-        };
         let callee = match route {
             QualifiedRoute::TypeMethod(method) => {
                 let mut args = args.into_iter();
@@ -8706,39 +8748,9 @@ impl<'a> Lowerer<'a> {
                 );
             }
             QualifiedRoute::Static(callee) => callee,
+            // The argument's type picks the impl.
             QualifiedRoute::Conversion(trait_name, method, type_name) => {
-                // The argument's type picks the impl: `Meters.from(5)`
-                // with `From<Int>` and `From<String>`.
-                let key = |ty: &Ty| match ty {
-                    Ty::App(con, args) if args.is_empty() => format!("{con}"),
-                    other => format!("{other}"),
-                };
-                let target = Ty::Con(mesh_typeck::ty::TyCon::new(&type_name));
-                let impls: Vec<_> = self
-                    .trait_registry
-                    .impls_providing(&method, &target)
-                    .into_iter()
-                    .map(|(imp, _)| imp)
-                    .filter(|imp| imp.trait_name == trait_name)
-                    .collect();
-                let chosen = first_ty
-                    .as_ref()
-                    .and_then(|source| {
-                        impls.iter().find(|imp| {
-                            imp.trait_type_args
-                                .first()
-                                .is_some_and(|arg| key(arg) == key(source))
-                        })
-                    })
-                    .or(impls.first());
-                match chosen {
-                    Some(imp) => {
-                        let type_args: Vec<String> =
-                            imp.trait_type_args.iter().map(name_of).collect();
-                        mangle_trait_method(&trait_name, &type_args, &method, &imp.impl_type_name)
-                    }
-                    None => format!("{trait_name}__{method}__{type_name}"),
-                }
+                self.conversion_fn(&trait_name, &method, &type_name, first_ty.as_ref())
             }
             QualifiedRoute::Interface(trait_name, method) => first_ty
                 .and_then(|receiver| {
@@ -8748,7 +8760,7 @@ impl<'a> Lowerer<'a> {
                         .find(|(imp, _)| imp.trait_name == trait_name)
                         .map(|(imp, _)| {
                             let type_args: Vec<String> =
-                                imp.trait_type_args.iter().map(name_of).collect();
+                                imp.trait_type_args.iter().map(trait_arg_name).collect();
                             mangle_trait_method(
                                 &trait_name,
                                 &type_args,
@@ -9675,14 +9687,8 @@ impl<'a> Lowerer<'a> {
                 let impls = self.trait_registry.impls_with_static_method(name);
                 match impls.as_slice() {
                     [imp] => {
-                        let trait_args: Vec<String> = imp
-                            .trait_type_args
-                            .iter()
-                            .map(|ty| match ty {
-                                Ty::Con(tc) => tc.name.clone(),
-                                other => format!("{other}"),
-                            })
-                            .collect();
+                        let trait_args: Vec<String> =
+                            imp.trait_type_args.iter().map(trait_arg_name).collect();
                         let mangled = mangle_trait_method(
                             &imp.trait_name,
                             &trait_args,
@@ -10272,40 +10278,25 @@ impl<'a> Lowerer<'a> {
                     }
                 }
 
-                // Check if this is StructName.from (From trait method, Phase 77).
-                // Look up mangled From_X__from__StructName in known_functions.
+                // `Type.from` and `Type.try_from` as values: the impl is the
+                // one converting the function type's parameter.
                 if self.registry.struct_defs.contains_key(&base_name)
                     || self.registry.sum_type_defs.contains_key(&base_name)
                 {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    if field == "from" {
-                        // Find the From impl function by scanning known_functions
-                        // for any key matching From_*__from__{base_name}.
-                        let suffix = format!("__from__{}", base_name);
-                        for (fn_name, fn_ty) in self.known_functions.iter() {
-                            if fn_name.starts_with("From_") && fn_name.ends_with(&suffix) {
-                                return MirExpr::Var(fn_name.clone(), fn_ty.clone());
-                            }
-                        }
-                        // Fallback: try unparameterized name.
-                        let unparameterized = format!("From__from__{}", base_name);
-                        if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
-                            return MirExpr::Var(unparameterized, fn_ty);
-                        }
-                    }
-                    // Phase 128: StructName.try_from() dispatch (TryFrom trait).
-                    // Mirrors the From.from() pattern above.
-                    if field == "try_from" {
-                        let suffix = format!("__try_from__{}", base_name);
-                        for (fn_name, fn_ty) in self.known_functions.iter() {
-                            if fn_name.starts_with("TryFrom_") && fn_name.ends_with(&suffix) {
-                                return MirExpr::Var(fn_name.clone(), fn_ty.clone());
-                            }
-                        }
-                        // Fallback: unparameterized name.
-                        let unparameterized = format!("TryFrom__try_from__{}", base_name);
-                        if let Some(fn_ty) = self.known_functions.get(&unparameterized).cloned() {
-                            return MirExpr::Var(unparameterized, fn_ty);
+                    let conversion = match field.as_str() {
+                        "from" => Some("From"),
+                        "try_from" => Some("TryFrom"),
+                        _ => None,
+                    };
+                    if let Some(trait_name) = conversion {
+                        let source = match self.get_ty(fa.syntax().text_range()) {
+                            Some(Ty::Fun(params, _)) => params.first().cloned(),
+                            _ => None,
+                        };
+                        let name =
+                            self.conversion_fn(trait_name, &field, &base_name, source.as_ref());
+                        if let Some(fn_ty) = self.known_functions.get(&name).cloned() {
+                            return MirExpr::Var(name, fn_ty);
                         }
                     }
                 }
