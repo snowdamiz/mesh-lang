@@ -1157,246 +1157,148 @@ fn parse_command_tag(tag: &str) -> i64 {
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
 pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
-    unsafe {
-        let url_str = mesh_str_to_rust(url);
-        let pg_url = match parse_pg_url(url_str) {
-            Ok(u) => u,
-            Err(e) => return err_result(&e),
-        };
-
-        // Resolve address and connect with timeout
-        let addr_str = format!("{}:{}", pg_url.host, pg_url.port);
-        let addr: SocketAddr = match addr_str.to_socket_addrs() {
-            Ok(mut addrs) => match addrs.next() {
-                Some(a) => a,
-                None => return err_result("could not resolve host"),
-            },
-            Err(e) => return err_result(&format!("DNS resolution failed: {}", e)),
-        };
-
-        let stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(10)) {
-            Ok(s) => s,
-            Err(e) => return err_result(&format!("connection failed: {}", e)),
-        };
-
-        // Set read/write timeouts BEFORE TLS wrapping (StreamOwned inherits them)
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
-        let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-
-        // Negotiate TLS based on sslmode
-        let mut stream = match negotiate_tls(stream, &pg_url.host, pg_url.sslmode) {
-            Ok(s) => s,
-            Err(e) => return err_result(&format!("TLS: {}", e)),
-        };
-
-        // Send StartupMessage
-        let mut buf = Vec::new();
-        write_startup_message(&mut buf, &pg_url.user, &pg_url.database);
-        if let Err(e) = stream.write_all(&buf) {
-            return err_result(&format!("send startup: {}", e));
+    match connect(unsafe { mesh_str_to_rust(url) }) {
+        // Result payloads with integer semantics are represented by pointers
+        // to boxed integers, as SQLite's handles are.
+        Ok(conn) => {
+            let handle = Box::into_raw(Box::new(conn)) as u64;
+            alloc_result(0, crate::io::box_scalar(handle)) as *mut u8
         }
-
-        // Read authentication response
-        let (tag, body) = match read_message(&mut stream) {
-            Ok(m) => m,
-            Err(e) => return err_result(&format!("read auth: {}", e)),
-        };
-
-        if tag != b'R' {
-            if tag == b'E' {
-                return err_result(&parse_error_response(&body));
-            }
-            return err_result(&format!("expected auth message, got '{}'", tag as char));
-        }
-
-        if body.len() < 4 {
-            return err_result("auth message too short");
-        }
-
-        let auth_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-
-        match auth_type {
-            0 => {
-                // AuthenticationOk -- no auth needed
-            }
-            5 => {
-                // MD5Password -- body[4..8] is the 4-byte salt
-                if body.len() < 8 {
-                    return err_result("MD5 auth: missing salt");
-                }
-                let salt = &body[4..8];
-                let md5_pass = compute_md5_password(&pg_url.user, &pg_url.password, salt);
-
-                let mut buf = Vec::new();
-                write_password_message(&mut buf, &md5_pass);
-                if let Err(e) = stream.write_all(&buf) {
-                    return err_result(&format!("send MD5 password: {}", e));
-                }
-
-                // Read AuthenticationOk
-                let (tag, body) = match read_message(&mut stream) {
-                    Ok(m) => m,
-                    Err(e) => return err_result(&format!("read MD5 auth result: {}", e)),
-                };
-                if tag == b'E' {
-                    return err_result(&parse_error_response(&body));
-                }
-                if tag != b'R'
-                    || body.len() < 4
-                    || i32::from_be_bytes([body[0], body[1], body[2], body[3]]) != 0
-                {
-                    return err_result("MD5 authentication failed");
-                }
-            }
-            10 => {
-                // SASL -- read mechanism list from body[4..]
-                let mech_data = &body[4..];
-                let mech_str = String::from_utf8_lossy(mech_data);
-                if !mech_str.contains("SCRAM-SHA-256") {
-                    return err_result("server does not support SCRAM-SHA-256");
-                }
-
-                // Step 1: Send SASLInitialResponse with client-first-message
-                let (client_first, client_nonce) = scram_client_first(&pg_url.user);
-
-                let mut buf = Vec::new();
-                write_sasl_initial_response(&mut buf, "SCRAM-SHA-256", client_first.as_bytes());
-                if let Err(e) = stream.write_all(&buf) {
-                    return err_result(&format!("send SASL initial: {}", e));
-                }
-
-                // Step 2: Read AuthenticationSASLContinue (tag 'R', auth_type 11)
-                let (tag, body) = match read_message(&mut stream) {
-                    Ok(m) => m,
-                    Err(e) => return err_result(&format!("read SASL continue: {}", e)),
-                };
-                if tag == b'E' {
-                    return err_result(&parse_error_response(&body));
-                }
-                if tag != b'R' || body.len() < 4 {
-                    return err_result("expected SASL continue");
-                }
-                let sasl_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-                if sasl_type != 11 {
-                    return err_result(&format!("expected SASL continue (11), got {}", sasl_type));
-                }
-                let server_first = std::str::from_utf8(&body[4..])
-                    .map_err(|_| "invalid UTF-8 in server-first")
-                    .unwrap_or("invalid");
-
-                // Step 3: Compute client-final-message
-                let (client_final, expected_server_sig) =
-                    match scram_client_final(&pg_url.password, &client_nonce, server_first) {
-                        Ok(r) => r,
-                        Err(e) => return err_result(&format!("SCRAM: {}", e)),
-                    };
-
-                let mut buf = Vec::new();
-                write_sasl_response(&mut buf, client_final.as_bytes());
-                if let Err(e) = stream.write_all(&buf) {
-                    return err_result(&format!("send SASL response: {}", e));
-                }
-
-                // Step 4: Read AuthenticationSASLFinal (tag 'R', auth_type 12)
-                let (tag, body) = match read_message(&mut stream) {
-                    Ok(m) => m,
-                    Err(e) => return err_result(&format!("read SASL final: {}", e)),
-                };
-                if tag == b'E' {
-                    return err_result(&parse_error_response(&body));
-                }
-                if tag != b'R' || body.len() < 4 {
-                    return err_result("expected SASL final");
-                }
-                let sasl_final_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-                if sasl_final_type != 12 {
-                    return err_result(&format!(
-                        "expected SASL final (12), got {}",
-                        sasl_final_type
-                    ));
-                }
-
-                // Verify server signature
-                if let Err(error) = verify_scram_server_final(&body[4..], &expected_server_sig) {
-                    return err_result(&error);
-                }
-
-                // Read AuthenticationOk
-                let (tag, body) = match read_message(&mut stream) {
-                    Ok(m) => m,
-                    Err(e) => return err_result(&format!("read SCRAM auth ok: {}", e)),
-                };
-                if tag == b'E' {
-                    return err_result(&parse_error_response(&body));
-                }
-                if tag != b'R'
-                    || body.len() < 4
-                    || i32::from_be_bytes([body[0], body[1], body[2], body[3]]) != 0
-                {
-                    return err_result("SCRAM authentication failed");
-                }
-            }
-            3 => {
-                // Cleartext password (rarely used, but handle it)
-                let mut buf = Vec::new();
-                write_password_message(&mut buf, &pg_url.password);
-                if let Err(e) = stream.write_all(&buf) {
-                    return err_result(&format!("send password: {}", e));
-                }
-                let (tag, body) = match read_message(&mut stream) {
-                    Ok(m) => m,
-                    Err(e) => return err_result(&format!("read auth result: {}", e)),
-                };
-                if tag == b'E' {
-                    return err_result(&parse_error_response(&body));
-                }
-                if tag != b'R'
-                    || body.len() < 4
-                    || i32::from_be_bytes([body[0], body[1], body[2], body[3]]) != 0
-                {
-                    return err_result("cleartext authentication failed");
-                }
-            }
-            _ => {
-                return err_result(&format!("unsupported auth type: {}", auth_type));
-            }
-        }
-
-        // Read messages until ReadyForQuery ('Z')
-        #[allow(unused_assignments)]
-        let mut last_txn_status: u8 = b'I';
-        loop {
-            let (tag, body) = match read_message(&mut stream) {
-                Ok(m) => m,
-                Err(e) => return err_result(&format!("post-auth read: {}", e)),
-            };
-            match tag {
-                b'Z' => {
-                    last_txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                    break;
-                }
-                b'S' => {} // ParameterStatus -- skip
-                b'K' => {} // BackendKeyData -- skip
-                b'N' => {} // NoticeResponse -- skip
-                b'E' => {
-                    return err_result(&parse_error_response(&body));
-                }
-                _ => {} // skip unknown
-            }
-        }
-
-        // Create the PgConn handle
-        let conn = Box::new(PgConn {
-            stream,
-            txn_status: last_txn_status,
-            broken: false,
-        });
-        let handle = Box::into_raw(conn) as u64;
-        // Result payloads with integer semantics are represented by pointers to
-        // boxed integers. This keeps direct `Pg.connect(...) ?` unwrapping
-        // consistent with SQLite and the other integer-returning DB APIs.
-        alloc_result(0, crate::io::box_scalar(handle)) as *mut u8
+        Err(error) => err_result(&error),
     }
+}
+
+/// Connect, authenticate and wait for the server to be ready: the handshake
+/// `Pg.connect` and the native API share.
+fn connect(url: &str) -> Result<PgConn, String> {
+    let pg_url = parse_pg_url(url)?;
+
+    let addr_str = format!("{}:{}", pg_url.host, pg_url.port);
+    let addr: SocketAddr = addr_str
+        .to_socket_addrs()
+        .map_err(|e| format!("DNS resolution failed: {}", e))?
+        .next()
+        .ok_or_else(|| "could not resolve host".to_string())?;
+
+    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("connection failed: {}", e))?;
+    // Set before TLS wrapping (StreamOwned inherits them).
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+
+    let mut stream =
+        negotiate_tls(stream, &pg_url.host, pg_url.sslmode).map_err(|e| format!("TLS: {}", e))?;
+
+    // Send StartupMessage
+    let mut buf = Vec::new();
+    write_startup_message(&mut buf, &pg_url.user, &pg_url.database);
+    stream
+        .write_all(&buf)
+        .map_err(|e| format!("send startup: {}", e))?;
+
+    // Read authentication response
+    let (tag, body) = read_message(&mut stream).map_err(|e| format!("read auth: {}", e))?;
+    if tag != b'R' {
+        if tag == b'E' {
+            return Err(parse_error_response(&body));
+        }
+        return Err(format!("expected auth message, got '{}'", tag as char));
+    }
+    if body.len() < 4 {
+        return Err("auth message too short".to_string());
+    }
+
+    let auth_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
+
+    match auth_type {
+        0 => {} // AuthenticationOk -- no auth required
+        3 => {
+            // CleartextPassword
+            let mut buf = Vec::new();
+            write_password_message(&mut buf, &pg_url.password);
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send password: {}", e))?;
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read auth response: {}", e))?;
+            authentication_body(tag, &body, 0)?;
+        }
+        5 => {
+            // MD5Password
+            let salt = body.get(4..8).ok_or("MD5 auth: missing salt")?;
+            let hashed = compute_md5_password(&pg_url.user, &pg_url.password, salt);
+            let mut buf = Vec::new();
+            write_password_message(&mut buf, &hashed);
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send md5: {}", e))?;
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read md5 response: {}", e))?;
+            authentication_body(tag, &body, 0)?;
+        }
+        10 => {
+            // SASL: the body lists the server's mechanisms.
+            if !body[4..]
+                .split(|byte| *byte == 0)
+                .any(|mechanism| mechanism == b"SCRAM-SHA-256")
+            {
+                return Err("server does not support SCRAM-SHA-256".to_string());
+            }
+            let (client_first, client_nonce) = scram_client_first(&pg_url.user);
+            let mut buf = Vec::new();
+            write_sasl_initial_response(&mut buf, "SCRAM-SHA-256", client_first.as_bytes());
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send SASL init: {}", e))?;
+
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read SASL continue: {}", e))?;
+            let server_first = std::str::from_utf8(authentication_body(tag, &body, 11)?)
+                .map_err(|_| "invalid SCRAM server-first encoding")?;
+            let (client_final, expected_sig) =
+                scram_client_final(&pg_url.password, &client_nonce, server_first)?;
+
+            let mut buf = Vec::new();
+            write_sasl_response(&mut buf, client_final.as_bytes());
+            stream
+                .write_all(&buf)
+                .map_err(|e| format!("send SASL final: {}", e))?;
+
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read SASL final: {}", e))?;
+            verify_scram_server_final(authentication_body(tag, &body, 12)?, &expected_sig)?;
+            let (tag, body) =
+                read_message(&mut stream).map_err(|e| format!("read auth ok: {}", e))?;
+            authentication_body(tag, &body, 0)?;
+        }
+        _ => {
+            return Err(format!("unsupported auth type: {}", auth_type));
+        }
+    }
+
+    // Read parameter status and ready-for-query messages
+    let mut txn_status = b'I';
+    loop {
+        let (tag, body) =
+            read_message(&mut stream).map_err(|e| format!("read startup params: {}", e))?;
+        match tag {
+            b'K' | b'S' | b'N' => {} // BackendKeyData, ParameterStatus, NoticeResponse
+            b'E' => return Err(parse_error_response(&body)),
+            b'Z' => {
+                if !body.is_empty() {
+                    txn_status = body[0];
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(PgConn {
+        stream,
+        txn_status,
+        broken: false,
+    })
 }
 
 /// Close a PostgreSQL connection.
@@ -2008,132 +1910,7 @@ pub struct NativePgConn {
 
 /// Connect to PostgreSQL using a URL string. Returns a native connection.
 pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
-    let pg_url = parse_pg_url(url)?;
-
-    let addr_str = format!("{}:{}", pg_url.host, pg_url.port);
-    let addr: std::net::SocketAddr = addr_str
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed: {}", e))?
-        .next()
-        .ok_or_else(|| "could not resolve host".to_string())?;
-
-    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
-        .map_err(|e| format!("connection failed: {}", e))?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-
-    let mut stream = negotiate_tls(stream, &pg_url.host, pg_url.sslmode)?;
-
-    // Send StartupMessage
-    let mut buf = Vec::new();
-    write_startup_message(&mut buf, &pg_url.user, &pg_url.database);
-    stream
-        .write_all(&buf)
-        .map_err(|e| format!("send startup: {}", e))?;
-
-    // Read authentication response
-    let (tag, body) = read_message(&mut stream).map_err(|e| format!("read auth: {}", e))?;
-    if tag != b'R' {
-        if tag == b'E' {
-            return Err(parse_error_response(&body));
-        }
-        return Err(format!("expected auth message, got '{}'", tag as char));
-    }
-    if body.len() < 4 {
-        return Err("auth message too short".to_string());
-    }
-
-    let auth_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-
-    match auth_type {
-        0 => {} // AuthenticationOk -- no auth required
-        3 => {
-            // CleartextPassword
-            let mut buf = Vec::new();
-            write_password_message(&mut buf, &pg_url.password);
-            stream
-                .write_all(&buf)
-                .map_err(|e| format!("send password: {}", e))?;
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read auth response: {}", e))?;
-            authentication_body(tag, &body, 0)?;
-        }
-        5 => {
-            // MD5Password
-            let salt = body.get(4..8).ok_or("MD5 auth: missing salt")?;
-            let hashed = compute_md5_password(&pg_url.user, &pg_url.password, salt);
-            let mut buf = Vec::new();
-            write_password_message(&mut buf, &hashed);
-            stream
-                .write_all(&buf)
-                .map_err(|e| format!("send md5: {}", e))?;
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read md5 response: {}", e))?;
-            authentication_body(tag, &body, 0)?;
-        }
-        10 => {
-            // SASL
-            let (client_first, client_nonce) = scram_client_first(&pg_url.user);
-            let mut buf = Vec::new();
-            write_sasl_initial_response(&mut buf, "SCRAM-SHA-256", client_first.as_bytes());
-            stream
-                .write_all(&buf)
-                .map_err(|e| format!("send SASL init: {}", e))?;
-
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read SASL continue: {}", e))?;
-            let server_first = std::str::from_utf8(authentication_body(tag, &body, 11)?)
-                .map_err(|_| "invalid SCRAM server-first encoding")?;
-            let (client_final, expected_sig) =
-                scram_client_final(&pg_url.password, &client_nonce, server_first)?;
-
-            let mut buf = Vec::new();
-            write_sasl_response(&mut buf, client_final.as_bytes());
-            stream
-                .write_all(&buf)
-                .map_err(|e| format!("send SASL final: {}", e))?;
-
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read SASL final: {}", e))?;
-            if tag == b'E' {
-                return Err(parse_error_response(&body));
-            }
-            verify_scram_server_final(authentication_body(tag, &body, 12)?, &expected_sig)?;
-            // Read AuthenticationOk if not already received
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read auth ok: {}", e))?;
-            authentication_body(tag, &body, 0)?;
-        }
-        _ => {
-            return Err(format!("unsupported auth type: {}", auth_type));
-        }
-    }
-
-    // Read parameter status and ready-for-query messages
-    let mut txn_status = b'I';
-    loop {
-        let (tag, body) =
-            read_message(&mut stream).map_err(|e| format!("read startup params: {}", e))?;
-        match tag {
-            b'K' | b'S' | b'N' => {} // BackendKeyData, ParameterStatus, NoticeResponse
-            b'E' => return Err(parse_error_response(&body)),
-            b'Z' => {
-                if !body.is_empty() {
-                    txn_status = body[0];
-                }
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    Ok(NativePgConn {
-        inner: PgConn {
-            stream,
-            txn_status,
-            broken: false,
-        },
-    })
+    connect(url).map(|inner| NativePgConn { inner })
 }
 
 /// Execute a SQL statement via native connection. Returns rows affected.
@@ -2294,12 +2071,23 @@ mod tests {
 
     // A wire-level peer exercises both public connection APIs without a database.
     fn scram_test_server(final_message: Option<&[u8]>) -> (String, std::thread::JoinHandle<()>) {
+        scram_test_server_reply(final_message.map(Vec::from), None)
+    }
+
+    /// A SCRAM peer that answers the client's final message with `tail`.
+    fn scram_test_server_with(tail: Option<Vec<u8>>) -> (String, std::thread::JoinHandle<()>) {
+        scram_test_server_reply(None, tail)
+    }
+
+    fn scram_test_server_reply(
+        final_message: Option<Vec<u8>>,
+        tail: Option<Vec<u8>>,
+    ) -> (String, std::thread::JoinHandle<()>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!(
             "postgres://user:password@{}/db?sslmode=disable",
             listener.local_addr().unwrap()
         );
-        let final_message = final_message.map(Vec::from);
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket
@@ -2331,6 +2119,10 @@ mod tests {
             stream.write_all(&output).unwrap();
             assert_eq!(read_message(&mut stream).unwrap().0, b'p');
             output.clear();
+            if let Some(tail) = tail {
+                stream.write_all(&tail).unwrap();
+                return;
+            }
             let valid_final = format!("v={}", BASE64.encode(signature));
             auth(
                 &mut output,
@@ -2342,6 +2134,219 @@ mod tests {
             stream.write_all(&output).unwrap();
         });
         (url, server)
+    }
+
+    fn auth(kind: i32, data: &[u8]) -> Vec<u8> {
+        let mut output = vec![b'R'];
+        output.extend_from_slice(&(8 + data.len() as i32).to_be_bytes());
+        output.extend_from_slice(&kind.to_be_bytes());
+        output.extend_from_slice(data);
+        output
+    }
+
+    fn message(tag: u8, body: &[u8]) -> Vec<u8> {
+        let mut output = vec![tag];
+        output.extend_from_slice(&(4 + body.len() as i32).to_be_bytes());
+        output.extend_from_slice(body);
+        output
+    }
+
+    /// An ErrorResponse with severity, SQLSTATE, message, detail and
+    /// constraint fields.
+    fn error_response(message_text: &str) -> Vec<u8> {
+        let mut body = Vec::new();
+        for (field, value) in [
+            (b'S', "FATAL"),
+            (b'C', "28P01"),
+            (b'M', message_text),
+            (b'D', "a detail"),
+            (b'n', "a_constraint"),
+        ] {
+            body.push(field);
+            body.extend_from_slice(value.as_bytes());
+            body.push(0);
+        }
+        body.push(0);
+        message(b'E', &body)
+    }
+
+    fn ready(status: u8) -> Vec<u8> {
+        message(b'Z', &[status])
+    }
+
+    /// A peer on a loopback port for `url_query`'s connection: `script`
+    /// gets the accepted socket.
+    fn wire_peer(
+        url_query: &str,
+        script: impl FnOnce(TcpStream) + Send + 'static,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "postgres://user:password@{}/db?{url_query}",
+            listener.local_addr().unwrap()
+        );
+        let peer = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            script(socket);
+        });
+        (url, peer)
+    }
+
+    fn read_startup(socket: &mut TcpStream) {
+        let mut length = [0; 4];
+        socket.read_exact(&mut length).unwrap();
+        let mut startup = vec![0; u32::from_be_bytes(length) as usize - 4];
+        socket.read_exact(&mut startup).unwrap();
+    }
+
+    /// Connects to a peer that reads the startup message and answers with
+    /// `reply`, then ends its side: the connection's transaction status, or
+    /// why there is none.
+    fn connect_to_reply(reply: Vec<u8>) -> Result<u8, String> {
+        let (url, peer) = wire_peer("sslmode=disable", move |mut socket| {
+            read_startup(&mut socket);
+            socket.write_all(&reply).unwrap();
+            socket.shutdown(std::net::Shutdown::Write).unwrap();
+            // Drain what the client sends until it closes: closing with its
+            // messages unread would reset the connection before it reads.
+            while socket.read(&mut [0; 1024]).is_ok_and(|read| read > 0) {}
+        });
+        let result = connect(&url).map(|conn| conn.txn_status);
+        peer.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn connect_reports_each_malformed_or_refused_handshake() {
+        let scram = auth(10, b"SCRAM-SHA-256\0\0");
+        let cases: Vec<(&str, Vec<u8>, &str)> = vec![
+            (
+                "error first",
+                error_response("password authentication failed"),
+                "password authentication failed",
+            ),
+            (
+                "other tag",
+                message(b'X', b""),
+                "expected auth message, got 'X'",
+            ),
+            (
+                "short auth",
+                message(b'R', b"\0\0"),
+                "auth message too short",
+            ),
+            ("unknown auth", auth(7, b""), "unsupported auth type: 7"),
+            (
+                "error after auth",
+                [auth(0, b""), error_response("too many connections")].concat(),
+                "too many connections",
+            ),
+            ("closed after auth", auth(0, b""), "read startup params"),
+            (
+                "cleartext refused",
+                [auth(3, b""), error_response("bad password")].concat(),
+                "bad password",
+            ),
+            (
+                "cleartext answered oddly",
+                [auth(3, b""), auth(5, b"salt")].concat(),
+                "expected authentication message 0",
+            ),
+            (
+                "md5 refused",
+                [auth(5, b"salt"), error_response("md5 mismatch")].concat(),
+                "md5 mismatch",
+            ),
+            ("md5 without salt", auth(5, b"sa"), "MD5 auth: missing salt"),
+            (
+                "no scram",
+                auth(10, b"SCRAM-SHA-256-PLUS-ONLY\0\0"),
+                "server does not support SCRAM-SHA-256",
+            ),
+            (
+                "scram refused",
+                [scram.clone(), error_response("no such role")].concat(),
+                "no such role",
+            ),
+            (
+                "scram skips continue",
+                [scram.clone(), auth(12, b"v=")].concat(),
+                "expected authentication message 11",
+            ),
+            (
+                "scram garbled challenge",
+                [scram.clone(), auth(11, b"\xff")].concat(),
+                "invalid SCRAM server-first encoding",
+            ),
+            (
+                "scram foreign nonce",
+                [scram, auth(11, b"r=someone-else,s=c2FsdA==,i=4096")].concat(),
+                "",
+            ),
+        ];
+        for (case, reply, expected) in cases {
+            match connect_to_reply(reply) {
+                Ok(_) => panic!("{case}: connected"),
+                Err(error) => assert!(error.contains(expected), "{case}: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn connect_passes_notices_and_parameters_and_keeps_the_transaction_status() {
+        for reply in [
+            // Trust: no password asked.
+            auth(0, b""),
+            // Cleartext and md5, each accepted.
+            [auth(3, b""), auth(0, b"")].concat(),
+            [auth(5, b"salt"), auth(0, b"")].concat(),
+        ] {
+            let startup = [
+                message(b'S', b"server_version\x0016\0"),
+                message(b'K', &[0; 8]),
+                message(b'N', b"Mnotice\0\0"),
+                message(b'A', b"unknown"),
+                ready(b'T'),
+            ]
+            .concat();
+            assert_eq!(connect_to_reply([reply, startup].concat()), Ok(b'T'));
+        }
+    }
+
+    #[test]
+    fn connect_sends_md5_of_password_user_and_salt() {
+        let (url, peer) = wire_peer("sslmode=disable", |mut socket| {
+            read_startup(&mut socket);
+            socket.write_all(&auth(5, b"salt")).unwrap();
+            let mut stream = PgStream::Plain(socket);
+            let (tag, body) = read_message(&mut stream).unwrap();
+            assert_eq!(tag, b'p');
+            let expected = compute_md5_password("user", "password", b"salt");
+            assert_eq!(body, [expected.as_bytes(), b"\0"].concat());
+            stream
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+        });
+        let conn = native_pg_connect(&url);
+        peer.join().unwrap();
+        native_pg_close(conn.unwrap());
+    }
+
+    #[test]
+    fn scram_connect_requires_the_final_messages_in_order() {
+        for (tail, expected) in [
+            (auth(11, b"v="), "expected authentication message 12"),
+            (error_response("scram failed"), "scram failed"),
+        ] {
+            let (url, server) = scram_test_server_with(Some(tail));
+            let result = native_pg_connect(&url);
+            server.join().unwrap();
+            let error = result.err().expect("connected");
+            assert!(error.contains(expected), "{error}");
+        }
     }
 
     #[test]
