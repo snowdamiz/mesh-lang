@@ -986,6 +986,63 @@ fn imports_of_what_is_not_there_are_errors() {
     );
 }
 
+// ── Actors ─────────────────────────────────────────────────────────────
+
+/// `spawn` needs an actor and `send` a pid and a message; each was accepted
+/// without them (`spawn()`, `send(p)`), and `send` to a value that is no pid
+/// (`send(5, 1)`) as well.
+#[test]
+fn spawn_and_send_take_what_they_need() {
+    assert_eq!(
+        errors(
+            r#"
+actor counter(n :: Int) do
+  receive do
+    m -> counter(n + m)
+  end
+end
+
+fn no_args() do
+  spawn()
+end
+
+fn one_arg(p :: Pid<Int>) do
+  send(p)
+end
+
+fn not_pid() do
+  send(5, 1)
+end
+
+fn wrong_msg(p :: Pid<Int>) do
+  send(p, "s")
+end
+
+fn not_fn() do
+  spawn(5)
+end
+
+fn piped(p :: Pid<Int>) do
+  "s" |2> send(p)
+end
+
+fn piped_arity(p :: Pid<Int>) do
+  1 |> send(p, 2)
+end
+"#
+        ),
+        [
+            "arity mismatch: expected 1 argument, found 0",
+            "arity mismatch: expected 2 arguments, found 1",
+            "type mismatch: expected `Pid<Int>`, found `Int`",
+            "message type mismatch: expected `Int`, found `String`",
+            "cannot spawn non-function: found `Int`",
+            "message type mismatch: expected `Int`, found `String`",
+            "arity mismatch: expected 2 arguments, found 3",
+        ]
+    );
+}
+
 // ── Supervisors ────────────────────────────────────────────────────────
 
 /// A supervisor with the given child specs (each a `child ... end` block).

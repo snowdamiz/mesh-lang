@@ -14590,19 +14590,22 @@ fn infer_spawn(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let arg_list = spawn.arg_list();
-    let mut args: Vec<Expr> = Vec::new();
-    if let Some(al) = &arg_list {
-        args = al.args().collect();
-    }
-
-    if args.is_empty() {
-        // spawn() with no args -- return fresh Pid.
-        return Ok(Ty::pid(ctx.fresh_var()));
-    }
-
-    // First arg is the actor function reference.
-    let actor_fn_expr = &args[0];
+    let args: Vec<Expr> = spawn
+        .arg_list()
+        .map(|list| list.args().collect())
+        .unwrap_or_default();
+    // The first argument is the actor, the others its arguments.
+    let Some(actor_fn_expr) = args.first() else {
+        let err = TypeError::ArityMismatch {
+            expected: 1,
+            found: 0,
+            origin: ConstraintOrigin::Expr {
+                span: spawn.syntax().text_range(),
+            },
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    };
     let actor_fn_ty = infer_expr(
         ctx,
         env,
@@ -14670,40 +14673,17 @@ fn infer_send(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let arg_list = send.arg_list();
-    let mut args: Vec<Expr> = Vec::new();
-    if let Some(al) = &arg_list {
-        args = al.args().collect();
-    }
-
-    if args.len() < 2 {
-        // Not enough arguments -- return Unit, error handled elsewhere.
-        return Ok(Ty::Tuple(vec![]));
-    }
-
-    let pid_expr = &args[0];
-    let msg_expr = &args[1];
-
-    let pid_ty = infer_expr(
+    infer_send_with(
         ctx,
         env,
-        pid_expr,
+        send,
+        None,
+        send.syntax().text_range(),
         types,
         type_registry,
         trait_registry,
         fn_constraints,
-    )?;
-    let msg_ty = infer_expr(
-        ctx,
-        env,
-        msg_expr,
-        types,
-        type_registry,
-        trait_registry,
-        fn_constraints,
-    )?;
-
-    check_send(ctx, pid_ty, msg_ty, send.syntax().text_range())
+    )
 }
 
 /// `send` on the right of a pipe: the piped value is the argument at
@@ -14721,13 +14701,42 @@ fn infer_piped_send(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    let ty = infer_send_with(
+        ctx,
+        env,
+        send,
+        Some((piped, insert_idx)),
+        span,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )?;
+    types.insert(send.syntax().text_range(), ty.clone());
+    Ok(ty)
+}
+
+/// `send(pid, message)` at `span`, with the value a pipe gives it (and the
+/// argument position it goes to), if any.
+#[allow(clippy::too_many_arguments)]
+fn infer_send_with(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    send: &SendExpr,
+    piped: Option<(Ty, usize)>,
+    span: TextRange,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
     let explicit: Vec<Expr> = send
         .arg_list()
         .map(|list| list.args().collect())
         .unwrap_or_default();
     let mut arg_tys = Vec::new();
     for arg in &explicit {
-        arg_tys.push(infer_expr(
+        let ty = infer_expr(
             ctx,
             env,
             arg,
@@ -14735,23 +14744,22 @@ fn infer_piped_send(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?);
+        );
+        arg_tys.push(ty?);
     }
-    arg_tys.insert(insert_idx.min(arg_tys.len()), piped);
-    if arg_tys.len() != 2 {
+    if let Some((piped, insert_idx)) = piped {
+        arg_tys.insert(insert_idx.min(arg_tys.len()), piped);
+    }
+    let [pid_ty, msg_ty] = <[Ty; 2]>::try_from(arg_tys).map_err(|arg_tys| {
         let err = TypeError::ArityMismatch {
             expected: 2,
             found: arg_tys.len(),
             origin: ConstraintOrigin::Expr { span },
         };
         ctx.errors.push(err.clone());
-        return Err(err);
-    }
-    let msg_ty = arg_tys.pop().unwrap_or(Ty::Never);
-    let pid_ty = arg_tys.pop().unwrap_or(Ty::Never);
-    let ty = check_send(ctx, pid_ty, msg_ty, span)?;
-    types.insert(send.syntax().text_range(), ty.clone());
-    Ok(ty)
+        err
+    })?;
+    check_send(ctx, pid_ty, msg_ty, span)
 }
 
 /// A message of type `msg_ty` sent to a pid of type `pid_ty`, at `span`:
@@ -14763,45 +14771,40 @@ fn check_send(
     span: TextRange,
 ) -> Result<Ty, TypeError> {
     let resolved_pid = ctx.resolve(pid_ty);
-
-    match &resolved_pid {
-        // Typed Pid<M>: validate message type matches M.
-        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Pid") => {
-            if let Some(expected_msg) = args.first() {
-                let errors_before = ctx.errors.len();
-                let result = ctx.unify(
+    match resolved_pid.args_of("Pid") {
+        // A typed `Pid<M>` takes messages of type `M`.
+        Some([expected_msg]) => {
+            let errors_before = ctx.errors.len();
+            if ctx
+                .unify(
                     msg_ty.clone(),
                     expected_msg.clone(),
                     ConstraintOrigin::Builtin,
-                );
-                if result.is_err() {
-                    // Report the send, not also the spanless mismatch `unify` recorded.
-                    ctx.errors.truncate(errors_before);
-                    let resolved_expected = ctx.resolve(expected_msg.clone());
-                    let resolved_found = ctx.resolve(msg_ty);
-                    let err = TypeError::SendTypeMismatch {
-                        expected: resolved_expected,
-                        found: resolved_found,
-                        span,
-                    };
-                    ctx.errors.push(err.clone());
-                    return Err(err);
-                }
+                )
+                .is_err()
+            {
+                // Report the send, not also the spanless mismatch `unify` recorded.
+                ctx.errors.truncate(errors_before);
+                let err = TypeError::SendTypeMismatch {
+                    expected: ctx.resolve(expected_msg.clone()),
+                    found: ctx.resolve(msg_ty),
+                    span,
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
             }
         }
-        // Untyped Pid: accept any message type (escape hatch).
-        Ty::Con(tc) if tc.name == "Pid" => {
-            // No validation needed.
-        }
-        // Type variable: constrain to Pid<msg_ty>.
-        Ty::Var(_) => {
-            let _ = ctx.unify(resolved_pid, Ty::pid(msg_ty), ConstraintOrigin::Builtin);
-        }
+        // The untyped `Pid` takes any message (an escape hatch); anything
+        // else must be a pid of the message's type.
+        _ if resolved_pid.con_name() == Some("Pid") => {}
         _ => {
-            // Not a Pid at all -- type mismatch will be caught by usage context.
+            let origin = ConstraintOrigin::FnArg {
+                call_site: span,
+                param_idx: 0,
+            };
+            ctx.unify(Ty::pid(msg_ty), resolved_pid, origin)?;
         }
     }
-
     Ok(Ty::int())
 }
 
