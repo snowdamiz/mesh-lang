@@ -867,7 +867,7 @@ end
 
 #### Map Iteration
 
-Iterate over map entries with destructuring. Like any `for`, it returns a list of the body's results:
+Iterate over map entries with destructuring; a single name, as in `for fruit in stock`, takes the keys alone. Like any `for`, it returns a list of the body's results:
 
 ```mesh
 fn main() do

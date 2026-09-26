@@ -2681,6 +2681,26 @@ end
 }
 
 #[test]
+fn a_for_loop_over_a_map_takes_entries_or_keys() {
+    let source = r##"
+fn main() do
+  let m = %{"a" => 1, "b" => 2}
+  let keys = for k in m do
+    k
+  end
+  let entries = for {k, v} in m do
+    "#{k}=#{v}"
+  end
+  let pairs = for (k, v) in m do
+    "#{k}:#{v}"
+  end
+  println("#{keys} #{entries} #{pairs}")
+end
+"##;
+    assert_eq!(run(source), "[a, b] [a=1, b=2] [a:1, b:2]\n");
+}
+
+#[test]
 fn let_bound_closures_with_operators_work_at_each_type() {
     let source = r##"
 fn main() do
