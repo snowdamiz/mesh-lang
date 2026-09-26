@@ -441,6 +441,13 @@ actor coordinator(absent :: String) do
   println("spawn_link=#{linked}")
 end
 
+fn await_gone(name :: String) do
+  if Process.whereis(name) != Process.whereis("none-such") do
+    Timer.sleep(10)
+    await_gone(name)
+  end
+end
+
 fn main() do
   println("self_before=[#{Node.self()}]")
   let name = "lone@127.0.0.1:PORT"
@@ -451,13 +458,16 @@ fn main() do
   println("connect=#{Node.connect("absent@127.0.0.1:1")}")
   println("nodes=#{List.length(Node.list())}")
   let pid = spawn(worker, "local")
+  Process.register("worker", pid)
   send(pid, "hello")
   println("register=#{Global.register("lone_worker", pid)}")
   println("found=#{Global.whereis("lone_worker") == pid}")
   println("unregister=#{Global.unregister("lone_worker")}")
   println("unregister_again=#{Global.unregister("lone_worker")}")
-  spawn(coordinator, "absent@127.0.0.1:1")
-  Timer.sleep(300)
+  let coordinator :: Pid<String> = spawn(coordinator, "absent@127.0.0.1:1")
+  Process.register("coordinator", coordinator)
+  await_gone("worker")
+  await_gone("coordinator")
 end
 "##
     .replace("PORT", &port.to_string());
