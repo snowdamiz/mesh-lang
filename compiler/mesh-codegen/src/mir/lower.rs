@@ -9450,6 +9450,83 @@ impl<'a> Lowerer<'a> {
         MirExpr::Var(runtime_name, ty)
     }
 
+    /// The function `Type.field` names, for the struct or sum type
+    /// `ty_name`, when lowering knows it: `from_json` is the decoding
+    /// wrapper (of the instantiation a generic type's call returns),
+    /// `from_row` a struct's row reader, `from` and `try_from` the
+    /// conversion from the function type's parameter, a `deriving(Schema)`
+    /// struct's metadata functions are `Type____table__` and the like, and
+    /// any other static interface method is its impl's `Trait__field__Type`.
+    fn type_function(
+        &mut self,
+        fa: &FieldAccess,
+        ty_name: &str,
+        field: &str,
+        is_struct: bool,
+    ) -> Option<MirExpr> {
+        let fn_ty = self.get_ty(fa.syntax().text_range()).cloned();
+        let specific = match field {
+            "from_json" => {
+                let result = match &fn_ty {
+                    Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
+                    _ => fa
+                        .syntax()
+                        .parent()
+                        .and_then(|call| self.get_ty(call.text_range()).cloned()),
+                };
+                let instance = match result {
+                    Some(Ty::App(_, args)) => match args.first() {
+                        Some(ty @ Ty::App(_, ty_args)) if !ty_args.is_empty() => {
+                            self.ensure_instantiation_traits(ty);
+                            Some(self.instantiation_helper_name(ty_name, ty_args))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                Some(format!(
+                    "__json_decode__{}",
+                    instance.as_deref().unwrap_or(ty_name)
+                ))
+            }
+            "from_row" if is_struct => Some(format!("FromRow__from_row__{ty_name}")),
+            "from" | "try_from" => {
+                let trait_name = if field == "from" { "From" } else { "TryFrom" };
+                let source = match &fn_ty {
+                    Some(Ty::Fun(params, _)) => params.first(),
+                    _ => None,
+                };
+                Some(self.conversion_fn(trait_name, field, ty_name, source))
+            }
+            "__table__"
+            | "__fields__"
+            | "__primary_key__"
+            | "__relationships__"
+            | "__field_types__"
+            | "__relationship_meta__"
+                if is_struct =>
+            {
+                Some(format!("{ty_name}__{field}"))
+            }
+            _ if is_struct && field.starts_with("__") && field.ends_with("_col__") => {
+                Some(format!("{ty_name}__{field}"))
+            }
+            _ => None,
+        };
+        let known = specific.and_then(|name| {
+            let ty = self.known_functions.get(&name)?.clone();
+            Some(MirExpr::Var(name, ty))
+        });
+        known.or_else(|| {
+            let suffix = format!("__{field}__{ty_name}");
+            self.known_functions
+                .iter()
+                .filter(|(fn_name, _)| fn_name.ends_with(&suffix) && !fn_name.starts_with("__"))
+                .min_by(|a, b| a.0.cmp(b.0))
+                .map(|(fn_name, fn_ty)| MirExpr::Var(fn_name.clone(), fn_ty.clone()))
+        })
+    }
+
     fn lower_field_access(&mut self, fa: &FieldAccess) -> MirExpr {
         // Check if this is a module-qualified access (e.g., String.length).
         // If the base is a NameRef whose text is a known stdlib module,
@@ -9458,38 +9535,38 @@ impl<'a> Lowerer<'a> {
         // user code with modules named "Math", "Int", "Float", etc.
         if let Some(Expr::NameRef(ref name_ref)) = fa.base() {
             if let Some(base_name) = name_ref.text() {
-                // Check service modules FIRST -- service methods map to generated
-                // function names (e.g., Counter.start -> __service_counter_start).
-                // Must come before user_modules which would resolve to bare names.
-                if let Some(methods) = self.service_modules.get(&base_name).cloned() {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    for (method_name, generated_fn) in &methods {
-                        if *method_name == field {
-                            let ty = self.resolve_range(fa.syntax().text_range());
-                            // Return the generated function name as a Var reference.
-                            return MirExpr::Var(generated_fn.clone(), ty);
-                        }
-                    }
+                let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+                let range = fa.syntax().text_range();
+                // Service modules first: a service method is its generated
+                // function (`Counter.start` is `__service_counter_start`),
+                // which a user module's bare name would shadow.
+                let service_fn = self.service_modules.get(&base_name).and_then(|methods| {
+                    methods
+                        .iter()
+                        .find(|(method, _)| *method == field)
+                        .map(|(_, generated)| generated.clone())
+                });
+                if let Some(generated) = service_fn {
+                    return MirExpr::Var(generated, self.resolve_range(range));
                 }
 
                 // Check user-defined modules (Phase 39) -- they shadow stdlib.
-                if let Some(func_names) = self.user_modules.get(&base_name) {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    if func_names.contains(&field) {
-                        let ty = self.resolve_range(fa.syntax().text_range());
-                        let lowered_name =
-                            self.lowered_fn_symbol_name(&field, &field, fa.syntax().text_range());
-                        return MirExpr::Var(lowered_name, ty);
-                    }
+                if self
+                    .user_modules
+                    .get(&base_name)
+                    .is_some_and(|functions| functions.contains(&field))
+                {
+                    let ty = self.resolve_range(range);
+                    let lowered_name = self.lowered_fn_symbol_name(&field, &field, range);
+                    return MirExpr::Var(lowered_name, ty);
                 }
 
                 // A qualified variant constructor (`Color.Red`, `Result.Ok`)
                 // lowers like the unqualified one. Qualified by the module
                 // exporting its type (`Geo.Dot`), the type is the one the
                 // checker gave it.
-                let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
                 let owner = if self.user_modules.contains_key(&base_name) {
-                    let result = match self.get_ty(fa.syntax().text_range()) {
+                    let result = match self.get_ty(range) {
                         Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
                         other => other.cloned(),
                     };
@@ -9507,7 +9584,7 @@ impl<'a> Lowerer<'a> {
                         .map(|v| v.fields.len())
                 });
                 if let Some(arity) = variant_arity {
-                    let ty = self.resolve_range(fa.syntax().text_range());
+                    let ty = self.resolve_range(range);
                     if arity > 0 {
                         // The call around it constructs the variant.
                         return MirExpr::Var(field, ty);
@@ -9530,121 +9607,16 @@ impl<'a> Lowerer<'a> {
 
                 // Check stdlib modules (after user modules so user code can shadow).
                 if STDLIB_MODULES.contains(&base_name.as_str()) {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    let range = fa.syntax().text_range();
                     let fn_ty = self.get_ty(range).cloned();
                     let fallback = self.resolve_range(range);
                     return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
                 }
 
-                // Check if this is StructName.from_json or SumTypeName.from_json
-                // (static trait method). Resolves to __json_decode__TypeName which
-                // chains parse + from_json.
-                if self.registry.struct_defs.contains_key(&base_name)
-                    || self.registry.sum_type_defs.contains_key(&base_name)
-                {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    if field == "from_json" {
-                        // A generic type decodes as the instantiation
-                        // the call returns (`Result<Box<Int>, String>`).
-                        let result = match self.get_ty(fa.syntax().text_range()) {
-                            Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-                            _ => fa
-                                .syntax()
-                                .parent()
-                                .and_then(|call| self.get_ty(call.text_range()).cloned()),
-                        };
-                        let decoded = match result {
-                            Some(Ty::App(_, args)) => args.first().cloned(),
-                            _ => None,
-                        };
-                        let instance = decoded.and_then(|ty| match &ty {
-                            Ty::App(_, args) if !args.is_empty() => {
-                                self.ensure_instantiation_traits(&ty);
-                                Some(self.instantiation_helper_name(&base_name, args))
-                            }
-                            _ => None,
-                        });
-                        let wrapper_name =
-                            format!("__json_decode__{}", instance.unwrap_or(base_name.clone()));
-                        if let Some(fn_ty) = self.known_functions.get(&wrapper_name).cloned() {
-                            return MirExpr::Var(wrapper_name, fn_ty);
-                        }
-                    }
-                }
-
-                // Check if this is StructName.from_row (FromRow trait method).
-                // Resolves to FromRow__from_row__StructName.
-                if self.registry.struct_defs.contains_key(&base_name) {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    if field == "from_row" {
-                        let fn_name = format!("FromRow__from_row__{}", base_name);
-                        if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
-                            return MirExpr::Var(fn_name, fn_ty);
-                        }
-                    }
-                }
-
-                // `Type.from` and `Type.try_from` as values: the impl is the
-                // one converting the function type's parameter.
-                if self.registry.struct_defs.contains_key(&base_name)
-                    || self.registry.sum_type_defs.contains_key(&base_name)
-                {
-                    let conversion = match field.as_str() {
-                        "from" => Some("From"),
-                        "try_from" => Some("TryFrom"),
-                        _ => None,
-                    };
-                    if let Some(trait_name) = conversion {
-                        let source = match self.get_ty(fa.syntax().text_range()) {
-                            Some(Ty::Fun(params, _)) => params.first().cloned(),
-                            _ => None,
-                        };
-                        let name =
-                            self.conversion_fn(trait_name, &field, &base_name, source.as_ref());
-                        if let Some(fn_ty) = self.known_functions.get(&name).cloned() {
-                            return MirExpr::Var(name, fn_ty);
-                        }
-                    }
-                }
-
-                // Any other static interface method: `Type.method(...)` is the
-                // impl's `Trait__method__Type` function.
-                if self.registry.struct_defs.contains_key(&base_name)
-                    || self.registry.sum_type_defs.contains_key(&base_name)
-                {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    let suffix = format!("__{}__{}", field, base_name);
-                    let found = self
-                        .known_functions
-                        .iter()
-                        .filter(|(fn_name, _)| {
-                            fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
-                        })
-                        .min_by(|a, b| a.0.cmp(b.0))
-                        .map(|(fn_name, fn_ty)| (fn_name.clone(), fn_ty.clone()));
-                    if let Some((fn_name, fn_ty)) = found {
-                        return MirExpr::Var(fn_name, fn_ty);
-                    }
-                }
-
-                // Check if this is StructName.__table__/__fields__/__primary_key__/__relationships__
-                // __field_types__ or __*_col__ (Schema metadata functions from deriving(Schema)).
-                // Mangled name: {Name}____{method} e.g. User____table__
-                if self.registry.struct_defs.contains_key(&base_name) {
-                    let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                    if field == "__table__"
-                        || field == "__fields__"
-                        || field == "__primary_key__"
-                        || field == "__relationships__"
-                        || field == "__field_types__"
-                        || field == "__relationship_meta__"
-                        || (field.starts_with("__") && field.ends_with("_col__"))
-                    {
-                        let fn_name = format!("{}__{}", base_name, field);
-                        if let Some(fn_ty) = self.known_functions.get(&fn_name).cloned() {
-                            return MirExpr::Var(fn_name, fn_ty);
-                        }
+                // `Type.name` of a struct or sum type: a function of the type.
+                let is_struct = self.registry.struct_defs.contains_key(&base_name);
+                if is_struct || self.registry.sum_type_defs.contains_key(&base_name) {
+                    if let Some(function) = self.type_function(fa, &base_name, &field, is_struct) {
+                        return function;
                     }
                 }
             }
