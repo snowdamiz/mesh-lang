@@ -609,11 +609,6 @@ impl OperatorDiagnosticsBuffer {
             truncated: inner.dropped_entries > 0 || take < total_entries,
         }
     }
-
-    #[cfg(test)]
-    fn clear(&self) {
-        *self.inner.write() = OperatorDiagnosticsInner::default();
-    }
 }
 
 static OPERATOR_DIAGNOSTICS: OnceLock<OperatorDiagnosticsBuffer> = OnceLock::new();
@@ -2434,6 +2429,13 @@ mod tests {
     use super::*;
 
     static OPERATOR_TEST_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// One operator test at a time; one that fails does not fail the next.
+    fn operator_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        OPERATOR_TEST_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
     static OPERATOR_QUERY_TEST_INIT: std::sync::Once = std::sync::Once::new();
     const OPERATOR_QUERY_TEST_COOKIE: &str = "mesh-operator-query-test-cookie";
 
@@ -2611,7 +2613,7 @@ mod tests {
 
     #[test]
     fn operator_query_transient_status_does_not_register_peer() {
-        let _guard = OPERATOR_TEST_GUARD.lock().unwrap();
+        let _guard = operator_test_guard();
         let target = ensure_operator_query_test_node();
         let state = node_state().expect("operator query test node should be started");
         let sessions_before: Vec<String> = state.sessions.read().keys().cloned().collect();
@@ -2808,12 +2810,12 @@ mod tests {
 
     #[test]
     fn operator_diagnostics_recent_snapshot_keeps_reason_and_metadata() {
-        let _guard = OPERATOR_TEST_GUARD.lock().unwrap();
-        diagnostics_buffer().clear();
+        let _guard = operator_test_guard();
+        // The buffer is the process's: other tests record into it meanwhile.
         record_diagnostic(OperatorDiagnosticRecord {
             transition: "prepare_timeout".to_string(),
             request_key: Some("req-9".to_string()),
-            attempt_id: Some("attempt-9".to_string()),
+            attempt_id: Some("operator-diagnostics-test".to_string()),
             replica_node: Some("replica@127.0.0.1:9001".to_string()),
             reason: Some("replica_prepare_timeout".to_string()),
             metadata: vec![("query_kind".to_string(), "diagnostics".to_string())],
@@ -2821,17 +2823,21 @@ mod tests {
         });
 
         let snapshot = operator_recent_diagnostics(None);
-        assert_eq!(snapshot.entries.len(), 1);
-        assert_eq!(snapshot.entries[0].transition, "prepare_timeout");
+        let entries: Vec<_> = snapshot
+            .entries
+            .iter()
+            .filter(|entry| entry.attempt_id.as_deref() == Some("operator-diagnostics-test"))
+            .collect();
+        assert_eq!(entries.len(), 1, "{:?}", snapshot.entries);
+        assert_eq!(entries[0].transition, "prepare_timeout");
         assert_eq!(
-            snapshot.entries[0].reason.as_deref(),
+            entries[0].reason.as_deref(),
             Some("replica_prepare_timeout")
         );
         assert_eq!(
-            snapshot.entries[0].metadata,
+            entries[0].metadata,
             vec![("query_kind".to_string(), "diagnostics".to_string())]
         );
-        diagnostics_buffer().clear();
     }
 
     #[test]
