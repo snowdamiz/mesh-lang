@@ -653,8 +653,7 @@ impl fmt::Display for TypeError {
                 if *arity <= 1 {
                     write!(
                         f,
-                        "slot position {} is out of range: `{}` takes {} argument(s), so valid slot positions are none — use |> instead",
-                        slot, fn_name, arity
+                        "slot position {slot} is out of range: `{fn_name}` takes fewer than 2 arguments; use |> instead"
                     )
                 } else {
                     write!(
@@ -1116,7 +1115,11 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::OverloadedFunctionValue { name, arities, .. } => {
-                write!(f, "`{name}` is defined at {}", arity_list(arities))
+                write!(
+                    f,
+                    "`{name}` is defined at arities {}",
+                    arity_list(arities, " and ")
+                )
             }
             TypeError::InvalidConcat { op, ty, .. } => {
                 write!(f, "`{op}` joins strings or lists, not `{ty}`")
@@ -1214,13 +1217,19 @@ impl fmt::Display for TypeError {
     }
 }
 
-/// "arities 1 and 2", "arities 0, 1 and 3".
-pub(crate) fn arity_list(arities: &[usize]) -> String {
-    let names: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
-    match names.split_last() {
-        Some((last, rest)) if !rest.is_empty() => {
-            format!("arities {} and {last}", rest.join(", "))
+/// The arities of an overloaded name (two or more), the last after
+/// `conjunction`: "1 and 2", "0, 1 or 3".
+pub(crate) fn arity_list(arities: &[usize], conjunction: &str) -> String {
+    let mut listed = String::new();
+    for (index, arity) in arities.iter().enumerate() {
+        if index > 0 {
+            listed.push_str(if index + 1 == arities.len() {
+                conjunction
+            } else {
+                ", "
+            });
         }
-        _ => format!("arity {}", names.join("")),
+        listed.push_str(&arity.to_string());
     }
+    listed
 }

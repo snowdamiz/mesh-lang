@@ -44,6 +44,17 @@ expression: rendered
 ───╯
 {"code":"E0044","severity":"error","message":"slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 4 exceeds function arity 2"}],"fix":"use |> to pipe as the first argument, or |2>...|2> for other positions"}
 
+[E0044] Error: slot position 2 is out of range: `fn_name` takes fewer than 2 arguments; use |> instead
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── slot 2 exceeds function arity 1
+   │
+   │ Help: use |> to pipe as the first argument
+───╯
+{"code":"E0044","severity":"error","message":"slot position 2 is out of range: `fn_name` takes fewer than 2 arguments; use |> instead","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 2 exceeds function arity 1"}],"fix":"use |> to pipe as the first argument"}
+
 [E0004] Error: undefined variable `name`
    ╭─[ main.mpl:2:7 ]
    │
@@ -635,6 +646,28 @@ expression: rendered
 ───╯
 {"code":"E0065","severity":"error","message":"no impl's `from` for `Meters` takes `Bool`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they take `Int`, `String`"}],"fix":"convert the argument to one of those types first"}
 
+[E0065] Error: cannot tell which impl's `method` to call on `Int`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── its impls return `Int`, `String`
+   │
+   │ Help: give the result a type: `let x :: Int = value.method()`
+───╯
+{"code":"E0065","severity":"error","message":"cannot tell which impl's `method` to call on `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+
+[E0065] Error: cannot tell which impl's `from` to call on `Meters`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── its impls take `Int`, `String`
+   │
+   │ Help: give the argument a type, such as `Int`
+───╯
+{"code":"E0065","severity":"error","message":"cannot tell which impl's `from` to call on `Meters`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls take `Int`, `String`"}],"fix":"give the argument a type, such as `Int`"}
+
 [E0068] Error: kind `name` is defined twice
    ╭─[ main.mpl:2:7 ]
    │
@@ -701,6 +734,17 @@ expression: rendered
 ───╯
 {"code":"E0084","severity":"error","message":"`fn` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level, or bind a closure: `let name = fn x -> ... end`"}
 
+[E0084] Error: `struct` belongs at the top level of a module, not inside a function
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── inside a function
+   │
+   │ Help: move it to the top level of the module
+───╯
+{"code":"E0084","severity":"error","message":"`struct` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level of the module"}
+
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
    │
@@ -754,16 +798,16 @@ expression: rendered
 ───╯
 {"code":"E0076","severity":"error","message":"an `impl` for the generic type `name` is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` takes type parameters"}],"fix":"implement it for a type without type parameters, such as a struct holding the `name` you mean"}
 
-[E0075] Error: `name` is defined at arities 1 and 3
+[E0075] Error: `name` is defined at arities 0, 1 and 3
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── each arity is its own function
    │
-   │ Help: call it with 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`
+   │ Help: call it with 0, 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`
 ───╯
-{"code":"E0075","severity":"error","message":"`name` is defined at arities 1 and 3","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each arity is its own function"}],"fix":"call it with 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`"}
+{"code":"E0075","severity":"error","message":"`name` is defined at arities 0, 1 and 3","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each arity is its own function"}],"fix":"call it with 0, 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`"}
 
 [E0078] Error: `value[index]` indexing is not supported
    ╭─[ main.mpl:2:7 ]
@@ -907,6 +951,17 @@ expression: rendered
    │ Help: `Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one
 ───╯
 {"code":"E0059","severity":"error","message":"`Int` is not a struct","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a struct"}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one"}
+
+[E0059] Error: a struct update needs a struct value
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── the type of this value is not known here
+   │
+   │ Help: `Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one
+───╯
+{"code":"E0059","severity":"error","message":"a struct update needs a struct value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"the type of this value is not known here"}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one"}
 
 [E0053] Error: resource ownership violation: reason
    ╭─[ main.mpl:2:7 ]

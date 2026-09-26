@@ -1412,11 +1412,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             span,
         } => {
             let range = clamp(text_range_to_range(*span));
-            let counts: Vec<String> = arities.iter().map(|a| a.to_string()).collect();
-            let counts = match counts.split_last() {
-                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-                None => String::new(),
-            };
+            let counts = crate::error::arity_list(arities, " or ");
             let shown = arities.iter().copied().find(|&a| a > 0).unwrap_or(0);
             let params: Vec<String> = (0..shown).map(|i| format!("a{i}")).collect();
             let params = params.join(", ");

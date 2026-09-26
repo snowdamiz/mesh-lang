@@ -424,6 +424,19 @@ fn definitions_inside_a_function_are_refused() {
             "actor a() do\n    receive do\n      _ -> nil\n    end\n  end",
             "actor",
         ),
+        ("module Inner do\n    fn x() = 1\n  end", "module"),
+        ("from Nowhere import x", "from ... import"),
+        ("interface I do\n    fn f(self) -> Int\n  end", "interface"),
+        ("impl Display for Int do\n  end", "impl"),
+        ("type Shape do\n    Dot\n  end", "type"),
+        (
+            "service S do\n    fn init() -> Int do\n      0\n    end\n  end",
+            "service",
+        ),
+        (
+            "supervisor Sup do\n    strategy: one_for_one\n  end",
+            "supervisor",
+        ),
     ] {
         let src = format!("fn main() do\n  {body}\n  1\nend\n");
         let result = mesh_typeck::check(&mesh_parser::parse(&src));

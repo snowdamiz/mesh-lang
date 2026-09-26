@@ -36,6 +36,12 @@ fn one_of_each() -> Vec<TypeError> {
             arity: 2,
             span: span(19, 24),
         },
+        TypeError::SlotPipeOutOfRange {
+            slot: 2,
+            fn_name: "fn_name".to_string(),
+            arity: 1,
+            span: span(19, 24),
+        },
         TypeError::UnboundVariable {
             name: "name".to_string(),
             span: span(19, 24),
@@ -313,6 +319,22 @@ fn one_of_each() -> Vec<TypeError> {
             span: span(19, 24),
             by_argument: true,
         },
+        TypeError::AmbiguousImplMethod {
+            method: "method".to_string(),
+            receiver: Ty::int(),
+            candidates: vec![Ty::int(), Ty::string()],
+            found: None,
+            span: span(19, 24),
+            by_argument: false,
+        },
+        TypeError::AmbiguousImplMethod {
+            method: "from".to_string(),
+            receiver: Ty::Con(mesh_typeck::ty::TyCon::new("Meters")),
+            candidates: vec![Ty::int(), Ty::string()],
+            found: None,
+            span: span(19, 24),
+            by_argument: true,
+        },
         TypeError::DuplicateDefinition {
             kind: "kind",
             name: "name".to_string(),
@@ -339,6 +361,10 @@ fn one_of_each() -> Vec<TypeError> {
             keyword: "fn",
             span: span(19, 24),
         },
+        TypeError::NestedDefinition {
+            keyword: "struct",
+            span: span(19, 24),
+        },
         TypeError::UnknownInterface {
             name: "name".to_string(),
             span: span(19, 24),
@@ -360,7 +386,7 @@ fn one_of_each() -> Vec<TypeError> {
         },
         TypeError::OverloadedFunctionValue {
             name: "name".to_string(),
-            arities: vec![1, 3],
+            arities: vec![0, 1, 3],
             span: span(19, 24),
         },
         TypeError::IndexingUnsupported { span: span(19, 24) },
@@ -415,6 +441,10 @@ fn one_of_each() -> Vec<TypeError> {
         },
         TypeError::NotAStruct {
             ty: Ty::int(),
+            span: span(19, 24),
+        },
+        TypeError::NotAStruct {
+            ty: Ty::Var(TyVar(3)),
             span: span(19, 24),
         },
         TypeError::ResourceViolation {
@@ -511,6 +541,31 @@ fn every_type_error_has_one_headline() {
         let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
         let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
         assert_eq!(parsed["message"], message.as_str());
+    }
+}
+
+/// Each error is at one place: where the terminal report and the JSON
+/// diagnostic put it (their first span) is `TypeError::span`, where the
+/// language server shows it. An error at no one place covers the source.
+#[test]
+fn every_type_error_is_at_one_place() {
+    let json = DiagnosticOptions {
+        json: true,
+        ..DiagnosticOptions::colorless()
+    };
+    for error in one_of_each() {
+        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
+        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        let first = &parsed["spans"][0];
+        let (start, end) = match error.span() {
+            Some(span) => (u32::from(span.start()), u32::from(span.end())),
+            None => (0, SOURCE.len() as u32),
+        };
+        assert_eq!(
+            (first["start"].as_u64(), first["end"].as_u64()),
+            (Some(start.into()), Some(end.into())),
+            "{error:?}"
+        );
     }
 }
 
