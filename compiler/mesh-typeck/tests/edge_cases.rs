@@ -348,6 +348,217 @@ end
     );
 }
 
+/// An error in any part of a control-flow expression is reported, and the
+/// function after it is checked as ever.
+#[test]
+fn errors_in_each_part_of_control_flow_are_reported() {
+    assert_eq!(
+        errors(
+            r#"
+fn if_condition() do
+  if nope1() do
+    1
+  end
+end
+
+fn if_not_bool() do
+  if 1 do
+    1
+  end
+end
+
+fn else_if() do
+  if true do
+    1
+  else if nope2() do
+    2
+  end
+end
+
+fn branches() do
+  if true do
+    1
+  else
+    "s"
+  end
+end
+
+fn scrutinee() do
+  case nope3() do
+    _ -> 1
+  end
+end
+
+fn arm_pattern(n :: Int) do
+  case n do
+    Some(x) -> 1
+    _ -> 2
+  end
+end
+
+fn arm_guard(n :: Int) do
+  case n do
+    x when nope4(x) -> 1
+    _ -> 2
+  end
+end
+
+fn arm_body(n :: Int) do
+  case n do
+    1 -> nope5()
+    _ -> 2
+  end
+end
+
+fn arm_types(n :: Int) do
+  case n do
+    1 -> 1
+    _ -> "s"
+  end
+end
+
+fn iterable() do
+  for x in nope6() do
+    x
+  end
+end
+
+fn filter_type(xs :: List<Int>) do
+  for x in xs when x do
+    x
+  end
+end
+
+fn range_ends() do
+  for x in 1.."s" do
+    x
+  end
+end
+
+fn not_iterable() do
+  for x in 5 do
+    x
+  end
+end
+
+fn while_condition() do
+  while nope7() do
+    1
+  end
+end
+
+fn while_not_bool() do
+  while 1 do
+    1
+  end
+end
+
+fn unknown_iterable(xs) do
+  for x in xs do
+    x + 1
+  end
+end
+"#
+        ),
+        [
+            "undefined variable `nope1`",
+            "type mismatch: expected `Bool`, found `Int`",
+            "undefined variable `nope2`",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope3`",
+            "type mismatch: expected `Int`, found `Option<_>`",
+            "undefined variable `nope4`",
+            "undefined variable `nope5`",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope6`",
+            "type mismatch: expected `Bool`, found `Int`",
+            "type mismatch: expected `Int`, found `String`",
+            "`Int` does not implement `Iterable`",
+            "undefined variable `nope7`",
+            "type mismatch: expected `Bool`, found `Int`",
+        ]
+    );
+}
+
+/// The same for each part of a `receive`: an arm's pattern, guard and
+/// body, and the `after` clause's timeout and body.
+#[test]
+fn errors_in_each_part_of_a_receive_are_reported() {
+    assert_eq!(
+        errors(
+            r#"
+actor pattern_types() do
+  receive do
+    1 -> 1
+    "s" -> 2
+  end
+end
+
+actor guard_error() do
+  receive do
+    n when nope(n) -> 1
+  end
+end
+
+actor body_error() do
+  receive do
+    n -> nope(n)
+  end
+end
+
+actor arm_types() do
+  receive do
+    1 -> 1
+    _ -> "s"
+  end
+end
+
+actor timeout_error() do
+  receive do
+    n -> 1
+  after nope ->
+    2
+  end
+end
+
+actor after_body_error() do
+  receive do
+    n -> 1
+  after 10 ->
+    nope()
+  end
+end
+
+actor after_type() do
+  receive do
+    n -> 1
+  after 10 ->
+    "late"
+  end
+end
+
+actor only_after() do
+  receive do
+  after 10 ->
+    1
+  end
+end
+"#
+        ),
+        [
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+            "undefined variable `nope`",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+            "undefined variable `nope`",
+            "type mismatch: expected `Int`, found `String`",
+            "cannot tell what type of message `guard_error` receives",
+            "cannot tell what type of message `body_error` receives",
+        ]
+    );
+}
+
 // ── The `?` operator ───────────────────────────────────────────────────
 
 /// `?` on an Option returns its `None` early from a function returning an
