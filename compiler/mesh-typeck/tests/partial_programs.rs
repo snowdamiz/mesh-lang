@@ -46,14 +46,16 @@ fn imports_without_a_module_are_skipped() {
     }
 }
 
-/// A condition or iterable cut off before its `do` is missing, not the
-/// block after the `do`: `if do 1 end` was "expected `Bool`, found `Int`".
+/// A condition, iterable or guard cut off before its `do` is missing, not
+/// the block after the `do`: `if do 1 end` was "expected `Bool`, found
+/// `Int`", and a guard without its expression made its clause guarded.
 #[test]
 fn a_missing_condition_is_not_the_block_after_it() {
     for source in [
         "fn f() do\n  if do\n    1\n  end\nend\n",
         "fn f() do\n  while do\n    1\n  end\nend\n",
         "fn f() do\n  for x in do\n    x\n  end\nend\n",
+        "fn f(n) when do\n  1\nend\n",
     ] {
         let parse = mesh_parser::parse(source);
         assert!(!parse.errors().is_empty(), "{source:?}");

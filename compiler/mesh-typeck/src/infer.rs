@@ -5446,30 +5446,28 @@ fn infer_multi_clause_fn(
         )?);
 
         // Process guard expression if present.
-        let has_guard = clause.guard().is_some();
-        arm_has_guard.push(has_guard);
+        // A guard is any `Bool` expression; one the parser could not
+        // finish guards nothing.
+        let guard = clause.guard().and_then(|guard| guard.expr());
+        arm_has_guard.push(guard.is_some());
         arm_spans.push(clause.syntax().text_range());
-
-        if let Some(guard_clause) = clause.guard() {
-            if let Some(guard_expr) = guard_clause.expr() {
-                // A guard is any `Bool` expression.
-                let guard_ty = infer_expr(
-                    ctx,
-                    env,
-                    &guard_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?;
-                let _ = ctx.unify(
-                    Ty::bool(),
-                    guard_ty,
-                    ConstraintOrigin::Expr {
-                        span: guard_expr.syntax().text_range(),
-                    },
-                );
-            }
+        if let Some(guard_expr) = guard {
+            let guard_ty = infer_expr(
+                ctx,
+                env,
+                &guard_expr,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?;
+            let _ = ctx.unify(
+                Ty::bool(),
+                guard_ty,
+                ConstraintOrigin::Expr {
+                    span: guard_expr.syntax().text_range(),
+                },
+            );
         }
 
         // Infer the body expression.
