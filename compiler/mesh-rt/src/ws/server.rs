@@ -264,25 +264,7 @@ pub extern "C" fn mesh_ws_serve(
     on_close_env: *mut u8,
     port: i64,
 ) {
-    // Ensure the actor scheduler is initialized (idempotent).
-    crate::actor::mesh_rt_init_actor(0);
-
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = match TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!(
-                "[mesh-rt] Failed to start WebSocket server on {}: {}",
-                addr, e
-            );
-            return;
-        }
-    };
-
-    eprintln!("[mesh-rt] WebSocket server listening on {}", addr);
-
-    // Wrap raw pointers for Send (function pointers are valid for program lifetime).
-    let handler = SendableHandler {
+    let callbacks = SendableHandler {
         on_connect_fn,
         on_connect_env,
         on_message_fn,
@@ -290,16 +272,37 @@ pub extern "C" fn mesh_ws_serve(
         on_close_fn,
         on_close_env,
     };
+    ws_serve(callbacks, port, None);
+}
 
-    // Spawn an OS thread for the accept loop so Ws.serve returns immediately.
-    // This allows calling Ws.serve before HTTP.serve in the same function
-    // without blocking (both are blocking accept loops).
-    std::thread::Builder::new()
-        .name(format!("ws-accept-{}", port))
-        .spawn(move || {
-            ws_accept_loop(listener, handler);
-        })
-        .expect("Failed to spawn WebSocket accept thread");
+/// Bind `port`, then accept on a thread of its own (so Ws.serve returns at
+/// once, and HTTP.serve can follow it), in TLS when `tls` is given.
+fn ws_serve(callbacks: SendableHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
+    // Ensure the actor scheduler is initialized (idempotent).
+    crate::actor::mesh_rt_init_actor(0);
+    let kind = if tls.is_some() {
+        "WebSocket TLS"
+    } else {
+        "WebSocket"
+    };
+
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[mesh-rt] Failed to start {kind} server on {addr}: {e}");
+            return;
+        }
+    };
+
+    eprintln!("[mesh-rt] {kind} server listening on {addr}");
+    let thread = if tls.is_some() { "wss" } else { "ws" };
+    if let Err(error) = std::thread::Builder::new()
+        .name(format!("{thread}-accept-{port}"))
+        .spawn(move || ws_accept_loop(listener, callbacks, tls))
+    {
+        eprintln!("[mesh-rt] Failed to spawn {kind} accept thread: {error}");
+    }
 }
 
 /// Wrapper for raw callback pointers to satisfy Send requirement.
@@ -365,8 +368,13 @@ impl ServerHandshakeHandler for ServerOpenHandler {
 }
 
 /// Accept loop for WebSocket connections. Runs on a dedicated OS thread,
-/// dispatching each accepted connection to an actor on the Mesh scheduler.
-fn ws_accept_loop(listener: TcpListener, callbacks: SendableHandler) {
+/// dispatching each accepted connection (in TLS when `tls` is given) to an
+/// actor on the Mesh scheduler.
+fn ws_accept_loop(
+    listener: TcpListener,
+    callbacks: SendableHandler,
+    tls: Option<Arc<ServerConfig>>,
+) {
     let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
@@ -378,7 +386,19 @@ fn ws_accept_loop(listener: TcpListener, callbacks: SendableHandler) {
         };
 
         let _ = tcp_stream.set_nodelay(true);
-        let transport = match ReactorTransport::plain(tcp_stream) {
+        let transport = match &tls {
+            None => ReactorTransport::plain(tcp_stream),
+            Some(config) => match ServerConnection::new(Arc::clone(config)) {
+                Ok(connection) => {
+                    ReactorTransport::server_tls(StreamOwned::new(connection, tcp_stream))
+                }
+                Err(e) => {
+                    eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
+                    continue;
+                }
+            },
+        };
+        let transport = match transport {
             Ok(transport) => transport,
             Err(error) => {
                 eprintln!("[mesh-rt] prepare WebSocket socket: {error}");
@@ -395,7 +415,7 @@ fn ws_accept_loop(listener: TcpListener, callbacks: SendableHandler) {
     }
 }
 
-/// Start a WebSocket TLS server on the given port, blocking the calling thread.
+/// Start a WebSocket TLS server on the given port and return after spawning its accept loop.
 ///
 /// Same as `mesh_ws_serve` but wraps each connection in TLS via rustls.
 /// Certificate and private key are loaded from PEM files at the given paths.
@@ -415,32 +435,14 @@ pub extern "C" fn mesh_ws_serve_tls(
         eprintln!("[mesh-rt] WebSocket TLS certificate and key paths must not be null");
         return;
     }
-    crate::actor::mesh_rt_init_actor(0);
-
-    let cert_str = unsafe { (*cert_path).as_str() };
-    let key_str = unsafe { (*key_path).as_str() };
-
-    let tls_config = match crate::http::server::build_server_config(cert_str, key_str) {
-        Ok(c) => c,
+    let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
+    let tls = match crate::http::server::build_server_config(cert_path, key_path) {
+        Ok(tls) => tls,
         Err(e) => {
             eprintln!("[mesh-rt] Failed to load TLS certificates: {}", e);
             return;
         }
     };
-
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = match TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!(
-                "[mesh-rt] Failed to start WebSocket TLS server on {}: {}",
-                addr, e
-            );
-            return;
-        }
-    };
-
-    eprintln!("[mesh-rt] WebSocket TLS server listening on {}", addr);
     let callbacks = SendableHandler {
         on_connect_fn,
         on_connect_env,
@@ -449,52 +451,7 @@ pub extern "C" fn mesh_ws_serve_tls(
         on_close_fn,
         on_close_env,
     };
-    if let Err(error) = std::thread::Builder::new()
-        .name(format!("wss-accept-{port}"))
-        .spawn(move || ws_tls_accept_loop(listener, callbacks, tls_config))
-    {
-        eprintln!("[mesh-rt] Failed to spawn WebSocket TLS accept thread: {error}");
-    }
-}
-
-fn ws_tls_accept_loop(
-    listener: TcpListener,
-    callbacks: SendableHandler,
-    tls_config: Arc<ServerConfig>,
-) {
-    let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
-    for tcp_stream in listener.incoming() {
-        let tcp_stream = match tcp_stream {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[mesh-rt] accept error: {}", e);
-                continue;
-            }
-        };
-
-        let _ = tcp_stream.set_nodelay(true);
-        let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
-                continue;
-            }
-        };
-        let transport = match ReactorTransport::server_tls(StreamOwned::new(conn, tcp_stream)) {
-            Ok(transport) => transport,
-            Err(error) => {
-                eprintln!("[mesh-rt] prepare WebSocket TLS socket: {error}");
-                continue;
-            }
-        };
-        if let Err(error) = register_server(
-            transport,
-            Arc::clone(&handler),
-            ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
-        ) {
-            eprintln!("[mesh-rt] register WebSocket TLS connection: {error}");
-        }
-    }
+    ws_serve(callbacks, port, Some(tls));
 }
 
 /// Send a text frame to a WebSocket client.
