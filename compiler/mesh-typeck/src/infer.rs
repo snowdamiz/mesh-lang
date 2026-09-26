@@ -12808,56 +12808,48 @@ fn infer_pattern(
 ) -> Result<Ty, TypeError> {
     match pat {
         Pattern::Ident(ident) => {
-            if let Some(name_tok) = ident.name() {
-                let name_text = name_tok.text().to_string();
+            let name_text = ident.name().ok_or_else(incomplete)?.text().to_string();
 
-                // Check if this identifier is a known nullary variant constructor.
-                // In Mesh, bare uppercase names like `Red`, `None`, `Point` in pattern
-                // position should resolve to constructors, not create fresh bindings.
-                // Bare payload-bearing constructors like `Ok` or `Err` (no parens) are
-                // treated as `Ok(_)` / `Err(_)` -- match the constructor, ignore payload.
-                // A lowercase name is always a new binding, even when a
-                // variable of a sum type has that name (`case v do Some(v)`).
-                let constructor_like = name_text.starts_with(|c: char| c.is_uppercase());
-                if let Some(scheme) = env.lookup(&name_text).filter(|_| constructor_like) {
-                    let candidate = ctx.instantiate(scheme);
-                    let resolved = ctx.resolve(candidate.clone());
-                    // If the name resolves to a sum type (nullary constructor), use it.
-                    if matches!(resolved, Ty::App(..)) {
-                        types.insert(pat.syntax().text_range(), candidate.clone());
-                        return Ok(candidate);
-                    }
-                    // Uppercase + function type → payload-bearing constructor used bare.
-                    // Return the constructor's result type; the payload is implicitly wildcarded.
-                    if name_text.starts_with(|c: char| c.is_uppercase()) {
-                        if let Ty::Fun(_, ret) = resolved {
-                            types.insert(pat.syntax().text_range(), (*ret).clone());
-                            return Ok(*ret);
-                        }
-                    }
+            // Check if this identifier is a known nullary variant constructor.
+            // In Mesh, bare uppercase names like `Red`, `None`, `Point` in pattern
+            // position should resolve to constructors, not create fresh bindings.
+            // Bare payload-bearing constructors like `Ok` or `Err` (no parens) are
+            // treated as `Ok(_)` / `Err(_)` -- match the constructor, ignore payload.
+            // A lowercase name is always a new binding, even when a
+            // variable of a sum type has that name (`case v do Some(v)`).
+            let constructor_like = name_text.starts_with(|c: char| c.is_uppercase());
+            if let Some(scheme) = env.lookup(&name_text).filter(|_| constructor_like) {
+                let candidate = ctx.instantiate(scheme);
+                // A nullary constructor is a value of its sum type; one with
+                // a payload, named bare, stands for its result whatever the
+                // payload. Anything else so named is no constructor.
+                let matched = match ctx.resolve(candidate.clone()) {
+                    Ty::App(..) => Some(candidate),
+                    Ty::Fun(_, ret) => Some(*ret),
+                    _ => None,
+                };
+                if let Some(ty) = matched {
+                    types.insert(pat.syntax().text_range(), ty.clone());
+                    return Ok(ty);
                 }
-                // An uppercase name is a constructor, never a new binding: a
-                // misspelled one (`Grean`) matched everything.
-                if constructor_like {
-                    let err = TypeError::UnknownVariant {
-                        suggestion: did_you_mean(env, &name_text),
-                        name: name_text,
-                        span: pat.syntax().text_range(),
-                    };
-                    ctx.errors.push(err.clone());
-                    return Err(err);
-                }
-
-                // Regular identifier pattern: create a fresh binding.
-                let ty = ctx.fresh_var();
-                env.insert(name_text, Scheme::mono(ty.clone()));
-                types.insert(pat.syntax().text_range(), ty.clone());
-                Ok(ty)
-            } else {
-                let ty = ctx.fresh_var();
-                types.insert(pat.syntax().text_range(), ty.clone());
-                Ok(ty)
             }
+            // An uppercase name is a constructor, never a new binding: a
+            // misspelled one (`Grean`) matched everything.
+            if constructor_like {
+                let err = TypeError::UnknownVariant {
+                    suggestion: did_you_mean(env, &name_text),
+                    name: name_text,
+                    span: pat.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            }
+
+            // Regular identifier pattern: create a fresh binding.
+            let ty = ctx.fresh_var();
+            env.insert(name_text, Scheme::mono(ty.clone()));
+            types.insert(pat.syntax().text_range(), ty.clone());
+            Ok(ty)
         }
         Pattern::Wildcard(_) => {
             let ty = ctx.fresh_var();

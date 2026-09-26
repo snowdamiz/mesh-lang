@@ -1634,6 +1634,34 @@ end
     );
 }
 
+/// An uppercase name in a pattern is a constructor: one the program has
+/// that is no constructor, as a service's name, is an unknown variant too.
+#[test]
+fn a_pattern_names_no_service_as_a_variant() {
+    assert_eq!(
+        errors(
+            r#"
+service Counter do
+  fn init() -> Int do
+    0
+  end
+  call Get() :: Int do |n|
+    (n, n)
+  end
+end
+
+fn f(x :: Int) -> Int do
+  case x do
+    Counter -> 1
+    _ -> 2
+  end
+end
+"#
+        ),
+        ["unknown variant `Counter`"]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
