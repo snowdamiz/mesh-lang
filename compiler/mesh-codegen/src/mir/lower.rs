@@ -209,44 +209,10 @@ fn sum_type_reach(registry: &mesh_typeck::TypeRegistry) -> HashMap<String, HashS
     }
 }
 
-/// Substitute type parameters in a `Ty` using a substitution map.
-///
-/// Replaces `Ty::Con("T")` with the corresponding concrete type from the map.
-/// Recursively handles `Ty::App`, `Ty::Fun`, and `Ty::Tuple`.
+/// `ty` with each type parameter `subst` names (`Ty::Con("T")`) replaced by
+/// its type.
 fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
-    match ty {
-        Ty::Con(con) => {
-            if let Some(replacement) = subst.get(&con.name) {
-                (*replacement).clone()
-            } else {
-                ty.clone()
-            }
-        }
-        Ty::App(con, args) => {
-            let con_sub = substitute_type_params(con, subst);
-            let args_sub: Vec<Ty> = args
-                .iter()
-                .map(|a| substitute_type_params(a, subst))
-                .collect();
-            Ty::App(Box::new(con_sub), args_sub)
-        }
-        Ty::Fun(params, ret) => {
-            let params_sub: Vec<Ty> = params
-                .iter()
-                .map(|p| substitute_type_params(p, subst))
-                .collect();
-            let ret_sub = substitute_type_params(ret, subst);
-            Ty::Fun(params_sub, Box::new(ret_sub))
-        }
-        Ty::Tuple(elems) => {
-            let elems_sub: Vec<Ty> = elems
-                .iter()
-                .map(|e| substitute_type_params(e, subst))
-                .collect();
-            Ty::Tuple(elems_sub)
-        }
-        _ => ty.clone(),
-    }
+    ty.replace_cons(&mut |con| subst.get(&con.name).map(|ty| (*ty).clone()))
 }
 
 /// The dispatch tag of a service call or cast helper: the integer literal it
@@ -802,40 +768,8 @@ impl<'a> Lowerer<'a> {
             return None;
         }
 
-        match ty {
-            Ty::Con(constructor) => {
-                if constructor.name == "PgConn" {
-                    return Some(MirResourceDestructor::PgConnection);
-                }
-                if self.registry.sum_type_defs.contains_key(&constructor.name) {
-                    return self.resource_sum_destructor_inner(&constructor.name, &[], visiting);
-                }
-                let Some(definition) = self.registry.struct_defs.get(&constructor.name) else {
-                    return Some(MirResourceDestructor::Opaque);
-                };
-                if definition.fields.is_empty() {
-                    return Some(MirResourceDestructor::Opaque);
-                }
-                if !visiting.insert(constructor.name.clone()) {
-                    return None;
-                }
-                let fields = definition
-                    .fields
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, (_, field_ty))| {
-                        self.resource_destructor_inner(field_ty, visiting)
-                            .map(|destructor| MirResourceField {
-                                index: index as u32,
-                                ty: resolve_type(field_ty, self.registry),
-                                destructor,
-                            })
-                    })
-                    .collect();
-                visiting.remove(&constructor.name);
-                Some(MirResourceDestructor::Aggregate(fields))
-            }
-            Ty::Tuple(elements) => Some(MirResourceDestructor::Aggregate(
+        if let Ty::Tuple(elements) = ty {
+            return Some(MirResourceDestructor::Aggregate(
                 elements
                     .iter()
                     .enumerate()
@@ -848,43 +782,51 @@ impl<'a> Lowerer<'a> {
                             })
                     })
                     .collect(),
-            )),
-            Ty::App(..) => {
-                let (constructor, arguments) = ty_head(ty)?;
-                if self.registry.sum_type_defs.contains_key(constructor) {
-                    return self.resource_sum_destructor_inner(constructor, arguments, visiting);
-                }
-                let Some(definition) = self.registry.struct_defs.get(constructor) else {
-                    return Some(MirResourceDestructor::Opaque);
-                };
-                if !visiting.insert(constructor.to_string()) {
-                    return None;
-                }
-                let substitutions: HashMap<String, &Ty> = definition
-                    .generic_params
-                    .iter()
-                    .cloned()
-                    .zip(arguments.iter())
-                    .collect();
-                let fields = definition
-                    .fields
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, (_, field_ty))| {
-                        let field_ty = substitute_type_params(field_ty, &substitutions);
-                        self.resource_destructor_inner(&field_ty, visiting)
-                            .map(|destructor| MirResourceField {
-                                index: index as u32,
-                                ty: resolve_type(&field_ty, self.registry),
-                                destructor,
-                            })
-                    })
-                    .collect();
-                visiting.remove(constructor);
-                Some(MirResourceDestructor::Aggregate(fields))
-            }
-            Ty::Fun(_, _) | Ty::Var(_) | Ty::Never => None,
+            ));
         }
+        // A resource type is a tuple or a named type.
+        let (name, arguments) = ty_head(ty)?;
+        if name == "PgConn" {
+            return Some(MirResourceDestructor::PgConnection);
+        }
+        if self.registry.sum_type_defs.contains_key(name) {
+            return self.resource_sum_destructor_inner(name, arguments, visiting);
+        }
+        // A resource without fields (a builtin handle, or an opaque one a
+        // package declares) is destroyed by the runtime.
+        let Some(definition) = self
+            .registry
+            .struct_defs
+            .get(name)
+            .filter(|definition| !definition.fields.is_empty())
+        else {
+            return Some(MirResourceDestructor::Opaque);
+        };
+        if !visiting.insert(name.to_string()) {
+            return None;
+        }
+        let substitutions: HashMap<String, &Ty> = definition
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(arguments.iter())
+            .collect();
+        let fields = definition
+            .fields
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (_, field_ty))| {
+                let field_ty = substitute_type_params(field_ty, &substitutions);
+                self.resource_destructor_inner(&field_ty, visiting)
+                    .map(|destructor| MirResourceField {
+                        index: index as u32,
+                        ty: resolve_type(&field_ty, self.registry),
+                        destructor,
+                    })
+            })
+            .collect();
+        visiting.remove(name);
+        Some(MirResourceDestructor::Aggregate(fields))
     }
 
     fn resource_sum_destructor_inner(
