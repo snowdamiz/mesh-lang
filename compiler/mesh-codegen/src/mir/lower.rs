@@ -13887,10 +13887,9 @@ impl<'a> Lowerer<'a> {
     /// end
     /// ```
     fn lower_try_expr(&mut self, try_expr: &TryExpr) -> MirExpr {
-        let operand_expr = match try_expr.operand() {
-            Some(expr) => expr,
-            None => return MirExpr::Unit,
-        };
+        let operand_expr = try_expr
+            .operand()
+            .expect("the parser gives every `?` an operand");
         let operand_typeck = self.get_ty(operand_expr.syntax().text_range()).cloned();
         let error_types = operand_typeck
             .as_ref()
@@ -13903,41 +13902,72 @@ impl<'a> Lowerer<'a> {
                     .cloned(),
             );
         let operand = self.lower_expr(&operand_expr);
-
-        let operand_ty = operand.ty().clone();
-        let fn_ret_ty = self.current_fn_return_type.clone().unwrap_or(MirType::Unit);
-
-        // The expression type of `expr?` is the unwrapped success type T,
-        // as determined by the type checker.
-        let success_ty = match self.resolve_range(try_expr.syntax().text_range()) {
-            // Tuple expressions use the heap-backed runtime representation.
-            MirType::Tuple(_) => MirType::Ptr,
-            ty => ty,
+        // `expr?` has the success type the type checker gave it.
+        let success_ty = runtime_value_type(self.resolve_range(try_expr.syntax().text_range()));
+        self.try_counter += 1;
+        let val_name = format!("__try_val_{}", self.try_counter);
+        // The failure variant's binding, and the value its early return
+        // carries: an `Err`'s error, a `None` nothing.
+        let (type_name, [success, failure], error) = match operand.ty() {
+            MirType::SumType(name) if sum_type_base(name) == "Result" => {
+                let err_name = format!("__try_err_{}", self.try_counter);
+                (
+                    "Result",
+                    ["Ok", "Err"],
+                    Some(self.try_error(err_name, error_types)),
+                )
+            }
+            MirType::SumType(name) if sum_type_base(name) == "Option" => {
+                ("Option", ["Some", "None"], None)
+            }
+            ty => unreachable!("`?` on a {ty}, which is neither a Result nor an Option"),
         };
-
-        // Determine if operand is Result or Option by examining the MirType.
-        match &operand_ty {
-            MirType::SumType(name) if self.is_result_type(name) => {
-                self.lower_try_result(operand, name, &fn_ret_ty, &success_ty, error_types)
-            }
-            MirType::SumType(name) if self.is_option_type(name) => {
-                self.lower_try_option(operand, name, &fn_ret_ty, &success_ty)
-            }
-            _ => {
-                // Should not happen if typeck validated correctly; fallback to Unit.
-                MirExpr::Unit
-            }
+        let (fields, bindings, returned) = match error {
+            Some((name, ty, value)) => (
+                vec![MirPattern::Var(name.clone(), ty.clone())],
+                vec![(name, ty)],
+                vec![value],
+            ),
+            None => (vec![], vec![], vec![]),
+        };
+        // An actor's body returns nothing: a failure there ends the actor.
+        let fn_ret_ty = self.current_fn_return_type.clone().unwrap_or(MirType::Unit);
+        MirExpr::Match {
+            scrutinee: Box::new(operand),
+            arms: vec![
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: type_name.to_string(),
+                        variant: success.to_string(),
+                        fields: vec![MirPattern::Var(val_name.clone(), success_ty.clone())],
+                        bindings: vec![(val_name.clone(), success_ty.clone())],
+                    },
+                    guard: None,
+                    body: MirExpr::Var(val_name, success_ty.clone()),
+                },
+                MirMatchArm {
+                    pattern: MirPattern::Constructor {
+                        type_name: type_name.to_string(),
+                        variant: failure.to_string(),
+                        fields,
+                        bindings,
+                    },
+                    guard: None,
+                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
+                        type_name: type_name.to_string(),
+                        variant: failure.to_string(),
+                        fields: returned,
+                        ty: fn_ret_ty,
+                    })),
+                },
+            ],
+            ty: success_ty,
         }
     }
 
     fn result_error_type(ty: &Ty) -> Option<&Ty> {
-        match ty {
-            Ty::App(con, args)
-                if matches!(con.as_ref(), Ty::Con(name) if name.name == "Result")
-                    && args.len() == 2 =>
-            {
-                args.get(1)
-            }
+        match ty_head(ty)? {
+            ("Result", [_, error]) => Some(error),
             _ => None,
         }
     }
@@ -13955,288 +13985,37 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Check if a sum type name corresponds to a Result type.
-    /// Matches both the generic "Result" and monomorphized forms like "Result_Int_String".
-    fn is_result_type(&self, name: &str) -> bool {
-        name == "Result" || name.starts_with("Result_")
-    }
-
-    /// Check if a sum type name corresponds to an Option type.
-    /// Matches both the generic "Option" and monomorphized forms like "Option_Int".
-    fn is_option_type(&self, name: &str) -> bool {
-        name == "Option" || name.starts_with("Option_")
-    }
-
-    /// Find the sum type base name for a type -- either "Result", "Option", or the generic name.
-    /// Used to look up variant definitions.
-    fn sum_type_base_name<'b>(&self, name: &'b str) -> &'b str {
-        if self.is_result_type(name) {
-            // Look up the actual sum type def -- try the full name first, then "Result"
-            if self.sum_types.iter().any(|s| s.name == name) {
-                name
-            } else {
-                "Result"
-            }
-        } else if self.is_option_type(name) {
-            if self.sum_types.iter().any(|s| s.name == name) {
-                name
-            } else {
-                "Option"
-            }
-        } else {
-            name
-        }
-    }
-
-    /// Find the base type name to use for the function return's early-return construction.
-    fn fn_return_sum_type_name(&self, fn_ret_ty: &MirType) -> String {
-        match fn_ret_ty {
-            MirType::SumType(name) => self.sum_type_base_name(name).to_string(),
-            _ => "Result".to_string(),
-        }
-    }
-
-    /// Extract the error type name from a monomorphized Result type name.
-    /// e.g., "Result_Int_String" -> Some("String"), "Result_Int_AppError" -> Some("AppError")
-    /// Returns None if the type name doesn't have enough parts.
-    fn extract_error_type_from_result_name(&self, name: &str) -> Option<String> {
-        // Monomorphized Result names: Result_OkType_ErrType
-        // The error type is everything after the second underscore.
-        let parts: Vec<&str> = name.splitn(3, '_').collect();
-        if parts.len() == 3 {
-            Some(parts[2].to_string())
-        } else {
-            None
-        }
-    }
-
-    /// Convert a type name string back to a MirType.
-    fn type_name_to_mir_type(&self, name: &str) -> MirType {
-        match name {
-            "Int" => MirType::Int,
-            "Float" => MirType::Float,
-            "String" => MirType::String,
-            "Bool" => MirType::Bool,
-            _ => {
-                // Check if it's a known struct
-                if self.registry.struct_defs.contains_key(name) {
-                    MirType::Struct(name.to_string())
-                } else if self.registry.sum_type_defs.contains_key(name) {
-                    MirType::SumType(name.to_string())
-                } else {
-                    MirType::Ptr
-                }
-            }
-        }
-    }
-
-    /// Desugar `result_expr?` into Match + Return for Result<T, E>.
-    /// When error types differ and a From impl exists, inserts a From.from() call
-    /// to convert the operand's error type to the function return's error type.
-    fn lower_try_result(
-        &mut self,
-        operand: MirExpr,
-        operand_type_name: &str,
-        fn_ret_ty: &MirType,
-        success_ty: &MirType,
-        error_types: Option<(Ty, Ty)>,
-    ) -> MirExpr {
-        self.try_counter += 1;
-        let counter = self.try_counter;
-        let val_name = format!("__try_val_{}", counter);
-        let err_name = format!("__try_err_{}", counter);
-
-        // Determine the operand's sum type def name for pattern matching.
-        let pattern_type_name = self.sum_type_base_name(operand_type_name).to_string();
-
-        // Determine the function return type's sum type name for the Err early-return.
-        let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
-
-        // Find the error type from the sum type definition.
-        let error_ty = self
-            .find_variant_field_type(&pattern_type_name, "Err")
-            .unwrap_or(MirType::Ptr);
-
-        // Check if From-based error conversion is needed by comparing the
-        // monomorphized Result type names. If the operand and fn return have
-        // different Result type names, the error types must differ.
-        let operand_err_name = error_types
-            .as_ref()
-            .map(|(operand, _)| self.mangle_ty_for_display(operand))
-            .or_else(|| self.extract_error_type_from_result_name(operand_type_name));
-        let fn_ret_type_name_full = match fn_ret_ty {
-            MirType::SumType(n) => n.clone(),
-            _ => String::new(),
+    /// A failed `?`'s error, bound as `name`: its type in the binding, and
+    /// the error the early return carries. That is the error itself, or,
+    /// where the function returns another error type, the error converted
+    /// by that type's `From` impl.
+    fn try_error(&self, name: String, error_types: Option<(Ty, Ty)>) -> (String, MirType, MirExpr) {
+        let Some((source, target)) =
+            error_types.filter(|(operand, function)| !Self::same_try_error_type(operand, function))
+        else {
+            // A Result's error is a generic payload: a pointer.
+            return (name.clone(), MirType::Ptr, MirExpr::Var(name, MirType::Ptr));
         };
-        let fn_err_name = error_types
-            .as_ref()
-            .map(|(_, function)| self.mangle_ty_for_display(function))
-            .or_else(|| self.extract_error_type_from_result_name(&fn_ret_type_name_full));
-
-        let needs_from_conversion = error_types
-            .as_ref()
-            .map(|(operand, function)| !Self::same_try_error_type(operand, function))
-            .unwrap_or_else(|| match (&operand_err_name, &fn_err_name) {
-                (Some(op_err), Some(fn_err)) => op_err != fn_err,
-                _ => false,
-            });
-
-        let (err_body_expr, _err_body_ty) = if needs_from_conversion {
-            let source_err_name = operand_err_name.as_deref().unwrap();
-            let target_err_name = fn_err_name.as_deref().unwrap();
-            let source_err_ty = error_types
-                .as_ref()
-                .map(|(operand, _)| resolve_type(operand, self.registry))
-                .unwrap_or_else(|| self.type_name_to_mir_type(source_err_name));
-            let target_err_ty = error_types
-                .as_ref()
-                .map(|(_, function)| resolve_type(function, self.registry))
-                .unwrap_or_else(|| self.type_name_to_mir_type(target_err_name));
-
-            // Normalize struct error types to Ptr for the Result variant layout.
-            // User-defined struct constructors return heap-allocated pointers
-            // (via mesh_gc_alloc), so the From function's return value IS already
-            // a pointer at LLVM level. The Result layout uses { i8, ptr }, so the
-            // MIR type must be Ptr to match the variant field slot.
-            let effective_err_ty = match &target_err_ty {
-                MirType::Struct(_) => MirType::Ptr,
-                other => other.clone(),
-            };
-
-            let from_fn_name = format!("From_{}__from__{}", source_err_name, target_err_name);
-            let from_fn_ty = MirType::FnPtr(
-                vec![source_err_ty.clone()],
-                Box::new(effective_err_ty.clone()),
-            );
-            let converted_err = MirExpr::Call {
-                func: Box::new(MirExpr::Var(from_fn_name, from_fn_ty)),
-                args: vec![MirExpr::Var(err_name.clone(), source_err_ty.clone())],
-                ty: effective_err_ty.clone(),
-            };
-            (converted_err, effective_err_ty)
-        } else {
-            // Error types match -- use original error directly.
-            (
-                MirExpr::Var(err_name.clone(), error_ty.clone()),
-                error_ty.clone(),
-            )
+        let source_ty = resolve_type(&source, self.registry);
+        // A struct is a pointer to the heap, as the payload slot holds it.
+        let target_ty = match resolve_type(&target, self.registry) {
+            MirType::Struct(_) => MirType::Ptr,
+            other => other,
         };
-
-        // Use the correct error type for the Err arm's pattern binding.
-        // When From conversion is needed, the pattern binds the SOURCE error type
-        // (from the operand), but the body uses the CONVERTED error type.
-        let pattern_err_ty = if needs_from_conversion {
-            error_types
-                .as_ref()
-                .map(|(operand, _)| resolve_type(operand, self.registry))
-                .unwrap_or_else(|| self.type_name_to_mir_type(operand_err_name.as_deref().unwrap()))
-        } else {
-            error_ty.clone()
+        let from_fn = format!(
+            "From_{}__from__{}",
+            self.mangle_ty_for_display(&source),
+            self.mangle_ty_for_display(&target)
+        );
+        let converted = MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                from_fn,
+                MirType::FnPtr(vec![source_ty.clone()], Box::new(target_ty.clone())),
+            )),
+            args: vec![MirExpr::Var(name.clone(), source_ty.clone())],
+            ty: target_ty,
         };
-
-        // Build the desugared match expression.
-        MirExpr::Match {
-            scrutinee: Box::new(operand),
-            arms: vec![
-                // Ok(__try_val_N) -> __try_val_N
-                MirMatchArm {
-                    pattern: MirPattern::Constructor {
-                        type_name: pattern_type_name.clone(),
-                        variant: "Ok".to_string(),
-                        fields: vec![MirPattern::Var(val_name.clone(), success_ty.clone())],
-                        bindings: vec![(val_name.clone(), success_ty.clone())],
-                    },
-                    guard: None,
-                    body: MirExpr::Var(val_name, success_ty.clone()),
-                },
-                // Err(__try_err_N) -> return Err(converted_err_or_raw_err)
-                MirMatchArm {
-                    pattern: MirPattern::Constructor {
-                        type_name: pattern_type_name,
-                        variant: "Err".to_string(),
-                        fields: vec![MirPattern::Var(err_name.clone(), pattern_err_ty.clone())],
-                        bindings: vec![(err_name, pattern_err_ty)],
-                    },
-                    guard: None,
-                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
-                        type_name: fn_return_type_name,
-                        variant: "Err".to_string(),
-                        fields: vec![err_body_expr],
-                        ty: fn_ret_ty.clone(),
-                    })),
-                },
-            ],
-            ty: success_ty.clone(),
-        }
-    }
-
-    /// Desugar `option_expr?` into Match + Return for Option<T>.
-    fn lower_try_option(
-        &mut self,
-        operand: MirExpr,
-        operand_type_name: &str,
-        fn_ret_ty: &MirType,
-        success_ty: &MirType,
-    ) -> MirExpr {
-        self.try_counter += 1;
-        let counter = self.try_counter;
-        let val_name = format!("__try_val_{}", counter);
-
-        // Determine the operand's sum type def name for pattern matching.
-        let pattern_type_name = self.sum_type_base_name(operand_type_name).to_string();
-
-        // Determine the function return type's sum type name for the None early-return.
-        let fn_return_type_name = self.fn_return_sum_type_name(fn_ret_ty);
-
-        // Build the desugared match expression.
-        MirExpr::Match {
-            scrutinee: Box::new(operand),
-            arms: vec![
-                // Some(__try_val_N) -> __try_val_N
-                MirMatchArm {
-                    pattern: MirPattern::Constructor {
-                        type_name: pattern_type_name.clone(),
-                        variant: "Some".to_string(),
-                        fields: vec![MirPattern::Var(val_name.clone(), success_ty.clone())],
-                        bindings: vec![(val_name.clone(), success_ty.clone())],
-                    },
-                    guard: None,
-                    body: MirExpr::Var(val_name, success_ty.clone()),
-                },
-                // None -> return None
-                MirMatchArm {
-                    pattern: MirPattern::Constructor {
-                        type_name: pattern_type_name,
-                        variant: "None".to_string(),
-                        fields: vec![],
-                        bindings: vec![],
-                    },
-                    guard: None,
-                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
-                        type_name: fn_return_type_name,
-                        variant: "None".to_string(),
-                        fields: vec![],
-                        ty: fn_ret_ty.clone(),
-                    })),
-                },
-            ],
-            ty: success_ty.clone(),
-        }
-    }
-
-    /// Look up the field type for a specific variant in a sum type definition.
-    /// Returns the first field's MIR type, or None if the variant has no fields.
-    fn find_variant_field_type(&self, type_name: &str, variant_name: &str) -> Option<MirType> {
-        for sum_type in &self.sum_types {
-            if sum_type.name == type_name {
-                for variant in &sum_type.variants {
-                    if variant.name == variant_name {
-                        return variant.fields.first().cloned();
-                    }
-                }
-            }
-        }
-        None
+        (name, source_ty, converted)
     }
 
     // ── Tuple expression lowering ────────────────────────────────────

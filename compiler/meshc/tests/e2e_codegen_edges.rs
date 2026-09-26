@@ -407,3 +407,96 @@ end
          eval 5\nevalf 6.9\n5.0 6\nnames\ntrue\n"
     );
 }
+
+/// `?` returns the operand's own failure: an `Err` converted by the `From`
+/// impl of the function's error type (a sum type here), a tuple through as
+/// the success value, and a `None` out of an actor's body, which ends the
+/// actor. A `None` there was built as a `Result` variant, which does not
+/// exist, and the build failed.
+#[test]
+fn try_returns_the_failure_of_its_operand() {
+    let out = compile_and_run(
+        r##"type Failure do
+  Missing(String)
+  Code(Int)
+end
+
+impl From<String> for Failure do
+  fn from(message :: String) -> Failure do
+    Missing(message)
+  end
+end
+
+impl From<Int> for Failure do
+  fn from(code :: Int) -> Failure do
+    Code(code)
+  end
+end
+
+fn named(key :: String) -> Result<String, String> do
+  if key == "a" do
+    Ok("alpha")
+  else
+    Err("no ${key}")
+  end
+end
+
+fn coded(n :: Int) -> Result<Int, Int> do
+  if n > 0 do
+    Ok(n)
+  else
+    Err(n)
+  end
+end
+
+fn pair(n :: Int) -> Result<(Int, String), Failure> do
+  if n > 1 do
+    Ok((n, "big"))
+  else
+    Err(Missing("small"))
+  end
+end
+
+fn both(key :: String, n :: Int) -> Result<String, Failure> do
+  let name = named(key)?
+  let code = coded(n)?
+  let p = pair(n)?
+  Ok("${name} ${code} ${Tuple.first(p)} ${Tuple.second(p)}")
+end
+
+fn show(r :: Result<String, Failure>) -> String do
+  case r do
+    Ok(s) -> s
+    Err(Missing(m)) -> "missing ${m}"
+    Err(Code(c)) -> "code ${c}"
+  end
+end
+
+fn find(s :: String) -> Option<Int> do
+  if s == "1" do
+    Some(1)
+  else
+    None
+  end
+end
+
+actor worker(s :: String) do
+  let n = find(s)?
+  println("found ${n}")
+end
+
+fn main() do
+  println(show(both("a", 2)))
+  println(show(both("b", 2)))
+  println(show(both("a", -3)))
+  println(show(both("a", 1)))
+  spawn(worker, "2")
+  spawn(worker, "1")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "alpha 2 2 big\nmissing no b\ncode -3\nmissing small\nfound 1\n"
+    );
+}
