@@ -2830,7 +2830,8 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
             param_count: 1,
             return_type: Some(Ty::bool()),
             has_default_body: false,
-            param_types: None,
+            // Another value of the type.
+            param_types: Some(vec![Ty::Con(TyCon::new("Self"))]),
         }],
         associated_types: vec![],
     });
@@ -2949,7 +2950,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 param_count: 1,
                 return_type: Some(Ty::bool()),
                 has_default_body: false,
-                param_types: None,
+                param_types: Some(vec![Ty::Con(TyCon::new("Self"))]),
             },
             TraitMethodSig {
                 name: "compare".to_string(),
@@ -2957,7 +2958,7 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 param_count: 1,
                 return_type: Some(Ty::Con(TyCon::new("Ordering"))),
                 has_default_body: true,
-                param_types: None,
+                param_types: Some(vec![Ty::Con(TyCon::new("Self"))]),
             },
         ],
         associated_types: vec![],

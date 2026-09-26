@@ -1531,6 +1531,59 @@ end
     );
 }
 
+/// `eq`, `lt` and `compare` take another value of their type, however
+/// they are called: a derived or built-in impl declares no parameter types,
+/// so `p.eq(5)`, `P.eq(p, "s")` and `Maybe.eq(a, 5)` compared a value with
+/// whatever they were given, as `p == 5` never did.
+#[test]
+fn comparisons_take_a_value_of_their_type() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"struct P do
+  x :: Int
+end deriving(Eq, Ord)
+
+type Maybe<T> do
+  Just(T)
+  Nothing
+end deriving(Eq)
+
+fn method_call(p :: P) -> Bool do
+  p.eq(5)
+end
+
+fn qualified(p :: P) -> Bool do
+  P.eq(p, "s")
+end
+
+fn ordered(p :: P) -> Bool do
+  p.lt(1.5)
+end
+
+fn generic(a :: Maybe<Int>) -> Bool do
+  Maybe.eq(a, 5)
+end
+
+fn builtin(n :: Int) -> Bool do
+  n.eq("s")
+end
+
+fn same(p :: P, q :: P, a :: Maybe<Int>) -> Bool do
+  p.eq(q) && P.lt(p, q) && Maybe.eq(a, Nothing) && 1.eq(2)
+end
+"#
+        ),
+        [
+            at("type mismatch: expected `P`, found `Int`", "5"),
+            at("type mismatch: expected `P`, found `String`", "\"s\""),
+            at("type mismatch: expected `P`, found `Float`", "1.5"),
+            at("type mismatch: expected `Maybe<Int>`, found `Int`", "5"),
+            at("type mismatch: expected `Int`, found `String`", "\"s\""),
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

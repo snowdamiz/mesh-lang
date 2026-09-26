@@ -11863,10 +11863,34 @@ fn build_method_fn_type(
     // Look up the method signature to determine parameter count.
     if let Some(method_sig) = trait_registry.find_method_sig(method_name, self_ty) {
         let mut param_types = vec![self_ty.clone()]; // self parameter
-        match &method_sig.param_types {
-            // The impl's declared parameter types check the arguments.
+                                                     // The impl's declared parameter types check the arguments; a derived
+                                                     // or built-in impl declares none, and takes what its interface
+                                                     // declares, `Self` being the receiver's type (`eq` takes another
+                                                     // value of it, which it compared with whatever it was given).
+        let declared = method_sig.param_types.clone().or_else(|| {
+            let trait_name = trait_registry
+                .find_method_traits(method_name, self_ty)
+                .into_iter()
+                .next()?;
+            let method = trait_registry
+                .get_trait(&trait_name)?
+                .methods
+                .iter()
+                .find(|method| method.name == method_name)?;
+            let self_as_receiver =
+                |ty: &Ty| ty.replace_cons(&mut |tc| (tc.name == "Self").then(|| self_ty.clone()));
+            Some(
+                method
+                    .param_types
+                    .as_ref()?
+                    .iter()
+                    .map(self_as_receiver)
+                    .collect(),
+            )
+        });
+        match declared {
             Some(declared) if declared.len() == method_sig.param_count => {
-                param_types.extend(declared.iter().cloned())
+                param_types.extend(declared)
             }
             _ => {
                 for _ in 0..method_sig.param_count {
