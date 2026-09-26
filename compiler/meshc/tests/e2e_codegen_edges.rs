@@ -366,3 +366,44 @@ end
     );
     assert_eq!(out, "7\nclean\n");
 }
+
+/// A builtin that compiles to something other than a plain runtime call
+/// (Math, `Int.to_float`, `List.contains` on strings) evaluates each argument
+/// once: the arguments were evaluated for an ordinary call first and then
+/// again by the builtin's own code, so their side effects ran twice.
+#[test]
+fn builtin_arguments_are_evaluated_once() {
+    let out = compile_and_run(
+        r##"fn noisy(n :: Int) -> Int do
+  println("eval ${n}")
+  n
+end
+
+fn noisy_f(x :: Float) -> Float do
+  println("evalf ${x}")
+  x
+end
+
+fn names() -> List<String> do
+  println("names")
+  ["a", "b"]
+end
+
+fn main() do
+  println("${Math.max(noisy(1), noisy(2))}")
+  println("${Math.min(noisy_f(1.5), noisy_f(0.5))}")
+  println("${Math.abs(noisy(-3))} ${Math.abs(noisy_f(-2.5))}")
+  println("${Math.sqrt(noisy_f(4.0))} ${Math.pow(noisy_f(2.0), noisy_f(3.0))}")
+  println("${Math.floor(noisy_f(2.5))} ${Math.ceil(noisy_f(2.5))} ${Math.round(noisy_f(2.5))}")
+  println("${Int.to_float(noisy(5))} ${Float.to_int(noisy_f(6.9))}")
+  println("${List.contains(names(), "b")}")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "eval 1\neval 2\n2\nevalf 1.5\nevalf 0.5\n0.5\neval -3\nevalf -2.5\n3 2.5\n\
+         evalf 4.0\nevalf 2.0\nevalf 3.0\n2.0 8.0\nevalf 2.5\nevalf 2.5\nevalf 2.5\n2 3 3\n\
+         eval 5\nevalf 6.9\n5.0 6\nnames\ntrue\n"
+    );
+}

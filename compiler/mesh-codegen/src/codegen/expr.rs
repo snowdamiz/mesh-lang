@@ -829,6 +829,22 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Call the runtime function `name` and return what it returns.
+    fn codegen_runtime_call(
+        &mut self,
+        name: &str,
+        args: &[BasicMetadataValueEnum<'ctx>],
+        value_name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let function = get_intrinsic(&self.module, name);
+        self.builder
+            .build_call(function, args, value_name)
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{name} returned void"))
+    }
+
     fn codegen_int_binop(
         &mut self,
         op: &BinOp,
@@ -1232,6 +1248,162 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Function calls ───────────────────────────────────────────────
 
+    /// A call of a builtin that compiles to something other than a call of
+    /// its runtime function with the evaluated arguments, or `None`. Each
+    /// argument is evaluated once, here.
+    fn codegen_builtin_call(
+        &mut self,
+        name: &str,
+        args: &[MirExpr],
+        ty: &MirType,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
+        let value = match name {
+            "__mesh_uniform_decode" => {
+                let raw = self.codegen_expr(&args[0])?.into_int_value();
+                self.convert_from_list_element(raw, ty)?
+            }
+            "__mesh_uniform_encode" => {
+                let value = self.codegen_expr(&args[0])?;
+                self.convert_to_list_element(value, args[0].ty())?.into()
+            }
+            // A service's call helper: `mesh_service_call(pid, tag, args...)`.
+            "mesh_service_call" => self.codegen_service_call_helper(args, ty)?,
+            // A service's cast helper, the one caller of `mesh_actor_send`
+            // (`send` is `ActorSend`): `mesh_actor_send(pid, tag, args...)`.
+            "mesh_actor_send" => self.codegen_service_cast_helper(args)?,
+            "mesh_node_start" => self.codegen_node_start(args)?,
+            "mesh_node_connect"
+            | "mesh_node_monitor"
+            | "mesh_global_whereis"
+            | "mesh_global_unregister" => self.codegen_node_string_call(args, name)?,
+            "mesh_node_spawn" => self.codegen_node_spawn(args, 0)?,
+            "mesh_node_spawn_link" => self.codegen_node_spawn(args, 1)?,
+            "mesh_global_register" => self.codegen_global_register(args)?,
+            // Strings compare by their bytes, not their pointers.
+            "mesh_list_contains" if matches!(args[1].ty(), MirType::String) => {
+                let list = self.codegen_expr(&args[0])?;
+                let element = self.codegen_expr(&args[1])?;
+                let found = self
+                    .codegen_runtime_call(
+                        "mesh_list_contains_str",
+                        &[list.into(), element.into()],
+                        "list_contains_str",
+                    )?
+                    .into_int_value();
+                self.builder
+                    .build_int_truncate(found, self.context.bool_type(), "list_contains_bool")
+                    .map_err(|e| e.to_string())?
+                    .into()
+            }
+            "mesh_int_to_float" => {
+                let int_val = self.codegen_expr(&args[0])?.into_int_value();
+                self.builder
+                    .build_signed_int_to_float(int_val, self.context.f64_type(), "int_to_float")
+                    .map_err(|e| e.to_string())?
+                    .into()
+            }
+            "mesh_float_to_int" => {
+                let float_val = self.codegen_expr(&args[0])?.into_float_value();
+                self.saturating_float_to_int(float_val, "float_to_int")?
+                    .into()
+            }
+            _ => {
+                let int = matches!(args.first().map(MirExpr::ty), Some(MirType::Int));
+                let Some((intrinsic, to_int)) = math_intrinsic(name, int) else {
+                    return Ok(None);
+                };
+                let mut values = Vec::with_capacity(args.len() + 1);
+                for arg in args {
+                    values.push(self.codegen_expr(arg)?.into());
+                }
+                if intrinsic == "llvm.abs" {
+                    // The absolute value of the smallest Int is itself, not poison.
+                    values.push(self.context.bool_type().const_zero().into());
+                }
+                let overload = if int {
+                    self.context.i64_type().into()
+                } else {
+                    self.context.f64_type().into()
+                };
+                let result = self.codegen_llvm_intrinsic(intrinsic, overload, &values)?;
+                if to_int {
+                    self.saturating_float_to_int(result.into_float_value(), "float_to_int")?
+                        .into()
+                } else {
+                    result
+                }
+            }
+        };
+        Ok(Some(value))
+    }
+
+    /// Call the LLVM intrinsic `name` overloaded for `overload`.
+    fn codegen_llvm_intrinsic(
+        &mut self,
+        name: &str,
+        overload: inkwell::types::BasicTypeEnum<'ctx>,
+        args: &[BasicMetadataValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let declaration = Intrinsic::find(name)
+            .and_then(|intrinsic| intrinsic.get_declaration(&self.module, &[overload]))
+            .ok_or_else(|| format!("{name} not found"))?;
+        self.builder
+            .build_call(declaration, args, name.trim_start_matches("llvm."))
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{name} returned void"))
+    }
+
+    /// `word`, what the runtime function `name` returned, as a value of type
+    /// `ty`. The runtime returns a `Bool` as a wider integer, and other
+    /// values it keeps in uniform slots (`mesh_list_get`, `mesh_map_get`) as
+    /// the slot's word: a `Float`'s bits, a pointer, or a pointer to a boxed
+    /// struct or sum, which a tuple field holds inline when it fits.
+    fn runtime_word_as(
+        &mut self,
+        name: &str,
+        word: inkwell::values::IntValue<'ctx>,
+        ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let error = |e: inkwell::builder::BuilderError| e.to_string();
+        Ok(match ty {
+            MirType::Bool => self
+                .builder
+                .build_int_truncate(word, self.context.bool_type(), "to_bool")
+                .map_err(error)?
+                .into(),
+            MirType::Float => self
+                .builder
+                .build_bit_cast(word, self.context.f64_type(), "i64_to_f64")
+                .map_err(error)?,
+            MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(..)
+                if matches!(
+                    name,
+                    "mesh_tuple_first" | "mesh_tuple_second" | "mesh_tuple_nth"
+                ) =>
+            {
+                let element = self.materialize_tuple_element_ptr(word, ty)?;
+                self.builder
+                    .build_load(self.llvm_type(ty), element, "tuple_element")
+                    .map_err(error)?
+            }
+            MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(..) => {
+                self.convert_from_list_element(word, ty)?
+            }
+            MirType::String | MirType::Ptr => self
+                .builder
+                .build_int_to_ptr(
+                    word,
+                    self.context.ptr_type(inkwell::AddressSpace::default()),
+                    "i64_to_ptr",
+                )
+                .map_err(error)?
+                .into(),
+            _ => word.into(),
+        })
+    }
+
     fn codegen_call(
         &mut self,
         func: &MirExpr,
@@ -1239,16 +1411,8 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         if let MirExpr::Var(name, _) = func {
-            if name == "__mesh_uniform_decode" {
-                let raw = self
-                    .codegen_expr(args.first().ok_or("uniform decode requires one argument")?)?
-                    .into_int_value();
-                return self.convert_from_list_element(raw, ty);
-            }
-            if name == "__mesh_uniform_encode" {
-                let value =
-                    self.codegen_expr(args.first().ok_or("uniform encode requires one argument")?)?;
-                return Ok(self.convert_to_list_element(value, args[0].ty())?.into());
+            if let Some(value) = self.codegen_builtin_call(name, args, ty)? {
+                return Ok(value);
             }
         }
 
@@ -1312,7 +1476,6 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
-        let mut _has_closure_args = false;
         for (arg, &should_expand_closures) in args.iter().zip(&expand) {
             // A named function goes to the runtime as the bare pointer it
             // always was -- unless the parameter is a uniform `i64` value slot
@@ -1334,50 +1497,21 @@ impl<'ctx> CodeGen<'ctx> {
             if fn_item.is_some() && should_expand_closures {
                 // Runtime expects (fn_ptr, env_ptr) pairs; env_ptr is null for
                 // a function that takes no environment.
-                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                arg_vals.push(val.into());
-                arg_vals.push(ptr_ty.const_null().into());
-                _has_closure_args = true;
-            } else if matches!(arg.ty(), MirType::Closure(_, _))
-                && fn_item.is_none()
-                && should_expand_closures
-            {
-                // Extract fn_ptr and env_ptr from the closure struct { ptr, ptr }.
-                let cls_ty = closure_type(self.context);
-                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                let closure_alloca = self
-                    .builder
-                    .build_alloca(cls_ty, "cls_split")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(closure_alloca, val)
-                    .map_err(|e| e.to_string())?;
-                let fn_ptr_gep = self
-                    .builder
-                    .build_struct_gep(cls_ty, closure_alloca, 0, "cls_fn_ptr")
-                    .map_err(|e| e.to_string())?;
-                let fn_ptr_val = self
-                    .builder
-                    .build_load(ptr_ty, fn_ptr_gep, "fn_ptr")
-                    .map_err(|e| e.to_string())?;
-                let env_ptr_gep = self
-                    .builder
-                    .build_struct_gep(cls_ty, closure_alloca, 1, "cls_env_ptr")
-                    .map_err(|e| e.to_string())?;
-                let env_ptr_val = self
-                    .builder
-                    .build_load(ptr_ty, env_ptr_gep, "env_ptr")
-                    .map_err(|e| e.to_string())?;
-                arg_vals.push(fn_ptr_val.into());
-                arg_vals.push(env_ptr_val.into());
-                _has_closure_args = true;
-            } else if matches!(arg.ty(), MirType::FnPtr(_, _)) && should_expand_closures {
-                // Bare function reference passed to runtime intrinsic.
-                // Runtime expects (fn_ptr, env_ptr) pairs; env_ptr is null for non-closures.
-                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                arg_vals.push(val.into());
-                arg_vals.push(ptr_ty.const_null().into());
-                _has_closure_args = true;
+                let null = self
+                    .context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .const_null();
+                arg_vals.extend::<[BasicMetadataValueEnum<'ctx>; 2]>([val.into(), null.into()]);
+            } else if should_expand_closures {
+                // A closure value `{ fn_ptr, env_ptr }`, as its two pointers.
+                let closure = val.into_struct_value();
+                for (index, name) in [(0, "fn_ptr"), (1, "env_ptr")] {
+                    let part = self
+                        .builder
+                        .build_extract_value(closure, index, name)
+                        .map_err(|e| e.to_string())?;
+                    arg_vals.push(part.into());
+                }
             } else {
                 // A value whose representation differs from the parameter's
                 // (a boxed `Option` from the runtime handed to a by-value
@@ -1396,21 +1530,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Check if it's a service call helper (mesh_service_call with inline args).
-        // Pattern: Call to mesh_service_call with [pid, tag, ...extra_args]
-        // We need to pack extra_args into a payload buffer.
         if let MirExpr::Var(name, _) = func {
-            if name == "mesh_service_call" && args.len() >= 2 {
-                return self.codegen_service_call_helper(args, ty);
-            }
-            // Check if it's a service cast helper (mesh_actor_send with [pid, tag, ...args]).
-            // Pattern: Call to mesh_actor_send from a __service_*_cast_* function.
-            if name == "mesh_actor_send" && args.len() >= 2 {
-                // Check if second arg is a literal tag (service cast pattern).
-                if let MirExpr::IntLit(_, _) = &args[1] {
-                    return self.codegen_service_cast_helper(args);
-                }
-            }
             // Synthetic tuple allocation intrinsic.
             // __mesh_make_tuple(elem0, elem1, ...) -> ptr
             // Allocates { u64 len, u64[N] elements } on the GC heap.
@@ -1421,331 +1541,25 @@ impl<'ctx> CodeGen<'ctx> {
             // sent its result, so a result that is a reference comes with its
             // shape (`job_result_shape`) and the caller receives its own copy.
             // The callback, in its uniform-slot adapter, is the last argument.
-            if let (true, Some(MirExpr::Shaped { shape, .. })) = (
-                (name == "mesh_job_async" && arg_vals.len() == 2)
-                    || (name == "mesh_job_map" && arg_vals.len() == 3),
-                args.last(),
-            ) {
-                if let Some(shape_table) = self.shape_table_for_element(shape) {
-                    arg_vals.push(shape_table.into());
-                    let shaped_fn = get_intrinsic(&self.module, &format!("{name}_shaped"));
-                    return self
-                        .builder
-                        .build_call(shaped_fn, &arg_vals, "job")
-                        .map_err(|e| e.to_string())?
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or_else(|| format!("{name}_shaped returned void"));
-                }
-            }
             // Channel.try_send of a value that references heap objects: the
             // slot goes with its shape (`resolve_channel_send`).
-            if let (true, Some(MirExpr::Shaped { shape, .. })) =
-                (name == "mesh_channel_try_send", args.get(1))
-            {
-                if let Some(shape_table) = self.shape_table_for_element(shape) {
-                    arg_vals.push(shape_table.into());
-                    let shaped_fn = get_intrinsic(&self.module, "mesh_channel_try_send_shaped");
-                    return self
-                        .builder
-                        .build_call(shaped_fn, &arg_vals, "sent")
-                        .map_err(|e| e.to_string())?
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or_else(|| "mesh_channel_try_send_shaped returned void".to_string());
-                }
+            let shaped = match name.as_str() {
+                "mesh_job_async" | "mesh_job_map" => args.last(),
+                "mesh_channel_try_send" => args.get(1),
+                _ => None,
+            };
+            if let Some(MirExpr::Shaped { shape, .. }) = shaped {
+                let null = self
+                    .context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .const_null();
+                arg_vals.push(self.shape_table_for_element(shape).unwrap_or(null).into());
+                return self.codegen_runtime_call(&format!("{name}_shaped"), &arg_vals, "shaped");
             }
             // Timer.send_after(pid, ms, msg) -> mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
             // The 3rd arg (msg) needs message serialization like codegen_actor_send.
-            if name == "mesh_timer_send_after" && args.len() == 3 {
+            if name == "mesh_timer_send_after" {
                 return self.codegen_timer_send_after(args, &arg_vals);
-            }
-            // ── Phase 67: Node distribution special codegen ─────────────────
-            // Node.start(name, cookie) -> mesh_node_start(name_ptr, name_len, cookie_ptr, cookie_len)
-            if name == "mesh_node_start" && args.len() == 2 {
-                return self.codegen_node_start(args);
-            }
-            // Node.connect(name) -> mesh_node_connect(name_ptr, name_len)
-            if name == "mesh_node_connect" {
-                return self.codegen_node_string_call(args, "mesh_node_connect");
-            }
-            // Node.monitor(node_name) -> mesh_node_monitor(name_ptr, name_len)
-            if name == "mesh_node_monitor" {
-                return self.codegen_node_string_call(args, "mesh_node_monitor");
-            }
-            // Node.spawn(node, func, args...) -> mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len, args_ptr, args_size, link_flag)
-            if name == "mesh_node_spawn" {
-                return self.codegen_node_spawn(args, &arg_vals, 0);
-            }
-            // Node.spawn_link -> same as spawn but with link_flag=1
-            if name == "mesh_node_spawn_link" {
-                return self.codegen_node_spawn(args, &arg_vals, 1);
-            }
-            // ── Phase 68: Global Registry codegen ───────────────────────────
-            // Global.register(name, pid) -> mesh_global_register(name_ptr, name_len, pid)
-            if name == "mesh_global_register" && args.len() == 2 {
-                return self.codegen_global_register(args);
-            }
-            // Global.whereis(name) -> mesh_global_whereis(name_ptr, name_len)
-            if name == "mesh_global_whereis" {
-                return self.codegen_node_string_call(args, "mesh_global_whereis");
-            }
-            // Global.unregister(name) -> mesh_global_unregister(name_ptr, name_len)
-            if name == "mesh_global_unregister" {
-                return self.codegen_node_string_call(args, "mesh_global_unregister");
-            }
-            // List.contains on String elements: redirect to mesh_list_contains_str which
-            // uses mesh_string_eq (byte comparison) instead of raw pointer equality.
-            if name == "mesh_list_contains"
-                && args.len() == 2
-                && matches!(args[1].ty(), MirType::String)
-            {
-                let list_val = self.codegen_expr(&args[0])?;
-                let elem_val = self.codegen_expr(&args[1])?;
-                let f = get_intrinsic(&self.module, "mesh_list_contains_str");
-                let result = self
-                    .builder
-                    .build_call(f, &[list_val.into(), elem_val.into()], "list_contains_str")
-                    .map_err(|e| e.to_string())?;
-                let value = result
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or_else(|| "mesh_list_contains_str returned void".to_string())?
-                    .into_int_value();
-                return self
-                    .builder
-                    .build_int_truncate(value, self.context.bool_type(), "list_contains_bool")
-                    .map(Into::into)
-                    .map_err(|e| e.to_string());
-            }
-        }
-
-        // Math/Int/Float stdlib intrinsics (Phase 43)
-        if let MirExpr::Var(name, _) = func {
-            match name.as_str() {
-                "mesh_math_abs" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    return match args[0].ty() {
-                        MirType::Int => {
-                            // llvm.abs.i64(val, is_int_min_poison=false)
-                            let intrinsic =
-                                Intrinsic::find("llvm.abs").ok_or("llvm.abs not found")?;
-                            let i64_ty = self.context.i64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[i64_ty.into()])
-                                .ok_or("Failed to get llvm.abs declaration")?;
-                            let is_poison = self.context.bool_type().const_int(0, false);
-                            let result = self
-                                .builder
-                                .build_call(decl, &[arg_val.into(), is_poison.into()], "abs")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("abs returned void".into())
-                        }
-                        MirType::Float => {
-                            // llvm.fabs.f64(val)
-                            let intrinsic =
-                                Intrinsic::find("llvm.fabs").ok_or("llvm.fabs not found")?;
-                            let f64_ty = self.context.f64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[f64_ty.into()])
-                                .ok_or("Failed to get llvm.fabs declaration")?;
-                            let result = self
-                                .builder
-                                .build_call(decl, &[arg_val.into()], "fabs")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("fabs returned void".into())
-                        }
-                        other => Err(format!("Math.abs: unsupported type {:?}", other)),
-                    };
-                }
-                "mesh_math_min" => {
-                    let lhs = self.codegen_expr(&args[0])?;
-                    let rhs = self.codegen_expr(&args[1])?;
-                    return match args[0].ty() {
-                        MirType::Int => {
-                            let intrinsic =
-                                Intrinsic::find("llvm.smin").ok_or("llvm.smin not found")?;
-                            let i64_ty = self.context.i64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[i64_ty.into()])
-                                .ok_or("Failed to get llvm.smin declaration")?;
-                            let result = self
-                                .builder
-                                .build_call(decl, &[lhs.into(), rhs.into()], "smin")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("smin returned void".into())
-                        }
-                        MirType::Float => {
-                            let intrinsic =
-                                Intrinsic::find("llvm.minnum").ok_or("llvm.minnum not found")?;
-                            let f64_ty = self.context.f64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[f64_ty.into()])
-                                .ok_or("Failed to get llvm.minnum declaration")?;
-                            let result = self
-                                .builder
-                                .build_call(decl, &[lhs.into(), rhs.into()], "minnum")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("minnum returned void".into())
-                        }
-                        other => Err(format!("Math.min: unsupported type {:?}", other)),
-                    };
-                }
-                "mesh_math_max" => {
-                    let lhs = self.codegen_expr(&args[0])?;
-                    let rhs = self.codegen_expr(&args[1])?;
-                    return match args[0].ty() {
-                        MirType::Int => {
-                            let intrinsic =
-                                Intrinsic::find("llvm.smax").ok_or("llvm.smax not found")?;
-                            let i64_ty = self.context.i64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[i64_ty.into()])
-                                .ok_or("Failed to get llvm.smax declaration")?;
-                            let result = self
-                                .builder
-                                .build_call(decl, &[lhs.into(), rhs.into()], "smax")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("smax returned void".into())
-                        }
-                        MirType::Float => {
-                            let intrinsic =
-                                Intrinsic::find("llvm.maxnum").ok_or("llvm.maxnum not found")?;
-                            let f64_ty = self.context.f64_type();
-                            let decl = intrinsic
-                                .get_declaration(&self.module, &[f64_ty.into()])
-                                .ok_or("Failed to get llvm.maxnum declaration")?;
-                            let result = self
-                                .builder
-                                .build_call(decl, &[lhs.into(), rhs.into()], "maxnum")
-                                .map_err(|e| e.to_string())?;
-                            result
-                                .try_as_basic_value()
-                                .basic()
-                                .ok_or("maxnum returned void".into())
-                        }
-                        other => Err(format!("Math.max: unsupported type {:?}", other)),
-                    };
-                }
-                "mesh_int_to_float" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let int_val = arg_val.into_int_value();
-                    let float_val = self
-                        .builder
-                        .build_signed_int_to_float(int_val, self.context.f64_type(), "int_to_float")
-                        .map_err(|e| e.to_string())?;
-                    return Ok(float_val.into());
-                }
-                "mesh_float_to_int" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let float_val = arg_val.into_float_value();
-                    let int_val = self.saturating_float_to_int(float_val, "float_to_int")?;
-                    return Ok(int_val.into());
-                }
-                // ── pow/sqrt/floor/ceil/round (Phase 43 Plan 02) ──────────
-                "mesh_math_pow" => {
-                    let base_val = self.codegen_expr(&args[0])?;
-                    let exp_val = self.codegen_expr(&args[1])?;
-                    let intrinsic = Intrinsic::find("llvm.pow").ok_or("llvm.pow not found")?;
-                    let f64_ty = self.context.f64_type();
-                    let decl = intrinsic
-                        .get_declaration(&self.module, &[f64_ty.into()])
-                        .ok_or("Failed to get llvm.pow declaration")?;
-                    let result = self
-                        .builder
-                        .build_call(decl, &[base_val.into(), exp_val.into()], "pow")
-                        .map_err(|e| e.to_string())?;
-                    return result
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("pow returned void".into());
-                }
-                "mesh_math_sqrt" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let intrinsic = Intrinsic::find("llvm.sqrt").ok_or("llvm.sqrt not found")?;
-                    let f64_ty = self.context.f64_type();
-                    let decl = intrinsic
-                        .get_declaration(&self.module, &[f64_ty.into()])
-                        .ok_or("Failed to get llvm.sqrt declaration")?;
-                    let result = self
-                        .builder
-                        .build_call(decl, &[arg_val.into()], "sqrt")
-                        .map_err(|e| e.to_string())?;
-                    return result
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("sqrt returned void".into());
-                }
-                "mesh_math_floor" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let intrinsic = Intrinsic::find("llvm.floor").ok_or("llvm.floor not found")?;
-                    let f64_ty = self.context.f64_type();
-                    let decl = intrinsic
-                        .get_declaration(&self.module, &[f64_ty.into()])
-                        .ok_or("Failed to get llvm.floor declaration")?;
-                    let float_result = self
-                        .builder
-                        .build_call(decl, &[arg_val.into()], "floor")
-                        .map_err(|e| e.to_string())?
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("floor returned void")?;
-                    let int_result = self
-                        .saturating_float_to_int(float_result.into_float_value(), "floor_to_int")?;
-                    return Ok(int_result.into());
-                }
-                "mesh_math_ceil" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let intrinsic = Intrinsic::find("llvm.ceil").ok_or("llvm.ceil not found")?;
-                    let f64_ty = self.context.f64_type();
-                    let decl = intrinsic
-                        .get_declaration(&self.module, &[f64_ty.into()])
-                        .ok_or("Failed to get llvm.ceil declaration")?;
-                    let float_result = self
-                        .builder
-                        .build_call(decl, &[arg_val.into()], "ceil")
-                        .map_err(|e| e.to_string())?
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("ceil returned void")?;
-                    let int_result = self
-                        .saturating_float_to_int(float_result.into_float_value(), "ceil_to_int")?;
-                    return Ok(int_result.into());
-                }
-                "mesh_math_round" => {
-                    let arg_val = self.codegen_expr(&args[0])?;
-                    let intrinsic = Intrinsic::find("llvm.round").ok_or("llvm.round not found")?;
-                    let f64_ty = self.context.f64_type();
-                    let decl = intrinsic
-                        .get_declaration(&self.module, &[f64_ty.into()])
-                        .ok_or("Failed to get llvm.round declaration")?;
-                    let float_result = self
-                        .builder
-                        .build_call(decl, &[arg_val.into()], "round")
-                        .map_err(|e| e.to_string())?
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("round returned void")?;
-                    let int_result = self
-                        .saturating_float_to_int(float_result.into_float_value(), "round_to_int")?;
-                    return Ok(int_result.into());
-                }
-                _ => {} // Fall through to normal call handling
             }
         }
 
@@ -1799,95 +1613,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .try_as_basic_value()
                     .basic()
                     .ok_or_else(|| "Function call returned void".to_string())?;
-
-                // Runtime functions returning i8 or i64 for Bool values need
-                // truncation to i1 to match Mesh's Bool representation.
-                // i8: functions like mesh_set_contains that return bool as i8.
-                // i64: functions like mesh_list_get that return u64 (uniform storage).
-                if matches!(ty, MirType::Bool) {
-                    if let BasicValueEnum::IntValue(iv) = result {
-                        let bw = iv.get_type().get_bit_width();
-                        if bw > 1 {
-                            let i1_val = self
-                                .builder
-                                .build_int_truncate(iv, self.context.bool_type(), "to_bool")
-                                .map_err(|e| e.to_string())?;
-                            return Ok(i1_val.into());
-                        }
-                    }
-                }
-
-                // Runtime functions returning i64 for Float values (e.g., list_get
-                // returning a Float stored as bitcast u64) need bitcast conversion.
-                if matches!(ty, MirType::Float) {
-                    if let BasicValueEnum::IntValue(iv) = result {
-                        if iv.get_type().get_bit_width() == 64 {
-                            let f64_val = self
-                                .builder
-                                .build_bit_cast(iv, self.context.f64_type(), "i64_to_f64")
-                                .map_err(|e| e.to_string())?;
-                            return Ok(f64_val);
-                        }
-                    }
-                }
-
-                // A tuple field holds an aggregate of one word or less inline and
-                // only a larger one in a box (`codegen_make_tuple`), unlike a
-                // collection element, which is always boxed.
-                if matches!(
-                    name.as_str(),
-                    "mesh_tuple_first" | "mesh_tuple_second" | "mesh_tuple_nth"
-                ) && matches!(
-                    ty,
-                    MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(..)
-                ) {
-                    if let BasicValueEnum::IntValue(iv) = result {
-                        let element = self.materialize_tuple_element_ptr(iv, ty)?;
-                        return self
-                            .builder
-                            .build_load(self.llvm_type(ty), element, "tuple_element")
-                            .map_err(|e| e.to_string());
-                    }
-                }
-
-                // Generic collections store structs and sums as boxed pointers.
-                // Recover the source-level value when get/head returns that pointer as u64.
-                if matches!(
-                    ty,
-                    MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _)
-                ) {
-                    if let BasicValueEnum::IntValue(iv) = result {
-                        if iv.get_type().get_bit_width() == 64 {
-                            return self.convert_from_list_element(iv, ty);
-                        }
-                    }
-                }
-
-                // Runtime functions returning i64 for pointer values (e.g., map_get
-                // returning a string pointer as u64) need inttoptr conversion. A
-                // `Pid` is an i64 itself.
-                if matches!(ty, MirType::String | MirType::Ptr) {
-                    if let BasicValueEnum::IntValue(iv) = result {
-                        if iv.get_type().get_bit_width() == 64 {
-                            let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                            let ptr_val = self
-                                .builder
-                                .build_int_to_ptr(iv, ptr_ty, "i64_to_ptr")
-                                .map_err(|e| e.to_string())?;
-                            return Ok(ptr_val.into());
-                        }
-                    }
-                }
-
-                // Functions returning struct values when MIR expects Ptr (e.g.,
-                // From conversion returning a struct that goes into Result's
-                // { i8, ptr } Err variant). Heap-allocate the struct and return
-                // a pointer so it survives the current stack frame.
-                if let (MirType::Ptr, BasicValueEnum::StructValue(sv)) = (ty, result) {
-                    return self.box_value(sv.into(), "struct_to_ptr");
-                }
-
-                return Ok(result);
+                return match result {
+                    BasicValueEnum::IntValue(word) => self.runtime_word_as(name, word, ty),
+                    other => Ok(other),
+                };
             }
         }
 
@@ -3292,7 +3021,6 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_node_spawn(
         &mut self,
         args: &[MirExpr],
-        _pre_evaluated: &[BasicMetadataValueEnum<'ctx>],
         link_flag: u8,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
@@ -6794,4 +6522,23 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         Ok(final_result)
     }
+}
+
+/// The LLVM intrinsic the Math builtin `name` is, overloaded for `Int` when
+/// `int` (else `Float`), and whether its float result is rounded to an `Int`.
+fn math_intrinsic(name: &str, int: bool) -> Option<(&'static str, bool)> {
+    Some(match (name, int) {
+        ("mesh_math_abs", true) => ("llvm.abs", false),
+        ("mesh_math_abs", false) => ("llvm.fabs", false),
+        ("mesh_math_min", true) => ("llvm.smin", false),
+        ("mesh_math_min", false) => ("llvm.minnum", false),
+        ("mesh_math_max", true) => ("llvm.smax", false),
+        ("mesh_math_max", false) => ("llvm.maxnum", false),
+        ("mesh_math_pow", _) => ("llvm.pow", false),
+        ("mesh_math_sqrt", _) => ("llvm.sqrt", false),
+        ("mesh_math_floor", _) => ("llvm.floor", true),
+        ("mesh_math_ceil", _) => ("llvm.ceil", true),
+        ("mesh_math_round", _) => ("llvm.round", true),
+        _ => return None,
+    })
 }
