@@ -383,6 +383,7 @@ mod tests {
                 name: "Point".to_string(),
                 generic_params: vec![],
                 fields: vec![],
+                schema: None,
             },
         );
 
@@ -406,6 +407,7 @@ mod tests {
                 name: "StorageKey".to_string(),
                 generic_params: vec![],
                 fields: vec![],
+                schema: None,
             },
         );
 

@@ -64,6 +64,45 @@ pub struct StructDefInfo {
     pub generic_params: Vec<String>,
     /// Field names and their types. Types may reference generic params.
     pub fields: Vec<(String, Ty)>,
+    /// What `deriving(Schema)` declares, which relationships to the struct
+    /// (in any module) read.
+    pub schema: Option<SchemaInfo>,
+}
+
+/// A `deriving(Schema)` struct's table.
+#[derive(Clone, Debug)]
+pub struct SchemaInfo {
+    /// The configured table, or `default_schema_table`.
+    pub table: String,
+    /// The configured primary key column, or `id`.
+    pub primary_key: String,
+    /// Whether `timestamps true` adds `inserted_at` and `updated_at`.
+    pub timestamps: bool,
+}
+
+/// The table of a schema that configures none: the lowercased struct name
+/// plus "s".
+pub fn default_schema_table(struct_name: &str) -> String {
+    format!("{}s", struct_name.to_lowercase())
+}
+
+fn schema_info(struct_def: &StructDef, name: &str) -> SchemaInfo {
+    let mut schema = SchemaInfo {
+        table: default_schema_table(name),
+        primary_key: "id".to_string(),
+        timestamps: false,
+    };
+    for option in struct_def.schema_options() {
+        match option.option_name().as_deref() {
+            Some("table") => schema.table = option.string_value().unwrap_or(schema.table),
+            Some("primary_key") => {
+                schema.primary_key = option.atom_value().unwrap_or(schema.primary_key)
+            }
+            Some("timestamps") => schema.timestamps = option.bool_value().unwrap_or(false),
+            _ => {}
+        }
+    }
+    schema
 }
 
 /// A registered type alias.
@@ -4067,6 +4106,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("headers".to_string(), Ty::map(Ty::string(), Ty::string())),
             ("body_bytes".to_string(), Ty::bytes()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "HttpClientMetrics".to_string(),
@@ -4086,6 +4126,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("response_bytes".to_string(), Ty::int()),
             ("cancellations".to_string(), Ty::int()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "WsMessage".to_string(),
@@ -4096,6 +4137,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("close_code".to_string(), Ty::int()),
             ("close_reason".to_string(), Ty::string()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "BootstrapStatus".to_string(),
@@ -4106,6 +4148,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("cluster_port".to_string(), Ty::int()),
             ("discovery_seed".to_string(), Ty::string()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "ContinuityAuthorityStatus".to_string(),
@@ -4115,6 +4158,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("promotion_epoch".to_string(), Ty::int()),
             ("replication_health".to_string(), Ty::string()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "ContinuityRecord".to_string(),
@@ -4138,6 +4182,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             ("fell_back_locally".to_string(), Ty::bool()),
             ("error".to_string(), Ty::string()),
         ],
+        schema: None,
     });
     type_registry.register_struct(StructDefInfo {
         name: "ContinuitySubmitDecision".to_string(),
@@ -4150,6 +4195,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 Ty::Con(TyCon::new("ContinuityRecord")),
             ),
         ],
+        schema: None,
     });
 
     let builtin_types = builtin_type_names(&env, &type_registry, &trait_registry);
@@ -4275,6 +4321,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     name,
                     generic_params: vec![],
                     fields: vec![],
+                    schema: None,
                 });
             }
             Some(Item::SumTypeDef(sum_def)) => {
@@ -4340,6 +4387,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             name,
             generic_params,
             fields,
+            schema: None,
         });
     }
     for child in file_items(tree.syntax().clone(), import_ctx) {
@@ -4796,6 +4844,7 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
                 .into_iter()
                 .map(|(field, ty)| (field.to_string(), ty))
                 .collect(),
+            schema: None,
         });
     }
 }
@@ -6240,6 +6289,7 @@ fn register_struct_def(
             name,
             generic_params,
             fields,
+            schema: None,
         });
         return;
     }
@@ -6262,6 +6312,7 @@ fn register_struct_def(
             name,
             generic_params,
             fields,
+            schema: None,
         });
         return;
     }
@@ -6316,7 +6367,7 @@ fn register_struct_def(
         );
 
         // __relationship_meta__ :: () -> List<String>
-        // Each relationship encoded as "kind:name:target:fk:target_table" string.
+        // Each relationship encoded as "kind:name:target:fk:target_table:key" string.
         let meta_fn_name = format!("{}.__relationship_meta__", name);
         env.insert(
             meta_fn_name,
@@ -6549,10 +6600,15 @@ fn register_struct_def(
         }
     }
 
+    let schema = derive_list
+        .iter()
+        .any(|t| t == "Schema")
+        .then(|| schema_info(struct_def, &name));
     type_registry.register_struct(StructDefInfo {
         name,
         generic_params,
         fields,
+        schema,
     });
 }
 

@@ -4153,7 +4153,59 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts\nbelongs_to:user:User:user_id:users\n"
+        "has_many:posts:Post:user_id:posts:id\nbelongs_to:user:User:user_id:users:id\n"
+    );
+}
+
+/// __relationship_meta__() names the target's table and the key the foreign
+/// key refers to as the structs' own deriving(Schema) configures them, also
+/// for a target another module declares.
+#[test]
+fn e2e_relationship_meta_reads_configured_tables_and_keys() {
+    let output = compile_multifile_and_run(&[
+        (
+            "models.mpl",
+            r#"
+pub struct Account do
+  table "accounts_v2"
+  primary_key :uuid
+  uuid :: String
+end deriving(Schema)
+"#,
+        ),
+        (
+            "main.mpl",
+            r#"
+from Models import Account
+
+struct Author do
+  table "writers"
+  primary_key :handle
+  handle :: String
+  account_id :: String
+  has_many :posts, Post
+  belongs_to :account, Account
+end deriving(Schema)
+
+struct Post do
+  table "articles"
+  id :: String
+  author_id :: String
+  belongs_to :author, Author
+end deriving(Schema)
+
+fn main() do
+  List.map(Author.__relationship_meta__(), fn(m) do println(m) end)
+  List.map(Post.__relationship_meta__(), fn(m) do println(m) end)
+end
+"#,
+        ),
+    ]);
+    assert_eq!(
+        output,
+        "has_many:posts:Post:author_id:articles:handle\n\
+         belongs_to:account:Account:account_id:accounts_v2:uuid\n\
+         belongs_to:author:Author:author_id:writers:handle\n"
     );
 }
 
@@ -4182,7 +4234,7 @@ fn main() do
 end
 "#,
     );
-    assert_eq!(output, "has_one:profile:Profile:user_id:profiles\n");
+    assert_eq!(output, "has_one:profile:Profile:user_id:profiles:id\n");
 }
 
 /// __relationship_meta__() with multiple relationships on one struct.
@@ -4218,7 +4270,7 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts\nhas_one:profile:Profile:user_id:profiles\n"
+        "has_many:posts:Post:user_id:posts:id\nhas_one:profile:Profile:user_id:profiles:id\n"
     );
 }
 
@@ -5642,7 +5694,7 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts\npreload_types_ok\n"
+        "has_many:posts:Post:user_id:posts:id\npreload_types_ok\n"
     );
 }
 
@@ -5684,7 +5736,7 @@ fn main() do
 end
 "#,
     );
-    assert_eq!(output, "has_many:posts:Post:user_id:posts\nbelongs_to:user:User:user_id:users\nhas_many:comments:Comment:post_id:comments\n");
+    assert_eq!(output, "has_many:posts:Post:user_id:posts:id\nbelongs_to:user:User:user_id:users:id\nhas_many:comments:Comment:post_id:comments:id\n");
 }
 
 // ── Phase 101: Migration DSL E2E Tests ──────────────────────────────────

@@ -209,7 +209,7 @@ end deriving(Schema, Row)
 | `User.__fields__()` | Field-name list; timestamps add `inserted_at` and `updated_at` |
 | `User.__field_types__()` | `field:SQL_TYPE` metadata |
 | `User.__relationships__()` | Compact `belongs_to`, `has_one`, and `has_many` relationship metadata |
-| `User.__relationship_meta__()` | Relationship metadata including foreign key and target table |
+| `User.__relationship_meta__()` | Relationship metadata including the foreign key, the target's table, and the primary key the foreign key refers to (each as the structs' own `table` and `primary_key` configure them) |
 | `User.__name_col__()` | Per-field column-name accessor |
 
 Schema metadata drives query construction and `Repo.preload`; it does not run migrations automatically.

@@ -5874,28 +5874,15 @@ impl<'a> Lowerer<'a> {
             }
 
             // Schema: only via explicit deriving(Schema), never auto-derived
-            if derive_list.iter().any(|t| t == "Schema") {
-                let relationships = struct_def.relationships();
-                let schema_opts = struct_def.schema_options();
-
-                // Extract schema option values.
-                let mut custom_table: Option<String> = None;
-                let mut custom_pk: Option<String> = None;
-                let mut has_timestamps = false;
-                for opt in &schema_opts {
-                    if let Some(opt_name) = opt.option_name() {
-                        match opt_name.as_str() {
-                            "table" => custom_table = opt.string_value(),
-                            "primary_key" => custom_pk = opt.atom_value(),
-                            "timestamps" => has_timestamps = opt.bool_value().unwrap_or(false),
-                            _ => {}
-                        }
-                    }
-                }
-
+            let schema = self
+                .registry
+                .struct_defs
+                .get(&name)
+                .and_then(|info| info.schema.clone());
+            if let Some(schema) = schema {
                 // Inject timestamp fields if requested.
                 let mut schema_fields = fields.clone();
-                if has_timestamps {
+                if schema.timestamps {
                     schema_fields.push(("inserted_at".to_string(), MirType::String));
                     schema_fields.push(("updated_at".to_string(), MirType::String));
                 }
@@ -5903,14 +5890,12 @@ impl<'a> Lowerer<'a> {
                 self.generate_schema_metadata(
                     &name,
                     &schema_fields,
-                    &relationships,
-                    custom_table,
-                    custom_pk,
-                    has_timestamps,
+                    &struct_def.relationships(),
+                    &schema,
                 );
 
                 // Use extended fields (with timestamps) for the struct layout.
-                if has_timestamps {
+                if schema.timestamps {
                     self.structs.push(MirStructDef {
                         name,
                         fields: schema_fields,
@@ -7025,19 +7010,18 @@ impl<'a> Lowerer<'a> {
     /// - `{Name}____primary_key__()` -> String (default: "id" or custom)
     /// - `{Name}____relationships__()` -> List<String> (encoded as "kind:name:target")
     /// - `{Name}____field_types__()` -> List<String> (encoded as "field:SQL_TYPE")
+    /// - `{Name}____relationship_meta__()` -> List<String> (encoded as
+    ///   "kind:name:target:fk:target_table:key")
     /// - `{Name}____{field}_col__()` -> String (per-field column accessor)
     fn generate_schema_metadata(
         &mut self,
         name: &str,
         fields: &[(String, MirType)],
         relationships: &[RelationshipDecl],
-        custom_table: Option<String>,
-        custom_pk: Option<String>,
-        _has_timestamps: bool,
+        schema: &mesh_typeck::SchemaInfo,
     ) {
         // ── __table__() ──────────────────────────────────────────────
-        // Returns custom table name or lowercased struct name + "s" (naive pluralization).
-        let table_name = custom_table.unwrap_or_else(|| format!("{}s", name.to_lowercase()));
+        let table_name = schema.table.clone();
         let table_fn_name = format!("{}____table__", name);
         self.functions.push(MirFunction {
             name: table_fn_name.clone(),
@@ -7078,8 +7062,7 @@ impl<'a> Lowerer<'a> {
         );
 
         // ── __primary_key__() ────────────────────────────────────────
-        // Returns custom primary key or "id" as the default.
-        let pk_value = custom_pk.unwrap_or_else(|| "id".to_string());
+        let pk_value = schema.primary_key.clone();
         let pk_fn_name = format!("{}____primary_key__", name);
         self.functions.push(MirFunction {
             name: pk_fn_name.clone(),
@@ -7151,29 +7134,45 @@ impl<'a> Lowerer<'a> {
             .insert(ft_fn_name, MirType::FnPtr(vec![], Box::new(MirType::Ptr)));
 
         // ── __relationship_meta__() ──────────────────────────────────
-        // Returns List<String> where each string is "kind:name:target:fk:target_table".
+        // Returns List<String> where each string is
+        // "kind:name:target:fk:target_table:key", `key` being the primary key
+        // the foreign key refers to: the owner's for has_many and has_one, the
+        // target's for belongs_to. The target's table and key are what its own
+        // deriving(Schema) declares, wherever it is declared.
         let meta_elements: Vec<MirExpr> = relationships
             .iter()
             .filter_map(|rel| {
                 let kind = rel.kind_text()?;
                 let assoc = rel.assoc_name()?;
                 let target = rel.target_type()?;
+                let target_schema = self
+                    .registry
+                    .struct_defs
+                    .get(&target)
+                    .and_then(|info| info.schema.as_ref());
+                let target_table = target_schema.map_or_else(
+                    || mesh_typeck::default_schema_table(&target),
+                    |target| target.table.clone(),
+                );
 
                 // Infer foreign key by convention:
                 // - belongs_to :user, User -> fk is "user_id" (assoc_name + "_id")
                 // - has_many :posts, Post on User -> fk is "user_id" (owner_lowercase + "_id")
                 // - has_one :profile, Profile on User -> fk is "user_id" (owner_lowercase + "_id")
-                let fk = match kind.as_str() {
-                    "belongs_to" => format!("{}_id", assoc),
-                    "has_many" | "has_one" => format!("{}_id", name.to_lowercase()),
+                let (fk, key) = match kind.as_str() {
+                    "belongs_to" => (
+                        format!("{}_id", assoc),
+                        target_schema.map_or("id", |target| target.primary_key.as_str()),
+                    ),
+                    "has_many" | "has_one" => (
+                        format!("{}_id", name.to_lowercase()),
+                        schema.primary_key.as_str(),
+                    ),
                     _ => return None,
                 };
 
-                // Infer target table by naive pluralization (lowercase + "s")
-                let target_table = format!("{}s", target.to_lowercase());
-
                 Some(MirExpr::StringLit(
-                    format!("{}:{}:{}:{}:{}", kind, assoc, target, fk, target_table),
+                    format!("{kind}:{assoc}:{target}:{fk}:{target_table}:{key}"),
                     MirType::String,
                 ))
             })

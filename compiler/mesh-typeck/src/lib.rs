@@ -47,8 +47,8 @@ use crate::ty::{Scheme, Ty};
 
 // Re-export type registry types for downstream crate consumption (codegen).
 pub use crate::infer::{
-    register_variant_constructors, FnConstraints, StructDefInfo, SumTypeDefInfo, TypeAliasInfo,
-    TypeRegistry, VariantFieldInfo, VariantInfo,
+    default_schema_table, register_variant_constructors, FnConstraints, SchemaInfo, StructDefInfo,
+    SumTypeDefInfo, TypeAliasInfo, TypeRegistry, VariantFieldInfo, VariantInfo,
 };
 // Re-export trait registry for downstream trait resolution (codegen dispatch).
 pub use crate::traits::TraitRegistry;

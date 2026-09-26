@@ -1424,29 +1424,28 @@ unsafe fn changeset_write_result(result: *mut u8, changeset: *mut u8, missing: &
 
 use std::collections::{HashMap, HashSet};
 
-/// Parsed relationship metadata from "kind:name:target:fk:target_table" strings.
+/// Parsed relationship metadata from "kind:name:target:fk:target_table:key"
+/// strings (`key` may be left out, meaning "id").
 struct RelMeta {
     kind: String,         // "belongs_to", "has_many", "has_one"
-    _name: String,        // association name (e.g., "posts")
-    _target: String,      // target struct name (e.g., "Post")
     fk: String,           // foreign key column (e.g., "user_id")
     target_table: String, // target table (e.g., "posts")
+    key: String,          // the primary key `fk` refers to (e.g., "id")
 }
 
 /// Parse relationship metadata strings into a lookup map keyed by association name.
 fn parse_relationship_meta(meta_strings: &[String]) -> HashMap<String, RelMeta> {
     let mut map = HashMap::new();
     for entry in meta_strings {
-        let parts: Vec<&str> = entry.splitn(5, ':').collect();
-        if parts.len() == 5 {
+        let parts: Vec<&str> = entry.splitn(6, ':').collect();
+        if parts.len() >= 5 {
             map.insert(
                 parts[1].to_string(),
                 RelMeta {
                     kind: parts[0].to_string(),
-                    _name: parts[1].to_string(),
-                    _target: parts[2].to_string(),
                     fk: parts[3].to_string(),
                     target_table: parts[4].to_string(),
+                    key: parts.get(5).unwrap_or(&"id").to_string(),
                 },
             );
         }
@@ -1493,14 +1492,14 @@ unsafe fn preload_direct(
     // Determine which column to extract from parent rows and which column to match in target
     let (parent_key, target_match_key) = match meta.kind.as_str() {
         "has_many" | "has_one" => {
-            // Parent PK "id" -> target FK: collect parent "id" values,
+            // Parent PK -> target FK: collect parent key values,
             // query target WHERE fk IN (...), group by fk
-            ("id".to_string(), meta.fk.clone())
+            (meta.key.clone(), meta.fk.clone())
         }
         "belongs_to" => {
-            // Parent FK -> target PK "id": collect parent FK values,
-            // query target WHERE id IN (...), group by id
-            (meta.fk.clone(), "id".to_string())
+            // Parent FK -> target PK: collect parent FK values,
+            // query target WHERE key IN (...), group by key
+            (meta.fk.clone(), meta.key.clone())
         }
         _ => {
             return Err(err_result(&format!(
@@ -2874,6 +2873,11 @@ mod tests {
         assert_eq!(user.kind, "belongs_to");
         assert_eq!(user.fk, "user_id");
         assert_eq!(user.target_table, "users");
+        assert_eq!(user.key, "id", "a key left out is id");
+        let keyed = parse_relationship_meta(&[
+            "belongs_to:owner:Account:owner_id:accounts:uuid".to_string()
+        ]);
+        assert_eq!(keyed.get("owner").unwrap().key, "uuid");
     }
 
     #[test]
