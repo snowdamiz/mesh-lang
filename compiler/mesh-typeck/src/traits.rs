@@ -150,6 +150,21 @@ impl TraitRegistry {
         }
     }
 
+    /// Whether impls `a` and `b` of one interface would answer for the same
+    /// types: theirs unify, and so do their trait arguments.
+    fn overlap(&self, a: &ImplDef, b: &ImplDef) -> bool {
+        self.may_match(&a.impl_type, impl_head(&b.impl_type, &self.nominal)) && {
+            let mut ctx = InferCtx::new();
+            std::iter::once((&a.impl_type, &b.impl_type))
+                .chain(a.trait_type_args.iter().zip(&b.trait_type_args))
+                .all(|(a, b)| {
+                    let a = self.freshen(a, &mut ctx);
+                    let b = self.freshen(b, &mut ctx);
+                    ctx.unify(a, b, ConstraintOrigin::Builtin).is_ok()
+                })
+        }
+    }
+
     /// `ty` with its type parameters replaced by fresh variables.
     fn freshen(&self, ty: &Ty, ctx: &mut InferCtx) -> Ty {
         freshen_type_params_with_names(ty, ctx, &[], &self.nominal)
@@ -160,10 +175,6 @@ impl TraitRegistry {
         self.traits.insert(def.name.clone(), def);
     }
 
-    /// Register an impl: `impl Trait for Type`.
-    ///
-    /// Validates that all required methods are present and have compatible
-    /// signatures. Returns errors for missing or mismatched methods.
     /// Fill in what an impl method's body showed about its types (a return
     /// or parameter type left unannotated) once the impl, registered from
     /// its signatures, has been checked.
@@ -194,6 +205,9 @@ impl TraitRegistry {
         }
     }
 
+    /// Register an impl: `impl Trait for Type`. Returns what is wrong with
+    /// it: a method or associated type missing or unlike the interface's,
+    /// or an earlier impl for the same types.
     pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<TypeError> {
         self.register_impl_checking_overlap(impl_def, true)
     }
@@ -340,60 +354,21 @@ impl TraitRegistry {
             }
         }
 
-        // Check for duplicate (structurally overlapping) impls before inserting.
-        // For parameterized traits (e.g., From<Int> vs From<Float> for String),
-        // two impls are only duplicates if both impl_type AND trait_type_args unify.
-        // Every impl of the interface is compared, so first skip, cheaply,
-        // the ones headed by another type constructor.
-        let nominal = &self.nominal;
-        let new_head = impl_head(&impl_def.impl_type, nominal);
-        let existing_impls = self.impls.entry(impl_def.trait_name.clone()).or_default();
-        for existing in existing_impls.iter().filter(|_| check_overlap) {
-            if let (Some(new_head), Some(head)) =
-                (new_head, impl_head(&existing.impl_type, nominal))
-            {
-                if new_head != head {
-                    continue;
-                }
-            }
-            let mut ctx = InferCtx::new();
-            let freshened_existing =
-                freshen_type_params_with_names(&existing.impl_type, &mut ctx, &[], nominal);
-            let freshened_new =
-                freshen_type_params_with_names(&impl_def.impl_type, &mut ctx, &[], nominal);
-            if ctx
-                .unify(freshened_existing, freshened_new, ConstraintOrigin::Builtin)
-                .is_ok()
-            {
-                // If both have trait_type_args, also check those unify before flagging as duplicate.
-                if existing.trait_type_args.len() == impl_def.trait_type_args.len()
-                    && !existing.trait_type_args.is_empty()
-                {
-                    let mut args_match = true;
-                    for (a, b) in existing
-                        .trait_type_args
-                        .iter()
-                        .zip(&impl_def.trait_type_args)
-                    {
-                        let fa = freshen_type_params_with_names(a, &mut ctx, &[], nominal);
-                        let fb = freshen_type_params_with_names(b, &mut ctx, &[], nominal);
-                        if ctx.unify(fa, fb, ConstraintOrigin::Builtin).is_err() {
-                            args_match = false;
-                            break;
-                        }
-                    }
-                    if !args_match {
-                        continue; // Different trait_type_args -- not a duplicate
-                    }
-                }
-
-                errors.push(TypeError::DuplicateImpl {
-                    trait_name: impl_def.trait_name.clone(),
-                    impl_type: impl_def.impl_type_name.clone(),
-                    first_impl: format!("previously defined for `{}`", existing.impl_type_name),
-                });
-                break; // Report only first duplicate
-            }
+        // An impl whose type and trait arguments unify with an earlier one's
+        // is a duplicate (`From<Int>` and `From<Float>` for one type are not).
+        if let Some(existing) = self
+            .impls
+            .get(&impl_def.trait_name)
+            .into_iter()
+            .flatten()
+            .filter(|_| check_overlap)
+            .find(|existing| self.overlap(existing, &impl_def))
+        {
+            errors.push(TypeError::DuplicateImpl {
+                trait_name: impl_def.trait_name.clone(),
+                impl_type: impl_def.impl_type_name.clone(),
+                first_impl: format!("previously defined for `{}`", existing.impl_type_name),
+            });
         }
 
         // Store the impl (even if it has errors, for method lookup).
@@ -434,7 +409,10 @@ impl TraitRegistry {
             None
         };
 
-        existing_impls.push(impl_def);
+        self.impls
+            .entry(impl_def.trait_name.clone())
+            .or_default()
+            .push(impl_def);
 
         // Synthetic Into generation: when `impl From<A> for B` is registered,
         // automatically synthesize `impl Into<B> for A`.
@@ -536,55 +514,30 @@ impl TraitRegistry {
         None
     }
 
-    /// Find the impl for a given trait, type, and trait type arguments.
-    ///
-    /// Like `find_impl` but also matches on `trait_type_args`. If the query
-    /// `trait_type_args` is empty, falls through to standard `find_impl` behavior.
+    /// The impl of `trait_name` for `impl_ty` whose trait arguments are
+    /// `trait_type_args` (`From<Int>`, of `From<Int>` and `From<Float>`).
     pub fn find_impl_with_type_args(
         &self,
         trait_name: &str,
         trait_type_args: &[Ty],
         impl_ty: &Ty,
     ) -> Option<&ImplDef> {
-        if trait_type_args.is_empty() {
-            return self.find_impl(trait_name, impl_ty);
-        }
-        let impls = self.impls.get(trait_name)?;
         let head = impl_head(impl_ty, &self.nominal);
-        for impl_def in impls {
-            if impl_def.trait_type_args.len() != trait_type_args.len()
-                || !self.may_match(&impl_def.impl_type, head)
-            {
-                continue;
-            }
-            let mut ctx = InferCtx::new();
-            let mut imported = FxHashMap::default();
-            let impl_query = import_vars(impl_ty, &mut ctx, &mut imported);
-            let freshened_impl = self.freshen(&impl_def.impl_type, &mut ctx);
-            if ctx
-                .unify(freshened_impl, impl_query, ConstraintOrigin::Builtin)
-                .is_err()
-            {
-                continue;
-            }
-            // Also check trait type args match.
-            let mut all_match = true;
-            for (stored, query) in impl_def.trait_type_args.iter().zip(trait_type_args) {
-                let freshened = self.freshen(stored, &mut ctx);
-                let query = import_vars(query, &mut ctx, &mut imported);
-                if ctx
-                    .unify(freshened, query, ConstraintOrigin::Builtin)
-                    .is_err()
-                {
-                    all_match = false;
-                    break;
+        self.impls.get(trait_name)?.iter().find(|impl_def| {
+            impl_def.trait_type_args.len() == trait_type_args.len()
+                && self.may_match(&impl_def.impl_type, head)
+                && {
+                    let mut ctx = InferCtx::new();
+                    let mut imported = FxHashMap::default();
+                    std::iter::once((&impl_def.impl_type, impl_ty))
+                        .chain(impl_def.trait_type_args.iter().zip(trait_type_args))
+                        .all(|(stored, query)| {
+                            let stored = self.freshen(stored, &mut ctx);
+                            let query = import_vars(query, &mut ctx, &mut imported);
+                            ctx.unify(stored, query, ConstraintOrigin::Builtin).is_ok()
+                        })
                 }
-            }
-            if all_match {
-                return Some(impl_def);
-            }
-        }
-        None
+        })
     }
 
     /// Check whether a concrete type has an impl with specific trait type args.
@@ -601,11 +554,6 @@ impl TraitRegistry {
     /// Look up a trait definition by name.
     pub fn get_trait(&self, name: &str) -> Option<&TraitDef> {
         self.traits.get(name)
-    }
-
-    /// Return all registered trait definitions.
-    pub fn trait_defs(&self) -> impl Iterator<Item = &TraitDef> {
-        self.traits.values()
     }
 
     /// Return all registered trait impls (flattened across all traits).
