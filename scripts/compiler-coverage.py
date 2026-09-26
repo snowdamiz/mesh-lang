@@ -9,7 +9,8 @@ target/coverage/lcov.info. Unless `--no-services` is given it runs what the
 plain test run leaves out, with local Docker: the database- and
 Docker-backed tests (ignored by default), the former against a PostgreSQL
 container of its own, and `meshc proof docker-autoscaling` through the
-instrumented meshc. The runtime crates (mesh-rt, mesh-test-rt) count their
+instrumented meshc, its containers running an instrumented runtime and
+capacity driver. The runtime crates (mesh-rt, mesh-test-rt) count their
 own tests and every Mesh program the tests build: those link an instrumented
 runtime (with the profiler runtime a static library does not carry), and
 their profiles are read against its objects. `report`
@@ -35,6 +36,9 @@ RUNTIME_SNAPSHOT = ROOT / "target/coverage/runtime"
 RUNTIME_BUILD = ROOT / "target/coverage/runtime-build"
 PROFILES = ROOT / "target/llvm-cov-target"
 RUNTIME_LIBS = ("libmesh_rt.a", "libmesh_test_rt.a")
+# Where the Docker proof's instrumented containers write their profiles, and
+# the proof exports the instrumented Linux runtime and driver (objects/).
+PROOF_COVERAGE = ROOT / "target/coverage/proof"
 CRATES = [
     "mesh-common", "mesh-lexer", "mesh-parser", "mesh-typeck", "mesh-codegen",
     "mesh-fmt", "mesh-lint", "mesh-pkg", "mesh-lsp", "mesh-repl", "meshc", "meshpkg",
@@ -44,7 +48,7 @@ CRATES = [
 
 def llvm_env():
     env = dict(os.environ)
-    for tool in ("llvm-cov", "llvm-profdata"):
+    for tool in ("llvm-cov", "llvm-profdata", "llvm-ar"):
         var = tool.upper().replace("-", "_")
         if var not in env:
             brew = Path("/opt/homebrew/opt/llvm@21/bin") / tool
@@ -102,7 +106,9 @@ def run(extra):
     if services:
         env["MESH_TEST_DATABASE_URL"] = start_postgres()
         extra = with_ignored(extra)
-    build_instrumented_runtime()
+    linker_dir = build_instrumented_runtime()
+    if linker_dir:
+        env["PATH"] = linker_dir + os.pathsep + env["PATH"]
     env["MESH_RT_LIB_PATH"] = str(RUNTIME_SNAPSHOT / "libmesh_rt.a")
     env["MESH_TEST_RT_LIB_PATH"] = str(RUNTIME_SNAPSHOT / "libmesh_test_rt.a")
     packages = [arg for crate in crates for arg in ("-p", crate)]
@@ -113,29 +119,41 @@ def run(extra):
         ["cargo", "llvm-cov", "--no-report", "--locked", *packages, "--no-fail-fast", *extra],
         cwd=ROOT, env=env)
     failed = test.returncode
-    if services and "meshc" in crates:
+    proof_ran = services and "meshc" in crates
+    if proof_ran:
         # The Docker autoscaling proof drives an eleven-container topology from
-        # meshc itself; run through the instrumented binary it counts too.
+        # meshc itself; run through the instrumented binary it counts too, and
+        # its containers run an instrumented runtime and driver.
+        shutil.rmtree(PROOF_COVERAGE, ignore_errors=True)
         proof = subprocess.run(
             ["cargo", "llvm-cov", "run", "--no-report", "--locked", "-p", "meshc", "--",
-             "proof", "docker-autoscaling"], cwd=ROOT, env=env)
+             "proof", "docker-autoscaling"], cwd=ROOT,
+            env={**env, "MESH_PROOF_COVERAGE_DIR": str(PROOF_COVERAGE)})
         failed = failed or proof.returncode
     LCOV.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["cargo", "llvm-cov", "report", "--lcov", "--output-path", str(LCOV)],
                    cwd=ROOT, env=env, check=True)
     with LCOV.open("a") as lcov:
         lcov.write(program_runtime_lcov(env))
+        if proof_ran:
+            lcov.write(proof_runtime_lcov(env))
     return failed
 
 
 def build_instrumented_runtime():
     """The runtime Mesh programs link, in RUNTIME_SNAPSHOT: instrumented, with
     rustc's profiler runtime added (a static library leaves it out), and copied
-    aside so a test that rebuilds the runtime cannot swap it mid-run."""
+    aside so a test that rebuilds the runtime cannot swap it mid-run. On Linux,
+    where linkers take the profiler runtime only when asked for it, returns a
+    directory for the front of PATH whose `cc` links it the way rustc does for
+    binaries: last, with `-u`."""
     env = {name: value for name, value in os.environ.items()
            if "LLVM_COV" not in name and not name.startswith("RUSTC_")}
     env["RUSTFLAGS"] = "-C instrument-coverage"
     env["CARGO_TARGET_DIR"] = str(RUNTIME_BUILD)
+    # RUSTFLAGS instrument the proc macros too, which rustc then runs: their
+    # profiles would land in the working directory.
+    env["LLVM_PROFILE_FILE"] = str(RUNTIME_BUILD / "proc-macro-%p-%m.profraw")
     subprocess.run(["cargo", "build", "--locked", "-p", "mesh-rt", "-p", "mesh-test-rt"],
                    cwd=ROOT, env=env, check=True)
     sysroot = subprocess.run(["rustc", "--print", "sysroot"], capture_output=True, text=True,
@@ -149,30 +167,33 @@ def build_instrumented_runtime():
             subprocess.run(["libtool", "-static", "-o", str(out), str(RUNTIME_BUILD / "debug" / lib),
                             str(profiler)], check=True, capture_output=True)
         else:
-            script = f"CREATE {out}\nADDLIB {RUNTIME_BUILD / 'debug' / lib}\nADDLIB {profiler}\nSAVE\nEND\n"
-            subprocess.run(["ar", "-M"], input=script, text=True, check=True)
+            shutil.copy(RUNTIME_BUILD / "debug" / lib, out)
+    if sys.platform == "darwin":
+        return None
+    cc = RUNTIME_SNAPSHOT / "bin" / "cc"
+    cc.parent.mkdir(exist_ok=True)
+    cc.write_text(f'#!/bin/sh\nexec /usr/bin/cc "$@" -Wl,-u,__llvm_profile_runtime {profiler}\n')
+    cc.chmod(0o755)
+    return str(cc.parent)
 
 
-def program_runtime_lcov(env):
-    """The runtime's coverage from the Mesh programs the tests ran: their
-    profiles sit beside the tests' own, and read against the instrumented
-    runtime's objects they give its lines."""
-    profiles = sorted(PROFILES.glob("*.profraw"))
-    if not profiles:
-        return ""
-    work = RUNTIME_SNAPSHOT / "programs"
+def exported_lcov(env, profiles, archives, executables, work, source_root=None):
+    """lcov of `profiles` read against the runtime objects in `archives` (llvm-cov
+    reads objects, not archives; llvm-ar reads the GNU archives macOS ar cannot)
+    and `executables`; the sources of objects built under `source_root` are
+    renamed to this checkout's."""
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     listing = work / "profiles.txt"
     listing.write_text("".join(f"{profile}\n" for profile in profiles))
-    merged = work / "programs.profdata"
-    subprocess.run([env.get("LLVM_PROFDATA", "llvm-profdata"), "merge", "-sparse", "-f", str(listing), "-o", str(merged)],
-                   check=True)
-    objects = []
-    for lib in RUNTIME_LIBS:
-        members = work / lib
+    merged = work / "merged.profdata"
+    subprocess.run([env.get("LLVM_PROFDATA", "llvm-profdata"), "merge", "-sparse", "-f",
+                    str(listing), "-o", str(merged)], check=True)
+    objects = list(executables)
+    for archive in archives:
+        members = work / archive.name
         members.mkdir()
-        subprocess.run(["ar", "-x", str(RUNTIME_BUILD / "debug" / lib)], cwd=members, check=True)
+        subprocess.run([env.get("LLVM_AR", "ar"), "x", str(archive)], cwd=members, check=True)
         objects += [member for member in sorted(members.iterdir())
                     if member.name.startswith(("mesh_rt-", "mesh_test_rt-"))]
     args = [env.get("LLVM_COV", "llvm-cov"), "export", "-format=lcov", f"-instr-profile={merged}"]
@@ -180,7 +201,30 @@ def program_runtime_lcov(env):
         args += ["-object", str(member)]
     exported = subprocess.run(args, capture_output=True, text=True, check=True).stdout
     shutil.rmtree(work)
+    if source_root:
+        exported = exported.replace(f"SF:{source_root}/", f"SF:{ROOT}/")
     return exported
+
+
+def program_runtime_lcov(env):
+    """The runtime's coverage from the Mesh programs the tests ran: their
+    profiles sit beside the tests' own."""
+    profiles = sorted(PROFILES.glob("*.profraw"))
+    if not profiles:
+        return ""
+    archives = [RUNTIME_BUILD / "debug" / lib for lib in RUNTIME_LIBS]
+    return exported_lcov(env, profiles, archives, [], RUNTIME_SNAPSHOT / "programs")
+
+
+def proof_runtime_lcov(env):
+    """The runtime's and capacity driver's coverage in the Docker proof's
+    containers, built from the image's /app."""
+    objects = PROOF_COVERAGE / "objects"
+    profiles = sorted(PROOF_COVERAGE.glob("*.profraw"))
+    if not profiles or not (objects / "libmesh_rt.a").exists():
+        return ""
+    return exported_lcov(env, profiles, [objects / "libmesh_rt.a"],
+                         [objects / "mesh-capacity-driver"], PROOF_COVERAGE / "work", "/app")
 
 
 def test_lines(path):

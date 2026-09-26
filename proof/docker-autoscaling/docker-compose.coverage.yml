@@ -1,0 +1,19 @@
+# Added by `meshc proof docker-autoscaling` when MESH_PROOF_COVERAGE_DIR is
+# set: each node and the capacity driver write their coverage profile there,
+# one per container (named by hostname; every container's process is pid 1),
+# kept current as counters change (`%c`) so a killed node's counts survive.
+x-coverage: &coverage
+  environment:
+    LLVM_PROFILE_FILE: /mesh-coverage/%h-%m%c.profraw
+  volumes:
+    - ${MESH_PROOF_COVERAGE_DIR:?coverage directory is required}:/mesh-coverage
+
+services:
+  controller1: *coverage
+  controller2: *coverage
+  controller3: *coverage
+  gateway1: *coverage
+  gateway2: *coverage
+  worker1: *coverage
+  worker2: *coverage
+  docker-driver: *coverage

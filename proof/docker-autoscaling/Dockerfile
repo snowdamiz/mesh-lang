@@ -27,15 +27,42 @@ ENV CARGO_TARGET_DIR=/app/target
 WORKDIR /app
 COPY . .
 
+# MESH_COVERAGE=1 (`meshc proof docker-autoscaling` with
+# MESH_PROOF_COVERAGE_DIR set) instruments the runtime the proof program links
+# and the capacity driver, with counters kept in the profile file as they
+# change (continuous mode): the proof kills nodes, which then write nothing at
+# exit. A static library leaves out the profiler runtime, so the linker is
+# given it the way rustc gives it for binaries: last, and asked for (`-u`).
+# Linked any earlier, its default counter bias wins over the runtime's.
+ARG MESH_COVERAGE=0
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo build --locked --release -q -p mesh-rt -p meshc \
     && test -x ./target/release/mesh-capacity-driver \
     && install -m 0755 ./target/release/mesh-capacity-driver /tmp/mesh-capacity-driver \
+    && mkdir -p /tmp/coverage \
+    && if [ "$MESH_COVERAGE" = 1 ]; then \
+         RUSTFLAGS="-C instrument-coverage -C llvm-args=-runtime-counter-relocation" \
+           CARGO_TARGET_DIR=/app/target/coverage cargo build --locked --release -q -p mesh-rt \
+         && profiler="$(ls "$(rustc --print sysroot)"/lib/rustlib/*/lib/libprofiler_builtins-*.rlib)" \
+         && cp /app/target/coverage/release/libmesh_rt.a /tmp/coverage/libmesh_rt.a \
+         && install -m 0755 /app/target/coverage/release/mesh-capacity-driver /tmp/mesh-capacity-driver \
+         && cp /tmp/mesh-capacity-driver /tmp/coverage/mesh-capacity-driver \
+         && export MESH_RT_LIB_PATH=/tmp/coverage/libmesh_rt.a \
+         && mkdir -p /tmp/coverage-bin \
+         && printf '#!/bin/sh\nexec /usr/bin/cc "$@" -Wl,-u,__llvm_profile_runtime %s\n' "$profiler" > /tmp/coverage-bin/cc \
+         && chmod 0755 /tmp/coverage-bin/cc \
+         && export PATH="/tmp/coverage-bin:$PATH"; \
+       fi \
     && ./target/release/meshc build examples/todo-postgres \
        --opt-level 2 --output /tmp/mesh-autoscaling-proof --no-color \
     && test -x /tmp/mesh-autoscaling-proof
+
+# The instrumented runtime and driver, exported to the host for reading the
+# containers' profiles (built only for coverage).
+FROM scratch AS coverage-objects
+COPY --from=builder /tmp/coverage/ /
 
 FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS runtime
 

@@ -260,6 +260,10 @@ fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
 struct ProofHarness {
     root: PathBuf,
     compose_file: PathBuf,
+    /// Where instrumented containers write coverage profiles
+    /// (`MESH_PROOF_COVERAGE_DIR`); the instrumented objects that read them
+    /// go under `objects/` in it.
+    coverage_dir: Option<PathBuf>,
     evidence: PathBuf,
     project: String,
     cluster_id: String,
@@ -400,6 +404,10 @@ impl ProofHarness {
                 .iter()
                 .map(|(name, value)| (format!("MESH_PROOF_IDENTITY_{name}"), value.as_str())),
         );
+        // Absolute: compose resolves a relative bind path from its own file.
+        if let Some(coverage_dir) = self.coverage_dir.as_ref().and_then(|dir| dir.to_str()) {
+            environment.insert("MESH_PROOF_COVERAGE_DIR".to_string(), coverage_dir);
+        }
         environment
     }
 
@@ -431,8 +439,31 @@ impl ProofHarness {
 
     fn compose(&self, args: &[&str]) -> Result<String, String> {
         let mut command = vec!["compose", "-f", self.compose_file.to_str().unwrap()];
+        let coverage_file = self
+            .compose_file
+            .with_file_name("docker-compose.coverage.yml");
+        if self.coverage_dir.is_some() {
+            command.extend(["-f", coverage_file.to_str().unwrap()]);
+        }
         command.extend_from_slice(args);
         self.checked("docker", &command)
+    }
+
+    /// `docker build` of one Dockerfile stage, instrumented for coverage when
+    /// the proof collects it.
+    fn build_stage(&self, target: &str, output: &[&str]) -> Result<String, String> {
+        let dockerfile = self
+            .root
+            .join("proof/docker-autoscaling/Dockerfile")
+            .to_string_lossy()
+            .into_owned();
+        let mut args = vec!["build", "--file", &dockerfile, "--target", target];
+        if self.coverage_dir.is_some() {
+            args.extend(["--build-arg", "MESH_COVERAGE=1"]);
+        }
+        args.extend_from_slice(output);
+        args.push(".");
+        self.checked("docker", &args)
     }
 
     fn write(&self, name: &str, contents: impl AsRef<[u8]>) -> Result<(), String> {
@@ -838,8 +869,24 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
     } else {
         format!("mesh-autoscaling-driver:{timestamp}")
     };
+    let coverage_dir = std::env::var_os("MESH_PROOF_COVERAGE_DIR")
+        .map(PathBuf::from)
+        .map(absolute_path)
+        .transpose()?;
+    if let Some(coverage_dir) = &coverage_dir {
+        // The containers write their profiles as an unprivileged user.
+        fs::create_dir_all(coverage_dir)
+            .map_err(|error| format!("proof_coverage_directory_failed:{error}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(coverage_dir, fs::Permissions::from_mode(0o777))
+                .map_err(|error| format!("proof_coverage_directory_failed:{error}"))?;
+        }
+    }
     let mut harness = ProofHarness {
         compose_file: root.join("proof/docker-autoscaling/docker-compose.yml"),
+        coverage_dir,
         root,
         evidence,
         cluster_id: project.clone(),
@@ -999,41 +1046,12 @@ fn run_proof(
         .assertions
         .insert("compose_configuration_valid".to_string(), true);
     if !no_build {
-        let dockerfile = harness
-            .root
-            .join("proof/docker-autoscaling/Dockerfile")
-            .to_string_lossy()
-            .into_owned();
-        let _ = harness.checked(
-            "docker",
-            &[
-                "build",
-                "--file",
-                &dockerfile,
-                "--target",
-                "runtime",
-                "--tag",
-                &harness.image,
-                ".",
-            ],
-        )?;
+        let _ = harness.build_stage("runtime", &["--tag", &harness.image])?;
         let _ = harness.checked(
             "docker",
             &["tag", &harness.image, "mesh-autoscaling-proof:local"],
         )?;
-        let _ = harness.checked(
-            "docker",
-            &[
-                "build",
-                "--file",
-                &dockerfile,
-                "--target",
-                "driver",
-                "--tag",
-                &harness.driver_image,
-                ".",
-            ],
-        )?;
+        let _ = harness.build_stage("driver", &["--tag", &harness.driver_image])?;
         let _ = harness.checked(
             "docker",
             &[
@@ -1042,6 +1060,10 @@ fn run_proof(
                 "mesh-autoscaling-driver:local",
             ],
         )?;
+        if let Some(coverage_dir) = &harness.coverage_dir {
+            let destination = format!("type=local,dest={}", coverage_dir.join("objects").display());
+            let _ = harness.build_stage("coverage-objects", &["--output", &destination])?;
+        }
     }
     let image_inspection = harness.checked(
         "docker",
