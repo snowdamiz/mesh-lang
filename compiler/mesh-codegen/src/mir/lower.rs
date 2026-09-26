@@ -1928,80 +1928,41 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// `HTTP.clustered(handler)` or `HTTP.clustered(<count>, handler)`: a
+    /// shim calling the handler, which the type checker requires to be a
+    /// `Request -> Response` function named at the top level.
     fn lower_clustered_route_wrapper(
         &mut self,
         call: &CallExpr,
         metadata: &ClusteredRouteWrapperMetadata,
-    ) -> Result<MirExpr, String> {
-        let args = call
+    ) -> MirExpr {
+        let handler_expr = call
             .arg_list()
-            .map(|arg_list| arg_list.args().collect::<Vec<_>>())
-            .unwrap_or_default();
-        let handler_expr = match args.as_slice() {
-            [handler_expr] | [_, handler_expr] => handler_expr.clone(),
-            _ => {
-                return Err(format!(
-                    "clustered route wrapper `{}` lowered from unexpected argument shape",
-                    metadata.runtime_name
-                ))
-            }
-        };
-
+            .and_then(|list| list.args().last())
+            .expect("the type checker gives a clustered route its handler");
         let lowered_handler = self.lower_callee(&handler_expr);
-        let handler_ty = lowered_handler.ty().clone();
-        let (param_types, return_type) = match handler_ty.clone() {
-            MirType::FnPtr(params, ret)
-                if params.as_slice() == [MirType::Ptr] && *ret == MirType::Ptr =>
-            {
-                (params, *ret)
-            }
-            MirType::FnPtr(params, ret) => {
-                return Err(format!(
-                    "clustered route wrapper `{}` must lower to `fn(Request) -> Response`, found `fn({}) -> {}`",
-                    metadata.runtime_name,
-                    params
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    ret
-                ))
-            }
-            other => {
-                return Err(format!(
-                    "clustered route wrapper `{}` must lower to a bare handler function, found `{}`",
-                    metadata.runtime_name, other
-                ))
-            }
-        };
-
         let shim_name = declared_route_wrapper_name(&metadata.runtime_name);
-        let shim_ty = MirType::FnPtr(param_types.clone(), Box::new(return_type.clone()));
+        let shim_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
         if !self.known_functions.contains_key(&shim_name) {
-            let request_name = "__request".to_string();
-            let request_var = MirExpr::Var(request_name.clone(), MirType::Ptr);
+            let request = "__request".to_string();
             let body = MirExpr::Call {
                 func: Box::new(lowered_handler),
-                args: vec![request_var],
-                ty: return_type.clone(),
+                args: vec![MirExpr::Var(request.clone(), MirType::Ptr)],
+                ty: MirType::Ptr,
             };
-
-            self.functions.push(MirFunction {
-                name: shim_name.clone(),
-                params: vec![(request_name, MirType::Ptr)],
-                return_type: return_type.clone(),
+            self.push_helper_fn(
+                &shim_name,
+                vec![(request, MirType::Ptr)],
+                MirType::Ptr,
                 body,
-                is_closure_fn: false,
-                captures: Vec::new(),
-                has_tail_calls: false,
-            });
+            );
             self.known_functions
                 .insert(shim_name.clone(), shim_ty.clone());
         }
 
         self.consumed_clustered_route_wrappers
             .insert(call.syntax().text_range());
-        Ok(MirExpr::Var(shim_name, shim_ty))
+        MirExpr::Var(shim_name, shim_ty)
     }
 
     fn is_inferred_specialization_name(&self, name: &str) -> bool {
@@ -8806,13 +8767,7 @@ impl<'a> Lowerer<'a> {
             .get(&call.syntax().text_range())
             .cloned()
         {
-            return match self.lower_clustered_route_wrapper(call, &metadata) {
-                Ok(expr) => expr,
-                Err(err) => {
-                    self.lowering_errors.push(err);
-                    MirExpr::Unit
-                }
-            };
+            return self.lower_clustered_route_wrapper(call, &metadata);
         }
 
         // `Iface.method(value, ...)`, `Type.method(value, ...)` and
