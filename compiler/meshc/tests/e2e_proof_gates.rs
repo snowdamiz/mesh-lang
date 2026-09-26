@@ -51,6 +51,31 @@ fn a_short_continuity_soak_passes_as_a_smoke_run() {
     );
 }
 
+/// A soak too short for four samples cannot judge a disk plateau, so it does
+/// not hold one against the run; it still checks every cycle's safety.
+#[test]
+fn a_soak_too_short_to_judge_a_plateau_still_checks_safety() {
+    let evidence = tempfile::tempdir().unwrap();
+    let output = proof(&[
+        "continuity-soak",
+        "--duration-seconds",
+        "1",
+        "--cycle-millis",
+        "5",
+        "--allow-short",
+        "--evidence-dir",
+        evidence.path().to_str().unwrap(),
+    ]);
+    let summary = summary(evidence.path());
+    assert!(summary["writes"].as_u64().unwrap() > 0, "{summary}");
+    assert_eq!(summary["release_24h_pass"], false, "{summary}");
+    assert!(
+        command_output_text(&output).contains("continuity_soak:"),
+        "{}",
+        command_output_text(&output)
+    );
+}
+
 #[test]
 fn a_short_soak_is_not_a_release_run() {
     for (args, error) in [

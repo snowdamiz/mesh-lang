@@ -320,15 +320,14 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         terminals += 1;
         let high_water_before_retry = store.high_water_mark()?;
         store.upsert(&terminal)?;
+        let retry_appended_nothing = store.high_water_mark()? == high_water_before_retry;
         ensure(
-            store.high_water_mark()? == high_water_before_retry,
+            retry_appended_nothing,
             "continuity_soak_duplicate_retry_appended_log",
         )?;
         retries += 1;
-        ensure(
-            store.get(&active_key)?.is_some() && store.get(&terminal_key)?.is_some(),
-            "continuity_soak_read_after_write_missing",
-        )?;
+        let both_read = store.get(&active_key)?.is_some() && store.get(&terminal_key)?.is_some();
+        ensure(both_read, "continuity_soak_read_after_write_missing")?;
         reads += 2;
         churn += u64::from(ordinal > 0);
         store.compact(now)?;
@@ -336,23 +335,16 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
 
         if ordinal > 0 && ordinal.is_multiple_of(1_000) {
             let chunks = store.snapshot_chunks(64 * 1024)?;
-            let target = SqliteContinuityStore::open(
-                Path::new(":memory:"),
-                ContinuityStoreLimits {
-                    max_disk_bytes: u64::MAX,
-                    ..limits
-                },
-            )?;
-            if let Some(first) = chunks.first() {
-                target.apply_snapshot_chunk(first)?;
-                for chunk in chunks.iter().skip(1) {
-                    target.apply_snapshot_chunk(chunk)?;
-                }
+            let unbounded = ContinuityStoreLimits {
+                max_disk_bytes: u64::MAX,
+                ..limits
+            };
+            let target = SqliteContinuityStore::open(Path::new(":memory:"), unbounded)?;
+            for chunk in &chunks {
+                target.apply_snapshot_chunk(chunk)?;
             }
-            ensure(
-                target.stats()?.records == store.stats()?.records,
-                "continuity_soak_resumed_snapshot_diverged",
-            )?;
+            let resumed = target.stats()?.records == store.stats()?.records;
+            ensure(resumed, "continuity_soak_resumed_snapshot_diverged")?;
             snapshots += 1;
         }
 
@@ -554,10 +546,8 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         .map(|index| format!("{prefix}-worker-{index}"))
         .collect::<Vec<_>>();
     for (index, node) in candidates.iter().enumerate() {
-        load_report_registry().apply(
-            performance_report(node.clone(), index as u32 * 7, index as u64 + 1),
-            now,
-        )?;
+        let report = performance_report(node.clone(), index as u32 * 7, index as u64 + 1);
+        load_report_registry().apply(report, now)?;
     }
     let routing_started = Instant::now();
     for index in 0..args.iterations {
@@ -570,10 +560,8 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
             &RoutingPolicy::default(),
             now,
         )?;
-        ensure(
-            !decision.selected_node.is_empty(),
-            "performance_routing_selected_empty_node",
-        )?;
+        let selected = !decision.selected_node.is_empty();
+        ensure(selected, "performance_routing_selected_empty_node")?;
     }
     let routing_average_micros =
         routing_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -604,10 +592,8 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     for _ in 0..args.iterations {
         let encoded = load_report.encode()?;
         load_report_bytes = encoded.len().try_into().unwrap_or(u64::MAX);
-        ensure(
-            NodeLoadReport::decode(&encoded)? == load_report,
-            "performance_load_report_round_trip_mismatch",
-        )?;
+        let round_tripped = NodeLoadReport::decode(&encoded)? == load_report;
+        ensure(round_tripped, "performance_load_report_round_trip_mismatch")?;
     }
     let load_report_encode_average_micros =
         load_report_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -618,18 +604,14 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     for _ in 0..args.iterations {
         let started = Instant::now();
         scheduler.resize(8)?;
-        ensure(
-            scheduler.active_workers() == 8,
-            "performance_scheduler_scale_up_diverged",
-        )?;
+        let scaled_up = scheduler.active_workers() == 8;
+        ensure(scaled_up, "performance_scheduler_scale_up_diverged")?;
         scheduler_scale_up_latencies
             .push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
         let started = Instant::now();
         scheduler.resize(1)?;
-        ensure(
-            scheduler.active_workers() == 1,
-            "performance_scheduler_retirement_diverged",
-        )?;
+        let retired = scheduler.active_workers() == 1;
+        ensure(retired, "performance_scheduler_retirement_diverged")?;
         scheduler_retirement_latencies
             .push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
     }
@@ -674,10 +656,8 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     let snapshot_join_millis = snapshot_elapsed.as_millis().try_into().unwrap_or(u64::MAX);
     let snapshot_apply_mib_per_second =
         snapshot_bytes as f64 / (1024.0 * 1024.0) / snapshot_seconds;
-    ensure(
-        target.stats()?.records == source.stats()?.records,
-        "performance_snapshot_apply_diverged",
-    )?;
+    let applied = target.stats()?.records == source.stats()?.records;
+    ensure(applied, "performance_snapshot_apply_diverged")?;
     let continuity_write_amplification_ratio =
         continuity_disk_bytes_before_compaction as f64 / snapshot_bytes.max(1) as f64;
     let compaction_started = Instant::now();
@@ -692,10 +672,8 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     }
     let continuity_compaction_records_per_second = continuity_compacted_records as f64
         / compaction_started.elapsed().as_secs_f64().max(0.000_001);
-    ensure(
-        continuity_compacted_records == u64::from(args.iterations),
-        "performance_continuity_compaction_incomplete",
-    )?;
+    let compacted = continuity_compacted_records == u64::from(args.iterations);
+    ensure(compacted, "performance_continuity_compaction_incomplete")?;
 
     let consensus_dir = tempfile::tempdir()
         .map_err(|error| format!("performance_consensus_tempdir_failed:{error}"))?;
@@ -733,14 +711,11 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         };
         let operations =
             reconcile_scale_up(&driver, "performance-cluster", ControlTerm(1), &desired, 0)?;
-        ensure(
-            operations.len() == 1
-                && matches!(
-                    operations[0].state,
-                    mesh_rt::DriverOperationState::Succeeded
-                ),
-            "performance_driver_reconciliation_diverged",
-        )?;
+        let reconciled = matches!(
+            operations.as_slice(),
+            [operation] if operation.state == mesh_rt::DriverOperationState::Succeeded
+        );
+        ensure(reconciled, "performance_driver_reconciliation_diverged")?;
     }
     let driver_reconcile_average_micros =
         driver_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
