@@ -737,10 +737,6 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lookup_non_global_var(&self, name: &str) -> Option<MirType> {
-        if self.scopes.len() <= 1 {
-            return None;
-        }
-
         for scope in self.scopes.iter().skip(1).rev() {
             if let Some(ty) = scope.get(name) {
                 return Some(ty.clone());
