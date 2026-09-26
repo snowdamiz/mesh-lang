@@ -6,7 +6,7 @@
 // 3.14 here is the fixtures' sample float, not an approximation of π.
 #![allow(clippy::approx_constant)]
 
-use std::io::{BufRead, BufReader, Read as _, Write as _};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, MutexGuard};
@@ -1025,6 +1025,186 @@ end
             "{error}: {stderr}"
         );
     }
+}
+
+/// A minimal WebSocket client over `stream`: the upgrade, then frames.
+struct TestWsClient<S: Read + Write> {
+    stream: S,
+}
+
+impl<S: Read + Write> TestWsClient<S> {
+    fn open(mut stream: S, path: &str) -> Self {
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
+             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        )
+        .unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            stream.read_exact(&mut byte).unwrap();
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&head);
+        assert!(head.starts_with("HTTP/1.1 101"), "{head}");
+        Self { stream }
+    }
+
+    /// A masked frame, as a client sends.
+    fn send(&mut self, opcode: u8, payload: &[u8]) {
+        let mask = [0x12, 0x34, 0x56, 0x78];
+        let mut frame = vec![0x80 | opcode, 0x80 | payload.len() as u8];
+        frame.extend(mask);
+        frame.extend(
+            payload
+                .iter()
+                .enumerate()
+                .map(|(i, byte)| byte ^ mask[i % 4]),
+        );
+        self.stream.write_all(&frame).unwrap();
+    }
+
+    fn receive(&mut self) -> (u8, Vec<u8>) {
+        let mut head = [0; 2];
+        self.stream.read_exact(&mut head).unwrap();
+        let length = match head[1] & 0x7f {
+            126 => {
+                let mut length = [0; 2];
+                self.stream.read_exact(&mut length).unwrap();
+                u16::from_be_bytes(length) as usize
+            }
+            length => length as usize,
+        };
+        let mut payload = vec![0; length];
+        self.stream.read_exact(&mut payload).unwrap();
+        (head[0] & 0x0f, payload)
+    }
+
+    /// Welcome, echo and close: what the server below does.
+    fn converse(&mut self) {
+        assert_eq!(self.receive(), (1, b"welcome /chat".to_vec()));
+        self.send(1, b"hi");
+        assert_eq!(self.receive(), (1, b"echo hi".to_vec()));
+        self.send(8, &1000u16.to_be_bytes());
+        assert_eq!(self.receive().0, 8, "the server answers a close");
+    }
+}
+
+/// A WebSocket server that welcomes each client with its path and echoes
+/// what it sends, over `serve` (Ws.serve, or Ws.serve_tls with its files).
+fn websocket_server_source(serve: &str) -> String {
+    format!(
+        r#"
+fn on_connect(conn, path, headers) do
+  Ws.send(conn, "welcome " <> path)
+  1
+end
+
+fn on_message(conn, msg) do
+  Ws.send(conn, "echo " <> msg)
+end
+
+fn on_close(conn, code, reason) do
+  println("closed")
+end
+
+fn main() do
+  {serve}
+  Timer.sleep(600000)
+end
+"#
+    )
+}
+
+/// Ws.serve and Ws.serve_tls: the upgrade, a welcome, an echo and a close,
+/// in the clear and over TLS a client trusts through its CA.
+#[test]
+fn e2e_websocket_server_talks_ws_and_wss() {
+    let port = free_port();
+    let source = websocket_server_source(&format!(
+        "Ws.serve(on_connect, on_message, on_close, {port})"
+    ));
+    let mut guard = compile_and_start_server(&source);
+    wait_for_server_ready(&mut guard);
+    let tcp = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .unwrap();
+    TestWsClient::open(tcp, "/chat").converse();
+    drop(guard);
+
+    let certificates = tempfile::tempdir().unwrap();
+    let (ca, cert, key) = localhost_certificate(certificates.path());
+    let port = free_port();
+    let source = websocket_server_source(&format!(
+        "Ws.serve_tls(on_connect, on_message, on_close, {port}, \"{}\", \"{}\")",
+        cert.display(),
+        key.display()
+    ));
+    let mut guard = compile_and_start_server(&source);
+    wait_for_server_ready(&mut guard);
+    let mut roots = rustls::RootCertStore::empty();
+    use rustls::pki_types::pem::PemObject as _;
+    for certificate in rustls::pki_types::CertificateDer::pem_file_iter(&ca).unwrap() {
+        roots.add(certificate.unwrap()).unwrap();
+    }
+    let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    let connection = rustls::ClientConnection::new(
+        std::sync::Arc::new(config),
+        rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+    )
+    .unwrap();
+    let tcp = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .unwrap();
+    TestWsClient::open(rustls::StreamOwned::new(connection, tcp), "/chat").converse();
+}
+
+/// Ws.serve_tls with certificate files it cannot load says so and returns.
+#[test]
+fn e2e_websocket_tls_server_refuses_certificates_it_cannot_load() {
+    let certificates = tempfile::tempdir().unwrap();
+    let missing = certificates.path().join("missing.pem");
+    let source = format!(
+        r#"
+fn on_connect(conn, path, headers) do
+  1
+end
+
+fn on_message(conn, msg) do
+  Ws.send(conn, msg)
+end
+
+fn on_close(conn, code, reason) do
+  println("closed")
+end
+
+fn main() do
+  Ws.serve_tls(on_connect, on_message, on_close, 0, "{missing}", "{missing}")
+  println("returned")
+end
+"#,
+        missing = missing.display()
+    );
+    let mut guard = compile_and_start_server(&source);
+    let mut stderr = String::new();
+    guard
+        .child
+        .stderr
+        .take()
+        .expect("no stderr pipe")
+        .read_to_string(&mut stderr)
+        .unwrap();
+    assert!(
+        stderr.contains("[mesh-rt] Failed to load TLS certificates: open cert file"),
+        "{stderr}"
+    );
 }
 
 #[test]

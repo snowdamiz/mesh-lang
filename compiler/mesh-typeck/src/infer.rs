@@ -3015,18 +3015,24 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         Scheme::mono(Ty::fun(vec![Ty::int(), Ty::string()], Ty::int())),
     );
     // Ws.serve: fn(fn(Int, String, Map<String,String>) -> Int, fn(Int, String) -> (), fn(Int, Int, String) -> (), Int) -> ()
+    // Ws.serve_tls takes the same, then the PEM certificate and key paths.
+    let ws_callbacks = [
+        Ty::fun(
+            vec![Ty::int(), Ty::string(), Ty::map(Ty::string(), Ty::string())],
+            Ty::int(),
+        ),
+        Ty::fun(vec![Ty::int(), Ty::string()], Ty::Tuple(vec![])),
+        Ty::fun(vec![Ty::int(), Ty::int(), Ty::string()], Ty::Tuple(vec![])),
+        Ty::int(),
+    ];
     ws_mod.insert(
         "serve".to_string(),
+        Scheme::mono(Ty::fun(ws_callbacks.to_vec(), Ty::Tuple(vec![]))),
+    );
+    ws_mod.insert(
+        "serve_tls".to_string(),
         Scheme::mono(Ty::fun(
-            vec![
-                Ty::fun(
-                    vec![Ty::int(), Ty::string(), Ty::map(Ty::string(), Ty::string())],
-                    Ty::int(),
-                ),
-                Ty::fun(vec![Ty::int(), Ty::string()], Ty::Tuple(vec![])),
-                Ty::fun(vec![Ty::int(), Ty::int(), Ty::string()], Ty::Tuple(vec![])),
-                Ty::int(),
-            ],
+            [ws_callbacks.to_vec(), vec![Ty::string(), Ty::string()]].concat(),
             Ty::Tuple(vec![]),
         )),
     );

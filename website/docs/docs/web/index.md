@@ -528,7 +528,7 @@ fn main() do
 end
 ```
 
-The server performs TLS negotiation with rustls. The current inbound `Ws` module exposes plain `Ws.serve`; terminate WSS at a trusted reverse proxy. The outbound `WsClient` supports certificate-validated `wss://` connections directly.
+The server performs TLS negotiation with rustls. `Ws.serve_tls(on_connect, on_message, on_close, port, "cert.pem", "key.pem")` serves `wss://` the same way; certificates it cannot load are reported and it returns without serving. The outbound `WsClient` supports certificate-validated `wss://` connections directly.
 
 ## HTTP Client
 

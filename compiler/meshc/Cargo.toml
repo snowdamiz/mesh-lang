@@ -31,6 +31,7 @@ openssl-sys = { version = "0.9", features = ["vendored"] }
 
 [dev-dependencies]
 base64 = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"
 serde = { workspace = true }
 serde_json = { workspace = true }
