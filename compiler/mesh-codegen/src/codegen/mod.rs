@@ -1403,6 +1403,47 @@ mod tests {
         codegen.compile(&mir).unwrap();
     }
 
+    /// Two bindings of one native symbol share its declaration when their
+    /// signatures agree; different signatures, or one binding name twice,
+    /// are errors.
+    #[test]
+    fn native_bindings_share_a_symbol_only_with_one_signature() {
+        let binding = |name: &str, ret: MirType| crate::mir::MirNativeFunction {
+            name: name.to_string(),
+            symbol: "c_native".to_string(),
+            params: vec![("x".to_string(), MirType::Int)],
+            return_type: ret,
+        };
+        let compile = |natives: Vec<crate::mir::MirNativeFunction>| {
+            let mut mir = empty_mir_module();
+            mir.native_functions = natives;
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "natives", 0, None).unwrap();
+            codegen.compile(&mir)
+        };
+        compile(vec![
+            binding("first", MirType::Int),
+            binding("second", MirType::Int),
+        ])
+        .unwrap();
+        assert_eq!(
+            compile(vec![
+                binding("first", MirType::Int),
+                binding("second", MirType::Bool)
+            ])
+            .unwrap_err(),
+            "Native symbol `c_native` is declared with incompatible signatures"
+        );
+        assert_eq!(
+            compile(vec![
+                binding("first", MirType::Int),
+                binding("first", MirType::Int)
+            ])
+            .unwrap_err(),
+            "Native binding `first` is declared more than once"
+        );
+    }
+
     /// Sum types holding each other by value have no finite layout: the
     /// build says so instead of looping. (Lowering boxes recursive payloads,
     /// so only MIR built by hand gets here.)
