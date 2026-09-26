@@ -759,11 +759,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(variant_ty, parent_ptr, (*index + 1) as u32, "variant_field")
                     .map_err(|e| e.to_string())?;
-                // A tuple is itself a pointer, stored as the slot's word.
+                // A tuple is itself a pointer, stored as the slot's word; any
+                // other value, a pid included, is boxed.
                 if matches!(storage_ty, MirType::Ptr | MirType::Struct(_))
                     && !matches!(
                         semantic_ty,
-                        MirType::Ptr | MirType::String | MirType::Pid(_) | MirType::Tuple(_)
+                        MirType::Ptr | MirType::String | MirType::Tuple(_)
                     )
                 {
                     self.builder

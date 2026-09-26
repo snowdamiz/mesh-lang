@@ -6380,10 +6380,7 @@ impl<'ctx> CodeGen<'ctx> {
         // A boxed payload holds the value itself behind the pointer.
         let typed_elem: BasicValueEnum<'ctx> = match elem_ty {
             _ if boxed_payload
-                && !matches!(
-                    elem_ty,
-                    MirType::Ptr | MirType::String | MirType::Pid(_) | MirType::Tuple(_)
-                ) =>
+                && !matches!(elem_ty, MirType::Ptr | MirType::String | MirType::Tuple(_)) =>
             {
                 self.builder
                     .build_load(
@@ -6393,7 +6390,7 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .map_err(|e| e.to_string())?
             }
-            MirType::Int => {
+            MirType::Int | MirType::Pid(_) => {
                 let as_int = self
                     .builder
                     .build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int")

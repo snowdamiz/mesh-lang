@@ -307,6 +307,30 @@ fn service_helper_tag(functions: &[MirFunction], helper: &str) -> u64 {
     }
 }
 
+/// Whether a value of this representation is a word of plain bits, which a
+/// `Some` payload holds boxed: the runtime hands such an element back raw.
+fn is_scalar_word(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Int | MirType::Float | MirType::Bool | MirType::Pid(_)
+    )
+}
+
+/// `call`, an `Option` whose `Some` payload the runtime set to an element's
+/// raw scalar word, with that payload boxed, as a `Some` payload is read
+/// through a pointer.
+fn boxed_scalar_option(call: MirExpr) -> MirExpr {
+    let ty = call.ty().clone();
+    MirExpr::Call {
+        func: Box::new(MirExpr::Var(
+            "mesh_option_box_scalar".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
+        )),
+        args: vec![call],
+        ty,
+    }
+}
+
 /// Service helper arguments as MIR variables, marked with the shape of the
 /// heap references they carry to the service actor.
 fn shaped_params(names: &[String], types: &[MirType], shapes: &[MsgShape]) -> Vec<MirExpr> {
@@ -8241,29 +8265,20 @@ impl<'a> Lowerer<'a> {
     /// `List.find` does; a scalar payload is read through a pointer, so it
     /// is boxed here.
     fn box_next_scalar(&self, expr: MirExpr, range: TextRange) -> MirExpr {
-        let MirExpr::Call { func, args, ty } = expr else {
-            return expr;
+        let is_next = matches!(&expr, MirExpr::Call { func, .. }
+            if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "mesh_iter_generic_next"));
+        let scalar = match self.get_ty(range) {
+            Some(Ty::App(con, elems)) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option") => {
+                elems
+                    .first()
+                    .is_some_and(|elem| is_scalar_word(&resolve_type(elem, self.registry)))
+            }
+            _ => false,
         };
-        let is_next =
-            matches!(func.as_ref(), MirExpr::Var(name, _) if name == "mesh_iter_generic_next");
-        let scalar = matches!(
-            self.get_ty(range),
-            Some(Ty::App(con, elems))
-                if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option")
-                    && matches!(elems.first(), Some(Ty::Con(tc)) if matches!(tc.name.as_str(), "Int" | "Float" | "Bool"))
-        );
-        let call = MirExpr::Call { func, args, ty };
-        if !is_next || !scalar {
-            return call;
-        }
-        let ty = call.ty().clone();
-        MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_option_box_scalar".to_string(),
-                MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
-            )),
-            args: vec![call],
-            ty,
+        if is_next && scalar {
+            boxed_scalar_option(expr)
+        } else {
+            expr
         }
     }
 
@@ -8364,26 +8379,13 @@ impl<'a> Lowerer<'a> {
             },
             None => adapter,
         };
-        let call = MirExpr::Call {
-            func,
-            args,
-            ty: ty.clone(),
-        };
+        let call = MirExpr::Call { func, args, ty };
         // `List.find` hands back the element word as the `Some` payload; a
         // scalar payload is read through a pointer, so it is boxed here.
-        let scalar_element = matches!(
-            param_types.first(),
-            Some(MirType::Int | MirType::Float | MirType::Bool)
-        );
-        if matches!(name.as_str(), "mesh_list_find" | "mesh_iter_find") && scalar_element {
-            return MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_option_box_scalar".to_string(),
-                    MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
-                )),
-                args: vec![call],
-                ty,
-            };
+        if matches!(name.as_str(), "mesh_list_find" | "mesh_iter_find")
+            && param_types.first().is_some_and(is_scalar_word)
+        {
+            return boxed_scalar_option(call);
         }
         call
     }
