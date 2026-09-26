@@ -1190,3 +1190,23 @@ end
     );
     assert_eq!(out, "front a-2 rest 1\n{\"k\":[1,2]}\n");
 }
+
+/// A map collected from string-keyed pairs compares its keys as strings
+/// however the collect is written: piped, called directly, or after a zip
+/// of string keys. The key looked up is built at run time, so a map keyed
+/// by addresses would miss it.
+#[test]
+fn string_keyed_collects_compare_keys_as_strings() {
+    let out = compile_and_run(
+        r##"fn main() do
+  let k = "${"b"}${""}"
+  let piped = [("a", 1), ("b", 2)] |> Iter.from() |> Map.collect()
+  let direct = Map.collect(Iter.from([("a", 1), ("b", 2)]))
+  let keys = ["a", "b"]
+  let zipped = keys |> Iter.from() |> Iter.zip(Iter.from([10, 20])) |> Map.collect()
+  println("${Map.get(piped, k)} ${Map.get(direct, k)} ${Map.get(zipped, k)}")
+end
+"##,
+    );
+    assert_eq!(out, "2 2 20\n");
+}
