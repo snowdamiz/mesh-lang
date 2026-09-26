@@ -2124,6 +2124,36 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(heap_ptr.into())
     }
 
+    /// A buffer on the GC heap holding `words`.
+    fn heap_words(
+        &mut self,
+        words: &[IntValue<'ctx>],
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let size = i64_ty.const_int(8 * words.len() as u64, false);
+        let align = i64_ty.const_int(8, false);
+        let buffer = self
+            .codegen_runtime_call("mesh_gc_alloc_actor", &[size.into(), align.into()], name)?
+            .into_pointer_value();
+        for (index, &word) in words.iter().enumerate() {
+            let slot = unsafe {
+                self.builder
+                    .build_gep(
+                        i64_ty,
+                        buffer,
+                        &[i64_ty.const_int(index as u64, false)],
+                        "word",
+                    )
+                    .map_err(|e| e.to_string())?
+            };
+            self.builder
+                .build_store(slot, word)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(buffer)
+    }
+
     /// `args` as the called function's `params` take them, where the MIR
     /// value and the declared parameter differ in representation: a narrower
     /// integer is widened, a word is a pointer or a pointer a word (runtime
@@ -2370,45 +2400,13 @@ impl<'ctx> CodeGen<'ctx> {
                     self.coerce_to_i64(value)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let total_size = 8 * slots.len() as u64;
-
-            // Allocate spawn args on the GC heap (not the stack) because the
-            // actor runs asynchronously after the caller returns. Stack allocas
-            // would be freed before the actor reads the args. The runtime
-            // recognises a buffer on the spawner's heap, copies it for the new
-            // actor and keeps what its words point at alive, so this buffer is
-            // ordinary garbage once the call returns.
-            let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-            let size_val = i64_ty.const_int(total_size, false);
-            let align_val = i64_ty.const_int(8, false);
-            let buf_alloca = self
-                .builder
-                .build_call(
-                    gc_alloc_fn,
-                    &[size_val.into(), align_val.into()],
-                    "spawn_args",
-                )
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or("mesh_gc_alloc_actor returned void")?
-                .into_pointer_value();
-
-            let arr_ty = i64_ty.array_type(slots.len() as u32);
-            let zero = self.context.i32_type().const_int(0, false);
-            for (i, slot) in slots.iter().enumerate() {
-                let idx = self.context.i32_type().const_int(i as u64, false);
-                let element_ptr = unsafe {
-                    self.builder
-                        .build_gep(arr_ty, buf_alloca, &[zero, idx], &format!("arg_ptr_{}", i))
-                        .map_err(|e| e.to_string())?
-                };
-                self.builder
-                    .build_store(element_ptr, *slot)
-                    .map_err(|e| e.to_string())?;
-            }
-
-            (buf_alloca, i64_ty.const_int(total_size, false))
+            // On the GC heap, not the stack: the actor reads them after the
+            // caller returns. The runtime recognises a buffer on the
+            // spawner's heap, copies it for the new actor and keeps what its
+            // words point at alive, so this buffer is ordinary garbage once
+            // the call returns.
+            let buffer = self.heap_words(&slots, "spawn_args")?;
+            (buffer, i64_ty.const_int(8 * slots.len() as u64, false))
         };
 
         let priority_val = self.context.i8_type().const_int(priority as u64, false);
@@ -2836,58 +2834,23 @@ impl<'ctx> CodeGen<'ctx> {
                 arg_vals.push(self.convert_to_list_element(value, ty)?);
             }
 
-            let total_size = (arg_vals.len() * 8) as u64;
-            let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-            let size_val = i64_ty.const_int(total_size, false);
-            let align_val = i64_ty.const_int(8, false);
-            let buf_ptr = self
-                .builder
-                .build_call(
-                    gc_alloc_fn,
-                    &[size_val.into(), align_val.into()],
-                    "spawn_args",
-                )
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or("mesh_gc_alloc_actor returned void")?
-                .into_pointer_value();
-            let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
-
-            for (i, int_val) in arg_vals.iter().copied().enumerate() {
-                let idx = self.context.i32_type().const_int(i as u64, false);
-                let zero = self.context.i32_type().const_int(0, false);
-                let element_ptr = unsafe {
-                    self.builder
-                        .build_gep(arr_ty, buf_ptr, &[zero, idx], "arg_ptr")
-                        .map_err(|e| e.to_string())?
-                };
-                self.builder
-                    .build_store(element_ptr, int_val)
-                    .map_err(|e| e.to_string())?;
-            }
-
-            let tag_arr_ty = i8_ty.array_type(arg_tags.len() as u32);
+            let buffer = self.heap_words(&arg_vals, "spawn_args")?;
+            let tags: Vec<_> = arg_tags
+                .iter()
+                .map(|&tag| i8_ty.const_int(tag as u64, false))
+                .collect();
+            let tags = i8_ty.const_array(&tags);
             let tag_buf_ptr = self
                 .builder
-                .build_alloca(tag_arr_ty, "spawn_arg_tags")
+                .build_alloca(tags.get_type(), "spawn_arg_tags")
                 .map_err(|e| e.to_string())?;
-            for (i, tag) in arg_tags.iter().enumerate() {
-                let idx = self.context.i32_type().const_int(i as u64, false);
-                let zero = self.context.i32_type().const_int(0, false);
-                let tag_ptr = unsafe {
-                    self.builder
-                        .build_gep(tag_arr_ty, tag_buf_ptr, &[zero, idx], "arg_tag_ptr")
-                        .map_err(|e| e.to_string())?
-                };
-                self.builder
-                    .build_store(tag_ptr, i8_ty.const_int(*tag as u64, false))
-                    .map_err(|e| e.to_string())?;
-            }
+            self.builder
+                .build_store(tag_buf_ptr, tags)
+                .map_err(|e| e.to_string())?;
 
             (
-                buf_ptr,
-                i64_ty.const_int(total_size, false),
+                buffer,
+                i64_ty.const_int(8 * arg_vals.len() as u64, false),
                 tag_buf_ptr,
                 i64_ty.const_int(arg_tags.len() as u64, false),
             )
@@ -4210,138 +4173,21 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Generate a service call helper function body.
-    ///
-    /// Allocate a runtime tuple on the GC heap.
-    /// Layout: { u64 len, u64[N] elements }
-    /// Args are the pre-compiled element values.
+    /// A runtime tuple of `elements` on the GC heap: its length, then a
+    /// word for each element.
     fn codegen_make_tuple(
         &mut self,
         elements: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let i64_type = self.context.i64_type();
-        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-        let n = elements.len();
-        let total_size = 8 + n * 8; // u64 len + n * u64 elements
-
-        // Allocate via mesh_gc_alloc_actor(size, align)
-        let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-        let size_val = i64_type.const_int(total_size as u64, false);
-        let align_val = i64_type.const_int(8, false);
-        let tuple_ptr = self
-            .builder
-            .build_call(gc_alloc, &[size_val.into(), align_val.into()], "tuple_ptr")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_gc_alloc_actor returned void")?
-            .into_pointer_value();
-
-        // Store length at offset 0
-        let len_val = i64_type.const_int(n as u64, false);
-        self.builder
-            .build_store(tuple_ptr, len_val)
-            .map_err(|e| e.to_string())?;
-
-        // Store each element at offset 8 + i*8
-        for (i, elem) in elements.iter().enumerate() {
-            let offset = (8 + i * 8) as u64;
-            let base_int = self
-                .builder
-                .build_ptr_to_int(tuple_ptr, i64_type, "tuple_base")
-                .map_err(|e| format!("{}", e))?;
-            let addr_int = self
-                .builder
-                .build_int_add(base_int, i64_type.const_int(offset, false), "elem_addr")
-                .map_err(|e| format!("{}", e))?;
-            let elem_ptr = self
-                .builder
-                .build_int_to_ptr(addr_int, ptr_type, "elem_ptr")
-                .map_err(|e| format!("{}", e))?;
-
-            // Elements may be i64 or ptr. Convert to i64 for storage.
-            let elem_i64 = match *elem {
-                BasicMetadataValueEnum::IntValue(iv) => {
-                    if iv.get_type().get_bit_width() < 64 {
-                        self.builder
-                            .build_int_z_extend(iv, i64_type, "zext_elem")
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        iv
-                    }
-                }
-                BasicMetadataValueEnum::PointerValue(pv) => self
-                    .builder
-                    .build_ptr_to_int(pv, i64_type, "ptr_to_i64")
-                    .map_err(|e| e.to_string())?,
-                BasicMetadataValueEnum::FloatValue(fv) => {
-                    // Bit-cast float to i64 for tuple storage.
-                    let fv_alloca = self
-                        .builder
-                        .build_alloca(self.context.f64_type(), "float_tmp")
-                        .map_err(|e| format!("{}", e))?;
-                    self.builder
-                        .build_store(fv_alloca, fv)
-                        .map_err(|e| format!("{}", e))?;
-                    self.builder
-                        .build_load(i64_type, fv_alloca, "float_to_i64")
-                        .map_err(|e| format!("{}", e))?
-                        .into_int_value()
-                }
-                BasicMetadataValueEnum::StructValue(sv) => {
-                    let sv_ty = sv.get_type();
-                    let target_data = self.target_machine.get_target_data();
-                    let struct_size = target_data.get_store_size(&sv_ty);
-                    if struct_size <= 8 {
-                        // Small struct (e.g., tagged union {i8, ptr}): store as opaque i64 bits.
-                        let sv_alloca = self
-                            .builder
-                            .build_alloca(sv_ty, "struct_tmp")
-                            .map_err(|e| format!("{}", e))?;
-                        self.builder
-                            .build_store(sv_alloca, sv)
-                            .map_err(|e| format!("{}", e))?;
-                        self.builder
-                            .build_load(i64_type, sv_alloca, "struct_to_i64")
-                            .map_err(|e| format!("{}", e))?
-                            .into_int_value()
-                    } else {
-                        // Large struct (e.g., service state): heap-allocate and store pointer.
-                        // The tuple consumer (service loop) will inttoptr -> load to recover the struct.
-                        let size = sv_ty
-                            .size_of()
-                            .unwrap_or(i64_type.const_int(struct_size, false));
-                        let align = i64_type.const_int(8, false);
-                        let gc_alloc = self
-                            .module
-                            .get_function("mesh_gc_alloc_actor")
-                            .ok_or("mesh_gc_alloc_actor not found")?;
-                        let heap_ptr = self
-                            .builder
-                            .build_call(gc_alloc, &[size.into(), align.into()], "struct_heap")
-                            .map_err(|e| format!("{}", e))?
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("mesh_gc_alloc_actor returned void")?
-                            .into_pointer_value();
-                        self.builder
-                            .build_store(heap_ptr, sv)
-                            .map_err(|e| format!("{}", e))?;
-                        self.builder
-                            .build_ptr_to_int(heap_ptr, i64_type, "struct_ptr_to_i64")
-                            .map_err(|e| e.to_string())?
-                    }
-                }
-                _ => return Err("Unsupported tuple element type".to_string()),
-            };
-
-            self.builder
-                .build_store(elem_ptr, elem_i64)
-                .map_err(|e| e.to_string())?;
+        let mut words = vec![self
+            .context
+            .i64_type()
+            .const_int(elements.len() as u64, false)];
+        for &element in elements {
+            let value = BasicValueEnum::try_from(element).expect("a tuple element is a value");
+            words.push(self.coerce_to_i64(value)?);
         }
-
-        // Return the pointer (as ptr type, will be cast to i64 by caller if needed)
-        Ok(tuple_ptr.into())
+        Ok(self.heap_words(&words, "tuple_ptr")?.into())
     }
 
     /// Shape table for service handler arguments, which travel as 8-byte
