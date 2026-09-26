@@ -6323,25 +6323,20 @@ fn is_json_serializable(
     let derives_json = |name: &str| {
         json_types.contains(name) || trait_registry.has_impl("ToJson", &Ty::Con(TyCon::new(name)))
     };
-    match ty {
-        Ty::Con(con) => match con.name.as_str() {
-            "Int" | "Float" | "Bool" | "String" => true,
-            name => params.iter().any(|p| p == name) || derives_json(name),
-        },
-        Ty::Tuple(elems) => !elems.is_empty() && elems.iter().all(ok),
-        Ty::App(base, args) => match base.as_ref() {
-            Ty::Con(con) => match con.name.as_str() {
-                "Option" | "List" => args.first().is_some_and(ok),
-                // JSON object keys are strings.
-                "Map" => {
-                    matches!(args.first(), Some(Ty::Con(c)) if c.name == "String")
-                        && args.get(1).is_some_and(ok)
-                }
-                name => derives_json(name) && args.iter().all(ok),
-            },
-            _ => false,
-        },
-        _ => false, // Type variables, functions, etc. are not serializable
+    let args: &[Ty] = match ty {
+        Ty::Tuple(elems) => return !elems.is_empty() && elems.iter().all(ok),
+        Ty::App(_, args) => args,
+        _ => &[],
+    };
+    match ty.con_name() {
+        Some("Int" | "Float" | "Bool" | "String") => true,
+        Some("Option" | "List") => args.first().is_some_and(ok),
+        // JSON object keys are strings.
+        Some("Map") => args.first() == Some(&Ty::string()) && args.get(1).is_some_and(ok),
+        Some(name) => {
+            params.iter().any(|p| p == name) || (derives_json(name) && args.iter().all(ok))
+        }
+        None => false, // Type variables, functions, etc. are not serializable
     }
 }
 
@@ -6351,18 +6346,10 @@ fn is_json_serializable(
 fn is_row_mappable(ty: &Ty) -> bool {
     match ty {
         Ty::Con(con) => matches!(con.name.as_str(), "Int" | "Float" | "Bool" | "String"),
-        Ty::App(base, args) => {
-            if let Ty::Con(con) = base.as_ref() {
-                if con.name == "Option" {
-                    args.first().is_some_and(is_row_mappable)
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        }
-        _ => false,
+        _ => ty
+            .args_of("Option")
+            .and_then(<[Ty]>::first)
+            .is_some_and(is_row_mappable),
     }
 }
 
