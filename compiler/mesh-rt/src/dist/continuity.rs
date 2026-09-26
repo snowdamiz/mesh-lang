@@ -2511,12 +2511,12 @@ pub(crate) fn handle_store_snapshot_chunk(
         incoming.remove(&key);
     }
     drop(incoming);
-    let payload = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
-    session.send(super::node::OutboundClass::Control, payload)?;
+    // The snapshot is applied whether or not its ack finds room to go out.
     if complete {
         crate::dist::readiness::mark_initial_state_synchronized();
     }
-    Ok(())
+    let payload = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
+    session.send(super::node::OutboundClass::Control, payload)
 }
 
 pub(crate) fn handle_store_snapshot_ack(

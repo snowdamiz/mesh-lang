@@ -682,6 +682,10 @@ pub struct NodeSession {
     /// The TLS stream, shared between writer and reader threads. A
     /// `parking_lot` mutex so the reader can hand it over fairly.
     pub(crate) stream: parking_lot::Mutex<NodeStream>,
+    /// Encrypted bytes a heartbeat left in the stream's send buffer when the
+    /// socket took no more: the writer flushes them when it is idle. Set
+    /// and cleared under the stream lock.
+    tls_output_pending: AtomicBool,
     /// Signals the session's reader/heartbeat threads to stop
     pub shutdown: AtomicBool,
     /// When this connection was established
@@ -778,11 +782,19 @@ impl NodeSession {
 
     fn new(
         endpoint: RemoteSessionEndpoint,
-        stream: NodeStream,
+        mut stream: NodeStream,
         persistent: bool,
         negotiated_protocol: NegotiatedProtocol,
         remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
     ) -> Self {
+        if persistent {
+            if let Err(error) = stream.prepare_for_session() {
+                eprintln!(
+                    "mesh transport: transition=session_timeouts_failed remote={} reason={error}",
+                    endpoint.remote_name
+                );
+            }
+        }
         let RemoteSessionEndpoint {
             remote_name,
             remote_creation,
@@ -801,6 +813,7 @@ impl NodeSession {
             node_id,
             direction,
             stream: parking_lot::Mutex::new(stream),
+            tls_output_pending: AtomicBool::new(false),
             shutdown: AtomicBool::new(false),
             connected_at: Instant::now(),
             negotiated_protocol,
@@ -913,11 +926,66 @@ impl NodeSession {
         }
         let payload =
             encode_session_payload(OutboundClass::Control, payload, &self.negotiated_protocol)?;
-        // Heartbeats are liveness control, not application admission. Writing
-        // them directly under the same stream mutex keeps frames atomic while
-        // preventing a reservation burst from causing a false node failure.
+        // Heartbeats are liveness control, not application admission: they
+        // skip the outbound lanes, so a reservation burst cannot delay them
+        // into a false node failure. The frame goes into the send buffer
+        // whole and out as far as the socket takes it now; the reader
+        // answers pings here and must not wait on its peer, so what is left
+        // goes out with the writer's next flush.
         let mut stream = self.stream.lock();
-        write_msg(&mut *stream, &payload).map_err(|error| format!("peer_heartbeat_failed:{error}"))
+        let result = stream
+            .queue_frame(&payload)
+            .and_then(|()| stream.flush_queued());
+        match result {
+            Ok((_, flushed)) => {
+                if !flushed {
+                    self.tls_output_pending.store(true, Ordering::Release);
+                }
+                Ok(())
+            }
+            Err(error) => Err(format!("peer_heartbeat_failed:{error}")),
+        }
+    }
+
+    /// Writes whole frames to the peer, and what heartbeats left queued. The
+    /// stream goes back to the reader whenever the socket takes no more, so
+    /// a peer that reads slowly slows this writer without stopping this
+    /// session's reads; a peer that takes nothing for `SESSION_WRITE_STALL`
+    /// ends the session.
+    fn write_frames<'p>(&self, payloads: impl IntoIterator<Item = &'p [u8]>) -> io::Result<()> {
+        let mut stream = self.stream.lock();
+        for payload in payloads {
+            stream.queue_frame(payload)?;
+        }
+        let mut last_progress = Instant::now();
+        loop {
+            let (written, flushed) = stream.flush_queued()?;
+            if flushed {
+                self.tls_output_pending.store(false, Ordering::Release);
+                return Ok(());
+            }
+            parking_lot::MutexGuard::unlock_fair(stream);
+            let now = Instant::now();
+            if written > 0 {
+                last_progress = now;
+            } else {
+                // The socket took nothing: give the peer a moment.
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if self.shutdown.load(Ordering::Acquire) {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "peer session shut down",
+                ));
+            }
+            if now.duration_since(last_progress) >= SESSION_WRITE_STALL {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("peer took nothing for {SESSION_WRITE_STALL:?}"),
+                ));
+            }
+            stream = self.stream.lock();
+        }
     }
 
     pub(crate) fn telemetry_snapshot(
@@ -1194,19 +1262,91 @@ impl SessionDirection {
 ///
 /// Server variant is used when we accepted the connection; Client variant
 /// when we initiated it. Both implement Read + Write by delegating to
-/// the inner `StreamOwned`.
+/// the inner `StreamOwned`, except that a read never writes (see
+/// `read_without_flushing`).
 pub(crate) enum NodeStream {
     ServerTls(StreamOwned<rustls::ServerConnection, TcpStream>),
     ClientTls(StreamOwned<rustls::ClientConnection, TcpStream>),
 }
 
+/// How long a persistent session's socket read waits before handing the
+/// stream back: its reader and writers share one TLS connection, and none
+/// may hold it while waiting on the peer. (Writes do not wait at all.)
+const SESSION_IO_POLL: Duration = Duration::from_millis(25);
+
+/// How long a peer may take none of what a session writes before the
+/// session is dead: its reader is stuck, not just slow.
+const SESSION_WRITE_STALL: Duration = Duration::from_secs(15);
+
 impl Read for NodeStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
-            NodeStream::ServerTls(s) => s.read(buf),
-            NodeStream::ClientTls(s) => s.read(buf),
+            NodeStream::ServerTls(s) => read_without_flushing(&mut *s.conn, &mut s.sock, buf),
+            NodeStream::ClientTls(s) => read_without_flushing(&mut *s.conn, &mut s.sock, buf),
         }
     }
+}
+
+/// `StreamOwned::read` without its first step, which writes out what TLS
+/// holds to send: that write waits while the peer takes nothing, and a
+/// reader waiting on its own session's writes stops reading what the peer
+/// sends. Two nodes streaming state to each other (a new node's initial
+/// sync) each stopped reading, for good.
+fn read_without_flushing<S>(
+    conn: &mut rustls::ConnectionCommon<S>,
+    sock: &mut TcpStream,
+    buf: &mut [u8],
+) -> io::Result<usize> {
+    loop {
+        match conn.reader().read(buf) {
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+            result => return result,
+        }
+        let received = conn.read_tls(sock)?;
+        conn.process_new_packets()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        if received == 0 {
+            // The end of the stream: what is left, or how it ended.
+            return conn.reader().read(buf);
+        }
+    }
+}
+
+/// Encrypts `[u32 length][payload]` into the connection's send buffer,
+/// whole: a frame is never split between two holders of the stream.
+fn queue_frame_in<S>(conn: &mut rustls::ConnectionCommon<S>, payload: &[u8]) -> io::Result<()> {
+    let mut writer = conn.writer();
+    writer.write_all(&(payload.len() as u32).to_le_bytes())?;
+    writer.write_all(payload)
+}
+
+/// Writes what the connection holds to send until the socket takes no
+/// more: the bytes written, and whether none are left. The socket does not
+/// wait meanwhile (a send that times out can leave a Windows socket
+/// unusable); reads, under the same lock, never overlap this.
+fn flush_queued_in<S>(
+    conn: &mut rustls::ConnectionCommon<S>,
+    sock: &mut TcpStream,
+) -> io::Result<(usize, bool)> {
+    if !conn.wants_write() {
+        return Ok((0, true));
+    }
+    sock.set_nonblocking(true)?;
+    let mut written = 0;
+    let result = loop {
+        if !conn.wants_write() {
+            break Ok((written, true));
+        }
+        match conn.write_tls(sock) {
+            Ok(0) => break Err(io::ErrorKind::WriteZero.into()),
+            Ok(count) => written += count,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => break Ok((written, false)),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => break Err(error),
+        }
+    };
+    sock.set_nonblocking(false)?;
+    result
 }
 
 impl Write for NodeStream {
@@ -1233,6 +1373,31 @@ impl NodeStream {
         match self {
             NodeStream::ServerTls(s) => s.get_ref().set_read_timeout(dur),
             NodeStream::ClientTls(s) => s.get_ref().set_read_timeout(dur),
+        }
+    }
+
+    /// Readies an authenticated stream for a persistent session: a socket
+    /// read gives the stream back after `SESSION_IO_POLL`, and the send
+    /// buffer takes any frame whole.
+    fn prepare_for_session(&mut self) -> io::Result<()> {
+        match self {
+            NodeStream::ServerTls(s) => s.conn.set_buffer_limit(None),
+            NodeStream::ClientTls(s) => s.conn.set_buffer_limit(None),
+        }
+        self.set_read_timeout(Some(SESSION_IO_POLL))
+    }
+
+    fn queue_frame(&mut self, payload: &[u8]) -> io::Result<()> {
+        match self {
+            NodeStream::ServerTls(s) => queue_frame_in(&mut *s.conn, payload),
+            NodeStream::ClientTls(s) => queue_frame_in(&mut *s.conn, payload),
+        }
+    }
+
+    fn flush_queued(&mut self) -> io::Result<(usize, bool)> {
+        match self {
+            NodeStream::ServerTls(s) => flush_queued_in(&mut *s.conn, &mut s.sock),
+            NodeStream::ClientTls(s) => flush_queued_in(&mut *s.conn, &mut s.sock),
         }
     }
 }
@@ -1768,6 +1933,17 @@ fn writer_loop_session(session: Arc<NodeSession>) {
     while !session.shutdown.load(Ordering::Acquire) {
         let Some(first) = wait_for_outbound_frame(&receivers, &mut consecutive_control_frames)
         else {
+            if session.tls_output_pending.load(Ordering::Acquire) {
+                if let Err(error) = session.write_frames([]) {
+                    record_peer_transport_failure(&session.remote_name, Instant::now());
+                    eprintln!(
+                        "mesh transport: transition=writer_failed remote={} reason={}",
+                        session.remote_name, error
+                    );
+                    session.shutdown.store(true, Ordering::Release);
+                    break;
+                }
+            }
             continue;
         };
         let mut batch = Vec::with_capacity(MAX_OUTBOUND_WRITE_BATCH);
@@ -1782,19 +1958,10 @@ fn writer_loop_session(session: Arc<NodeSession>) {
         // A rustls StreamOwned cannot be split into independent reader/writer
         // halves. Batching amortizes contention with the bounded reader poll
         // instead of reacquiring this lock for every small protocol frame.
-        let mut written_application = false;
-        let result = {
-            let mut stream = session.stream.lock();
-            let mut result = Ok(());
-            for frame in &batch {
-                if let Err(error) = write_msg(&mut *stream, &frame.payload) {
-                    result = Err(error);
-                    break;
-                }
-                written_application |= matches!(frame.class, OutboundClass::Application);
-            }
-            result
-        };
+        let written_application = batch
+            .iter()
+            .any(|frame| matches!(frame.class, OutboundClass::Application));
+        let result = session.write_frames(batch.iter().map(|frame| frame.payload.as_slice()));
         for frame in &batch {
             release_outbound_frame_bytes(&session, frame);
         }
@@ -1828,12 +1995,9 @@ fn writer_loop_session(session: Arc<NodeSession>) {
 /// turns without busy-waiting.
 fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<HeartbeatState>>) {
     // The incremental frame reader preserves partial prefixes/bodies across
-    // socket timeouts, allowing the shared rustls stream lock to be released
-    // frequently for control-plane writes without desynchronizing framing.
-    {
-        let s = session.stream.lock();
-        s.set_read_timeout(Some(Duration::from_millis(25))).ok();
-    }
+    // socket timeouts (`SESSION_IO_POLL`, set when the session was made),
+    // allowing the shared rustls stream lock to be released frequently for
+    // control-plane writes without desynchronizing framing.
     let mut frame_reader = PersistentFrameReader::default();
 
     loop {
@@ -9883,6 +10047,116 @@ mod tests {
                 .unwrap_or_else(|_| panic!("frame {index} of {frames} never arrived"));
         }
         stop_quiet_peer_session(session, threads);
+    }
+
+    /// Both ends of one session in this process, over TLS, each with its
+    /// reader and writer running.
+    fn session_pair() -> ([Arc<NodeSession>; 2], Vec<std::thread::JoinHandle<()>>) {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let (cert, key) = generate_ephemeral_cert();
+            let mut tls = StreamOwned::new(
+                rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap(),
+                tcp,
+            );
+            while tls.conn.is_handshaking() {
+                tls.conn.complete_io(&mut tls.sock).unwrap();
+            }
+            NodeStream::ServerTls(tls)
+        });
+        let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+        let mut tls = StreamOwned::new(
+            rustls::ClientConnection::new(build_node_client_config(), server_name).unwrap(),
+            tcp,
+        );
+        while tls.conn.is_handshaking() {
+            tls.conn.complete_io(&mut tls.sock).unwrap();
+        }
+        let ends = [
+            (NodeStream::ClientTls(tls), SessionDirection::Outgoing),
+            (server.join().unwrap(), SessionDirection::Incoming),
+        ];
+        let mut threads = Vec::new();
+        let sessions = ends.map(|(stream, direction)| {
+            let session = Arc::new(NodeSession::new(
+                RemoteSessionEndpoint {
+                    remote_name: format!("{direction:?}@127.0.0.1"),
+                    remote_creation: 1,
+                    node_id: 1,
+                    direction,
+                },
+                stream,
+                true,
+                NegotiatedProtocol {
+                    version: PROTOCOL_V1,
+                    capabilities: super::super::protocol::Capabilities::default(),
+                    max_frame_bytes: MAX_DIST_MSG,
+                    autonomous_enabled: false,
+                    disabled_reason: None,
+                },
+                None,
+            ));
+            let heartbeat = Arc::new(Mutex::new(HeartbeatState::new(
+                Duration::from_secs(60),
+                Duration::from_secs(15),
+            )));
+            threads.push(std::thread::spawn({
+                let session = Arc::clone(&session);
+                move || reader_loop_session(session, heartbeat)
+            }));
+            threads.push(std::thread::spawn({
+                let session = Arc::clone(&session);
+                move || writer_loop_session(session)
+            }));
+            session
+        });
+        (sessions, threads)
+    }
+
+    /// A new node and each peer stream their continuity state to each other
+    /// at once. A writer waiting for its peer to take bytes held the stream,
+    /// so its own reader stopped taking the peer's: with both ends' writers
+    /// waiting, neither read again, the session stayed "healthy", and the
+    /// new worker never joined (the Docker cluster proof's scale-down).
+    #[test]
+    fn sessions_streaming_to_each_other_do_not_deadlock() {
+        const FRAMES: usize = 400;
+        let (sessions, threads) = session_pair();
+        let senders: Vec<_> = sessions
+            .iter()
+            .map(|session| {
+                let session = Arc::clone(session);
+                std::thread::spawn(move || {
+                    for index in 0..FRAMES {
+                        session
+                            .send_waiting(OutboundClass::Snapshot, vec![HEARTBEAT_PONG; 16 * 1024])
+                            .unwrap_or_else(|error| panic!("frame {index}: {error}"));
+                    }
+                })
+            })
+            .collect();
+        for sender in senders {
+            sender.join().expect("every frame queued");
+        }
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while sessions
+            .iter()
+            .any(|session| session.snapshot_queued_bytes.load(Ordering::Acquire) > 0)
+        {
+            assert!(Instant::now() < deadline, "the lanes never drained");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        for session in &sessions {
+            assert!(!session.shutdown.load(Ordering::Acquire));
+            session.shutdown.store(true, Ordering::SeqCst);
+        }
+        for thread in threads {
+            thread.join().unwrap();
+        }
     }
 
     #[test]
