@@ -497,7 +497,7 @@ impl InferCtx {
     }
 
     /// The declared type parameter in scope that `v` stands for.
-    fn rigid_param_name(&mut self, v: TyVar) -> Option<String> {
+    pub(crate) fn rigid_param_name(&mut self, v: TyVar) -> Option<String> {
         let params = self.rigid_params.clone();
         params
             .into_iter()

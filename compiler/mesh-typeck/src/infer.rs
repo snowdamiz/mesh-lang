@@ -12811,6 +12811,30 @@ fn infer_field_access(
             return Ok(trait_method_type(ctx, &trait_name, &sig, &resolved_base));
         }
     }
+    // A declared type parameter stands for any type: it has no fields, and
+    // no methods but its bounds'. Its fields were left for later, when no
+    // type could give it one ("cannot tell which type has the field").
+    if let Ty::Var(v) = resolved_base {
+        if let Some(param) = ctx.rigid_param_name(v) {
+            let ty = Ty::Con(TyCon::new(&param));
+            let span = fa.syntax().text_range();
+            let err = if is_method_call {
+                TypeError::NoSuchMethod {
+                    ty,
+                    method_name: field_name,
+                    span,
+                }
+            } else {
+                TypeError::NoSuchField {
+                    ty,
+                    field_name,
+                    span,
+                }
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+    }
 
     if is_method_call {
         let matching_traits = trait_registry.find_method_traits(&field_name, &resolved_base);

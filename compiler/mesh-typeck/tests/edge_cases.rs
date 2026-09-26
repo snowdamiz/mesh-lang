@@ -831,6 +831,44 @@ end
     );
 }
 
+/// A declared type parameter has no fields and no methods but its bounds':
+/// each was "cannot tell which type has the field", as if a later line
+/// could still say.
+#[test]
+fn type_parameters_have_only_their_bounds_methods() {
+    assert_eq!(
+        errors(
+            r#"
+interface Named do
+  fn label(self) -> String
+end
+
+fn field_of<T>(x :: T) -> String do
+  x.name
+end
+
+fn method_of<T>(x :: T) -> Int where T: Named do
+  x.count()
+end
+
+fn bound_method<T>(x :: T) -> String where T: Named do
+  x.label()
+end
+
+fn in_closure<T>(x :: T) -> Int do
+  let f = fn () -> x.size end
+  1
+end
+"#
+        ),
+        [
+            "type `T` has no field `name`",
+            "no method `count` on type `T`",
+            "type `T` has no field `size`",
+        ]
+    );
+}
+
 /// `Type.from_json`, `Type.from_row` and the schema functions come from the
 /// type's `deriving`: without it the type has no such function.
 #[test]
