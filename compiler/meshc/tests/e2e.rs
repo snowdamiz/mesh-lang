@@ -8174,7 +8174,10 @@ end
     assert_eq!(output, "1 a true 2.5\n15\n");
     let err = compile_multifile_expect_error(&[
         ("geo.mpl", geo),
-        ("main.mpl", "from Nope import thing\n\nfn main() do\n  thing()\nend\n"),
+        (
+            "main.mpl",
+            "from Nope import thing\n\nfn main() do\n  thing()\nend\n",
+        ),
     ]);
     assert!(err.contains("E0031") && err.contains("Nope"), "{err}");
 }

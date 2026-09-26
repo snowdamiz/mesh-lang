@@ -2772,7 +2772,10 @@ fn default_needs_a_known_type_with_a_default() {
     let err = build_error(
         "struct NoDef do\n  n :: Int\nend\n\nfn main() do\n  let x :: NoDef = default()\n  println(\"#{x.n}\")\nend\n",
     );
-    assert!(err.contains("`NoDef` does not implement `Default`"), "{err}");
+    assert!(
+        err.contains("`NoDef` does not implement `Default`"),
+        "{err}"
+    );
     let source = r##"
 struct Cfg do
   n :: Int
@@ -3327,7 +3330,10 @@ fn an_operator_on_a_type_without_it_names_the_left_operand() {
     // It said "expected Option<Int>, found Int", blaming the `1`.
     let err =
         build_error("fn main() do\n  let v :: Int? = Some(3)\n  println(\"#{v + 1}\")\nend\n");
-    assert!(err.contains("`Option<Int>` does not implement `Add`"), "{err}");
+    assert!(
+        err.contains("`Option<Int>` does not implement `Add`"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -4062,7 +4068,10 @@ end
         "struct Q do\n  x :: Int\nend\n\nfn main() do\n  println(String.from(Q { x: 1 }))\nend\n",
     );
     // The type as written (it said `Main.Q`).
-    assert!(err.contains("Error: `Q` does not implement `Display`"), "{err}");
+    assert!(
+        err.contains("Error: `Q` does not implement `Display`"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -4881,7 +4890,10 @@ fn map_destructuring_over_a_list_is_a_type_error() {
     let err = build_error(
         "fn main() do\n  for {k, v} in [1, 2, 3] do\n    println(\"#{k} #{v}\")\n  end\nend\n",
     );
-    assert!(err.contains("expected `Map<_, _>`, found `List<Int>`"), "{err}");
+    assert!(
+        err.contains("expected `Map<_, _>`, found `List<Int>`"),
+        "{err}"
+    );
     assert!(!err.contains("undefined variable"), "{err}");
 }
 
