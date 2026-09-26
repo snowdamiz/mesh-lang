@@ -24,6 +24,15 @@ fn ty_contains_self(ty: &Ty) -> bool {
     }
 }
 
+/// An interface's type `ty` as an impl for `impl_type` sees it: its `Self`
+/// is the implementing type, and its `Self.Item` the impl's `type Item`.
+fn in_impl(ty: &Ty, impl_type: &Ty, assoc_types: &FxHashMap<String, Ty>) -> Ty {
+    ty.replace_cons(&mut |con| match con.name.strip_prefix("Self.") {
+        Some(assoc) => assoc_types.get(assoc).cloned(),
+        None => (con.name == "Self").then(|| impl_type.clone()),
+    })
+}
+
 /// A method signature within a trait definition.
 #[derive(Clone, Debug)]
 pub struct TraitMethodSig {
@@ -226,6 +235,23 @@ impl TraitRegistry {
         }
     }
 
+    /// What the interface `trait_name` declares its method `method` returns,
+    /// as an impl for `impl_type` binding `assoc_types` sees it, when that is
+    /// a type of its own and not one the impl decides (a type parameter of a
+    /// generic interface).
+    pub fn declared_return_type(
+        &self,
+        trait_name: &str,
+        method: &str,
+        impl_type: &Ty,
+        assoc_types: &FxHashMap<String, Ty>,
+    ) -> Option<Ty> {
+        let trait_def = self.traits.get(trait_name)?;
+        let sig = trait_def.methods.iter().find(|m| m.name == method)?;
+        let ty = in_impl(sig.return_type.as_ref()?, impl_type, assoc_types);
+        (!ty_contains_self(&ty)).then_some(ty)
+    }
+
     /// Register an impl: `impl Trait for Type`. Returns what is wrong with
     /// it: a method or associated type missing or unlike the interface's,
     /// or an earlier impl for the same types.
@@ -251,16 +277,9 @@ impl TraitRegistry {
 
         // Look up the trait definition.
         if let Some(trait_def) = self.traits.get(&impl_def.trait_name).cloned() {
-            // The interface's `Self` is the implementing type, and its
-            // `Self.Item` the impl's `type Item`.
             let impl_type = impl_def.impl_type.clone();
             let assoc_types = impl_def.associated_types.clone();
-            let in_impl = |ty: &Ty| {
-                ty.replace_cons(&mut |con| match con.name.strip_prefix("Self.") {
-                    Some(assoc) => assoc_types.get(assoc).cloned(),
-                    None => (con.name == "Self").then(|| impl_type.clone()),
-                })
-            };
+            let in_impl = |ty: &Ty| in_impl(ty, &impl_type, &assoc_types);
             // Check that all required methods are present.
             for method in &trait_def.methods {
                 match impl_def.methods.get(&method.name) {

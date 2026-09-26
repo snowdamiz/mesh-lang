@@ -441,6 +441,74 @@ end
     );
 }
 
+/// An impl method without a return annotation returns what its interface
+/// declares, `Self` as the implementing type: `fn name(self) do 5 end` for
+/// `fn name(self) -> String` was taken to return an `Int`. An impl for a
+/// generic type is not supported.
+#[test]
+fn impl_methods_return_what_their_interface_declares() {
+    assert_eq!(
+        errors(
+            r#"
+interface Named do
+  fn name(self) -> String
+end
+
+interface Sized do
+  fn size(self) -> Int
+end
+
+interface Make do
+  fn make() -> Self
+end
+
+struct Box<T> do
+  item :: T
+end
+
+struct P do
+  x :: Int
+end
+
+impl Named for List do
+  fn name(self) -> String do
+    "list"
+  end
+end
+
+impl Named for Box do
+  fn name(self) -> String do
+    "box"
+  end
+end
+
+impl Sized for P do
+  fn size(self) do
+    self.x
+  end
+end
+
+impl Make for P do
+  fn make() do
+    P { x: 1 }
+  end
+end
+
+impl Named for P do
+  fn name(self) do
+    5
+  end
+end
+"#
+        ),
+        [
+            "an `impl` for the generic type `List` is not supported",
+            "an `impl` for the generic type `Box` is not supported",
+            "type mismatch: expected `String`, found `Int`",
+        ]
+    );
+}
+
 /// What a sum type derives is checked: a trait no type derives, any trait
 /// for a type that holds a resource, and `Json` for variant fields, named
 /// or not, that JSON cannot hold.

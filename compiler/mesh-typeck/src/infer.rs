@@ -7601,26 +7601,29 @@ fn infer_impl_def(
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<unnamed>".to_string());
 
-        let mut has_self = false;
-        let mut param_count = 0;
+        let has_self = method
+            .param_list()
+            .is_some_and(|list| list.params().any(|param| param.is_self()));
 
-        if let Some(param_list) = method.param_list() {
-            for param in param_list.params() {
-                let is_self = param.is_self();
-                if is_self {
-                    has_self = true;
-                } else {
-                    param_count += 1;
-                }
-            }
-        }
-
-        let return_type = method.return_type().and_then(|ann| {
-            // Simple name resolution only if the annotation fails to parse.
-            resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
-                .or_else(|| resolve_type_name(&ann))
-                .map(|ty| with_self(&ty, &impl_type))
-        });
+        // What the annotation says, or else what the interface declares:
+        // `fn name(self) do 5 end` for `fn name(self) -> String` was taken
+        // to return an `Int`.
+        let return_type = method
+            .return_type()
+            .and_then(|ann| {
+                // Simple name resolution only if the annotation fails to parse.
+                resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
+                    .or_else(|| resolve_type_name(&ann))
+                    .map(|ty| with_self(&ty, &impl_type))
+            })
+            .or_else(|| {
+                trait_registry.declared_return_type(
+                    &trait_name,
+                    &method_name,
+                    &impl_type,
+                    &assoc_types,
+                )
+            });
 
         // Also infer the method body to check it type-checks.
         env.push_scope();
@@ -7688,7 +7691,6 @@ fn infer_impl_def(
             .skip(usize::from(has_self))
             .map(|ty| ctx.resolve(ty.clone()))
             .collect();
-        let _ = param_count;
         trait_registry.update_impl_method(
             &trait_name,
             &trait_type_args,
