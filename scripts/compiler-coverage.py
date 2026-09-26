@@ -62,23 +62,53 @@ def llvm_env():
 PG_CONTAINER = "mesh-coverage-pg"
 PG_PORT = 55530
 PG_URL = f"postgres://mesh_test:mesh_test@127.0.0.1:{PG_PORT}/mesh_test?sslmode=disable"
+# The server speaks TLS with a certificate for 127.0.0.1, signed at start by a
+# CA of its own (exported to PG_CA, for sslrootcert), and md5 authentication
+# to a role whose password is md5-hashed. The label names this setup: a
+# container without it is an older one, made again.
+PG_CA = ROOT / "target/coverage/pg-ca.crt"
+PG_SETUP = "tls-md5-1"
+PG_START = """set -e
+mkdir -p /etc/ssl/mesh && cd /etc/ssl/mesh
+openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=mesh-test-ca \
+  -keyout ca.key -out ca.crt 2>/dev/null
+openssl req -newkey rsa:2048 -nodes -subj /CN=localhost -keyout server.key \
+  -out server.csr 2>/dev/null
+printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\n' > server.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 3650 \
+  -extfile server.ext -out server.crt 2>/dev/null
+chown postgres server.key server.crt
+chmod 600 server.key
+exec docker-entrypoint.sh postgres -c ssl=on \
+  -c ssl_cert_file=/etc/ssl/mesh/server.crt -c ssl_key_file=/etc/ssl/mesh/server.key
+"""
 
 
 def start_postgres():
-    """Start (or reuse) the coverage run's PostgreSQL and wait until it answers."""
-    state = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", PG_CONTAINER],
-                           capture_output=True, text=True)
-    if state.returncode != 0:
+    """Start (or reuse) the coverage run's PostgreSQL, wait until it answers,
+    and export its CA certificate to PG_CA."""
+    state = subprocess.run(["docker", "inspect", "-f",
+                            '{{.State.Running}} {{index .Config.Labels "mesh.coverage.pg"}}',
+                            PG_CONTAINER], capture_output=True, text=True)
+    running, _, setup = state.stdout.strip().partition(" ")
+    if state.returncode == 0 and setup != PG_SETUP:
+        subprocess.run(["docker", "rm", "-f", PG_CONTAINER], check=True, stdout=subprocess.DEVNULL)
+    if state.returncode != 0 or setup != PG_SETUP:
         subprocess.run(["docker", "run", "-d", "--name", PG_CONTAINER,
+                        "--label", f"mesh.coverage.pg={PG_SETUP}",
                         "-e", "POSTGRES_USER=mesh_test", "-e", "POSTGRES_PASSWORD=mesh_test",
-                        "-e", "POSTGRES_DB=mesh_test", "-p", f"127.0.0.1:{PG_PORT}:5432",
-                        "postgres:16"], check=True, stdout=subprocess.DEVNULL)
-    elif state.stdout.strip() != "true":
+                        "-e", "POSTGRES_DB=mesh_test", "-e", "POSTGRES_HOST_AUTH_METHOD=md5",
+                        "-p", f"127.0.0.1:{PG_PORT}:5432", "--entrypoint", "bash",
+                        "postgres:16", "-c", PG_START], check=True, stdout=subprocess.DEVNULL)
+    elif running != "true":
         subprocess.run(["docker", "start", PG_CONTAINER], check=True, stdout=subprocess.DEVNULL)
     for _ in range(90):
         ready = subprocess.run(["docker", "exec", PG_CONTAINER, "pg_isready", "-h", "127.0.0.1",
                                 "-U", "mesh_test", "-d", "mesh_test"], capture_output=True)
         if ready.returncode == 0:
+            PG_CA.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["docker", "cp", f"{PG_CONTAINER}:/etc/ssl/mesh/ca.crt",
+                            str(PG_CA)], check=True, stdout=subprocess.DEVNULL)
             return PG_URL
         time.sleep(1)
     sys.exit(f"{PG_CONTAINER} did not accept connections")
@@ -105,6 +135,7 @@ def run(extra):
     env = llvm_env()
     if services:
         env["MESH_TEST_DATABASE_URL"] = start_postgres()
+        env["MESH_TEST_DATABASE_CA"] = str(PG_CA)
         extra = with_ignored(extra)
     linker_dir = build_instrumented_runtime()
     if linker_dir:

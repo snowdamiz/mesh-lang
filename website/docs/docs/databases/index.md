@@ -70,6 +70,15 @@ end
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
 
+A URL is `postgres://user:password@host:port/database`, with `sslmode` and
+`sslrootcert` in its query. Mesh verifies every TLS server's certificate and
+name, so `require`, `verify-ca` and `verify-full` all mean what libpq calls
+`verify-full`; `prefer` (the default) and `allow` use TLS, verified the same
+way, when the server offers it, and `disable` never does. A server whose certificate comes from a
+private CA (a cloud provider's, or your own) needs that CA's PEM file:
+`?sslmode=verify-full&sslrootcert=/etc/ssl/db-ca.pem`. Any other `sslmode` is
+an error. The server may ask for SCRAM-SHA-256, md5 or a cleartext password.
+
 ### Direct PostgreSQL API
 
 | Function | Returns | Description |

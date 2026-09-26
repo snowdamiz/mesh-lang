@@ -27,7 +27,7 @@ use md5::{Digest, Md5};
 use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
-use rustls_pki_types::ServerName;
+use rustls_pki_types::{pem::PemObject, CertificateDer, ServerName};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
@@ -160,6 +160,8 @@ struct PgUrl {
     password: String,
     database: String,
     sslmode: SslMode,
+    /// A PEM file of CA certificates to trust besides the public roots.
+    sslrootcert: Option<String>,
 }
 
 /// Percent-decode a URL component (handles %XX sequences).
@@ -183,19 +185,17 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&result).into_owned()
 }
 
-/// Parse the sslmode query parameter from a URL query string.
-fn parse_sslmode(query_str: &str) -> SslMode {
-    for param in query_str.split('&') {
-        if let Some(value) = param.strip_prefix("sslmode=") {
-            return match value {
-                "disable" => SslMode::Disable,
-                "require" => SslMode::Require,
-                "prefer" => SslMode::Prefer,
-                _ => SslMode::Prefer,
-            };
-        }
+/// Parse an sslmode. Mesh verifies every TLS server's certificate, so
+/// `require` is what libpq calls `verify-full`, and `verify-ca` and
+/// `verify-full` are that too: read as `prefer`, as they were, a server (or
+/// anything between) declining TLS got the connection in the clear.
+fn parse_sslmode(value: &str) -> Result<SslMode, String> {
+    match value {
+        "disable" => Ok(SslMode::Disable),
+        "allow" | "prefer" => Ok(SslMode::Prefer),
+        "require" | "verify-ca" | "verify-full" => Ok(SslMode::Require),
+        other => Err(format!("unsupported sslmode: {other}")),
     }
-    SslMode::Prefer
 }
 
 /// Parse a `postgres://user:pass@host:port/database?sslmode=prefer` URL.
@@ -211,7 +211,15 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
     } else {
         (rest, "")
     };
-    let sslmode = parse_sslmode(query_str);
+    let mut sslmode = SslMode::Prefer;
+    let mut sslrootcert = None;
+    for param in query_str.split('&') {
+        match param.split_once('=') {
+            Some(("sslmode", value)) => sslmode = parse_sslmode(value)?,
+            Some(("sslrootcert", path)) => sslrootcert = Some(percent_decode(path)),
+            _ => {}
+        }
+    }
 
     // Split on '@' to separate credentials from host
     let (creds, host_part) = rest
@@ -248,6 +256,7 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
         password,
         database,
         sslmode,
+        sslrootcert,
     })
 }
 
@@ -496,12 +505,22 @@ fn write_terminate(buf: &mut Vec<u8>) {
 
 // ── TLS Negotiation ────────────────────────────────────────────────────
 
-/// Upgrade a TCP stream to a TLS-wrapped stream using rustls.
+/// Upgrade a TCP stream to a TLS-wrapped stream using rustls, trusting the
+/// public roots and the CAs in `root_cert` (a PEM file), if any.
 fn upgrade_to_tls(
     stream: TcpStream,
     hostname: &str,
+    root_cert: Option<&str>,
 ) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
-    let root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    if let Some(path) = root_cert {
+        let unreadable = |error: &dyn std::fmt::Display| format!("sslrootcert {path}: {error}");
+        let certs = CertificateDer::pem_file_iter(path).map_err(|e| unreadable(&e))?;
+        for cert in certs {
+            let cert = cert.map_err(|e| unreadable(&e))?;
+            root_store.add(cert).map_err(|e| unreadable(&e))?;
+        }
+    }
     let config = ClientConfig::builder()
         .with_root_certificates(root_store)
         .with_no_client_auth();
@@ -518,11 +537,8 @@ fn upgrade_to_tls(
 /// For prefer/require, sends the SSLRequest message and reads the 1-byte response.
 /// 'S' = server accepts SSL -> upgrade to TLS.
 /// 'N' = server declines -> error on require, fallback on prefer.
-fn negotiate_tls(
-    mut stream: TcpStream,
-    hostname: &str,
-    sslmode: SslMode,
-) -> Result<PgStream, String> {
+fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String> {
+    let sslmode = url.sslmode;
     if sslmode == SslMode::Disable {
         return Ok(PgStream::Plain(stream));
     }
@@ -543,7 +559,7 @@ fn negotiate_tls(
 
     match response[0] {
         b'S' => {
-            let tls = upgrade_to_tls(stream, hostname)?;
+            let tls = upgrade_to_tls(stream, &url.host, url.sslrootcert.as_deref())?;
             Ok(PgStream::Tls(tls))
         }
         b'N' => match sslmode {
@@ -1186,8 +1202,7 @@ fn connect(url: &str) -> Result<PgConn, String> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
-    let mut stream =
-        negotiate_tls(stream, &pg_url.host, pg_url.sslmode).map_err(|e| format!("TLS: {}", e))?;
+    let mut stream = negotiate_tls(stream, &pg_url).map_err(|e| format!("TLS: {}", e))?;
 
     // Send StartupMessage
     let mut buf = Vec::new();
@@ -2347,6 +2362,203 @@ mod tests {
             let error = result.err().expect("connected");
             assert!(error.contains(expected), "{error}");
         }
+    }
+
+    #[test]
+    fn tls_negotiation_follows_sslmode() {
+        // require: a server declining TLS is refused.
+        let (url, peer) = wire_peer("sslmode=require", |mut socket| {
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"N").unwrap();
+        });
+        let error = connect(&url).err().unwrap();
+        peer.join().unwrap();
+        assert_eq!(error, "TLS: server does not support SSL");
+        // verify-full is require, never prefer.
+        let (url, peer) = wire_peer("sslmode=verify-full", |mut socket| {
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"N").unwrap();
+        });
+        assert!(connect(&url).is_err());
+        peer.join().unwrap();
+        // prefer: the connection goes on in the clear.
+        let (url, peer) = wire_peer("sslmode=prefer", |mut socket| {
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"N").unwrap();
+            read_startup(&mut socket);
+            socket
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+        });
+        let conn = connect(&url).unwrap();
+        peer.join().unwrap();
+        assert!(matches!(conn.stream, PgStream::Plain(_)));
+        // Anything but S or N is refused.
+        let (url, peer) = wire_peer("sslmode=require", |mut socket| {
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"X").unwrap();
+        });
+        let error = connect(&url).err().unwrap();
+        peer.join().unwrap();
+        assert_eq!(error, "TLS: unexpected SSL response: 0x58");
+        // S, then no TLS: the handshake fails.
+        let (url, peer) = wire_peer("sslmode=require", |mut socket| {
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"S").unwrap();
+            let _ = socket.read(&mut [0; 1024]);
+        });
+        assert!(connect(&url).is_err());
+        peer.join().unwrap();
+        // An sslrootcert that cannot be read is an error, not the public roots.
+        let (url, peer) = wire_peer(
+            "sslmode=require&sslrootcert=/nonexistent/ca.pem",
+            |mut socket| {
+                socket.read_exact(&mut [0; 8]).unwrap();
+                socket.write_all(b"S").unwrap();
+            },
+        );
+        let error = connect(&url).err().unwrap();
+        peer.join().unwrap();
+        assert!(
+            error.starts_with("TLS: sslrootcert /nonexistent/ca.pem"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn urls_parse_credentials_databases_ports_and_tls_options() {
+        let url = parse_pg_url(
+            "postgresql://us%40er:p%3Ass@db.example:6543/app%2Fdb?sslmode=verify-ca&sslrootcert=%2Fetc%2Fca.pem&application_name=x",
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                url.user.as_str(),
+                url.password.as_str(),
+                url.host.as_str(),
+                url.port
+            ),
+            ("us@er", "p:ss", "db.example", 6543)
+        );
+        assert_eq!(url.database, "app/db");
+        assert!(url.sslmode == SslMode::Require);
+        assert_eq!(url.sslrootcert.as_deref(), Some("/etc/ca.pem"));
+        // Defaults: port 5432, the user's database, prefer; a bad escape stays.
+        let url = parse_pg_url("postgres://me%zz@host").unwrap();
+        assert_eq!(
+            (url.user.as_str(), url.port, url.database.as_str()),
+            ("me%zz", 5432, "me%zz")
+        );
+        assert!(url.sslmode == SslMode::Prefer && url.password.is_empty());
+        for (mode, parsed) in [
+            ("disable", SslMode::Disable),
+            ("allow", SslMode::Prefer),
+            ("prefer", SslMode::Prefer),
+            ("require", SslMode::Require),
+            ("verify-full", SslMode::Require),
+        ] {
+            assert!(parse_sslmode(mode).unwrap() == parsed, "{mode}");
+        }
+        for (url, error) in [
+            (
+                "mysql://u@h/d",
+                "URL must start with postgres:// or postgresql://",
+            ),
+            ("postgres://host/db", "URL missing '@' separator"),
+            ("postgres://u@h:port/d", "invalid port: port"),
+            (
+                "postgres://u@h/d?sslmode=verify",
+                "unsupported sslmode: verify",
+            ),
+        ] {
+            assert_eq!(parse_pg_url(url).err().as_deref(), Some(error), "{url}");
+        }
+        // No listener, and no such host.
+        let refused = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            connect(&format!("postgres://u@127.0.0.1:{port}/d"))
+                .err()
+                .unwrap()
+        };
+        assert!(refused.starts_with("connection failed"), "{refused}");
+        let unresolved = connect("postgres://u@no-such-host.invalid/d")
+            .err()
+            .unwrap();
+        assert!(
+            unresolved.starts_with("DNS resolution failed"),
+            "{unresolved}"
+        );
+    }
+
+    /// MESH_TEST_DATABASE_URL with its query replaced by `query` and its
+    /// user and password by `credentials`, when given.
+    fn test_database_url(credentials: Option<&str>, query: &str) -> String {
+        let url = std::env::var("MESH_TEST_DATABASE_URL")
+            .expect("MESH_TEST_DATABASE_URL must be set (the coverage run starts a database)");
+        let (base, _) = url.split_once('?').unwrap_or((&url, ""));
+        let base = match credentials {
+            Some(credentials) => {
+                let (_, host) = base.rsplit_once('@').unwrap();
+                format!("postgres://{credentials}@{host}")
+            }
+            None => base.to_string(),
+        };
+        format!("{base}?{query}")
+    }
+
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL and MESH_TEST_DATABASE_CA (the coverage run's TLS server)"]
+    fn tls_verifies_the_server_against_sslrootcert() {
+        let ca = std::env::var("MESH_TEST_DATABASE_CA").expect("MESH_TEST_DATABASE_CA");
+        let mut conn = native_pg_connect(&test_database_url(
+            None,
+            &format!("sslmode=verify-full&sslrootcert={ca}"),
+        ))
+        .unwrap();
+        assert!(matches!(conn.inner.stream, PgStream::Tls(_)));
+        let rows = native_pg_query(
+            &mut conn,
+            "SELECT ssl::text FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+            &[],
+        )
+        .unwrap();
+        assert_eq!(rows[0][0].1, "true");
+        native_pg_close(conn);
+        // Its CA is not a public one.
+        let error = native_pg_connect(&test_database_url(None, "sslmode=require"))
+            .err()
+            .unwrap();
+        assert!(error.contains("certificate"), "{error}");
+    }
+
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL on a server with md5 authentication (the coverage run's)"]
+    fn md5_authenticates_a_role_with_an_md5_password() {
+        let mut admin = native_pg_connect(&test_database_url(None, "sslmode=disable")).unwrap();
+        for sql in [
+            "SET password_encryption = 'md5'",
+            "DROP ROLE IF EXISTS mesh_md5_test",
+            "CREATE ROLE mesh_md5_test LOGIN PASSWORD 'md5-secret'",
+        ] {
+            native_pg_execute(&mut admin, sql, &[]).unwrap();
+        }
+        let mut conn = native_pg_connect(&test_database_url(
+            Some("mesh_md5_test:md5-secret"),
+            "sslmode=disable",
+        ))
+        .unwrap();
+        let rows = native_pg_query(&mut conn, "SELECT current_user::text", &[]).unwrap();
+        assert_eq!(rows[0][0].1, "mesh_md5_test");
+        native_pg_close(conn);
+        let wrong = native_pg_connect(&test_database_url(
+            Some("mesh_md5_test:wrong"),
+            "sslmode=disable",
+        ));
+        assert!(wrong.is_err());
+        native_pg_execute(&mut admin, "DROP ROLE mesh_md5_test", &[]).unwrap();
+        native_pg_close(admin);
     }
 
     #[test]
