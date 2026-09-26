@@ -1070,7 +1070,8 @@ end
 }
 
 /// `Type.from_json`, `Type.from_row` and the schema functions come from the
-/// type's `deriving`: without it the type has no such function.
+/// type's `deriving`: without it the type has no such function, and a sum
+/// type has no `from_row` at all.
 #[test]
 fn a_types_derived_functions_need_its_deriving() {
     assert_eq!(
@@ -1078,6 +1079,11 @@ fn a_types_derived_functions_need_its_deriving() {
             r#"
 struct Plain do
   name :: String
+end deriving(Eq)
+
+type Kind do
+  Big
+  Small
 end deriving(Eq)
 
 fn rows() do
@@ -1091,12 +1097,17 @@ end
 fn table() do
   Plain.__table__()
 end
+
+fn sum_rows() do
+  Kind.from_row
+end
 "#
         ),
         [
             "no method `from_row` on type `Plain`",
             "no method `from_json` on type `Plain`",
             "no method `__table__` on type `Plain`",
+            "no method `from_row` on type `Kind`",
         ]
     );
 }
@@ -1123,6 +1134,64 @@ end
         [
             "`Shade` is a type, not a value",
             "`Shade` is a type, not a value",
+        ]
+    );
+}
+
+/// A method call finds its method through the receiver's interfaces, a
+/// type parameter's bounds, or the standard module of its type, and says
+/// which interfaces make it ambiguous or that none has it.
+#[test]
+fn methods_are_found_through_interfaces_bounds_and_modules() {
+    assert_eq!(
+        errors(
+            r#"
+interface Named do
+  fn label(self) -> String
+end
+
+interface Titled do
+  fn label(self) -> String
+end
+
+struct Book do
+  pages :: Int
+end
+
+impl Named for Book do
+  fn label(self) -> String do
+    "named"
+  end
+end
+
+impl Titled for Book do
+  fn label(self) -> String do
+    "titled"
+  end
+end
+
+fn ambiguous(b :: Book) do
+  b.label()
+end
+
+fn second<A, B>(a :: A, b :: B) -> String where A: Named, B: Titled do
+  b.label()
+end
+
+fn iter_other(xs :: List<Int>) do
+  let it = Iter.from(xs)
+  it.to_string()
+end
+
+fn list_missing(xs :: List<Int>) do
+  xs.nonexistent()
+end
+"#
+        ),
+        [
+            "ambiguous method `label` for type `Book`: candidates from traits [Named, Titled]",
+            "no method `to_string` on type `Iter<Int>`",
+            "no method `nonexistent` on type `List<Int>`",
         ]
     );
 }

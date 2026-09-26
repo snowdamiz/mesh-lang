@@ -3967,75 +3967,6 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     modules
 }
 
-/// Set of module names recognized by the stdlib for qualified access.
-const STDLIB_MODULE_NAMES: &[&str] = &[
-    "String",
-    "IO",
-    "Env",
-    "File",
-    "List",
-    "Map",
-    "Set",
-    "Tuple",
-    "Range",
-    "Queue",
-    "HTTP",
-    "JSON",
-    "Json",
-    "Request",
-    "Job",
-    "Math",
-    "Int",
-    "Float",
-    "Timer",
-    "Sqlite",
-    "Pg",
-    "Pool",
-    "Node",
-    "Process", // Phase 67
-    "Global",  // Phase 68
-    "Iter",    // Phase 76
-    "Ws",      // Phase 88
-    "Orm",     // Phase 97
-    "Expr",
-    "Query",     // Phase 98
-    "Repo",      // Phase 98
-    "Changeset", // Phase 99
-    "Migration", // Phase 101
-    "Regex",     // Phase 119
-    "Bytes",
-    "Host",
-    "BytesBuilder",
-    "Secret",
-    "SecretMap",
-    "StorageKey",
-    "X25519PrivateKey",
-    "SigningPrivateKey",
-    "MlKemPrivateKey",
-    "U64",
-    "U128",
-    "I128",
-    "Crypto",   // Phase 135
-    "Base64",   // Phase 135
-    "Hex",      // Phase 135
-    "DateTime", // Phase 136
-    "Checked",
-    "Monotonic",
-    "Duration",
-    "Channel",
-    "Random",
-    "Http", // Phase 137
-    "WsClient",
-    "Test",       // Phase 138
-    "Continuity", // continuity
-    "Cluster",
-];
-
-/// Check if a name is a known stdlib module.
-fn is_stdlib_module(name: &str) -> bool {
-    STDLIB_MODULE_NAMES.contains(&name)
-}
-
 /// Infer types for a parsed Mesh program.
 ///
 /// This is the main entry point for single-module type checking.
@@ -12414,175 +12345,169 @@ fn infer_field_access(
 
     // Check if base is a NameRef pointing to a module name for qualified access.
     // e.g. Vector.add (user module), String.length (stdlib) -- module-qualified function reference.
-    if let Expr::NameRef(ref name_ref) = base_expr {
-        if let Some(base_name) = name_ref.text() {
-            if base_name == "Continuity" && field_name == "promote" {
-                let err = TypeError::ManualContinuityPromotionDisabled {
+    let qualifier = match &base_expr {
+        Expr::NameRef(name_ref) => name_ref.text(),
+        _ => None,
+    };
+    if let Some(base_name) = qualifier {
+        if base_name == "Continuity" && field_name == "promote" {
+            let err = TypeError::ManualContinuityPromotionDisabled {
+                span: fa.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
+
+        // An imported module's function or struct (or a service's
+        // helper), then one of the module's variants.
+        if let Some(scheme) = ctx
+            .qualified_modules
+            .get(&base_name)
+            .and_then(|functions| functions.get(&field_name))
+            .cloned()
+        {
+            return Ok(ctx.instantiate(&scheme));
+        }
+        if let Some(scheme) = module_variant(ctx, &base_name, &field_name)
+            .and_then(|qualified| env.lookup(&qualified).cloned())
+        {
+            return Ok(ctx.instantiate(&scheme));
+        }
+
+        // A standard module's function (`String.length`).
+        if let Some(scheme) = stdlib_modules(ctx.test_builtins)
+            .get(&base_name)
+            .and_then(|functions| functions.get(&field_name))
+        {
+            return Ok(ctx.instantiate(scheme));
+        }
+
+        // `Node.spawn` takes any number of arguments after the node and
+        // the actor, which no function type says: it is checked where it
+        // is called or piped into, and is no value.
+        if is_node_spawn(env, fa) {
+            let err = TypeError::ArityMismatch {
+                expected: 2,
+                found: 0,
+                origin: ConstraintOrigin::Expr {
                     span: fa.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
+                },
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
 
-            // Check user-defined modules first (from import context via ctx.qualified_modules)
-            if let Some(mod_fns) = ctx.qualified_modules.get(&base_name) {
-                if let Some(scheme) = mod_fns.get(&field_name) {
-                    let scheme = scheme.clone();
-                    let ty = ctx.instantiate(&scheme);
-                    return Ok(ty);
-                }
-                // Module exists but field not found -- fall through to other checks
-            }
-            if let Some(scheme) = module_variant(ctx, &base_name, &field_name)
-                .and_then(|qualified| env.lookup(&qualified).cloned())
-            {
-                return Ok(ctx.instantiate(&scheme));
-            }
+        // A service's helper (`Counter.get_count`), a variant
+        // (`Shape.Circle`) or a schema function (`User.__table__`): each
+        // is in the environment under its qualified name.
+        if let Some(scheme) = env.lookup(&format!("{base_name}.{field_name}")) {
+            return Ok(ctx.instantiate(scheme));
+        }
 
-            // Then check stdlib modules (existing behavior)
-            if is_stdlib_module(&base_name) {
-                let modules = stdlib_modules(ctx.test_builtins);
-                if let Some(mod_exports) = modules.get(&base_name) {
-                    if let Some(scheme) = mod_exports.get(&field_name) {
-                        let ty = ctx.instantiate(scheme);
-                        return Ok(ty);
-                    }
-                }
-            }
-
-            // `Node.spawn` takes any number of arguments after the node and
-            // the actor, which no function type says: it is checked where it
-            // is called or piped into, and is no value.
-            if is_node_spawn(env, fa) {
-                let err = TypeError::ArityMismatch {
-                    expected: 2,
-                    found: 0,
-                    origin: ConstraintOrigin::Expr {
+        // Check if base is a struct type name with a static trait method.
+        // e.g. User.from_json -- User is a struct type, from_json is a FromJson method.
+        // `Iface.method(value, ...)`: the interface's method, for a
+        // receiver that must implement it (checked when the function is
+        // done), which names the method when several interfaces share it.
+        if !env.is_local(&base_name) {
+            if let Some(sig) = trait_registry.get_trait(&base_name).and_then(|trait_def| {
+                trait_def
+                    .methods
+                    .iter()
+                    .find(|m| m.name == field_name && m.has_self)
+                    .cloned()
+            }) {
+                let receiver = ctx.fresh_var();
+                let method_ty = trait_method_type(ctx, &base_name, &sig, &receiver);
+                ctx.operand_traits.push((
+                    receiver,
+                    base_name.clone(),
+                    ConstraintOrigin::Expr {
                         span: fa.syntax().text_range(),
                     },
+                ));
+                return Ok(method_ty);
+            }
+        }
+
+        // A type's derived functions: `from_json` :: String -> Result<T,
+        // String>, where a generic T is instantiated afresh
+        // (`Box.from_json` gives `Box<_>`), and a struct's `from_row`.
+        let named = Ty::Con(TyCon::new(&base_name));
+        if field_name == "from_json" {
+            let params = type_registry
+                .lookup_struct(&base_name)
+                .map(|info| info.generic_params.len())
+                .or_else(|| {
+                    type_registry
+                        .lookup_sum_type(&base_name)
+                        .map(|info| info.generic_params.len())
+                });
+            if let Some(params) = params {
+                let decoded = if params == 0 {
+                    named.clone()
+                } else {
+                    Ty::App(
+                        Box::new(named.clone()),
+                        (0..params).map(|_| ctx.fresh_var()).collect(),
+                    )
                 };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-
-            // A service's helper (`Counter.get_count`), a variant
-            // (`Shape.Circle`) or a schema function (`User.__table__`): each
-            // is in the environment under its qualified name.
-            if let Some(scheme) = env.lookup(&format!("{base_name}.{field_name}")) {
-                return Ok(ctx.instantiate(scheme));
-            }
-
-            // Check if base is a struct type name with a static trait method.
-            // e.g. User.from_json -- User is a struct type, from_json is a FromJson method.
-            // `Iface.method(value, ...)`: the interface's method, for a
-            // receiver that must implement it (checked when the function is
-            // done), which names the method when several interfaces share it.
-            if !env.is_local(&base_name) {
-                if let Some(sig) = trait_registry.get_trait(&base_name).and_then(|trait_def| {
-                    trait_def
-                        .methods
-                        .iter()
-                        .find(|m| m.name == field_name && m.has_self)
-                        .cloned()
-                }) {
-                    let receiver = ctx.fresh_var();
-                    let method_ty = trait_method_type(ctx, &base_name, &sig, &receiver);
-                    ctx.operand_traits.push((
-                        receiver,
-                        base_name.clone(),
-                        ConstraintOrigin::Expr {
-                            span: fa.syntax().text_range(),
-                        },
-                    ));
-                    return Ok(method_ty);
+                if trait_registry.has_impl("FromJson", &named)
+                    || trait_registry.has_impl("FromJson", &decoded)
+                {
+                    let result_ty = Ty::result(decoded, Ty::string());
+                    return Ok(Ty::fun(vec![Ty::string()], result_ty));
                 }
             }
+        }
 
-            if field_name == "from_json" {
-                // from_json :: String -> Result<T, String>, where a generic
-                // T is instantiated afresh (`Box.from_json` gives `Box<_>`).
-                let params = type_registry
-                    .lookup_struct(&base_name)
-                    .map(|info| info.generic_params.len())
-                    .or_else(|| {
-                        type_registry
-                            .lookup_sum_type(&base_name)
-                            .map(|info| info.generic_params.len())
-                    });
-                let con = Ty::Con(TyCon::new(&base_name));
-                if let Some(params) = params {
-                    let decoded = if params == 0 {
-                        con.clone()
-                    } else {
-                        Ty::App(
-                            Box::new(con.clone()),
-                            (0..params).map(|_| ctx.fresh_var()).collect(),
-                        )
-                    };
-                    if trait_registry.has_impl("FromJson", &con)
-                        || trait_registry.has_impl("FromJson", &decoded)
-                    {
-                        let result_ty = Ty::result(decoded, Ty::string());
-                        return Ok(Ty::fun(vec![Ty::string()], result_ty));
-                    }
-                }
-            }
+        if field_name == "from_row"
+            && type_registry.lookup_struct(&base_name).is_some()
+            && trait_registry.has_impl("FromRow", &named)
+        {
+            // from_row :: Map<String, String> -> Result<StructName, String>
+            let map_ty = Ty::map(Ty::string(), Ty::string());
+            let result_ty = Ty::result(named, Ty::string());
+            return Ok(Ty::fun(vec![map_ty], result_ty));
+        }
 
-            // Check if base is a struct type name with FromRow trait method.
-            // e.g. User.from_row -- User is a struct with deriving(Row).
-            if field_name == "from_row" {
-                if let Some(_struct_info) = type_registry.lookup_struct(&base_name) {
-                    let struct_ty = Ty::Con(TyCon::new(&base_name));
-                    if trait_registry.has_impl("FromRow", &struct_ty) {
-                        // from_row :: Map<String, String> -> Result<StructName, String>
-                        let map_ty = Ty::map(Ty::string(), Ty::string());
-                        let result_ty = Ty::result(struct_ty, Ty::string());
-                        return Ok(Ty::fun(vec![map_ty], result_ty));
-                    }
-                }
-            }
+        if !env.is_local(&base_name) && is_named_type(type_registry, &base_name) {
+            return type_qualified_method(
+                ctx,
+                type_registry,
+                trait_registry,
+                &base_name,
+                &field_name,
+                fa.syntax().text_range(),
+            );
+        }
 
-            if !env.is_local(&base_name) && is_named_type(type_registry, &base_name) {
-                return type_qualified_method(
-                    ctx,
-                    type_registry,
-                    trait_registry,
-                    &base_name,
-                    &field_name,
-                    fa.syntax().text_range(),
-                );
-            }
-
-            // A module without the function: say so, instead of
-            // "undefined variable" for the module's name. A type named like
-            // a module (`Int.tag()` for `impl Named for Int`) may provide
-            // the name as a static method, which the call resolves.
-            let static_method = trait_registry
-                .impls_with_static_method(&field_name)
-                .iter()
-                .any(|imp| imp.impl_type_name == base_name);
-            let module_functions: Option<Vec<String>> = if env.is_local(&base_name) || static_method
-            {
-                None
-            } else if let Some(functions) = ctx.qualified_modules.get(&base_name) {
-                Some(listed_names(functions.keys()))
-            } else if is_stdlib_module(&base_name) {
-                stdlib_modules(ctx.test_builtins)
-                    .get(&base_name)
-                    .map(|functions| listed_names(functions.keys()))
-            } else {
-                None
+        // A module without the function: say so, instead of
+        // "undefined variable" for the module's name. A type named like
+        // a module (`Int.tag()` for `impl Named for Int`) may provide
+        // the name as a static method, which the call resolves.
+        let static_method = trait_registry
+            .impls_with_static_method(&field_name)
+            .iter()
+            .any(|imp| imp.impl_type_name == base_name);
+        let module_functions: Option<Vec<String>> = if env.is_local(&base_name) || static_method {
+            None
+        } else if let Some(functions) = ctx.qualified_modules.get(&base_name) {
+            Some(listed_names(functions.keys()))
+        } else {
+            stdlib_modules(ctx.test_builtins)
+                .get(&base_name)
+                .map(|functions| listed_names(functions.keys()))
+        };
+        if let Some(available) = module_functions {
+            let err = TypeError::NoSuchModuleFunction {
+                module: base_name,
+                name: field_name,
+                available,
+                span: fa.syntax().text_range(),
             };
-            if let Some(available) = module_functions {
-                let err = TypeError::NoSuchModuleFunction {
-                    module: base_name,
-                    name: field_name,
-                    available,
-                    span: fa.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
+            ctx.errors.push(err.clone());
+            return Err(err);
         }
     }
 
