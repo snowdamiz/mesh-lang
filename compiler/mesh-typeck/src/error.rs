@@ -667,10 +667,15 @@ impl fmt::Display for TypeError {
                 write!(f, "undefined variable `{}`", name)
             }
             TypeError::NotAFunction { ty, .. } => {
-                write!(f, "`{}` is not a function", ty)
+                write!(f, "`{}` is not a function", ty.with_holes())
             }
             TypeError::TraitNotSatisfied { ty, trait_name, .. } => {
-                write!(f, "`{}` does not implement `{}`", ty, trait_name)
+                write!(
+                    f,
+                    "`{}` does not implement `{}`",
+                    ty.with_holes(),
+                    trait_name
+                )
             }
             TypeError::MissingTraitMethod {
                 trait_name,
@@ -694,7 +699,10 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "method `{}` in impl `{}` has wrong signature: expected `{}`, found `{}`",
-                    method_name, trait_name, expected, found
+                    method_name,
+                    trait_name,
+                    expected.with_holes(),
+                    found.with_holes()
                 )
             }
             TypeError::MissingField {
@@ -720,12 +728,22 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::NoSuchField { ty, field_name, .. } => {
-                write!(f, "type `{}` has no field `{}`", ty, field_name)
+                write!(
+                    f,
+                    "type `{}` has no field `{}`",
+                    ty.with_holes(),
+                    field_name
+                )
             }
             TypeError::NoSuchMethod {
                 ty, method_name, ..
             } => {
-                write!(f, "no method `{}` on type `{}`", method_name, ty)
+                write!(
+                    f,
+                    "no method `{}` on type `{}`",
+                    method_name,
+                    ty.with_holes()
+                )
             }
             TypeError::ManualContinuityPromotionDisabled { .. } => {
                 write!(
@@ -781,14 +799,19 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "message type mismatch: expected `{}`, found `{}`",
-                    expected, found
+                    expected.with_holes(),
+                    found.with_holes()
                 )
             }
             TypeError::SelfOutsideActor { .. } => {
                 write!(f, "self() used outside actor block")
             }
             TypeError::SpawnNonFunction { found, .. } => {
-                write!(f, "cannot spawn non-function: found `{}`", found)
+                write!(
+                    f,
+                    "cannot spawn non-function: found `{}`",
+                    found.with_holes()
+                )
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")
@@ -799,7 +822,8 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "child `{}` start function must return Pid, found `{}`",
-                    child_name, found
+                    child_name,
+                    found.with_holes()
                 )
             }
             TypeError::InvalidStrategy { found, .. } => {
@@ -870,7 +894,7 @@ impl fmt::Display for TypeError {
                     f,
                     "ambiguous method `{}` for type `{}`: candidates from traits [{}]",
                     method_name,
-                    ty,
+                    ty.with_holes(),
                     candidate_traits.join(", ")
                 )
             }
@@ -988,14 +1012,15 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "`?` cannot propagate `{}` from a function returning `{}`",
-                    operand_ty, fn_return_ty
+                    operand_ty.with_holes(),
+                    fn_return_ty.with_holes()
                 )
             }
             TypeError::TryOnNonResultOption { operand_ty, .. } => {
                 write!(
                     f,
                     "`?` operator requires `Result` or `Option`, found `{}`",
-                    operand_ty
+                    operand_ty.with_holes()
                 )
             }
             TypeError::NonSerializableField {
@@ -1081,14 +1106,14 @@ impl fmt::Display for TypeError {
                 found,
                 by_argument,
                 ..
-            } => match (found, by_argument) {
-                (Some(found), false) => {
+            } => match (found, by_argument, receiver.with_holes()) {
+                (Some(found), false, receiver) => {
                     write!(f, "no impl's `{method}` on `{receiver}` returns `{found}`")
                 }
-                (Some(found), true) => {
+                (Some(found), true, receiver) => {
                     write!(f, "no impl's `{method}` for `{receiver}` takes `{found}`")
                 }
-                (None, _) => write!(
+                (None, _, receiver) => write!(
                     f,
                     "cannot tell which impl's `{method}` to call on `{receiver}`"
                 ),
@@ -1122,7 +1147,11 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::InvalidConcat { op, ty, .. } => {
-                write!(f, "`{op}` joins strings or lists, not `{ty}`")
+                write!(
+                    f,
+                    "`{op}` joins strings or lists, not `{}`",
+                    ty.with_holes()
+                )
             }
             TypeError::IndexingUnsupported { .. } => {
                 write!(f, "`value[index]` indexing is not supported")
@@ -1154,7 +1183,8 @@ impl fmt::Display for TypeError {
             TypeError::RigidTypeParam { param, found, .. } => {
                 write!(
                     f,
-                    "type parameter `{param}` stands for any type, but this function makes it `{found}`"
+                    "type parameter `{param}` stands for any type, but this function makes it `{}`",
+                    found.with_holes()
                 )
             }
             TypeError::AmbiguousStaticMethod { method, types, .. } => {
@@ -1199,7 +1229,7 @@ impl fmt::Display for TypeError {
                 write!(f, "a struct update needs a struct value")
             }
             TypeError::NotAStruct { ty, .. } => {
-                write!(f, "`{ty}` is not a struct")
+                write!(f, "`{}` is not a struct", ty.with_holes())
             }
             TypeError::DuplicateBinding { name, .. } => {
                 write!(f, "`{name}` is bound twice in one pattern")

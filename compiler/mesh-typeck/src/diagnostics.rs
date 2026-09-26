@@ -247,9 +247,7 @@ fn origin_span(origin: &ConstraintOrigin) -> Option<Range<usize>> {
 /// diagnostic shows them (`Ty::with_holes`).
 fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<&'static str> {
     let first_arg_of = |name: &str| match expected {
-        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(c) if c.name == name) => {
-            args.first()
-        }
+        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(c) if c.name == name) => args.first(),
         _ => None,
     };
     if first_arg_of("Option").is_some_and(|inner| could_be(inner, found)) {
@@ -714,6 +712,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         }
 
         TypeError::NotAFunction { ty, span } => {
+            let ty = &ty.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             let mut builder = Description::error(range, format!("{} is not a function", ty));
@@ -733,22 +732,29 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
             let span = clamp(span);
 
-            Description::error(span, format!("{} does not satisfy {}", ty, trait_name))
-                .with_help(if trait_name == "Json" {
-                    "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
-                     Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
-                        .to_string()
-                } else if is_named_type(ty)
-                    && matches!(trait_name.as_str(), "Eq" | "Ord" | "Display" | "Debug" | "Hash")
-                {
-                    format!(
-                        "add `deriving({trait_name})` to the definition of `{ty}`, or `impl {trait_name} for {ty} do ... end`"
-                    )
-                } else if is_named_type(ty) {
-                    format!("add `impl {} for {} do ... end`", trait_name, ty)
-                } else {
-                    "only a named type without type parameters can have an `impl`".to_string()
-                })
+            Description::error(
+                span,
+                format!("{} does not satisfy {}", ty.with_holes(), trait_name),
+            )
+            .with_help(if trait_name == "Json" {
+                "JSON holds Int, Float, Bool, String, tuples, and Option, List and \
+                 Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
+                    .to_string()
+            } else if is_named_type(ty)
+                && matches!(
+                    trait_name.as_str(),
+                    "Eq" | "Ord" | "Display" | "Debug" | "Hash"
+                )
+            {
+                format!(
+                    "add `deriving({trait_name})` to the definition of `{ty}`, \
+                     or `impl {trait_name} for {ty} do ... end`"
+                )
+            } else if is_named_type(ty) {
+                format!("add `impl {} for {} do ... end`", trait_name, ty)
+            } else {
+                "only a named type without type parameters can have an `impl`".to_string()
+            })
         }
 
         TypeError::UnboundedTypeParam {
@@ -785,6 +791,8 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             span,
             ..
         } => {
+            let expected = &expected.with_holes();
+            let found = &found.with_holes();
             let span = clamp(text_range_to_range(*span));
 
             Description::error(
@@ -911,6 +919,8 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             found,
             span,
         } => {
+            let expected = &expected.with_holes();
+            let found = &found.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected {}, found {}", expected, found))
@@ -924,6 +934,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         }
 
         TypeError::SpawnNonFunction { found, span } => {
+            let found = &found.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected a function, found {}", found))
@@ -937,6 +948,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         }
 
         TypeError::InvalidChildStart { found, span, .. } => {
+            let found = &found.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected Pid<M>, found {}", found))
@@ -1181,6 +1193,8 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             fn_return_ty,
             span,
         } => {
+            let operand_ty = &operand_ty.with_holes();
+            let fn_return_ty = &fn_return_ty.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, "cannot use `?` here")
@@ -1191,6 +1205,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         }
 
         TypeError::TryOnNonResultOption { operand_ty, span } => {
+            let operand_ty = &operand_ty.with_holes();
             let range = clamp(text_range_to_range(*span));
 
             Description::error(
@@ -1422,6 +1437,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             ))
         }
         TypeError::InvalidConcat { ty, span, .. } => {
+            let ty = &ty.with_holes();
             let range = clamp(text_range_to_range(*span));
             Description::error(range, format!("these operands are `{ty}`"))
                 .with_help("convert the values to strings first, e.g. with `\"${a}${b}\"`")
@@ -1493,6 +1509,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             ))
         }
         TypeError::RigidTypeParam { param, found, span } => {
+            let found = &found.with_holes();
             let range = clamp(text_range_to_range(*span));
             Description::error(range, format!("`{param}` is declared here"))
                 .with_help(format!(
@@ -1657,8 +1674,16 @@ mod tests {
                 con("Point"),
                 Some("wrap in Ok(...)"),
             ),
-            (Ty::int(), Ty::float(), Some("convert it with `Float.to_int(...)`")),
-            (Ty::float(), Ty::int(), Some("convert it with `Int.to_float(...)`")),
+            (
+                Ty::int(),
+                Ty::float(),
+                Some("convert it with `Float.to_int(...)`"),
+            ),
+            (
+                Ty::float(),
+                Ty::int(),
+                Some("convert it with `Int.to_float(...)`"),
+            ),
             (Ty::string(), Ty::int(), Some("use to_string()")),
             (Ty::string(), Ty::float(), Some("use to_string()")),
             (Ty::bool(), Ty::int(), Some("expected a boolean expression")),

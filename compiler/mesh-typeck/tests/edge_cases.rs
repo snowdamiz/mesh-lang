@@ -398,6 +398,31 @@ end
     );
 }
 
+/// A type error shows the parts of a type not settled yet as `_`, not as
+/// the checker's variables (`Result<?40, ?41>`).
+#[test]
+fn type_errors_show_unsettled_types_as_holes() {
+    assert_eq!(
+        errors(
+            r#"
+fn f() do
+  let g = fn o -> Some(o? + 1) end
+  g
+end
+
+fn h() do
+  let xs = []
+  xs.nope()
+end
+"#
+        ),
+        [
+            "`?` cannot propagate `Result<_, _>` from a function returning `Option<Int>`",
+            "no method `nope` on type `List<_>`",
+        ]
+    );
+}
+
 /// A Result's error converts to the one the function returns through a
 /// `From` impl.
 #[test]
