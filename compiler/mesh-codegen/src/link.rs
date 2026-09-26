@@ -774,32 +774,28 @@ fn windows_clang_path_from_prefix(prefix: &Path) -> PathBuf {
     prefix.join("bin").join("clang.exe")
 }
 
-/// Attempt to find the workspace target directory.
-///
-/// Uses the `CARGO_TARGET_DIR` env var if set, otherwise walks up from the
-/// current executable to find a `target/` directory.
+/// The cargo target directory this meshc was built in: the first directory
+/// above it that cargo tagged (whatever its name: a meshc built with
+/// `CARGO_TARGET_DIR=target/other` links the runtime built beside it), that
+/// is named `target`, or that holds one. Else `CARGO_TARGET_DIR`, which,
+/// when relative, is relative to where cargo ran rather than to meshc.
 fn find_workspace_target_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-        return Some(PathBuf::from(dir));
-    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| target_dir_above(&exe))
+        .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from))
+}
 
-    if let Ok(exe) = std::env::current_exe() {
-        let mut dir = exe.parent().map(|path| path.to_path_buf());
-        while let Some(current) = dir {
-            if current.file_name().is_some_and(|name| name == "target") {
-                return Some(current);
-            }
-
-            let target_dir = current.join("target");
-            if target_dir.exists() {
-                return Some(target_dir);
-            }
-
-            dir = current.parent().map(|path| path.to_path_buf());
+fn target_dir_above(path: &Path) -> Option<PathBuf> {
+    path.ancestors().skip(1).find_map(|dir| {
+        if dir.join("CACHEDIR.TAG").is_file()
+            || dir.file_name().is_some_and(|name| name == "target")
+        {
+            Some(dir.to_path_buf())
+        } else {
+            Some(dir.join("target")).filter(|target| target.exists())
         }
-    }
-
-    None
+    })
 }
 
 #[cfg(test)]
@@ -815,6 +811,34 @@ mod tests {
             find_workspace_target_dir().is_some(),
             "Should find workspace target dir during cargo test"
         );
+    }
+
+    #[test]
+    fn target_dir_is_the_tagged_one_meshc_was_built_in() {
+        let root = std::env::temp_dir().join(format!("mesh-target-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let outer = root.join("target");
+        let inner = outer.join("alt");
+        std::fs::create_dir_all(inner.join("debug")).unwrap();
+        std::fs::write(outer.join("CACHEDIR.TAG"), "").unwrap();
+        std::fs::write(inner.join("CACHEDIR.TAG"), "").unwrap();
+        assert_eq!(
+            target_dir_above(&inner.join("debug/meshc")),
+            Some(inner.clone()),
+            "not the `target` above it"
+        );
+        std::fs::create_dir_all(root.join("custom/release")).unwrap();
+        std::fs::write(root.join("custom/CACHEDIR.TAG"), "").unwrap();
+        assert_eq!(
+            target_dir_above(&root.join("custom/release/meshc")),
+            Some(root.join("custom"))
+        );
+        assert_eq!(
+            target_dir_above(&root.join("bin/meshc")),
+            Some(outer),
+            "untagged: a `target` beside an ancestor"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
