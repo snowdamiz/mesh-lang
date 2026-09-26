@@ -70,10 +70,6 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_actor_self", mesh_rt::mesh_actor_self as *const ()),
         ("mesh_actor_send", mesh_rt::mesh_actor_send as *const ()),
         (
-            "mesh_actor_send_named",
-            mesh_rt::actor::mesh_actor_send_named as *const (),
-        ),
-        (
             "mesh_actor_send_shaped",
             mesh_rt::mesh_actor_send_shaped as *const (),
         ),

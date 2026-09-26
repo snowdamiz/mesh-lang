@@ -704,65 +704,6 @@ fn send_application_frame(session: &crate::dist::node::NodeSession, payload: Vec
     }
 }
 
-/// Send a message to a named process on a remote node.
-///
-/// Called from compiled Mesh code for `send({name, node}, msg)` syntax.
-/// If the target node is ourselves, performs a local registry lookup + send.
-/// Returns a nonzero status if the target cannot be reached.
-#[no_mangle]
-pub extern "C" fn mesh_actor_send_named(
-    name_ptr: *const u8,
-    name_len: u64,
-    node_ptr: *const u8,
-    node_len: u64,
-    msg_ptr: *const u8,
-    msg_size: u64,
-) -> i64 {
-    let name =
-        unsafe { std::str::from_utf8(std::slice::from_raw_parts(name_ptr, name_len as usize)) };
-    let node =
-        unsafe { std::str::from_utf8(std::slice::from_raw_parts(node_ptr, node_len as usize)) };
-
-    let (name, node) = match (name, node) {
-        (Ok(n), Ok(nd)) => (n, nd),
-        _ => return 1,
-    };
-
-    let state = match crate::dist::node::node_state() {
-        Some(s) => s,
-        None => return 4,
-    };
-
-    // If target node is ourselves, do local registry lookup + send
-    if node == state.name {
-        if let Some(pid) = crate::actor::registry::global_registry().whereis(name) {
-            return local_send(pid.as_u64(), msg_ptr, msg_size);
-        }
-        return 1;
-    }
-
-    // Look up remote session
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(node) {
-            Some(s) => std::sync::Arc::clone(s),
-            None => return 4,
-        }
-    };
-
-    // Build DIST_REG_SEND message: [tag][u16 name_len LE][name bytes][msg bytes]
-    let name_bytes = name.as_bytes();
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + msg_size as usize);
-    payload.push(crate::dist::node::DIST_REG_SEND);
-    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(name_bytes);
-    if !msg_ptr.is_null() && msg_size > 0 {
-        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
-        payload.extend_from_slice(slice);
-    }
-    send_application_frame(&session, payload)
-}
-
 /// Receive a message from the current actor's mailbox.
 ///
 /// Returns a pointer to the message data in the current actor's heap, or

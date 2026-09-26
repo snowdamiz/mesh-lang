@@ -3575,23 +3575,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ),
     );
 
-    // mesh_actor_send_named(name_ptr: ptr, name_len: i64, node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64) -> i64
-    module.add_function(
-        "mesh_actor_send_named",
-        i64_type.fn_type(
-            &[
-                ptr_type.into(),
-                i64_type.into(),
-                ptr_type.into(),
-                i64_type.into(),
-                ptr_type.into(),
-                i64_type.into(),
-            ],
-            false,
-        ),
-        Some(inkwell::module::Linkage::External),
-    );
-
     // ── Phase 76: Iterator runtime functions ──────────────────────────────
     // mesh_list_iter_new(list: ptr) -> ptr
     module.add_function(
@@ -5167,7 +5150,6 @@ mod tests {
             .is_some());
         assert!(module.get_function("mesh_process_monitor").is_some());
         assert!(module.get_function("mesh_process_demonitor").is_some());
-        assert!(module.get_function("mesh_actor_send_named").is_some());
 
         // continuity: continuity runtime functions
         assert!(module

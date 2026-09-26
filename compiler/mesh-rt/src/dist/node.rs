@@ -1429,9 +1429,6 @@ const HEARTBEAT_PONG: u8 = 0xF1;
 /// Distribution message tag: send to a specific PID on the receiving node.
 /// Wire format: [tag][u64 target_pid LE][raw message bytes]
 pub(crate) const DIST_SEND: u8 = 0x10;
-/// Distribution message tag: send to a named process on the receiving node.
-/// Wire format: [tag][u16 name_len LE][name bytes][raw message bytes]
-pub(crate) const DIST_REG_SEND: u8 = 0x11;
 /// Distribution message tag: peer list exchange for automatic mesh formation.
 /// Wire format: [tag][u16 count][u16 name_len, name bytes, ...]
 pub(crate) const DIST_PEER_LIST: u8 = 0x12;
@@ -2050,28 +2047,6 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                 msg_data.as_ptr(),
                                 msg_data.len() as u64,
                             );
-                        }
-                    }
-                    DIST_REG_SEND => {
-                        // Wire format: [tag][u16 name_len LE][name bytes][raw message bytes]
-                        if msg.len() >= 3 {
-                            let name_len =
-                                u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-                            if msg.len() >= 3 + name_len {
-                                if let Ok(name) = std::str::from_utf8(&msg[3..3 + name_len]) {
-                                    if let Some(pid) =
-                                        crate::actor::registry::global_registry().whereis(name)
-                                    {
-                                        let msg_data = &msg[3 + name_len..];
-                                        crate::actor::local_send(
-                                            pid.as_u64(),
-                                            msg_data.as_ptr(),
-                                            msg_data.len() as u64,
-                                        );
-                                    }
-                                    // If name not found, silently drop (matches Erlang behavior)
-                                }
-                            }
                         }
                     }
                     DIST_PEER_LIST => {
@@ -11081,78 +11056,6 @@ mod tests {
 
         assert_eq!(msg[0], DIST_SEND);
         assert_eq!(&msg[9..], &big_message[..]);
-    }
-
-    #[test]
-    fn test_dist_reg_send_wire_format() {
-        use std::io::Cursor;
-
-        // Test 1: Normal DIST_REG_SEND with name and message
-        let name = "my_server";
-        let message = b"request data";
-
-        let mut payload = Vec::new();
-        payload.push(DIST_REG_SEND);
-        payload.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        payload.extend_from_slice(name.as_bytes());
-        payload.extend_from_slice(message);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_REG_SEND);
-        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(name_len, name.len());
-        let decoded_name = std::str::from_utf8(&msg[3..3 + name_len]).unwrap();
-        assert_eq!(decoded_name, name);
-        assert_eq!(&msg[3 + name_len..], message);
-
-        // Test 2: Empty name (edge case)
-        let empty_name = "";
-        let message = b"msg to empty name";
-
-        let mut payload = Vec::new();
-        payload.push(DIST_REG_SEND);
-        payload.extend_from_slice(&(empty_name.len() as u16).to_le_bytes());
-        // No name bytes
-        payload.extend_from_slice(message);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_REG_SEND);
-        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(name_len, 0);
-        assert_eq!(&msg[3..], message);
-
-        // Test 3: Long name (255 chars)
-        let long_name = "a".repeat(255);
-        let message = b"payload";
-
-        let mut payload = Vec::new();
-        payload.push(DIST_REG_SEND);
-        payload.extend_from_slice(&(long_name.len() as u16).to_le_bytes());
-        payload.extend_from_slice(long_name.as_bytes());
-        payload.extend_from_slice(message);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_REG_SEND);
-        let name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(name_len, 255);
-        let decoded_name = std::str::from_utf8(&msg[3..3 + name_len]).unwrap();
-        assert_eq!(decoded_name, long_name);
-        assert_eq!(&msg[3 + name_len..], message);
     }
 
     #[test]
