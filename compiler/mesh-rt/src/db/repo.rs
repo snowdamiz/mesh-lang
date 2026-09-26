@@ -1302,33 +1302,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        // 4. Check result
-        let r = &*(result as *const MeshResult);
-        if r.tag == 0 {
-            // Success: extract first row
-            let list = r.value;
-            let list_len = mesh_list_length(list);
-            if list_len == 0 {
-                return err_result("insert_changeset: no row returned");
-            }
-            let first_row = mesh_list_get(list, 0) as *mut u8;
-            ok_result(first_row)
-        } else {
-            // Error: try to map constraint violation to changeset error
-            let err_str = mesh_str_ref(r.value);
-            let (sqlstate, constraint, pg_table, column, _message) = parse_pg_error_string(err_str);
-
-            if let Some((field, msg)) = map_constraint_error(sqlstate, constraint, pg_table, column)
-            {
-                let cs_with_err = add_constraint_error_to_changeset(changeset, &field, &msg);
-                alloc_result(1, cs_with_err) as *mut u8
-            } else {
-                // Unknown error: add as generic _base error
-                let cs_with_err =
-                    add_constraint_error_to_changeset(changeset, "_base", "database error");
-                alloc_result(1, cs_with_err) as *mut u8
-            }
-        }
+        changeset_write_result(result, changeset, "no row returned")
     }
 }
 
@@ -1372,34 +1346,29 @@ pub extern "C" fn mesh_repo_update_changeset(
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        // 4. Check result
-        let r = &*(result as *const MeshResult);
-        if r.tag == 0 {
-            // Success: extract first row
-            let list = r.value;
-            let list_len = mesh_list_length(list);
-            if list_len == 0 {
-                return err_result("update_changeset: no row returned (id not found)");
-            }
-            let first_row = mesh_list_get(list, 0) as *mut u8;
-            ok_result(first_row)
-        } else {
-            // Error: try to map constraint violation to changeset error
-            let err_str = mesh_str_ref(r.value);
-            let (sqlstate, constraint, pg_table, column, _message) = parse_pg_error_string(err_str);
-
-            if let Some((field, msg)) = map_constraint_error(sqlstate, constraint, pg_table, column)
-            {
-                let cs_with_err = add_constraint_error_to_changeset(changeset, &field, &msg);
-                alloc_result(1, cs_with_err) as *mut u8
-            } else {
-                // Unknown error: add as generic _base error
-                let cs_with_err =
-                    add_constraint_error_to_changeset(changeset, "_base", "database error");
-                alloc_result(1, cs_with_err) as *mut u8
-            }
-        }
+        changeset_write_result(result, changeset, "not found")
     }
+}
+
+/// A changeset write's outcome as `Result<Map<String, String>, Changeset>`:
+/// the row, or the changeset carrying why there is none (a constraint
+/// violation on its field, anything else on `_base`).
+unsafe fn changeset_write_result(result: *mut u8, changeset: *mut u8, missing: &str) -> *mut u8 {
+    let r = &*(result as *const MeshResult);
+    let (field, message) = if r.tag != 0 {
+        let (sqlstate, constraint, pg_table, column, _message) =
+            parse_pg_error_string(mesh_str_ref(r.value));
+        map_constraint_error(sqlstate, constraint, pg_table, column)
+            .unwrap_or_else(|| ("_base".to_string(), "database error".to_string()))
+    } else if mesh_list_length(r.value) == 0 {
+        ("_base".to_string(), missing.to_string())
+    } else {
+        return ok_result(mesh_list_get(r.value, 0) as *mut u8);
+    };
+    alloc_result(
+        1,
+        add_constraint_error_to_changeset(changeset, &field, &message),
+    ) as *mut u8
 }
 
 // ── Preload Operations (Phase 100) ─────────────────────────────────
