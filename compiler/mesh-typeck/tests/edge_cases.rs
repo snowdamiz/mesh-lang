@@ -1286,6 +1286,65 @@ end
     );
 }
 
+/// `Node.spawn` takes a node, an actor and the actor's arguments, whether
+/// it is called or piped into. A pipe's call was not checked at all, and a
+/// call without its actor, which code generation cannot compile, was let
+/// through.
+#[test]
+fn node_spawn_takes_a_node_and_an_actor_however_it_is_called() {
+    assert_eq!(
+        errors(
+            r#"
+actor worker(n :: Int) do
+  receive do
+    m -> worker(n + m)
+  end
+end
+
+fn direct() do
+  Node.spawn("n@h", worker, 1)
+end
+
+fn piped() do
+  "n@h" |> Node.spawn(worker, 1)
+end
+
+fn slot(n :: Int) do
+  n |3> Node.spawn("n@h", worker)
+end
+
+fn too_few() do
+  Node.spawn("n@h")
+end
+
+fn piped_wrong() do
+  "n@h" |> Node.spawn(worker, "s")
+end
+
+fn piped_bare() do
+  "n@h" |> Node.spawn
+end
+
+fn as_value() do
+  let f = Node.spawn
+  0
+end
+
+fn bad_node() do
+  Node.spawn_link(1, worker, 1)
+end
+"#
+        ),
+        [
+            "arity mismatch: expected 2 arguments, found 1",
+            "type mismatch: expected `Int`, found `String`",
+            "arity mismatch: expected 2 arguments, found 1",
+            "arity mismatch: expected 2 arguments, found 0",
+            "type mismatch: expected `String`, found `Int`",
+        ]
+    );
+}
+
 // ── Supervisors ────────────────────────────────────────────────────────
 
 /// A supervisor with the given child specs (each a `child ... end` block).

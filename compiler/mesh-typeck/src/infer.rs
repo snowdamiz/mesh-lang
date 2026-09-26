@@ -10227,16 +10227,22 @@ fn infer_call(
         && env
             .lookup("default")
             .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
-    if let Some(ty) = infer_node_spawn(
-        ctx,
-        env,
-        call,
-        types,
-        type_registry,
-        trait_registry,
-        fn_constraints,
-    )? {
-        return Ok(ty);
+    if let Some(callee) = call.callee() {
+        let span = call.syntax().text_range();
+        if let Some(ty) = infer_node_spawn(
+            ctx,
+            env,
+            &callee,
+            &call.args(),
+            None,
+            span,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )? {
+            return Ok(ty);
+        }
     }
     let ty = infer_call_inner(
         ctx,
@@ -10298,36 +10304,31 @@ fn settle_iter_source(
 
 /// `Node.spawn(node, actor, args...)` and `Node.spawn_link(...)`, typed as a
 /// local `spawn` is: the node name is a `String`, the actor takes the
-/// arguments, and the call returns the actor's `Pid<M>`. `None` for any
-/// other call.
+/// arguments, and the call returns the actor's `Pid<M>`. `piped` is the
+/// value a pipe gives the call, with where it comes from and the argument
+/// position it goes to. `None` for any other callee.
+#[allow(clippy::too_many_arguments)]
 fn infer_node_spawn(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
-    call: &CallExpr,
+    callee: &Expr,
+    args: &[Expr],
+    piped: Option<(TextRange, usize, Ty)>,
+    span: TextRange,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Option<Ty>, TypeError> {
-    let Some(Expr::FieldAccess(callee)) = call.callee() else {
+    let Expr::FieldAccess(access) = callee else {
         return Ok(None);
     };
-    let is_node = matches!(callee.base(), Some(Expr::NameRef(ref base)) if base.text().as_deref() == Some("Node"))
-        && env.lookup("Node").is_none();
-    let field = callee.field().map(|field| field.text().to_string());
-    if !is_node || !matches!(field.as_deref(), Some("spawn" | "spawn_link")) {
-        return Ok(None);
-    }
-    let args: Vec<Expr> = call
-        .arg_list()
-        .map(|list| list.args().collect())
-        .unwrap_or_default();
-    if args.len() < 2 {
+    if !is_node_spawn(env, access) {
         return Ok(None);
     }
     let mut arg_types = Vec::new();
-    for arg in &args {
-        arg_types.push(infer_expr(
+    for arg in args {
+        let ty = infer_expr(
             ctx,
             env,
             arg,
@@ -10335,25 +10336,53 @@ fn infer_node_spawn(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?);
+        );
+        arg_types.push((arg.syntax().text_range(), ty?));
     }
+    if let Some((range, index, ty)) = piped {
+        arg_types.insert(index.min(arg_types.len()), (range, ty));
+    }
+    let [(node_range, node), (actor_range, actor), rest @ ..] = arg_types.as_slice() else {
+        let err = TypeError::ArityMismatch {
+            expected: 2,
+            found: arg_types.len(),
+            origin: ConstraintOrigin::Expr { span },
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    };
     let node_origin = ConstraintOrigin::FnArg {
-        call_site: args[0].syntax().text_range(),
+        call_site: *node_range,
         param_idx: 0,
     };
-    ctx.unify(arg_types[0].clone(), Ty::string(), node_origin)?;
+    ctx.unify(Ty::string(), node.clone(), node_origin)?;
     let pid = Ty::pid(ctx.fresh_var());
-    let actor = Ty::Fun(arg_types[2..].to_vec(), Box::new(pid.clone()));
+    let actor_args = rest.iter().map(|(_, ty)| ty.clone()).collect();
     let actor_origin = ConstraintOrigin::FnArg {
-        call_site: args[1].syntax().text_range(),
+        call_site: *actor_range,
         param_idx: 1,
     };
-    ctx.unify(arg_types[1].clone(), actor, actor_origin)?;
+    ctx.unify(
+        actor.clone(),
+        Ty::Fun(actor_args, Box::new(pid.clone())),
+        actor_origin,
+    )?;
+    let params = arg_types.into_iter().map(|(_, ty)| ty).collect();
     types.insert(
         callee.syntax().text_range(),
-        Ty::Fun(arg_types, Box::new(pid.clone())),
+        Ty::Fun(params, Box::new(pid.clone())),
     );
     Ok(Some(pid))
+}
+
+/// Whether `callee` is `Node.spawn` or `Node.spawn_link` (with no local
+/// `Node` in scope).
+fn is_node_spawn(env: &TypeEnv, access: &FieldAccess) -> bool {
+    matches!(access.base(), Some(Expr::NameRef(ref base)) if base.text().as_deref() == Some("Node"))
+        && env.lookup("Node").is_none()
+        && access
+            .field()
+            .is_some_and(|field| matches!(field.text(), "spawn" | "spawn_link"))
 }
 
 fn infer_call_inner(
@@ -10777,8 +10806,24 @@ fn infer_piped(
         );
     }
 
+    let lhs_range = lhs.syntax().text_range();
     let Expr::CallExpr(call) = &rhs else {
         let rhs_range = rhs.syntax().text_range();
+        let piped = Some((lhs_range, 0, lhs_ty.clone()));
+        if let Some(ty) = infer_node_spawn(
+            ctx,
+            env,
+            &rhs,
+            &[],
+            piped,
+            pipe_range,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )? {
+            return Ok(ty);
+        }
         let callee_ty = match infer_overloaded_callee(ctx, env, &rhs, 1, rhs_range, types) {
             Some(ty) => ty,
             None => infer_expr(
@@ -10817,6 +10862,22 @@ fn infer_piped(
 
     let args = call.args();
     let call_range = call.syntax().text_range();
+    let piped = Some((lhs_range, index, lhs_ty.clone()));
+    if let Some(ty) = infer_node_spawn(
+        ctx,
+        env,
+        &callee_expr,
+        &args,
+        piped,
+        pipe_range,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )? {
+        types.insert(call_range, ctx.resolve(ty.clone()));
+        return Ok(ty);
+    }
     let callee_ty =
         match infer_overloaded_callee(ctx, env, &callee_expr, args.len() + 1, call_range, types) {
             Some(ty) => ty,
@@ -12488,15 +12549,19 @@ fn infer_field_access(
                 }
             }
 
-            // Node.spawn and Node.spawn_link are variadic -- return a permissive
-            // type that matches any call site arguments (returns Int = remote PID).
-            if base_name == "Node" && (field_name == "spawn" || field_name == "spawn_link") {
-                // Build a function type that accepts whatever arguments are at the call site.
-                // The type is: fn(any_args...) -> Int. We use fresh type variables for all
-                // parameters since the actual types are checked at codegen time.
-                // The caller (infer_call) will create arg types and unify; by returning
-                // a fresh variable, unification will succeed with any argument list.
-                return Ok(ctx.fresh_var());
+            // `Node.spawn` takes any number of arguments after the node and
+            // the actor, which no function type says: it is checked where it
+            // is called or piped into, and is no value.
+            if is_node_spawn(env, fa) {
+                let err = TypeError::ArityMismatch {
+                    expected: 2,
+                    found: 0,
+                    origin: ConstraintOrigin::Expr {
+                        span: fa.syntax().text_range(),
+                    },
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
             }
 
             // A service's helper (`Counter.get_count`), a variant
