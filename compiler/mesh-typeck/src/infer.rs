@@ -15522,41 +15522,99 @@ fn resolve_type_annotation(
     }
     let ty = parse_type_tokens(&tokens, &mut start);
     let ty = resolve_alias(ty, type_registry);
+    if let Some((name, expected, found)) = wrong_type_argument_count(&ty, type_registry) {
+        ctx.errors.push(TypeError::TypeArgumentCount {
+            name,
+            expected,
+            found,
+            span: annotated_type_range(ann),
+        });
+    }
     Some(infer_missing_type_args(ctx, ty, type_registry))
+}
+
+/// Where an annotation names its type: without the `::` or `->` before it.
+fn annotated_type_range(ann: &mesh_parser::ast::item::TypeAnnotation) -> TextRange {
+    let range = significant_range(ann.syntax());
+    let start = ann
+        .syntax()
+        .children_with_tokens()
+        .find(|element| {
+            !element.kind().is_trivia()
+                && !matches!(element.kind(), SyntaxKind::COLON_COLON | SyntaxKind::ARROW)
+        })
+        .map_or(range.start(), |element| element.text_range().start());
+    TextRange::new(start, range.end())
+}
+
+/// How many type arguments the type `name` takes: a built-in generic type's
+/// number, or a struct's or sum type's (none for one without parameters).
+/// `None` for any other type.
+fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
+    match name {
+        "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" => Some(1),
+        "Map" | "Result" => Some(2),
+        _ => type_registry
+            .lookup_struct(name)
+            .map(|def| def.generic_params.len())
+            .or_else(|| {
+                type_registry
+                    .lookup_sum_type(name)
+                    .map(|def| def.generic_params.len())
+            }),
+    }
+}
+
+/// The first type in `ty` named with another number of type arguments than
+/// it takes: its name, how many it takes, and how many it was given.
+fn wrong_type_argument_count(
+    ty: &Ty,
+    type_registry: &TypeRegistry,
+) -> Option<(String, usize, usize)> {
+    if let Ty::App(con, args) = ty {
+        let name = con.con_name().unwrap_or_default();
+        if let Some(expected) = type_arity(name, type_registry) {
+            if expected != args.len() {
+                return Some((name.to_string(), expected, args.len()));
+            }
+        }
+    }
+    ty.parts()
+        .find_map(|part| wrong_type_argument_count(part, type_registry))
 }
 
 /// A generic type named without its arguments, as in `xs :: List`, takes
 /// arguments to be inferred: `List<_>`. (It was the unrelated bare type,
-/// which no value has.) An untyped `Pid` is a type of its own.
+/// which no value has.) So does one named with the wrong number of them,
+/// which is reported where it is named. An untyped `Pid` is a type of its
+/// own.
 fn infer_missing_type_args(ctx: &mut InferCtx, ty: Ty, type_registry: &TypeRegistry) -> Ty {
+    let fresh = |ctx: &mut InferCtx, con: Box<Ty>, arity: usize| {
+        let args = (0..arity).map(|_| ctx.fresh_var()).collect();
+        Ty::App(con, args)
+    };
     match ty {
-        Ty::Con(tc) => {
-            let arity = match tc.name.as_str() {
-                "List" | "Set" | "Queue" | "Iter" | "Option" => 1,
-                "Map" | "Result" => 2,
-                name => type_registry
-                    .lookup_struct(name)
-                    .map(|def| def.generic_params.len())
-                    .or_else(|| {
-                        type_registry
-                            .lookup_sum_type(name)
-                            .map(|def| def.generic_params.len())
-                    })
-                    .unwrap_or(0),
-            };
-            if arity == 0 {
-                return Ty::Con(tc);
+        Ty::Con(tc) => match type_arity(&tc.name, type_registry) {
+            Some(arity) if arity > 0 && tc.name != "Pid" => {
+                fresh(ctx, Box::new(Ty::Con(tc)), arity)
             }
-            let args = (0..arity).map(|_| ctx.fresh_var()).collect();
-            Ty::App(Box::new(Ty::Con(tc)), args)
+            _ => Ty::Con(tc),
+        },
+        Ty::App(con, args) => {
+            let arity = con
+                .con_name()
+                .and_then(|name| type_arity(name, type_registry));
+            match arity {
+                Some(arity) if arity != args.len() => fresh(ctx, con, arity),
+                // The constructor of `List<Int>` has its arguments.
+                _ => Ty::App(
+                    con,
+                    args.into_iter()
+                        .map(|arg| infer_missing_type_args(ctx, arg, type_registry))
+                        .collect(),
+                ),
+            }
         }
-        // The constructor of `List<Int>` has its arguments.
-        Ty::App(con, args) => Ty::App(
-            con,
-            args.into_iter()
-                .map(|arg| infer_missing_type_args(ctx, arg, type_registry))
-                .collect(),
-        ),
         other => other.map_parts(|part| infer_missing_type_args(ctx, part.clone(), type_registry)),
     }
 }

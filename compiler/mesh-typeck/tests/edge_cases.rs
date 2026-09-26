@@ -199,6 +199,64 @@ end
     );
 }
 
+/// A generic type named with another number of type arguments than it
+/// takes is reported where it is named, and taken with the right number:
+/// it was an "arity mismatch" at each use of the value, as if a function
+/// were called wrongly.
+#[test]
+fn type_arguments_are_counted_where_the_type_is_named() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"struct Box<T> do
+  item :: T
+end
+
+struct Point do
+  x :: Int
+end
+
+fn opt(o :: Option<Int, String>) -> Int do
+  case o do
+    Some(n) -> n
+    None -> 0
+  end
+end
+
+fn boxed(b :: Box<Int, Int>) -> Int do
+  b.item
+end
+
+fn point(p :: Point<Int>) -> Map<Int> do
+  %{}
+end
+
+fn nested(xs :: List<Option<Int, Int>>) -> Int do
+  0
+end
+
+fn main() do
+  opt(Some(1))
+  boxed(Box { item: 1 })
+end
+"#
+        ),
+        [
+            at(
+                "`Option` takes 1 type argument, not 2",
+                "Option<Int, String>"
+            ),
+            at("`Box` takes 1 type argument, not 2", "Box<Int, Int>"),
+            at("`Point` takes 0 type arguments, not 1", "Point<Int>"),
+            at("`Map` takes 2 type arguments, not 1", "Map<Int>"),
+            at(
+                "`Option` takes 1 type argument, not 2",
+                "List<Option<Int, Int>>"
+            ),
+        ]
+    );
+}
+
 /// Only an iterator handle is an `Iter`.
 #[test]
 fn a_value_that_is_no_iterator_is_no_iter() {

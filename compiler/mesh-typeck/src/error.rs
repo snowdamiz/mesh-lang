@@ -412,6 +412,14 @@ pub enum TypeError {
         keyword: &'static str,
         span: TextRange,
     },
+    /// A generic type named with another number of type arguments than it
+    /// takes (`Option<Int, String>`).
+    TypeArgumentCount {
+        name: String,
+        expected: usize,
+        found: usize,
+        span: TextRange,
+    },
     /// A method parameter whose type nothing fixes: a method is compiled
     /// once, for the type it is implemented for, not for each call.
     UntypedMethodParam {
@@ -585,6 +593,7 @@ impl TypeError {
             | TypeError::UntypedMethodParam { span, .. }
             | TypeError::TypeNotValue { span, .. }
             | TypeError::NestedDefinition { span, .. }
+            | TypeError::TypeArgumentCount { span, .. }
             | TypeError::UnknownInterface { span, .. }
             | TypeError::InvalidLiteral { span, .. }
             | TypeError::InvalidConcat { span, .. }
@@ -1175,6 +1184,18 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "`{keyword}` belongs at the top level of a module, not inside a function"
+                )
+            }
+            TypeError::TypeArgumentCount {
+                name,
+                expected,
+                found,
+                ..
+            } => {
+                let plural = if *expected == 1 { "" } else { "s" };
+                write!(
+                    f,
+                    "`{name}` takes {expected} type argument{plural}, not {found}"
                 )
             }
             TypeError::UntypedMethodParam { method, param, .. } => {

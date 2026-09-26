@@ -204,6 +204,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::UntypedMethodParam { .. } => "E0082",
         TypeError::TypeNotValue { .. } => "E0083",
         TypeError::NestedDefinition { .. } => "E0084",
+        TypeError::TypeArgumentCount { .. } => "E0085",
     }
 }
 
@@ -1489,6 +1490,10 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 "move it to the top level of the module"
             };
             Description::error(range, "inside a function").with_help(help)
+        }
+        TypeError::TypeArgumentCount { span, .. } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "wrong number of type arguments")
         }
         TypeError::TypeNotValue { name, span } => {
             let range = clamp(text_range_to_range(*span));

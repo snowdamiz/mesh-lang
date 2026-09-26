@@ -365,6 +365,12 @@ fn one_of_each() -> Vec<TypeError> {
             keyword: "struct",
             span: span(19, 24),
         },
+        TypeError::TypeArgumentCount {
+            name: "Option".to_string(),
+            expected: 1,
+            found: 2,
+            span: span(19, 24),
+        },
         TypeError::UnknownInterface {
             name: "name".to_string(),
             span: span(19, 24),

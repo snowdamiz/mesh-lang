@@ -745,6 +745,15 @@ expression: rendered
 ───╯
 {"code":"E0084","severity":"error","message":"`struct` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level of the module"}
 
+[E0085] Error: `Option` takes 1 type argument, not 2
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── wrong number of type arguments
+───╯
+{"code":"E0085","severity":"error","message":"`Option` takes 1 type argument, not 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"wrong number of type arguments"}],"fix":null}
+
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
    │
