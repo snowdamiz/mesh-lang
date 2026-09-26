@@ -1584,6 +1584,56 @@ end
     );
 }
 
+/// An alias of a struct names it in a literal or a pattern however many
+/// aliases stand between, with the arguments the alias gives it: through
+/// two, `Boxed { item: 2 }` was "`Boxed` is not a struct".
+#[test]
+fn a_struct_is_named_through_any_alias_of_it() {
+    assert_eq!(
+        errors(
+            r#"
+struct Box<T> do
+  item :: T
+end
+
+type IntBox = Box<Int>
+
+type Boxed = IntBox
+
+type L = List<Int>
+
+fn direct() -> Int do
+  let b = IntBox { item: 1 }
+  b.item + 1
+end
+
+fn twice() -> Int do
+  let b = Boxed { item: 2 }
+  b.item + 1
+end
+
+fn wrong() do
+  IntBox { item: "s" }
+end
+
+fn not_struct() do
+  L { x: 1 }
+end
+
+fn matched(b :: IntBox) -> Int do
+  case b do
+    IntBox { item } -> item
+  end
+end
+"#
+        ),
+        [
+            "type mismatch: expected `Int`, found `String`",
+            "`L` is not a struct",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

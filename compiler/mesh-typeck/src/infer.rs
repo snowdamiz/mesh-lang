@@ -12540,25 +12540,16 @@ fn resolve_struct_name(
     name: &str,
     span: TextRange,
 ) -> Option<(StructDefInfo, Vec<Ty>)> {
-    let (struct_name, alias_args) = match type_registry.lookup_struct(name) {
-        Some(_) => (name.to_string(), None),
-        None => match type_registry.lookup_alias(name).map(|alias| {
-            let fresh: Vec<Ty> = alias
-                .generic_params
-                .iter()
-                .map(|_| ctx.fresh_var())
-                .collect();
-            substitute_type_params(&alias.aliased_type, &alias.generic_params, &fresh)
-        }) {
-            Some(Ty::Con(tc)) if type_registry.lookup_struct(&tc.name).is_some() => (tc.name, None),
-            Some(Ty::App(con, args)) => match *con {
-                Ty::Con(tc) if type_registry.lookup_struct(&tc.name).is_some() => {
-                    (tc.name, Some(args))
-                }
-                _ => (name.to_string(), None),
-            },
-            _ => (name.to_string(), None),
-        },
+    let named = resolve_alias(ctx, Ty::Con(TyCon::new(name)), type_registry);
+    let (struct_name, alias_args) = match named.con_name() {
+        Some(struct_name) if type_registry.lookup_struct(struct_name).is_some() => {
+            let struct_name = struct_name.to_string();
+            match named {
+                Ty::App(_, args) => (struct_name, Some(args)),
+                _ => (struct_name, None),
+            }
+        }
+        _ => (name.to_string(), None),
     };
     let Some(struct_def) = type_registry.lookup_struct(&struct_name).cloned() else {
         if is_known_type(&struct_name, type_registry) {
