@@ -6357,65 +6357,13 @@ fn register_type_alias(alias_def: &TypeAliasDef, type_registry: &mut TypeRegistr
         .name()
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<unnamed>".to_string());
-
-    let generic_params = generic_param_names(alias_def.syntax());
-
-    // Parse the aliased type from tokens after the `=` sign.
-    let aliased_type = parse_alias_type(alias_def.syntax(), &generic_params);
-
+    // Its type parameters stand in the aliased type as the types of their
+    // names (`A` in `type Pair<A> = (A, A)`).
     type_registry.register_alias(TypeAliasInfo {
         name,
-        generic_params,
-        aliased_type,
+        generic_params: generic_param_names(alias_def.syntax()),
+        aliased_type: type_after_eq(alias_def.syntax()).unwrap_or(Ty::Never),
     });
-}
-
-/// Parse the aliased type from a TYPE_ALIAS_DEF node.
-/// Collects tokens after the `=` sign and parses them as a type.
-fn parse_alias_type(node: &mesh_parser::SyntaxNode, _generic_params: &[String]) -> Ty {
-    let mut tokens: Vec<(SyntaxKind, String)> = Vec::new();
-    let mut past_eq = false;
-
-    for child in node.children_with_tokens() {
-        match child {
-            rowan::NodeOrToken::Token(t) => {
-                let kind = t.kind();
-                if kind == SyntaxKind::EQ {
-                    past_eq = true;
-                    continue;
-                }
-                if past_eq {
-                    match kind {
-                        SyntaxKind::IDENT
-                        | SyntaxKind::LT
-                        | SyntaxKind::GT
-                        | SyntaxKind::COMMA
-                        | SyntaxKind::QUESTION
-                        | SyntaxKind::BANG
-                        | SyntaxKind::L_PAREN
-                        | SyntaxKind::R_PAREN
-                        | SyntaxKind::ARROW => {
-                            tokens.push((kind, t.text().to_string()));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            rowan::NodeOrToken::Node(n) => {
-                if past_eq {
-                    collect_annotation_tokens(&n, &mut tokens);
-                }
-            }
-        }
-    }
-
-    if tokens.is_empty() {
-        return Ty::Never;
-    }
-
-    // Parse the tokens, treating generic_params as type variables
-    // (they'll be represented as Ty::Con("A"), Ty::Con("B") etc.)
-    parse_type_tokens(&tokens, &mut 0)
 }
 
 // ── Type Alias Validation (ALIAS-04) ──────────────────────────────────
@@ -7184,58 +7132,13 @@ fn infer_interface_def(
     ctx.current_interface = previous_interface;
 }
 
-/// Extract the concrete type from an associated type binding node.
-///
-/// The ASSOC_TYPE_BINDING node contains: TYPE_KW, NAME, EQ, then the type tokens.
-/// For simple types (Int, String, T), there's a bare IDENT token after EQ.
-/// For generic types, there's IDENT + GENERIC_ARG_LIST.
-/// We collect all significant tokens after EQ and parse them into a Ty.
+/// The type an impl binds an associated type to: `List<Int>` in
+/// `type Item = List<Int>`.
 fn resolve_assoc_type_binding(
     binding: &mesh_parser::ast::item::AssocTypeBinding,
     type_registry: &TypeRegistry,
 ) -> Option<Ty> {
-    let mut tokens: Vec<(SyntaxKind, String)> = Vec::new();
-    let mut past_eq = false;
-    for child in binding.syntax().children_with_tokens() {
-        match child {
-            rowan::NodeOrToken::Token(t) => {
-                let kind = t.kind();
-                if kind == SyntaxKind::EQ {
-                    past_eq = true;
-                    continue;
-                }
-                if past_eq {
-                    match kind {
-                        SyntaxKind::IDENT
-                        | SyntaxKind::LT
-                        | SyntaxKind::GT
-                        | SyntaxKind::COMMA
-                        | SyntaxKind::QUESTION
-                        | SyntaxKind::BANG
-                        | SyntaxKind::L_PAREN
-                        | SyntaxKind::R_PAREN
-                        | SyntaxKind::ARROW
-                        | SyntaxKind::DOT => {
-                            tokens.push((kind, t.text().to_string()));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            rowan::NodeOrToken::Node(n) => {
-                if past_eq {
-                    // Recurse into child nodes (e.g., GENERIC_ARG_LIST)
-                    collect_annotation_tokens(&n, &mut tokens);
-                }
-            }
-        }
-    }
-    if tokens.is_empty() {
-        return None;
-    }
-    let mut start = 0;
-    let ty = parse_type_tokens(&tokens, &mut start);
-    Some(resolve_alias(ty, type_registry))
+    type_after_eq(binding.syntax()).map(|ty| resolve_alias(ty, type_registry))
 }
 
 /// A method annotation in an interface or impl: `Self.Item` is the
@@ -15078,11 +14981,21 @@ fn collect_annotation_tokens(
         return;
     }
     for child in node.children_with_tokens() {
-        match child {
-            rowan::NodeOrToken::Token(t) => {
-                let kind = t.kind();
-                match kind {
-                    SyntaxKind::IDENT
+        collect_type_element(child, tokens);
+    }
+}
+
+/// The significant tokens of one element of a written type.
+fn collect_type_element(
+    element: mesh_parser::SyntaxElement,
+    tokens: &mut Vec<(SyntaxKind, String)>,
+) {
+    match element {
+        rowan::NodeOrToken::Token(t) => {
+            let kind = t.kind();
+            if matches!(
+                kind,
+                SyntaxKind::IDENT
                     | SyntaxKind::LT
                     | SyntaxKind::GT
                     | SyntaxKind::COMMA
@@ -15091,17 +15004,24 @@ fn collect_annotation_tokens(
                     | SyntaxKind::L_PAREN
                     | SyntaxKind::R_PAREN
                     | SyntaxKind::ARROW
-                    | SyntaxKind::DOT => {
-                        tokens.push((kind, t.text().to_string()));
-                    }
-                    _ => {}
-                }
-            }
-            rowan::NodeOrToken::Node(n) => {
-                collect_annotation_tokens(&n, tokens);
+                    | SyntaxKind::DOT
+            ) {
+                tokens.push((kind, t.text().to_string()));
             }
         }
+        rowan::NodeOrToken::Node(n) => collect_annotation_tokens(&n, tokens),
     }
+}
+
+/// The type written after the `=` of `node`: `String` in `type Url =
+/// String`, `List<Int>` in an impl's `type Item = List<Int>`.
+fn type_after_eq(node: &mesh_parser::SyntaxNode) -> Option<Ty> {
+    let mut tokens = Vec::new();
+    node.children_with_tokens()
+        .skip_while(|element| element.kind() != SyntaxKind::EQ)
+        .skip(1)
+        .for_each(|element| collect_type_element(element, &mut tokens));
+    (!tokens.is_empty()).then(|| parse_type_tokens(&tokens, &mut 0))
 }
 
 /// Parse a Ty from a flat list of significant tokens.
