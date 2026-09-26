@@ -13812,22 +13812,8 @@ fn infer_service_def(
     if let Some(init_fn) = service_def.init_fn() {
         env.push_scope();
 
-        // Infer init parameters.
-        if let Some(param_list) = init_fn.param_list() {
-            for param in param_list.params() {
-                let param_ty = param
-                    .type_annotation()
-                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
-                    .unwrap_or_else(|| ctx.fresh_var());
-                if let Some(name_tok) = param.name() {
-                    let name_text = name_tok.text().to_string();
-                    env.insert(name_text, Scheme::mono(param_ty.clone()));
-                }
-                // Record param type in the types map so MIR lowering can resolve it.
-                types.insert(param.syntax().text_range(), param_ty.clone());
-                init_param_types.push(param_ty);
-            }
-        }
+        init_param_types =
+            bind_service_params(ctx, env, init_fn.param_list(), types, type_registry);
 
         // Infer init body -- its return type is the initial state.
         let init_body_ty = if let Some(body) = init_fn.body() {
@@ -13874,23 +13860,9 @@ fn infer_service_def(
             env.insert(state_name, Scheme::mono(state_ty.clone()));
         }
 
-        // Infer call handler parameters (the variant's arguments).
-        let mut handler_param_types = Vec::new();
-        if let Some(param_list) = handler.params() {
-            for param in param_list.params() {
-                let param_ty = param
-                    .type_annotation()
-                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
-                    .unwrap_or_else(|| ctx.fresh_var());
-                if let Some(name_tok) = param.name() {
-                    let name_text = name_tok.text().to_string();
-                    env.insert(name_text, Scheme::mono(param_ty.clone()));
-                }
-                // Record param type for MIR lowering.
-                types.insert(param.syntax().text_range(), param_ty.clone());
-                handler_param_types.push(param_ty);
-            }
-        }
+        // The call's arguments.
+        let handler_param_types =
+            bind_service_params(ctx, env, handler.params(), types, type_registry);
 
         // Parse return type annotation (:: Type).
         let reply_ty = handler
@@ -13939,23 +13911,9 @@ fn infer_service_def(
             env.insert(state_name, Scheme::mono(state_ty.clone()));
         }
 
-        // Infer cast handler parameters.
-        let mut handler_param_types = Vec::new();
-        if let Some(param_list) = handler.params() {
-            for param in param_list.params() {
-                let param_ty = param
-                    .type_annotation()
-                    .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
-                    .unwrap_or_else(|| ctx.fresh_var());
-                if let Some(name_tok) = param.name() {
-                    let name_text = name_tok.text().to_string();
-                    env.insert(name_text, Scheme::mono(param_ty.clone()));
-                }
-                // Record param type for MIR lowering.
-                types.insert(param.syntax().text_range(), param_ty.clone());
-                handler_param_types.push(param_ty);
-            }
-        }
+        // The cast's arguments.
+        let handler_param_types =
+            bind_service_params(ctx, env, handler.params(), types, type_registry);
 
         // Infer cast handler body -- returns new_state.
         let body_ty = if let Some(body) = handler.body() {
@@ -13982,84 +13940,46 @@ fn infer_service_def(
 
     env.pop_scope();
 
-    // ── Register service module helper functions ──────────────────────
-
-    // Register ServiceName.start(init_args...) -> Pid<Unit>
+    // ── The service's helper functions ────────────────────────────────
+    // `Service.start(init_args...)`, and for each handler
+    // `Service.snake_name(pid, args...)`, which returns a call's reply and
+    // a cast's nothing; each with the function lowering generates for it.
+    let name_lower = service_name.to_lowercase();
     let start_fn_ty = Ty::Fun(init_param_types, Box::new(pid_ty.clone()));
-    let start_qualified = format!("{}.start", service_name);
-    env.insert(start_qualified, Scheme::mono(start_fn_ty.clone()));
-
-    // Register call helper functions: ServiceName.snake_name(pid, args...) -> reply_ty
-    for (variant_name, param_types, reply_ty) in &call_handler_info {
+    let mut helpers = vec![(
+        "start".to_string(),
+        start_fn_ty.clone(),
+        format!("__service_{name_lower}_start"),
+    )];
+    let calls = call_handler_info
+        .iter()
+        .map(|(name, params, reply)| (name, params, Some(reply), "call"));
+    let casts = cast_handler_info
+        .iter()
+        .map(|(name, params)| (name, params, None, "cast"));
+    for (variant_name, param_types, reply, kind) in calls.chain(casts) {
+        let returns = reply.map_or(Ty::Tuple(vec![]), |reply| ctx.resolve(reply.clone()));
         let snake_name = to_snake_case(variant_name);
-        let mut fn_params = vec![pid_ty.clone()];
-        fn_params.extend(param_types.iter().cloned());
-        let resolved_reply = ctx.resolve(reply_ty.clone());
-        let fn_ty = Ty::Fun(fn_params, Box::new(resolved_reply));
-        let qualified = format!("{}.{}", service_name, snake_name);
-        env.insert(qualified, Scheme::mono(fn_ty));
+        let params = std::iter::once(pid_ty.clone()).chain(param_types.iter().cloned());
+        let fn_ty = Ty::Fun(params.collect(), Box::new(returns));
+        let generated = format!("__service_{name_lower}_{kind}_{snake_name}");
+        helpers.push((snake_name, fn_ty, generated));
     }
-
-    // Register cast helper functions: ServiceName.snake_name(pid, args...) -> Unit
-    for (variant_name, param_types) in &cast_handler_info {
-        let snake_name = to_snake_case(variant_name);
-        let mut fn_params = vec![pid_ty.clone()];
-        fn_params.extend(param_types.iter().cloned());
-        let fn_ty = Ty::Fun(fn_params, Box::new(Ty::Tuple(vec![])));
-        let qualified = format!("{}.{}", service_name, snake_name);
-        env.insert(qualified, Scheme::mono(fn_ty));
+    let mut info = crate::ServiceExportInfo {
+        name: service_name.clone(),
+        helpers: FxHashMap::default(),
+        methods: Vec::new(),
+    };
+    for (name, fn_ty, generated) in helpers {
+        env.insert(
+            format!("{service_name}.{name}"),
+            Scheme::mono(fn_ty.clone()),
+        );
+        let resolved = ctx.resolve(fn_ty);
+        info.helpers.insert(name.clone(), Scheme::mono(resolved));
+        info.methods.push((name, generated));
     }
-
-    // ── Build service export info for cross-module export ──────────────
-    {
-        use crate::ServiceExportInfo;
-        use rustc_hash::FxHashMap as FxMap;
-
-        let name_lower = service_name.to_lowercase();
-        let mut info = ServiceExportInfo {
-            name: service_name.clone(),
-            helpers: FxMap::default(),
-            methods: Vec::new(),
-        };
-
-        // Start helper
-        let resolved_start = ctx.resolve(start_fn_ty.clone());
-        info.helpers
-            .insert("start".to_string(), Scheme::mono(resolved_start));
-        info.methods.push((
-            "start".to_string(),
-            format!("__service_{}_start", name_lower),
-        ));
-
-        // Call handler helpers
-        for (variant_name, param_types, reply_ty) in &call_handler_info {
-            let snake_name = to_snake_case(variant_name);
-            let mut fn_params = vec![pid_ty.clone()];
-            fn_params.extend(param_types.iter().cloned());
-            let resolved_reply = ctx.resolve(reply_ty.clone());
-            let fn_ty = Ty::Fun(fn_params, Box::new(resolved_reply));
-            let resolved_fn = ctx.resolve(fn_ty);
-            info.helpers
-                .insert(snake_name.clone(), Scheme::mono(resolved_fn));
-            let generated_name = format!("__service_{name_lower}_call_{snake_name}");
-            info.methods.push((snake_name, generated_name));
-        }
-
-        // Cast handler helpers
-        for (variant_name, param_types) in &cast_handler_info {
-            let snake_name = to_snake_case(variant_name);
-            let mut fn_params = vec![pid_ty.clone()];
-            fn_params.extend(param_types.iter().cloned());
-            let fn_ty = Ty::Fun(fn_params, Box::new(Ty::Tuple(vec![])));
-            let resolved_fn = ctx.resolve(fn_ty);
-            info.helpers
-                .insert(snake_name.clone(), Scheme::mono(resolved_fn));
-            let generated_name = format!("__service_{name_lower}_cast_{snake_name}");
-            info.methods.push((snake_name, generated_name));
-        }
-
-        ctx.local_service_exports.insert(service_name.clone(), info);
-    }
+    ctx.local_service_exports.insert(service_name.clone(), info);
 
     ctx.leave_level();
 
@@ -14075,6 +13995,30 @@ fn infer_service_def(
     types.insert(service_def.syntax().text_range(), resolved.clone());
 
     Ok(resolved)
+}
+
+/// Bind a service's init or handler parameters (`params`) in scope, each of
+/// its annotated type or a fresh one, and record each for lowering.
+fn bind_service_params(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    params: Option<mesh_parser::ast::item::ParamList>,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+) -> Vec<Ty> {
+    let mut param_types = Vec::new();
+    for param in params.iter().flat_map(|list| list.params()) {
+        let param_ty = param
+            .type_annotation()
+            .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+            .unwrap_or_else(|| ctx.fresh_var());
+        if let Some(name) = param.name() {
+            env.insert(name.text().to_string(), Scheme::mono(param_ty.clone()));
+        }
+        types.insert(param.syntax().text_range(), param_ty.clone());
+        param_types.push(param_ty);
+    }
+    param_types
 }
 
 /// Infer the type of a spawn expression: `spawn(actor_fn, initial_state...)`.
