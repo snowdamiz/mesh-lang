@@ -76,7 +76,7 @@ pub(crate) struct MarkClosed {
 ///
 /// # Usage
 ///
-/// ```ignore
+/// ```text
 /// let tokens = mesh_lexer::Lexer::tokenize(source);
 /// let mut parser = Parser::new(tokens, source);
 /// // ... call parse methods ...
