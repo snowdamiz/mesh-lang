@@ -6149,115 +6149,10 @@ fn register_struct_def(
         });
     }
 
-    // Debug impl
-    if derive_all || derive_list.iter().any(|t| t == "Debug") {
-        let mut debug_methods = FxHashMap::default();
-        debug_methods.insert(
-            "inspect".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Debug".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: debug_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Eq impl
-    if derive_all || derive_list.iter().any(|t| t == "Eq") {
-        let mut eq_methods = FxHashMap::default();
-        eq_methods.insert(
-            "eq".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 1,
-                return_type: Some(Ty::bool()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Eq".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: eq_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Ord impl
-    if derive_all || derive_list.iter().any(|t| t == "Ord") {
-        let mut ord_methods = FxHashMap::default();
-        ord_methods.insert(
-            "lt".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 1,
-                return_type: Some(Ty::bool()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Ord".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: ord_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Hash impl
-    if derive_all || derive_list.iter().any(|t| t == "Hash") {
-        let mut hash_methods = FxHashMap::default();
-        hash_methods.insert(
-            "hash".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::int()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Hash".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: hash_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Display impl (only via explicit deriving, never auto-derived)
-    if derive_list.iter().any(|t| t == "Display") {
-        let mut display_methods = FxHashMap::default();
-        display_methods.insert(
-            "to_string".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Display".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: display_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
+    // A struct derives Hash by default, and Display only when asked.
+    register_value_trait_impls(trait_registry, &name, &impl_ty, |t| {
+        derive_list.iter().any(|d| d == t) || (derive_all && t != "Display")
+    });
 
     // Json impl (ToJson + FromJson) -- only via explicit deriving(Json)
     if derive_list.iter().any(|t| t == "Json") {
@@ -6276,43 +6171,7 @@ fn register_struct_def(
         }
 
         if json_valid {
-            let mut to_json_methods = FxHashMap::default();
-            to_json_methods.insert(
-                "to_json".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::Con(TyCon::new("Json"))),
-                    param_types: None,
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "ToJson".to_string(),
-                trait_type_args: vec![],
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: to_json_methods,
-                associated_types: FxHashMap::default(),
-            });
-
-            let mut from_json_methods = FxHashMap::default();
-            from_json_methods.insert(
-                "from_json".to_string(),
-                ImplMethodSig {
-                    has_self: false,
-                    param_count: 1,
-                    return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
-                    param_types: None,
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "FromJson".to_string(),
-                trait_type_args: vec![],
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: from_json_methods,
-                associated_types: FxHashMap::default(),
-            });
+            register_json_impls(trait_registry, &name, &impl_ty);
         }
     }
 
@@ -6332,24 +6191,15 @@ fn register_struct_def(
         }
 
         if row_valid {
-            let mut from_row_methods = FxHashMap::default();
-            from_row_methods.insert(
-                "from_row".to_string(),
-                ImplMethodSig {
-                    has_self: false,
-                    param_count: 1, // takes a Map<String, String>
-                    return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
-                    param_types: None,
-                },
+            // `Name.from_row(row)`, of a `Map<String, String>`.
+            let decoded = Ty::result(Ty::Con(TyCon::new(&name)), Ty::string());
+            register_derived_impl(
+                trait_registry,
+                &name,
+                &impl_ty,
+                "FromRow",
+                ("from_row", false, 1, decoded),
             );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "FromRow".to_string(),
-                trait_type_args: vec![],
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: from_row_methods,
-                associated_types: FxHashMap::default(),
-            });
         }
     }
 
@@ -6363,6 +6213,66 @@ fn register_struct_def(
         fields,
         schema,
     });
+}
+
+/// The one method of an impl a `deriving` gives a type: its name, whether
+/// it takes `self`, how many arguments it takes besides, and its return type.
+type DerivedMethod<'a> = (&'a str, bool, usize, Ty);
+
+/// Register the impl of `trait_name` a `deriving` gives the type `name`
+/// (`impl_ty`), with its one method.
+fn register_derived_impl(
+    trait_registry: &mut TraitRegistry,
+    name: &str,
+    impl_ty: &Ty,
+    trait_name: &str,
+    (method, has_self, param_count, ret): DerivedMethod,
+) {
+    let sig = ImplMethodSig {
+        has_self,
+        param_count,
+        return_type: Some(ret),
+        param_types: None,
+    };
+    let _ = trait_registry.register_impl(TraitImplDef {
+        trait_name: trait_name.to_string(),
+        trait_type_args: vec![],
+        impl_type: impl_ty.clone(),
+        impl_type_name: name.to_string(),
+        methods: std::iter::once((method.to_string(), sig)).collect(),
+        associated_types: FxHashMap::default(),
+    });
+}
+
+/// Register the impls `deriving(Json)` gives the type `name` (`impl_ty`):
+/// `value.to_json()` and `Name.from_json(text)`.
+fn register_json_impls(trait_registry: &mut TraitRegistry, name: &str, impl_ty: &Ty) {
+    let to_json = ("to_json", true, 0, Ty::Con(TyCon::new("Json")));
+    register_derived_impl(trait_registry, name, impl_ty, "ToJson", to_json);
+    let decoded = Ty::result(Ty::Con(TyCon::new(name)), Ty::string());
+    let from_json = ("from_json", false, 1, decoded);
+    register_derived_impl(trait_registry, name, impl_ty, "FromJson", from_json);
+}
+
+/// Register the impls of the traits that compare, hash or show values
+/// that `derives` says the type `name` (`impl_ty`) has.
+fn register_value_trait_impls(
+    trait_registry: &mut TraitRegistry,
+    name: &str,
+    impl_ty: &Ty,
+    derives: impl Fn(&str) -> bool,
+) {
+    for (trait_name, method) in [
+        ("Debug", ("inspect", true, 0, Ty::string())),
+        ("Eq", ("eq", true, 1, Ty::bool())),
+        ("Ord", ("lt", true, 1, Ty::bool())),
+        ("Hash", ("hash", true, 0, Ty::int())),
+        ("Display", ("to_string", true, 0, Ty::string())),
+    ] {
+        if derives(trait_name) {
+            register_derived_impl(trait_registry, name, impl_ty, trait_name, method);
+        }
+    }
 }
 
 /// Whether a value of type `ty` holds a function, which cannot be compared,
@@ -7110,115 +7020,10 @@ fn register_sum_type_def(
         Ty::App(Box::new(base_ty), param_tys)
     };
 
-    // Debug impl
-    if derive_all || derive_list.iter().any(|t| t == "Debug") {
-        let mut debug_methods = FxHashMap::default();
-        debug_methods.insert(
-            "inspect".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Debug".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: debug_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Eq impl
-    if derive_all || derive_list.iter().any(|t| t == "Eq") {
-        let mut eq_methods = FxHashMap::default();
-        eq_methods.insert(
-            "eq".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 1,
-                return_type: Some(Ty::bool()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Eq".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: eq_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Ord impl
-    if derive_all || derive_list.iter().any(|t| t == "Ord") {
-        let mut ord_methods = FxHashMap::default();
-        ord_methods.insert(
-            "lt".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 1,
-                return_type: Some(Ty::bool()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Ord".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: ord_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Hash impl (only via explicit deriving for sum types, never auto-derived)
-    if derive_list.iter().any(|t| t == "Hash") {
-        let mut hash_methods = FxHashMap::default();
-        hash_methods.insert(
-            "hash".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::int()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Hash".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: hash_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
-
-    // Display impl (only via explicit deriving, never auto-derived)
-    if derive_list.iter().any(|t| t == "Display") {
-        let mut display_methods = FxHashMap::default();
-        display_methods.insert(
-            "to_string".to_string(),
-            ImplMethodSig {
-                has_self: true,
-                param_count: 0,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = trait_registry.register_impl(TraitImplDef {
-            trait_name: "Display".to_string(),
-            trait_type_args: vec![],
-            impl_type: impl_ty.clone(),
-            impl_type_name: name.clone(),
-            methods: display_methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
+    // A sum type derives neither Hash nor Display unless asked.
+    register_value_trait_impls(trait_registry, &name, &impl_ty, |t| {
+        derive_list.iter().any(|d| d == t) || (derive_all && !matches!(t, "Hash" | "Display"))
+    });
 
     // Json impl (ToJson + FromJson) -- only via explicit deriving(Json)
     if derive_list.iter().any(|t| t == "Json") {
@@ -7254,43 +7059,7 @@ fn register_sum_type_def(
         }
 
         if json_valid {
-            let mut to_json_methods = FxHashMap::default();
-            to_json_methods.insert(
-                "to_json".to_string(),
-                ImplMethodSig {
-                    has_self: true,
-                    param_count: 0,
-                    return_type: Some(Ty::Con(TyCon::new("Json"))),
-                    param_types: None,
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "ToJson".to_string(),
-                trait_type_args: vec![],
-                impl_type: impl_ty.clone(),
-                impl_type_name: name.clone(),
-                methods: to_json_methods,
-                associated_types: FxHashMap::default(),
-            });
-
-            let mut from_json_methods = FxHashMap::default();
-            from_json_methods.insert(
-                "from_json".to_string(),
-                ImplMethodSig {
-                    has_self: false,
-                    param_count: 1,
-                    return_type: Some(Ty::result(Ty::Con(TyCon::new(&name)), Ty::string())),
-                    param_types: None,
-                },
-            );
-            let _ = trait_registry.register_impl(TraitImplDef {
-                trait_name: "FromJson".to_string(),
-                trait_type_args: vec![],
-                impl_type: impl_ty,
-                impl_type_name: name.clone(),
-                methods: from_json_methods,
-                associated_types: FxHashMap::default(),
-            });
+            register_json_impls(trait_registry, &name, &impl_ty);
         }
     }
 }

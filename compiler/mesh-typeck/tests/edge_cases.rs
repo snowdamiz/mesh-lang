@@ -415,6 +415,37 @@ end
     );
 }
 
+/// What a sum type derives is checked: a trait no type derives, any trait
+/// for a type that holds a resource, and `Json` for variant fields, named
+/// or not, that JSON cannot hold.
+#[test]
+fn sum_type_derives_are_checked() {
+    assert_eq!(
+        errors(
+            r#"
+type Odd do
+  A
+end deriving(Frobnicate)
+
+type Holder do
+  H(PgConn)
+end deriving(Eq)
+
+type Msg do
+  Ping(to :: Pid<Int>)
+  Pong(Pid<Int>)
+end deriving(Json)
+"#
+        ),
+        [
+            "cannot derive `Frobnicate` for `Odd` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
+            "resource ownership violation: resource type `Holder` cannot derive `Eq`",
+            "field `Ping::to` of type `Pid<Int>` is not JSON-serializable",
+            "field `Pong::0` of type `Pid<Int>` is not JSON-serializable",
+        ]
+    );
+}
+
 /// A default method calls the interface's own methods with the arguments
 /// they declare, and gets what they return, `Self.Item` included:
 /// `self.plus("s")` was let through.
