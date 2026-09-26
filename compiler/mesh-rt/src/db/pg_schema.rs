@@ -60,8 +60,7 @@ fn err_result(message: &str) -> *mut u8 {
 }
 
 fn ok_int_result(value: i64) -> *mut u8 {
-    let boxed = Box::into_raw(Box::new(value)) as *mut u8;
-    alloc_result(0, boxed) as *mut u8
+    crate::io::ok_int(value).cast()
 }
 
 enum PartitionedTableEntry {

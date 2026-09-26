@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, ok_int, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
 #[repr(C)]
@@ -45,17 +45,6 @@ fn error(message: &str) -> *mut MeshResult {
 
 fn ok_wide(value: u128) -> *mut MeshResult {
     alloc_result(0, allocate(value) as *mut u8)
-}
-
-fn ok_int(value: i64) -> *mut MeshResult {
-    unsafe {
-        let result = mesh_gc_alloc_actor(
-            std::mem::size_of::<i64>() as u64,
-            std::mem::align_of::<i64>() as u64,
-        ) as *mut i64;
-        *result = value;
-        alloc_result(0, result.cast())
-    }
 }
 
 fn ordering(value: Ordering) -> i64 {

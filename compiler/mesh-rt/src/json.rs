@@ -18,7 +18,7 @@
 use crate::collections::list;
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::MeshResult;
+use crate::io::{alloc_result, box_scalar, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
 /// Tag constants for MeshJson variants.
@@ -52,18 +52,6 @@ fn alloc_json(tag: u8, value: u64) -> *mut MeshJson {
         ) as *mut MeshJson;
         (*ptr).tag = tag;
         (*ptr)._pad = [0; 7];
-        (*ptr).value = value;
-        ptr
-    }
-}
-
-fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
-    unsafe {
-        let ptr = mesh_gc_alloc_actor(
-            std::mem::size_of::<MeshResult>() as u64,
-            std::mem::align_of::<MeshResult>() as u64,
-        ) as *mut MeshResult;
-        (*ptr).tag = tag;
         (*ptr).value = value;
         ptr
     }
@@ -462,15 +450,8 @@ pub extern "C-unwind" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
     }
 }
 
-fn boxed_scalar_result<T>(value: T) -> *mut u8 {
-    unsafe {
-        let payload = mesh_gc_alloc_actor(
-            std::mem::size_of::<T>() as u64,
-            std::mem::align_of::<T>().max(8) as u64,
-        ) as *mut T;
-        payload.write(value);
-        alloc_result(0, payload.cast()).cast()
-    }
+fn boxed_scalar_result<T: Copy>(value: T) -> *mut u8 {
+    alloc_result(0, box_scalar(value)).cast()
 }
 
 /// Public `Json.as_int` ABI. Unlike the internal deriving helper above, this

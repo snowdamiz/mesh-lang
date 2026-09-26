@@ -15,7 +15,7 @@ use url::Url;
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, ok_int, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
 use super::close::is_valid_close_code;
@@ -171,14 +171,6 @@ fn error(message: impl AsRef<str>) -> *mut MeshResult {
 
 fn ok_unit() -> *mut MeshResult {
     alloc_result(0, std::ptr::null_mut())
-}
-
-fn ok_int(value: i64) -> *mut MeshResult {
-    unsafe {
-        let boxed = mesh_gc_alloc_actor(std::mem::size_of::<i64>() as u64, 8) as *mut i64;
-        boxed.write(value);
-        alloc_result(0, boxed.cast())
-    }
 }
 
 fn mesh_message(event: ClientEvent) -> *mut MeshResult {

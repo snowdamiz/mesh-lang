@@ -372,10 +372,7 @@ pub extern "C" fn mesh_string_to_int(s: *const MeshString) -> *mut u8 {
     unsafe {
         let text = (*s).as_str().trim();
         match text.parse::<i64>() {
-            Ok(val) => {
-                let boxed = Box::into_raw(Box::new(val)) as *mut u8;
-                alloc_option(0, boxed) as *mut u8
-            }
+            Ok(val) => alloc_option(0, crate::io::box_scalar(val)) as *mut u8,
             Err(_) => alloc_option(1, std::ptr::null_mut()) as *mut u8,
         }
     }
@@ -391,10 +388,7 @@ pub extern "C" fn mesh_string_to_float(s: *const MeshString) -> *mut u8 {
     unsafe {
         let text = (*s).as_str().trim();
         match text.parse::<f64>() {
-            Ok(val) => {
-                let boxed = Box::into_raw(Box::new(f64::to_bits(val))) as *mut u8;
-                alloc_option(0, boxed) as *mut u8
-            }
+            Ok(val) => alloc_option(0, crate::io::box_scalar(f64::to_bits(val))) as *mut u8,
             Err(_) => alloc_option(1, std::ptr::null_mut()) as *mut u8,
         }
     }

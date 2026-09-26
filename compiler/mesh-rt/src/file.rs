@@ -7,8 +7,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
-use crate::gc::mesh_gc_alloc_actor;
-use crate::io::MeshResult;
+use crate::io::{alloc_result, ok_int, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 
 const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
@@ -16,34 +15,10 @@ const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
 // quota API before generalizing binary range I/O to larger files.
 const MAX_BINARY_FILE_BYTES: i64 = 16 * 1024 * 1024;
 
-/// Allocate a MeshResult on the GC heap.
-fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
-    unsafe {
-        let ptr = mesh_gc_alloc_actor(
-            std::mem::size_of::<MeshResult>() as u64,
-            std::mem::align_of::<MeshResult>() as u64,
-        ) as *mut MeshResult;
-        (*ptr).tag = tag;
-        (*ptr).value = value;
-        ptr
-    }
-}
-
 /// Helper to create an Err result with a string message.
 fn err_result(msg: &str) -> *mut MeshResult {
     let s = mesh_string_new(msg.as_ptr(), msg.len() as u64);
     alloc_result(1, s as *mut u8)
-}
-
-fn ok_int(value: i64) -> *mut MeshResult {
-    unsafe {
-        let output = mesh_gc_alloc_actor(
-            std::mem::size_of::<i64>() as u64,
-            std::mem::align_of::<i64>() as u64,
-        ) as *mut i64;
-        output.write(value);
-        alloc_result(0, output.cast())
-    }
 }
 
 fn valid_range(offset: i64, length: i64) -> Option<(u64, usize)> {

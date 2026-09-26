@@ -24,7 +24,7 @@ use super::pg::{
     mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
     mesh_pg_query_as, mesh_pg_query_values, pg_simple_command, PgConn,
 };
-use crate::io::alloc_result;
+use crate::io::{alloc_result, box_scalar};
 use crate::string::{mesh_string_new, MeshString};
 
 // ── Data Structures ──────────────────────────────────────────────────────
@@ -86,10 +86,6 @@ unsafe fn create_connection(url: &str) -> Result<u64, String> {
         let err_str = &*(r.value as *const MeshString);
         Err(err_str.as_str().to_string())
     }
-}
-
-fn box_u64_payload(value: u64) -> *mut u8 {
-    Box::into_raw(Box::new(value)) as *mut u8
 }
 
 pub(crate) unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
@@ -166,7 +162,7 @@ pub extern "C" fn mesh_pool_open(
         });
 
         let handle = Box::into_raw(pool) as u64;
-        alloc_result(0, box_u64_payload(handle)) as *mut u8
+        alloc_result(0, box_scalar(handle)) as *mut u8
     }
 }
 
@@ -203,7 +199,7 @@ pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
                         return err_result("pool detected duplicate connection bookkeeping");
                     }
                     inner.active_count += 1;
-                    return alloc_result(0, box_u64_payload(conn.handle)) as *mut u8;
+                    return alloc_result(0, box_scalar(conn.handle)) as *mut u8;
                 } else {
                     // Connection is dead -- close it and try next
                     mesh_pg_close(conn.handle);
@@ -238,7 +234,7 @@ pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
                             mesh_pg_close(handle);
                             return err_result("pool detected duplicate connection bookkeeping");
                         }
-                        return alloc_result(0, box_u64_payload(handle)) as *mut u8;
+                        return alloc_result(0, box_scalar(handle)) as *mut u8;
                     }
                     Err(e) => {
                         // Undo the reservation

@@ -24,7 +24,7 @@ use crate::collections::list::{
 };
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::db::pg::{alloc_db_value, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL, DB_VALUE_TEXT};
-use crate::io::alloc_result;
+use crate::io::{alloc_result, box_scalar};
 use crate::string::{mesh_string_new, MeshString};
 
 // ponytail: fixed safety caps; make these connection options only if real workloads need more.
@@ -83,14 +83,6 @@ fn rust_str_to_mesh(s: &str) -> *mut u8 {
 fn err_result(msg: &str) -> *mut u8 {
     let s = rust_str_to_mesh(msg);
     alloc_result(1, s) as *mut u8
-}
-
-fn box_u64_payload(value: u64) -> *mut u8 {
-    Box::into_raw(Box::new(value)) as *mut u8
-}
-
-fn box_i64_payload(value: i64) -> *mut u8 {
-    Box::into_raw(Box::new(value)) as *mut u8
 }
 
 #[cfg(test)]
@@ -362,7 +354,7 @@ pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
 
         let conn = Box::new(SqliteConn { db });
         let handle = Box::into_raw(conn) as u64;
-        alloc_result(0, box_u64_payload(handle)) as *mut u8
+        alloc_result(0, box_scalar(handle)) as *mut u8
     }
 }
 
@@ -432,7 +424,7 @@ pub extern "C" fn mesh_sqlite_execute(
         }
 
         let changes = sqlite3_changes(conn.db) as i64;
-        alloc_result(0, box_i64_payload(changes)) as *mut u8
+        alloc_result(0, box_scalar(changes)) as *mut u8
     }
 }
 
@@ -557,7 +549,7 @@ pub extern "C" fn mesh_sqlite_execute_values(
         if rc != SQLITE_DONE && rc != SQLITE_ROW {
             return sqlite_err_result(conn.db);
         }
-        alloc_result(0, box_i64_payload(sqlite3_changes(conn.db) as i64)) as *mut u8
+        alloc_result(0, box_scalar(sqlite3_changes(conn.db) as i64)) as *mut u8
     }
 }
 

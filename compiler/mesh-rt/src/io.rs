@@ -32,6 +32,25 @@ pub(crate) fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
     }
 }
 
+/// A scalar (an `Int`, a `Float`'s bits, an opaque integer handle) boxed as
+/// the payload of a `Result` or `Option`, which is a pointer. On the GC heap
+/// it lives as long as what holds it; a Rust `Box` would leak it.
+pub(crate) fn box_scalar<T: Copy>(value: T) -> *mut u8 {
+    unsafe {
+        let payload = mesh_gc_alloc_actor(
+            std::mem::size_of::<T>() as u64,
+            std::mem::align_of::<T>().max(8) as u64,
+        ) as *mut T;
+        payload.write(value);
+        payload.cast()
+    }
+}
+
+/// `Ok(value)` for an `Int`.
+pub(crate) fn ok_int(value: i64) -> *mut MeshResult {
+    alloc_result(0, box_scalar(value))
+}
+
 /// Allocate a MeshResult on the GC heap with the given tag and value.
 /// Tag 0 = Ok, tag 1 = Err.
 #[no_mangle]

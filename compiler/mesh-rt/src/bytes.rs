@@ -13,7 +13,7 @@ use crate::collections::list::{
     mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
 };
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, ok_int, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
 
@@ -99,17 +99,6 @@ fn ok_bytes(bytes: &[u8]) -> *mut MeshResult {
         0,
         mesh_bytes_new(bytes.as_ptr(), bytes.len() as u64) as *mut u8,
     )
-}
-
-fn ok_int(value: i64) -> *mut MeshResult {
-    unsafe {
-        let result = mesh_gc_alloc_actor(
-            std::mem::size_of::<i64>() as u64,
-            std::mem::align_of::<i64>() as u64,
-        ) as *mut i64;
-        *result = value;
-        alloc_result(0, result.cast())
-    }
 }
 
 fn ok_u64(value: u64) -> *mut MeshResult {

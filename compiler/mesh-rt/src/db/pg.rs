@@ -1395,8 +1395,7 @@ pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
         // Result payloads with integer semantics are represented by pointers to
         // boxed integers. This keeps direct `Pg.connect(...) ?` unwrapping
         // consistent with SQLite and the other integer-returning DB APIs.
-        let payload = Box::into_raw(Box::new(handle)) as *mut u8;
-        alloc_result(0, payload) as *mut u8
+        alloc_result(0, crate::io::box_scalar(handle)) as *mut u8
     }
 }
 
@@ -1486,8 +1485,7 @@ pub extern "C" fn mesh_pg_execute(
         if let Some(msg) = error_msg {
             err_result(&msg)
         } else {
-            let boxed = Box::into_raw(Box::new(rows_affected)) as *mut u8;
-            alloc_result(0, boxed) as *mut u8
+            alloc_result(0, crate::io::box_scalar(rows_affected)) as *mut u8
         }
     }
 }
@@ -1693,7 +1691,7 @@ pub extern "C" fn mesh_pg_execute_values(
         if let Some(error) = error {
             err_result(&error)
         } else {
-            alloc_result(0, Box::into_raw(Box::new(rows_affected)) as *mut u8) as *mut u8
+            alloc_result(0, crate::io::box_scalar(rows_affected)) as *mut u8
         }
     }
 }

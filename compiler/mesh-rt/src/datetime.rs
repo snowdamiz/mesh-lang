@@ -9,7 +9,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, ok_int, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
 use chrono::{DateTime, SecondsFormat, TimeDelta, Utc};
 
@@ -44,11 +44,9 @@ pub extern "C" fn mesh_datetime_from_iso8601(s: *const MeshString) -> *mut MeshR
             }
             Ok(dt) => {
                 let ms: i64 = dt.timestamp_millis();
-                // Box the i64 so we can pass it as a *mut u8 payload.
-                // The codegen that unpacks Result<DateTime, String> knows to treat
-                // the Ok payload as an i64 (same as SqliteConn pattern).
-                let boxed = Box::into_raw(Box::new(ms)) as *mut u8;
-                alloc_result(0, boxed)
+                // The codegen that unpacks Result<DateTime, String> reads the
+                // Ok payload as a boxed i64 (same as SqliteConn).
+                ok_int(ms)
             }
         }
     }
@@ -76,11 +74,7 @@ pub extern "C" fn mesh_datetime_from_unix_ms(ms: i64) -> *mut MeshResult {
             let e = "unix timestamp out of range";
             alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8)
         }
-        Some(dt) => {
-            let result_ms: i64 = dt.timestamp_millis();
-            let boxed = Box::into_raw(Box::new(result_ms)) as *mut u8;
-            alloc_result(0, boxed)
-        }
+        Some(dt) => ok_int(dt.timestamp_millis()),
     }
 }
 
@@ -98,11 +92,7 @@ pub extern "C" fn mesh_datetime_from_unix_secs(secs: i64) -> *mut MeshResult {
             let e = "unix timestamp out of range";
             alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8)
         }
-        Some(dt) => {
-            let result_ms: i64 = dt.timestamp_millis();
-            let boxed = Box::into_raw(Box::new(result_ms)) as *mut u8;
-            alloc_result(0, boxed)
-        }
+        Some(dt) => ok_int(dt.timestamp_millis()),
     }
 }
 

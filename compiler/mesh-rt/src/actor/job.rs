@@ -23,7 +23,7 @@
 //! - tag 1 = Err (value is a string describing the crash reason)
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::MeshResult;
+use crate::io::{alloc_result, MeshResult};
 use crate::string::mesh_string_new;
 
 use super::heap::MessageBuffer;
@@ -37,19 +37,6 @@ use super::GLOBAL_SCHEDULER;
 /// Distinct from EXIT_SIGNAL_TAG (u64::MAX) to allow the await logic to
 /// differentiate between "job completed with a value" and "job crashed".
 pub const JOB_RESULT_TAG: u64 = u64::MAX - 1;
-
-/// Allocate a MeshResult on the GC heap.
-fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
-    unsafe {
-        let ptr = mesh_gc_alloc_actor(
-            std::mem::size_of::<MeshResult>() as u64,
-            std::mem::align_of::<MeshResult>() as u64,
-        ) as *mut MeshResult;
-        (*ptr).tag = tag;
-        (*ptr).value = value;
-        ptr
-    }
-}
 
 /// Store a job's scalar result in owned payload memory.
 ///
