@@ -444,3 +444,24 @@ fn a_default_method_parameter_needs_a_type() {
     let typed = check_source(&src.replace("times)", "times :: Int)"));
     assert!(typed.errors.is_empty(), "{:?}", typed.errors);
 }
+
+/// An operator needs its trait of a known operand type: `<` Ord, `+` Add,
+/// unary `-` Neg. A struct deriving nothing has none of them, and `Bool`
+/// cannot be added or negated.
+#[test]
+fn operators_need_their_traits_of_known_types() {
+    let prelude = "struct Box do\n  n :: Int\nend deriving()\n\n";
+    for (body, trait_name) in [
+        ("Box { n: 1 } < Box { n: 2 }", "Ord"),
+        ("true + false", "Add"),
+        ("-true", "Neg"),
+        ("-Box { n: 1 }", "Neg"),
+    ] {
+        let result = check_source(&format!("{prelude}fn main() do\n  {body}\nend\n"));
+        assert_has_error(
+            &result,
+            |error| matches!(error, TypeError::TraitNotSatisfied { trait_name: found, .. } if found == trait_name),
+            body,
+        );
+    }
+}
