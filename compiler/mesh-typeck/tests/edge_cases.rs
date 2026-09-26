@@ -1420,6 +1420,86 @@ end
     );
 }
 
+/// An error inside each of these is reported where it is: a receive's
+/// timeout body, a spawn's actor and arguments, a JSON value, a tuple
+/// element, a returned value, a list element, a clause's guard, a map key
+/// and value, and a cons pattern's arm.
+#[test]
+fn errors_inside_each_construct_are_reported() {
+    assert_eq!(
+        errors(
+            r#"
+actor counter(n :: Int) do
+  receive do
+    m -> counter(n + m)
+  after 5 -> in_timeout
+  end
+end
+
+fn spawned() do
+  spawn(no_actor, 1)
+end
+
+fn spawned_arg() do
+  spawn(counter, no_state)
+end
+
+fn json_value() do
+  json { a: in_json }
+end
+
+fn tuple_element() do
+  (1, in_tuple)
+end
+
+fn returned() -> Int do
+  return in_return
+end
+
+fn listed() do
+  [in_list, 1]
+end
+
+fn guarded(n) when in_guard do
+  1
+end
+
+fn guarded(n) do
+  2
+end
+
+fn mapped() do
+  %{1 => in_map_value}
+end
+
+fn keyed() do
+  %{in_map_key => 1}
+end
+
+fn consed(xs) do
+  case xs do
+    h :: t -> in_cons_arm
+    [] -> 0
+  end
+end
+"#
+        ),
+        [
+            "undefined variable `in_timeout`",
+            "undefined variable `no_actor`",
+            "undefined variable `no_state`",
+            "undefined variable `in_json`",
+            "undefined variable `in_tuple`",
+            "undefined variable `in_return`",
+            "undefined variable `in_list`",
+            "undefined variable `in_guard`",
+            "undefined variable `in_map_value`",
+            "undefined variable `in_map_key`",
+            "undefined variable `in_cons_arm`",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

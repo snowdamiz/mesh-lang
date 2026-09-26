@@ -109,6 +109,46 @@ fn actor_primitives_without_arguments_are_skipped() {
     }
 }
 
+/// Each construct cut off at a part it needs adds no error to its parse
+/// error: a pattern, scrutinee, name, type, value, timeout or start
+/// missing is left to it.
+#[test]
+fn constructs_cut_off_at_a_part_add_no_error() {
+    for source in [
+        "actor a(:: Int) do\n  receive do\n    x -> 1\n  end\nend\n",
+        "type A =\n",
+        "fn f(x) do\n  case x do\n    as whole -> whole\n  end\nend\n",
+        "fn f(x) do\n  case x do\n    -> 1\n  end\nend\n",
+        "fn f() do\n  case do\n    x -> 1\n  end\nend\n",
+        "fn g() do\n  let h = fn\n    | -> 1\n  end\n  h\nend\n",
+        "fn f(xs) do\n  case xs do\n    :: t -> 1\n    _ -> 2\n  end\nend\n",
+        "fn f(x :: ) do\n  x\nend\n",
+        "fn f(:: Int) do\n  1\nend\n",
+        "interface I do\n  fn (self) -> Int\nend\n",
+        "interface I do\n  fn f(self, :: Int) -> Int\nend\n",
+        "interface I do\n  fn f(self) -> Int\nend\n\nimpl I for do\n  fn f(self) -> Int do\n    1\n  end\nend\n",
+        "interface I do\n  fn f(self, x :: Int) -> Int\nend\n\nstruct P do\n  x :: Int\nend\n\nimpl I for P do\n  fn f(self, :: Int) -> Int do\n    1\n  end\nend\n",
+        "fn f() do\n  let x :: = 1\n  x\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f() do\n  P { x: }\nend\n",
+        "fn f() do\n  %{ => 1 }\nend\n",
+        "fn f() do\n  %{ 1 => }\nend\n",
+        "actor a() do\n  receive do\n    x -> 1\n  after -> 2\n  end\nend\n",
+        "actor a() do\n  receive do\n    -> 1\n  end\nend\n",
+        "actor w() do\n  receive do\n    m -> 1\n  end\nend\n\nsupervisor S do\n  strategy: one_for_one\n  child c do\n    start:\n  end\nend\n",
+        "fn f(t) do\n  t.0 + 1\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f() do\n  %{ | x: 1 }\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  %{p | : 1}\nend\n",
+        "type T do\n  A\n  (Int)\nend\n",
+        "fn f<T>(x :: T) where T do\n  x\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+        mesh_typeck::collect_exports(&parse, &result);
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]
