@@ -288,7 +288,7 @@ Prefer structured builders first. Keep database-specific SQL visible when a shap
 | `Expr.eq`, `Expr.neq`, `Expr.lt`, `Expr.lte`, `Expr.gt`, `Expr.gte` | Comparisons |
 | `Expr.case`, `Expr.case_when` | Paired conditions/results plus an else expression |
 | `Expr.coalesce` | First non-null expression |
-| `Expr.excluded` | Refer to an upsert's `EXCLUDED` value |
+| `Expr.excluded` | Refer to an upsert's `EXCLUDED` value (beside it, `Expr.column` names the existing row's) |
 | `Expr.label` | Assign a selected expression's output name |
 
 `Expr.alias` remains available as a compatibility synonym; use `Expr.label` in new code.

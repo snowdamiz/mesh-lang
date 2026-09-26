@@ -976,8 +976,12 @@ fn build_insert_or_update_expr_sql_pure(
         .collect::<Vec<_>>()
         .join(", ");
 
+    let update_exprs: Vec<SqlExpr> = update_exprs
+        .iter()
+        .map(|expr| expr.qualified(table))
+        .collect();
     let (set_parts, update_params, _next_idx) =
-        build_set_expr_parts(update_columns, update_exprs, insert_columns.len() + 1);
+        build_set_expr_parts(update_columns, &update_exprs, insert_columns.len() + 1);
 
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {} RETURNING *",
@@ -3659,7 +3663,8 @@ mod tests {
 
         assert_eq!(
             sql,
-            "INSERT INTO \"issues\" (\"project_id\", \"fingerprint\", \"title\", \"level\", \"event_count\") VALUES ($1, $2, $3, $4, $5) ON CONFLICT (\"project_id\", \"fingerprint\") DO UPDATE SET \"event_count\" = (\"event_count\" + $6), \"status\" = CASE WHEN (\"status\" = $7) THEN $8 ELSE \"status\" END, \"last_seen\" = now() RETURNING *"
+            "INSERT INTO \"issues\" (\"project_id\", \"fingerprint\", \"title\", \"level\", \"event_count\") VALUES ($1, $2, $3, $4, $5) ON CONFLICT (\"project_id\", \"fingerprint\") DO UPDATE SET \"event_count\" = (\"issues\".\"event_count\" + $6), \"status\" = CASE WHEN (\"issues\".\"status\" = $7) THEN $8 ELSE \"issues\".\"status\" END, \"last_seen\" = now() RETURNING *",
+            "bare columns name the existing row: unqualified, PostgreSQL finds them ambiguous with EXCLUDED's"
         );
         assert_eq!(
             params,

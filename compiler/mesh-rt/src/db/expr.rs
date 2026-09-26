@@ -38,6 +38,50 @@ pub enum SqlExpr {
     },
 }
 
+impl SqlExpr {
+    /// This expression with its bare column names qualified by `table`, as an
+    /// upsert's DO UPDATE needs them: there a bare name is ambiguous between
+    /// the table's row and EXCLUDED.
+    pub(crate) fn qualified(&self, table: &str) -> SqlExpr {
+        let q = |expr: &SqlExpr| expr.qualified(table);
+        let boxed = |expr: &SqlExpr| Box::new(expr.qualified(table));
+        match self {
+            SqlExpr::Column(name) if !name.contains('.') => {
+                SqlExpr::Column(format!("{table}.{name}"))
+            }
+            SqlExpr::Call { name, args } => SqlExpr::Call {
+                name: name.clone(),
+                args: args.iter().map(q).collect(),
+            },
+            SqlExpr::Binary { op, lhs, rhs } => SqlExpr::Binary {
+                op: op.clone(),
+                lhs: boxed(lhs),
+                rhs: boxed(rhs),
+            },
+            SqlExpr::Case {
+                branches,
+                else_expr,
+            } => SqlExpr::Case {
+                branches: branches
+                    .iter()
+                    .map(|(cond, value)| (q(cond), q(value)))
+                    .collect(),
+                else_expr: boxed(else_expr),
+            },
+            SqlExpr::Coalesce(exprs) => SqlExpr::Coalesce(exprs.iter().map(q).collect()),
+            SqlExpr::Cast { expr, sql_type } => SqlExpr::Cast {
+                expr: boxed(expr),
+                sql_type: sql_type.clone(),
+            },
+            SqlExpr::Alias { expr, alias } => SqlExpr::Alias {
+                expr: boxed(expr),
+                alias: alias.clone(),
+            },
+            other => other.clone(),
+        }
+    }
+}
+
 unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
     let ms = ptr as *const MeshString;
     (*ms).as_str()
