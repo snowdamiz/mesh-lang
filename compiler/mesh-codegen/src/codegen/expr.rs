@@ -285,10 +285,10 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 // Step 2: Store all evaluated values into parameter allocas.
-                for (i, param_name) in self.tce_param_names.clone().iter().enumerate() {
-                    if let Some(&alloca) = self.locals.get(param_name) {
+                for (slot, value) in self.tce_param_slots.clone().into_iter().zip(new_vals) {
+                    if let Some(slot) = slot {
                         self.builder
-                            .build_store(alloca, new_vals[i])
+                            .build_store(slot, value)
                             .map_err(|e| e.to_string())?;
                     }
                 }

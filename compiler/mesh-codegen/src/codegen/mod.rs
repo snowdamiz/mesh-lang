@@ -115,9 +115,11 @@ pub struct CodeGen<'ctx> {
     /// (separate from user while/for loops so break/continue don't interfere).
     pub(crate) tce_loop_header: Option<inkwell::basic_block::BasicBlock<'ctx>>,
 
-    /// Parameter names for the current tail-recursive function, in order.
-    /// Used by TailCall codegen to know which allocas to store into.
-    pub(crate) tce_param_names: Vec<String>,
+    /// The parameters' slots of the current tail-recursive function, in
+    /// order, which a TailCall stores its arguments into. Taken at entry, not
+    /// looked up by name at the call: a `let` shadowing a parameter took the
+    /// new value, and the loop read the parameter unchanged.
+    pub(crate) tce_param_slots: Vec<Option<PointerValue<'ctx>>>,
 }
 
 fn sum_type_layout_dependencies_ready(
@@ -226,7 +228,7 @@ impl<'ctx> CodeGen<'ctx> {
             autonomous_config_json: None,
             library_exports: Vec::new(),
             tce_loop_header: None,
-            tce_param_names: Vec::new(),
+            tce_param_slots: Vec::new(),
         })
     }
 
@@ -761,7 +763,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
             self.builder.position_at_end(tce_loop_bb);
             self.tce_loop_header = Some(tce_loop_bb);
-            self.tce_param_names = func.params.iter().map(|(name, _)| name.clone()).collect();
+            self.tce_param_slots = func
+                .params
+                .iter()
+                .map(|(name, _)| self.locals.get(name).copied())
+                .collect();
         }
 
         // Check if this is a service loop function that needs special codegen.
@@ -820,7 +826,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Clear TCE state after function compilation.
         self.tce_loop_header = None;
-        self.tce_param_names.clear();
+        self.tce_param_slots.clear();
 
         Ok(())
     }

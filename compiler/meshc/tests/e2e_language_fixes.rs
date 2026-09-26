@@ -3074,6 +3074,28 @@ end
     );
 }
 
+/// A self tail call passes its arguments to the function's parameters even
+/// when a `let` shadows one: it stored them into the shadowing variable, so
+/// the loop read the parameter unchanged and `count(5, 0)` was 0.
+#[test]
+fn a_tail_call_sets_parameters_a_let_shadows() {
+    let source = r##"
+fn count(n :: Int, acc :: Int) -> Int do
+  if n == 0 do
+    acc
+  else
+    let acc = acc + 1
+    count(n - 1, acc)
+  end
+end
+
+fn main() do
+  println("#{count(5, 0)}")
+end
+"##;
+    assert_eq!(run(source), "5\n");
+}
+
 #[test]
 fn static_interface_methods_are_called_on_types_and_type_parameters() {
     let source = r##"
