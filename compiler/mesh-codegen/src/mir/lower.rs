@@ -14157,10 +14157,7 @@ impl<'a> Lowerer<'a> {
 
         // ── Collect handler info ─────────────────────────────────────────
 
-        // For each call handler: (variant_name, snake_name, tag, param_names, state_param)
         struct CallInfo {
-            #[allow(dead_code)]
-            variant_name: String,
             snake_name: String,
             tag: u64,
             param_names: Vec<String>,
@@ -14178,8 +14175,6 @@ impl<'a> Lowerer<'a> {
         }
 
         struct CastInfo {
-            #[allow(dead_code)]
-            variant_name: String,
             snake_name: String,
             tag: u64,
             param_names: Vec<String>,
@@ -14194,83 +14189,27 @@ impl<'a> Lowerer<'a> {
                 .name()
                 .and_then(|n| n.text())
                 .unwrap_or_else(|| format!("call_{}", i));
-            let snake_name = to_snake_case(&variant_name);
-            let mut param_names: Vec<String> = Vec::new();
-            let mut param_types: Vec<MirType> = Vec::new();
-            let mut param_shapes: Vec<MsgShape> = Vec::new();
-            if let Some(pl) = handler.params() {
-                for p in pl.params() {
-                    let p_name = p
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| format!("arg{}", 0));
-                    let p_ty = self.resolve_range(p.syntax().text_range());
-                    let mir_ty = if matches!(p_ty, MirType::Unit) {
-                        MirType::Int
-                    } else {
-                        p_ty
-                    };
-                    param_names.push(p_name);
-                    param_types.push(mir_ty);
-                    param_shapes.push(self.msg_shape_at(p.syntax().text_range()));
-                }
-            }
-            let state_param = handler.state_param_name();
-
-            // Determine the reply type from the handler body's tail expression.
-            // The body returns (state, reply); we extract the second element.
-            // NOTE: The type checker does NOT store a type for the BLOCK node
-            // itself — only for expressions within it. We must use the tail
-            // expression (last expr in the block) to get the (state, reply)
-            // tuple type.
-            let reply_type = handler
-                .body()
-                .and_then(|block| block.tail_expr())
-                .map(|expr| self.resolve_range_structure(expr.syntax().text_range()))
-                .and_then(|ty| {
-                    if let MirType::Tuple(ref elems) = ty {
-                        if elems.len() >= 2 {
-                            Some(elems[1].clone())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                // Tuples are heap-allocated pointers at runtime, so collapse
-                // Tuple(...) to Ptr to match the LLVM representation.
-                .map(|ty| {
-                    if matches!(ty, MirType::Tuple(_)) {
-                        MirType::Ptr
-                    } else {
-                        ty
-                    }
-                })
-                .unwrap_or(MirType::Int);
-            // The handler returns (state, reply); only the reply leaves the service.
-            let reply_shape = handler
+            let (param_names, param_types, param_shapes) = self.handler_params(handler.params());
+            // The handler returns (state, reply); only the reply leaves the
+            // service, typed as the type checker's (state, reply) says.
+            let reply = handler
                 .body()
                 .and_then(|block| block.tail_expr())
                 .and_then(|expr| self.get_ty(expr.syntax().text_range()))
                 .and_then(|ty| match ty {
-                    Ty::Tuple(elems) => elems.get(1),
+                    Ty::Tuple(elems) => elems.get(1).cloned(),
                     _ => None,
                 })
-                .map_or(MsgShape::Shared, |reply| {
-                    self.msg_shape(reply, &mut Vec::new())
-                });
-
+                .expect("the type checker gives a call handler a (state, reply) body");
             call_infos.push(CallInfo {
-                variant_name,
-                snake_name,
+                snake_name: to_snake_case(&variant_name),
                 tag: i as u64,
                 param_names,
                 param_types,
                 param_shapes,
-                reply_shape,
-                state_param,
-                reply_type,
+                reply_shape: self.msg_shape(&reply, &mut Vec::new()),
+                state_param: handler.state_param_name(),
+                reply_type: self.binding_type(&reply),
             });
         }
 
@@ -14280,74 +14219,39 @@ impl<'a> Lowerer<'a> {
                 .name()
                 .and_then(|n| n.text())
                 .unwrap_or_else(|| format!("cast_{}", i));
-            let snake_name = to_snake_case(&variant_name);
-            let mut param_names: Vec<String> = Vec::new();
-            let mut param_types: Vec<MirType> = Vec::new();
-            let mut param_shapes: Vec<MsgShape> = Vec::new();
-            if let Some(pl) = handler.params() {
-                for p in pl.params() {
-                    let p_name = p
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| format!("arg{}", 0));
-                    let p_ty = self.resolve_range(p.syntax().text_range());
-                    let mir_ty = if matches!(p_ty, MirType::Unit) {
-                        MirType::Int
-                    } else {
-                        p_ty
-                    };
-                    param_names.push(p_name);
-                    param_types.push(mir_ty);
-                    param_shapes.push(self.msg_shape_at(p.syntax().text_range()));
-                }
-            }
-            let state_param = handler.state_param_name();
+            let (param_names, param_types, param_shapes) = self.handler_params(handler.params());
             cast_infos.push(CastInfo {
-                variant_name,
-                snake_name,
+                snake_name: to_snake_case(&variant_name),
                 tag: (num_calls + i) as u64,
                 param_names,
                 param_types,
                 param_shapes,
-                state_param,
+                state_param: handler.state_param_name(),
             });
         }
 
         // ── Generate init function ───────────────────────────────────────
         // Lower the init function body to get initial state.
         let mut init_params = Vec::new();
+        // Without an `init`, the state is 0.
         let init_body = if let Some(init_fn) = service_def.init_fn() {
             self.push_scope();
+            let init_ty = self
+                .get_ty(init_fn.syntax().text_range())
+                .cloned()
+                .expect("the type checker types a service's init");
             if let Some(param_list) = init_fn.param_list() {
-                let fn_range = init_fn.syntax().text_range();
-                let fn_ty_raw = self.get_ty(fn_range).cloned();
-                if let Some(mesh_typeck::ty::Ty::Fun(param_tys, _)) = &fn_ty_raw {
-                    for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
-                        let param_name = param
-                            .name()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_else(|| "_".to_string());
-                        let mir_ty = resolve_type(param_ty, self.registry);
-                        self.insert_var(param_name.clone(), mir_ty.clone());
-                        init_params.push((param_name, mir_ty));
-                    }
-                } else {
-                    for param in param_list.params() {
-                        let param_name = param
-                            .name()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_else(|| "_".to_string());
-                        let mir_ty = self.resolve_range(param.syntax().text_range());
-                        self.insert_var(param_name.clone(), mir_ty.clone());
-                        init_params.push((param_name, mir_ty));
-                    }
+                for (param, param_ty) in param_list.params().zip(fun_parts(&init_ty).0) {
+                    let param_name = param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string());
+                    let mir_ty = resolve_type(param_ty, self.registry);
+                    self.insert_var(param_name.clone(), mir_ty.clone());
+                    init_params.push((param_name, mir_ty));
                 }
             }
-            let body = if let Some(block) = init_fn.body() {
-                self.lower_block(&block)
-            } else {
-                MirExpr::IntLit(0, MirType::Int)
-            };
+            let body = self.lower_fn_body(&init_fn);
             self.pop_scope();
             body
         } else {
@@ -14393,31 +14297,14 @@ impl<'a> Lowerer<'a> {
             self.insert_var(state_param_name.clone(), init_ret_ty.clone());
             let mut params = vec![(state_param_name, init_ret_ty.clone())];
 
-            // Handler params.
-            if let Some(param_list) = handler.params() {
-                for param in param_list.params() {
-                    let p_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let p_ty = self.resolve_range(param.syntax().text_range());
-                    let mir_ty = if matches!(p_ty, MirType::Unit) {
-                        MirType::Int
-                    } else {
-                        p_ty
-                    };
-                    self.insert_var(p_name.clone(), mir_ty.clone());
-                    params.push((p_name, mir_ty));
-                }
+            for (p_name, mir_ty) in info.param_names.iter().zip(&info.param_types) {
+                self.insert_var(p_name.clone(), mir_ty.clone());
+                params.push((p_name.clone(), mir_ty.clone()));
             }
 
             // Lower handler body. Body returns (new_state, reply).
-            let body = if let Some(block) = handler.body() {
-                self.lower_block(&block)
-            } else {
-                // Default: return (state, 0).
-                MirExpr::Unit
-            };
+            let body =
+                self.lower_block(&handler.body().expect("the parser gives a handler its body"));
 
             self.pop_scope();
 
@@ -14453,29 +14340,14 @@ impl<'a> Lowerer<'a> {
             self.insert_var(state_param_name.clone(), init_ret_ty.clone());
             let mut params = vec![(state_param_name, init_ret_ty.clone())];
 
-            if let Some(param_list) = handler.params() {
-                for param in param_list.params() {
-                    let p_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let p_ty = self.resolve_range(param.syntax().text_range());
-                    let mir_ty = if matches!(p_ty, MirType::Unit) {
-                        MirType::Int
-                    } else {
-                        p_ty
-                    };
-                    self.insert_var(p_name.clone(), mir_ty.clone());
-                    params.push((p_name, mir_ty));
-                }
+            for (p_name, mir_ty) in info.param_names.iter().zip(&info.param_types) {
+                self.insert_var(p_name.clone(), mir_ty.clone());
+                params.push((p_name.clone(), mir_ty.clone()));
             }
 
             // Lower handler body. Body returns new_state.
-            let body = if let Some(block) = handler.body() {
-                self.lower_block(&block)
-            } else {
-                MirExpr::IntLit(0, MirType::Int)
-            };
+            let body =
+                self.lower_block(&handler.body().expect("the parser gives a handler its body"));
 
             self.pop_scope();
 
@@ -14742,6 +14614,31 @@ impl<'a> Lowerer<'a> {
             loop_fn_name,
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
         );
+    }
+
+    /// A service handler's parameters: their names, their types (a `()` is
+    /// passed as an Int) and the shapes they cross to the service in.
+    fn handler_params(
+        &self,
+        params: Option<ParamList>,
+    ) -> (Vec<String>, Vec<MirType>, Vec<MsgShape>) {
+        let mut names = Vec::new();
+        let mut types = Vec::new();
+        let mut shapes = Vec::new();
+        for param in params.iter().flat_map(ParamList::params) {
+            let range = param.syntax().text_range();
+            names.push(
+                param
+                    .name()
+                    .map_or_else(|| "_".to_string(), |name| name.text().to_string()),
+            );
+            types.push(match self.resolve_range(range) {
+                MirType::Unit => MirType::Int,
+                ty => ty,
+            });
+            shapes.push(self.msg_shape_at(range));
+        }
+        (names, types, shapes)
     }
 
     // ── Actor expression lowering ───────────────────────────────────────
