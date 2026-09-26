@@ -311,3 +311,76 @@ end
         result.errors
     );
 }
+
+/// Each way a handler reference can be wrong is its own error: of the
+/// wrong type (here, imported or qualified), defined at several arities, a
+/// local binding, no name at all, a module that is not imported, a private
+/// or unexported name, or a qualified name on a computed value.
+#[test]
+fn clustered_route_wrapper_rejects_each_bad_handler_reference() {
+    let mut todos = module_exports("Api.Todos", &["handle", "hidden"], &["secret"]);
+    todos.functions.insert(
+        "count".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::int()], Ty::int())),
+    );
+    let check = |defs: &str, handler: &str| {
+        let mut import_ctx = ImportContext::empty();
+        import_ctx.current_module = Some("App.Router".to_string());
+        import_ctx
+            .module_exports
+            .insert("Todos".to_string(), todos.clone());
+        let src = format!(
+            "import Api.Todos\nfrom Api.Todos import count\n\n{defs}\n\nfn build() do\n  HTTP.router() |> HTTP.on_get(\"/x\", HTTP.clustered({handler}))\nend\n"
+        );
+        check_source(&src, import_ctx)
+    };
+    let invalid = |result: &TypeckResult, expected: &str| {
+        assert!(
+            result.errors.iter().any(|error| matches!(
+                error,
+                TypeError::HttpClusteredInvalidArguments { reason, .. } if reason.contains(expected)
+            )),
+            "{expected}: {:?}",
+            result.errors
+        );
+    };
+    let local = "pub fn add(x :: Int) -> Int do\n  x\nend";
+    invalid(
+        &check(local, "add"),
+        "`add` must have type `(Request) -> Response`",
+    );
+    invalid(&check("", "count"), "`count` must have type");
+    invalid(&check("", "Todos.count"), "`Todos.count` must have type");
+    let overloaded = "pub fn h(req :: Request) -> Response do\n  HTTP.response(200, \"a\")\nend\npub fn h(a :: Int, b :: Int) -> Int do\n  a\nend";
+    invalid(
+        &check(overloaded, "h"),
+        "must resolve to a single public top-level",
+    );
+    invalid(
+        &check("", "nothing"),
+        "`nothing` must resolve to a public top-level",
+    );
+    invalid(
+        &check("", "Nope.handle"),
+        "must reference a function from an imported user module",
+    );
+    invalid(
+        &check("", "Todos.missing"),
+        "is not an exported public handler",
+    );
+    invalid(
+        &check("", "build().handle"),
+        "expected a module-qualified handler reference",
+    );
+    let private = check("", "Todos.secret");
+    assert!(
+        private.errors.iter().any(|error| matches!(
+            error,
+            TypeError::HttpClusteredPrivateHandler { handler_name, .. } if handler_name == "secret"
+        )),
+        "{:?}",
+        private.errors
+    );
+    let fine = check("", "Todos.handle");
+    assert!(fine.errors.is_empty(), "{:?}", fine.errors);
+}

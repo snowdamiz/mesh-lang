@@ -9786,6 +9786,10 @@ fn push_http_clustered_error(ctx: &mut InferCtx, error: TypeError) -> TypeError 
     error
 }
 
+/// The handler `HTTP.clustered(handler)` names: a public top-level function
+/// of this module, one imported by name, or `Module.handler` of an imported
+/// module, of type `Request -> Response`.
+#[allow(clippy::too_many_arguments)]
 fn resolve_clustered_route_handler_ref(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -9796,163 +9800,127 @@ fn resolve_clustered_route_handler_ref(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<(Ty, ClusteredRouteHandlerRef), TypeError> {
+    let invalid = |ctx: &mut InferCtx, reason: String| {
+        Err(push_http_clustered_error(
+            ctx,
+            TypeError::HttpClusteredInvalidArguments {
+                reason,
+                span: wrapper_span,
+            },
+        ))
+    };
+    let private = |ctx: &mut InferCtx, handler_name: String| {
+        Err(push_http_clustered_error(
+            ctx,
+            TypeError::HttpClusteredPrivateHandler {
+                handler_name,
+                span: wrapper_span,
+            },
+        ))
+    };
+    // The handler, which must be a `Request -> Response` function (`shown`
+    // is how an error names it), and where it is defined.
+    let mut typed = |ctx: &mut InferCtx,
+                     env: &mut TypeEnv,
+                     shown: String,
+                     handler_name: String,
+                     defining_module: Option<String>| {
+        let handler_ty = infer_expr(
+            ctx,
+            env,
+            handler_expr,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
+        if !is_route_handler_function_ty(&ctx.resolve(handler_ty.clone())) {
+            return invalid(
+                ctx,
+                format!("`{shown}` must have type `{}`", route_handler_function_ty()),
+            );
+        }
+        let runtime_name =
+            qualify_clustered_route_runtime_name(defining_module.as_deref(), &handler_name);
+        Ok((
+            handler_ty,
+            ClusteredRouteHandlerRef {
+                handler_name,
+                defining_module,
+                runtime_name,
+            },
+        ))
+    };
     match handler_expr {
         Expr::NameRef(name_ref) => {
             let handler_name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
-
             if let Some(is_public) = ctx
                 .top_level_function_visibility
                 .get(&handler_name)
                 .copied()
             {
                 if !is_public {
-                    let err = TypeError::HttpClusteredPrivateHandler {
-                        handler_name,
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
+                    return private(ctx, handler_name);
                 }
+                // A name defined at several arities is several functions.
                 if env.lookup(&handler_name).is_none() {
-                    let err = TypeError::HttpClusteredInvalidArguments {
-                        reason: format!(
-                            "`{}` must resolve to a single public top-level route handler reference",
-                            handler_name
+                    return invalid(
+                        ctx,
+                        format!(
+                            "`{handler_name}` must resolve to a single public top-level route handler reference"
                         ),
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
+                    );
                 }
-
-                let handler_ty = infer_expr(
-                    ctx,
-                    env,
-                    handler_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?;
-                let resolved_handler_ty = ctx.resolve(handler_ty.clone());
-                if !is_route_handler_function_ty(&resolved_handler_ty) {
-                    let expected_ty = route_handler_function_ty();
-                    let err = TypeError::HttpClusteredInvalidArguments {
-                        reason: format!("`{}` must have type `{}`", handler_name, expected_ty),
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
-                }
-
                 let defining_module = ctx.current_module.clone();
-                let runtime_name =
-                    qualify_clustered_route_runtime_name(defining_module.as_deref(), &handler_name);
-                return Ok((
-                    handler_ty,
-                    ClusteredRouteHandlerRef {
-                        handler_name,
-                        defining_module,
-                        runtime_name,
-                    },
-                ));
-            }
-
-            if ctx
-                .imported_functions
-                .iter()
-                .any(|name| name == &handler_name)
-            {
-                let Some(defining_module) =
-                    ctx.imported_function_origins.get(&handler_name).cloned()
-                else {
-                    let err = TypeError::HttpClusteredImportedOriginMissing {
-                        handler_name,
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
-                };
-                if defining_module.is_empty() {
-                    let err = TypeError::HttpClusteredImportedOriginMissing {
-                        handler_name,
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
-                }
-                if env.lookup(&handler_name).is_none() {
-                    let err = TypeError::HttpClusteredInvalidArguments {
-                        reason: format!(
-                            "`{}` must resolve to a single imported public route handler reference",
-                            handler_name
-                        ),
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
-                }
-
-                let handler_ty = infer_expr(
+                return typed(
                     ctx,
                     env,
-                    handler_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?;
-                let resolved_handler_ty = ctx.resolve(handler_ty.clone());
-                if !is_route_handler_function_ty(&resolved_handler_ty) {
-                    let expected_ty = route_handler_function_ty();
-                    let err = TypeError::HttpClusteredInvalidArguments {
-                        reason: format!("`{}` must have type `{}`", handler_name, expected_ty),
-                        span: wrapper_span,
-                    };
-                    return Err(push_http_clustered_error(ctx, err));
-                }
-
-                let runtime_name = qualify_clustered_route_runtime_name(
-                    Some(defining_module.as_str()),
-                    &handler_name,
+                    handler_name.clone(),
+                    handler_name,
+                    defining_module,
                 );
-                return Ok((
-                    handler_ty,
-                    ClusteredRouteHandlerRef {
-                        handler_name,
-                        defining_module: Some(defining_module),
-                        runtime_name,
-                    },
-                ));
             }
-
+            if ctx.imported_functions.contains(&handler_name) {
+                let Some(defining_module) = ctx
+                    .imported_function_origins
+                    .get(&handler_name)
+                    .filter(|module| !module.is_empty())
+                    .cloned()
+                else {
+                    return Err(push_http_clustered_error(
+                        ctx,
+                        TypeError::HttpClusteredImportedOriginMissing {
+                            handler_name,
+                            span: wrapper_span,
+                        },
+                    ));
+                };
+                return typed(
+                    ctx,
+                    env,
+                    handler_name.clone(),
+                    handler_name,
+                    Some(defining_module),
+                );
+            }
             let reason = if env.lookup(&handler_name).is_some() {
                 format!(
-                    "`{}` must be a public top-level function reference, not a local binding or unsupported value",
-                    handler_name
+                    "`{handler_name}` must be a public top-level function reference, not a local binding or unsupported value"
                 )
             } else {
                 format!(
-                    "`{}` must resolve to a public top-level route handler reference",
-                    handler_name
+                    "`{handler_name}` must resolve to a public top-level route handler reference"
                 )
             };
-            let err = TypeError::HttpClusteredInvalidArguments {
-                reason,
-                span: wrapper_span,
-            };
-            Err(push_http_clustered_error(ctx, err))
+            invalid(ctx, reason)
         }
         Expr::FieldAccess(field_access) => {
-            let Some(base_expr) = field_access.base() else {
-                let err = TypeError::HttpClusteredInvalidArguments {
-                    reason: "expected a module-qualified handler reference like `Module.handle`"
+            let Some(Expr::NameRef(base_name_ref)) = field_access.base() else {
+                return invalid(
+                    ctx,
+                    "expected a module-qualified handler reference like `Module.handle`"
                         .to_string(),
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
-            };
-            let Expr::NameRef(base_name_ref) = base_expr else {
-                let err = TypeError::HttpClusteredInvalidArguments {
-                    reason: "expected a module-qualified handler reference like `Module.handle`"
-                        .to_string(),
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
+                );
             };
             let module_alias = base_name_ref
                 .text()
@@ -9961,89 +9929,39 @@ fn resolve_clustered_route_handler_ref(
                 .field()
                 .map(|token| token.text().to_string())
                 .unwrap_or_else(|| "<unknown>".to_string());
-
+            let shown = format!("{module_alias}.{handler_name}");
             let Some(defining_module) = ctx.qualified_module_origins.get(&module_alias).cloned()
             else {
-                let err = TypeError::HttpClusteredInvalidArguments {
-                    reason: format!(
-                        "`{}.{}` must reference a function from an imported user module",
-                        module_alias, handler_name
-                    ),
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
+                return invalid(
+                    ctx,
+                    format!("`{shown}` must reference a function from an imported user module"),
+                );
             };
-
             if ctx
                 .qualified_module_private_names
                 .get(&module_alias)
-                .map(|names| names.contains(&handler_name))
-                .unwrap_or(false)
+                .is_some_and(|names| names.contains(&handler_name))
             {
-                let err = TypeError::HttpClusteredPrivateHandler {
-                    handler_name,
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
+                return private(ctx, handler_name);
             }
-
-            let exported = ctx
+            if !ctx
                 .qualified_modules
                 .get(&module_alias)
-                .map(|exports| exports.contains_key(&handler_name))
-                .unwrap_or(false);
-            if !exported {
-                let err = TypeError::HttpClusteredInvalidArguments {
-                    reason: format!(
-                        "`{}.{}` is not an exported public handler in module `{}`",
-                        module_alias, handler_name, defining_module
+                .is_some_and(|exports| exports.contains_key(&handler_name))
+            {
+                return invalid(
+                    ctx,
+                    format!(
+                        "`{shown}` is not an exported public handler in module `{defining_module}`"
                     ),
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
+                );
             }
-
-            let handler_ty = infer_expr(
-                ctx,
-                env,
-                handler_expr,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
-            let resolved_handler_ty = ctx.resolve(handler_ty.clone());
-            if !is_route_handler_function_ty(&resolved_handler_ty) {
-                let expected_ty = route_handler_function_ty();
-                let err = TypeError::HttpClusteredInvalidArguments {
-                    reason: format!(
-                        "`{}.{}` must have type `{}`",
-                        module_alias, handler_name, expected_ty
-                    ),
-                    span: wrapper_span,
-                };
-                return Err(push_http_clustered_error(ctx, err));
-            }
-
-            let runtime_name =
-                qualify_clustered_route_runtime_name(Some(defining_module.as_str()), &handler_name);
-            Ok((
-                handler_ty,
-                ClusteredRouteHandlerRef {
-                    handler_name,
-                    defining_module: Some(defining_module),
-                    runtime_name,
-                },
-            ))
+            typed(ctx, env, shown, handler_name, Some(defining_module))
         }
-        _ => {
-            let err = TypeError::HttpClusteredInvalidArguments {
-                reason: "expected a bare handler reference or module-qualified handler reference"
-                    .to_string(),
-                span: wrapper_span,
-            };
-            Err(push_http_clustered_error(ctx, err))
-        }
+        _ => invalid(
+            ctx,
+            "expected a bare handler reference or module-qualified handler reference".to_string(),
+        ),
     }
 }
 
