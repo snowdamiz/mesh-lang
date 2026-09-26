@@ -62,6 +62,10 @@ hostname = "0.4"
 libc = "0.2"
 mio = { version = "1.1", features = ["net", "os-poll"] }
 
+[lints.rust]
+# Set by scripts/compiler-coverage.py and the Docker proof's coverage build.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mesh_coverage)"] }
+
 [dev-dependencies]
 tempfile = "3"
 

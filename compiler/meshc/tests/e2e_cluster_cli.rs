@@ -17,13 +17,12 @@ use test_artifacts::{command_output_text, ensure_mesh_rt_staticlib, meshc_bin};
 const COOKIE: &str = "cluster-cli-test-cookie";
 const OPERATOR_KEY: &str = "cluster-cli-test-operator-key-0123456789";
 
-/// A node that is killed when the test ends, pass or fail.
+/// A node that is stopped when the test ends, pass or fail.
 struct Node(Child);
 
 impl Drop for Node {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        test_artifacts::stop_child(&mut self.0);
     }
 }
 

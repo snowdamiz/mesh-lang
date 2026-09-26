@@ -747,7 +747,7 @@ fn e2e_list_pipe_chain() {
 // These tests start a REAL HTTP server and make actual HTTP requests,
 // verifying that the Mesh HTTP server works end-to-end at runtime.
 
-/// RAII guard that kills the server child process on drop.
+/// RAII guard that stops the server child process on drop.
 struct ServerGuard {
     child: std::process::Child,
     _execution_guard: MutexGuard<'static, ()>,
@@ -755,8 +755,7 @@ struct ServerGuard {
 
 impl Drop for ServerGuard {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        artifacts::stop_child(&mut self.child);
     }
 }
 

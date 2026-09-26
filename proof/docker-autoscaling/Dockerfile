@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     && install -m 0755 ./target/release/mesh-capacity-driver /tmp/mesh-capacity-driver \
     && mkdir -p /tmp/coverage \
     && if [ "$MESH_COVERAGE" = 1 ]; then \
-         RUSTFLAGS="-C instrument-coverage -C llvm-args=-runtime-counter-relocation" \
+         RUSTFLAGS="-C instrument-coverage -C llvm-args=-runtime-counter-relocation --cfg mesh_coverage" \
            CARGO_TARGET_DIR=/app/target/coverage cargo build --locked --release -q -p mesh-rt \
          && profiler="$(ls "$(rustc --print sysroot)"/lib/rustlib/*/lib/libprofiler_builtins-*.rlib)" \
          && cp /app/target/coverage/release/libmesh_rt.a /tmp/coverage/libmesh_rt.a \

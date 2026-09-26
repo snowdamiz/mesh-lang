@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BuildOutputMetadata {
@@ -57,6 +57,28 @@ pub fn ensure_mesh_rt_staticlib() {
             command_output_text(&output)
         );
     });
+}
+
+/// Stop a Mesh program as a service manager does: SIGTERM, then SIGKILL if it
+/// still runs a few seconds later. A program ended by SIGKILL writes nothing
+/// at exit, where the coverage run's runtime writes its profile on SIGTERM.
+pub fn stop_child(child: &mut Child) {
+    #[cfg(unix)]
+    if Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 pub fn command_output_text(output: &Output) -> String {

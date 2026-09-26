@@ -180,7 +180,8 @@ def build_instrumented_runtime():
     binaries: last, with `-u`."""
     env = {name: value for name, value in os.environ.items()
            if "LLVM_COV" not in name and not name.startswith("RUSTC_")}
-    env["RUSTFLAGS"] = "-C instrument-coverage"
+    # mesh_coverage: a program told to stop (SIGTERM) writes its profile first.
+    env["RUSTFLAGS"] = "-C instrument-coverage --cfg mesh_coverage"
     env["CARGO_TARGET_DIR"] = str(RUNTIME_BUILD)
     # RUSTFLAGS instrument the proc macros too, which rustc then runs: their
     # profiles would land in the working directory.
