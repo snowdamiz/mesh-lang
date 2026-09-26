@@ -667,19 +667,59 @@ pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
     }
 }
 
+/// The column `Repo.get`, `update`, `delete` and `update_changeset` find a
+/// row by: the table's primary key, read from the catalog, or `id` for a
+/// table without a one-column one (a view, a composite key).
+// ponytail: cached per pool handle and table for the process's life; a key
+// changed by a migration while the pool is open is not seen.
+unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
+    use std::sync::{Mutex, OnceLock};
+    static KEYS: OnceLock<Mutex<HashMap<(u64, String), String>>> = OnceLock::new();
+    let keys = KEYS.get_or_init(Default::default);
+    let cache_key = (pool, table.to_string());
+    if let Some(key) = keys.lock().unwrap().get(&cache_key) {
+        return Ok(key.clone());
+    }
+    let sql = "SELECT a.attname FROM pg_index i \
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) \
+        WHERE i.indrelid = to_regclass($1) AND i.indisprimary";
+    let result = mesh_pool_query(
+        pool,
+        rust_str_to_mesh(sql) as *const MeshString,
+        strings_to_mesh_list(&[quote_ident(table)]),
+    );
+    let r = &*(result as *const MeshResult);
+    if r.tag != 0 {
+        return Err(result);
+    }
+    let key = if mesh_list_length(r.value) == 1 {
+        let row = mesh_list_get(r.value, 0) as *mut u8;
+        let name = mesh_map_get(row, rust_str_to_mesh("attname") as u64);
+        mesh_str_ref(name as *mut u8).to_string()
+    } else {
+        "id".to_string()
+    };
+    keys.lock().unwrap().insert(cache_key, key.clone());
+    Ok(key)
+}
+
 /// Fetch a single row by primary key.
 ///
 /// `Repo.get(pool, table, id)` -> `Result<Map<String,String>, String>`
 ///
-/// Builds: `SELECT * FROM "table" WHERE "id" = $1 LIMIT 1`
+/// Builds: `SELECT * FROM "table" WHERE "<primary key>" = $1 LIMIT 1`
 #[no_mangle]
 pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = mesh_str_ref(table);
+        let key = match primary_key(pool, table_str) {
+            Ok(key) => key,
+            Err(error) => return error,
+        };
         let sql = format!(
             "SELECT * FROM {} WHERE {} = $1 LIMIT 1",
             quote_ident(table_str),
-            quote_ident("id")
+            quote_ident(&key)
         );
         let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
@@ -1094,8 +1134,11 @@ pub extern "C" fn mesh_repo_update(
             return err_result("update: no fields provided");
         }
 
-        // Build UPDATE SQL: SET columns, WHERE id =, RETURNING *
-        let wheres = vec!["id =".to_string()];
+        // Build UPDATE SQL: SET columns, WHERE <primary key> =, RETURNING *
+        let wheres = match primary_key(pool, table_str) {
+            Ok(key) => vec![format!("{key} =")],
+            Err(error) => return error,
+        };
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
 
@@ -1127,15 +1170,18 @@ pub extern "C" fn mesh_repo_update(
 ///
 /// `Repo.delete(pool, table, id)` -> `Result<Map<String,String>, String>`
 ///
-/// 1. Builds DELETE SQL with WHERE id = $1, RETURNING *
+/// 1. Builds DELETE SQL with WHERE <primary key> = $1, RETURNING *
 /// 2. Returns the first (deleted) row
 #[no_mangle]
 pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = mesh_str_ref(table);
 
-        // Build DELETE SQL: WHERE id =, RETURNING *
-        let wheres = vec!["id =".to_string()];
+        // Build DELETE SQL: WHERE <primary key> =, RETURNING *
+        let wheres = match primary_key(pool, table_str) {
+            Ok(key) => vec![format!("{key} =")],
+            Err(error) => return error,
+        };
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_delete_sql_pure(table_str, &wheres, &returning);
 
@@ -1310,7 +1356,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
 ///
 /// `Repo.update_changeset(pool, table, id, changeset)` -> `Result<Map<String,String>, Changeset>`
 ///
-/// Same pattern as insert_changeset but builds UPDATE SQL with WHERE id = $N+1.
+/// Same pattern as insert_changeset but builds UPDATE SQL with WHERE <primary key> = $N+1.
 #[no_mangle]
 pub extern "C" fn mesh_repo_update_changeset(
     pool: u64,
@@ -1334,7 +1380,10 @@ pub extern "C" fn mesh_repo_update_changeset(
 
         // 3. Build UPDATE SQL with RETURNING *
         let table_str = mesh_str_ref(table);
-        let wheres = vec!["id =".to_string()];
+        let wheres = match primary_key(pool, table_str) {
+            Ok(key) => vec![format!("{key} =")],
+            Err(error) => return changeset_write_result(error, changeset, "not found"),
+        };
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
 

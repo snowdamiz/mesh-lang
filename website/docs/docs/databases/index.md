@@ -317,7 +317,7 @@ changeset operations, whose error is the changeset itself.
 |----------|-------------|
 | `Repo.all(pool, query)` | Return all rows |
 | `Repo.one(pool, query)` | Return the first row, or `Err("not found")` |
-| `Repo.get(pool, table, id)` | Read by primary-key value |
+| `Repo.get(pool, table, id)` | Read by primary-key value (the table's primary key column, or `id` when it has no single-column one) |
 | `Repo.get_by(pool, table, field, value)` | Read by one field |
 | `Repo.count(pool, query)` | Count matching rows: `Result<Int, String>` |
 | `Repo.exists(pool, query)` | Test whether a match exists: `Result<Bool, String>` |
@@ -329,10 +329,10 @@ changeset operations, whose error is the changeset itself.
 |----------|-------------|
 | `Repo.insert(pool, table, fields)` | Insert string-valued fields and return the row |
 | `Repo.insert_expr(pool, table, fields)` | Insert expression-valued fields |
-| `Repo.update(pool, table, id, fields)` | Update by primary key from a `Map<String, String>`; returns the updated row |
+| `Repo.update(pool, table, id, fields)` | Update by primary key (as `Repo.get` finds it) from a `Map<String, String>`; returns the updated row |
 | `Repo.update_where(pool, table, fields, query)` | Update matching rows with string values |
 | `Repo.update_where_expr(pool, table, fields, query)` | Update matching rows with expressions |
-| `Repo.delete(pool, table, id)` | Delete by primary key and return the row |
+| `Repo.delete(pool, table, id)` | Delete by primary key (as `Repo.get` finds it) and return the row |
 | `Repo.delete_where(pool, table, query)` | Delete matching rows and return a count |
 | `Repo.delete_where_returning(pool, table, query)` | Delete and return rows |
 | `Repo.insert_or_update(pool, table, fields, conflict_fields, update_fields)` | Upsert string-valued fields |
