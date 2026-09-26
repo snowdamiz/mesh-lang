@@ -8,7 +8,7 @@ use inkwell::context::Context;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType};
 use rustc_hash::FxHashMap;
 
-use crate::mir::{MirSumTypeDef, MirType};
+use crate::mir::{by_sum_type_name, MirSumTypeDef, MirType};
 
 /// Convert a `MirType` to its LLVM `BasicTypeEnum` representation.
 ///
@@ -48,33 +48,20 @@ pub fn llvm_type<'ctx>(
             let field_refs: Vec<BasicTypeEnum<'ctx>> = field_types;
             context.struct_type(&field_refs, false).into()
         }
-        MirType::Struct(name) => {
-            if let Some(st) = struct_types.get(name) {
-                (*st).into()
-            } else {
-                // Fallback: return opaque struct
-                context.opaque_struct_type(name).as_basic_type_enum()
-            }
-        }
-        MirType::SumType(name) => {
-            if let Some(st) = sum_type_layouts.get(name) {
-                (*st).into()
-            } else if let Some(base) = name.split('_').next() {
-                // Monomorphized type (e.g., Result_String_String -> Result)
-                if let Some(st) = sum_type_layouts.get(base) {
-                    (*st).into()
-                } else {
-                    context
-                        .struct_type(&[context.i8_type().into()], false)
-                        .into()
-                }
-            } else {
-                // Fallback: just tag byte
-                context
-                    .struct_type(&[context.i8_type().into()], false)
-                    .into()
-            }
-        }
+        // A name without a layout (a type lowering could not resolve) is an
+        // opaque struct, or a sum type's bare tag.
+        MirType::Struct(name) => struct_types
+            .get(name)
+            .map_or_else(|| context.opaque_struct_type(name), |st| *st)
+            .into(),
+        // An instance of a generic sum type (`Result_String_String`) has
+        // its base type's layout.
+        MirType::SumType(name) => by_sum_type_name(sum_type_layouts, name)
+            .map_or_else(
+                || context.struct_type(&[context.i8_type().into()], false),
+                |st| *st,
+            )
+            .into(),
         MirType::FnPtr(_, _) => context.ptr_type(inkwell::AddressSpace::default()).into(),
         MirType::Closure(_, _) => closure_type(context).into(),
         MirType::Ptr => context.ptr_type(inkwell::AddressSpace::default()).into(),

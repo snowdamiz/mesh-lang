@@ -31,7 +31,10 @@ use inkwell::values::{FunctionValue, InstructionOpcode, PointerValue};
 use inkwell::OptimizationLevel;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mir::{MirFunction, MirModule, MirNativeFunction, MirStructDef, MirSumTypeDef, MirType};
+use crate::mir::{
+    by_sum_type_name, sum_type_base, MirFunction, MirModule, MirNativeFunction, MirStructDef,
+    MirSumTypeDef, MirType,
+};
 use crate::DeclaredRuntimeRegistration;
 use crate::StartupWorkRegistration;
 
@@ -122,27 +125,20 @@ pub struct CodeGen<'ctx> {
     pub(crate) tce_param_slots: Vec<Option<PointerValue<'ctx>>>,
 }
 
+/// Whether a variant field of type `ty` can be laid out yet: a sum type held
+/// by value needs its own layout first. (A tuple field is a pointer.)
 fn sum_type_layout_dependencies_ready(
     ty: &MirType,
     known_names: &FxHashSet<String>,
     layouts: &FxHashMap<String, StructType<'_>>,
 ) -> bool {
-    match ty {
-        MirType::SumType(name) => {
-            let dependency = if known_names.contains(name) {
-                Some(name.as_str())
-            } else {
-                name.split('_')
-                    .next()
-                    .filter(|base| known_names.contains(*base))
-            };
-            dependency.is_none_or(|dependency| layouts.contains_key(dependency))
-        }
-        MirType::Tuple(elements) => elements
-            .iter()
-            .all(|element| sum_type_layout_dependencies_ready(element, known_names, layouts)),
-        _ => true,
-    }
+    let MirType::SumType(name) = ty else {
+        return true;
+    };
+    [name.as_str(), sum_type_base(name)]
+        .into_iter()
+        .find(|name| known_names.contains(*name))
+        .is_none_or(|dependency| layouts.contains_key(dependency))
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -518,27 +514,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// Look up a sum type layout by name, falling back to the base name
     /// for monomorphized types (e.g., `Result_String_String` -> `Result`).
     pub(crate) fn lookup_sum_type_layout(&self, name: &str) -> Option<&StructType<'ctx>> {
-        if let Some(layout) = self.sum_type_layouts.get(name) {
-            return Some(layout);
-        }
-        if let Some(base) = name.split('_').next() {
-            self.sum_type_layouts.get(base)
-        } else {
-            None
-        }
+        by_sum_type_name(&self.sum_type_layouts, name)
     }
 
     /// Look up a sum type definition by name, falling back to the base name
     /// for monomorphized types.
     pub(crate) fn lookup_sum_type_def(&self, name: &str) -> Option<&MirSumTypeDef> {
-        if let Some(def) = self.sum_type_defs.get(name) {
-            return Some(def);
-        }
-        if let Some(base) = name.split('_').next() {
-            self.sum_type_defs.get(base)
-        } else {
-            None
-        }
+        by_sum_type_name(&self.sum_type_defs, name)
     }
 
     fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), String> {

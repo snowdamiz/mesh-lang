@@ -29,7 +29,7 @@ use crate::declared::declared_route_wrapper_name;
 
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
-    BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
+    sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
     MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
     MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape, UnaryOp,
 };
@@ -149,9 +149,6 @@ fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
     (trait_name, trait_type_args, type_name)
 }
 
-/// Build a mangled trait method name, incorporating trait type args when present.
-/// Non-parameterized: `Trait__method__Type` (e.g., `Display__to_string__Int`)
-/// Parameterized: `Trait_TypeArg__method__ImplType` (e.g., `From_Int__from__Float`)
 /// The runtime function a built-in impl's method is (`Hash__hash__Int` is
 /// `mesh_hash_int`), else `mangled` itself.
 fn builtin_trait_redirect(mangled: String) -> String {
@@ -172,6 +169,9 @@ fn builtin_trait_redirect(mangled: String) -> String {
     }
 }
 
+/// Build a mangled trait method name, incorporating trait type args when present.
+/// Non-parameterized: `Trait__method__Type` (e.g., `Display__to_string__Int`)
+/// Parameterized: `Trait_TypeArg__method__ImplType` (e.g., `From_Int__from__Float`)
 fn mangle_trait_method(
     trait_name: &str,
     trait_type_args: &[String],
@@ -187,16 +187,6 @@ fn mangle_trait_method(
             trait_name, args_str, method_name, impl_type_name
         )
     }
-}
-
-/// Substitute type parameters in a `Ty` using a substitution map.
-///
-/// Replaces `Ty::Con("T")` with the corresponding concrete type from the map.
-/// Recursively handles `Ty::App`, `Ty::Fun`, and `Ty::Tuple`.
-/// The base name of a sum type, with any instantiation suffix (`Tree_Int`
-/// is `Tree`) removed: the layout code keys generic instances by base name.
-fn sum_type_base(name: &str) -> &str {
-    name.split('_').next().unwrap_or(name)
 }
 
 /// For every sum type, the sum types it reaches through payloads held by
@@ -253,6 +243,10 @@ fn sum_type_reach(registry: &mesh_typeck::TypeRegistry) -> HashMap<String, HashS
     }
 }
 
+/// Substitute type parameters in a `Ty` using a substitution map.
+///
+/// Replaces `Ty::Con("T")` with the corresponding concrete type from the map.
+/// Recursively handles `Ty::App`, `Ty::Fun`, and `Ty::Tuple`.
 fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
     match ty {
         Ty::Con(con) => {

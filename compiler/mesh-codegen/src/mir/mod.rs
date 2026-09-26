@@ -12,6 +12,20 @@ pub mod types;
 
 use std::fmt;
 
+use rustc_hash::FxHashMap;
+
+/// The base name of a sum type, with any instantiation suffix (`Tree_Int`
+/// is `Tree`) removed: layouts and definitions of generic types are keyed
+/// by base name.
+pub(crate) fn sum_type_base(name: &str) -> &str {
+    name.split_once('_').map_or(name, |(base, _)| base)
+}
+
+/// What `map` holds for the sum type `name`, or else for its base type.
+pub(crate) fn by_sum_type_name<'a, V>(map: &'a FxHashMap<String, V>, name: &str) -> Option<&'a V> {
+    map.get(name).or_else(|| map.get(sum_type_base(name)))
+}
+
 // ── MirModule ─────────────────────────────────────────────────────────
 
 /// Top-level compilation unit containing all functions, structs, and sum types.
