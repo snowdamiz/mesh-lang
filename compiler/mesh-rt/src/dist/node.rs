@@ -1452,9 +1452,6 @@ pub(crate) const DIST_MONITOR_EXIT: u8 = 0x18;
 /// Distribution message tag: bidirectional link request.
 /// Wire format: [tag][u64 from_pid][u64 to_pid]
 pub(crate) const DIST_LINK: u8 = 0x13;
-/// Distribution message tag: unlink request.
-/// Wire format: [tag][u64 from_pid][u64 to_pid]
-pub(crate) const DIST_UNLINK: u8 = 0x14;
 /// Distribution message tag: exit signal propagation.
 /// Wire format: [tag][u64 from_pid][u64 to_pid][reason_bytes]
 pub(crate) const DIST_EXIT: u8 = 0x15;
@@ -2206,19 +2203,6 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                             let sched = crate::actor::global_scheduler();
                             if let Some(proc_arc) = sched.get_process(to_pid) {
                                 proc_arc.lock().links.insert(from_pid);
-                            }
-                        }
-                    }
-                    DIST_UNLINK => {
-                        // Wire format: [tag][u64 from_pid][u64 to_pid]
-                        if msg.len() >= 17 {
-                            let from_pid =
-                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
-                            let to_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let sched = crate::actor::global_scheduler();
-                            if let Some(proc_arc) = sched.get_process(to_pid) {
-                                proc_arc.lock().links.remove(&from_pid);
                             }
                         }
                     }
