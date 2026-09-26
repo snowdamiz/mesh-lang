@@ -1007,7 +1007,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     fn start_rejecting_server(port: u16) {
@@ -1022,7 +1021,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     /// Start a WS server with per-test connect/close counters.
@@ -1045,7 +1043,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     fn start_close_recording_server(port: u16, record: &'static CloseRecord) {
@@ -1061,7 +1058,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     /// Start a WS server where on_message always panics.
@@ -1077,7 +1073,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     fn start_blocked_server(port: u16, blocked: &'static AtomicBool) {
@@ -1093,13 +1088,23 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
     }
 
     /// Connect to a WS server and complete the HTTP upgrade handshake.
     /// Reads the HTTP response byte-by-byte to avoid consuming frame data.
+    /// A server started on a thread of its own may not listen yet (a loaded
+    /// host is slow to run it): connecting is retried for a while.
     fn ws_connect(port: u16) -> TcpStream {
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut stream = loop {
+            match TcpStream::connect(("127.0.0.1", port)) {
+                Ok(stream) => break stream,
+                Err(error) if std::time::Instant::now() >= deadline => {
+                    panic!("no WebSocket server on port {port}: {error}")
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(20)),
+            }
+        };
         stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
@@ -1302,7 +1307,6 @@ mod tests {
                 port as i64,
             );
         });
-        std::thread::sleep(Duration::from_millis(200));
         let mut stream = ws_connect(port);
         ws_send_close(&mut stream, 1000);
         let _ = read_frame(&mut stream).unwrap();
@@ -1545,7 +1549,6 @@ mod tests {
         assert_eq!(code, 1011, "actor crash should send close code 1011");
 
         // Second connection: server should still be accepting
-        std::thread::sleep(Duration::from_millis(200));
         let _stream2 = ws_connect(port); // panics if server is dead
     }
 

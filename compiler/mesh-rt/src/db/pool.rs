@@ -586,12 +586,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
     fn test_pool_execute_postgres_round_trip() {
         mesh_rt_init();
 
-        let database_url = std::env::var("DATABASE_URL")
-            .expect("DATABASE_URL must be set for test_pool_execute_postgres_round_trip");
+        let database_url = std::env::var("MESH_TEST_DATABASE_URL")
+            .expect("MESH_TEST_DATABASE_URL must be set for test_pool_execute_postgres_round_trip");
         let url = mk_str(database_url.as_bytes());
         let open_result = mesh_pool_open(url, 1, 2, 5000);
         let open = unsafe { &*(open_result as *const MeshResult) };
