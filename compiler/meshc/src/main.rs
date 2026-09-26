@@ -1275,42 +1275,32 @@ fn collect_inferred_fn_usage_types(
                 })?
                 .cloned()
         };
-        for node in parse.syntax().descendants() {
-            match node.kind() {
-                SyntaxKind::NAME_REF => {
-                    if let Some(name_ref) = NameRef::cast(node.clone()) {
-                        if let Some(name) = overload_target(&node).or_else(|| name_ref.text()) {
-                            if candidate_names.contains(&name) {
-                                if let Some(ty) = typeck.types.get(&name_ref.syntax().text_range())
-                                {
-                                    push_usage_type(&mut usage, &name, ty);
-                                }
-                            }
-                        }
-                    }
-                }
-                SyntaxKind::FIELD_ACCESS => {
-                    if let Some(field_access) = FieldAccess::cast(node) {
-                        // `Module.name`: the base names an imported module.
-                        let base = match field_access.base() {
-                            Some(mesh_parser::ast::expr::Expr::NameRef(base)) => base.text(),
-                            _ => None,
-                        };
-                        if !base.is_some_and(|name| typeck.qualified_modules.contains_key(&name)) {
-                            continue;
-                        }
-                        let Some(field_name) = overload_target(field_access.syntax())
-                            .or_else(|| field_access.field().map(|t| t.text().to_string()))
-                            .filter(|name| candidate_names.contains(name))
-                        else {
-                            continue;
-                        };
-                        if let Some(ty) = typeck.types.get(&field_access.syntax().text_range()) {
-                            push_usage_type(&mut usage, &field_name, ty);
-                        }
-                    }
-                }
-                _ => {}
+        for name_ref in parse.syntax().descendants().filter_map(NameRef::cast) {
+            let name = overload_target(name_ref.syntax()).or_else(|| name_ref.text());
+            let Some(name) = name.filter(|name| candidate_names.contains(name)) else {
+                continue;
+            };
+            if let Some(ty) = typeck.types.get(&name_ref.syntax().text_range()) {
+                push_usage_type(&mut usage, &name, ty);
+            }
+        }
+        for field_access in parse.syntax().descendants().filter_map(FieldAccess::cast) {
+            // `Module.name`: the base names an imported module.
+            let base = match field_access.base() {
+                Some(mesh_parser::ast::expr::Expr::NameRef(base)) => base.text(),
+                _ => None,
+            };
+            if !base.is_some_and(|name| typeck.qualified_modules.contains_key(&name)) {
+                continue;
+            }
+            let Some(field_name) = overload_target(field_access.syntax())
+                .or_else(|| field_access.field().map(|t| t.text().to_string()))
+                .filter(|name| candidate_names.contains(name))
+            else {
+                continue;
+            };
+            if let Some(ty) = typeck.types.get(&field_access.syntax().text_range()) {
+                push_usage_type(&mut usage, &field_name, ty);
             }
         }
     }
