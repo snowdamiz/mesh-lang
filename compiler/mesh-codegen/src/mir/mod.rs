@@ -498,7 +498,6 @@ pub enum MirExpr {
         filter: Option<Box<MirExpr>>,
         body: Box<MirExpr>,
         elem_ty: MirType,
-        body_ty: MirType,
         ty: MirType,
     },
 
@@ -513,7 +512,6 @@ pub enum MirExpr {
         body: Box<MirExpr>,
         key_ty: MirType,
         val_ty: MirType,
-        body_ty: MirType,
         ty: MirType,
     },
 
@@ -526,7 +524,6 @@ pub enum MirExpr {
         filter: Option<Box<MirExpr>>,
         body: Box<MirExpr>,
         elem_ty: MirType,
-        body_ty: MirType,
         ty: MirType,
     },
 
@@ -543,8 +540,6 @@ pub enum MirExpr {
         body: Box<MirExpr>,
         /// Resolved element type (Item type for the concrete iterator type).
         elem_ty: MirType,
-        /// Type of body expression (for list builder element conversion).
-        body_ty: MirType,
         /// The function that advances the iterator: a user impl's
         /// `Iterator__next__TypeName`, or the runtime's generic `next`.
         next_fn: String,

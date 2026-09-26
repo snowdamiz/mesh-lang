@@ -9939,7 +9939,6 @@ impl<'a> Lowerer<'a> {
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
         let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
         let (filter, body) = self.lower_loop_parts(for_in, elem, Some(&elem_ty));
-        let body_ty = body.ty().clone();
         self.pop_scope();
 
         MirExpr::ForInIterator {
@@ -9948,7 +9947,6 @@ impl<'a> Lowerer<'a> {
             filter,
             body: Box::new(body),
             elem_ty: elem_mir_ty,
-            body_ty,
             next_fn,
             iter_fn,
             ty: MirType::Ptr,
@@ -9998,7 +9996,6 @@ impl<'a> Lowerer<'a> {
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
         let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
         let (filter, body) = self.lower_loop_parts(for_in, elem, Some(elem_ty_src));
-        let body_ty = body.ty().clone();
         self.pop_scope();
 
         MirExpr::ForInList {
@@ -10007,7 +10004,6 @@ impl<'a> Lowerer<'a> {
             filter,
             body: Box::new(body),
             elem_ty: elem_mir_ty,
-            body_ty,
             ty: MirType::Ptr,
         }
     }
@@ -10065,7 +10061,6 @@ impl<'a> Lowerer<'a> {
         };
         let pair_src = Ty::Tuple(vec![key_ty_src.clone(), val_ty_src.clone()]);
         let (filter, body) = self.lower_loop_parts(for_in, pair, Some(&pair_src));
-        let body_ty = body.ty().clone();
         self.pop_scope();
 
         MirExpr::ForInMap {
@@ -10076,7 +10071,6 @@ impl<'a> Lowerer<'a> {
             body: Box::new(body),
             key_ty: key_mir_ty,
             val_ty: val_mir_ty,
-            body_ty,
             ty: MirType::Ptr,
         }
     }
@@ -10095,7 +10089,6 @@ impl<'a> Lowerer<'a> {
         self.insert_var(var_name.clone(), elem_mir_ty.clone());
         let elem = MirExpr::Var(var_name.clone(), elem_mir_ty.clone());
         let (filter, body) = self.lower_loop_parts(for_in, elem, Some(elem_ty_src));
-        let body_ty = body.ty().clone();
         self.pop_scope();
 
         MirExpr::ForInSet {
@@ -10104,7 +10097,6 @@ impl<'a> Lowerer<'a> {
             filter,
             body: Box::new(body),
             elem_ty: elem_mir_ty,
-            body_ty,
             ty: MirType::Ptr,
         }
     }

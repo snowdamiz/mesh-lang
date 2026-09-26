@@ -3326,7 +3326,6 @@ mod tests {
             filter: None,
             body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
             elem_ty: MirType::Int,
-            body_ty: MirType::Int,
             ty: MirType::Ptr,
         };
         let ir = compile_expr_to_ir(body, MirType::Ptr);

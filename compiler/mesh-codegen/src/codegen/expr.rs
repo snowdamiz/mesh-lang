@@ -4,10 +4,11 @@
 //! into corresponding LLVM IR instructions using the alloca+mem2reg pattern
 //! for control flow merges.
 
+use inkwell::basic_block::BasicBlock;
 use inkwell::intrinsics::Intrinsic;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue, StructValue,
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
 };
 use inkwell::IntPredicate;
 
@@ -179,8 +180,8 @@ impl<'ctx> CodeGen<'ctx> {
                 end,
                 filter,
                 body,
-                ty,
-            } => self.codegen_for_in_range(var, start, end, filter.as_deref(), body, ty),
+                ..
+            } => self.codegen_for_in_range(var, start, end, filter.as_deref(), body),
 
             MirExpr::ForInList {
                 var,
@@ -188,17 +189,8 @@ impl<'ctx> CodeGen<'ctx> {
                 filter,
                 body,
                 elem_ty,
-                body_ty,
-                ty,
-            } => self.codegen_for_in_list(
-                var,
-                collection,
-                filter.as_deref(),
-                body,
-                elem_ty,
-                body_ty,
-                ty,
-            ),
+                ..
+            } => self.codegen_for_in_list(var, collection, filter.as_deref(), body, elem_ty),
 
             MirExpr::ForInMap {
                 key_var,
@@ -208,8 +200,7 @@ impl<'ctx> CodeGen<'ctx> {
                 body,
                 key_ty,
                 val_ty,
-                body_ty,
-                ty,
+                ..
             } => self.codegen_for_in_map(
                 key_var,
                 val_var,
@@ -218,8 +209,6 @@ impl<'ctx> CodeGen<'ctx> {
                 body,
                 key_ty,
                 val_ty,
-                body_ty,
-                ty,
             ),
 
             MirExpr::ForInSet {
@@ -228,17 +217,8 @@ impl<'ctx> CodeGen<'ctx> {
                 filter,
                 body,
                 elem_ty,
-                body_ty,
-                ty,
-            } => self.codegen_for_in_set(
-                var,
-                collection,
-                filter.as_deref(),
-                body,
-                elem_ty,
-                body_ty,
-                ty,
-            ),
+                ..
+            } => self.codegen_for_in_set(var, collection, filter.as_deref(), body, elem_ty),
 
             MirExpr::ForInIterator {
                 var,
@@ -246,20 +226,17 @@ impl<'ctx> CodeGen<'ctx> {
                 filter,
                 body,
                 elem_ty,
-                body_ty,
                 next_fn,
                 iter_fn,
-                ty,
+                ..
             } => self.codegen_for_in_iterator(
                 var,
                 iterator,
                 filter.as_deref(),
                 body,
                 elem_ty,
-                body_ty,
                 next_fn,
                 iter_fn.as_deref(),
-                ty,
             ),
 
             MirExpr::SupervisorStart {
@@ -3389,23 +3366,16 @@ impl<'ctx> CodeGen<'ctx> {
         start_expr: &MirExpr,
         end_expr: &MirExpr,
         filter: Option<&MirExpr>,
-        body_expr: &MirExpr,
-        _ty: &MirType,
+        body: &MirExpr,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let fn_val = self.current_function();
-        let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Codegen start and end values.
-        let start_val = self.codegen_expr(start_expr)?.into_int_value();
-        let end_val = self.codegen_expr(end_expr)?.into_int_value();
-
-        // Compute range length: max(0, end - start).
+        let start = self.codegen_expr(start_expr)?.into_int_value();
+        let end = self.codegen_expr(end_expr)?.into_int_value();
+        // The list holds max(0, end - start) values.
+        let zero = self.context.i64_type().const_zero();
         let diff = self
             .builder
-            .build_int_sub(end_val, start_val, "range_diff")
+            .build_int_sub(end, start, "range_diff")
             .map_err(|e| e.to_string())?;
-        let zero = i64_ty.const_int(0, false);
         let is_positive = self
             .builder
             .build_int_compare(IntPredicate::SGT, diff, zero, "is_positive")
@@ -3415,160 +3385,183 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_positive, diff, zero, "range_len")
             .map_err(|e| e.to_string())?
             .into_int_value();
+        self.codegen_indexed_comprehension(
+            (start, end),
+            range_len,
+            &[(var, &MirType::Int)],
+            filter,
+            body,
+            |_, index| Ok(vec![index.into()]),
+        )
+    }
 
-        // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
-        let result_list = self
-            .builder
-            .build_call(list_builder_new, &[range_len.into()], "result_list")
+    /// Call a runtime function that returns a value.
+    fn call_runtime(
+        &self,
+        name: &str,
+        args: &[BasicMetadataValueEnum<'ctx>],
+        label: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        self.builder
+            .build_call(get_intrinsic(&self.module, name), args, label)
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
-            .into_pointer_value();
+            .ok_or_else(|| format!("{name} returned void"))
+    }
 
-        // Alloca to hold the result list pointer (for break to return partial list).
-        let result_alloca = self
+    /// A for-in loop: the list of `body`'s values for the elements `filter`
+    /// keeps, with `vars` bound to each element's values.
+    ///
+    /// In the loop's header, `header` branches to the body block it is given
+    /// while there is an element and to the exit block after the last; in
+    /// the body block, `element` turns what it returned into the value of
+    /// each of `vars`. `advance` moves to the next element in the latch,
+    /// where `continue` goes; `break` leaves with the list so far.
+    #[allow(clippy::too_many_arguments)]
+    fn codegen_comprehension<T>(
+        &mut self,
+        capacity: IntValue<'ctx>,
+        vars: &[(&str, &MirType)],
+        filter: Option<&MirExpr>,
+        body: &MirExpr,
+        header: impl FnOnce(&mut Self, BasicBlock<'ctx>, BasicBlock<'ctx>) -> Result<T, String>,
+        element: impl FnOnce(&mut Self, T) -> Result<Vec<BasicValueEnum<'ctx>>, String>,
+        advance: impl FnOnce(&mut Self) -> Result<(), String>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let fn_val = self.current_function();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        // The list builder moves when it grows, so it lives in a slot.
+        let list = self.call_runtime("mesh_list_builder_new", &[capacity.into()], "result_list")?;
+        let result = self
             .builder
             .build_alloca(ptr_ty, "result_alloca")
             .map_err(|e| e.to_string())?;
         self.builder
-            .build_store(result_alloca, result_list)
+            .build_store(result, list)
             .map_err(|e| e.to_string())?;
 
-        // Create alloca for the loop counter.
-        let counter = self
-            .builder
-            .build_alloca(i64_ty, var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, start_val)
-            .map_err(|e| e.to_string())?;
-
-        // Create four basic blocks: header, body, latch, merge.
         let header_bb = self.context.append_basic_block(fn_val, "forin_header");
         let body_bb = self.context.append_basic_block(fn_val, "forin_body");
         let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
         let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
-
-        // Push loop context: continue -> latch, break -> merge.
-        self.loop_stack.push((latch_bb, merge_bb));
-
-        // Branch from current block to header.
         self.builder
             .build_unconditional_branch(header_bb)
             .map_err(|e| e.to_string())?;
-
-        // -- Header block: load counter, compare < end, branch --
         self.builder.position_at_end(header_bb);
-        let counter_val = self
-            .builder
-            .build_load(i64_ty, counter, "i")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, counter_val, end_val, "forin_cmp")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_conditional_branch(cmp, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
+        let current = header(self, body_bb, merge_bb)?;
 
-        // -- Body block: bind loop variable, codegen body --
         self.builder.position_at_end(body_bb);
-
-        // Save previous local binding for the variable name (if any).
-        let old_alloca = self.locals.insert(var.to_string(), counter);
-        let old_type = self.local_types.insert(var.to_string(), MirType::Int);
-
-        // If filter present, add conditional branch to skip body+push.
-        if let Some(filter_expr) = filter {
-            let filter_val = self.codegen_expr(filter_expr)?.into_int_value();
-            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
+        let values = element(self, current)?;
+        let mut saved = Vec::with_capacity(vars.len());
+        for (&(name, ty), value) in vars.iter().zip(values) {
+            saved.push(self.bind_local(name, ty, value)?);
+        }
+        self.loop_stack.push((latch_bb, merge_bb));
+        if let Some(filter) = filter {
+            let keep = self.codegen_expr(filter)?.into_int_value();
+            let keep_bb = self.context.append_basic_block(fn_val, "forin_do_body");
             self.builder
-                .build_conditional_branch(filter_val, do_body_bb, latch_bb)
+                .build_conditional_branch(keep, keep_bb, latch_bb)
                 .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(do_body_bb);
+            self.builder.position_at_end(keep_bb);
         }
-
-        // Codegen the body expression.
-        let body_val = self.codegen_expr(body_expr)?;
-
-        // After body, if block is not terminated, push body result to result list.
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                let body_ty = body_expr.ty();
-                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
-                let result_loaded = self
-                    .builder
-                    .build_load(ptr_ty, result_alloca, "res_list")
-                    .map_err(|e| e.to_string())?
-                    .into_pointer_value();
-                // The builder moves when it grows: keep what push returns.
-                let pushed = self
-                    .builder
-                    .build_call(
-                        list_builder_push,
-                        &[result_loaded.into(), body_as_i64.into()],
-                        "res_list_pushed",
-                    )
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_builder_push returned void")?;
-                self.builder
-                    .build_store(result_alloca, pushed)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_unconditional_branch(latch_bb)
-                    .map_err(|e| e.to_string())?;
-            }
+        let value = self.codegen_expr(body)?;
+        // A body that ends in `break`, `continue` or `return` has left.
+        if self
+            .builder
+            .get_insert_block()
+            .is_some_and(|bb| bb.get_terminator().is_none())
+        {
+            let value = self.convert_to_list_element(value, body.ty())?;
+            let list = self
+                .builder
+                .build_load(ptr_ty, result, "res_list")
+                .map_err(|e| e.to_string())?;
+            let pushed = self.call_runtime(
+                "mesh_list_builder_push",
+                &[list.into(), value.into()],
+                "res_list_pushed",
+            )?;
+            self.builder
+                .build_store(result, pushed)
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_unconditional_branch(latch_bb)
+                .map_err(|e| e.to_string())?;
         }
+        self.loop_stack.pop();
+        self.restore_locals(saved);
 
-        // -- Latch block: increment counter, reduction check, branch to header --
         self.builder.position_at_end(latch_bb);
-        let latch_counter = self
-            .builder
-            .build_load(i64_ty, counter, "i_latch")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let incremented = self
-            .builder
-            .build_int_add(latch_counter, i64_ty.const_int(1, false), "i_next")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, incremented)
-            .map_err(|e| e.to_string())?;
+        advance(self)?;
         self.emit_reduction_check();
         self.builder
             .build_unconditional_branch(header_bb)
             .map_err(|e| e.to_string())?;
 
-        // -- Cleanup --
-        self.loop_stack.pop();
-
-        // Restore previous local binding.
-        if let Some(prev) = old_alloca {
-            self.locals.insert(var.to_string(), prev);
-        } else {
-            self.locals.remove(var);
-        }
-        if let Some(prev) = old_type {
-            self.local_types.insert(var.to_string(), prev);
-        } else {
-            self.local_types.remove(var);
-        }
-
-        // Position at merge block.
         self.builder.position_at_end(merge_bb);
+        self.builder
+            .build_load(ptr_ty, result, "forin_result")
+            .map_err(|e| e.to_string())
+    }
 
-        // Return the result list (comprehension semantics).
-        let final_result = self
+    /// A for-in loop over the indexes from `start` up to `end`: `element`
+    /// reads the loop variables' values at an index.
+    fn codegen_indexed_comprehension(
+        &mut self,
+        (start, end): (IntValue<'ctx>, IntValue<'ctx>),
+        capacity: IntValue<'ctx>,
+        vars: &[(&str, &MirType)],
+        filter: Option<&MirExpr>,
+        body: &MirExpr,
+        element: impl FnOnce(&mut Self, IntValue<'ctx>) -> Result<Vec<BasicValueEnum<'ctx>>, String>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let counter = self
             .builder
-            .build_load(ptr_ty, result_alloca, "forin_result")
+            .build_alloca(i64_ty, "forin_counter")
             .map_err(|e| e.to_string())?;
-        Ok(final_result)
+        self.builder
+            .build_store(counter, start)
+            .map_err(|e| e.to_string())?;
+        self.codegen_comprehension(
+            capacity,
+            vars,
+            filter,
+            body,
+            |cg, body_bb, merge_bb| {
+                let index = cg
+                    .builder
+                    .build_load(i64_ty, counter, "idx")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let more = cg
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, index, end, "forin_cmp")
+                    .map_err(|e| e.to_string())?;
+                cg.builder
+                    .build_conditional_branch(more, body_bb, merge_bb)
+                    .map_err(|e| e.to_string())?;
+                Ok(index)
+            },
+            element,
+            |cg| {
+                let index = cg
+                    .builder
+                    .build_load(i64_ty, counter, "idx_latch")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let next = cg
+                    .builder
+                    .build_int_add(index, i64_ty.const_int(1, false), "idx_next")
+                    .map_err(|e| e.to_string())?;
+                cg.builder
+                    .build_store(counter, next)
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            },
+        )
     }
 
     fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
@@ -4750,954 +4743,205 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    // ── For-in over List ─────────────────────────────────────────────────
+    // ── For-in over a List, Map or Set ───────────────────────────────
 
     fn codegen_for_in_list(
         &mut self,
         var: &str,
-        collection_expr: &MirExpr,
+        collection: &MirExpr,
         filter: Option<&MirExpr>,
-        body_expr: &MirExpr,
+        body: &MirExpr,
         elem_ty: &MirType,
-        body_ty: &MirType,
-        _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let fn_val = self.current_function();
-        let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Codegen collection expression.
-        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
-
-        // Get length of the list.
-        let list_length = get_intrinsic(&self.module, "mesh_list_length");
+        let list = self.codegen_expr(collection)?;
         let len = self
-            .builder
-            .build_call(list_length, &[collection.into()], "len")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_length returned void".to_string())?
+            .call_runtime("mesh_list_length", &[list.into()], "len")?
             .into_int_value();
-
-        // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
-        let result_list = self
-            .builder
-            .build_call(list_builder_new, &[len.into()], "result_list")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
-            .into_pointer_value();
-
-        // Alloca for result list pointer (break returns partial list).
-        let result_alloca = self
-            .builder
-            .build_alloca(ptr_ty, "result_alloca")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(result_alloca, result_list)
-            .map_err(|e| e.to_string())?;
-
-        // Create counter alloca, store 0.
-        let counter = self
-            .builder
-            .build_alloca(i64_ty, "forin_counter")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, i64_ty.const_int(0, false))
-            .map_err(|e| e.to_string())?;
-
-        // Four basic blocks.
-        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
-        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
-        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
-        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
-
-        // Push loop context: continue -> latch, break -> merge.
-        self.loop_stack.push((latch_bb, merge_bb));
-
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Header: load counter, compare < len, branch --
-        self.builder.position_at_end(header_bb);
-        let counter_val = self
-            .builder
-            .build_load(i64_ty, counter, "idx")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, counter_val, len, "forin_cmp")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_conditional_branch(cmp, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Body: get element, bind loop variable, codegen body, push result --
-        self.builder.position_at_end(body_bb);
-        let counter_in_body = self
-            .builder
-            .build_load(i64_ty, counter, "idx_body")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Call mesh_list_get(collection, counter) -> u64.
-        let list_get = get_intrinsic(&self.module, "mesh_list_get");
-        let raw_elem = self
-            .builder
-            .build_call(
-                list_get,
-                &[collection.into(), counter_in_body.into()],
-                "raw_elem",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_get returned void".to_string())?
-            .into_int_value();
-
-        // Convert from i64 to typed value.
-        let typed_elem = self.convert_from_list_element(raw_elem, elem_ty)?;
-
-        // Create alloca for loop variable.
-        let elem_llvm_ty = self.llvm_type(elem_ty);
-        let var_alloca = self
-            .builder
-            .build_alloca(elem_llvm_ty, var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(var_alloca, typed_elem)
-            .map_err(|e| e.to_string())?;
-
-        // Save old locals for restoration.
-        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
-        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
-
-        // If filter present, add conditional branch to skip body+push.
-        if let Some(filter_expr) = filter {
-            let filter_val = self.codegen_expr(filter_expr)?.into_int_value();
-            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
-            self.builder
-                .build_conditional_branch(filter_val, do_body_bb, latch_bb)
-                .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(do_body_bb);
-        }
-
-        // Codegen body.
-        let body_val = self.codegen_expr(body_expr)?;
-
-        // If not terminated, push body result to result list and branch to latch.
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
-                let result_loaded = self
-                    .builder
-                    .build_load(ptr_ty, result_alloca, "res_list")
-                    .map_err(|e| e.to_string())?
-                    .into_pointer_value();
-                // The builder moves when it grows: keep what push returns.
-                let pushed = self
-                    .builder
-                    .build_call(
-                        list_builder_push,
-                        &[result_loaded.into(), body_as_i64.into()],
-                        "res_list_pushed",
-                    )
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_builder_push returned void")?;
-                self.builder
-                    .build_store(result_alloca, pushed)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_unconditional_branch(latch_bb)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        // -- Latch: increment counter, reduction check, branch to header --
-        self.builder.position_at_end(latch_bb);
-        let latch_counter = self
-            .builder
-            .build_load(i64_ty, counter, "idx_latch")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let incremented = self
-            .builder
-            .build_int_add(latch_counter, i64_ty.const_int(1, false), "idx_next")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, incremented)
-            .map_err(|e| e.to_string())?;
-        self.emit_reduction_check();
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Cleanup --
-        self.loop_stack.pop();
-
-        // Restore old locals.
-        if let Some(prev) = old_alloca {
-            self.locals.insert(var.to_string(), prev);
-        } else {
-            self.locals.remove(var);
-        }
-        if let Some(prev) = old_type {
-            self.local_types.insert(var.to_string(), prev);
-        } else {
-            self.local_types.remove(var);
-        }
-
-        // Position at merge, return result list.
-        self.builder.position_at_end(merge_bb);
-        let final_result = self
-            .builder
-            .build_load(ptr_ty, result_alloca, "forin_result")
-            .map_err(|e| e.to_string())?;
-        Ok(final_result)
+        let start = self.context.i64_type().const_zero();
+        self.codegen_indexed_comprehension(
+            (start, len),
+            len,
+            &[(var, elem_ty)],
+            filter,
+            body,
+            |cg, index| {
+                let raw =
+                    cg.call_runtime("mesh_list_get", &[list.into(), index.into()], "raw_elem")?;
+                Ok(vec![cg.convert_from_list_element(
+                    raw.into_int_value(),
+                    elem_ty,
+                )?])
+            },
+        )
     }
 
-    // ── For-in over Iterator (Iterable/Iterator protocol) ─────────────
-
-    fn codegen_for_in_iterator(
-        &mut self,
-        var: &str,
-        iterator_expr: &MirExpr,
-        filter: Option<&MirExpr>,
-        body_expr: &MirExpr,
-        elem_ty: &MirType,
-        body_ty: &MirType,
-        next_fn: &str,
-        iter_fn: Option<&str>,
-        _ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let fn_val = self.current_function();
-        let i64_ty = self.context.i64_type();
-        let i8_ty = self.context.i8_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Step 1: Codegen the collection/iterator expression.
-        let collection_val = self.codegen_expr(iterator_expr)?;
-
-        // Step 2: An Iterable gives its iterator. An Iterator is its own (a
-        // runtime handle, or a user struct passed to its `next` by value).
-        let iter_val = match iter_fn {
-            Some(iter_fn) => self
-                .builder
-                .build_call(
-                    get_intrinsic(&self.module, iter_fn),
-                    &[collection_val.into()],
-                    "iter",
-                )
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or_else(|| format!("{} returned void", iter_fn))?,
-            None => collection_val,
-        };
-
-        // Step 3: Store iterator in alloca.
-        let iter_ty = iter_val.get_type();
-        let iter_alloca = self
-            .builder
-            .build_alloca(iter_ty, "iter_alloca")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(iter_alloca, iter_val)
-            .map_err(|e| e.to_string())?;
-
-        // Step 4: Pre-allocate result list builder (comprehension semantics).
-        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
-        let result_list = self
-            .builder
-            .build_call(
-                list_builder_new,
-                &[i64_ty.const_int(0, false).into()],
-                "result_list",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
-            .into_pointer_value();
-
-        let result_alloca = self
-            .builder
-            .build_alloca(ptr_ty, "result_alloca")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(result_alloca, result_list)
-            .map_err(|e| e.to_string())?;
-
-        // Step 5: Create basic blocks.
-        let header_bb = self.context.append_basic_block(fn_val, "iter_header");
-        let body_bb = self.context.append_basic_block(fn_val, "iter_body");
-        let latch_bb = self.context.append_basic_block(fn_val, "iter_latch");
-        let merge_bb = self.context.append_basic_block(fn_val, "iter_merge");
-
-        // Push loop context for break/continue.
-        self.loop_stack.push((latch_bb, merge_bb));
-
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // Step 6: Header -- call next(), check Option tag.
-        self.builder.position_at_end(header_bb);
-        let iter_loaded = self
-            .builder
-            .build_load(iter_ty, iter_alloca, "iter_loaded")
-            .map_err(|e| e.to_string())?;
-
-        let next_value = self
-            .builder
-            .build_call(
-                get_intrinsic(&self.module, next_fn),
-                &[iter_loaded.into()],
-                "next_result",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| format!("{} returned void", next_fn))?;
-
-        // Option is MeshOption { tag: u8, value: *mut u8 }.
-        // tag 0 = Some, tag 1 = None.
-        // A runtime iterator returns a pointer to one. A user `next` returns
-        // its `Option` by value, `{ i8, ptr }` with a scalar payload boxed,
-        // which is spilled to read it the same way.
-        let (next_result, mesh_option_ty, boxed_payload) = match next_value {
-            BasicValueEnum::StructValue(option) => {
-                let option_ty = option.get_type();
-                let slot = self
-                    .builder
-                    .build_alloca(option_ty, "next_option")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(slot, option)
-                    .map_err(|e| e.to_string())?;
-                (slot, option_ty, true)
-            }
-            other => (
-                other.into_pointer_value(),
-                self.context
-                    .struct_type(&[i8_ty.into(), ptr_ty.into()], false),
-                false,
-            ),
-        };
-        let tag_ptr = self
-            .builder
-            .build_struct_gep(mesh_option_ty, next_result, 0, "tag_ptr")
-            .map_err(|e| e.to_string())?;
-        let tag_val = self
-            .builder
-            .build_load(i8_ty, tag_ptr, "tag")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Compare tag == 0 (Some).
-        let is_some = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                tag_val,
-                i8_ty.const_int(0, false),
-                "is_some",
-            )
-            .map_err(|e| e.to_string())?;
-
-        self.builder
-            .build_conditional_branch(is_some, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
-
-        // Step 7: Body -- extract element, bind variable, run body, push result.
-        self.builder.position_at_end(body_bb);
-
-        // GEP to value field (index 1).
-        let value_ptr = self
-            .builder
-            .build_struct_gep(mesh_option_ty, next_result, 1, "value_ptr")
-            .map_err(|e| e.to_string())?;
-        let raw_value = self
-            .builder
-            .build_load(ptr_ty, value_ptr, "raw_value")
-            .map_err(|e| e.to_string())?;
-
-        // A boxed payload holds the value itself behind the pointer. A runtime
-        // iterator hands over the element's collection slot, which holds a
-        // scalar's bits or a pointer to a boxed struct or sum value.
-        let raw_value = raw_value.into_pointer_value();
-        let typed_elem = if boxed_payload
-            && !matches!(elem_ty, MirType::Ptr | MirType::String | MirType::Tuple(_))
-        {
-            self.builder
-                .build_load(self.llvm_type(elem_ty), raw_value, "unboxed_elem")
-                .map_err(|e| e.to_string())?
-        } else {
-            let slot = self
-                .builder
-                .build_ptr_to_int(raw_value, i64_ty, "elem_slot")
-                .map_err(|e| e.to_string())?;
-            self.convert_from_list_element(slot, elem_ty)?
-        };
-
-        // Create alloca for loop variable.
-        let elem_llvm_ty = self.llvm_type(elem_ty);
-        let var_alloca = self
-            .builder
-            .build_alloca(elem_llvm_ty, var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(var_alloca, typed_elem)
-            .map_err(|e| e.to_string())?;
-
-        // Save old locals.
-        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
-        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
-
-        // Optional filter.
-        if let Some(filter_expr) = filter {
-            let filter_val = self.codegen_expr(filter_expr)?.into_int_value();
-            let do_body_bb = self.context.append_basic_block(fn_val, "iter_do_body");
-            self.builder
-                .build_conditional_branch(filter_val, do_body_bb, latch_bb)
-                .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(do_body_bb);
-        }
-
-        // Codegen body.
-        let body_val = self.codegen_expr(body_expr)?;
-
-        // Push body result to result list.
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
-                let result_loaded = self
-                    .builder
-                    .build_load(ptr_ty, result_alloca, "res_list")
-                    .map_err(|e| e.to_string())?
-                    .into_pointer_value();
-                // The builder moves when it grows: keep what push returns.
-                let pushed = self
-                    .builder
-                    .build_call(
-                        list_builder_push,
-                        &[result_loaded.into(), body_as_i64.into()],
-                        "res_list_pushed",
-                    )
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_builder_push returned void")?;
-                self.builder
-                    .build_store(result_alloca, pushed)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_unconditional_branch(latch_bb)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        // Step 8: Latch -- reduction check, branch back to header.
-        self.builder.position_at_end(latch_bb);
-        self.emit_reduction_check();
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // Step 9: Cleanup.
-        self.loop_stack.pop();
-
-        if let Some(prev) = old_alloca {
-            self.locals.insert(var.to_string(), prev);
-        } else {
-            self.locals.remove(var);
-        }
-        if let Some(prev) = old_type {
-            self.local_types.insert(var.to_string(), prev);
-        } else {
-            self.local_types.remove(var);
-        }
-
-        // Return result list.
-        self.builder.position_at_end(merge_bb);
-        let final_result = self
-            .builder
-            .build_load(ptr_ty, result_alloca, "iter_result")
-            .map_err(|e| e.to_string())?;
-        Ok(final_result)
-    }
-
-    // ── For-in over Map ──────────────────────────────────────────────────
-
+    #[allow(clippy::too_many_arguments)]
     fn codegen_for_in_map(
         &mut self,
         key_var: &str,
         val_var: &str,
-        collection_expr: &MirExpr,
+        collection: &MirExpr,
         filter: Option<&MirExpr>,
-        body_expr: &MirExpr,
+        body: &MirExpr,
         key_ty: &MirType,
         val_ty: &MirType,
-        body_ty: &MirType,
-        _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let fn_val = self.current_function();
-        let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Codegen collection expression.
-        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
-
-        // Get size of the map.
-        let map_size = get_intrinsic(&self.module, "mesh_map_size");
+        let map = self.codegen_expr(collection)?;
         let len = self
-            .builder
-            .build_call(map_size, &[collection.into()], "map_len")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_map_size returned void".to_string())?
+            .call_runtime("mesh_map_size", &[map.into()], "map_len")?
             .into_int_value();
-
-        // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
-        let result_list = self
-            .builder
-            .build_call(list_builder_new, &[len.into()], "result_list")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
-            .into_pointer_value();
-
-        // Alloca for result list pointer.
-        let result_alloca = self
-            .builder
-            .build_alloca(ptr_ty, "result_alloca")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(result_alloca, result_list)
-            .map_err(|e| e.to_string())?;
-
-        // Create counter alloca, store 0.
-        let counter = self
-            .builder
-            .build_alloca(i64_ty, "forin_counter")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, i64_ty.const_int(0, false))
-            .map_err(|e| e.to_string())?;
-
-        // Four basic blocks.
-        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
-        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
-        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
-        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
-
-        self.loop_stack.push((latch_bb, merge_bb));
-
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Header --
-        self.builder.position_at_end(header_bb);
-        let counter_val = self
-            .builder
-            .build_load(i64_ty, counter, "idx")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, counter_val, len, "forin_cmp")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_conditional_branch(cmp, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Body --
-        self.builder.position_at_end(body_bb);
-        let counter_in_body = self
-            .builder
-            .build_load(i64_ty, counter, "idx_body")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Get key and value for this entry.
-        let map_entry_key = get_intrinsic(&self.module, "mesh_map_entry_key");
-        let raw_key = self
-            .builder
-            .build_call(
-                map_entry_key,
-                &[collection.into(), counter_in_body.into()],
-                "raw_key",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_map_entry_key returned void".to_string())?
-            .into_int_value();
-
-        let map_entry_value = get_intrinsic(&self.module, "mesh_map_entry_value");
-        let raw_val = self
-            .builder
-            .build_call(
-                map_entry_value,
-                &[collection.into(), counter_in_body.into()],
-                "raw_val",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_map_entry_value returned void".to_string())?
-            .into_int_value();
-
-        // Convert from i64 to typed values.
-        let typed_key = self.convert_from_list_element(raw_key, key_ty)?;
-        let typed_val = self.convert_from_list_element(raw_val, val_ty)?;
-
-        // Create allocas for key and value variables.
-        let key_llvm_ty = self.llvm_type(key_ty);
-        let key_alloca = self
-            .builder
-            .build_alloca(key_llvm_ty, key_var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(key_alloca, typed_key)
-            .map_err(|e| e.to_string())?;
-
-        let val_llvm_ty = self.llvm_type(val_ty);
-        let val_alloca = self
-            .builder
-            .build_alloca(val_llvm_ty, val_var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(val_alloca, typed_val)
-            .map_err(|e| e.to_string())?;
-
-        // Save old locals.
-        let old_key_alloca = self.locals.insert(key_var.to_string(), key_alloca);
-        let old_key_type = self.local_types.insert(key_var.to_string(), key_ty.clone());
-        let old_val_alloca = self.locals.insert(val_var.to_string(), val_alloca);
-        let old_val_type = self.local_types.insert(val_var.to_string(), val_ty.clone());
-
-        // If filter present, add conditional branch to skip body+push.
-        if let Some(filter_expr) = filter {
-            let filter_val = self.codegen_expr(filter_expr)?.into_int_value();
-            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
-            self.builder
-                .build_conditional_branch(filter_val, do_body_bb, latch_bb)
-                .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(do_body_bb);
-        }
-
-        // Codegen body.
-        let body_val = self.codegen_expr(body_expr)?;
-
-        // Push body result to result list.
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
-                let result_loaded = self
-                    .builder
-                    .build_load(ptr_ty, result_alloca, "res_list")
-                    .map_err(|e| e.to_string())?
-                    .into_pointer_value();
-                // The builder moves when it grows: keep what push returns.
-                let pushed = self
-                    .builder
-                    .build_call(
-                        list_builder_push,
-                        &[result_loaded.into(), body_as_i64.into()],
-                        "res_list_pushed",
-                    )
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_builder_push returned void")?;
-                self.builder
-                    .build_store(result_alloca, pushed)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_unconditional_branch(latch_bb)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        // -- Latch --
-        self.builder.position_at_end(latch_bb);
-        let latch_counter = self
-            .builder
-            .build_load(i64_ty, counter, "idx_latch")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let incremented = self
-            .builder
-            .build_int_add(latch_counter, i64_ty.const_int(1, false), "idx_next")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, incremented)
-            .map_err(|e| e.to_string())?;
-        self.emit_reduction_check();
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Cleanup --
-        self.loop_stack.pop();
-
-        // Restore old locals for both key and value.
-        if let Some(prev) = old_key_alloca {
-            self.locals.insert(key_var.to_string(), prev);
-        } else {
-            self.locals.remove(key_var);
-        }
-        if let Some(prev) = old_key_type {
-            self.local_types.insert(key_var.to_string(), prev);
-        } else {
-            self.local_types.remove(key_var);
-        }
-        if let Some(prev) = old_val_alloca {
-            self.locals.insert(val_var.to_string(), prev);
-        } else {
-            self.locals.remove(val_var);
-        }
-        if let Some(prev) = old_val_type {
-            self.local_types.insert(val_var.to_string(), prev);
-        } else {
-            self.local_types.remove(val_var);
-        }
-
-        // Position at merge, return result list.
-        self.builder.position_at_end(merge_bb);
-        let final_result = self
-            .builder
-            .build_load(ptr_ty, result_alloca, "forin_result")
-            .map_err(|e| e.to_string())?;
-        Ok(final_result)
+        let start = self.context.i64_type().const_zero();
+        self.codegen_indexed_comprehension(
+            (start, len),
+            len,
+            &[(key_var, key_ty), (val_var, val_ty)],
+            filter,
+            body,
+            |cg, index| {
+                let args = [map.into(), index.into()];
+                let key = cg.call_runtime("mesh_map_entry_key", &args, "raw_key")?;
+                let value = cg.call_runtime("mesh_map_entry_value", &args, "raw_val")?;
+                Ok(vec![
+                    cg.convert_from_list_element(key.into_int_value(), key_ty)?,
+                    cg.convert_from_list_element(value.into_int_value(), val_ty)?,
+                ])
+            },
+        )
     }
-
-    // ── For-in over Set ──────────────────────────────────────────────────
 
     fn codegen_for_in_set(
         &mut self,
         var: &str,
-        collection_expr: &MirExpr,
+        collection: &MirExpr,
         filter: Option<&MirExpr>,
-        body_expr: &MirExpr,
+        body: &MirExpr,
         elem_ty: &MirType,
-        body_ty: &MirType,
-        _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let fn_val = self.current_function();
-        let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Codegen collection expression.
-        let collection = self.codegen_expr(collection_expr)?.into_pointer_value();
-
-        // Get size of the set.
-        let set_size = get_intrinsic(&self.module, "mesh_set_size");
+        let set = self.codegen_expr(collection)?;
         let len = self
-            .builder
-            .build_call(set_size, &[collection.into()], "set_len")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_set_size returned void".to_string())?
+            .call_runtime("mesh_set_size", &[set.into()], "set_len")?
             .into_int_value();
+        let start = self.context.i64_type().const_zero();
+        self.codegen_indexed_comprehension(
+            (start, len),
+            len,
+            &[(var, elem_ty)],
+            filter,
+            body,
+            |cg, index| {
+                let raw = cg.call_runtime(
+                    "mesh_set_element_at",
+                    &[set.into(), index.into()],
+                    "raw_elem",
+                )?;
+                Ok(vec![cg.convert_from_list_element(
+                    raw.into_int_value(),
+                    elem_ty,
+                )?])
+            },
+        )
+    }
 
-        // Pre-allocate result list builder.
-        let list_builder_new = get_intrinsic(&self.module, "mesh_list_builder_new");
-        let result_list = self
-            .builder
-            .build_call(list_builder_new, &[len.into()], "result_list")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_builder_new returned void".to_string())?
-            .into_pointer_value();
+    // ── For-in over an Iterable or Iterator ──────────────────────────
 
-        // Alloca for result list pointer.
-        let result_alloca = self
-            .builder
-            .build_alloca(ptr_ty, "result_alloca")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(result_alloca, result_list)
-            .map_err(|e| e.to_string())?;
-
-        // Create counter alloca, store 0.
-        let counter = self
-            .builder
-            .build_alloca(i64_ty, "forin_counter")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, i64_ty.const_int(0, false))
-            .map_err(|e| e.to_string())?;
-
-        // Four basic blocks.
-        let header_bb = self.context.append_basic_block(fn_val, "forin_header");
-        let body_bb = self.context.append_basic_block(fn_val, "forin_body");
-        let latch_bb = self.context.append_basic_block(fn_val, "forin_latch");
-        let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
-
-        self.loop_stack.push((latch_bb, merge_bb));
-
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Header --
-        self.builder.position_at_end(header_bb);
-        let counter_val = self
-            .builder
-            .build_load(i64_ty, counter, "idx")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, counter_val, len, "forin_cmp")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_conditional_branch(cmp, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Body --
-        self.builder.position_at_end(body_bb);
-        let counter_in_body = self
-            .builder
-            .build_load(i64_ty, counter, "idx_body")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Call mesh_set_element_at(collection, counter) -> u64.
-        let set_element_at = get_intrinsic(&self.module, "mesh_set_element_at");
-        let raw_elem = self
-            .builder
-            .build_call(
-                set_element_at,
-                &[collection.into(), counter_in_body.into()],
-                "raw_elem",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_set_element_at returned void".to_string())?
-            .into_int_value();
-
-        // Convert from i64 to typed value.
-        let typed_elem = self.convert_from_list_element(raw_elem, elem_ty)?;
-
-        // Create alloca for loop variable.
-        let elem_llvm_ty = self.llvm_type(elem_ty);
-        let var_alloca = self
-            .builder
-            .build_alloca(elem_llvm_ty, var)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(var_alloca, typed_elem)
-            .map_err(|e| e.to_string())?;
-
-        // Save old locals.
-        let old_alloca = self.locals.insert(var.to_string(), var_alloca);
-        let old_type = self.local_types.insert(var.to_string(), elem_ty.clone());
-
-        // If filter present, add conditional branch to skip body+push.
-        if let Some(filter_expr) = filter {
-            let filter_val = self.codegen_expr(filter_expr)?.into_int_value();
-            let do_body_bb = self.context.append_basic_block(fn_val, "forin_do_body");
-            self.builder
-                .build_conditional_branch(filter_val, do_body_bb, latch_bb)
-                .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(do_body_bb);
-        }
-
-        // Codegen body.
-        let body_val = self.codegen_expr(body_expr)?;
-
-        // Push body result to result list.
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                let body_as_i64 = self.convert_to_list_element(body_val, body_ty)?;
-                let list_builder_push = get_intrinsic(&self.module, "mesh_list_builder_push");
-                let result_loaded = self
+    #[allow(clippy::too_many_arguments)]
+    fn codegen_for_in_iterator(
+        &mut self,
+        var: &str,
+        iterable: &MirExpr,
+        filter: Option<&MirExpr>,
+        body: &MirExpr,
+        elem_ty: &MirType,
+        next_fn: &str,
+        iter_fn: Option<&str>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let i8_ty = self.context.i8_type();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        // An Iterable gives its iterator. An Iterator is its own (a runtime
+        // handle, or a user struct passed to its `next` by value).
+        let iterable = self.codegen_expr(iterable)?;
+        let iterator = match iter_fn {
+            Some(iter_fn) => self.call_runtime(iter_fn, &[iterable.into()], "iter")?,
+            None => iterable,
+        };
+        self.codegen_comprehension(
+            i64_ty.const_zero(),
+            &[(var, elem_ty)],
+            filter,
+            body,
+            |cg, body_bb, merge_bb| {
+                // A runtime iterator returns a pointer to its `Option`
+                // (`{ tag, value }`, tag 0 for Some). A user `next` returns
+                // it by value, with a scalar payload boxed; it is spilled to
+                // read it the same way.
+                let next = cg.call_runtime(next_fn, &[iterator.into()], "next_result")?;
+                let (option, option_ty, boxed) = match next {
+                    BasicValueEnum::StructValue(option) => {
+                        let option_ty = option.get_type();
+                        let slot = cg
+                            .builder
+                            .build_alloca(option_ty, "next_option")
+                            .map_err(|e| e.to_string())?;
+                        cg.builder
+                            .build_store(slot, option)
+                            .map_err(|e| e.to_string())?;
+                        (slot, option_ty, true)
+                    }
+                    other => (
+                        other.into_pointer_value(),
+                        cg.context
+                            .struct_type(&[i8_ty.into(), ptr_ty.into()], false),
+                        false,
+                    ),
+                };
+                let tag_ptr = cg
                     .builder
-                    .build_load(ptr_ty, result_alloca, "res_list")
+                    .build_struct_gep(option_ty, option, 0, "tag_ptr")
+                    .map_err(|e| e.to_string())?;
+                let tag = cg
+                    .builder
+                    .build_load(i8_ty, tag_ptr, "tag")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let is_some = cg
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, tag, i8_ty.const_zero(), "is_some")
+                    .map_err(|e| e.to_string())?;
+                cg.builder
+                    .build_conditional_branch(is_some, body_bb, merge_bb)
+                    .map_err(|e| e.to_string())?;
+                Ok((option, option_ty, boxed))
+            },
+            |cg, (option, option_ty, boxed)| {
+                let value_ptr = cg
+                    .builder
+                    .build_struct_gep(option_ty, option, 1, "value_ptr")
+                    .map_err(|e| e.to_string())?;
+                let raw = cg
+                    .builder
+                    .build_load(ptr_ty, value_ptr, "raw_value")
                     .map_err(|e| e.to_string())?
                     .into_pointer_value();
-                // The builder moves when it grows: keep what push returns.
-                let pushed = self
-                    .builder
-                    .build_call(
-                        list_builder_push,
-                        &[result_loaded.into(), body_as_i64.into()],
-                        "res_list_pushed",
-                    )
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_builder_push returned void")?;
-                self.builder
-                    .build_store(result_alloca, pushed)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_unconditional_branch(latch_bb)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        // -- Latch --
-        self.builder.position_at_end(latch_bb);
-        let latch_counter = self
-            .builder
-            .build_load(i64_ty, counter, "idx_latch")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let incremented = self
-            .builder
-            .build_int_add(latch_counter, i64_ty.const_int(1, false), "idx_next")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, incremented)
-            .map_err(|e| e.to_string())?;
-        self.emit_reduction_check();
-        self.builder
-            .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
-
-        // -- Cleanup --
-        self.loop_stack.pop();
-
-        // Restore old locals.
-        if let Some(prev) = old_alloca {
-            self.locals.insert(var.to_string(), prev);
-        } else {
-            self.locals.remove(var);
-        }
-        if let Some(prev) = old_type {
-            self.local_types.insert(var.to_string(), prev);
-        } else {
-            self.local_types.remove(var);
-        }
-
-        // Position at merge, return result list.
-        self.builder.position_at_end(merge_bb);
-        let final_result = self
-            .builder
-            .build_load(ptr_ty, result_alloca, "forin_result")
-            .map_err(|e| e.to_string())?;
-        Ok(final_result)
+                // A boxed payload holds the value itself behind the pointer.
+                // A runtime iterator hands over the element's collection
+                // slot, which holds a scalar's bits or a pointer to a boxed
+                // struct or sum value.
+                let value = if boxed && !matches!(elem_ty, MirType::Ptr | MirType::String) {
+                    cg.builder
+                        .build_load(cg.llvm_type(elem_ty), raw, "unboxed_elem")
+                        .map_err(|e| e.to_string())?
+                } else {
+                    let slot = cg
+                        .builder
+                        .build_ptr_to_int(raw, i64_ty, "elem_slot")
+                        .map_err(|e| e.to_string())?;
+                    cg.convert_from_list_element(slot, elem_ty)?
+                };
+                Ok(vec![value])
+            },
+            |_| Ok(()),
+        )
     }
 }
 

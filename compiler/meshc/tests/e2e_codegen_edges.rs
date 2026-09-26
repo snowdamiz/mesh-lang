@@ -1396,3 +1396,82 @@ end
     );
     assert_eq!(output, "[20, 30, 40] 3 2 2\n");
 }
+
+/// Every kind of for-in loop binds its variables over the ones they
+/// shadow, gives them back afterwards, and collects nothing from a body
+/// that leaves by `break`, `continue` or `return`. An Iterable's Float
+/// and Bool elements arrive as themselves.
+#[test]
+fn loops_shadow_their_variables_and_leave_early() {
+    let output = compile_and_run(
+        r#"struct Floats do
+  items :: List<Float>
+end
+
+impl Iterable for Floats do
+  type Item = Float
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+struct Flags do
+  items :: List<Bool>
+end
+
+impl Iterable for Flags do
+  type Item = Bool
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+fn first_big(xs :: List<Int>) -> Int do
+  for x in xs do
+    if x > 10 do
+      return x
+    end
+  end
+  0
+end
+
+fn main() do
+  let k = "k"
+  let v = "v"
+  let x = 100
+  let doubled = for x in Floats { items: [1.5, 2.5] } do
+    x * 2.0
+  end
+  let flipped = for x in Flags { items: [true, false] } when x do
+    not x
+  end
+  let a = for x in 0..5 do
+    break
+  end
+  let b = for x in [1, 2, 3] do
+    continue
+  end
+  let c = for {k, v} in %{"a" => 1} do
+    break
+  end
+  let d = for x in Set.from_list([1, 2]) do
+    continue
+  end
+  let e = for x in Flags { items: [true] } do
+    break
+  end
+  let g = for {k, v} in %{"a" => 1, "b" => 2} when v > 1 do
+    "${k}${v}"
+  end
+  println("${doubled} ${flipped} ${a} ${b} ${c} ${d} ${e} ${g}")
+  println("${k} ${v} ${x} ${first_big([1, 20, 3])} ${first_big([1])}")
+end
+"#,
+    );
+    assert_eq!(
+        output,
+        "[3.0, 5.0] [false] [] [] [] [] [] [b2]\nk v 100 20 0\n"
+    );
+}
