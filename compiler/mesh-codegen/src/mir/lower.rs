@@ -9015,39 +9015,24 @@ impl<'a> Lowerer<'a> {
         };
 
         // Static trait method dispatch: bare `default()` with zero arguments.
-        // The type is resolved from the call-site context (type annotation / inference),
-        // NOT from a first argument (since Default::default has no self parameter).
+        // The type is the call's own, which the type checker fixes (E0064),
+        // not a first argument's (Default::default has no self parameter).
         if let MirExpr::Var(ref name, _) = callee {
             if name == "default" && args.is_empty() {
-                let type_name = mir_type_to_impl_name(&ty);
-                let mangled = format!("Default__default__{}", type_name);
-                // Primitive Default short-circuits: return MIR literals directly.
-                match mangled.as_str() {
-                    "Default__default__Int" => return MirExpr::IntLit(0, MirType::Int),
-                    "Default__default__Float" => return MirExpr::FloatLit(0.0, MirType::Float),
-                    "Default__default__Bool" => return MirExpr::BoolLit(false, MirType::Bool),
-                    "Default__default__String" => {
-                        return MirExpr::StringLit("".to_string(), MirType::String)
-                    }
-                    _ => {
-                        // Non-primitive type with user-defined Default impl:
-                        // emit a call to the mangled function (already lowered by impl pipeline).
-                        if type_name != "Unknown" {
-                            let fn_ty = MirType::FnPtr(vec![], Box::new(ty.clone()));
-                            return MirExpr::Call {
-                                func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                                args: vec![],
-                                ty: ty.clone(),
-                            };
-                        }
-                        // Unknown type: fall through to normal call handling.
-                        // This follows the error recovery pattern from 19-03.
-                        eprintln!(
-                            "[mesh-codegen] warning: default() call could not resolve \
-                             concrete type from context. This may indicate a missing type annotation."
-                        );
-                    }
-                }
+                // Primitive defaults are literals; any other type's is its
+                // impl's function.
+                return match mir_type_to_impl_name(&ty).as_str() {
+                    "Int" => MirExpr::IntLit(0, MirType::Int),
+                    "Float" => MirExpr::FloatLit(0.0, MirType::Float),
+                    "Bool" => MirExpr::BoolLit(false, MirType::Bool),
+                    "String" => MirExpr::StringLit(String::new(), MirType::String),
+                    type_name => Self::call_named(
+                        &format!("Default__default__{type_name}"),
+                        vec![],
+                        vec![],
+                        ty,
+                    ),
+                };
             }
         }
 
@@ -9196,50 +9181,27 @@ impl<'a> Lowerer<'a> {
         // with ToJson, chain ToJson__to_json__TypeName + mesh_json_encode.
         if let MirExpr::Var(ref name, _) = callee {
             if name == "mesh_json_encode" && args.len() == 1 {
-                // A derived ToJson encodes by the value's source type, which
-                // tells `Box<List<Int>>` from `Box<List<String>>`.
+                // A value is built into a JSON tree by its source type (a
+                // derived ToJson tells `Box<List<Int>>` from
+                // `Box<List<String>>`): its raw word was read as a tree (a map
+                // printed as a number, an Int crashed). A `Json` value is a
+                // tree already.
                 let source = call
-                    .arg_list()
-                    .and_then(|list| list.args().next())
-                    .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
-                // Any other value is built into a JSON tree by its type: its
-                // raw word was read as a tree (a map printed as a number,
-                // an Int crashed). A `Json` value is a tree already.
-                if let Some(source) = source {
-                    let tree = match ty_head(&source) {
-                        Some((head, _)) => head != "Json",
-                        None => matches!(source, Ty::Tuple(_)),
-                    };
-                    if tree {
-                        let json = self.json_encode_expr(args[0].clone(), &source);
-                        return MirExpr::Call {
-                            func: Box::new(callee),
-                            args: vec![json],
-                            ty: MirType::String,
-                        };
-                    }
-                }
-                let arg_ty = args[0].ty().clone();
-                let type_name = match &arg_ty {
-                    MirType::Struct(ref struct_name) => Some(struct_name.clone()),
-                    MirType::SumType(ref sum_name) => Some(sum_name.clone()),
-                    _ => None,
+                    .args()
+                    .first()
+                    .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned())
+                    .expect("the type checker types Json.encode's argument");
+                let tree = match ty_head(&source) {
+                    Some((head, _)) => head != "Json",
+                    None => matches!(source, Ty::Tuple(_)),
                 };
-                if let Some(type_name) = type_name {
-                    let to_json_fn = format!("ToJson__to_json__{}", type_name);
-                    if self.known_functions.contains_key(&to_json_fn) {
-                        let fn_ty = MirType::FnPtr(vec![arg_ty], Box::new(MirType::Ptr));
-                        let json_ptr = MirExpr::Call {
-                            func: Box::new(MirExpr::Var(to_json_fn, fn_ty)),
-                            args: args.clone(),
-                            ty: MirType::Ptr,
-                        };
-                        return MirExpr::Call {
-                            func: Box::new(callee),
-                            args: vec![json_ptr],
-                            ty: MirType::String,
-                        };
-                    }
+                if tree {
+                    let json = self.json_encode_expr(args[0].clone(), &source);
+                    return MirExpr::Call {
+                        func: Box::new(callee),
+                        args: vec![json],
+                        ty: MirType::String,
+                    };
                 }
             }
         }

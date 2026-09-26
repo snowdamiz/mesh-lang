@@ -1045,3 +1045,43 @@ end
     );
     assert_eq!(out, "42\n2\n7 ()\n6 pair\n");
 }
+
+/// Bare `to_string(x)` and `inspect(x)` show collections and strings as
+/// interpolation does, and `default()` builds each primitive's default and
+/// a struct's through its impl.
+#[test]
+fn bare_to_string_inspect_and_default_calls_lower() {
+    let out = compile_and_run(
+        r##"struct Config do
+  size :: Int
+end
+
+impl Default for Config do
+  fn default() -> Config do
+    Config { size: 3 }
+  end
+end
+
+fn make() -> Config do
+  default()
+end
+
+fn main() do
+  println(to_string([1, 2]))
+  println(inspect(["a"]))
+  println(to_string("abc"))
+  println(inspect("abc"))
+  println(to_string(Map.put(Map.new(), 1, 2)))
+  let i :: Int = default()
+  let s :: String = default()
+  let f :: Float = default()
+  let b :: Bool = default()
+  println("${make().size} ${i} [${s}] ${f} ${b}")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "[1, 2]\n[\"a\"]\nabc\n\"abc\"\n%{1 => 2}\n3 0 [] 0.0 false\n"
+    );
+}
