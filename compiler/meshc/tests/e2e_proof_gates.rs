@@ -200,3 +200,184 @@ fn one_chaos_round_runs_every_suite() {
     assert_eq!(summary["rounds_completed"], 1, "{summary}");
     assert_eq!(summary["passed"], true, "{summary}");
 }
+
+/// `meshc proof docker-autoscaling` with a fake `docker` first on PATH that
+/// logs its calls, fails those whose arguments contain one of `failures`,
+/// and otherwise answers as an empty Docker holding one container would.
+/// Returns meshc's output, the evidence's summary (if written) and the calls.
+fn docker_proof_with_failures(
+    failures: &[&str],
+    extra: &[&str],
+) -> (Output, Option<Value>, String) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fake = tempfile::tempdir().unwrap();
+    let calls = fake.path().join("calls.log");
+    let failing = failures
+        .iter()
+        .map(|failure| format!("*\"{failure}\"*"))
+        .collect::<Vec<_>>()
+        .join("|");
+    let script = format!(
+        r#"#!/bin/sh
+echo "$*" >> '{calls}'
+case "$*" in {failing}) echo "injected failure" >&2; exit 1;; esac
+case "$*" in
+  "version --format"*) echo '{{"Client":{{}}}}';;
+  "compose version --short") echo 2.29.0;;
+  "ps -aq"*) echo 0123456789abcdef;;
+  "inspect 0123456789abcdef") echo '[]';;
+  "logs 0123456789abcdef") echo 'a managed container log';;
+esac
+exit 0
+"#,
+        calls = calls.display(),
+    );
+    // openssl answers for real unless a failure names it: "openssl" fails,
+    // "openssl-silent" succeeds writing nothing, "no-openssl" leaves it off
+    // PATH (with everything else), "no-tmp" gives no temporary directory.
+    let fake_openssl = if failures.contains(&"openssl") {
+        Some("#!/bin/sh\necho 'injected failure' >&2\nexit 1\n")
+    } else if failures.contains(&"openssl-silent") {
+        Some("#!/bin/sh\nexit 0\n")
+    } else {
+        None
+    };
+    for (tool, body) in [("docker", Some(script.as_str())), ("openssl", fake_openssl)] {
+        if let Some(body) = body {
+            let path = fake.path().join(tool);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+    let evidence = tempfile::tempdir().unwrap();
+    let path = if failures.contains(&"no-openssl") {
+        fake.path().display().to_string()
+    } else {
+        format!(
+            "{}:{}",
+            fake.path().display(),
+            std::env::var("PATH").unwrap()
+        )
+    };
+    let mut command = Command::new(meshc_bin());
+    command
+        .args(["proof", "docker-autoscaling", "--evidence-dir"])
+        .arg(evidence.path())
+        .args(extra)
+        .env("PATH", path)
+        .current_dir(repo_root());
+    if failures.contains(&"no-tmp") {
+        command.env("TMPDIR", fake.path().join("missing"));
+    }
+    let output = command.output().expect("meshc runs");
+    let summary = evidence
+        .path()
+        .join("summary.json")
+        .exists()
+        .then(|| summary(evidence.path()));
+    (
+        output,
+        summary,
+        std::fs::read_to_string(calls).unwrap_or_default(),
+    )
+}
+
+#[test]
+fn the_docker_proof_stops_at_the_step_that_fails_and_still_cleans_up() {
+    for (failure, extra, step) in [
+        ("version --format", &["--no-build"][..], "docker version"),
+        (
+            "compose version",
+            &["--no-build"][..],
+            "docker compose version",
+        ),
+        (" config", &["--no-build"][..], "config"),
+        ("image inspect", &["--no-build"][..], "docker image inspect"),
+        ("--target runtime", &[][..], "--target runtime"),
+        (
+            "mesh-autoscaling-proof:local",
+            &[][..],
+            "docker tag mesh-autoscaling-proof",
+        ),
+        ("--target driver", &[][..], "--target driver"),
+        (
+            "mesh-autoscaling-driver:local",
+            &[][..],
+            "docker tag mesh-autoscaling-driver",
+        ),
+    ] {
+        let (output, summary, calls) = docker_proof_with_failures(&[failure], extra);
+        let text = command_output_text(&output);
+        assert!(!output.status.success(), "{failure}: {text}");
+        assert!(
+            text.contains("docker_autoscaling_proof: FAIL"),
+            "{failure}: {text}"
+        );
+        let summary = summary.expect("summary.json");
+        assert_eq!(summary["passed"], false, "{failure}: {summary}");
+        let error = summary["error"].as_str().unwrap_or_default();
+        assert!(
+            error.starts_with("proof_command_failed:") && error.contains(step),
+            "{failure}: {error}"
+        );
+        assert!(error.contains("injected failure"), "{failure}: {error}");
+        // Cleanup stopped the topology and removed its managed container.
+        assert!(
+            calls.contains("rm -f 0123456789abcdef"),
+            "{failure}: {calls}"
+        );
+        assert!(calls.contains(" down --volumes"), "{failure}: {calls}");
+        assert_eq!(
+            summary["cleanup_error"],
+            Value::Null,
+            "{failure}: {summary}"
+        );
+    }
+}
+
+#[test]
+fn a_failed_cleanup_is_reported_beside_the_failure() {
+    for cleanup_step in [
+        " stop --timeout",
+        "--filter label=mesh.managed=true",
+        " down --volumes",
+    ] {
+        let (output, summary, _) =
+            docker_proof_with_failures(&["image inspect", cleanup_step], &["--no-build"]);
+        assert!(!output.status.success());
+        let summary = summary.expect("summary.json");
+        let cleanup_error = summary["cleanup_error"].as_str().unwrap_or_default();
+        assert!(
+            cleanup_error.starts_with("proof_command_failed:"),
+            "{cleanup_step}: {summary}"
+        );
+        assert_eq!(
+            summary["assertions"]["cleanup_completed"], false,
+            "{summary}"
+        );
+    }
+}
+
+#[test]
+fn the_docker_proof_needs_its_certificates_before_anything_else() {
+    for (failure, error) in [
+        ("openssl", "proof_openssl_failed:injected failure"),
+        ("no-openssl", "proof_openssl_start_failed:"),
+        ("openssl-silent", "proof_mtls_read_failed:"),
+        ("no-tmp", "proof_mtls_directory_failed:"),
+    ] {
+        let (output, summary, calls) = docker_proof_with_failures(&[failure], &["--no-build"]);
+        let text = command_output_text(&output);
+        assert!(!output.status.success(), "{failure}: {text}");
+        assert!(text.contains(error), "{failure}: {text}");
+        assert!(
+            summary.is_none(),
+            "{failure}: evidence before the certificates: {summary:?}"
+        );
+        assert!(
+            calls.is_empty(),
+            "{failure}: Docker before the certificates: {calls}"
+        );
+    }
+}

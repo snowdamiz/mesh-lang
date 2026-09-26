@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use base64::Engine as _;
 use clap::{Args, Subcommand};
 use mesh_rt::{
     query_operator_continuity_list_remote, query_operator_runtime_remote, ContinuityRecord,
@@ -273,7 +272,6 @@ struct ProofHarness {
     image: String,
     driver_image: String,
     keep_running: bool,
-    tls_dir: PathBuf,
     tls_ca_der_b64: String,
     tls_cert_der_b64: String,
     tls_key_der_b64: String,
@@ -696,7 +694,6 @@ impl ProofHarness {
             args.extend(late_ids);
             let _ = self.checked("docker", &args)?;
         }
-        let _ = fs::remove_dir_all(&self.tls_dir);
         Ok(())
     }
 }
@@ -738,14 +735,13 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
     }
     fs::create_dir_all(&evidence)
         .map_err(|error| format!("proof_evidence_directory_failed:{error}"))?;
-    let tls_dir = std::env::temp_dir().join(format!("mesh-proof-mtls-{timestamp}"));
     let (
         tls_ca_der_b64,
         tls_cert_der_b64,
         tls_key_der_b64,
         driver_cert_der_b64,
         driver_key_der_b64,
-    ) = generate_proof_mtls(&tls_dir)?;
+    ) = generate_proof_mtls()?;
     let driver_shared_key = format!(
         "{:x}",
         Sha256::digest(format!("{timestamp}:{tls_key_der_b64}").as_bytes())
@@ -840,7 +836,6 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         driver_image,
         project,
         keep_running,
-        tls_dir,
         tls_ca_der_b64,
         tls_cert_der_b64,
         tls_key_der_b64,
@@ -1038,8 +1033,6 @@ fn run_proof(
     );
     if let Some(connection_file) = connection_file {
         harness.write_connection_manifest(connection_file)?;
-        fs::remove_dir_all(&harness.tls_dir)
-            .map_err(|error| format!("proof_mtls_cleanup_failed:{error}"))?;
         return Ok(());
     }
 
@@ -1838,12 +1831,16 @@ fn start_load() -> RunningLoad {
     }
 }
 
-fn generate_proof_mtls(
-    directory: &std::path::Path,
-) -> Result<(String, String, String, String, String), String> {
-    fs::create_dir_all(directory)
+/// The proof's mTLS material, each DER in base64: a CA, the certificate and
+/// key every node presents, and the capacity driver's. openssl writes them as
+/// PEM (whose body is that base64) in a directory removed on return.
+fn generate_proof_mtls() -> Result<(String, String, String, String, String), String> {
+    let directory = tempfile::Builder::new()
+        .prefix("mesh-proof-mtls-")
+        .tempdir()
         .map_err(|error| format!("proof_mtls_directory_failed:{error}"))?;
-    let command = |arguments: &[String]| -> Result<(), String> {
+    let file = |name: &str| directory.path().join(name).to_string_lossy().into_owned();
+    let openssl = |arguments: &[&str]| -> Result<(), String> {
         let output = Command::new("openssl")
             .args(arguments)
             .stdin(Stdio::null())
@@ -1858,164 +1855,55 @@ fn generate_proof_mtls(
             ))
         }
     };
-    let ca_key = directory.join("ca.key.pem");
-    let ca_pem = directory.join("ca.cert.pem");
-    let node_key = directory.join("node.key.pem");
-    let node_csr = directory.join("node.csr.pem");
-    let node_pem = directory.join("node.cert.pem");
-    let ca_der = directory.join("ca.cert.der");
-    let node_der = directory.join("node.cert.der");
-    let node_key_der = directory.join("node.key.der");
-    let driver_key = directory.join("driver.key.pem");
-    let driver_csr = directory.join("driver.csr.pem");
-    let driver_pem = directory.join("driver.cert.pem");
-    let driver_der = directory.join("driver.cert.der");
-    let driver_key_der = directory.join("driver.key.der");
-    let path = |path: &std::path::Path| path.to_string_lossy().into_owned();
-    command(&[
-        "req".into(),
-        "-x509".into(),
-        "-newkey".into(),
-        "rsa:2048".into(),
-        "-nodes".into(),
-        "-sha256".into(),
-        "-days".into(),
-        "1".into(),
-        "-subj".into(),
-        "/CN=mesh-proof-ca".into(),
-        "-keyout".into(),
-        path(&ca_key),
-        "-out".into(),
-        path(&ca_pem),
-    ])?;
-    command(&[
-        "req".into(),
-        "-newkey".into(),
-        "rsa:2048".into(),
-        "-nodes".into(),
-        "-sha256".into(),
-        "-subj".into(),
-        "/CN=mesh-node".into(),
-        "-addext".into(),
-        "subjectAltName=DNS:mesh-node".into(),
-        "-keyout".into(),
-        path(&node_key),
-        "-out".into(),
-        path(&node_csr),
-    ])?;
-    command(&[
-        "x509".into(),
-        "-req".into(),
-        "-sha256".into(),
-        "-days".into(),
-        "1".into(),
-        "-in".into(),
-        path(&node_csr),
-        "-CA".into(),
-        path(&ca_pem),
-        "-CAkey".into(),
-        path(&ca_key),
-        "-CAcreateserial".into(),
-        "-copy_extensions".into(),
-        "copy".into(),
-        "-out".into(),
-        path(&node_pem),
-    ])?;
-    command(&[
-        "req".into(),
-        "-newkey".into(),
-        "rsa:2048".into(),
-        "-nodes".into(),
-        "-sha256".into(),
-        "-subj".into(),
-        "/CN=docker-driver".into(),
-        "-addext".into(),
-        "subjectAltName=DNS:docker-driver".into(),
-        "-addext".into(),
-        "extendedKeyUsage=serverAuth".into(),
-        "-keyout".into(),
-        path(&driver_key),
-        "-out".into(),
-        path(&driver_csr),
-    ])?;
-    command(&[
-        "x509".into(),
-        "-req".into(),
-        "-sha256".into(),
-        "-days".into(),
-        "1".into(),
-        "-in".into(),
-        path(&driver_csr),
-        "-CA".into(),
-        path(&ca_pem),
-        "-CAkey".into(),
-        path(&ca_key),
-        "-CAcreateserial".into(),
-        "-copy_extensions".into(),
-        "copy".into(),
-        "-out".into(),
-        path(&driver_pem),
-    ])?;
-    command(&[
-        "x509".into(),
-        "-in".into(),
-        path(&ca_pem),
-        "-outform".into(),
-        "DER".into(),
-        "-out".into(),
-        path(&ca_der),
-    ])?;
-    command(&[
-        "x509".into(),
-        "-in".into(),
-        path(&node_pem),
-        "-outform".into(),
-        "DER".into(),
-        "-out".into(),
-        path(&node_der),
-    ])?;
-    command(&[
-        "pkcs8".into(),
-        "-topk8".into(),
-        "-nocrypt".into(),
-        "-in".into(),
-        path(&node_key),
-        "-outform".into(),
-        "DER".into(),
-        "-out".into(),
-        path(&node_key_der),
-    ])?;
-    command(&[
-        "x509".into(),
-        "-in".into(),
-        path(&driver_pem),
-        "-outform".into(),
-        "DER".into(),
-        "-out".into(),
-        path(&driver_der),
-    ])?;
-    command(&[
-        "pkcs8".into(),
-        "-topk8".into(),
-        "-nocrypt".into(),
-        "-in".into(),
-        path(&driver_key),
-        "-outform".into(),
-        "DER".into(),
-        "-out".into(),
-        path(&driver_key_der),
-    ])?;
-    let encode = |path: &std::path::Path| -> Result<String, String> {
-        fs::read(path)
-            .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes))
-            .map_err(|error| format!("proof_mtls_read_failed:{}:{error}", path.display()))
+    let pem_base64 = |path: &str| -> Result<String, String> {
+        let pem = fs::read_to_string(path)
+            .map_err(|error| format!("proof_mtls_read_failed:{path}:{error}"))?;
+        Ok(pem
+            .lines()
+            .filter(|line| !line.starts_with("-----"))
+            .collect())
     };
+    let (ca_key, ca_cert) = (file("ca.key.pem"), file("ca.cert.pem"));
+    #[rustfmt::skip]
+    openssl(&[
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
+        "-subj", "/CN=mesh-proof-ca", "-keyout", &ca_key, "-out", &ca_cert,
+    ])?;
+    // A key for `name`, and its certificate from the CA with `extensions`.
+    let issue = |name: &str, extensions: &[&str]| -> Result<(String, String), String> {
+        let (key, request, cert) = (
+            file(&format!("{name}.key.pem")),
+            file(&format!("{name}.csr.pem")),
+            file(&format!("{name}.cert.pem")),
+        );
+        let subject = format!("/CN={name}");
+        let mut arguments = vec!["req", "-newkey", "rsa:2048", "-nodes", "-sha256"];
+        arguments.extend(["-subj", &subject, "-keyout", &key, "-out", &request]);
+        for extension in extensions {
+            arguments.extend(["-addext", extension]);
+        }
+        openssl(&arguments)?;
+        #[rustfmt::skip]
+        openssl(&[
+            "x509", "-req", "-sha256", "-days", "1", "-in", &request, "-CA", &ca_cert,
+            "-CAkey", &ca_key, "-CAcreateserial", "-copy_extensions", "copy", "-out", &cert,
+        ])?;
+        Ok((pem_base64(&cert)?, pem_base64(&key)?))
+    };
+    let (node_cert, node_key) = issue("mesh-node", &["subjectAltName=DNS:mesh-node"])?;
+    let (driver_cert, driver_key) = issue(
+        "docker-driver",
+        &[
+            "subjectAltName=DNS:docker-driver",
+            "extendedKeyUsage=serverAuth",
+        ],
+    )?;
     Ok((
-        encode(&ca_der)?,
-        encode(&node_der)?,
-        encode(&node_key_der)?,
-        encode(&driver_der)?,
-        encode(&driver_key_der)?,
+        pem_base64(&ca_cert)?,
+        node_cert,
+        node_key,
+        driver_cert,
+        driver_key,
     ))
 }
 
