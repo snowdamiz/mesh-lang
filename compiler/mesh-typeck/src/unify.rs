@@ -22,6 +22,10 @@ pub struct ImplChoice {
     pub receiver: Ty,
     pub candidates: Vec<Ty>,
     pub span: TextRange,
+    /// Whether the impls differ in the argument they take
+    /// (`Meters.from(x)` with `From<Int>` and `From<String>`), not in what
+    /// they return: `result` is then the argument's type.
+    pub by_argument: bool,
 }
 
 /// A field read from a value whose type was not known yet (`p.x` with an

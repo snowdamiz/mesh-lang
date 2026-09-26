@@ -384,13 +384,16 @@ pub enum TypeError {
     },
     /// A method several impls provide, with different return types, called
     /// where nothing picks one (`found` is the type the context asked for,
-    /// when it asked for one none of them returns).
+    /// when it asked for one none of them returns). With `by_argument`, the
+    /// impls differ in the argument they take instead (`Meters.from(x)`),
+    /// and `found` is the argument's type.
     AmbiguousImplMethod {
         method: String,
         receiver: Ty,
         candidates: Vec<Ty>,
         found: Option<Ty>,
         span: TextRange,
+        by_argument: bool,
     },
     /// A field, variant, parameter or type defined twice.
     DuplicateDefinition {
@@ -1078,13 +1081,23 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::AmbiguousImplMethod {
-                method, receiver, ..
-            } => {
-                write!(
+                method,
+                receiver,
+                found,
+                by_argument,
+                ..
+            } => match (found, by_argument) {
+                (Some(found), false) => {
+                    write!(f, "no impl's `{method}` on `{receiver}` returns `{found}`")
+                }
+                (Some(found), true) => {
+                    write!(f, "no impl's `{method}` for `{receiver}` takes `{found}`")
+                }
+                (None, _) => write!(
                     f,
                     "cannot tell which impl's `{method}` to call on `{receiver}`"
-                )
-            }
+                ),
+            },
             TypeError::DuplicateDefinition { kind, name, .. } => {
                 write!(f, "{kind} `{name}` is defined twice")
             }

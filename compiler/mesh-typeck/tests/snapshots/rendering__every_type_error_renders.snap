@@ -641,7 +641,18 @@ expression: rendered
    │
    │ Help: give the result a type: `let x :: Int = value.method()`
 ───╯
-{"code":"E0065","severity":"error","message":"cannot tell which impl's `method` to call on `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+{"code":"E0065","severity":"error","message":"no impl's `method` on `Int` returns `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+
+[E0065] Error: no impl's `from` for `Meters` takes `Bool`
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── they take `Int`, `String`
+   │
+   │ Help: convert the argument to one of those types first
+───╯
+{"code":"E0065","severity":"error","message":"no impl's `from` for `Meters` takes `Bool`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they take `Int`, `String`"}],"fix":"convert the argument to one of those types first"}
 
 [E0068] Error: kind `name` is defined twice
    ╭─[ main.mpl:2:7 ]

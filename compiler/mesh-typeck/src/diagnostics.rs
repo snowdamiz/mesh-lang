@@ -1601,33 +1601,40 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
         }
         TypeError::AmbiguousImplMethod {
             method,
-            receiver,
             candidates,
             found,
             span,
+            by_argument,
+            ..
         } => {
             let range = clamp(text_range_to_range(*span));
-            let returns = candidates
+            let types = candidates
                 .iter()
                 .map(|ty| format!("`{ty}`"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let (message, label) = match found {
-                Some(found) => (
-                    format!("no impl's `{method}` on `{receiver}` returns `{found}`"),
-                    format!("they return {returns}"),
+            let first = candidates
+                .first()
+                .map_or_else(|| "Int".to_string(), |ty| ty.to_string());
+            let (label, help) = match (found, by_argument) {
+                (Some(_), false) => (
+                    format!("they return {types}"),
+                    format!("give the result a type: `let x :: {first} = value.{method}()`"),
                 ),
-                None => (
-                    format!("cannot tell which impl's `{method}` to call on `{receiver}`"),
-                    format!("its impls return {returns}"),
+                (None, false) => (
+                    format!("its impls return {types}"),
+                    format!("give the result a type: `let x :: {first} = value.{method}()`"),
+                ),
+                (Some(_), true) => (
+                    format!("they take {types}"),
+                    "convert the argument to one of those types first".to_string(),
+                ),
+                (None, true) => (
+                    format!("its impls take {types}"),
+                    format!("give the argument a type, such as `{first}`"),
                 ),
             };
-            Description::error(range, message, label).with_help(format!(
-                "give the result a type: `let x :: {} = value.{method}()`",
-                candidates
-                    .first()
-                    .map_or_else(|| "Int".to_string(), |ty| ty.to_string())
-            ))
+            Description::error(range, error.to_string(), label).with_help(help)
         }
         TypeError::DuplicateDefinition { kind, name, span } => {
             let range = clamp(text_range_to_range(*span));

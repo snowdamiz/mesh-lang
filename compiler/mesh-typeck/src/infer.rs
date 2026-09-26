@@ -9221,11 +9221,11 @@ fn reject_type_as_value(
     Err(err)
 }
 
-/// `Type.method` for a struct or sum type `Type`: an instance method named
-/// on the type takes the value first (`Wrap.label(w, 5)` is `w.label(5)`,
-/// as `Labeler.label(w, 5)` is). `None` for a static method
-/// (`Config.version()`), which the caller resolves. A type is no value, so
-/// a name that is neither is no method rather than a field of a `Type` value.
+/// `Type.method` for a struct or sum type `Type`: a static method
+/// (`Config.version()`, `Meters.from(5)`), or an instance method named on
+/// the type, which takes the value first (`Wrap.label(w, 5)` is
+/// `w.label(5)`, as `Labeler.label(w, 5)` is). A type is no value, so a
+/// name that is neither is no method rather than a field of a `Type` value.
 fn type_qualified_method(
     ctx: &mut InferCtx,
     type_registry: &TypeRegistry,
@@ -9233,7 +9233,7 @@ fn type_qualified_method(
     type_name: &str,
     method: &str,
     span: TextRange,
-) -> Result<Option<Ty>, TypeError> {
+) -> Result<Ty, TypeError> {
     let generic_count = type_registry
         .lookup_struct(type_name)
         .map(|info| info.generic_params.len())
@@ -9264,17 +9264,48 @@ fn type_qualified_method(
         return Err(err);
     }
     match trait_registry.find_method_sig(method, &ty) {
-        Some(sig) if !sig.has_self => Ok(None),
+        Some(sig) if !sig.has_self => {
+            // Several impls may provide it for the type, taking different
+            // arguments (`From<Int>` and `From<String>`): the argument
+            // picks one, checked when the function is done.
+            let mut takes: Vec<Vec<Ty>> = Vec::new();
+            for (imp, _) in trait_registry.impls_providing(method, &ty) {
+                if let Some(params) = imp
+                    .methods
+                    .get(method)
+                    .filter(|sig| !sig.has_self)
+                    .and_then(|sig| sig.param_types.clone())
+                {
+                    if !takes.contains(&params) {
+                        takes.push(params);
+                    }
+                }
+            }
+            let ret = method_return_type(ctx, trait_registry, method, &ty, span)
+                .unwrap_or_else(|| ctx.fresh_var());
+            let params: Vec<Ty> = match takes.as_slice() {
+                [only] if only.len() == sig.param_count => only.clone(),
+                _ => (0..sig.param_count).map(|_| ctx.fresh_var()).collect(),
+            };
+            if takes.len() > 1 && sig.param_count == 1 {
+                ctx.impl_choices.push(ImplChoice {
+                    result: params[0].clone(),
+                    method: method.to_string(),
+                    receiver: ty.clone(),
+                    candidates: takes
+                        .into_iter()
+                        .filter_map(|params| params.into_iter().next())
+                        .collect(),
+                    span,
+                    by_argument: true,
+                });
+            }
+            Ok(Ty::Fun(params, Box::new(ret)))
+        }
         Some(_) => {
             let ret = method_return_type(ctx, trait_registry, method, &ty, span)
                 .unwrap_or_else(|| ctx.fresh_var());
-            Ok(Some(build_method_fn_type(
-                trait_registry,
-                method,
-                &ty,
-                &ret,
-                ctx,
-            )))
+            Ok(build_method_fn_type(trait_registry, method, &ty, &ret, ctx))
         }
         None => {
             let err = TypeError::NoSuchMethod {
@@ -12807,16 +12838,14 @@ fn infer_field_access(
             }
 
             if !env.is_local(&base_name) && is_named_type(type_registry, &base_name) {
-                if let Some(ty) = type_qualified_method(
+                return type_qualified_method(
                     ctx,
                     type_registry,
                     trait_registry,
                     &base_name,
                     &field_name,
                     fa.syntax().text_range(),
-                )? {
-                    return Ok(ty);
-                }
+                );
             }
 
             // A module without the function: say so, instead of
@@ -15670,18 +15699,37 @@ fn method_return_type(
             receiver: ty.clone(),
             candidates: returns,
             span,
+            by_argument: false,
         });
         return Some(chosen);
     }
     trait_registry.resolve_trait_method(method, ty)
 }
 
+/// Whether two resolved types are the same, a non-generic struct written
+/// either way (`Point`, or `Point` applied to no arguments).
+fn same_nominal_type(a: &Ty, b: &Ty) -> bool {
+    fn nominal(ty: &Ty) -> &Ty {
+        match ty {
+            Ty::App(con, args) if args.is_empty() => con,
+            other => other,
+        }
+    }
+    nominal(a) == nominal(b)
+}
+
 /// Each method call that several impls could answer must have been given
-/// one of their return types by its context.
+/// one of their return types by its context, and each call of a static
+/// method they take different arguments for (`Meters.from(x)`) an argument
+/// one of them takes.
 fn check_impl_choices(ctx: &mut InferCtx, choices: Vec<ImplChoice>) {
     for choice in choices {
         let result = ctx.resolve(choice.result);
-        if !choice.candidates.contains(&result) {
+        if !choice
+            .candidates
+            .iter()
+            .any(|candidate| same_nominal_type(candidate, &result))
+        {
             let found = (!result.has_type_vars()).then_some(result);
             let receiver = ctx.resolve(choice.receiver);
             ctx.errors.push(TypeError::AmbiguousImplMethod {
@@ -15690,6 +15738,7 @@ fn check_impl_choices(ctx: &mut InferCtx, choices: Vec<ImplChoice>) {
                 candidates: choice.candidates,
                 found,
                 span: choice.span,
+                by_argument: choice.by_argument,
             });
         }
     }

@@ -2802,6 +2802,45 @@ end
     assert_eq!(run(source), "3m 300\n");
 }
 
+/// `Type.from(value)` goes to the `From` impl for the value's type, however
+/// many the type has: with `From<Int>` and `From<String>`, a `String`
+/// argument was refused ("expected Int, found String"), and lowering took
+/// whichever impl a hash map listed first.
+#[test]
+fn from_goes_to_the_impl_for_its_arguments_type() {
+    let source = r##"
+struct Wrapper do
+  value :: Int
+end
+
+impl From<Int> for Wrapper do
+  fn from(n :: Int) -> Wrapper do
+    Wrapper { value: n * 2 }
+  end
+end
+
+impl From<String> for Wrapper do
+  fn from(s :: String) -> Wrapper do
+    Wrapper { value: String.length(s) }
+  end
+end
+
+fn main() do
+  let a = Wrapper.from(21)
+  let b = Wrapper.from("abc")
+  let c = "hello" |> Wrapper.from()
+  let d = 4 |> Wrapper.from
+  println("#{a.value} #{b.value} #{c.value} #{d.value}")
+end
+"##;
+    assert_eq!(run(source), "42 3 5 8\n");
+    let err = build_error(&source.replace("Wrapper.from(21)", "Wrapper.from(true)"));
+    assert!(
+        err.contains("E0065") && err.contains("no impl's `from` for `Wrapper` takes `Bool`"),
+        "{err}"
+    );
+}
+
 #[test]
 fn into_and_try_into_go_to_the_from_impl_the_context_asks_for() {
     let source = r##"

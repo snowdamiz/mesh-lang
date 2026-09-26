@@ -108,6 +108,9 @@ enum QualifiedRoute {
     TypeMethod(String),
     /// A static method: the impl function called.
     Static(String),
+    /// `Type.from(value)` or `Type.try_from(value)` (the interface and the
+    /// method, then the type): the impl for the value's type.
+    Conversion(String, String, String),
 }
 
 /// Extract the trait name, trait type args, and type name from an ImplDef's PATH children.
@@ -8937,12 +8940,32 @@ impl<'a> Lowerer<'a> {
         {
             return Some(QualifiedRoute::TypeMethod(method));
         }
+        let conversion = match method.as_str() {
+            "from" => Some("From"),
+            "try_from" => Some("TryFrom"),
+            _ => None,
+        };
+        if let (true, Some(trait_name)) = (is_type, conversion) {
+            if self
+                .trait_registry
+                .impls_providing(&method, &ty)
+                .iter()
+                .any(|(imp, _)| imp.trait_name == trait_name)
+            {
+                return Some(QualifiedRoute::Conversion(
+                    trait_name.to_string(),
+                    method,
+                    base_name,
+                ));
+            }
+        }
         self.static_impl_method(&method, &ty)
             .map(QualifiedRoute::Static)
     }
 
     /// A call routed by `qualified_route`, of the lowered `args`; `first_ty`
-    /// is the first argument's type, the receiver of a method.
+    /// is the first argument's type: the receiver of a method, the source of
+    /// a conversion.
     fn lower_qualified_call(
         &mut self,
         call_range: TextRange,
@@ -8951,6 +8974,10 @@ impl<'a> Lowerer<'a> {
         first_ty: Option<Ty>,
     ) -> MirExpr {
         let ty = self.resolve_range(call_range);
+        let name_of = |ty: &Ty| match ty {
+            Ty::Con(tc) => tc.name.clone(),
+            other => format!("{other}"),
+        };
         let callee = match route {
             QualifiedRoute::TypeMethod(method) => {
                 let mut args = args.into_iter();
@@ -8964,36 +8991,64 @@ impl<'a> Lowerer<'a> {
                 );
             }
             QualifiedRoute::Static(callee) => callee,
-            QualifiedRoute::Interface(trait_name, method) => {
-                let name_of = |ty: &Ty| match ty {
-                    Ty::Con(tc) => tc.name.clone(),
+            QualifiedRoute::Conversion(trait_name, method, type_name) => {
+                // The argument's type picks the impl: `Meters.from(5)`
+                // with `From<Int>` and `From<String>`.
+                let key = |ty: &Ty| match ty {
+                    Ty::App(con, args) if args.is_empty() => format!("{con}"),
                     other => format!("{other}"),
                 };
-                first_ty
-                    .and_then(|receiver| {
-                        self.trait_registry
-                            .impls_providing(&method, &receiver)
-                            .into_iter()
-                            .find(|(imp, _)| imp.trait_name == trait_name)
-                            .map(|(imp, _)| {
-                                let type_args: Vec<String> =
-                                    imp.trait_type_args.iter().map(name_of).collect();
-                                mangle_trait_method(
-                                    &trait_name,
-                                    &type_args,
-                                    &method,
-                                    &imp.impl_type_name,
-                                )
-                            })
+                let target = Ty::Con(mesh_typeck::ty::TyCon::new(&type_name));
+                let impls: Vec<_> = self
+                    .trait_registry
+                    .impls_providing(&method, &target)
+                    .into_iter()
+                    .map(|(imp, _)| imp)
+                    .filter(|imp| imp.trait_name == trait_name)
+                    .collect();
+                let chosen = first_ty
+                    .as_ref()
+                    .and_then(|source| {
+                        impls.iter().find(|imp| {
+                            imp.trait_type_args
+                                .first()
+                                .is_some_and(|arg| key(arg) == key(source))
+                        })
                     })
-                    .unwrap_or_else(|| {
-                        let type_name = args
-                            .first()
-                            .map(|arg| mir_type_to_impl_name(arg.ty()))
-                            .unwrap_or_default();
-                        format!("{trait_name}__{method}__{type_name}")
-                    })
+                    .or(impls.first());
+                match chosen {
+                    Some(imp) => {
+                        let type_args: Vec<String> =
+                            imp.trait_type_args.iter().map(name_of).collect();
+                        mangle_trait_method(&trait_name, &type_args, &method, &imp.impl_type_name)
+                    }
+                    None => format!("{trait_name}__{method}__{type_name}"),
+                }
             }
+            QualifiedRoute::Interface(trait_name, method) => first_ty
+                .and_then(|receiver| {
+                    self.trait_registry
+                        .impls_providing(&method, &receiver)
+                        .into_iter()
+                        .find(|(imp, _)| imp.trait_name == trait_name)
+                        .map(|(imp, _)| {
+                            let type_args: Vec<String> =
+                                imp.trait_type_args.iter().map(name_of).collect();
+                            mangle_trait_method(
+                                &trait_name,
+                                &type_args,
+                                &method,
+                                &imp.impl_type_name,
+                            )
+                        })
+                })
+                .unwrap_or_else(|| {
+                    let type_name = args
+                        .first()
+                        .map(|arg| mir_type_to_impl_name(arg.ty()))
+                        .unwrap_or_default();
+                    format!("{trait_name}__{method}__{type_name}")
+                }),
         };
         let var_ty = MirType::FnPtr(
             args.iter().map(|arg| arg.ty().clone()).collect(),

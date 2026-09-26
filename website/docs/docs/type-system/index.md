@@ -781,6 +781,8 @@ fn main() do
 end
 ```
 
+A type can have several `From` impls, one per source type: `Wrapper.from(value)` calls the one for the value's type, and a value no impl takes is error E0065. Like other static methods, it can be piped into: `21 |> Wrapper.from()`.
+
 ### Automatic Into
 
 Every `impl From<Source> for Target` also makes `Into<Target>` available on the source. `into()` converts to the type the call is expected to have, so it needs an annotation or another context that fixes the target. The same applies to the built-in conversions below and to a source with several `From` impls:

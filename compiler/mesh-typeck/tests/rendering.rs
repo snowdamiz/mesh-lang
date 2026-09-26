@@ -306,6 +306,15 @@ fn one_of_each() -> Vec<TypeError> {
             candidates: vec![Ty::int(), Ty::string()],
             found: Some(Ty::int()),
             span: span(19, 24),
+            by_argument: false,
+        },
+        TypeError::AmbiguousImplMethod {
+            method: "from".to_string(),
+            receiver: Ty::Con(mesh_typeck::ty::TyCon::new("Meters")),
+            candidates: vec![Ty::int(), Ty::string()],
+            found: Some(Ty::bool()),
+            span: span(19, 24),
+            by_argument: true,
         },
         TypeError::DuplicateDefinition {
             kind: "kind",
