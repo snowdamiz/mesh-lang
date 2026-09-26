@@ -6648,11 +6648,19 @@ fn validate_type_aliases(
             });
             continue;
         }
+        let aliased_type = &type_registry.type_aliases[&alias_name].aliased_type;
+        if let Some((name, expected, found)) =
+            wrong_type_argument_count(aliased_type, type_registry)
+        {
+            ctx.errors.push(TypeError::TypeArgumentCount {
+                name,
+                expected,
+                found,
+                span: *range,
+            });
+        }
         let mut named = Vec::new();
-        type_constructors(
-            &type_registry.type_aliases[&alias_name].aliased_type,
-            &mut named,
-        );
+        type_constructors(aliased_type, &mut named);
         for target_name in named {
             let node = alias_def.syntax();
             if !names_a_type(&target_name, node, type_registry, builtin_types, import_ctx) {
@@ -7147,10 +7155,11 @@ fn infer_interface_def(
 /// The type an impl binds an associated type to: `List<Int>` in
 /// `type Item = List<Int>`.
 fn resolve_assoc_type_binding(
+    ctx: &mut InferCtx,
     binding: &mesh_parser::ast::item::AssocTypeBinding,
     type_registry: &TypeRegistry,
 ) -> Option<Ty> {
-    type_after_eq(binding.syntax()).map(|ty| resolve_alias(ty, type_registry))
+    type_after_eq(binding.syntax()).map(|ty| resolve_alias(ctx, ty, type_registry))
 }
 
 /// A method annotation in an interface or impl: `Self.Item` is the
@@ -7252,7 +7261,7 @@ fn impl_signature(
     let mut assoc_types: FxHashMap<String, Ty> = FxHashMap::default();
     for binding in impl_.assoc_type_bindings() {
         if let Some(name) = binding.name().and_then(|n| n.text()) {
-            if let Some(concrete_ty) = resolve_assoc_type_binding(&binding, type_registry) {
+            if let Some(concrete_ty) = resolve_assoc_type_binding(ctx, &binding, type_registry) {
                 assoc_types.insert(name, concrete_ty);
             }
         }
@@ -14882,7 +14891,8 @@ fn resolve_type_annotation(
         return None;
     }
     let ty = parse_type_tokens(&tokens, &mut start);
-    let ty = resolve_alias(ty, type_registry);
+    // Counted as written: what an alias expands to is counted where the
+    // alias is defined.
     if let Some((name, expected, found)) = wrong_type_argument_count(&ty, type_registry) {
         ctx.errors.push(TypeError::TypeArgumentCount {
             name,
@@ -14891,6 +14901,7 @@ fn resolve_type_annotation(
             span: annotated_type_range(ann),
         });
     }
+    let ty = resolve_alias(ctx, ty, type_registry);
     Some(infer_missing_type_args(ctx, ty, type_registry))
 }
 
@@ -14909,7 +14920,8 @@ fn annotated_type_range(ann: &mesh_parser::ast::item::TypeAnnotation) -> TextRan
 }
 
 /// How many type arguments the type `name` takes: a built-in generic type's
-/// number, or a struct's or sum type's (none for one without parameters).
+/// number, or a struct's, sum type's or alias's (none for one without
+/// parameters).
 /// `None` for any other type.
 fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
     match name {
@@ -14922,6 +14934,11 @@ fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
                 type_registry
                     .lookup_sum_type(name)
                     .map(|def| def.generic_params.len())
+            })
+            .or_else(|| {
+                type_registry
+                    .lookup_alias(name)
+                    .map(|alias| alias.generic_params.len())
             }),
     }
 }
@@ -15138,54 +15155,62 @@ fn apply_type_sugar(tokens: &[(SyntaxKind, String)], pos: &mut usize, base: Ty) 
 
 /// Recursively resolve type aliases, including aliases an alias expands
 /// to (`type Twin<T> = Pair<T, T>`).
-fn resolve_alias(ty: Ty, type_registry: &TypeRegistry) -> Ty {
-    resolve_alias_within(ty, type_registry, 0)
+fn resolve_alias(ctx: &mut InferCtx, ty: Ty, type_registry: &TypeRegistry) -> Ty {
+    resolve_alias_within(ctx, ty, type_registry, 0)
 }
 
 /// `resolve_alias` at nesting `depth`; an alias that keeps expanding into
 /// itself stops at a fixed depth instead of recursing forever.
-fn resolve_alias_within(ty: Ty, type_registry: &TypeRegistry, depth: usize) -> Ty {
+fn resolve_alias_within(
+    ctx: &mut InferCtx,
+    ty: Ty,
+    type_registry: &TypeRegistry,
+    depth: usize,
+) -> Ty {
     const MAX_DEPTH: usize = 64;
     if depth > MAX_DEPTH {
         return ty;
     }
-    let again = |ty: Ty| resolve_alias_within(ty, type_registry, depth + 1);
+    let again =
+        |ctx: &mut InferCtx, ty: Ty| resolve_alias_within(ctx, ty, type_registry, depth + 1);
+    let Some(tc) = ty.con().cloned() else {
+        return ty.map_parts(|part| again(ctx, part.clone()));
+    };
+    let applied = matches!(ty, Ty::App(..));
+    let args: Vec<Ty> = match ty {
+        Ty::App(_, args) => args.into_iter().map(|arg| again(ctx, arg)).collect(),
+        _ => Vec::new(),
+    };
+    if let Some(alias) = type_registry.lookup_alias(&tc.name) {
+        // Named with another number of arguments than it takes (reported
+        // where it is written) or with none, its parameters are not known.
+        let args = if args.len() == alias.generic_params.len() {
+            args
+        } else {
+            alias
+                .generic_params
+                .iter()
+                .map(|_| ctx.fresh_var())
+                .collect()
+        };
+        let expanded = substitute_type_params(&alias.aliased_type, &alias.generic_params, &args);
+        return again(ctx, expanded);
+    }
     // An imported struct or sum type named through its module (`Geo.Point`)
     // is registered under its own name.
-    let unqualified = |tc: TyCon| match tc.name.rsplit_once('.') {
+    let tc = match tc.name.rsplit_once('.') {
         Some((_, short))
-            if type_registry.lookup_alias(&tc.name).is_none()
-                && (type_registry.lookup_struct(short).is_some()
-                    || type_registry.lookup_sum_type(short).is_some()) =>
+            if type_registry.lookup_struct(short).is_some()
+                || type_registry.lookup_sum_type(short).is_some() =>
         {
             TyCon::new(short)
         }
         _ => tc,
     };
-    match ty {
-        Ty::App(con, args) => {
-            let resolved_args: Vec<Ty> = args.into_iter().map(&again).collect();
-            if let Ty::Con(tc) = *con {
-                if let Some(alias) = type_registry.lookup_alias(&tc.name) {
-                    return again(substitute_type_params(
-                        &alias.aliased_type,
-                        &alias.generic_params,
-                        &resolved_args,
-                    ));
-                }
-                return Ty::App(Box::new(Ty::Con(unqualified(tc))), resolved_args);
-            }
-            Ty::App(con, resolved_args)
-        }
-        Ty::Con(tc) => {
-            if let Some(alias) = type_registry.lookup_alias(&tc.name) {
-                if alias.generic_params.is_empty() {
-                    return again(alias.aliased_type.clone());
-                }
-            }
-            Ty::Con(unqualified(tc))
-        }
-        other => other.map_parts(|part| again(part.clone())),
+    if applied {
+        Ty::App(Box::new(Ty::Con(tc)), args)
+    } else {
+        Ty::Con(tc)
     }
 }
 

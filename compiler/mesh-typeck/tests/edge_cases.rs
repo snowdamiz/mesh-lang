@@ -262,6 +262,66 @@ end
     );
 }
 
+/// A generic alias's arguments are counted as a struct's are, an alias's
+/// own definition where it is defined, and a miscounted or bare alias
+/// stands for its type with the parameters unknown. `Pair<Int>` was `(Int,
+/// B)`, "expected `B`, found `Int`" at its uses, and `Pair<Int, String,
+/// Bool>` passed.
+#[test]
+fn a_generic_aliases_arguments_are_counted() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"type Pair<A, B> = (A, B)
+
+type Ints = Pair<Int>
+
+fn first(p :: Pair<Int>) -> Int do
+  case p do
+    (a, _) -> a
+  end
+end
+
+fn second(p :: Pair<Int, String, Bool>) -> String do
+  case p do
+    (_, b) -> b
+  end
+end
+
+fn third(p :: Ints) -> Int do
+  case p do
+    (a, _) -> a
+  end
+end
+
+fn fourth(p :: Pair) -> Int do
+  case p do
+    (a, _) -> a + 1
+  end
+end
+
+fn main() do
+  first((1, 2))
+  second((1, "a"))
+  third((1, 2))
+  fourth((1, 2))
+end
+"#
+        ),
+        [
+            at(
+                "`Pair` takes 2 type arguments, not 1",
+                "type Ints = Pair<Int>"
+            ),
+            at("`Pair` takes 2 type arguments, not 1", "Pair<Int>"),
+            at(
+                "`Pair` takes 2 type arguments, not 3",
+                "Pair<Int, String, Bool>"
+            ),
+        ]
+    );
+}
+
 /// A generic type named with another number of type arguments than it
 /// takes is reported where it is named, and taken with the right number:
 /// it was an "arity mismatch" at each use of the value, as if a function
