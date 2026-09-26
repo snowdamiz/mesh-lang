@@ -77,18 +77,21 @@ const RUNTIME_SCALE_DOWN_PROOF_TIMEOUT: Duration = Duration::from_secs(
 /// A stall still fails, it just takes longer to say so.
 /// `MESH_PROOF_TIME_SCALE` overrides the estimate.
 fn proof_time_scale() -> u32 {
-    if let Ok(raw) = std::env::var("MESH_PROOF_TIME_SCALE") {
-        if let Ok(scale) = raw.parse::<u32>() {
-            return scale.clamp(1, 10);
-        }
-    }
-    match std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(4)
-    {
-        0..=4 => 3,
-        5..=8 => 2,
-        _ => 1,
+    time_scale(
+        std::env::var("MESH_PROOF_TIME_SCALE").ok().as_deref(),
+        std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get),
+    )
+}
+
+/// The scale an override (1 to 10) asks for, else the one `cores` call for.
+fn time_scale(requested: Option<&str>, cores: usize) -> u32 {
+    match requested.and_then(|raw| raw.parse::<u32>().ok()) {
+        Some(scale) => scale.clamp(1, 10),
+        None => match cores {
+            0..=4 => 3,
+            5..=8 => 2,
+            _ => 1,
+        },
     }
 }
 
@@ -310,13 +313,7 @@ fn write_owner_only_new(path: &Path, contents: &[u8], label: &str) -> Result<(),
 }
 
 fn absolute_path(path: PathBuf) -> Result<PathBuf, String> {
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        std::env::current_dir()
-            .map(|directory| directory.join(path))
-            .map_err(|error| format!("proof_current_directory_failed:{error}"))
-    }
+    std::path::absolute(&path).map_err(|error| format!("proof_path_invalid:{error}"))
 }
 
 fn connection_secret_paths(path: &Path) -> (PathBuf, PathBuf) {
@@ -2671,9 +2668,7 @@ fn http_request(
     extra_headers: &[(&str, &str)],
 ) -> Result<HttpResponse, String> {
     let mut stream = TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}")
-            .parse()
-            .map_err(|_| "proof_http_address_invalid".to_string())?,
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         Duration::from_secs(2),
     )
     .map_err(|error| format!("proof_http_connect_failed:{port}:{error}"))?;
@@ -2732,8 +2727,12 @@ fn wait_for_http(port: u16, path: &str, timeout: Duration) -> Result<(), String>
 }
 
 fn repository_root() -> Result<PathBuf, String> {
-    let mut current = std::env::current_dir()
-        .map_err(|error| format!("proof_current_directory_failed:{error}"))?;
+    repository_root_from(absolute_path(PathBuf::from("."))?)
+}
+
+/// The first directory from `current` up that holds the workspace and the
+/// proof's compose file.
+fn repository_root_from(mut current: PathBuf) -> Result<PathBuf, String> {
     loop {
         if current.join("Cargo.toml").is_file()
             && current
@@ -2802,6 +2801,106 @@ mod tests {
             validate_docker_autoscaling_args(&args),
             Err("docker_autoscaling_connection_file_requires_start_only".to_string())
         );
+    }
+
+    #[test]
+    fn time_scale_follows_an_override_else_the_cores() {
+        assert_eq!(time_scale(Some("7"), 2), 7);
+        assert_eq!(time_scale(Some("99"), 2), 10);
+        assert_eq!(time_scale(Some("0"), 2), 1);
+        assert_eq!(time_scale(Some("fast"), 16), 1);
+        assert_eq!([2, 6, 12].map(|cores| time_scale(None, cores)), [3, 2, 1]);
+    }
+
+    #[test]
+    fn paths_resolve_against_the_working_directory_and_find_the_repository() {
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(absolute_path(PathBuf::from("a/b")), Ok(here.join("a/b")));
+        assert!(absolute_path(PathBuf::new())
+            .unwrap_err()
+            .starts_with("proof_path_invalid:"));
+        let root = repository_root().unwrap();
+        assert!(root
+            .join("proof/docker-autoscaling/docker-compose.yml")
+            .is_file());
+        assert_eq!(
+            repository_root_from(root.join("compiler/meshc/src")),
+            Ok(root)
+        );
+        let elsewhere = tempfile::tempdir().unwrap();
+        assert_eq!(
+            repository_root_from(elsewhere.path().to_path_buf()),
+            Err("proof_repository_root_not_found".to_string())
+        );
+    }
+
+    #[test]
+    fn connection_outputs_must_be_new_and_distinct() {
+        let directory = tempfile::tempdir().unwrap();
+        let manifest = directory.path().join("topology.json");
+        assert_eq!(ensure_connection_outputs_are_new(&manifest), Ok(()));
+        for clash in ["topology.cookie", "topology.operator-key"] {
+            assert_eq!(
+                ensure_connection_outputs_are_new(&directory.path().join(clash)),
+                Err("proof_connection_file_extension_invalid".to_string())
+            );
+        }
+        fs::write(directory.path().join("topology.cookie"), "").unwrap();
+        assert!(ensure_connection_outputs_are_new(&manifest)
+            .unwrap_err()
+            .starts_with("proof_connection_refuses_existing_output:"));
+    }
+
+    #[test]
+    fn owner_only_files_are_never_overwritten_or_placed_under_a_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("secret");
+        write_owner_only_new(&path, b"one", "test").unwrap();
+        assert!(write_owner_only_new(&path, b"two", "test")
+            .unwrap_err()
+            .starts_with("test_open_failed:"));
+        assert_eq!(fs::read(&path).unwrap(), b"one");
+        assert!(write_owner_only_new(&path.join("below"), b"", "test")
+            .unwrap_err()
+            .starts_with("test_directory_failed:"));
+    }
+
+    #[test]
+    fn http_readiness_times_out_with_the_last_answer() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                let _ = stream.read(&mut [0; 1024]);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                );
+            }
+        });
+        let error = wait_for_http(port, "/health", Duration::from_millis(300)).unwrap_err();
+        assert_eq!(
+            error,
+            format!("proof_http_readiness_timeout:{port}:status=503")
+        );
+        drop(server);
+        // Nothing listening: the connection error is the last answer.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let error = wait_for_http(port, "/health", Duration::from_millis(100)).unwrap_err();
+        assert!(
+            error.starts_with(&format!("proof_http_readiness_timeout:{port}:"))
+                && !error.ends_with("not attempted"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn percentiles_of_no_samples_are_zero() {
+        assert_eq!(percentile_millis(&[], 0.99), 0);
+        assert_eq!(percentile_millis(&[1, 2, 3, 4], 0.5), 3);
+        assert_eq!(percentile_millis(&[1, 2, 3, 4], 2.0), 4);
     }
 
     #[cfg(unix)]
