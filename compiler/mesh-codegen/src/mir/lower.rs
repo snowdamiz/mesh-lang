@@ -13783,36 +13783,25 @@ impl<'a> Lowerer<'a> {
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<anonymous_actor>".to_string());
 
-        // Get actor type from typeck.
-        let actor_range = actor_def.syntax().text_range();
-        let actor_ty_raw = self.get_ty(actor_range).cloned();
+        let actor_ty = self
+            .get_ty(actor_def.syntax().text_range())
+            .cloned()
+            .expect("the type checker types every actor");
+        let (param_tys, _) = fun_parts(&actor_ty);
 
         // Extract parameter names and types.
         let mut params = Vec::new();
         self.push_scope();
 
         if let Some(param_list) = actor_def.param_list() {
-            if let Some(Ty::Fun(param_tys, _)) = &actor_ty_raw {
-                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
-                    let param_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = resolve_type(param_ty, self.registry);
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    params.push((param_name, mir_ty));
-                }
-            } else {
-                // Fallback: range-based type lookup.
-                for param in param_list.params() {
-                    let param_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = self.resolve_range(param.syntax().text_range());
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    params.push((param_name, mir_ty));
-                }
+            for (param, param_ty) in param_list.params().zip(param_tys) {
+                let param_name = param
+                    .name()
+                    .map(|t| t.text().to_string())
+                    .unwrap_or_else(|| "_".to_string());
+                let mir_ty = resolve_type(param_ty, self.registry);
+                self.insert_var(param_name.clone(), mir_ty.clone());
+                params.push((param_name, mir_ty));
             }
         }
 
@@ -13828,21 +13817,21 @@ impl<'a> Lowerer<'a> {
         }
 
         // Lower the actor body. The body contains a receive block that loops.
-        let mut body = if let Some(block) = actor_def.body() {
-            self.lower_block(&block)
-        } else {
-            MirExpr::Unit
-        };
+        let mut body = self.lower_block(
+            &actor_def
+                .body()
+                .expect("the parser gives an actor its body"),
+        );
         self.actor_body_target = saved_target;
 
         // Handle terminate clause: lower to a separate callback function.
         let terminate_callback_name = if let Some(term_clause) = actor_def.terminate_clause() {
             let cb_name = format!("__terminate_{}", name);
-            let cb_body = if let Some(cb_block) = term_clause.body() {
-                self.lower_block(&cb_block)
-            } else {
-                MirExpr::Unit
-            };
+            let cb_body = self.lower_block(
+                &term_clause
+                    .body()
+                    .expect("the parser gives a terminate clause its body"),
+            );
 
             // Terminate callback signature: (state_ptr: Ptr, reason_ptr: Ptr) -> Unit
             self.functions.push(MirFunction {
