@@ -845,19 +845,6 @@ pub(crate) fn prepare_project_build(
         &mesh_pkg::project::read_file,
     )?;
 
-    // Find the entry module
-    let entry_id = project
-        .compilation_order
-        .iter()
-        .copied()
-        .find(|id| project.graph.get(*id).is_entry)
-        .ok_or_else(|| {
-            format!(
-                "Resolved entrypoint '{}' was not marked executable in module discovery",
-                entry_relative_path.display()
-            )
-        })?;
-
     // Check parse errors in ALL modules (not just entry)
     let mut has_errors = false;
     for id in &project.compilation_order {
@@ -959,9 +946,7 @@ pub(crate) fn prepare_project_build(
         let idx = id.0 as usize;
         let source = &project.module_sources[idx];
         let file_name = diag_opts.display_path(&dir.join(&project.graph.get(id).path));
-        let Some(typeck) = &all_typeck[idx] else {
-            continue;
-        };
+        let typeck = &all_typeck[idx];
         has_type_errors |= !typeck.errors.is_empty();
         for diagnostic in typeck.errors.iter().chain(&typeck.warnings) {
             eprint!(
@@ -1000,10 +985,8 @@ pub(crate) fn prepare_project_build(
             entry.replication_count.value = default_replicas;
         }
     }
-    let clustered_route_handler_plan = mesh_codegen::prepare_clustered_route_handler_plan(
-        all_typeck.iter().filter_map(|typeck| typeck.as_ref()),
-        default_replicas,
-    )?;
+    let clustered_route_handler_plan =
+        mesh_codegen::prepare_clustered_route_handler_plan(all_typeck.iter(), default_replicas)?;
 
     let inferred_export_names: HashSet<String> = all_exports
         .iter()
@@ -1039,12 +1022,20 @@ pub(crate) fn prepare_project_build(
             .filter_map(|later| all_exports[later.0 as usize].as_ref())
             .flat_map(|exports| exports.trait_impls.iter().cloned())
             .collect();
-        if let Some(typeck) = all_typeck[id.0 as usize].as_mut() {
-            for impl_def in later_impls {
-                let _ = typeck.trait_registry.register_impl(impl_def);
-            }
+        for impl_def in later_impls {
+            let _ = all_typeck[id.0 as usize]
+                .trait_registry
+                .register_impl(impl_def);
         }
     }
+
+    // Pub function names, for module-qualified naming (Phase 41).
+    let pub_fns_of = |idx: usize| -> HashSet<String> {
+        all_exports[idx]
+            .as_ref()
+            .map(|e| e.functions.keys().cloned().collect())
+            .unwrap_or_default()
+    };
 
     // Lower ALL modules to MIR and merge into a single module for codegen.
     let mut mir_modules = Vec::new();
@@ -1052,16 +1043,9 @@ pub(crate) fn prepare_project_build(
     for (i, &id) in project.compilation_order.iter().enumerate() {
         let idx = id.0 as usize;
         let parse = &project.module_parses[idx];
-        let typeck = all_typeck[idx]
-            .as_ref()
-            .ok_or("Module was not type-checked")?;
-
-        // Build set of pub function names for module-qualified naming (Phase 41)
+        let typeck = &all_typeck[idx];
         let module_name = &project.graph.get(id).name;
-        let pub_fns: std::collections::HashSet<String> = all_exports[idx]
-            .as_ref()
-            .map(|e| e.functions.keys().cloned().collect())
-            .unwrap_or_default();
+        let pub_fns = pub_fns_of(idx);
 
         let other_modules: Vec<_> = project
             .module_parses
@@ -1069,7 +1053,7 @@ pub(crate) fn prepare_project_build(
             .zip(&all_typeck)
             .enumerate()
             .filter(|(other, _)| *other != idx)
-            .filter_map(|(_, (parse, typeck))| Some((parse, typeck.as_ref()?)))
+            .map(|(_, modules)| modules)
             .collect();
         let mir = mesh_codegen::lower_module_to_mir_raw(
             parse,
@@ -1079,7 +1063,7 @@ pub(crate) fn prepare_project_build(
             &inferred_fn_usage_types,
             &other_modules,
         )?;
-        if id == entry_id {
+        if project.graph.get(id).is_entry {
             entry_mir_idx = i;
         }
         mir_modules.push(mir);
@@ -1220,11 +1204,9 @@ fn reject_duplicate_pub_functions(
     let mut owners: std::collections::BTreeMap<&str, Vec<&mesh_common::module_graph::ModuleInfo>> =
         Default::default();
     for &id in &project.compilation_order {
-        let Some(exports) = all_exports.get(id.0 as usize).and_then(Option::as_ref) else {
-            continue;
-        };
         let module = project.graph.get(id);
-        for name in exports.functions.keys() {
+        let exports = all_exports[id.0 as usize].iter();
+        for name in exports.flat_map(|exports| exports.functions.keys()) {
             owners.entry(name.as_str()).or_default().push(module);
         }
     }
@@ -1330,7 +1312,7 @@ fn push_usage_type(map: &mut HashMap<String, Vec<Ty>>, name: &str, ty: &Ty) {
 
 fn collect_inferred_fn_usage_types(
     parses: &[mesh_parser::Parse],
-    typecks: &[Option<mesh_typeck::TypeckResult>],
+    typecks: &[mesh_typeck::TypeckResult],
     candidate_names: &HashSet<String>,
 ) -> HashMap<String, Vec<Ty>> {
     let mut usage = HashMap::new();
@@ -1338,11 +1320,7 @@ fn collect_inferred_fn_usage_types(
         return usage;
     }
 
-    for (parse, typeck_opt) in parses.iter().zip(typecks.iter()) {
-        let Some(typeck) = typeck_opt.as_ref() else {
-            continue;
-        };
-
+    for (parse, typeck) in parses.iter().zip(typecks) {
         // A callee of a call to an overloaded fn names the arity the call
         // runs (`name__N`).
         let overload_target = |callee: &mesh_parser::SyntaxNode| {

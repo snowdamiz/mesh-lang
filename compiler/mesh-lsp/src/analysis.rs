@@ -314,10 +314,7 @@ fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult
         .module_parses
         .iter()
         .any(|parse| !parse.errors().is_empty())
-        || all_typeck
-            .iter()
-            .flatten()
-            .any(|typeck| !typeck.errors.is_empty());
+        || all_typeck.iter().any(|typeck| !typeck.errors.is_empty());
 
     let path = &project.graph.get(current_id).path;
     let current_idx = current_id.0 as usize;
@@ -327,12 +324,9 @@ fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult
         .modules
         .iter()
         .filter(|module| module.path == *path && module.id != current_id)
-        .filter_map(|module| all_typeck[module.id.0 as usize].as_ref())
-        .flat_map(|typeck| typeck.errors.iter().cloned())
+        .flat_map(|module| all_typeck[module.id.0 as usize].errors.iter().cloned())
         .collect();
-    let mut current_typeck = all_typeck[current_idx]
-        .take()
-        .expect("check_project checks every module");
+    let mut current_typeck = all_typeck.swap_remove(current_idx);
     current_typeck.errors.extend(inline_errors);
     let current_parse = mesh_parser::parse(&current_source);
     let mut diagnostics =

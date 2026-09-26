@@ -544,9 +544,9 @@ fn link(
 }
 
 /// Each module's type-check result and exports, indexed by `ModuleId.0`
-/// (every entry is `Some`; the shape is what the export surface takes).
+/// (every export entry is `Some`; the shape is what the import context takes).
 pub struct CheckedProject {
-    pub typeck: Vec<Option<mesh_typeck::TypeckResult>>,
+    pub typeck: Vec<mesh_typeck::TypeckResult>,
     pub exports: Vec<Option<mesh_typeck::ExportedSymbols>>,
 }
 
@@ -573,6 +573,10 @@ pub fn check_project(project: &ProjectData, test_builtins: bool) -> CheckedProje
         exports[idx] = Some(mesh_typeck::collect_exports(parse, &result));
         typeck[idx] = Some(result);
     }
+    let typeck = typeck
+        .into_iter()
+        .map(|result| result.expect("the compilation order has every module"))
+        .collect();
     CheckedProject { typeck, exports }
 }
 
@@ -1065,8 +1069,6 @@ from Baz.Qux import { name1, name2 }
             .functions
             .contains_key("area"));
         let top_level: Vec<&str> = checked.typeck[main]
-            .as_ref()
-            .unwrap()
             .errors
             .iter()
             .filter_map(|error| match error {
