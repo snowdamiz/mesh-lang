@@ -15042,7 +15042,7 @@ fn annotated_type_range(ann: &mesh_parser::ast::item::TypeAnnotation) -> TextRan
 /// `None` for any other type.
 fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
     match name {
-        "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" => Some(1),
+        "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" | "Channel" => Some(1),
         "Map" | "Result" => Some(2),
         _ => type_registry
             .lookup_struct(name)

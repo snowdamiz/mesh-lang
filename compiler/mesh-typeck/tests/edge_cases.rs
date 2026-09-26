@@ -261,6 +261,10 @@ fn nested(xs :: List<Option<Int, Int>>) -> Int do
   0
 end
 
+fn chan(c :: Channel<Int, Int>) -> Int do
+  0
+end
+
 fn main() do
   opt(Some(1))
   boxed(Box { item: 1 })
@@ -278,6 +282,10 @@ end
             at(
                 "`Option` takes 1 type argument, not 2",
                 "List<Option<Int, Int>>"
+            ),
+            at(
+                "`Channel` takes 1 type argument, not 2",
+                "Channel<Int, Int>"
             ),
         ]
     );
