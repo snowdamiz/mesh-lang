@@ -1151,3 +1151,42 @@ end
         "0 5 1.5 4.0\ntrue true same x!\nNone Some(2)\n() nil\n"
     );
 }
+
+/// A queue and a JSON value spawned into an actor are the actor's own
+/// copies: they read back after the spawner's heap has been churned
+/// through a collection.
+#[test]
+fn queues_and_json_cross_to_an_actor() {
+    let out = compile_and_run_with(
+        r##"actor queued(q :: Queue<String>, doc :: Json) do
+  Timer.sleep(100)
+  let pair = Queue.pop(q)
+  println("front ${Tuple.first(pair)} rest ${Queue.size(Tuple.second(pair))}")
+  println(Json.encode(doc))
+end
+
+fn churn(i :: Int, n :: Int, acc :: Int) -> Int do
+  if i >= n do
+    acc
+  else
+    let s = "garbage-${i}"
+    churn(i + 1, n, acc + String.length(s))
+  end
+end
+
+fn main() do
+  let q = Queue.push(Queue.push(Queue.new(), "a-${1 + 1}"), "b")
+  case Json.parse("{\"k\": [1, 2]}") do
+    Ok(j) -> do
+      let _ = spawn(queued, q, j)
+      let _ = churn(0, 200000, 0)
+      Timer.sleep(300)
+    end
+    Err(e) -> println(e)
+  end
+end
+"##,
+        &["--opt-level", "2"],
+    );
+    assert_eq!(out, "front a-2 rest 1\n{\"k\":[1,2]}\n");
+}
