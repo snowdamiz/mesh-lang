@@ -1403,6 +1403,28 @@ mod tests {
         codegen.compile(&mir).unwrap();
     }
 
+    /// Sum types holding each other by value have no finite layout: the
+    /// build says so instead of looping. (Lowering boxes recursive payloads,
+    /// so only MIR built by hand gets here.)
+    #[test]
+    fn sum_types_holding_each_other_by_value_are_rejected() {
+        let holding = |name: &str, other: &str| MirSumTypeDef {
+            name: name.to_string(),
+            variants: vec![MirVariantDef {
+                name: format!("{name}Of"),
+                fields: vec![MirType::SumType(other.to_string())],
+                tag: 0,
+            }],
+        };
+        let mut mir = empty_mir_module();
+        mir.sum_types = vec![holding("A", "B"), holding("B", "A")];
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "cyclic_sums", 0, None).unwrap();
+        let error = codegen.compile(&mir).unwrap_err();
+        assert_eq!(error, "recursive by-value sum type layout dependency: A, B");
+    }
+
     #[test]
     fn test_native_target_init() {
         let context = Context::create();
