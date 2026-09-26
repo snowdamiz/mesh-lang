@@ -304,6 +304,123 @@ end
     );
 }
 
+// ── The `?` operator ───────────────────────────────────────────────────
+
+/// `?` on an Option returns its `None` early from a function returning an
+/// Option, declared or not, or from a closure whose return type its caller
+/// gives; so does `?` on a Result, with its `Err`.
+#[test]
+fn try_returns_early_from_what_returns_its_kind() {
+    assert_clean(
+        r#"
+fn declared(o :: Option<Int>) -> Option<Int> do
+  let v = o?
+  Some(v + 1)
+end
+
+fn undeclared(o :: Option<Int>) do
+  let v = o?
+  Some(v * 2)
+end
+
+fn in_closures(os :: List<Option<Int>>, rs :: List<Result<Int, String>>) -> Int do
+  let tens = List.map(os, fn o -> Some(o? * 10) end)
+  let fives = List.map(rs, fn r -> Ok(r? + 5) end)
+  List.length(tens) + List.length(fives)
+end
+"#,
+    );
+}
+
+/// An operand whose type is not known yet is an Option in a function
+/// returning an Option: it was always taken for a Result, so `o?` in such
+/// a function could not be written without annotating `o`. Elsewhere it is
+/// a Result.
+#[test]
+fn try_on_an_unknown_value_takes_the_kind_its_function_returns() {
+    assert_clean(
+        r#"
+fn next(o) -> Option<Int> do
+  let v = o?
+  Some(v + 1)
+end
+
+fn bumped(r) do
+  let v = r?
+  Ok(v + 1)
+end
+
+fn main() do
+  next(Some(1))
+  bumped(Err("no"))
+end
+"#,
+    );
+}
+
+/// What `?` cannot do: apply to a value that is neither, return early from
+/// a function that returns neither or the other kind, or give a Result's
+/// error to a function whose error type has no `From` it.
+#[test]
+fn try_is_refused_where_its_early_return_cannot_go() {
+    assert_eq!(
+        errors(
+            r#"
+fn not_either(xs :: List<Int>) -> Option<Int> do
+  let v = xs?
+  Some(v)
+end
+
+fn returns_int(o :: Option<Int>) -> Int do
+  o?
+end
+
+fn other_kind(r :: Result<Int, String>) -> Option<Int> do
+  Some(r?)
+end
+
+fn other_error(r :: Result<Int, Bool>) -> Result<Int, Int> do
+  Ok(r?)
+end
+
+fn undefined() -> Result<Int, String> do
+  Ok(missing?)
+end
+"#
+        ),
+        [
+            "`?` operator requires `Result` or `Option`, found `List<Int>`",
+            "`?` cannot propagate `Option<Int>` from a function returning `Int`",
+            "`?` cannot propagate `Result<Int, String>` from a function returning `Option<Int>`",
+            "`?` cannot propagate `Result<Int, Bool>` from a function returning `Result<Int, Int>`",
+            "undefined variable `missing`",
+        ]
+    );
+}
+
+/// A Result's error converts to the one the function returns through a
+/// `From` impl.
+#[test]
+fn try_converts_an_error_through_from() {
+    assert_clean(
+        r#"
+struct AppError do
+  message :: String
+end
+
+impl From<String> for AppError do
+  fn from(message :: String) -> AppError do
+    AppError { message: message }
+  end
+end
+
+fn parse(r :: Result<Int, String>) -> Result<Int, AppError> do
+  Ok(r? + 1)
+end
+"#,
+    );
+}
+
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
 /// `true | false` inside another pattern covers every Bool: the column's

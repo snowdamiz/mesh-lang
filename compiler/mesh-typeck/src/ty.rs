@@ -113,6 +113,17 @@ impl Ty {
         }
     }
 
+    /// The arguments of this type if it is the constructor `name` applied to
+    /// them: `[Int]` for `Option<Int>` and "Option".
+    pub fn args_of(&self, name: &str) -> Option<&[Ty]> {
+        match self {
+            Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(c) if c.name == name) => {
+                Some(args)
+            }
+            _ => None,
+        }
+    }
+
     /// This type with each constructor `replace` gives a type for replaced.
     pub fn replace_cons(&self, replace: &mut dyn FnMut(&TyCon) -> Option<Ty>) -> Ty {
         match self {

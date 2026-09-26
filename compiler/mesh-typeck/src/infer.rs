@@ -15244,13 +15244,12 @@ fn infer_link(
 
 // ── Try (?) expression inference ───────────────────────────────────────
 
-/// Infer the type of a try expression (`expr?`).
-///
-/// The `?` operator works on `Result<T, E>` and `Option<T>` values:
-/// - For `Result<T, E>`: extracts `T` on success, propagates `E` to enclosing function
-/// - For `Option<T>`: extracts `T` on Some, propagates None to enclosing function
-///
-/// Validates that the enclosing function returns a compatible `Result` or `Option` type.
+/// Infer the type of a try expression (`expr?`): the value inside a
+/// `Result<T, E>` or `Option<T>`, whose `Err` or `None` the enclosing
+/// function returns early. That function must return a `Result` whose error
+/// type is `E` or converts from it (`From`), or an `Option`. An operand whose
+/// type is not known yet is taken for an `Option` in a function returning
+/// one, and a `Result` otherwise.
 fn infer_try_expr(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -15261,12 +15260,7 @@ fn infer_try_expr(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     let span = try_expr.syntax().text_range();
-
-    // 1. Get and infer the operand expression.
-    let operand = match try_expr.operand() {
-        Some(op) => op,
-        None => return Ok(ctx.fresh_var()),
-    };
+    let operand = try_expr.operand().ok_or_else(incomplete)?;
     let operand_ty = infer_expr(
         ctx,
         env,
@@ -15276,189 +15270,65 @@ fn infer_try_expr(
         trait_registry,
         fn_constraints,
     )?;
-    let resolved = ctx.resolve(operand_ty.clone());
-
-    // 2. Determine whether operand is Result<T, E> or Option<T>.
-    enum TryKind {
-        Result { ok_ty: Ty, err_ty: Ty },
-        Option { inner_ty: Ty },
+    let fn_ret = ctx
+        .current_fn_return_type()
+        .cloned()
+        .map(|ty| ctx.resolve(ty));
+    if let Ty::Var(_) = ctx.resolve(operand_ty.clone()) {
+        let value = ctx.fresh_var();
+        let known = match fn_ret.as_ref().and_then(|ret| ret.args_of("Option")) {
+            Some(_) => Ty::option(value),
+            None => Ty::result(value, ctx.fresh_var()),
+        };
+        ctx.unify(operand_ty.clone(), known, ConstraintOrigin::Builtin)?;
     }
+    let resolved = ctx.resolve(operand_ty);
 
-    let try_kind = match &resolved {
-        Ty::App(con, args) => match con.as_ref() {
-            Ty::Con(tc) if tc.name == "Result" && args.len() == 2 => Some(TryKind::Result {
-                ok_ty: args[0].clone(),
-                err_ty: args[1].clone(),
-            }),
-            Ty::Con(tc) if tc.name == "Option" && args.len() == 1 => Some(TryKind::Option {
-                inner_ty: args[0].clone(),
-            }),
-            _ => None,
-        },
-        // Handle the case where operand is an unresolved type variable --
-        // try unifying with Result<T, E> first (most common usage).
-        Ty::Var(_) => {
-            let fresh_t = ctx.fresh_var();
-            let fresh_e = ctx.fresh_var();
-            let result_ty = Ty::result(fresh_t.clone(), fresh_e.clone());
-            if ctx
-                .unify(resolved.clone(), result_ty, ConstraintOrigin::Builtin)
-                .is_ok()
-            {
-                Some(TryKind::Result {
-                    ok_ty: fresh_t,
-                    err_ty: fresh_e,
-                })
-            } else {
-                // Fall back to Option<T>.
-                let fresh_t2 = ctx.fresh_var();
-                let option_ty = Ty::option(fresh_t2.clone());
-                if ctx
-                    .unify(resolved.clone(), option_ty, ConstraintOrigin::Builtin)
-                    .is_ok()
-                {
-                    Some(TryKind::Option { inner_ty: fresh_t2 })
-                } else {
-                    None
-                }
-            }
-        }
-        _ => None,
-    };
-
-    let try_kind = match try_kind {
-        Some(k) => k,
-        None => {
-            // Operand is not Result or Option.
+    // The value `?` gives, and what the function returns early.
+    let (value, early) = match (resolved.args_of("Result"), resolved.args_of("Option")) {
+        (Some([ok, err]), _) => (ok.clone(), Ty::result(ctx.fresh_var(), err.clone())),
+        (_, Some([inner])) => (inner.clone(), Ty::option(ctx.fresh_var())),
+        _ => {
             ctx.errors.push(TypeError::TryOnNonResultOption {
-                operand_ty: resolved.clone(),
+                operand_ty: resolved,
                 span,
             });
             return Ok(ctx.fresh_var());
         }
     };
-
-    // 3. Check the enclosing function's return type.
-    let fn_ret = ctx.current_fn_return_type().cloned();
-
-    match &try_kind {
-        TryKind::Result { ok_ty, err_ty } => {
-            // Validate fn return type is Result<_, E> with compatible error type.
-            if let Some(ref fn_ret_ty) = fn_ret {
-                let fn_ret_resolved = ctx.resolve(fn_ret_ty.clone());
-                match &fn_ret_resolved {
-                    Ty::App(con, args)
-                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Result")
-                            && args.len() == 2 =>
-                    {
-                        // Try direct unification first (preserves existing behavior).
-                        let err_resolved = ctx.resolve(err_ty.clone());
-                        let fn_err_resolved = ctx.resolve(args[1].clone());
-                        // Save error count before unify -- unify pushes errors internally
-                        // and we need to undo them if a From impl exists.
-                        let err_count_before = ctx.errors.len();
-                        if ctx
-                            .unify(
-                                err_resolved.clone(),
-                                fn_err_resolved.clone(),
-                                ConstraintOrigin::Builtin,
-                            )
-                            .is_err()
-                        {
-                            // Direct unification failed -- check for From impl.
-                            // Only attempt From lookup when both types are concrete (not inference variables).
-                            let err_is_concrete = !matches!(&err_resolved, Ty::Var(_));
-                            let fn_err_is_concrete = !matches!(&fn_err_resolved, Ty::Var(_));
-                            if err_is_concrete && fn_err_is_concrete {
-                                if trait_registry.has_impl_with_type_args(
-                                    "From",
-                                    std::slice::from_ref(&err_resolved),
-                                    &fn_err_resolved,
-                                ) {
-                                    // From impl exists -- type check passes. Remove the
-                                    // unification error that unify() pushed internally.
-                                    ctx.errors.truncate(err_count_before);
-                                } else {
-                                    // No From impl either -- replace the unification error
-                                    // with a more descriptive TryIncompatibleReturn error.
-                                    ctx.errors.truncate(err_count_before);
-                                    ctx.errors.push(TypeError::TryIncompatibleReturn {
-                                        operand_ty: resolved.clone(),
-                                        fn_return_ty: fn_ret_resolved.clone(),
-                                        span,
-                                    });
-                                }
-                            }
-                            // If either type is still a variable, let inference continue
-                            // (keep the unification error from ctx.unify).
-                        }
-                    }
-                    Ty::Var(_) => {
-                        // fn return type is not yet resolved -- unify it with Result<fresh, E>.
-                        let fresh_ok = ctx.fresh_var();
-                        let result_ret = Ty::result(fresh_ok, err_ty.clone());
-                        let _ = ctx.unify(fn_ret_resolved, result_ret, ConstraintOrigin::Builtin);
-                    }
-                    _ => {
-                        // fn return type is incompatible with ?.
-                        ctx.errors.push(TypeError::TryIncompatibleReturn {
-                            operand_ty: resolved.clone(),
-                            fn_return_ty: fn_ret_resolved,
-                            span,
-                        });
-                    }
-                }
-            } else {
-                // No declared return type: the early `Err` is one of the
-                // function's returns, joined with its body's type.
-                let fresh_ok = ctx.fresh_var();
-                ctx.record_return(EarlyReturn {
-                    ty: Ty::result(fresh_ok, err_ty.clone()),
-                    span,
-                    try_operand: Some(resolved.clone()),
-                });
+    let Some(fn_ret) = fn_ret else {
+        // No declared return type: the early return is one of the
+        // function's returns, joined with its body's type.
+        ctx.record_return(EarlyReturn {
+            ty: early,
+            span,
+            try_operand: Some(resolved),
+        });
+        return Ok(value);
+    };
+    let before = ctx.errors.len();
+    if ctx
+        .unify(fn_ret.clone(), early.clone(), ConstraintOrigin::Builtin)
+        .is_err()
+    {
+        ctx.errors.truncate(before);
+        // A different error type is fine when it converts to the one the
+        // function returns.
+        let converts = match (early.args_of("Result"), fn_ret.args_of("Result")) {
+            (Some([_, err]), Some([_, fn_err])) => {
+                trait_registry.has_impl_with_type_args("From", std::slice::from_ref(err), fn_err)
             }
-
-            Ok(ok_ty.clone())
-        }
-        TryKind::Option { inner_ty } => {
-            // Validate fn return type is Option<_>.
-            if let Some(ref fn_ret_ty) = fn_ret {
-                let fn_ret_resolved = ctx.resolve(fn_ret_ty.clone());
-                match &fn_ret_resolved {
-                    Ty::App(con, _args) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option") =>
-                    {
-                        // Compatible -- Option fn return type.
-                    }
-                    Ty::Var(_) => {
-                        // fn return type is not yet resolved -- unify with Option<fresh>.
-                        let fresh_inner = ctx.fresh_var();
-                        let option_ret = Ty::option(fresh_inner);
-                        let _ = ctx.unify(fn_ret_resolved, option_ret, ConstraintOrigin::Builtin);
-                    }
-                    _ => {
-                        // fn return type is incompatible with ?.
-                        ctx.errors.push(TypeError::TryIncompatibleReturn {
-                            operand_ty: resolved.clone(),
-                            fn_return_ty: fn_ret_resolved,
-                            span,
-                        });
-                    }
-                }
-            } else {
-                // No declared return type: the early `None` is one of the
-                // function's returns.
-                let fresh_inner = ctx.fresh_var();
-                ctx.record_return(EarlyReturn {
-                    ty: Ty::option(fresh_inner),
-                    span,
-                    try_operand: Some(resolved.clone()),
-                });
-            }
-
-            Ok(inner_ty.clone())
+            _ => false,
+        };
+        if !converts {
+            ctx.errors.push(TypeError::TryIncompatibleReturn {
+                operand_ty: resolved,
+                fn_return_ty: fn_ret,
+                span,
+            });
         }
     }
+    Ok(value)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
