@@ -147,6 +147,41 @@ fn cluster_declaration_private_cluster_decorator_with_explicit_count_fails_befor
 }
 
 #[test]
+fn cluster_declaration_json_diagnostic_names_the_decorator() {
+    let (_tmp, _project_dir, output) = build_temp_project_with_sources(
+        package_manifest("clustered-source-proof").as_str(),
+        &[
+            ("main.mpl", validation_main()),
+            ("work.mpl", private_cluster_work_with_explicit_count()),
+        ],
+        &["--json"],
+    );
+    assert!(!output.status.success(), "{}", command_output_text(&output));
+    let diagnostics = parse_json_stderr(&output);
+    let diag = diagnostics
+        .iter()
+        .find(|diag| diag["code"] == "CFG0001")
+        .unwrap_or_else(|| panic!("no CFG0001 in:\n{}", command_output_text(&output)));
+    assert!(
+        diag["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("Work.hidden_submit")),
+        "{diag}"
+    );
+    assert!(
+        diag["file"].as_str().unwrap().ends_with("work.mpl"),
+        "{diag}"
+    );
+    assert_eq!(diag["spans"][0]["start"], 0, "{diag}");
+    assert!(
+        diag["spans"][0]["label"]
+            .as_str()
+            .is_some_and(|label| label.contains("private function")),
+        "{diag}"
+    );
+}
+
+#[test]
 fn removed_manifest_cluster_section_fails_with_migration_guidance() {
     let (_tmp, project_dir, output) = build_temp_project_with_sources(
         removed_cluster_manifest("clustered-source-proof").as_str(),

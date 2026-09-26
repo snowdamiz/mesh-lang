@@ -2059,3 +2059,210 @@ end
         "{stdout}"
     );
 }
+
+/// Runs meshc in `cwd`: whether it succeeded, and its stdout then stderr.
+fn run_meshc(cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> (bool, String) {
+    let output = Command::new(meshc_bin())
+        .args(args)
+        .current_dir(cwd)
+        .envs(env.iter().copied())
+        .output()
+        .expect("meshc runs");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), text)
+}
+
+#[test]
+fn test_init_rejects_an_unknown_template() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ok, text) = run_meshc(dir.path(), &["init", "--template", "blog", "app"], &[]);
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains("error: unknown init template 'blog'; supported templates: todo-api.\n"),
+        "{text}"
+    );
+    let (ok, text) = run_meshc(
+        dir.path(),
+        &["init", "--template", "blog", "--db", "sqlite", "app"],
+        &[],
+    );
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains("todo-api. `--db` is only supported with `--template todo-api`."),
+        "{text}"
+    );
+    assert!(!dir.path().join("app").exists());
+}
+
+/// `meshc deps` writes the lockfile, then skips resolution until the
+/// manifest changes.
+#[test]
+fn test_deps_resolves_until_the_lockfile_is_fresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("app");
+    std::fs::create_dir_all(&project).unwrap();
+    let (ok, text) = run_meshc(dir.path(), &["deps", "app"], &[]);
+    assert!(
+        !ok && text.contains("No 'mesh.toml' found in 'app'"),
+        "{text}"
+    );
+
+    let manifest = project.join("mesh.toml");
+    write_file(
+        &manifest,
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    let (ok, text) = run_meshc(&project, &["deps"], &[]);
+    assert!(ok && text.contains("No dependencies"), "{text}");
+    assert!(project.join("mesh.lock").is_file());
+    let (ok, text) = run_meshc(&project, &["deps"], &[]);
+    assert!(ok && text.contains("Dependencies up to date"), "{text}");
+
+    write_file(
+        &dir.path().join("helper/mesh.toml"),
+        "[package]\nname = \"helper\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(
+        &manifest,
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+    );
+    // Newer than the lockfile, whatever the filesystem's timestamp grain.
+    std::fs::File::options()
+        .write(true)
+        .open(&manifest)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+        .unwrap();
+    let (ok, text) = run_meshc(&project, &["deps"], &[]);
+    assert!(ok && text.contains("Resolved 1 dependencies"), "{text}");
+}
+
+/// `meshc update` runs the installer it downloads; one it cannot download
+/// is an error.
+#[cfg(unix)]
+#[test]
+fn test_update_runs_the_installer_it_downloads() {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/install.sh", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = stream.read(&mut [0_u8; 1024]);
+        let body = "exit 0\n";
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let (ok, text) = run_meshc(
+        dir.path(),
+        &["update"],
+        &[("MESH_UPDATE_INSTALLER_URL", url.as_str())],
+    );
+    server.join().unwrap();
+    assert!(
+        ok && text.contains("Mesh toolchain update completed via the canonical installer."),
+        "{text}"
+    );
+
+    let (ok, text) = run_meshc(
+        dir.path(),
+        &["update"],
+        &[("MESH_UPDATE_INSTALLER_URL", "http://127.0.0.1:1/install.sh")],
+    );
+    assert!(!ok && text.starts_with("error: "), "{text}");
+}
+
+#[test]
+fn test_build_needs_a_project_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ok, text) = run_meshc(dir.path(), &["build", "missing"], &[]);
+    assert!(
+        !ok && text.contains("Project directory 'missing' does not exist"),
+        "{text}"
+    );
+    write_file(&dir.path().join("notes.txt"), "notes");
+    let (ok, text) = run_meshc(dir.path(), &["build", "notes.txt"], &[]);
+    assert!(
+        !ok && text.contains("'notes.txt' is not a directory"),
+        "{text}"
+    );
+
+    write_file(&dir.path().join("app/main.mpl"), "fn main() do\nend\n");
+    let (ok, text) = run_meshc(dir.path(), &["build", "app"], &[("MESH_RT_LIB_PATH", "")]);
+    assert!(
+        !ok && text.contains("MESH_RT_LIB_PATH was set but empty"),
+        "{text}"
+    );
+}
+
+/// A library's IR is named for the library and has no C `main`.
+#[test]
+fn test_library_ir_is_named_for_the_library() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("widgets");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/library");
+    for file in ["mesh.toml", "main.mpl"] {
+        write_file(
+            &project.join(file),
+            &std::fs::read_to_string(fixture.join(file)).unwrap(),
+        );
+    }
+    let (ok, text) = run_meshc(
+        dir.path(),
+        &["build", "widgets", "--artifact", "staticlib", "--emit-llvm"],
+        &[],
+    );
+    assert!(ok, "{text}");
+    assert!(project.join("libwidgets.a").is_file());
+    let ir = std::fs::read_to_string(project.join("libwidgets.ll")).unwrap();
+    assert!(!ir.contains("define i32 @main("), "{ir}");
+}
+
+/// `meshc fmt` and `meshc lint` name what they were given when it holds no
+/// source they can read.
+#[cfg(unix)]
+#[test]
+fn test_fmt_and_lint_name_paths_without_readable_sources() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_file(&root.join("notes.txt"), "notes");
+    std::fs::create_dir_all(root.join("empty")).unwrap();
+    write_file(&root.join("locked.mpl"), "fn main() do\nend\n");
+    write_file(&root.join("sealed/main.mpl"), "fn main() do\nend\n");
+    let lock = |path: &str, mode| {
+        std::fs::set_permissions(root.join(path), std::fs::Permissions::from_mode(mode)).unwrap()
+    };
+    lock("locked.mpl", 0o000);
+    lock("sealed", 0o000);
+    // Permissions do not bind a privileged user.
+    let enforced = std::fs::read(root.join("locked.mpl")).is_err();
+
+    for command in ["fmt", "lint"] {
+        let mut cases = vec![
+            ("missing", "Path 'missing' does not exist"),
+            ("notes.txt", "'notes.txt' is not a .mpl file"),
+            ("/dev/null", "'/dev/null' is not a file or directory"),
+            ("empty", "No .mpl files found at 'empty'"),
+        ];
+        if enforced {
+            cases.push(("locked.mpl", "Failed to read 'locked.mpl'"));
+            cases.push(("sealed", "Failed to walk directory 'sealed'"));
+        }
+        for (path, message) in cases {
+            let (ok, text) = run_meshc(root, &[command, path], &[]);
+            assert!(!ok && text.contains(message), "{command} {path}: {text}");
+        }
+    }
+    lock("sealed", 0o755);
+}

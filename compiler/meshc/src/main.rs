@@ -241,41 +241,30 @@ fn resolve_init_target(
     template: Option<&str>,
     db: Option<InitTodoDb>,
 ) -> Result<InitTarget, String> {
-    if let Some(template_name) = template {
-        if template_name != "todo-api" {
+    match (template, db) {
+        (Some("todo-api"), _) if clustered => Err(
+            "`meshc init --clustered` cannot be combined with `--template todo-api` or `--db`; use `meshc init --template todo-api <name>` for the local SQLite starter, `meshc init --template todo-api --db postgres <name>` for the clustered/deployable Todo starter, or `meshc init --clustered <name>` for the minimal clustered scaffold."
+                .to_string(),
+        ),
+        (Some("todo-api"), db) => Ok(InitTarget::TodoApi(
+            db.map_or(mesh_pkg::TodoApiDatabase::Sqlite, Into::into),
+        )),
+        (Some(template_name), db) => {
             let db_guidance = if db.is_some() {
                 " `--db` is only supported with `--template todo-api`."
             } else {
                 ""
             };
-            return Err(format!(
+            Err(format!(
                 "unknown init template '{template_name}'; supported templates: todo-api.{db_guidance}"
-            ));
+            ))
         }
-    }
-
-    if db.is_some() && template != Some("todo-api") {
-        return Err(
+        (None, Some(_)) => Err(
             "`--db` is only supported with `meshc init --template todo-api <name>`; omit `--db` for hello-world or `--clustered`, or add `--template todo-api` (sqlite stays the local default, postgres opts into the clustered/deployable starter)."
                 .to_string(),
-        );
-    }
-
-    if clustered && template == Some("todo-api") {
-        return Err(
-            "`meshc init --clustered` cannot be combined with `--template todo-api` or `--db`; use `meshc init --template todo-api <name>` for the local SQLite starter, `meshc init --template todo-api --db postgres <name>` for the clustered/deployable Todo starter, or `meshc init --clustered <name>` for the minimal clustered scaffold."
-                .to_string(),
-        );
-    }
-
-    match (clustered, template, db) {
-        (true, None, None) => Ok(InitTarget::Clustered),
-        (false, Some("todo-api"), Some(database)) => Ok(InitTarget::TodoApi(database.into())),
-        (false, Some("todo-api"), None) => {
-            Ok(InitTarget::TodoApi(mesh_pkg::TodoApiDatabase::Sqlite))
-        }
-        (false, None, None) => Ok(InitTarget::HelloWorld),
-        _ => unreachable!("init argument validation should return early for unsupported cases"),
+        ),
+        (None, None) if clustered => Ok(InitTarget::Clustered),
+        (None, None) => Ok(InitTarget::HelloWorld),
     }
 }
 
@@ -370,35 +359,20 @@ fn run() {
             name,
         } => {
             let dir = std::env::current_dir().unwrap_or_default();
-            if let Err(e) = run_init_command(clustered, template.as_deref(), db, &name, &dir) {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
+            or_exit(run_init_command(
+                clustered,
+                template.as_deref(),
+                db,
+                &name,
+                &dir,
+            ));
         }
-        Commands::Cluster { action } => {
-            if let Err(e) = cluster::run_cluster_command(action) {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
-        }
-        Commands::Proof { action } => {
-            if let Err(e) = proof::run_proof_command(action) {
-                eprintln!("proof failed: {e}");
-                std::process::exit(1);
-            }
-        }
-        Commands::Deps { dir } => {
-            if let Err(e) = deps_command(&dir) {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
-        }
-        Commands::Update => {
-            if let Err(e) = run_update_command() {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
-        }
+        Commands::Cluster { action } => or_exit(cluster::run_cluster_command(action)),
+        Commands::Proof { action } => or_exit(
+            proof::run_proof_command(action).map_err(|error| format!("proof failed: {error}")),
+        ),
+        Commands::Deps { dir } => or_exit(deps_command(&dir)),
+        Commands::Update => or_exit(run_update_command()),
         Commands::Fmt {
             path,
             check,
@@ -409,40 +383,22 @@ fn run() {
                 indent_size,
                 max_width: line_width,
             };
-            match fmt_command(&path, check, &config) {
-                Ok(stats) => {
-                    if check {
-                        if stats.unformatted > 0 {
-                            eprintln!("{} file(s) would be reformatted", stats.unformatted);
-                            process::exit(1);
-                        }
-                    } else {
-                        eprintln!("Formatted {} file(s)", stats.total);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("error: {}", e);
-                    process::exit(1);
-                }
+            let stats = or_exit(fmt_command(&path, check, &config));
+            if !check {
+                eprintln!("Formatted {} file(s)", stats.total);
+            } else if stats.unformatted > 0 {
+                eprintln!("{} file(s) would be reformatted", stats.unformatted);
+                process::exit(1);
             }
         }
-        Commands::Lint { path } => match lint_command(&path) {
-            Ok(0) => {}
-            Ok(problems) => {
+        Commands::Lint { path } => {
+            let problems = or_exit(lint_command(&path));
+            if problems > 0 {
                 eprintln!("{} problem(s) found", problems);
                 process::exit(1);
             }
-            Err(e) => {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
-        },
-        Commands::Repl => {
-            if let Err(e) = mesh_repl::run_repl(&mesh_repl::ReplConfig::default()) {
-                eprintln!("REPL error: {}", e);
-                process::exit(1);
-            }
         }
+        Commands::Repl => or_exit(mesh_repl::run_repl(&mesh_repl::ReplConfig::default())),
         Commands::Lsp => {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(mesh_lsp::run_server());
@@ -453,31 +409,29 @@ fn run() {
             path,
             quiet,
             coverage,
-        } => match test_runner::run_tests(path.as_deref(), quiet, coverage) {
-            Ok(summary) => {
-                if summary.failed > 0 {
-                    process::exit(1);
-                }
-            }
-            Err(e) => {
-                eprintln!("error: {}", e);
+        } => {
+            if or_exit(test_runner::run_tests(path.as_deref(), quiet, coverage)).failed > 0 {
                 process::exit(1);
             }
-        },
+        }
         Commands::Migrate { action, dir } => {
             let action = action.unwrap_or(MigrateAction::Up);
-            let result = match action {
+            or_exit(match action {
                 MigrateAction::Up => migrate::run_migrations_up(&dir),
                 MigrateAction::Down => migrate::run_migrations_down(&dir),
                 MigrateAction::Status => migrate::show_migration_status(&dir),
                 MigrateAction::Generate { name } => migrate::generate_migration(&dir, &name),
-            };
-            if let Err(e) = result {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            }
+            })
         }
     }
+}
+
+/// A command's value, or its error reported and the process ended.
+fn or_exit<T>(result: Result<T, String>) -> T {
+    result.unwrap_or_else(|error| {
+        eprintln!("error: {error}");
+        process::exit(1)
+    })
 }
 
 fn run_update_command() -> Result<(), String> {
@@ -521,48 +475,35 @@ fn runtime_autonomous_config_json(
     let Some(config) = config.filter(|config| config.mode == ClusterMode::Autonomous) else {
         return Ok(None);
     };
-    let driver = match (config.autoscaling.enabled, config.capacity.driver) {
-        (false, _) => RuntimeCapacityDriverConfig::Disabled,
-        (true, Some(CapacityDriverKind::Process)) => {
-            let process = config
-                .capacity
-                .process
-                .as_ref()
-                .ok_or_else(|| "validated process driver config missing".to_string())?;
+    let capacity = &config.capacity;
+    let (driver, template_revision) = match (
+        config.autoscaling.enabled,
+        capacity.driver,
+        &capacity.process,
+        &capacity.docker,
+    ) {
+        (false, ..) => (
+            RuntimeCapacityDriverConfig::Disabled,
+            "disabled-v1".to_string(),
+        ),
+        (true, Some(CapacityDriverKind::Process), Some(process), _) => (
             RuntimeCapacityDriverConfig::Process {
                 command: process.command.clone(),
                 working_directory: process.working_directory.clone(),
-            }
-        }
-        (true, Some(CapacityDriverKind::Docker)) => {
-            let docker = config
-                .capacity
-                .docker
-                .as_ref()
-                .ok_or_else(|| "validated Docker driver config missing".to_string())?;
+            },
+            "process-v1".to_string(),
+        ),
+        (true, Some(CapacityDriverKind::Docker), _, Some(docker)) => (
             RuntimeCapacityDriverConfig::Docker {
                 image: docker.image.clone(),
                 pool: docker.pool.clone(),
                 network: docker.network.clone(),
                 environment: docker.env.clone(),
-            }
-        }
-        (true, None) => return Err("validated autonomous capacity driver missing".to_string()),
+            },
+            docker.template_revision.clone(),
+        ),
+        _ => return Err("autoscaling needs a configured capacity driver".to_string()),
     };
-    let template_revision = if !config.autoscaling.enabled {
-        Some("disabled-v1".to_string())
-    } else {
-        match config.capacity.driver {
-            Some(CapacityDriverKind::Docker) => config
-                .capacity
-                .docker
-                .as_ref()
-                .map(|driver| driver.template_revision.clone()),
-            Some(CapacityDriverKind::Process) => Some("process-v1".to_string()),
-            None => None,
-        }
-    }
-    .ok_or_else(|| "validated capacity template revision missing".to_string())?;
     let runtime = RuntimeAutonomousConfig {
         schema_version: AUTONOMOUS_CONFIG_SCHEMA_VERSION,
         enabled: true,
@@ -684,31 +625,10 @@ pub(crate) fn build(
         &declared_handler_plan,
     )?;
 
-    // Determine output path
-    let project_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("output");
-    let output_path = match output {
-        Some(p) => p.to_path_buf(),
-        None => match artifact {
-            BuildArtifact::Executable => dir.join(project_name),
-            BuildArtifact::Staticlib => dir.join(format!("lib{project_name}.a")),
-            BuildArtifact::Cdylib => {
-                let extension = if target
-                    .map(|triple| triple.contains("apple"))
-                    .unwrap_or(cfg!(target_os = "macos"))
-                {
-                    "dylib"
-                } else if target
-                    .map(|triple| triple.contains("windows"))
-                    .unwrap_or(cfg!(target_os = "windows"))
-                {
-                    "dll"
-                } else {
-                    "so"
-                };
-                dir.join(format!("lib{project_name}.{extension}"))
-            }
-        },
-    };
+    let output_path = output.map_or_else(
+        || default_output_path(dir, artifact, target),
+        Path::to_path_buf,
+    );
 
     // Emit LLVM IR if requested
     if emit_llvm {
@@ -913,13 +833,9 @@ pub(crate) fn prepare_project_build(
         } else {
             dir.join(source_path)
         };
-        let canonical = full_path.canonicalize().map_err(|error| {
-            format!(
-                "Failed to resolve native binding source '{}': {error}",
-                diag_opts.display_path(&full_path)
-            )
-        })?;
-        if !allowed_native_bindings.contains(canonical.as_path()) {
+        // A file that cannot be resolved is no declared binding either.
+        let canonical = full_path.canonicalize().ok();
+        if !canonical.is_some_and(|path| allowed_native_bindings.contains(path.as_path())) {
             return Err(format!(
                 "Native declaration in '{}' is outside a manifest-declared native binding",
                 diag_opts.display_path(&full_path)
@@ -1260,6 +1176,27 @@ fn collect_library_exports(
     Ok(exports)
 }
 
+/// Where `meshc build` writes an artifact when `--output` is not given:
+/// named after the project directory, in the platform's library naming.
+fn default_output_path(dir: &Path, artifact: BuildArtifact, target: Option<&str>) -> PathBuf {
+    let project_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("output");
+    let targets = |vendor: &str, host: bool| target.map_or(host, |triple| triple.contains(vendor));
+    match artifact {
+        BuildArtifact::Executable => dir.join(project_name),
+        BuildArtifact::Staticlib => dir.join(format!("lib{project_name}.a")),
+        BuildArtifact::Cdylib => {
+            let extension = if targets("apple", cfg!(target_os = "macos")) {
+                "dylib"
+            } else if targets("windows", cfg!(target_os = "windows")) {
+                "dll"
+            } else {
+                "so"
+            };
+            dir.join(format!("lib{project_name}.{extension}"))
+        }
+    }
+}
+
 fn runtime_lib_override_from_env(
     runtime_flavor: mesh_codegen::link::RuntimeFlavor,
 ) -> Result<Option<PathBuf>, String> {
@@ -1345,26 +1282,20 @@ fn collect_inferred_fn_usage_types(
                 }
                 SyntaxKind::FIELD_ACCESS => {
                     if let Some(field_access) = FieldAccess::cast(node) {
-                        let Some(base_expr) = field_access.base() else {
-                            continue;
+                        // `Module.name`: the base names an imported module.
+                        let base = match field_access.base() {
+                            Some(mesh_parser::ast::expr::Expr::NameRef(base)) => base.text(),
+                            _ => None,
                         };
-                        let mesh_parser::ast::expr::Expr::NameRef(base_name_ref) = base_expr else {
-                            continue;
-                        };
-                        let Some(base_name) = base_name_ref.text() else {
-                            continue;
-                        };
-                        if !typeck.qualified_modules.contains_key(&base_name) {
+                        if !base.is_some_and(|name| typeck.qualified_modules.contains_key(&name)) {
                             continue;
                         }
                         let Some(field_name) = overload_target(field_access.syntax())
                             .or_else(|| field_access.field().map(|t| t.text().to_string()))
+                            .filter(|name| candidate_names.contains(name))
                         else {
                             continue;
                         };
-                        if !candidate_names.contains(&field_name) {
-                            continue;
-                        }
                         if let Some(ty) = typeck.types.get(&field_access.syntax().text_range()) {
                             push_usage_type(&mut usage, &field_name, ty);
                         }
@@ -1502,9 +1433,6 @@ fn fmt_command(
     config: &mesh_fmt::FormatConfig,
 ) -> Result<FmtStats, String> {
     let files = collect_mesh_files(path)?;
-    if files.is_empty() {
-        return Err(format!("No .mpl files found at '{}'", path.display()));
-    }
 
     // Format every file before writing any: a file that cannot be formatted
     // leaves the whole tree as it was.
@@ -1538,9 +1466,6 @@ fn fmt_command(
 /// not parse) as `path:line:column: rule: message` and return how many there were.
 fn lint_command(path: &Path) -> Result<usize, String> {
     let files = collect_mesh_files(path)?;
-    if files.is_empty() {
-        return Err(format!("No .mpl files found at '{}'", path.display()));
-    }
 
     let mut problems = 0;
     for file in &files {
@@ -1563,8 +1488,8 @@ fn lint_command(path: &Path) -> Result<usize, String> {
     Ok(problems)
 }
 
-/// Collect `.mpl` files from a path. If the path is a file, return it directly.
-/// If it is a directory, recursively find all `.mpl` files.
+/// Collect `.mpl` files from a path: the file itself, or every one under a
+/// directory. Finding none is an error.
 fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.exists() {
         return Err(format!("Path '{}' does not exist", path.display()));
@@ -1578,15 +1503,17 @@ fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
         }
     }
 
-    if path.is_dir() {
-        let mut files = Vec::new();
-        collect_mesh_files_recursive(path, &mut files)
-            .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
-        files.sort();
-        return Ok(files);
+    if !path.is_dir() {
+        return Err(format!("'{}' is not a file or directory", path.display()));
     }
-
-    Err(format!("'{}' is not a file or directory", path.display()))
+    let mut files = Vec::new();
+    collect_mesh_files_recursive(path, &mut files)
+        .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
+    if files.is_empty() {
+        return Err(format!("No .mpl files found at '{}'", path.display()));
+    }
+    files.sort();
+    Ok(files)
 }
 
 /// Recursively collect `.mpl` files from a directory, skipping hidden entries
@@ -1636,6 +1563,33 @@ mod autonomous_config_tests {
         ])
         .unwrap_err()
         .contains("duplicate exported symbol"));
+    }
+
+    #[test]
+    fn artifacts_are_named_for_their_project_and_target() {
+        let dir = Path::new("/work/app");
+        let named = |artifact, target| default_output_path(dir, artifact, target);
+        assert_eq!(named(BuildArtifact::Executable, None), dir.join("app"));
+        assert_eq!(named(BuildArtifact::Staticlib, None), dir.join("libapp.a"));
+        for (target, file) in [
+            ("aarch64-apple-ios", "libapp.dylib"),
+            ("x86_64-pc-windows-msvc", "libapp.dll"),
+            ("aarch64-linux-android", "libapp.so"),
+        ] {
+            assert_eq!(named(BuildArtifact::Cdylib, Some(target)), dir.join(file));
+        }
+        let host = if cfg!(target_os = "macos") {
+            "libapp.dylib"
+        } else if cfg!(target_os = "windows") {
+            "libapp.dll"
+        } else {
+            "libapp.so"
+        };
+        assert_eq!(named(BuildArtifact::Cdylib, None), dir.join(host));
+        assert_eq!(
+            default_output_path(Path::new("/"), BuildArtifact::Executable, None),
+            Path::new("/output")
+        );
     }
 
     #[test]
@@ -1731,5 +1685,60 @@ template_revision = "v1"
         assert!(runtime.features.horizontal_observe_only);
         assert!(runtime.features.automatic_scale_up);
         assert!(!runtime.features.automatic_scale_down);
+    }
+
+    /// A process driver that also manages gateways: the runtime starts none
+    /// of its own, and a config that skipped validation is refused.
+    #[test]
+    fn process_driver_managing_gateways_reaches_runtime_schema() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "process-pool"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.autoscaling]
+enabled = true
+managed_roles = ["worker", "gateway"]
+
+[cluster.capacity]
+driver = "process"
+
+[cluster.capacity.process]
+command = ["./worker", "--join"]
+working_directory = "/srv/pool"
+"#,
+        )
+        .expect("manifest");
+        let mut config = manifest.autonomous_cluster.expect("autonomous config");
+        let encoded = runtime_autonomous_config_json(Some(&config))
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+        assert_eq!(runtime.managed_roles, ["worker", "gateway"]);
+        assert_eq!(runtime.gateway_nodes, 0);
+        assert_eq!(runtime.template_revision, "process-v1");
+        let mesh_rt::RuntimeCapacityDriverConfig::Process {
+            command,
+            working_directory,
+        } = runtime.driver
+        else {
+            panic!("process driver: {:?}", runtime.driver)
+        };
+        assert_eq!(command, ["./worker", "--join"]);
+        assert_eq!(working_directory, Path::new("/srv/pool"));
+
+        config.capacity.process = None;
+        assert_eq!(
+            runtime_autonomous_config_json(Some(&config)).unwrap_err(),
+            "autoscaling needs a configured capacity driver"
+        );
     }
 }
