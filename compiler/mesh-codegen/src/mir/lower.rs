@@ -9379,22 +9379,15 @@ impl<'a> Lowerer<'a> {
 
     // ── Field access lowering ────────────────────────────────────────
 
-    fn resource_field_index(&self, parent_ty: &Ty, field: &str) -> Option<u32> {
-        let name = match parent_ty {
-            Ty::Con(constructor) => &constructor.name,
-            Ty::App(constructor, _) => match constructor.as_ref() {
-                Ty::Con(constructor) => &constructor.name,
-                _ => return None,
-            },
-            _ => return None,
-        };
-        self.registry
-            .struct_defs
-            .get(name)?
+    /// The index of `field` in the struct `parent_ty`, where the type checker
+    /// found it.
+    fn resource_field_index(&self, parent_ty: &Ty, field: &str) -> u32 {
+        let (name, _) = ty_head(parent_ty).expect("a struct is a named type");
+        self.registry.struct_defs[name]
             .fields
             .iter()
             .position(|(candidate, _)| candidate == field)
-            .map(|index| index as u32)
+            .expect("the type checker found the field in its struct") as u32
     }
 
     /// The stdlib module whose function the method call `fa` names: the
@@ -9601,14 +9594,10 @@ impl<'a> Lowerer<'a> {
                         Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
                         other => other.cloned(),
                     };
-                    match result {
-                        Some(Ty::App(con, _)) => match *con {
-                            Ty::Con(tc) => tc.name,
-                            _ => base_name.clone(),
-                        },
-                        Some(Ty::Con(tc)) => tc.name,
-                        _ => base_name.clone(),
-                    }
+                    result
+                        .as_ref()
+                        .and_then(ty_head)
+                        .map_or(base_name.clone(), |(name, _)| name.to_string())
                 } else {
                     base_name.clone()
                 };
@@ -9794,37 +9783,18 @@ impl<'a> Lowerer<'a> {
             if !field_is_resource {
                 return projection;
             }
-            let Some(parent_typeck) = parent_typeck else {
-                return MirExpr::Panic {
-                    message: "resource field move lacked parent type metadata".to_string(),
-                    file: "<compiler>".to_string(),
-                    line: 0,
-                };
-            };
-            let Some(next_field_index) = self.resource_field_index(&parent_typeck, &field) else {
-                return MirExpr::Panic {
-                    message: "resource field move lacked field layout metadata".to_string(),
-                    file: "<compiler>".to_string(),
-                    line: 0,
-                };
-            };
+            let parent_typeck = parent_typeck.expect("the type checker types a field's parent");
+            let next_field_index = self.resource_field_index(&parent_typeck, &field);
             let source = match source {
-                MirResourceMoveSource::Slot(root) => {
-                    let Some(parent_destructor) = self.resource_destructor(&parent_typeck) else {
-                        return MirExpr::Panic {
-                            message: "resource field move lacked destruction metadata".to_string(),
-                            file: "<compiler>".to_string(),
-                            line: 0,
-                        };
-                    };
-                    MirResourceMoveSource::Projection {
-                        root,
-                        parent_ty: immediate_parent_ty,
-                        parent_destructor,
-                        field_index: next_field_index,
-                        nested_field_indices: Vec::new(),
-                    }
-                }
+                MirResourceMoveSource::Slot(root) => MirResourceMoveSource::Projection {
+                    root,
+                    parent_ty: immediate_parent_ty,
+                    parent_destructor: self
+                        .resource_destructor(&parent_typeck)
+                        .expect("a struct holding a resource is destroyed as one"),
+                    field_index: next_field_index,
+                    nested_field_indices: Vec::new(),
+                },
                 MirResourceMoveSource::Projection {
                     root,
                     parent_ty,
@@ -13491,7 +13461,7 @@ impl<'a> Lowerer<'a> {
             .map(|base_ty| {
                 overrides
                     .iter()
-                    .filter_map(|(field, _)| self.resource_field_index(base_ty, field))
+                    .map(|(field, _)| self.resource_field_index(base_ty, field))
                     .collect::<HashSet<_>>()
             })
             .unwrap_or_default();
