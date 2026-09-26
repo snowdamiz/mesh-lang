@@ -321,7 +321,7 @@ changeset operations, whose error is the changeset itself.
 | `Repo.get_by(pool, table, field, value)` | Read by one field |
 | `Repo.count(pool, query)` | Count matching rows: `Result<Int, String>` |
 | `Repo.exists(pool, query)` | Test whether a match exists: `Result<Bool, String>` |
-| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations (`associations` is a `List<String>`, nested ones written `"posts.comments"`): `Result<List<Map<String, String>>, String>` |
+| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations (`associations` is a `List<String>`, nested ones written `"posts.comments"`): `Result<List<Map<String, String>>, String>`, each row holding each association as JSON text under its name (an array of rows for `has_many`, a row or `null` for `has_one` and `belongs_to`; nested associations inside), for `Json.parse` or a `deriving(Json)` type's `from_json` |
 
 ### Writes
 

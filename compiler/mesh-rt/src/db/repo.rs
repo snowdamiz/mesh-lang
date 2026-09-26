@@ -23,7 +23,10 @@
 //! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
-use crate::collections::map::{mesh_map_get, mesh_map_put};
+use crate::collections::map::{
+    mesh_map_entry_key, mesh_map_entry_value, mesh_map_get, mesh_map_has_key, mesh_map_put,
+    mesh_map_size,
+};
 use crate::db::changeset::{
     add_constraint_error_to_changeset, map_constraint_error, SLOT_CHANGES, SLOT_VALID,
 };
@@ -1737,6 +1740,65 @@ unsafe fn preload_nested(
     Ok(result)
 }
 
+/// The preloaded association paths as a tree: `["posts", "posts.comments"]`
+/// is posts -> comments.
+#[derive(Default)]
+struct AssocTree(HashMap<String, AssocTree>);
+
+fn assoc_tree(paths: &[String]) -> AssocTree {
+    let mut tree = AssocTree::default();
+    for path in paths {
+        let mut node = &mut tree;
+        for name in path.split('.') {
+            node = node.0.entry(name.to_string()).or_default();
+        }
+    }
+    tree
+}
+
+/// A preloaded association as JSON: has_many a list of rows (an array),
+/// has_one and belongs_to a row or null (0).
+unsafe fn association_json(
+    value: u64,
+    many: bool,
+    nested: &AssocTree,
+    rel_map: &HashMap<String, RelMeta>,
+) -> serde_json::Value {
+    if many {
+        let list = value as *mut u8;
+        let rows = (0..mesh_list_length(list))
+            .map(|i| row_json(mesh_list_get(list, i) as *mut u8, nested, rel_map));
+        serde_json::Value::Array(rows.collect())
+    } else if value == 0 {
+        serde_json::Value::Null
+    } else {
+        row_json(value as *mut u8, nested, rel_map)
+    }
+}
+
+/// A row as a JSON object: its columns as strings, the associations preloaded
+/// onto it as `association_json`.
+unsafe fn row_json(
+    row: *mut u8,
+    associations: &AssocTree,
+    rel_map: &HashMap<String, RelMeta>,
+) -> serde_json::Value {
+    let mut object = serde_json::Map::new();
+    for i in 0..mesh_map_size(row) {
+        let key = mesh_str_ref(mesh_map_entry_key(row, i) as *mut u8);
+        let value = mesh_map_entry_value(row, i);
+        let json = match associations.0.get(key) {
+            Some(nested) => {
+                let many = rel_map.get(key).is_some_and(|meta| meta.kind == "has_many");
+                association_json(value, many, nested, rel_map)
+            }
+            None => serde_json::Value::String(mesh_str_ref(value as *mut u8).to_string()),
+        };
+        object.insert(key.to_string(), json);
+    }
+    serde_json::Value::Object(object)
+}
+
 /// Batch preload associated records for a list of parent rows.
 ///
 /// `Repo.preload(pool, rows, associations, relationship_meta)`
@@ -1751,6 +1813,10 @@ unsafe fn preload_nested(
 ///
 /// Associations are sorted by nesting depth (atoms/direct first, then "a.b", then "a.b.c")
 /// to ensure parent-level data is loaded before nested preloading accesses it.
+/// While they load, an association is a list or row pointer; each row then
+/// gets it as JSON text (`association_json`), which is what a
+/// `Map<String, String>` can hold: a pointer there would be read, printed and
+/// copied between actors as a string.
 #[no_mangle]
 pub extern "C" fn mesh_repo_preload(
     pool: u64,
@@ -1797,7 +1863,24 @@ pub extern "C" fn mesh_repo_preload(
             }
         }
 
-        ok_result(current_rows)
+        let tree = assoc_tree(&assoc_names);
+        let mut encoded = mesh_list_new();
+        for i in 0..mesh_list_length(current_rows) {
+            let mut row = mesh_list_get(current_rows, i) as *mut u8;
+            for (name, nested) in &tree.0 {
+                let key = rust_str_to_mesh(name) as u64;
+                if mesh_map_has_key(row, key) == 0 {
+                    continue;
+                }
+                let many = rel_map
+                    .get(name)
+                    .is_some_and(|meta| meta.kind == "has_many");
+                let json = association_json(mesh_map_get(row, key), many, nested, &rel_map);
+                row = mesh_map_put(row, key, rust_str_to_mesh(&json.to_string()) as u64);
+            }
+            encoded = mesh_list_append(encoded, row as u64);
+        }
+        ok_result(encoded)
     }
 }
 
