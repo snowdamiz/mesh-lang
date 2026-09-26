@@ -8883,11 +8883,11 @@ fn infer_expr_here(
                 });
                 check_numeric_literal(ctx, &token, negated);
             }
-            infer_literal(lit)
+            Ok(infer_literal(lit))
         }
         Expr::NameRef(name_ref) => {
             reject_type_as_value(ctx, env, type_registry, name_ref)?;
-            infer_name_ref(ctx, env, name_ref)?
+            infer_name_ref(ctx, env, name_ref)
         }
         Expr::BinaryExpr(bin) => infer_binary(
             ctx,
@@ -8897,7 +8897,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::UnaryExpr(un) => infer_unary(
             ctx,
             env,
@@ -8906,25 +8906,25 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
-        Expr::CallExpr(call) => {
-            let ty = infer_call(
-                ctx,
-                env,
-                call,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
-            // An actor calling itself continues with new arguments; the call
-            // does not produce a value, so any arm may end in one.
+        ),
+        // An actor calling itself continues with new arguments; the call
+        // does not produce a value, so any arm may end in one.
+        Expr::CallExpr(call) => infer_call(
+            ctx,
+            env,
+            call,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )
+        .map(|ty| {
             if calls_enclosing_actor(env, call) {
                 Ty::Never
             } else {
                 ty
             }
-        }
+        }),
         Expr::PipeExpr(pipe) => infer_piped(
             ctx,
             env,
@@ -8936,7 +8936,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::IfExpr(if_) => infer_if(
             ctx,
             env,
@@ -8945,7 +8945,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::ClosureExpr(closure) => infer_closure(
             ctx,
             env,
@@ -8955,7 +8955,7 @@ fn infer_expr_here(
             trait_registry,
             fn_constraints,
             None,
-        )?,
+        ),
         Expr::Block(block) => infer_block(
             ctx,
             env,
@@ -8964,7 +8964,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::TupleExpr(tuple) => infer_tuple(
             ctx,
             env,
@@ -8973,7 +8973,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::CaseExpr(case) => infer_case(
             ctx,
             env,
@@ -8982,7 +8982,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::ReturnExpr(ret) => infer_return(
             ctx,
             env,
@@ -8991,7 +8991,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::StringExpr(se) => {
             // Recurse into interpolation expressions so their types are
             // recorded; each is shown with its Display.
@@ -9019,7 +9019,7 @@ fn infer_expr_here(
                     }
                 }
             }
-            Ty::string()
+            Ok(Ty::string())
         }
         Expr::FieldAccess(fa) => infer_field_access(
             ctx,
@@ -9030,7 +9030,7 @@ fn infer_expr_here(
             trait_registry,
             fn_constraints,
             false,
-        )?,
+        ),
         Expr::StructLiteral(sl) => infer_struct_literal(
             ctx,
             env,
@@ -9039,7 +9039,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::MapLiteral(map_lit) => infer_map_literal(
             ctx,
             env,
@@ -9048,7 +9048,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::ListLiteral(lit) => infer_list_literal(
             ctx,
             env,
@@ -9057,12 +9057,12 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::IndexExpr(index) => {
             ctx.errors.push(TypeError::IndexingUnsupported {
                 span: index.syntax().text_range(),
             });
-            ctx.fresh_var()
+            Ok(ctx.fresh_var())
         }
         // Loop expressions.
         Expr::WhileExpr(w) => infer_while(
@@ -9073,9 +9073,9 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
-        Expr::BreakExpr(b) => infer_break(ctx, b)?,
-        Expr::ContinueExpr(c) => infer_continue(ctx, c)?,
+        ),
+        Expr::BreakExpr(b) => infer_break(ctx, b),
+        Expr::ContinueExpr(c) => infer_continue(ctx, c),
         Expr::ForInExpr(for_in) => infer_for_in(
             ctx,
             env,
@@ -9084,7 +9084,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         // Actor expressions.
         Expr::SpawnExpr(spawn) => infer_spawn(
             ctx,
@@ -9094,7 +9094,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::SendExpr(send) => infer_send(
             ctx,
             env,
@@ -9103,7 +9103,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::ReceiveExpr(recv) => infer_receive(
             ctx,
             env,
@@ -9112,8 +9112,8 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
-        Expr::SelfExpr(self_expr) => infer_self_expr(ctx, env, self_expr)?,
+        ),
+        Expr::SelfExpr(self_expr) => infer_self_expr(ctx, env, self_expr),
         Expr::LinkExpr(link) => infer_link(
             ctx,
             env,
@@ -9122,7 +9122,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::TryExpr(try_expr) => infer_try_expr(
             ctx,
             env,
@@ -9131,15 +9131,15 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::AtomLiteral(_atom) => {
             // Atoms have a distinct type from String -- they are opaque typed values.
-            Ty::Con(TyCon::new("Atom"))
+            Ok(Ty::Con(TyCon::new("Atom")))
         }
         Expr::RegexExpr(_rx) => {
             // Regex literals have the opaque Regex type.
             // The runtime represents a compiled regex as an opaque pointer.
-            Ty::Con(TyCon::new("Regex"))
+            Ok(Ty::Con(TyCon::new("Regex")))
         }
         Expr::StructUpdate(update) => infer_struct_update(
             ctx,
@@ -9149,7 +9149,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         // 1-indexed, >= 2 by parse guarantee.
         Expr::SlotPipeExpr(pipe) => infer_piped(
             ctx,
@@ -9162,7 +9162,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
+        ),
         Expr::JsonExpr(json_expr) => infer_json_expr(
             ctx,
             env,
@@ -9171,8 +9171,8 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?,
-    };
+        ),
+    }?;
 
     let resolved = ctx.resolve(ty.clone());
     types.insert(expr.syntax().text_range(), resolved.clone());
