@@ -509,6 +509,42 @@ end
     );
 }
 
+/// A struct derives `Json` only of fields JSON can hold (no function), and
+/// an impl binds an associated type to any type, a generic one included.
+#[test]
+fn derived_json_and_associated_types_take_what_they_can_hold() {
+    assert_eq!(
+        errors(
+            r#"
+struct Holder do
+  f :: Fun(Int) -> Int
+end deriving(Json)
+
+interface Container do
+  type Item
+  fn items(self) -> Self.Item
+end
+
+struct Bag do
+  xs :: List<Int>
+end
+
+impl Container for Bag do
+  type Item = List<Int>
+  fn items(self) -> List<Int> do
+    self.xs
+  end
+end
+
+fn bag_items(b :: Bag) -> Int do
+  List.length(b.items())
+end
+"#
+        ),
+        ["field `f` of type `(Int) -> Int` is not JSON-serializable"]
+    );
+}
+
 /// What a sum type derives is checked: a trait no type derives, any trait
 /// for a type that holds a resource, and `Json` for variant fields, named
 /// or not, that JSON cannot hold.
@@ -1128,6 +1164,31 @@ end
         [
             "undefined variable `nope`",
             "`P` does not implement `Display`",
+        ]
+    );
+}
+
+/// A `let` that destructures its value checks it: a value with an error
+/// leaves the names defined, and one of another shape is a mismatch.
+#[test]
+fn destructuring_a_let_checks_its_value() {
+    assert_eq!(
+        errors(
+            r#"
+fn destructure_error() do
+  let (a, b) = nope
+  a
+end
+
+fn destructure_mismatch() do
+  let (a, b) = 5
+  a
+end
+"#
+        ),
+        [
+            "undefined variable `nope`",
+            "type mismatch: expected `(_, _)`, found `Int`",
         ]
     );
 }
