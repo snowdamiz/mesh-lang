@@ -558,3 +558,95 @@ end
     );
     assert_eq!(out, "42 3\n[2, 3]\neven 4 odd\n");
 }
+
+/// A resource in scope around loops of every kind (`while`, and `for` over
+/// a range, a list, a map, a set and an `Iterable`) is destroyed once
+/// however the function ends: a `return` from inside a loop, or the end
+/// of the body after the loops' own `break`s and `continue`s. An actor
+/// holds at most 4096 secrets, so a leak on any path fails the later
+/// `Secret.random`s.
+#[test]
+fn resources_outlive_the_loops_in_their_scope_and_no_longer() {
+    let out = compile_and_run(
+        r##"struct Pair do
+  items :: List<Int>
+end
+
+impl Iterable for Pair do
+  type Item = Int
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+fn loops(n :: Int) -> Int ! CryptoError do
+  let key = Secret.random(1) ?
+  while true do
+    break
+  end
+  let m = Map.put(Map.new(), "a", 1)
+  let s = Set.add(Set.new(), 5)
+  let a = for i in 0..3 when i < n do
+    if i == 1 do
+      continue
+    end
+    i
+  end
+  let b = for x in [1, 2, 3] when x > 0 do
+    if x == 2 do
+      break
+    end
+    x
+  end
+  let c = for {k, v} in m when v > 0 do
+    if v == 1 do
+      continue
+    end
+    v
+  end
+  let d = for e in s when e > 0 do
+    if e == 5 do
+      break
+    end
+    e
+  end
+  let f = for x in Pair { items: [1, 2] } when x > 0 do
+    if x == 1 do
+      continue
+    end
+    x
+  end
+  for i in 0..10 do
+    if i == n do
+      return Ok(i)
+    end
+  end
+  Ok(List.length(a) + List.length(b) + List.length(c) + List.length(d) + List.length(f))
+end
+
+fn churn(0, acc :: Int) -> Int do acc end
+fn churn(count :: Int, acc :: Int) do
+  let r = case loops(count % 12) do
+    Ok(v) -> v
+    Err(_) -> -100
+  end
+  churn(count - 1, acc + r)
+end
+
+fn main() do
+  println("${churn(4500, 0)}")
+  case Secret.random(1) do
+    Ok(secret) -> do
+      println("clean")
+      Secret.destroy(secret)
+    end
+    Err(_) -> println("leaked")
+  end
+end
+"##,
+    );
+    // Each run of 12 returns 0 to 9 from inside the last loop, then twice
+    // 2 + 1 + 0 + 0 + 1 from the loops' results.
+    assert_eq!(out, "19875\nclean\n");
+}
