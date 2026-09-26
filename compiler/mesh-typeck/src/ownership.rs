@@ -5,11 +5,12 @@ use mesh_parser::ast::expr::{
     StructUpdate,
 };
 use mesh_parser::ast::item::{
-    ActorDef, Block, FnDef, ImplDef, Item, LetBinding, ModuleDef, Param, ParamOwnership,
+    ActorDef, Block, FnDef, ImplDef, Item, LetBinding, ModuleDef, Param, ParamList, ParamOwnership,
+    TypeAnnotation,
 };
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
-use mesh_parser::{Parse, SyntaxKind};
+use mesh_parser::{Parse, SyntaxKind, SyntaxNode};
 use rowan::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -86,119 +87,47 @@ pub(crate) fn check(
     let mut signatures = FxHashMap::default();
     let mut ambiguous_bare_signatures = FxHashSet::default();
     for function in &functions {
-        if let Some(name) = function.name().and_then(|name| name.text()) {
-            let inferred_formals = match types.get(&function.syntax().text_range()) {
-                Some(Ty::Fun(parameters, _)) => parameters.clone(),
-                _ => Vec::new(),
-            };
-            let (modes, formal_types) = function
-                .param_list()
-                .map(|parameters| {
-                    parameters
-                        .params()
-                        .enumerate()
-                        .map(|(index, parameter)| {
-                            let formal = inferred_formals.get(index).cloned().or_else(|| {
-                                parameter.type_annotation().and_then(|annotation| {
-                                    annotation
-                                        .type_name()
-                                        .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
-                                })
-                            });
-                            // A method's receiver is borrowed, however the
-                            // method is called: `s.close()` only reads `s`,
-                            // and `close(s)` moved it into a method that never
-                            // dropped it.
-                            let mode = if parameter.is_self() {
-                                ParamOwnership::Borrow
-                            } else {
-                                parameter.ownership()
-                            };
-                            (mode, formal)
-                        })
-                        .unzip()
-                })
-                .unwrap_or_default();
-            let module_name = function
-                .syntax()
-                .ancestors()
-                .skip(1)
-                .find_map(ModuleDef::cast)
-                .and_then(|module| module.name())
-                .and_then(|name| name.text());
-            let signature = FunctionSignature {
-                modes,
-                formal_types,
-            };
-            // A method is also called through its type or its interface
-            // (`Session.close(s)`, `Closer.close(s)`); two impls defining it
-            // make that name as ambiguous as a bare name defined twice.
-            if let Some(impl_def) = function.syntax().ancestors().find_map(ImplDef::cast) {
-                for owner in [impl_def.type_name(), impl_def.interface_name()]
-                    .into_iter()
-                    .flatten()
-                {
-                    register_signature(
-                        &mut signatures,
-                        &mut ambiguous_bare_signatures,
-                        format!("{}.{name}", owner.text()),
-                        None,
-                        signature.clone(),
-                    );
-                }
+        let Some(name) = function.name().and_then(|name| name.text()) else {
+            continue;
+        };
+        let signature = signature_of(types, function.syntax(), function.param_list());
+        // A method is also called through its type or its interface
+        // (`Session.close(s)`, `Closer.close(s)`); two impls defining it
+        // make that name as ambiguous as a bare name defined twice.
+        if let Some(impl_def) = function.syntax().ancestors().find_map(ImplDef::cast) {
+            for owner in [impl_def.type_name(), impl_def.interface_name()]
+                .into_iter()
+                .flatten()
+            {
+                register_signature(
+                    &mut signatures,
+                    &mut ambiguous_bare_signatures,
+                    format!("{}.{name}", owner.text()),
+                    None,
+                    signature.clone(),
+                );
             }
-            register_signature(
-                &mut signatures,
-                &mut ambiguous_bare_signatures,
-                name,
-                module_name,
-                signature,
-            );
         }
+        let module_name = enclosing_module(function.syntax());
+        register_signature(
+            &mut signatures,
+            &mut ambiguous_bare_signatures,
+            name,
+            module_name,
+            signature,
+        );
     }
     for actor in &actors {
-        if let Some(name) = actor.name().and_then(|name| name.text()) {
-            let inferred_formals = match types.get(&actor.syntax().text_range()) {
-                Some(Ty::Fun(parameters, _)) => parameters.clone(),
-                _ => Vec::new(),
-            };
-            let (modes, formal_types) = actor
-                .param_list()
-                .map(|parameters| {
-                    parameters
-                        .params()
-                        .enumerate()
-                        .map(|(index, parameter)| {
-                            let formal = inferred_formals.get(index).cloned().or_else(|| {
-                                parameter.type_annotation().and_then(|annotation| {
-                                    annotation
-                                        .type_name()
-                                        .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
-                                })
-                            });
-                            (parameter.ownership(), formal)
-                        })
-                        .unzip()
-                })
-                .unwrap_or_default();
-            let module_name = actor
-                .syntax()
-                .ancestors()
-                .skip(1)
-                .find_map(ModuleDef::cast)
-                .and_then(|module| module.name())
-                .and_then(|name| name.text());
-            register_signature(
-                &mut signatures,
-                &mut ambiguous_bare_signatures,
-                name,
-                module_name,
-                FunctionSignature {
-                    modes,
-                    formal_types,
-                },
-            );
-        }
+        let Some(name) = actor.name().and_then(|name| name.text()) else {
+            continue;
+        };
+        register_signature(
+            &mut signatures,
+            &mut ambiguous_bare_signatures,
+            name,
+            enclosing_module(actor.syntax()),
+            signature_of(types, actor.syntax(), actor.param_list()),
+        );
     }
     let destroy_signature = FunctionSignature {
         modes: vec![ParamOwnership::Consume],
@@ -538,59 +467,52 @@ fn register_imported_signatures(
     signatures: &mut FxHashMap<String, FunctionSignature>,
 ) {
     for item in parse.tree().items() {
-        match item {
-            Item::ImportDecl(import) => {
-                let Some(path) = import.module_path() else {
-                    continue;
-                };
-                let Some(namespace) = path.segments().last().cloned() else {
-                    continue;
-                };
-                let Some(exports) = import_ctx.module_exports.get(&namespace) else {
-                    continue;
-                };
-                for export_name in exports.function_ownership.keys() {
-                    let source_name = source_function_name(export_name);
-                    let Some(signature) = exported_signature(exports, export_name) else {
-                        continue;
-                    };
-                    signatures.insert(format!("{namespace}.{source_name}"), signature.clone());
-                    // Cross-module lowering links public functions by their bare symbol.
-                    signatures.entry(source_name).or_insert(signature);
-                }
-            }
+        let (path, names) = match &item {
+            Item::ImportDecl(import) => (import.module_path(), None),
             Item::FromImportDecl(import) => {
-                let Some(path) = import.module_path() else {
-                    continue;
-                };
-                let Some(namespace) = path.segments().last().cloned() else {
-                    continue;
-                };
-                let Some(exports) = import_ctx.module_exports.get(&namespace) else {
-                    continue;
-                };
-                let Some(imports) = import.import_list() else {
-                    continue;
-                };
-                for imported in imports.names().filter_map(|name| name.text()) {
-                    let mut matches = exports
-                        .function_ownership
-                        .keys()
-                        .filter(|exported| source_function_name(exported) == imported);
-                    let Some(export_name) = matches.next() else {
-                        continue;
-                    };
-                    // ponytail: overloaded resource-call metadata needs an arity key;
-                    // fail closed until an exported resource API actually overloads.
-                    if matches.next().is_some() {
-                        continue;
-                    }
-                    if let Some(signature) = exported_signature(exports, export_name) {
-                        signatures.entry(imported).or_insert(signature);
-                    }
-                }
+                let list = import.import_list();
+                let names: Vec<String> = list
+                    .iter()
+                    .flat_map(|list| list.names())
+                    .filter_map(|name| name.text())
+                    .collect();
+                (import.module_path(), Some(names))
             }
-            _ => {}
+            _ => continue,
+        };
+        let namespace = path.and_then(|path| path.segments().last().cloned());
+        let Some((namespace, exports)) = namespace.and_then(|namespace| {
+            let exports = import_ctx.module_exports.get(&namespace)?;
+            Some((namespace, exports))
+        }) else {
+            continue;
+        };
+        let Some(names) = names else {
+            // `import Module`: each function as `Module.name`, and by its
+            // bare symbol, which cross-module lowering links it by.
+            for export_name in exports.function_ownership.keys() {
+                let source_name = source_function_name(export_name);
+                let signature = exported_signature(exports, export_name);
+                signatures.insert(format!("{namespace}.{source_name}"), signature.clone());
+                signatures.entry(source_name).or_insert(signature);
+            }
+            continue;
+        };
+        for imported in names {
+            let mut matches = exports
+                .function_ownership
+                .keys()
+                .filter(|exported| source_function_name(exported) == imported);
+            let Some(export_name) = matches.next() else {
+                continue;
+            };
+            // ponytail: overloaded resource-call metadata needs an arity key;
+            // fail closed until an exported resource API actually overloads.
+            if matches.next().is_some() {
+                continue;
+            }
+            let signature = exported_signature(exports, export_name);
+            signatures.entry(imported).or_insert(signature);
         }
     }
 }
@@ -604,16 +526,18 @@ pub(crate) fn source_function_name(export_name: &str) -> String {
         .to_string()
 }
 
-fn exported_signature(exports: &ModuleExports, export_name: &str) -> Option<FunctionSignature> {
-    let modes = exports.function_ownership.get(export_name)?.clone();
-    let formal_types = match &exports.functions.get(export_name)?.ty {
-        Ty::Fun(parameters, _) => parameters.iter().cloned().map(Some).collect(),
+/// How an exported function takes its arguments: the exports hold each
+/// function's modes and its type together.
+fn exported_signature(exports: &ModuleExports, export_name: &str) -> FunctionSignature {
+    let modes = exports.function_ownership[export_name].clone();
+    let formal_types = match exports.functions.get(export_name).map(|scheme| &scheme.ty) {
+        Some(Ty::Fun(parameters, _)) => parameters.iter().cloned().map(Some).collect(),
         _ => vec![None; modes.len()],
     };
-    Some(FunctionSignature {
+    FunctionSignature {
         modes,
         formal_types,
-    })
+    }
 }
 
 fn register_crypto_signature(
@@ -698,13 +622,7 @@ impl Checker<'_> {
         let ty = binding
             .initializer()
             .and_then(|initializer| self.known_expr_type(&initializer))
-            .or_else(|| {
-                binding.type_annotation().and_then(|annotation| {
-                    annotation
-                        .type_name()
-                        .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
-                })
-            });
+            .or_else(|| annotated_type(binding.type_annotation()));
         if !ty
             .as_ref()
             .is_some_and(|ty| self.registry.is_resource_type(ty))
@@ -724,29 +642,16 @@ impl Checker<'_> {
     fn check_actor(&mut self, actor: &ActorDef) {
         self.scopes.push(FxHashMap::default());
 
-        let parameter_types = match self.types.get(&actor.syntax().text_range()) {
-            Some(Ty::Fun(parameters, _)) => parameters.clone(),
-            _ => Vec::new(),
-        };
-        if let Some(parameters) = actor.param_list() {
-            for (index, parameter) in parameters.params().enumerate() {
-                let ty = parameter_types.get(index).cloned().or_else(|| {
-                    parameter.type_annotation().and_then(|annotation| {
-                        annotation
-                            .type_name()
-                            .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
-                    })
-                });
-                let Some(ty) = ty else {
-                    continue;
-                };
-                if let Some(name) = parameter.name() {
-                    self.insert_binding(
-                        name.text().to_string(),
-                        ty,
-                        parameter.ownership() == ParamOwnership::Borrow,
-                    );
-                }
+        for (parameter, ty) in typed_params(self.types, actor.syntax(), actor.param_list()) {
+            let Some(ty) = ty else {
+                continue;
+            };
+            if let Some(name) = parameter.name() {
+                self.insert_binding(
+                    name.text().to_string(),
+                    ty,
+                    parameter.ownership() == ParamOwnership::Borrow,
+                );
             }
         }
 
@@ -760,67 +665,24 @@ impl Checker<'_> {
     fn check_function(&mut self, function: &FnDef) {
         self.scopes.push(FxHashMap::default());
 
-        let (parameter_types, return_type) = match self.types.get(&function.syntax().text_range()) {
-            Some(Ty::Fun(parameters, return_type)) => {
-                (parameters.clone(), Some(return_type.as_ref().clone()))
-            }
-            _ => (Vec::new(), None),
-        };
-        if let Some(return_type) = return_type.filter(|_| function.return_type().is_some()) {
-            if is_unrestricted_collection_type(&return_type)
-                && self.registry.is_resource_type(&return_type)
-            {
-                self.errors.push(TypeError::ResourceViolation {
-                    reason: format!(
-                        "resource-bearing type `{return_type}` cannot be used as an unrestricted collection"
-                    ),
-                    span: function
-                        .return_type()
-                        .map(|annotation| annotation.syntax().text_range())
-                        .unwrap_or_else(|| function.syntax().text_range()),
-                });
-            } else if is_unsupported_resource_wrapper(self.registry, &return_type) {
-                self.errors.push(TypeError::ResourceViolation {
-                    reason: unsupported_wrapper_reason(&return_type),
-                    span: function
-                        .return_type()
-                        .map(|annotation| annotation.syntax().text_range())
-                        .unwrap_or_else(|| function.syntax().text_range()),
-                });
-            }
+        let types = self.types;
+        if let (Some(annotation), Some(Ty::Fun(_, return_type))) = (
+            function.return_type(),
+            types.get(&function.syntax().text_range()),
+        ) {
+            self.check_resource_holder(return_type, annotation.syntax().text_range());
         }
-        if let Some(parameters) = function.param_list() {
-            for (index, parameter) in parameters.params().enumerate() {
-                let ty = parameter_types.get(index).cloned().or_else(|| {
-                    parameter.type_annotation().and_then(|annotation| {
-                        annotation
-                            .type_name()
-                            .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
-                    })
-                });
-                let Some(ty) = ty else {
-                    continue;
-                };
-                if is_unrestricted_collection_type(&ty) && self.registry.is_resource_type(&ty) {
-                    self.errors.push(TypeError::ResourceViolation {
-                        reason: format!(
-                            "resource-bearing type `{ty}` cannot be used as an unrestricted collection"
-                        ),
-                        span: parameter.syntax().text_range(),
-                    });
-                } else if is_unsupported_resource_wrapper(self.registry, &ty) {
-                    self.errors.push(TypeError::ResourceViolation {
-                        reason: unsupported_wrapper_reason(&ty),
-                        span: parameter.syntax().text_range(),
-                    });
-                }
-                if let Some(name) = parameter.name() {
-                    self.insert_binding(
-                        name.text().to_string(),
-                        ty,
-                        parameter.ownership() == ParamOwnership::Borrow,
-                    );
-                }
+        for (parameter, ty) in typed_params(types, function.syntax(), function.param_list()) {
+            let Some(ty) = ty else {
+                continue;
+            };
+            self.check_resource_holder(&ty, parameter.syntax().text_range());
+            if let Some(name) = parameter.name() {
+                self.insert_binding(
+                    name.text().to_string(),
+                    ty,
+                    parameter.ownership() == ParamOwnership::Borrow,
+                );
             }
         }
 
@@ -831,6 +693,21 @@ impl Checker<'_> {
         }
 
         self.scopes.pop();
+    }
+
+    /// A declared parameter or return type that holds a resource must keep
+    /// it affine: no unrestricted collection holds one, nor a wrapper the
+    /// checker cannot follow.
+    fn check_resource_holder(&mut self, ty: &Ty, span: TextRange) {
+        let reason = if is_unrestricted_collection_type(ty) && self.registry.is_resource_type(ty) {
+            format!("resource-bearing type `{ty}` cannot be used as an unrestricted collection")
+        } else if is_unsupported_resource_wrapper(self.registry, ty) {
+            unsupported_wrapper_reason(ty)
+        } else {
+            return;
+        };
+        self.errors
+            .push(TypeError::ResourceViolation { reason, span });
     }
 
     fn check_block(&mut self, block: &Block) {
@@ -1707,6 +1584,73 @@ fn direct_callee_name(expr: &Expr) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// Each parameter of a function or actor (`node`, with `params`) and its
+/// type: the one the checker gave it, or else the type its annotation names.
+fn typed_params(
+    types: &FxHashMap<TextRange, Ty>,
+    node: &SyntaxNode,
+    params: Option<ParamList>,
+) -> Vec<(Param, Option<Ty>)> {
+    let formals = match types.get(&node.text_range()) {
+        Some(Ty::Fun(formals, _)) => formals.as_slice(),
+        _ => &[],
+    };
+    params
+        .iter()
+        .flat_map(|list| list.params())
+        .enumerate()
+        .map(|(index, param)| {
+            let ty = formals
+                .get(index)
+                .cloned()
+                .or_else(|| annotated_type(param.type_annotation()));
+            (param, ty)
+        })
+        .collect()
+}
+
+/// The type an annotation names, by its name alone.
+fn annotated_type(annotation: Option<TypeAnnotation>) -> Option<Ty> {
+    Some(Ty::Con(crate::ty::TyCon::new(
+        annotation?.type_name()?.text(),
+    )))
+}
+
+/// How a function or actor (`node`, with `params`) takes each argument.
+fn signature_of(
+    types: &FxHashMap<TextRange, Ty>,
+    node: &SyntaxNode,
+    params: Option<ParamList>,
+) -> FunctionSignature {
+    let (modes, formal_types) = typed_params(types, node, params)
+        .into_iter()
+        .map(|(param, ty)| {
+            // A method's receiver is borrowed, however the method is called:
+            // `s.close()` only reads `s`, and `close(s)` moved it into a
+            // method that never dropped it.
+            let mode = if param.is_self() {
+                ParamOwnership::Borrow
+            } else {
+                param.ownership()
+            };
+            (mode, ty)
+        })
+        .unzip();
+    FunctionSignature {
+        modes,
+        formal_types,
+    }
+}
+
+/// The module a definition is inside, if any.
+fn enclosing_module(node: &SyntaxNode) -> Option<String> {
+    node.ancestors()
+        .skip(1)
+        .find_map(ModuleDef::cast)
+        .and_then(|module| module.name())
+        .and_then(|name| name.text())
 }
 
 fn register_signature(
