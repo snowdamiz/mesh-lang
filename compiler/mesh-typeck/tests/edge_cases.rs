@@ -1718,6 +1718,91 @@ end
     );
 }
 
+/// Each clause of a function is checked: its patterns against the others',
+/// its body, and an early `return` against what the clauses give; the
+/// first clause's type parameters and return type hold for all.
+#[test]
+fn each_clause_of_a_function_is_checked() {
+    assert_eq!(
+        errors(
+            r#"
+fn first<T>(x :: T, 0) -> T = x
+fn first(x, n) = x
+
+fn kinds(0) = 1
+fn kinds("s") = 2
+
+fn body_error(0) = nope
+fn body_error(n) = n
+
+fn early(0) do
+  return 1
+end
+fn early(n) = n + 1
+
+fn early_wrong(0) do
+  return "s"
+end
+fn early_wrong(n) = n + 1
+
+fn main() do
+  first("a", 0)
+end
+"#
+        ),
+        [
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+            "type mismatch: expected `Int`, found `String`",
+        ]
+    );
+}
+
+/// Each clause of a closure is checked as a function's is: its patterns,
+/// its guard, its body against the others', and an early `return`. A
+/// map's keys and values are checked like any expression.
+#[test]
+fn each_clause_of_a_closure_is_checked() {
+    assert_eq!(
+        errors(
+            r#"
+fn kinds() do
+  let f = fn 0 -> 1 | "s" -> 2 end
+  f
+end
+
+fn guard_error() do
+  let f = fn n when nope(n) -> 1 | _ -> 2 end
+  f
+end
+
+fn body_types() do
+  let f = fn 0 -> 1 | _ -> "s" end
+  f
+end
+
+fn returns() do
+  let f = fn 0 -> return 1 | n -> n end
+  f(2)
+end
+
+fn map_errors() do
+  let a = %{nope1 => 1}
+  let b = %{"a" => nope2}
+  a
+end
+"#
+        ),
+        [
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope1`",
+            "undefined variable `nope2`",
+        ]
+    );
+}
+
 /// A clause that matches anything, `_` included, must be a function's last:
 /// the clauses after it are unreachable.
 #[test]
