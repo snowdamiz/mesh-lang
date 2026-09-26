@@ -27,8 +27,6 @@
 //! - `mesh_actor_receive(timeout_ms)` -- receive message from mailbox
 //! - `mesh_actor_link(target_pid)` -- bidirectional link to target actor
 //! - `mesh_actor_set_terminate(pid, callback_fn_ptr)` -- set terminate callback
-//! - `mesh_actor_register(name_ptr, name_len)` -- register current actor by name
-//! - `mesh_actor_whereis(name_ptr, name_len)` -- look up actor PID by name
 
 pub mod child_spec;
 pub mod heap;
@@ -1303,38 +1301,6 @@ pub extern "C" fn mesh_rt_run_scheduler() {
     sched.wait();
 }
 
-/// Register the current actor under a name.
-///
-/// The name is specified as a pointer to UTF-8 bytes and a length.
-/// Returns 0 on success, 1 if the name is already taken.
-///
-/// - `name_ptr`: pointer to UTF-8 name bytes
-/// - `name_len`: length of the name in bytes
-#[no_mangle]
-pub extern "C" fn mesh_actor_register(name_ptr: *const u8, name_len: u64) -> u64 {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return 1,
-    };
-
-    if name_ptr.is_null() || name_len == 0 {
-        return 1;
-    }
-
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return 1,
-        }
-    };
-
-    match registry::global_registry().register(name, my_pid) {
-        Ok(()) => 0,
-        Err(_) => 1,
-    }
-}
-
 /// Register an actor under a name (MeshString variant).
 ///
 /// Called from compiled Mesh code for `Process.register(name, pid)`.
@@ -1365,33 +1331,6 @@ pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -
     }
     let name_str = unsafe { (*name).as_str() };
     match registry::global_registry().whereis(name_str) {
-        Some(pid) => pid.as_u64(),
-        None => 0,
-    }
-}
-
-/// Look up a registered actor by name.
-///
-/// Returns the PID of the actor registered under the given name, or 0
-/// if no actor is registered with that name.
-///
-/// - `name_ptr`: pointer to UTF-8 name bytes
-/// - `name_len`: length of the name in bytes
-#[no_mangle]
-pub extern "C" fn mesh_actor_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
-    if name_ptr.is_null() || name_len == 0 {
-        return 0;
-    }
-
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s,
-            Err(_) => return 0,
-        }
-    };
-
-    match registry::global_registry().whereis(name) {
         Some(pid) => pid.as_u64(),
         None => 0,
     }

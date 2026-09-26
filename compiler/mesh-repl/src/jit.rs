@@ -67,10 +67,6 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_actor_receive",
             mesh_rt::mesh_actor_receive as *const (),
         ),
-        (
-            "mesh_actor_register",
-            mesh_rt::mesh_actor_register as *const (),
-        ),
         ("mesh_actor_self", mesh_rt::mesh_actor_self as *const ()),
         ("mesh_actor_send", mesh_rt::mesh_actor_send as *const ()),
         (
@@ -97,10 +93,6 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_actor_trap_exit",
             mesh_rt::actor::mesh_actor_trap_exit as *const (),
-        ),
-        (
-            "mesh_actor_whereis",
-            mesh_rt::mesh_actor_whereis as *const (),
         ),
         (
             "mesh_alloc_result",
