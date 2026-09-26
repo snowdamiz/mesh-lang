@@ -7081,10 +7081,9 @@ fn interface_trait_def(
             }
         }
 
-        let return_type = method.return_type().and_then(|ann| {
-            resolve_method_annotation(ctx, &ann, &self_assoc, type_registry)
-                .or_else(|| resolve_type_name(&ann))
-        });
+        let return_type = method
+            .return_type()
+            .and_then(|ann| resolve_method_annotation(ctx, &ann, &self_assoc, type_registry));
         let param_types = method_param_types(ctx, method.param_list(), &self_assoc, type_registry);
 
         let has_default_body = method.body().is_some();
@@ -7376,7 +7375,6 @@ fn impl_signature(
                 }
                 let declared = param.type_annotation().and_then(|ann| {
                     resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
-                        .or_else(|| resolve_type_name(&ann))
                         .map(|ty| with_self(&ty, &impl_type))
                 });
                 match (&mut param_types, declared) {
@@ -7392,10 +7390,7 @@ fn impl_signature(
             - usize::from(has_self);
         let return_type = method
             .return_type()
-            .and_then(|ann| {
-                resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
-                    .or_else(|| resolve_type_name(&ann))
-            })
+            .and_then(|ann| resolve_method_annotation(ctx, &ann, &assoc_types, type_registry))
             .map(|ty| with_self(&ty, &impl_type))
             .filter(|ty| !ty.has_type_vars());
         methods.insert(
@@ -7611,7 +7606,6 @@ fn infer_impl_def(
             .and_then(|ann| {
                 // Simple name resolution only if the annotation fails to parse.
                 resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
-                    .or_else(|| resolve_type_name(&ann))
                     .map(|ty| with_self(&ty, &impl_type))
             })
             .or_else(|| {
@@ -7646,7 +7640,6 @@ fn infer_impl_def(
                             .type_annotation()
                             .and_then(|ann| {
                                 resolve_method_annotation(ctx, &ann, &assoc_types, type_registry)
-                                    .or_else(|| resolve_type_name(&ann))
                                     .map(|ty| with_self(&ty, &impl_type))
                             })
                             .unwrap_or_else(|| ctx.fresh_var());
@@ -10946,7 +10939,6 @@ fn infer_closure(
             let param_ty = if let Some(ann) = param.type_annotation() {
                 // Full resolution keeps generic arguments (`List<Int>`) and aliases.
                 let annotated_ty = resolve_type_annotation(ctx, &ann, type_registry)
-                    .or_else(|| resolve_type_name_str(&ann).map(|name| name_to_type(&name)))
                     .unwrap_or_else(|| ctx.fresh_var());
                 if let Some(expected_param_ty) = expected_param_ty {
                     ctx.unify(
@@ -13514,7 +13506,7 @@ fn infer_actor_def(
         for param in param_list.params() {
             let param_ty = param
                 .type_annotation()
-                .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+                .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
                 .unwrap_or_else(|| ctx.fresh_var());
             if let Some(name_tok) = param.name() {
                 let name_text = name_tok.text().to_string();
@@ -13867,7 +13859,7 @@ fn infer_service_def(
         // Parse return type annotation (:: Type).
         let reply_ty = handler
             .return_type()
-            .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+            .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
             .unwrap_or_else(|| ctx.fresh_var());
 
         // Infer call handler body -- should return (new_state, reply) tuple.
@@ -14010,7 +14002,7 @@ fn bind_service_params(
     for param in params.iter().flat_map(|list| list.params()) {
         let param_ty = param
             .type_annotation()
-            .and_then(|ann| resolve_param_annotation(ctx, &ann, type_registry))
+            .and_then(|ann| resolve_type_annotation(ctx, &ann, type_registry))
             .unwrap_or_else(|| ctx.fresh_var());
         if let Some(name) = param.name() {
             env.insert(name.text().to_string(), Scheme::mono(param_ty.clone()));
@@ -14986,25 +14978,6 @@ fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
     constraints
 }
 
-/// Resolve an actor or service annotation the way function parameters are:
-/// the whole type first, so `List<String>`, tuples and `Option<T>` keep their
-/// arguments, and the bare name only as a fallback. Resolving by name alone
-/// turned `List<String>` into a `List` no argument could match.
-fn resolve_param_annotation(
-    ctx: &mut InferCtx,
-    ann: &mesh_parser::ast::item::TypeAnnotation,
-    type_registry: &TypeRegistry,
-) -> Option<Ty> {
-    resolve_type_annotation(ctx, ann, type_registry)
-        .or_else(|| resolve_type_name_str(ann).map(|name| name_to_type(&name)))
-}
-
-/// Resolve a type annotation to a Ty, from the annotation's type name.
-fn resolve_type_name(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<Ty> {
-    let name = resolve_type_name_str(ann)?;
-    Some(name_to_type(&name))
-}
-
 /// The declared type parameter an annotation consists of, if it is exactly
 /// one: `x :: T`, but not `x :: T?` or `-> (T, U)`, which only start with it.
 fn annotation_type_param(
@@ -15021,11 +14994,6 @@ fn annotation_type_param(
         }
         _ => None,
     }
-}
-
-/// Extract the type name string from a type annotation.
-fn resolve_type_name_str(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<String> {
-    ann.type_name().map(|t| t.text().to_string())
 }
 
 /// Resolve a type annotation using the type registry (supports struct types, aliases).
