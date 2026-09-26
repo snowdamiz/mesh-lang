@@ -38,8 +38,8 @@ fn use_color() -> bool {
 }
 
 /// (green, red, bold, reset), empty without color.
-fn palette() -> (&'static str, &'static str, &'static str, &'static str) {
-    if use_color() {
+fn palette(color: bool) -> (&'static str, &'static str, &'static str, &'static str) {
+    if color {
         ("\x1b[32m", "\x1b[31m", "\x1b[1m", "\x1b[0m")
     } else {
         ("", "", "", "")
@@ -55,15 +55,11 @@ pub struct TestSummary {
     pub failed: usize,
 }
 
-fn resolve_target_path(target: &Path) -> Result<PathBuf, String> {
-    let abs = if target.is_absolute() {
-        target.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .map_err(|e| format!("Failed to read current directory: {}", e))?
-            .join(target)
-    };
-
+/// The target as an absolute path; without one, the current directory.
+fn resolve_target_path(target: Option<&Path>) -> Result<PathBuf, String> {
+    let target = target.unwrap_or(Path::new("."));
+    let abs = std::path::absolute(target)
+        .map_err(|e| format!("Failed to resolve '{}': {e}", target.display()))?;
     if abs.exists() {
         Ok(abs)
     } else {
@@ -77,46 +73,26 @@ struct ResolvedTestProject {
     entry_relative_path: PathBuf,
 }
 
-fn find_project_dir_for_target(target: &Path) -> Option<PathBuf> {
-    let mut dir = if target.is_dir() {
-        target.to_path_buf()
+/// The nearest directory holding a `mesh.toml`, from the target up.
+fn resolve_project_dir(target: &Path) -> Result<PathBuf, String> {
+    let start = if target.is_dir() {
+        target
     } else {
-        target.parent()?.to_path_buf()
+        target.parent().unwrap_or(target)
     };
-    loop {
-        if dir.join("mesh.toml").is_file() {
-            return Some(dir);
-        }
-        match dir.parent() {
-            Some(parent) => dir = parent.to_path_buf(),
-            None => return None,
-        }
-    }
+    start
+        .ancestors()
+        .find(|dir| dir.join("mesh.toml").is_file())
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            format!(
+                "Could not resolve a Mesh project root for test target '{}'; expected an ancestor with 'mesh.toml'.",
+                target.display()
+            )
+        })
 }
 
-fn project_root_resolution_error(target: &Path) -> String {
-    format!(
-        "Could not resolve a Mesh project root for test target '{}'; expected an ancestor with 'mesh.toml'.",
-        target.display()
-    )
-}
-
-fn resolve_project_dir(target: Option<&Path>) -> Result<PathBuf, String> {
-    let cwd =
-        std::env::current_dir().map_err(|e| format!("Failed to read current directory: {}", e))?;
-
-    match target {
-        Some(target) => {
-            let abs = resolve_target_path(target)?;
-            find_project_dir_for_target(&abs).ok_or_else(|| project_root_resolution_error(&abs))
-        }
-        None => {
-            find_project_dir_for_target(&cwd).ok_or_else(|| project_root_resolution_error(&cwd))
-        }
-    }
-}
-
-fn resolve_test_project(target: Option<&Path>) -> Result<ResolvedTestProject, String> {
+fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, String> {
     let project_dir = resolve_project_dir(target)?;
     let manifest_path = project_dir.join("mesh.toml");
     let manifest_source = std::fs::read_to_string(&manifest_path)
@@ -137,38 +113,25 @@ fn resolve_test_project(target: Option<&Path>) -> Result<ResolvedTestProject, St
     })
 }
 
-fn resolve_test_files(target: Option<&Path>) -> Result<Vec<PathBuf>, String> {
-    match target {
-        Some(target) => {
-            let abs = resolve_target_path(target)?;
-            if abs.is_dir() {
-                discover_test_files(&abs)
-            } else if abs
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.ends_with(".test.mpl"))
-                .unwrap_or(false)
-            {
-                Ok(vec![abs])
-            } else {
-                Err(format!(
-                    "'{}' is not a directory or a *.test.mpl file",
-                    abs.display()
-                ))
-            }
-        }
-        None => {
-            let cwd = std::env::current_dir()
-                .map_err(|e| format!("Failed to read current directory: {}", e))?;
-            discover_test_files(&cwd)
-        }
+fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, String> {
+    if target.is_dir() {
+        discover_test_files(target)
+    } else if target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"))
+    {
+        Ok(vec![target.to_path_buf()])
+    } else {
+        Err(format!(
+            "'{}' is not a directory or a *.test.mpl file",
+            target.display()
+        ))
     }
 }
 
-fn synthetic_test_manifest_source(test_project: &ResolvedTestProject) -> Result<String, String> {
-    rewrite_test_manifest_source(&test_project.manifest_source, &test_project.project_dir)
-}
-
+/// The project's sources in `tmp_dir`, its entry replaced by the test
+/// program as `main.mpl`, and a manifest naming that entry.
 fn prepare_temp_test_project(
     test_project: &ResolvedTestProject,
     tmp_dir: &Path,
@@ -179,55 +142,18 @@ fn prepare_temp_test_project(
         tmp_dir,
         &test_project.entry_relative_path,
     )?;
+    let manifest_source =
+        rewrite_test_manifest_source(&test_project.manifest_source, &test_project.project_dir)?;
+    write_file(&tmp_dir.join("mesh.toml"), manifest_source)?;
+    write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source)
+}
 
-    let copied_entry_path = tmp_dir.join(&test_project.entry_relative_path);
-    if copied_entry_path.exists() {
-        return Err(format!(
-            "Synthetic test project unexpectedly retained executable entry '{}' from '{}'; aborting to avoid copied-entry contamination.",
-            test_project.entry_relative_path.display(),
-            test_project.project_dir.display()
-        ));
-    }
+fn read_file(path: &Path) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| format!("Failed to read '{}': {e}", path.display()))
+}
 
-    let manifest_source = synthetic_test_manifest_source(test_project).map_err(|e| {
-        format!(
-            "Invalid synthetic test manifest state for '{}': {}",
-            test_project.project_dir.display(),
-            e
-        )
-    })?;
-    let manifest_path = tmp_dir.join("mesh.toml");
-    std::fs::write(&manifest_path, manifest_source)
-        .map_err(|e| format!("Failed to write '{}': {}", manifest_path.display(), e))?;
-
-    let main_path = tmp_dir.join(DEFAULT_ENTRYPOINT);
-    std::fs::write(&main_path, preprocessed_source)
-        .map_err(|e| format!("Failed to write preprocessed source: {}", e))?;
-
-    let manifest = Manifest::from_file(&manifest_path).map_err(|e| {
-        format!(
-            "Invalid synthetic test manifest state for '{}': {}",
-            test_project.project_dir.display(),
-            e
-        )
-    })?;
-    let synthetic_entry = resolve_entrypoint(tmp_dir, Some(&manifest)).map_err(|e| {
-        format!(
-            "Invalid synthetic test manifest state for '{}': {}",
-            test_project.project_dir.display(),
-            e
-        )
-    })?;
-    if synthetic_entry != Path::new(DEFAULT_ENTRYPOINT) {
-        return Err(format!(
-            "Invalid synthetic test manifest state for '{}': resolved '{}' instead of '{}'.",
-            test_project.project_dir.display(),
-            synthetic_entry.display(),
-            DEFAULT_ENTRYPOINT
-        ));
-    }
-
-    Ok(())
+fn write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
+    std::fs::write(path, contents).map_err(|e| format!("Failed to write '{}': {e}", path.display()))
 }
 
 /// Run tests from the current project, a project root, a test directory, or a specific test file.
@@ -247,9 +173,10 @@ pub fn run_tests(
         );
     }
 
-    let test_project = resolve_test_project(target)?;
+    let target = resolve_target_path(target)?;
+    let test_project = resolve_test_project(&target)?;
     let project_dir = &test_project.project_dir;
-    let test_files = resolve_test_files(target)?;
+    let test_files = resolve_test_files(&target)?;
 
     if test_files.is_empty() {
         println!("No *.test.mpl files found.");
@@ -262,17 +189,16 @@ pub fn run_tests(
     let start = Instant::now();
     let mut passed = 0usize;
     let mut failed = 0usize;
-    let (green, red, bold, reset) = palette();
+    let color = use_color();
+    let (green, red, bold, reset) = palette(color);
 
     for test_file in &test_files {
-        let rel = test_file.strip_prefix(project_dir).map_err(|_| {
-            format!(
-                "Resolved test file '{}' is not under project root '{}'; aborting to avoid a wrong-root test run.",
-                test_file.display(),
-                project_dir.display()
-            )
-        })?;
-        let label = rel.display().to_string();
+        // The project root is an ancestor of every test file.
+        let label = test_file
+            .strip_prefix(project_dir)
+            .unwrap_or(test_file)
+            .display()
+            .to_string();
 
         // Read the .test.mpl source and preprocess it into a valid Mesh program.
         let source = std::fs::read_to_string(test_file)
@@ -303,7 +229,7 @@ pub fn run_tests(
         // Diagnostics name the test file and the project's files, not
         // their copies in the temporary project.
         let diag_opts = DiagnosticOptions {
-            color: use_color(),
+            color,
             json: false,
             display_paths: vec![
                 (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
@@ -332,7 +258,7 @@ pub fn run_tests(
         // or `F` in quiet mode.
         let output = Command::new(&bin_path)
             .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
-            .env("MESH_TEST_COLOR", if use_color() { "1" } else { "0" })
+            .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
             .output()
             .map_err(|e| format!("Failed to execute '{}': {}", bin_path.display(), e))?;
 
@@ -401,25 +327,28 @@ fn copy_project_sources_to_tmp(
 ) -> Result<(), String> {
     copy_sources_recursive(
         project_dir,
-        project_dir,
+        Path::new(""),
         tmp_dir,
         excluded_entry_relative_path,
     )
 }
 
+/// Copies the sources under `project_root/relative_dir`.
 fn copy_sources_recursive(
     project_root: &Path,
-    dir: &Path,
+    relative_dir: &Path,
     tmp_dir: &Path,
     excluded_entry_relative_path: &Path,
 ) -> Result<(), String> {
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| format!("Failed to read '{}': {}", dir.display(), e))?;
+    let dir = project_root.join(relative_dir);
+    let entries = std::fs::read_dir(&dir)
+        .map_err(|e| format!("Failed to read '{}': {}", dir.display(), e))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read '{}': {}", dir.display(), e))?;
         let path = entry.path();
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
+        let relative = relative_dir.join(&name);
 
         // Skip hidden directories and build artifacts
         if name_str.starts_with('.') || name_str == "target" {
@@ -437,86 +366,65 @@ fn copy_sources_recursive(
         }
 
         if file_type.is_dir() {
-            copy_sources_recursive(project_root, &path, tmp_dir, excluded_entry_relative_path)?;
-        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) == Some("mpl") {
-            if name_str.ends_with(".test.mpl") {
-                continue;
-            }
-            if let Some(module_name) = name_str.strip_suffix(".test-support.mpl") {
-                let module_path = path.with_file_name(format!("{module_name}.mpl"));
-                if !module_path.is_file() {
-                    return Err(format!(
-                        "Test-support fragment '{}' requires sibling module '{}'.",
-                        path.display(),
-                        module_path.display()
-                    ));
-                }
-                let module_relative = module_path.strip_prefix(project_root).map_err(|e| {
-                    format!(
-                        "Failed to map '{}' under project root '{}': {}",
-                        module_path.display(),
-                        project_root.display(),
-                        e
-                    )
-                })?;
-                if module_relative == excluded_entry_relative_path {
-                    return Err(format!(
-                        "Test-support fragment '{}' cannot target executable entry '{}'.",
-                        path.display(),
-                        module_relative.display()
-                    ));
-                }
-                if module_relative == Path::new(DEFAULT_ENTRYPOINT) {
-                    return Err(format!(
-                        "Test-support fragment '{}' cannot target synthetic test entry '{}'.",
-                        path.display(),
-                        module_relative.display()
-                    ));
-                }
-                continue;
-            }
-            let relative = path.strip_prefix(project_root).map_err(|e| {
-                format!(
-                    "Failed to map '{}' under project root '{}': {}",
-                    path.display(),
-                    project_root.display(),
-                    e
-                )
-            })?;
-            if relative == excluded_entry_relative_path || relative == Path::new(DEFAULT_ENTRYPOINT)
-            {
-                continue;
-            }
-            let dest = tmp_dir.join(relative);
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
-            }
-            let module_name = name_str.strip_suffix(".mpl").unwrap_or(&name_str);
-            let test_support_path = path.with_file_name(format!("{module_name}.test-support.mpl"));
-            if test_support_path.is_file() {
-                let mut source = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read '{}': {}", path.display(), e))?;
-                if !source.ends_with('\n') {
-                    source.push('\n');
-                }
-                let test_support = std::fs::read_to_string(&test_support_path).map_err(|e| {
-                    format!("Failed to read '{}': {}", test_support_path.display(), e)
-                })?;
-                source.push_str(&test_support);
-                std::fs::write(&dest, source)
-                    .map_err(|e| format!("Failed to write '{}': {}", dest.display(), e))?;
-            } else {
-                std::fs::copy(&path, &dest).map_err(|e| {
-                    format!(
-                        "Failed to copy '{}' to '{}': {}",
-                        path.display(),
-                        dest.display(),
-                        e
-                    )
-                })?;
-            }
+            copy_sources_recursive(
+                project_root,
+                &relative,
+                tmp_dir,
+                excluded_entry_relative_path,
+            )?;
+            continue;
         }
+        if !file_type.is_file()
+            || path.extension().and_then(|e| e.to_str()) != Some("mpl")
+            || name_str.ends_with(".test.mpl")
+        {
+            continue;
+        }
+        if let Some(module_name) = name_str.strip_suffix(".test-support.mpl") {
+            let module_relative = relative.with_file_name(format!("{module_name}.mpl"));
+            let module_path = project_root.join(&module_relative);
+            if !module_path.is_file() {
+                return Err(format!(
+                    "Test-support fragment '{}' requires sibling module '{}'.",
+                    path.display(),
+                    module_path.display()
+                ));
+            }
+            if module_relative == excluded_entry_relative_path {
+                return Err(format!(
+                    "Test-support fragment '{}' cannot target executable entry '{}'.",
+                    path.display(),
+                    module_relative.display()
+                ));
+            }
+            if module_relative == Path::new(DEFAULT_ENTRYPOINT) {
+                return Err(format!(
+                    "Test-support fragment '{}' cannot target synthetic test entry '{}'.",
+                    path.display(),
+                    module_relative.display()
+                ));
+            }
+            continue;
+        }
+        if relative == excluded_entry_relative_path || relative == Path::new(DEFAULT_ENTRYPOINT) {
+            continue;
+        }
+        let dest = tmp_dir.join(&relative);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
+        }
+        // A module's test-support fragment is appended to it.
+        let mut source = read_file(&path)?;
+        let module_name = name_str.strip_suffix(".mpl").unwrap_or(&name_str);
+        let test_support_path = path.with_file_name(format!("{module_name}.test-support.mpl"));
+        if test_support_path.is_file() {
+            if !source.ends_with(b"\n") {
+                source.push(b'\n');
+            }
+            source.extend(read_file(&test_support_path)?);
+        }
+        write_file(&dest, source)?;
     }
     Ok(())
 }
@@ -567,6 +475,15 @@ mod tests {
     }
 
     #[test]
+    fn the_palette_is_ansi_only_in_color() {
+        assert_eq!(palette(false), ("", "", "", ""));
+        assert_eq!(
+            palette(true),
+            ("\x1b[32m", "\x1b[31m", "\x1b[1m", "\x1b[0m")
+        );
+    }
+
+    #[test]
     fn resolve_project_dir_prefers_nearest_manifest_for_override_entry_file_targets() {
         let temp = tempfile::tempdir().unwrap();
         let project_dir = temp.path().join("override-project");
@@ -582,7 +499,7 @@ mod tests {
         );
         write_file(&test_file, "test(\"ok\") do\n  assert(true)\nend\n");
 
-        let resolved = resolve_project_dir(Some(&test_file)).unwrap();
+        let resolved = resolve_project_dir(&test_file).unwrap();
 
         assert_eq!(resolved, project_dir);
     }
@@ -593,7 +510,7 @@ mod tests {
         let orphan = temp.path().join("orphan.test.mpl");
         write_file(&orphan, "test(\"orphan\") do\n  assert(true)\nend\n");
 
-        let err = resolve_project_dir(Some(&orphan)).unwrap_err();
+        let err = resolve_project_dir(&orphan).unwrap_err();
 
         assert!(
             err.contains("Could not resolve a Mesh project root"),
@@ -619,7 +536,7 @@ mod tests {
             "test(\"ok\") do\n  assert(true)\nend\n",
         );
 
-        let resolved = resolve_test_project(Some(&project_dir)).unwrap();
+        let resolved = resolve_test_project(&project_dir).unwrap();
 
         assert_eq!(
             resolved.entry_relative_path,
@@ -742,6 +659,48 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn copy_project_sources_to_tmp_names_what_it_cannot_read() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let module = project.path().join("account.mpl");
+        write_file(&module, "pub fn value() -> Int do\n  1\nend\n");
+        let mode = |path: &Path, mode| {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        mode(&module, 0o000);
+        // Permissions do not bind a privileged user.
+        if std::fs::read(&module).is_ok() {
+            return;
+        }
+        let err = copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl"))
+            .unwrap_err();
+        assert!(
+            err.starts_with("Failed to read '") && err.contains("account.mpl"),
+            "{err}"
+        );
+
+        mode(&module, 0o644);
+        let support = project.path().join("account.test-support.mpl");
+        write_file(&support, "pub fn test_value() -> Int do\n  value()\nend\n");
+        mode(&support, 0o000);
+        let err = copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl"))
+            .unwrap_err();
+        assert!(err.contains("account.test-support.mpl"), "{err}");
+        mode(&support, 0o644);
+
+        let sealed = project.path().join("sealed");
+        std::fs::create_dir(&sealed).unwrap();
+        mode(&sealed, 0o000);
+        let err = copy_project_sources_to_tmp(project.path(), tmp.path(), Path::new("main.mpl"))
+            .unwrap_err();
+        mode(&sealed, 0o755);
+        assert!(err.contains("sealed"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn copy_project_sources_to_tmp_rejects_symlinked_sources() {
         use std::os::unix::fs::symlink;
 
@@ -781,7 +740,7 @@ mod tests {
             "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
         );
 
-        let test_project = resolve_test_project(Some(&project_dir)).unwrap();
+        let test_project = resolve_test_project(&project_dir).unwrap();
         prepare_temp_test_project(
             &test_project,
             tmp.path(),

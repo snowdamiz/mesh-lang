@@ -2266,3 +2266,58 @@ fn test_fmt_and_lint_name_paths_without_readable_sources() {
     }
     lock("sealed", 0o755);
 }
+
+/// What `meshc test` says when there is nothing, or nothing it can run.
+#[test]
+fn test_test_reports_targets_it_cannot_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("app");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(&project.join("notes.txt"), "notes");
+
+    let (ok, text) = run_meshc(&project, &["test"], &[]);
+    assert!(ok && text.contains("No *.test.mpl files found."), "{text}");
+    let (ok, text) = run_meshc(&project, &["test", "missing"], &[]);
+    assert!(
+        !ok && text.contains("/app/missing' does not exist"),
+        "{text}"
+    );
+    let (ok, text) = run_meshc(&project, &["test", "notes.txt"], &[]);
+    assert!(
+        !ok && text.contains("notes.txt' is not a directory or a *.test.mpl file"),
+        "{text}"
+    );
+
+    // A file the test DSL rejects, and a project whose path dependency is
+    // gone, each fail alone.
+    write_file(
+        &project.join("tests/order.test.mpl"),
+        "describe(\"order\") do\n  test(\"first\") do\n    assert(true)\n  end\n  setup() do\n  end\nend\n",
+    );
+    let (ok, text) = run_meshc(&project, &["test"], &[]);
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains("COMPILE ERROR: tests/order.test.mpl")
+            && text.contains("`setup` must come before the tests of its describe"),
+        "{text}"
+    );
+    write_file(
+        &project.join("tests/order.test.mpl"),
+        "test(\"ok\") do\n  assert(true)\nend\n",
+    );
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\ngone = { path = \"../gone\" }\n",
+    );
+    let (ok, text) = run_meshc(&project, &["test"], &[]);
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains("SETUP ERROR: tests/order.test.mpl")
+            && text.contains("Failed to resolve path dependency `gone`"),
+        "{text}"
+    );
+}
