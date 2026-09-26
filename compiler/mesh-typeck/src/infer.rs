@@ -12984,34 +12984,34 @@ fn resolve_pending_fields(
     } in pending
     {
         let base = ctx.resolve(base);
-        let (name, args) = match &base {
-            Ty::Var(_) if !last => {
+        if let Ty::Var(_) = base {
+            if last {
+                ctx.errors
+                    .push(TypeError::UnknownFieldOwner { field, span });
+            } else {
                 unresolved.push(PendingField {
                     base,
                     field,
                     result,
                     span,
                 });
-                continue;
             }
-            Ty::Var(_) => {
-                ctx.errors
-                    .push(TypeError::UnknownFieldOwner { field, span });
-                continue;
-            }
-            Ty::App(con, args) => match con.as_ref() {
-                Ty::Con(tc) => (tc.name.clone(), args.clone()),
-                _ => continue,
-            },
-            Ty::Con(tc) => (tc.name.clone(), vec![]),
-            _ => continue,
+            continue;
+        }
+        // Only a struct has fields: a tuple or a function had none checked.
+        let args = match &base {
+            Ty::App(_, args) => args.as_slice(),
+            _ => &[],
         };
-        let field_ty = type_registry.lookup_struct(&name).and_then(|info| {
-            info.fields
-                .iter()
-                .find(|(name, _)| *name == field)
-                .map(|(_, ty)| substitute_type_params(ty, &info.generic_params, &args))
-        });
+        let field_ty = base
+            .con_name()
+            .and_then(|name| type_registry.lookup_struct(name))
+            .and_then(|info| {
+                info.fields
+                    .iter()
+                    .find(|(name, _)| *name == field)
+                    .map(|(_, ty)| substitute_type_params(ty, &info.generic_params, args))
+            });
         match field_ty {
             Some(field_ty) => {
                 let _ = ctx.unify(field_ty, result, ConstraintOrigin::Expr { span });

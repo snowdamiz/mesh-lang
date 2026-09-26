@@ -572,6 +572,54 @@ end
     );
 }
 
+// ── Fields ─────────────────────────────────────────────────────────────
+
+/// A field read from a value whose type is settled later in its function
+/// is checked against that type: only a struct has fields. A tuple or a
+/// function was let through, and a generic struct's field reads as the
+/// struct's argument.
+#[test]
+fn fields_read_before_their_value_is_known_are_checked_later() {
+    assert_eq!(
+        errors(
+            r#"
+struct Box<T> do
+  item :: T
+end
+
+fn tuple_field(p) do
+  let a = p.x
+  let (u, v) = p
+  a
+end
+
+fn fn_field(f) do
+  let a = f.x
+  let b = f(1)
+  a
+end
+
+fn generic_field(b) do
+  let i = b.item
+  let c :: Box<Int> = b
+  i + 1
+end
+
+fn int_field(n) do
+  let a = n.x
+  let m = n + 1
+  a
+end
+"#
+        ),
+        [
+            "type `(_, _)` has no field `x`",
+            "type `(Int) -> _` has no field `x`",
+            "type `Int` has no field `x`",
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the
