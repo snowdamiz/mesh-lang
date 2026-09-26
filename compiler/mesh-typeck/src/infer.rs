@@ -33,6 +33,7 @@ use crate::exhaustiveness::{
     self, ConstructorSig, LitKind as AbsLitKind, Pat as AbsPat, TypeInfo as AbsTypeInfo,
     TypeRegistry as AbsTypeRegistry,
 };
+use crate::ownership::source_function_name;
 use crate::traits::{
     AssocTypeDef as TraitAssocTypeDef, ImplDef as TraitImplDef, ImplMethodSig, ImplProblem,
     TraitDef, TraitMethodSig, TraitRegistry,
@@ -5843,16 +5844,22 @@ fn register_import(
                         span,
                     );
                 }
-            } else if let Some(functions) =
-                stdlib_modules(import_ctx.test_builtins).get(&segments[0])
-            {
+            } else if let Some(functions) = stdlib_modules(import_ctx.test_builtins).get(&module) {
                 // A standard module's function comes in under its own name
                 // and with the module's prefix (`length`, `string_length`).
-                for (name, _) in names {
-                    if let Some(scheme) = functions.get(&name) {
-                        let prefixed = format!("{}_{name}", segments[0].to_lowercase());
-                        env.insert(prefixed, scheme.clone());
-                        env.insert(name, scheme.clone());
+                for (name, span) in names {
+                    match functions.get(&name) {
+                        Some(scheme) => {
+                            let prefixed = format!("{}_{name}", module.to_lowercase());
+                            env.insert(prefixed, scheme.clone());
+                            env.insert(name, scheme.clone());
+                        }
+                        None => ctx.errors.push(TypeError::NoSuchModuleFunction {
+                            module: module.clone(),
+                            name,
+                            available: listed_names(functions.keys()),
+                            span,
+                        }),
                     }
                 }
             } else {
@@ -5882,19 +5889,13 @@ fn import_name(
     span: TextRange,
 ) {
     // A function, or each arity of one defined at several (`name__2`).
-    let overloads: Vec<&String> = mod_exports
-        .functions
-        .keys()
-        .filter(|key| {
-            key.strip_prefix(name.as_str())
-                .and_then(|rest| rest.strip_prefix("__"))
-                .is_some_and(|arity| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))
-        })
-        .collect();
-    let functions: Vec<&String> = if mod_exports.functions.contains_key(&name) {
-        vec![&name]
-    } else {
-        overloads
+    let functions: Vec<&String> = match mod_exports.functions.get_key_value(&name) {
+        Some((key, _)) => vec![key],
+        None => mod_exports
+            .functions
+            .keys()
+            .filter(|key| source_function_name(key) == name)
+            .collect(),
     };
     if !functions.is_empty() {
         for key in functions {
@@ -5942,17 +5943,17 @@ fn import_name(
             span,
         });
     } else {
-        let available: Vec<String> = mod_exports
-            .functions
-            .keys()
-            .chain(mod_exports.struct_defs.keys())
-            .chain(mod_exports.sum_type_defs.keys())
-            .chain(mod_exports.service_defs.keys())
-            .chain(mod_exports.actor_defs.keys())
-            .chain(mod_exports.type_aliases.keys())
-            .chain(mod_exports.interfaces.iter())
-            .cloned()
-            .collect();
+        let available = listed_names(
+            mod_exports
+                .functions
+                .keys()
+                .chain(mod_exports.struct_defs.keys())
+                .chain(mod_exports.sum_type_defs.keys())
+                .chain(mod_exports.service_defs.keys())
+                .chain(mod_exports.actor_defs.keys())
+                .chain(mod_exports.type_aliases.keys())
+                .chain(mod_exports.interfaces.iter()),
+        );
         ctx.errors.push(TypeError::ImportNameNotFound {
             module_name: module_path.to_string(),
             name,
@@ -6019,6 +6020,18 @@ fn register_schema_functions<'a>(
         let column = Ty::fun(vec![], Ty::string());
         env.insert(format!("{name}.__{field}_col__"), Scheme::mono(column));
     }
+}
+
+/// The names a module defines, as an error lists them: sorted, each
+/// arity of a function by the function's name, without internal ones.
+fn listed_names<'a>(names: impl Iterator<Item = &'a String>) -> Vec<String> {
+    let mut names: Vec<String> = names
+        .map(|name| source_function_name(name))
+        .filter(|name| !name.contains("__"))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 // ── Struct Registration (03-03) ────────────────────────────────────────
@@ -12548,18 +12561,15 @@ fn infer_field_access(
             {
                 None
             } else if let Some(functions) = ctx.qualified_modules.get(&base_name) {
-                Some(functions.keys().cloned().collect())
+                Some(listed_names(functions.keys()))
             } else if is_stdlib_module(&base_name) {
                 stdlib_modules(ctx.test_builtins)
                     .get(&base_name)
-                    .map(|functions| functions.keys().cloned().collect())
+                    .map(|functions| listed_names(functions.keys()))
             } else {
                 None
             };
-            if let Some(mut available) = module_functions {
-                available.sort();
-                available.dedup();
-                available.retain(|name| !name.contains("__"));
+            if let Some(available) = module_functions {
                 let err = TypeError::NoSuchModuleFunction {
                     module: base_name,
                     name: field_name,

@@ -595,7 +595,7 @@ fn register_imported_signatures(
     }
 }
 
-fn source_function_name(export_name: &str) -> String {
+pub(crate) fn source_function_name(export_name: &str) -> String {
     export_name
         .rsplit_once("__")
         .filter(|(_, arity)| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))

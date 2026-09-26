@@ -1243,15 +1243,16 @@ end
 }
 
 /// What an import cannot bring in: a name a module does not export or
-/// keeps private, or anything of a module that does not exist.
+/// keeps private, a function a standard module does not have (it was left
+/// out without a word), or anything of a module that does not exist. The
+/// names a module has are listed sorted, an overloaded function once.
 #[test]
 fn imports_of_what_is_not_there_are_errors() {
     let errors = errors_importing(
         "Store",
         STORE,
-        "from Store import secret, Nope\nfrom Nowhere import thing\nimport Elsewhere\n",
+        "from Store import secret, Nope\nfrom String import length, lenght\nfrom Nowhere import thing\nimport Elsewhere\n",
     );
-    // The names a module does export follow, in no particular order.
     let headlines: Vec<&str> = errors
         .iter()
         .map(|error| error.split("; ").next().unwrap())
@@ -1261,9 +1262,14 @@ fn imports_of_what_is_not_there_are_errors() {
         [
             "`secret` is private in module `Store`",
             "`Nope` is not exported by module `Store`",
+            "module `String` has no function `lenght`",
             "module `Nowhere` not found",
             "module `Elsewhere` not found",
         ]
+    );
+    assert_eq!(
+        errors[1],
+        "`Nope` is not exported by module `Store`; available: Counter, Kind, Labelled, Pinger, Shade, User, pad"
     );
 }
 
