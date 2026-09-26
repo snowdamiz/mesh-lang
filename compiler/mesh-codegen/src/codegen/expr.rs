@@ -3787,7 +3787,6 @@ impl<'ctx> CodeGen<'ctx> {
         children: &[MirChildSpec],
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // Build the binary config buffer for mesh_supervisor_start.
         // Format: strategy(u8) + max_restarts(u32 LE) + max_seconds(u64 LE) +
@@ -3828,8 +3827,8 @@ impl<'ctx> CodeGen<'ctx> {
             fn_ptr_offsets.push((fn_ptr_offset, child.start_fn.clone()));
             config_bytes.extend_from_slice(&0u64.to_le_bytes()); // placeholder
 
-            // start_args_ptr (8 bytes LE) -- supervisor children in source-level Mesh
-            // bootstrap through runtime lookups, so there are no captured start args.
+            // start_args_ptr (8 bytes LE) -- a child's entry evaluates its actor's
+            // arguments itself, so it is started with none.
             config_bytes.extend_from_slice(&0u64.to_le_bytes());
 
             // start_args_size (8 bytes LE)
@@ -3894,16 +3893,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Patch function pointers into the stack copy.
         for (offset, fn_name) in &fn_ptr_offsets {
-            if fn_name.is_empty() {
-                continue;
-            }
-            // Get the function pointer value.
-            let fn_ptr_val = if let Some(fn_val) = self.functions.get(fn_name).copied() {
-                fn_val.as_global_value().as_pointer_value()
-            } else {
-                // Function not found; use null.
-                ptr_ty.const_null()
-            };
+            let fn_ptr_val = self.functions[fn_name].as_global_value().as_pointer_value();
 
             // Convert fn_ptr to i64.
             let fn_ptr_int = self

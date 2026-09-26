@@ -159,12 +159,9 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
         match node {
             MirExpr::Var(name, _) => refs.push(name.clone()),
             MirExpr::MakeClosure { fn_name, .. } => refs.push(fn_name.clone()),
-            MirExpr::SupervisorStart { children, .. } => refs.extend(
-                children
-                    .iter()
-                    .filter(|child| !child.start_fn.is_empty())
-                    .map(|child| child.start_fn.clone()),
-            ),
+            MirExpr::SupervisorStart { children, .. } => {
+                refs.extend(children.iter().map(|child| child.start_fn.clone()))
+            }
             MirExpr::ForInIterator {
                 next_fn, iter_fn, ..
             } => {

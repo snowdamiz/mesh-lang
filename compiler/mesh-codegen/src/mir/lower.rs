@@ -418,6 +418,9 @@ struct Lowerer<'a> {
     discarded_callback_results: &'a FxHashSet<TextRange>,
     /// Fail-closed lowering errors gathered while rewriting clustered routes.
     lowering_errors: Vec<String>,
+    /// While lowering a supervisor child's start: the `spawn` that ends it,
+    /// which runs the spawned actor in place (`supervisor_child_entry`).
+    supervised_spawn: Option<TextRange>,
 }
 
 /// Walk through Let/Block wrappers to find the effective return type of a MIR expression.
@@ -720,6 +723,7 @@ impl<'a> Lowerer<'a> {
             consumed_clustered_route_wrappers: HashSet::new(),
             discarded_callback_results: &typeck.discarded_callback_results,
             lowering_errors: Vec::new(),
+            supervised_spawn: None,
         }
     }
 
@@ -13944,7 +13948,8 @@ impl<'a> Lowerer<'a> {
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<anonymous_supervisor>".to_string());
 
-        // Extract strategy (default: one_for_one = 0).
+        // The type checker allows only these strategies (E0019), restart
+        // types (E0020) and shutdowns (E0021).
         let strategy: u8 = sup_def
             .strategy()
             .and_then(|node| {
@@ -13952,15 +13957,14 @@ impl<'a> Lowerer<'a> {
                     .filter_map(|c| c.into_token())
                     .filter(|t| t.kind() == SyntaxKind::IDENT)
                     .last()
-                    .map(|t| match t.text() {
-                        "one_for_one" => 0u8,
-                        "one_for_all" => 1,
-                        "rest_for_one" => 2,
-                        "simple_one_for_one" => 3,
-                        _ => 0,
-                    })
             })
-            .unwrap_or(0);
+            .map_or(0, |value| match value.text() {
+                "one_for_one" => 0,
+                "one_for_all" => 1,
+                "rest_for_one" => 2,
+                "simple_one_for_one" => 3,
+                other => unreachable!("the supervision strategy {other}"),
+            });
 
         // Extract max_restarts (default: 3).
         let max_restarts: u32 = sup_def
@@ -13986,10 +13990,8 @@ impl<'a> Lowerer<'a> {
             })
             .unwrap_or(5);
 
-        // Extract child specs.
         let mut children = Vec::new();
         for child_node in sup_def.child_specs() {
-            // Child ID from the NAME child.
             let child_id = child_node
                 .children()
                 .find(|c| c.kind() == SyntaxKind::NAME)
@@ -14000,91 +14002,40 @@ impl<'a> Lowerer<'a> {
                         .map(|t| t.text().to_string())
                 })
                 .unwrap_or_else(|| "child".to_string());
-
-            // Parse child body -- look inside the BLOCK child for key-value pairs.
             let block = child_node
                 .children()
-                .find(|c| c.kind() == SyntaxKind::BLOCK);
-
-            let mut start_fn = String::new();
-            let mut restart_type: u8 = 0; // permanent
-            let mut shutdown_ms: u64 = 5000;
-
-            if let Some(block) = block {
-                for token_or_node in block.children_with_tokens() {
-                    if let Some(token) = token_or_node.as_token() {
-                        // Track identifiers for key-value pairs.
-                        let _text = token.text();
-                    }
+                .find_map(Block::cast)
+                .expect("the parser gives a child spec its body");
+            // `restart: <ident>` and `shutdown: <int or ident>`; `start`'s
+            // value is an expression, not a token.
+            let settings: Vec<_> = block
+                .syntax()
+                .children_with_tokens()
+                .filter_map(|c| c.into_token())
+                .filter(|t| matches!(t.kind(), SyntaxKind::IDENT | SyntaxKind::INT_LITERAL))
+                .collect();
+            let setting = |key: &str| {
+                settings
+                    .windows(2)
+                    .rfind(|pair| pair[0].text() == key)
+                    .map(|pair| pair[1].clone())
+            };
+            let restart_type = setting("restart").map_or(0, |value| match value.text() {
+                "permanent" => 0,
+                "transient" => 1,
+                "temporary" => 2,
+                other => unreachable!("the restart type {other}"),
+            });
+            // A timeout in milliseconds, or 0 for `brutal_kill`.
+            let shutdown_ms = setting("shutdown").map_or(5000, |value| match value.kind() {
+                SyntaxKind::INT_LITERAL => {
+                    parse_int_literal(value.text()).unwrap_or(i64::MAX) as u64
                 }
-
-                // Walk tokens linearly to extract key-value pairs.
-                let tokens: Vec<_> = block
-                    .descendants_with_tokens()
-                    .filter_map(|c| c.into_token())
-                    .filter(|t| t.kind() != SyntaxKind::WHITESPACE)
-                    .collect();
-                let mut i = 0;
-                while i < tokens.len() {
-                    let text = tokens[i].text();
-                    if text == "start" {
-                        // Skip "start", ":", then find the spawn call or actor reference.
-                        // In our simple model, the child start is a closure: fn -> spawn(ActorName, args) end
-                        // We need to find the actor name being spawned.
-                        // Look for SPAWN_KW or an ident matching an actor name after start: fn ->
-                        let mut j = i + 1;
-                        while j < tokens.len() {
-                            if tokens[j].kind() == SyntaxKind::SPAWN_KW {
-                                // Next non-trivia token after ( should be the actor name.
-                                let mut k = j + 1;
-                                while k < tokens.len() && tokens[k].kind() != SyntaxKind::IDENT {
-                                    k += 1;
-                                }
-                                if k < tokens.len() {
-                                    start_fn = tokens[k].text().to_string();
-                                }
-                                break;
-                            }
-                            if tokens[j].text() == "restart" || tokens[j].text() == "shutdown" {
-                                break;
-                            }
-                            j += 1;
-                        }
-                    } else if text == "restart" {
-                        // Skip "restart", ":", then grab the value.
-                        let mut j = i + 1;
-                        while j < tokens.len() {
-                            if tokens[j].kind() == SyntaxKind::IDENT {
-                                restart_type = match tokens[j].text() {
-                                    "permanent" => 0,
-                                    "transient" => 1,
-                                    "temporary" => 2,
-                                    _ => 0,
-                                };
-                                break;
-                            }
-                            j += 1;
-                        }
-                    } else if text == "shutdown" {
-                        // Skip "shutdown", ":", then grab int or brutal_kill.
-                        let mut j = i + 1;
-                        while j < tokens.len() {
-                            if tokens[j].kind() == SyntaxKind::INT_LITERAL {
-                                shutdown_ms = tokens[j].text().parse().unwrap_or(5000);
-                                break;
-                            }
-                            if tokens[j].kind() == SyntaxKind::IDENT
-                                && tokens[j].text() == "brutal_kill"
-                            {
-                                shutdown_ms = 0; // 0 = brutal kill
-                                break;
-                            }
-                            j += 1;
-                        }
-                    }
-                    i += 1;
-                }
-            }
+                _ => 0,
+            });
+            let Some(start_fn) = self.supervisor_child_entry(&name, &child_id, &block) else {
+                continue;
+            };
 
             children.push(MirChildSpec {
                 id: child_id,
@@ -14115,6 +14066,86 @@ impl<'a> Lowerer<'a> {
             captures: Vec::new(),
             has_tail_calls: false,
         });
+    }
+
+    /// The function a supervisor runs as its child `child`'s process, at the
+    /// start and at each restart: the child's `start` function's body, with
+    /// the `spawn` that ends it running the spawned actor in place. The
+    /// runtime starts a child without arguments, so an actor's arguments
+    /// are evaluated here, in the child.
+    fn supervisor_child_entry(
+        &mut self,
+        supervisor: &str,
+        child: &str,
+        block: &Block,
+    ) -> Option<String> {
+        let body = match block.syntax().children().find_map(Expr::cast) {
+            Some(Expr::ClosureExpr(start)) => start.body(),
+            _ => None,
+        };
+        let spawn = body.as_ref().and_then(Block::tail_expr);
+        let (Some(body), Some(Expr::SpawnExpr(spawn))) = (body, spawn) else {
+            self.lowering_errors.push(format!(
+                "the child `{child}` of supervisor `{supervisor}` must start as \
+                 `fn -> spawn(actor, ...) end`"
+            ));
+            return None;
+        };
+        let entry = format!("__supervisor_{supervisor}_{child}");
+        let outer = self.supervised_spawn.replace(spawn.syntax().text_range());
+        self.push_scope();
+        let body = self.lower_block(&body);
+        self.pop_scope();
+        self.supervised_spawn = outer;
+        self.push_helper_fn(
+            &entry,
+            vec![("__args_ptr".to_string(), MirType::Ptr)],
+            MirType::Unit,
+            body,
+        );
+        Some(entry)
+    }
+
+    /// `spawn(actor, args...)` ending a supervisor child's start: the actor's
+    /// body run with the arguments, in the process the supervisor started.
+    fn run_actor_in_place(&mut self, spawn: &SpawnExpr) -> MirExpr {
+        let mut args = spawn
+            .arg_list()
+            .map(|list| list.args().collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter();
+        let actor = args.next().and_then(|actor| match actor {
+            Expr::NameRef(actor) => Some((actor.text()?, actor.syntax().text_range())),
+            _ => None,
+        });
+        let Some((actor, range)) = actor else {
+            self.lowering_errors
+                .push("a supervisor child must spawn an actor by its name".to_string());
+            return MirExpr::Unit;
+        };
+        let (params, _) = fun_parts(
+            self.get_ty(range)
+                .expect("the type checker types the spawned actor"),
+        );
+        let params: Vec<MirType> = params
+            .iter()
+            .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
+            .collect();
+        // An actor with parameters runs as its body function.
+        let callee = if params.is_empty() {
+            actor
+        } else {
+            format!("__actor_{actor}_body")
+        };
+        let args = args.map(|arg| self.lower_expr(&arg)).collect();
+        MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                callee,
+                MirType::FnPtr(params, Box::new(MirType::Unit)),
+            )),
+            args,
+            ty: MirType::Unit,
+        }
     }
 
     // ── Service lowering ─────────────────────────────────────────────────
@@ -14931,6 +14962,9 @@ impl<'a> Lowerer<'a> {
     // ── Actor expression lowering ───────────────────────────────────────
 
     fn lower_spawn_expr(&mut self, spawn: &SpawnExpr) -> MirExpr {
+        if self.supervised_spawn == Some(spawn.syntax().text_range()) {
+            return self.run_actor_in_place(spawn);
+        }
         let ty = self.resolve_range(spawn.syntax().text_range());
         let ty = if matches!(ty, MirType::Unit) {
             MirType::Pid(None)

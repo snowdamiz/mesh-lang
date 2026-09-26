@@ -805,3 +805,112 @@ end
     lines.sort();
     assert_eq!(lines, ["a1 started", "a2 started"]);
 }
+
+/// A supervisor's children start with the arguments their `spawn` gives
+/// them, again at each restart, and each restart type holds: a crashing
+/// permanent child comes back, a temporary one and a transient one that
+/// ends normally do not. A child spawned with arguments crashed at its
+/// first instruction (the supervisor started it without any), and a child
+/// after one whose id is one letter long was read as a remote one, so the
+/// supervisor never started.
+#[test]
+fn supervisor_children_start_with_their_arguments() {
+    let out = compile_and_run(
+        r##"fn crash(0) -> Int do
+  0
+end
+
+actor worker(label :: String, pause :: Int) do
+  println("${label} started")
+  Timer.sleep(pause)
+  crash(1)
+end
+
+actor ticker() do
+  println("ticker started")
+end
+
+supervisor Crashing do
+  strategy: one_for_one
+  max_restarts: 10
+  max_seconds: 5
+
+  child p do
+    start: fn -> spawn(worker, "permanent", 20) end
+    restart: permanent
+    shutdown: 1_000
+  end
+
+  child t do
+    start: fn -> spawn(worker, "temporary", 20) end
+    restart: temporary
+    shutdown: brutal_kill
+  end
+
+  child n do
+    start: fn -> spawn(ticker) end
+    restart: transient
+    shutdown: 50
+  end
+end
+
+supervisor Rest do
+  strategy: rest_for_one
+  max_restarts: 1
+  max_seconds: 1
+
+  child r do
+    start: fn -> spawn(worker, "rest", 5000) end
+    restart: temporary
+    shutdown: brutal_kill
+  end
+end
+
+fn main() do
+  let _ = spawn(Crashing)
+  let _ = spawn(Rest)
+  Timer.sleep(1000)
+end
+"##,
+    );
+    let count = |line: &str| out.lines().filter(|l| *l == line).count();
+    assert!(count("permanent started") >= 2, "{out}");
+    for once in ["temporary started", "ticker started", "rest started"] {
+        assert_eq!(count(once), 1, "{out}");
+    }
+}
+
+/// A child's `start` has to end by spawning its actor: that actor is what
+/// the supervisor restarts. A start through another function built, and the
+/// supervisor started the child from a null function.
+#[test]
+fn supervisor_children_must_start_by_spawning() {
+    let (_guard, project_dir) = project(
+        r##"actor worker() do
+  println("worker")
+end
+
+fn start_worker() -> Pid<Int> do
+  spawn(worker)
+end
+
+supervisor Sup do
+  child w do
+    start: fn -> start_worker() end
+  end
+end
+
+fn main() do
+  let _ = spawn(Sup)
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(
+        stderr(&output).contains(
+            "the child `w` of supervisor `Sup` must start as `fn -> spawn(actor, ...) end`"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
