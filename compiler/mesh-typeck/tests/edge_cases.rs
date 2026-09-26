@@ -202,7 +202,8 @@ end
 /// A generic type named with another number of type arguments than it
 /// takes is reported where it is named, and taken with the right number:
 /// it was an "arity mismatch" at each use of the value, as if a function
-/// were called wrongly.
+/// were called wrongly. A type named in its own definition, or before its
+/// own, takes its parameters there too.
 #[test]
 fn type_arguments_are_counted_where_the_type_is_named() {
     let at = |message: &str, text: &str| (message.to_string(), text.to_string());
@@ -210,6 +211,19 @@ fn type_arguments_are_counted_where_the_type_is_named() {
         located_errors(
             r#"struct Box<T> do
   item :: T
+end
+
+type Tree<T> do
+  Leaf
+  Node(Tree<T>, T, Tree<T>)
+end
+
+struct Holder do
+  inner :: Later<Int>
+end
+
+struct Later<T> do
+  value :: T
 end
 
 struct Point do

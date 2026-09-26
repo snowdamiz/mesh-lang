@@ -267,6 +267,17 @@ impl TypeRegistry {
 
 // ── Per-function metadata for where-clause enforcement (03-04) ────────
 
+/// The names of the type parameters a definition declares (`<A, B>`).
+fn generic_param_names(node: &mesh_parser::SyntaxNode) -> Vec<String> {
+    node.children()
+        .filter(|child| child.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+        .flat_map(|list| list.children_with_tokens())
+        .filter_map(|element| element.into_token())
+        .filter(|token| token.kind() == SyntaxKind::IDENT)
+        .map(|token| token.text().to_string())
+        .collect()
+}
+
 /// A node's range without the line breaks, spaces and comments at its ends,
 /// which the lossless tree gives it: an argument on a line of its own starts
 /// at the line break before it.
@@ -4218,8 +4229,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "<unnamed>".to_string());
-                // Only register the name stub — full registration happens in main loop.
-                // We use a minimal StructDefInfo with no fields.
+                // Only register the name stub, with the struct's parameters
+                // (a struct naming one declared later takes them): full
+                // registration happens in the main loop.
                 if struct_def.is_declared_resource() {
                     type_registry.register_resource_type(name.clone());
                 }
@@ -4229,7 +4241,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 }
                 type_registry.register_struct(StructDefInfo {
                     name,
-                    generic_params: vec![],
+                    generic_params: generic_param_names(struct_def.syntax()),
                     fields: vec![],
                     schema: None,
                 });
@@ -4244,9 +4256,11 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 if sum_def.deriving_traits().iter().any(|t| t == "Json") {
                     ctx.json_types.insert(name.clone());
                 }
+                // With its parameters, which a variant naming the type
+                // itself (`Node(Tree<T>)`) gives it.
                 type_registry.register_sum_type(SumTypeDefInfo {
                     name,
-                    generic_params: vec![],
+                    generic_params: generic_param_names(sum_def.syntax()),
                     variants: vec![],
                 });
             }
