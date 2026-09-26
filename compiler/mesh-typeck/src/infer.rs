@@ -8508,30 +8508,28 @@ fn infer_expr_here(
             fn_constraints,
         ),
         Expr::StringExpr(se) => {
-            // Recurse into interpolation expressions so their types are
-            // recorded; each is shown with its Display.
-            for child in se.syntax().children() {
-                if child.kind() == SyntaxKind::INTERPOLATION {
-                    for inner in child.children() {
-                        if let Some(inner_expr) = Expr::cast(inner) {
-                            if let Ok(ty) = infer_expr(
-                                ctx,
-                                env,
-                                &inner_expr,
-                                types,
-                                type_registry,
-                                trait_registry,
-                                fn_constraints,
-                            ) {
-                                let span = inner_expr.syntax().text_range();
-                                ctx.operand_traits.push((
-                                    ty,
-                                    "Display".to_string(),
-                                    ConstraintOrigin::Expr { span },
-                                ));
-                            }
-                        }
-                    }
+            // Each interpolated expression is shown with its Display; one
+            // with an error leaves the string a string.
+            let interpolated = se
+                .syntax()
+                .children()
+                .filter(|child| child.kind() == SyntaxKind::INTERPOLATION)
+                .flat_map(|interpolation| interpolation.children())
+                .filter_map(Expr::cast);
+            for inner in interpolated {
+                let inferred = infer_expr(
+                    ctx,
+                    env,
+                    &inner,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                );
+                if let Ok(ty) = inferred {
+                    let span = inner.syntax().text_range();
+                    let origin = ConstraintOrigin::Expr { span };
+                    ctx.operand_traits.push((ty, "Display".to_string(), origin));
                 }
             }
             Ok(Ty::string())
@@ -8769,17 +8767,12 @@ fn numeric_literal_error(kind: SyntaxKind, text: &str, negated: bool) -> Option<
 
 /// Infer the type of a literal expression.
 fn infer_literal(lit: &Literal) -> Ty {
-    if let Some(token) = lit.token() {
-        match token.kind() {
-            SyntaxKind::INT_LITERAL => Ty::int(),
-            SyntaxKind::FLOAT_LITERAL => Ty::float(),
-            SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW => Ty::bool(),
-            SyntaxKind::NIL_KW => Ty::Tuple(vec![]),
-            SyntaxKind::STRING_START => Ty::string(),
-            _ => Ty::Tuple(vec![]),
-        }
-    } else {
-        Ty::Tuple(vec![])
+    // The parser makes a literal of a number, `true`, `false` or `nil`.
+    match lit.token().map(|token| token.kind()) {
+        Some(SyntaxKind::INT_LITERAL) => Ty::int(),
+        Some(SyntaxKind::FLOAT_LITERAL) => Ty::float(),
+        Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => Ty::bool(),
+        _ => Ty::Tuple(vec![]),
     }
 }
 

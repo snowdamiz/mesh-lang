@@ -1102,6 +1102,36 @@ end
     );
 }
 
+/// An interpolated expression is checked, and shown with its `Display`.
+#[test]
+fn interpolations_are_shown_with_display() {
+    assert_eq!(
+        errors(
+            r##"
+struct P do
+  x :: Int
+end deriving(Eq)
+
+fn undefined() do
+  "a #{nope} b"
+end
+
+fn not_shown(p :: P) do
+  "p is #{p}"
+end
+
+fn shown(n :: Int) do
+  "n is #{n}"
+end
+"##
+        ),
+        [
+            "undefined variable `nope`",
+            "`P` does not implement `Display`",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
