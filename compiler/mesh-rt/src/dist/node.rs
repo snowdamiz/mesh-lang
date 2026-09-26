@@ -2654,12 +2654,22 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
             }
             Ok(None) => continue,
             Err(error) => {
-                eprintln!(
-                    "mesh transport: transition=reader_failed remote={} kind={:?} reason={}",
-                    session.remote_name,
-                    error.kind(),
-                    error
-                );
+                // A peer that exits closes its connection without TLS's
+                // close_notify; frames are length-prefixed, so that says
+                // nothing more than that it is gone.
+                if error.kind() == io::ErrorKind::UnexpectedEof {
+                    eprintln!(
+                        "mesh transport: transition=peer_closed remote={}",
+                        session.remote_name
+                    );
+                } else {
+                    eprintln!(
+                        "mesh transport: transition=reader_failed remote={} kind={:?} reason={}",
+                        session.remote_name,
+                        error.kind(),
+                        error
+                    );
+                }
                 session.shutdown.store(true, Ordering::SeqCst);
                 break;
             }
