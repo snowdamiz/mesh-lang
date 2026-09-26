@@ -14740,21 +14740,15 @@ fn infer_receive(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    // Check if we're inside an actor block.
-    let in_actor = env.lookup(ACTOR_MSG_TYPE_KEY).is_some();
-    if !in_actor {
+    // Only an actor receives, messages of its message type.
+    let Some(msg_scheme) = env.lookup(ACTOR_MSG_TYPE_KEY) else {
         let err = TypeError::ReceiveOutsideActor {
             span: recv.syntax().text_range(),
         };
         ctx.errors.push(err.clone());
         return Err(err);
-    }
-
-    // Get the actor's message type from context.
-    let actor_msg_ty = env
-        .lookup(ACTOR_MSG_TYPE_KEY)
-        .map(|s| ctx.instantiate(s))
-        .unwrap_or_else(|| ctx.fresh_var());
+    };
+    let actor_msg_ty = ctx.instantiate(msg_scheme);
 
     let mut result_ty: Option<Ty> = None;
     let mut first_branch: Option<TextRange> = None;
@@ -14869,7 +14863,10 @@ fn infer_receive(
                 trait_registry,
                 fn_constraints,
             )?;
-            let _ = ctx.unify(Ty::int(), timeout_ty, ConstraintOrigin::Builtin);
+            let origin = ConstraintOrigin::Expr {
+                span: timeout_expr.syntax().text_range(),
+            };
+            let _ = ctx.unify(Ty::int(), timeout_ty, origin);
         }
         if let Some(body) = after.body() {
             let body_ty = infer_expr(

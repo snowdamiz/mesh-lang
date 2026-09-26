@@ -647,6 +647,21 @@ end
     );
 }
 
+/// A receive's timeout is an `Int`, and one of another type is reported at
+/// the timeout: it was reported at the whole receive.
+#[test]
+fn a_receive_timeout_of_another_type_is_reported_at_it() {
+    assert_eq!(
+        located_errors(
+            "actor waiter() do\n  receive do\n    n -> n + 1\n  after \"soon\" ->\n    2\n  end\nend\n"
+        ),
+        [(
+            "type mismatch: expected `Int`, found `String`".to_string(),
+            "\"soon\"".to_string()
+        )]
+    );
+}
+
 // ── The `?` operator ───────────────────────────────────────────────────
 
 /// `?` on an Option returns its `None` early from a function returning an
