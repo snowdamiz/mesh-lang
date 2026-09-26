@@ -282,23 +282,17 @@ fn could_be(a: &Ty, b: &Ty) -> bool {
     }
 }
 
-/// Generate a fix suggestion for non-type-mismatch errors.
-fn error_fix_suggestion(err: &TypeError, suggestions: Option<&[String]>) -> Option<String> {
-    match err {
-        TypeError::UnboundVariable {
-            name, suggestion, ..
-        }
-        | TypeError::UnknownVariant {
-            name, suggestion, ..
-        } => suggestion
-            .clone()
-            .or_else(|| find_closest_name(name, suggestions?, 2))
-            .map(|closest| format!("did you mean `{closest}`?")),
-        TypeError::NotAFunction { .. } => Some(
-            "only functions can be called; remove the parentheses to use the value".to_string(),
-        ),
-        _ => None,
-    }
+/// "did you mean `x`?" for an unknown `name`: the checker's `suggestion`, or
+/// else the closest of `suggestions`, if one is close enough.
+fn closest_name_help(
+    name: &str,
+    suggestion: &Option<String>,
+    suggestions: Option<&[String]>,
+) -> Option<String> {
+    suggestion
+        .clone()
+        .or_else(|| find_closest_name(name, suggestions?, 2))
+        .map(|closest| format!("did you mean `{closest}`?"))
 }
 
 /// Find the closest name in a list using Levenshtein distance.
@@ -701,29 +695,23 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             builder
         }
 
-        TypeError::UnboundVariable { span, .. } => {
+        TypeError::UnboundVariable {
+            name,
+            span,
+            suggestion,
+        } => {
             let range = clamp(text_range_to_range(*span));
-
             let mut builder = Description::error(range, "not found in this scope");
-
-            if let Some(fix) = error_fix_suggestion(error, suggestions) {
+            if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
                 builder.set_help(fix);
             }
-
             builder
         }
 
         TypeError::NotAFunction { ty, span } => {
-            let ty = &ty.with_holes();
             let range = clamp(text_range_to_range(*span));
-
-            let mut builder = Description::error(range, format!("{} is not a function", ty));
-
-            if let Some(fix) = error_fix_suggestion(error, None) {
-                builder.set_help(fix);
-            }
-
-            builder
+            Description::error(range, format!("{} is not a function", ty.with_holes()))
+                .with_help("only functions can be called; remove the parentheses to use the value")
         }
 
         TypeError::TraitNotSatisfied {
@@ -857,15 +845,16 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 )
         }
 
-        TypeError::UnknownVariant { span, .. } => {
+        TypeError::UnknownVariant {
+            name,
+            span,
+            suggestion,
+        } => {
             let range = clamp(text_range_to_range(*span));
-
             let mut builder = Description::error(range, "not a known variant");
-
-            if let Some(fix) = error_fix_suggestion(error, suggestions) {
+            if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
                 builder.set_help(fix);
             }
-
             builder
         }
 
@@ -1712,6 +1701,34 @@ mod tests {
                 "{expected} / {found}"
             );
         }
+    }
+
+    /// A type that lacks a trait is told how to get it: JSON by what JSON
+    /// holds, a named type by a derive or an impl, and a type with
+    /// parameters that it can have no impl.
+    #[test]
+    fn missing_traits_are_explained_by_the_type() {
+        let help = |ty: Ty, trait_name: &str| {
+            let error = TypeError::TraitNotSatisfied {
+                ty,
+                trait_name: trait_name.to_string(),
+                origin: ConstraintOrigin::Builtin,
+            };
+            let json: serde_json::Value =
+                serde_json::from_str(&render_json_diagnostic(&error, "x", "m.mpl", None)).unwrap();
+            json["fix"].as_str().unwrap_or_default().to_string()
+        };
+        let point = || Ty::struct_ty("Point", vec![]);
+        assert!(help(Ty::int(), "Json").starts_with("JSON holds Int, Float"));
+        assert!(help(point(), "Eq").starts_with("add `deriving(Eq)`"));
+        assert_eq!(
+            help(point(), "Named"),
+            "add `impl Named for Point do ... end`"
+        );
+        assert_eq!(
+            help(Ty::list(Ty::int()), "Named"),
+            "only a named type without type parameters can have an `impl`"
+        );
     }
 
     /// A span ariadne can underline: on character boundaries, inside the
