@@ -698,3 +698,66 @@ end
          err cannot parse 'x' as Float\ndeep 5\n"
     );
 }
+
+/// Less common operands: `/`, `%` and unary `-` through a struct's `Div`,
+/// `Mod` and `Neg` impls, `==` and interpolation of values annotated as a
+/// bare `List`, `Map` or `Set` (which hold `Int`s), and regex literals with
+/// the multiline and dot-all flags.
+#[test]
+fn operator_impls_bare_collections_and_regex_flags_lower() {
+    let out = compile_and_run(
+        r##"struct V do
+  x :: Int
+end
+
+impl Div for V do
+  type Output = V
+  fn div(self, other :: V) -> V do
+    V { x: self.x / other.x }
+  end
+end
+
+impl Mod for V do
+  type Output = V
+  fn mod(self, other :: V) -> V do
+    V { x: self.x % other.x }
+  end
+end
+
+impl Neg for V do
+  type Output = V
+  fn neg(self) -> V do
+    V { x: 0 - self.x }
+  end
+end
+
+fn same(a :: List, b :: List) -> Bool do
+  a == b
+end
+
+fn same_map(a :: Map, b :: Map) -> Bool do
+  a == b
+end
+
+fn show(a :: List, m :: Map, s :: Set) -> String do
+  "${a} ${m} ${s}"
+end
+
+fn main() do
+  let q = V { x: 17 } / V { x: 5 }
+  let r = V { x: 17 } % V { x: 5 }
+  let n = -V { x: 3 }
+  println("${q.x} ${r.x} ${n.x}")
+  println("${same([1, 2], [1, 2])} ${same([1], [2])}")
+  println("${same_map(Map.put(Map.new(), 1, 2), Map.put(Map.new(), 1, 2))}")
+  println(show([1, 2], Map.put(Map.new(), 1, 2), Set.add(Set.new(), 3)))
+  println("${Regex.is_match(~r/^b$/m, "a\nb")} ${Regex.is_match(~r/a.b/s, "a\nb")}")
+  println("${Regex.is_match(~r/a.b/, "a\nb")}")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "3 2 -3\ntrue false\ntrue\n[1, 2] %{1 => 2} #{3}\ntrue true\nfalse\n"
+    );
+}
