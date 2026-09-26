@@ -26,12 +26,14 @@ fn summary(evidence: &std::path::Path) -> Value {
 #[test]
 fn a_short_continuity_soak_passes_as_a_smoke_run() {
     let evidence = tempfile::tempdir().unwrap();
+    // Long and fast enough for a resumed snapshot (every 1,000 cycles) and a
+    // disk plateau judged over four samples (one a second).
     let output = proof(&[
         "continuity-soak",
         "--duration-seconds",
-        "2",
+        "5",
         "--cycle-millis",
-        "20",
+        "1",
         "--allow-short",
         "--evidence-dir",
         evidence.path().to_str().unwrap(),
@@ -43,6 +45,10 @@ fn a_short_continuity_soak_passes_as_a_smoke_run() {
     assert_eq!(summary["safety_pass"], true, "{summary}");
     assert_eq!(summary["release_24h_pass"], false, "{summary}");
     assert!(summary["writes"].as_u64().unwrap() > 0, "{summary}");
+    assert!(
+        summary["interrupted_snapshots_resumed"].as_u64().unwrap() > 0,
+        "{summary}"
+    );
 }
 
 #[test]
@@ -98,20 +104,65 @@ fn the_performance_gate_measures_and_reports() {
             || text.contains("autonomous_performance_gate_failed"),
         "{text}"
     );
-    let summary = summary(evidence.path());
-    assert_eq!(summary["schema_version"], 2, "{summary}");
-    assert_eq!(summary["iterations"], 200, "{summary}");
-    assert_eq!(summary["pass"], output.status.success(), "{summary}");
+    let measured = summary(evidence.path());
+    assert_eq!(measured["schema_version"], 2, "{measured}");
+    assert_eq!(measured["iterations"], 200, "{measured}");
+    assert_eq!(measured["pass"], output.status.success(), "{measured}");
 
-    let budget = evidence.path().join("budget.json");
-    std::fs::write(&budget, r#"{"schema_version": 1}"#).unwrap();
+    // A budget no machine meets fails the gate, after writing its evidence.
+    let mut budget: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            repo_root().join("proof/autonomous-gates/performance-budget.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for (name, limit) in budget.as_object_mut().unwrap() {
+        if name.contains("_max_") {
+            *limit = 0.into();
+        } else if name.contains("_min_") {
+            *limit = 1e12.into();
+        }
+    }
+    let unmeetable = evidence.path().join("unmeetable.json");
+    std::fs::write(&unmeetable, budget.to_string()).unwrap();
+    let failed = tempfile::tempdir().unwrap();
     let output = proof(&[
         "autonomous-performance",
+        "--iterations",
+        "100",
         "--budget",
-        budget.to_str().unwrap(),
+        unmeetable.to_str().unwrap(),
+        "--evidence-dir",
+        failed.path().to_str().unwrap(),
     ]);
+    assert!(!output.status.success());
     assert!(
-        command_output_text(&output).contains("performance_budget_"),
+        command_output_text(&output).contains("autonomous_performance_gate_failed"),
+        "{}",
+        command_output_text(&output)
+    );
+    assert_eq!(summary(failed.path())["pass"], false);
+
+    // A budget it cannot read, or of another schema.
+    budget["schema_version"] = 1.into();
+    std::fs::write(&unmeetable, budget.to_string()).unwrap();
+    let bad = evidence.path().join("bad.json");
+    std::fs::write(&bad, r#"{"schema_version": 2}"#).unwrap();
+    for (file, error) in [
+        (&unmeetable, "performance_budget_schema_unsupported"),
+        (&bad, "performance_budget_decode_failed"),
+    ] {
+        let output = proof(&["autonomous-performance", "--budget", file.to_str().unwrap()]);
+        assert!(
+            command_output_text(&output).contains(error),
+            "{}",
+            command_output_text(&output)
+        );
+    }
+    let output = proof(&["autonomous-performance", "--budget", "no-such-budget.json"]);
+    assert!(
+        command_output_text(&output).contains("performance_budget_read_failed"),
         "{}",
         command_output_text(&output)
     );

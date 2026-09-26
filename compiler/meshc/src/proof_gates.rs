@@ -212,9 +212,6 @@ fn soak_record(
 
 fn drain_log(store: &SqliteContinuityStore) -> Result<(), String> {
     let high_water = store.high_water_mark()?;
-    if high_water == 0 {
-        return Ok(());
-    }
     for replica in ["worker-a", "worker-b", "worker-c"] {
         store.acknowledge_replica_safe_point(replica, high_water)?;
     }
@@ -247,9 +244,10 @@ fn observe_soak_stats(
 }
 
 pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
-    if args.duration_seconds == 0 || args.cycle_millis == 0 {
-        return Err("continuity_soak_duration_or_cycle_zero".to_string());
-    }
+    ensure(
+        args.duration_seconds > 0 && args.cycle_millis > 0,
+        "continuity_soak_duration_or_cycle_zero",
+    )?;
     if args.duration_seconds < RELEASE_SOAK_SECONDS && !args.allow_short {
         return Err(format!(
             "continuity_soak_release_requires_{RELEASE_SOAK_SECONDS}_seconds; use --allow-short only for a non-release smoke run"
@@ -322,13 +320,15 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         terminals += 1;
         let high_water_before_retry = store.high_water_mark()?;
         store.upsert(&terminal)?;
-        if store.high_water_mark()? != high_water_before_retry {
-            return Err("continuity_soak_duplicate_retry_appended_log".to_string());
-        }
+        ensure(
+            store.high_water_mark()? == high_water_before_retry,
+            "continuity_soak_duplicate_retry_appended_log",
+        )?;
         retries += 1;
-        if store.get(&active_key)?.is_none() || store.get(&terminal_key)?.is_none() {
-            return Err("continuity_soak_read_after_write_missing".to_string());
-        }
+        ensure(
+            store.get(&active_key)?.is_some() && store.get(&terminal_key)?.is_some(),
+            "continuity_soak_read_after_write_missing",
+        )?;
         reads += 2;
         churn += u64::from(ordinal > 0);
         store.compact(now)?;
@@ -349,9 +349,10 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
                     target.apply_snapshot_chunk(chunk)?;
                 }
             }
-            if target.stats()?.records != store.stats()?.records {
-                return Err("continuity_soak_resumed_snapshot_diverged".to_string());
-            }
+            ensure(
+                target.stats()?.records == store.stats()?.records,
+                "continuity_soak_resumed_snapshot_diverged",
+            )?;
             snapshots += 1;
         }
 
@@ -434,8 +435,7 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
     let release_assertions = BTreeMap::from([
         (
             "twenty_four_hour_wall_duration_completed".to_string(),
-            args.duration_seconds >= RELEASE_SOAK_SECONDS
-                && started.elapsed() >= Duration::from_secs(RELEASE_SOAK_SECONDS),
+            started.elapsed() >= Duration::from_secs(RELEASE_SOAK_SECONDS),
         ),
         (
             "million_terminal_records_exercised".to_string(),
@@ -472,14 +472,29 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
     };
     write_json(&evidence.join("summary.json"), &summary)?;
     println!("continuity_soak_evidence: {}", evidence.display());
-    if release_24h_pass {
-        println!("continuity_soak: RELEASE PASS");
-        Ok(())
-    } else if args.allow_short && safety_pass {
-        println!("continuity_soak: SMOKE PASS (not a 24-hour release artifact)");
+    println!(
+        "continuity_soak: {}",
+        soak_verdict(release_24h_pass, args.allow_short && safety_pass)?
+    );
+    Ok(())
+}
+
+/// What a soak run proved: a release artifact, a smoke run, or nothing.
+fn soak_verdict(release_pass: bool, smoke_pass: bool) -> Result<&'static str, String> {
+    if release_pass {
+        Ok("RELEASE PASS")
+    } else {
+        ensure(smoke_pass, "continuity_soak_gate_failed")?;
+        Ok("SMOKE PASS (not a 24-hour release artifact)")
+    }
+}
+
+/// `error` unless `ok`.
+fn ensure(ok: bool, error: &str) -> Result<(), String> {
+    if ok {
         Ok(())
     } else {
-        Err("continuity_soak_gate_failed".to_string())
+        Err(error.to_string())
     }
 }
 
@@ -518,18 +533,20 @@ fn performance_report(node_id: String, inflight: u32, sequence: u64) -> NodeLoad
 }
 
 pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(), String> {
-    if args.iterations < 100 {
-        return Err("autonomous_performance_requires_at_least_100_iterations".to_string());
-    }
+    ensure(
+        args.iterations >= 100,
+        "autonomous_performance_requires_at_least_100_iterations",
+    )?;
     let evidence = evidence_directory("autonomous-performance", args.evidence_dir)?;
     let budget: PerformanceBudget = serde_json::from_slice(
         &fs::read(&args.budget)
             .map_err(|error| format!("performance_budget_read_failed:{error}"))?,
     )
     .map_err(|error| format!("performance_budget_decode_failed:{error}"))?;
-    if budget.schema_version != 2 {
-        return Err("performance_budget_schema_unsupported".to_string());
-    }
+    ensure(
+        budget.schema_version == 2,
+        "performance_budget_schema_unsupported",
+    )?;
 
     let prefix = format!("perf-{}", unix_millis());
     let now = Instant::now();
@@ -553,9 +570,10 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
             &RoutingPolicy::default(),
             now,
         )?;
-        if decision.selected_node.is_empty() {
-            return Err("performance_routing_selected_empty_node".to_string());
-        }
+        ensure(
+            !decision.selected_node.is_empty(),
+            "performance_routing_selected_empty_node",
+        )?;
     }
     let routing_average_micros =
         routing_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -572,9 +590,10 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     for _ in 0..args.iterations {
         let encoded = envelope.encode(64 * 1024)?;
         let decoded = ProtocolEnvelope::decode(&encoded, 64 * 1024)?;
-        if decoded != envelope {
-            return Err("performance_protocol_round_trip_mismatch".to_string());
-        }
+        ensure(
+            decoded == envelope,
+            "performance_protocol_round_trip_mismatch",
+        )?;
     }
     let protocol_round_trip_average_micros =
         protocol_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -585,9 +604,10 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     for _ in 0..args.iterations {
         let encoded = load_report.encode()?;
         load_report_bytes = encoded.len().try_into().unwrap_or(u64::MAX);
-        if NodeLoadReport::decode(&encoded)? != load_report {
-            return Err("performance_load_report_round_trip_mismatch".to_string());
-        }
+        ensure(
+            NodeLoadReport::decode(&encoded)? == load_report,
+            "performance_load_report_round_trip_mismatch",
+        )?;
     }
     let load_report_encode_average_micros =
         load_report_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -598,16 +618,18 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     for _ in 0..args.iterations {
         let started = Instant::now();
         scheduler.resize(8)?;
-        if scheduler.active_workers() != 8 {
-            return Err("performance_scheduler_scale_up_diverged".to_string());
-        }
+        ensure(
+            scheduler.active_workers() == 8,
+            "performance_scheduler_scale_up_diverged",
+        )?;
         scheduler_scale_up_latencies
             .push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
         let started = Instant::now();
         scheduler.resize(1)?;
-        if scheduler.active_workers() != 1 {
-            return Err("performance_scheduler_retirement_diverged".to_string());
-        }
+        ensure(
+            scheduler.active_workers() == 1,
+            "performance_scheduler_retirement_diverged",
+        )?;
         scheduler_retirement_latencies
             .push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
     }
@@ -652,9 +674,10 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     let snapshot_join_millis = snapshot_elapsed.as_millis().try_into().unwrap_or(u64::MAX);
     let snapshot_apply_mib_per_second =
         snapshot_bytes as f64 / (1024.0 * 1024.0) / snapshot_seconds;
-    if target.stats()?.records != source.stats()?.records {
-        return Err("performance_snapshot_apply_diverged".to_string());
-    }
+    ensure(
+        target.stats()?.records == source.stats()?.records,
+        "performance_snapshot_apply_diverged",
+    )?;
     let continuity_write_amplification_ratio =
         continuity_disk_bytes_before_compaction as f64 / snapshot_bytes.max(1) as f64;
     let compaction_started = Instant::now();
@@ -669,9 +692,10 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     }
     let continuity_compaction_records_per_second = continuity_compacted_records as f64
         / compaction_started.elapsed().as_secs_f64().max(0.000_001);
-    if continuity_compacted_records != u64::from(args.iterations) {
-        return Err("performance_continuity_compaction_incomplete".to_string());
-    }
+    ensure(
+        continuity_compacted_records == u64::from(args.iterations),
+        "performance_continuity_compaction_incomplete",
+    )?;
 
     let consensus_dir = tempfile::tempdir()
         .map_err(|error| format!("performance_consensus_tempdir_failed:{error}"))?;
@@ -709,14 +733,14 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         };
         let operations =
             reconcile_scale_up(&driver, "performance-cluster", ControlTerm(1), &desired, 0)?;
-        if operations.len() != 1
-            || !matches!(
-                operations[0].state,
-                mesh_rt::DriverOperationState::Succeeded
-            )
-        {
-            return Err("performance_driver_reconciliation_diverged".to_string());
-        }
+        ensure(
+            operations.len() == 1
+                && matches!(
+                    operations[0].state,
+                    mesh_rt::DriverOperationState::Succeeded
+                ),
+            "performance_driver_reconciliation_diverged",
+        )?;
     }
     let driver_reconcile_average_micros =
         driver_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
@@ -829,10 +853,29 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     };
     write_json(&evidence.join("summary.json"), &summary)?;
     println!("autonomous_performance_evidence: {}", evidence.display());
-    if pass {
-        println!("autonomous_performance: PASS");
-        Ok(())
-    } else {
-        Err("autonomous_performance_gate_failed".to_string())
+    ensure(pass, "autonomous_performance_gate_failed")?;
+    println!("autonomous_performance: PASS");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_soak_is_a_release_artifact_a_smoke_run_or_a_failure() {
+        assert_eq!(soak_verdict(true, false), Ok("RELEASE PASS"));
+        assert!(soak_verdict(false, true).unwrap().starts_with("SMOKE PASS"));
+        assert_eq!(
+            soak_verdict(false, false),
+            Err("continuity_soak_gate_failed".to_string())
+        );
+    }
+
+    #[test]
+    fn percentiles_of_nothing_are_zero() {
+        assert_eq!(percentile(&mut [], 0.5), 0);
+        assert_eq!(percentile(&mut [5, 1, 3], 0.5), 3);
+        assert_eq!(percentile(&mut [5, 1, 3], 2.0), 5);
     }
 }
