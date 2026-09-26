@@ -2536,6 +2536,59 @@ end
     );
 }
 
+/// `link` takes one pid, of any message type. Anything was linked as if
+/// it were a pid (`link(5)`), and no argument (`link()`) linked a unit.
+#[test]
+fn link_takes_one_pid() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"actor worker(n :: Int) do
+  receive do
+    m -> worker(m)
+  end
+end
+
+actor boss(n :: Int) do
+  let typed = spawn(worker, 0)
+  link(typed)
+  receive do
+    m -> boss(m)
+  end
+end
+
+fn untyped(p :: Pid) do
+  link(p)
+end
+
+fn inferred(p) do
+  link(p)
+end
+
+fn no_pid() do
+  link(5)
+end
+
+fn none() do
+  link()
+end
+
+fn two(p :: Pid) do
+  link(p, nope)
+end
+"#
+        ),
+        [
+            at("type mismatch: expected `Pid<_>`, found `Int`", "link(5)"),
+            at("arity mismatch: expected 1 argument, found 0", "link()"),
+            at(
+                "arity mismatch: expected 1 argument, found 2",
+                "link(p, nope)"
+            ),
+        ]
+    );
+}
+
 /// `Node.spawn` takes a node, an actor and the actor's arguments, whether
 /// it is called or piped into. A pipe's call was not checked at all, and a
 /// call without its actor, which code generation cannot compile, was let

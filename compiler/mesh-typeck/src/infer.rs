@@ -14306,9 +14306,8 @@ fn infer_self_expr(
     }
 }
 
-/// Infer the type of a link expression: `link(pid)`.
-///
-/// The argument must be a Pid (typed or untyped). Returns Unit.
+/// `link(pid)`: links the running actor to the process `pid`, a pid of
+/// any message type. Anything else was linked as if it were one.
 fn infer_link(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -14318,21 +14317,32 @@ fn infer_link(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    if let Some(arg_list) = link.arg_list() {
-        for arg in arg_list.args() {
-            let _arg_ty = infer_expr(
-                ctx,
-                env,
-                &arg,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
-            // We could validate that arg_ty is a Pid, but for now we just
-            // infer the type. A future refinement could add a type error.
-        }
-    }
+    let args: Vec<Expr> = link.arg_list().ok_or_else(incomplete)?.args().collect();
+    let span = link.syntax().text_range();
+    let [target] = args.as_slice() else {
+        let err = TypeError::ArityMismatch {
+            expected: 1,
+            found: args.len(),
+            origin: ConstraintOrigin::Expr { span },
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    };
+    let target_ty = infer_expr(
+        ctx,
+        env,
+        target,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )?;
+    let origin = ConstraintOrigin::FnArg {
+        call_site: span,
+        param_idx: 0,
+    };
+    let any_pid = Ty::pid(ctx.fresh_var());
+    ctx.unify(any_pid, target_ty, origin)?;
     Ok(Ty::Tuple(vec![]))
 }
 
