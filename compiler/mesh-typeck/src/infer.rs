@@ -8176,6 +8176,23 @@ fn infer_let_binding(
     if let Some(pattern) = let_.pattern() {
         if let Err(error) = validate_let_destructuring_pattern(&pattern) {
             ctx.errors.push(error.clone());
+            // The initializer is checked all the same, and the names the
+            // pattern binds are bound to no type in particular: their uses
+            // report nothing more ("undefined variable: b").
+            if let Some(init) = let_.initializer() {
+                let _ = infer_expr(
+                    ctx,
+                    env,
+                    &init,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                );
+            }
+            for name in collect_pattern_binding_names(&pattern) {
+                env.insert(name, Scheme::mono(Ty::Never));
+            }
             return Err(error);
         }
     }

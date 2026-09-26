@@ -131,6 +131,23 @@ fn test_tuple_let_pattern_rejects_duplicate_binders() {
     );
 }
 
+/// A binder must start with a lowercase letter (an uppercase name is a
+/// constructor). The pattern's error is the only one: its other names are
+/// still bound, where they used to be "undefined variable" at each use.
+#[test]
+fn an_invalid_let_pattern_is_its_only_error() {
+    let result = check_source("fn main() do\n  let (A, b) = (1, 2)\n  b + 1\nend");
+    assert_eq!(result.errors.len(), 1, "{:?}", result.errors);
+    assert!(
+        matches!(
+            &result.errors[0],
+            TypeError::InvalidLetPattern { reason, .. } if reason.contains("lowercase")
+        ),
+        "{:?}",
+        result.errors
+    );
+}
+
 // ── Function Inference ─────────────────────────────────────────────────
 
 #[test]
