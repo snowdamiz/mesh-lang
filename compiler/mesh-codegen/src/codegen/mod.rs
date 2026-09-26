@@ -2818,7 +2818,7 @@ mod tests {
     #[test]
     fn test_actor_receive_codegen() {
         let body = MirExpr::ActorReceive {
-            arms: vec![],
+            handler: None,
             timeout_ms: None,
             timeout_body: None,
             ty: MirType::Int,

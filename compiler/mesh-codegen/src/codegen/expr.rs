@@ -14,7 +14,7 @@ use super::pattern::MatchTarget;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
 use crate::mir::{
-    BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirResourceDestructor, MirResourceField,
+    BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor, MirResourceField,
     MirResourceMoveSource, MirType, UnaryOp,
 };
 use crate::pattern::compile::{self, compile_match};
@@ -146,13 +146,16 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.codegen_actor_send(target, message),
 
             MirExpr::ActorReceive {
-                arms,
+                handler,
                 timeout_ms,
                 timeout_body,
                 ty,
-            } => {
-                self.codegen_actor_receive(arms, timeout_ms.as_deref(), timeout_body.as_deref(), ty)
-            }
+            } => self.codegen_actor_receive(
+                handler.as_ref(),
+                timeout_ms.as_deref(),
+                timeout_body.as_deref(),
+                ty,
+            ),
 
             MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
 
@@ -3030,7 +3033,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn codegen_actor_receive(
         &mut self,
-        arms: &[MirMatchArm],
+        handler: Option<&(String, MirType, Box<MirExpr>)>,
         timeout_ms: Option<&MirExpr>,
         timeout_body: Option<&MirExpr>,
         result_ty: &MirType,
@@ -3104,7 +3107,7 @@ impl<'ctx> CodeGen<'ctx> {
             // msg_bb: process the received message (existing logic).
             self.builder.position_at_end(msg_bb);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            let msg_result = self.codegen_recv_process_arms(arms, msg_ptr, msg_val)?;
+            let msg_result = self.codegen_recv_handler(handler, msg_ptr, msg_val)?;
             if self
                 .builder
                 .get_insert_block()
@@ -3148,7 +3151,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
             self.builder.position_at_end(received);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            self.codegen_recv_process_arms(arms, msg_ptr, msg_val)
+            self.codegen_recv_handler(handler, msg_ptr, msg_val)
         }
     }
 
@@ -3284,48 +3287,30 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())
     }
 
-    /// Process receive arms: bind pattern variable and execute arm body.
-    fn codegen_recv_process_arms(
+    /// Bind the received message to the handler's variable and run its
+    /// body; without a handler the message is the value.
+    fn codegen_recv_handler(
         &mut self,
-        arms: &[MirMatchArm],
+        handler: Option<&(String, MirType, Box<MirExpr>)>,
         msg_ptr: inkwell::values::PointerValue<'ctx>,
         msg_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        if let Some(arm) = arms.first() {
-            // Bind the pattern variable if it's a simple variable pattern.
-            match &arm.pattern {
-                MirPattern::Var(name, ty) => {
-                    let msg_val = self.codegen_recv_message_as(msg_ptr, ty, msg_val)?;
-                    let alloca = if self.tce_loop_header.is_some() {
-                        self.build_entry_alloca(msg_val.get_type(), name)?
-                    } else {
-                        self.builder
-                            .build_alloca(msg_val.get_type(), name)
-                            .map_err(|e| e.to_string())?
-                    };
-                    self.builder
-                        .build_store(alloca, msg_val)
-                        .map_err(|e| e.to_string())?;
-                    self.locals.insert(name.clone(), alloca);
-                }
-                MirPattern::Wildcard => {
-                    // No binding needed.
-                }
-                MirPattern::Literal(_) => {
-                    // Literal patterns in receive: just fall through to body.
-                }
-                _ => {
-                    // For other pattern types (constructor, tuple, etc.), skip binding.
-                }
-            }
-
-            // Execute the arm body.
-            let body_val = self.codegen_expr(&arm.body)?;
-            Ok(body_val)
+        let Some((name, ty, body)) = handler else {
+            return Ok(msg_val);
+        };
+        let msg_val = self.codegen_recv_message_as(msg_ptr, ty, msg_val)?;
+        let alloca = if self.tce_loop_header.is_some() {
+            self.build_entry_alloca(msg_val.get_type(), name)?
         } else {
-            // No arms: return the raw message value.
-            Ok(msg_val)
-        }
+            self.builder
+                .build_alloca(msg_val.get_type(), name)
+                .map_err(|e| e.to_string())?
+        };
+        self.builder
+            .build_store(alloca, msg_val)
+            .map_err(|e| e.to_string())?;
+        self.locals.insert(name.clone(), alloca);
+        self.codegen_expr(body)
     }
 
     /// Integer `/` and `%`. Dividing by zero panics; `Int.MIN / -1` wraps to

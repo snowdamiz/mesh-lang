@@ -1135,9 +1135,13 @@ impl<'a> Lowerer<'a> {
             } => Self::can_fall_through(then_body) || Self::can_fall_through(else_body),
             MirExpr::Match { arms, .. } => arms.iter().any(|arm| Self::can_fall_through(&arm.body)),
             MirExpr::ActorReceive {
-                arms, timeout_body, ..
+                handler,
+                timeout_body,
+                ..
             } => {
-                arms.iter().any(|arm| Self::can_fall_through(&arm.body))
+                handler
+                    .as_ref()
+                    .is_some_and(|(_, _, body)| Self::can_fall_through(body))
                     || timeout_body.as_deref().is_some_and(Self::can_fall_through)
             }
             _ => true,
@@ -16168,19 +16172,15 @@ impl<'a> Lowerer<'a> {
             .collect();
         self.pop_scope();
 
-        let arms = if match_arms.is_empty() {
-            Vec::new()
-        } else {
-            vec![MirMatchArm {
-                pattern: MirPattern::Var(msg_var.clone(), msg_ty.clone()),
-                guard: None,
-                body: MirExpr::Match {
-                    scrutinee: Box::new(MirExpr::Var(msg_var, msg_ty)),
-                    arms: match_arms,
-                    ty: ty.clone(),
-                },
-            }]
-        };
+        // The message is bound to one variable and matched against the arms.
+        let handler = (!match_arms.is_empty()).then(|| {
+            let body = MirExpr::Match {
+                scrutinee: Box::new(MirExpr::Var(msg_var.clone(), msg_ty.clone())),
+                arms: match_arms,
+                ty: ty.clone(),
+            };
+            (msg_var, msg_ty, Box::new(body))
+        });
 
         // Handle optional after (timeout) clause.
         let (timeout_ms, timeout_body) = if let Some(after) = recv.after_clause() {
@@ -16192,7 +16192,7 @@ impl<'a> Lowerer<'a> {
         };
 
         MirExpr::ActorReceive {
-            arms,
+            handler,
             timeout_ms,
             timeout_body,
             ty,
@@ -17323,12 +17323,14 @@ fn collect_free_vars<'a>(
             arms.iter().for_each(|each| arm(each, captures));
         }
         MirExpr::ActorReceive {
-            arms,
+            handler,
             timeout_ms,
             timeout_body,
             ..
         } => {
-            arms.iter().for_each(|each| arm(each, captures));
+            if let Some((name, _, body)) = handler {
+                collect_free_vars(body, &binding(&[name]), outer_vars, captures);
+            }
             for part in timeout_ms.iter().chain(timeout_body) {
                 collect_free_vars(part, bound, outer_vars, captures);
             }
@@ -17490,17 +17492,18 @@ impl TailCalls<'_> {
                 any
             }
             MirExpr::ActorReceive {
-                arms, timeout_body, ..
+                handler,
+                timeout_body,
+                ..
             } => {
-                // All receive arm bodies and timeout body are in tail position
-                let mut any = false;
-                for arm in arms.iter_mut() {
-                    any |= self.rewrite(&mut arm.body);
-                }
-                if let Some(tb) = timeout_body.as_deref_mut() {
-                    any |= self.rewrite(tb);
-                }
-                any
+                // The handler's body and the timeout body are in tail position
+                let handled = handler
+                    .as_mut()
+                    .is_some_and(|(_, _, body)| self.rewrite(body));
+                let timed_out = timeout_body
+                    .as_deref_mut()
+                    .is_some_and(|tb| self.rewrite(tb));
+                handled || timed_out
             }
             MirExpr::Return(inner) => {
                 // The inner expression of Return IS in tail position. A tail call
@@ -17741,9 +17744,13 @@ fn collect_bound_names(expr: &MirExpr, bound: &mut HashSet<String>) {
             MirExpr::ForInMap {
                 key_var, val_var, ..
             } => names.extend([key_var.as_str(), val_var.as_str()]),
-            MirExpr::Match { arms, .. } | MirExpr::ActorReceive { arms, .. } => arms
+            MirExpr::Match { arms, .. } => arms
                 .iter()
                 .for_each(|arm| pattern_names(&arm.pattern, &mut names)),
+            MirExpr::ActorReceive {
+                handler: Some((name, ..)),
+                ..
+            } => names.push(name),
             _ => {}
         }
         bound.extend(names.into_iter().map(str::to_string));

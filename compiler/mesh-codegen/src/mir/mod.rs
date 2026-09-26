@@ -418,10 +418,11 @@ pub enum MirExpr {
         value: Box<MirExpr>,
         shape: MsgShape,
     },
-    /// Receive a message (blocking). Contains compiled match arms.
+    /// Receive a message (blocking). With a handler `(name, message type,
+    /// body)`, the message is bound to `name` for `body`, which matches on
+    /// it; without one the message itself is the value.
     ActorReceive {
-        /// Match arms for incoming messages.
-        arms: Vec<MirMatchArm>,
+        handler: Option<(String, MirType, Box<MirExpr>)>,
         /// Timeout in milliseconds (None = infinite wait).
         timeout_ms: Option<Box<MirExpr>>,
         /// Timeout body (executed if timeout fires).
@@ -652,15 +653,12 @@ macro_rules! child_exprs {
                 children.push(message);
             }
             MirExpr::ActorReceive {
-                arms,
+                handler,
                 timeout_ms,
                 timeout_body,
                 ..
             } => {
-                for arm in arms {
-                    children.extend(arm.guard.$as_ref());
-                    children.push(&$($mut)? arm.body);
-                }
+                children.extend(handler.$iter().map(|(_, _, body)| &$($mut)? **body));
                 children.extend(timeout_ms.$as_deref());
                 children.extend(timeout_body.$as_deref());
             }
