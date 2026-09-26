@@ -408,3 +408,36 @@ fn clause_groups_are_consecutive_and_annotated_on_their_first_clause() {
     let overloads = check("fn f(0) = 1\nfn f(n) = n\nfn f(a, b) = a + b");
     assert!(overloads.errors.is_empty(), "{:?}", overloads.errors);
 }
+
+/// Only `let` binds inside a function. A nested `fn` type-checked and then
+/// failed in code generation ("Undefined variable"), and a nested `struct`,
+/// `import` (even of no module), `type` or `actor` was silently ignored.
+#[test]
+fn definitions_inside_a_function_are_refused() {
+    for (body, keyword) in [
+        ("fn helper(x) do\n    x + 1\n  end", "fn"),
+        ("fn sign(0) = 0\n  fn sign(n) = 1", "fn"),
+        ("struct P do\n    x :: Int\n  end", "struct"),
+        ("import Nowhere", "import"),
+        ("type Alias = Int", "type"),
+        (
+            "actor a() do\n    receive do\n      _ -> nil\n    end\n  end",
+            "actor",
+        ),
+    ] {
+        let src = format!("fn main() do\n  {body}\n  1\nend\n");
+        let result = mesh_typeck::check(&mesh_parser::parse(&src));
+        assert!(
+            result.errors.iter().any(|error| matches!(
+                error,
+                TypeError::NestedDefinition { keyword: found, .. } if *found == keyword
+            )),
+            "{body}: {:?}",
+            result.errors
+        );
+    }
+    let fine = mesh_typeck::check(&mesh_parser::parse(
+        "fn main() do\n  let helper = fn x -> x + 1 end\n  helper(1)\nend\n",
+    ));
+    assert!(fine.errors.is_empty(), "{:?}", fine.errors);
+}

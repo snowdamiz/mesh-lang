@@ -8171,7 +8171,7 @@ fn infer_let_binding(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
-    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     if let Some(pattern) = let_.pattern() {
         if let Err(error) = validate_let_destructuring_pattern(&pattern) {
@@ -11659,188 +11659,79 @@ fn infer_block(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    // The block's value is its last expression's; a `let` last gives unit.
     let mut last_ty = Ty::Tuple(vec![]);
-    let mut local_fn_constraints = fn_constraints.clone();
-
-    // Process ALL children in source order. This handles:
-    // - Items (let bindings, fn defs) as declarations
-    // - Expressions (function calls, etc.) as expression-statements
-    // Processing in order ensures let bindings are in scope for subsequent exprs.
-    //
-    // Multi-clause function grouping (11-02): collect items first, group
-    // consecutive same-name FnDef nodes, then process in source order.
-    let mut processed_ranges: Vec<TextRange> = Vec::new();
-
-    // Collect children in order, separating items and expressions.
-    let mut block_children: Vec<(TextRange, BlockChildKind)> = Vec::new();
-    let mut block_items: Vec<Item> = Vec::new();
-
     for child in block.syntax().children() {
-        let range = child.text_range();
         if let Some(item) = Item::cast(child.clone()) {
-            block_children.push((range, BlockChildKind::ItemIdx(block_items.len())));
-            block_items.push(item);
-        } else if let Some(_expr) = Expr::cast(child.clone()) {
-            block_children.push((range, BlockChildKind::ExprNode(child)));
+            last_ty = Ty::Tuple(vec![]);
+            let Item::LetBinding(let_) = item else {
+                reject_nested_definition(ctx, &item);
+                continue;
+            };
+            let _ = infer_let_binding(
+                ctx,
+                env,
+                &let_,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            );
+        } else if let Some(expr) = Expr::cast(child.clone()) {
+            // An expression reported already has no known type, neither
+            // the previous statement's nor unit.
+            last_ty = infer_expr(
+                ctx,
+                env,
+                &expr,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )
+            .unwrap_or_else(|_| ctx.fresh_var());
         } else if child.kind() == SyntaxKind::ASSERT_RECEIVE_EXPR {
             // The test assertion `meshc test` expands; not defined elsewhere.
             let keyword = child
                 .first_token()
-                .map_or(range, |token| token.text_range());
+                .map_or(child.text_range(), |token| token.text_range());
             ctx.errors
                 .push(TypeError::AssertReceiveOutsideTest { span: keyword });
         }
     }
-
-    // Group multi-clause functions.
-    let grouped = group_multi_clause_fns(block_items);
-
-    // Check for non-consecutive same-name function definitions.
-    check_non_consecutive_clauses(&grouped, ctx);
-
-    // Build original-item-index to grouped-item-index mapping.
-    let mut block_item_to_grouped: FxHashMap<usize, usize> = FxHashMap::default();
-    {
-        let mut orig_idx = 0;
-        for (gi, grouped_item) in grouped.iter().enumerate() {
-            match grouped_item {
-                GroupedItem::Single(_) => {
-                    block_item_to_grouped.insert(orig_idx, gi);
-                    orig_idx += 1;
-                }
-                GroupedItem::MultiClause { clauses } => {
-                    for _ in 0..clauses.len() {
-                        block_item_to_grouped.insert(orig_idx, gi);
-                        orig_idx += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    let mut block_processed_grouped: rustc_hash::FxHashSet<usize> =
-        rustc_hash::FxHashSet::default();
-
-    for (range, child_kind) in &block_children {
-        match child_kind {
-            BlockChildKind::ItemIdx(orig_idx) => {
-                if let Some(&gi) = block_item_to_grouped.get(orig_idx) {
-                    if block_processed_grouped.contains(&gi) {
-                        continue;
-                    }
-                    block_processed_grouped.insert(gi);
-                    processed_ranges.push(*range);
-
-                    match &grouped[gi] {
-                        GroupedItem::Single(item) => {
-                            match item {
-                                // Declarations are statements: a block that
-                                // ends in one has the unit type, which is
-                                // also what codegen produces for it.
-                                Item::LetBinding(let_) => {
-                                    let _ = infer_let_binding(
-                                        ctx,
-                                        env,
-                                        let_,
-                                        types,
-                                        type_registry,
-                                        trait_registry,
-                                        &mut local_fn_constraints,
-                                    );
-                                    last_ty = Ty::Tuple(vec![]);
-                                }
-                                Item::FnDef(fn_) => {
-                                    let _ = infer_fn_def(
-                                        ctx,
-                                        env,
-                                        fn_,
-                                        types,
-                                        type_registry,
-                                        trait_registry,
-                                        &mut local_fn_constraints,
-                                    );
-                                    last_ty = Ty::Tuple(vec![]);
-                                }
-                                _ => {
-                                    // Other items (interface, impl, struct, etc.)
-                                }
-                            }
-                        }
-                        GroupedItem::MultiClause { clauses } => {
-                            let _ = infer_multi_clause_fn(
-                                ctx,
-                                env,
-                                clauses,
-                                types,
-                                type_registry,
-                                trait_registry,
-                                &mut local_fn_constraints,
-                                &ImportContext::empty(),
-                            );
-                            last_ty = Ty::Tuple(vec![]);
-                        }
-                    }
-                }
-            }
-            BlockChildKind::ExprNode(child_node) => {
-                if let Some(expr) = Expr::cast(child_node.clone()) {
-                    processed_ranges.push(*range);
-                    match infer_expr(
-                        ctx,
-                        env,
-                        &expr,
-                        types,
-                        type_registry,
-                        trait_registry,
-                        &local_fn_constraints,
-                    ) {
-                        Ok(ty) => {
-                            last_ty = ty;
-                        }
-                        // Reported already; its value's type is unknown, not
-                        // the previous statement's (nor unit).
-                        Err(_) => {
-                            last_ty = ctx.fresh_var();
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Process a nested tail expression when its syntax node was not a direct
-    // block child and therefore was not visited above.
-    if let Some(tail) = block.tail_expr() {
-        let tail_range = tail.syntax().text_range();
-        let already_processed = processed_ranges.contains(&tail_range);
-
-        if !already_processed {
-            match infer_expr(
-                ctx,
-                env,
-                &tail,
-                types,
-                type_registry,
-                trait_registry,
-                &local_fn_constraints,
-            ) {
-                Ok(ty) => {
-                    last_ty = ty;
-                }
-                Err(_) => {
-                    last_ty = ctx.fresh_var();
-                }
-            }
-        }
-    }
-
     Ok(last_ty)
 }
 
-/// Helper for block child classification.
-enum BlockChildKind {
-    ItemIdx(usize),
-    ExprNode(mesh_parser::SyntaxNode),
+/// Only `let` binds inside a function: a function, type, import or any
+/// other definition there was accepted and then ignored (a call of a nested
+/// `fn` failed in code generation, an `import` of no module compiled).
+fn reject_nested_definition(ctx: &mut InferCtx, item: &Item) {
+    let keyword = match item {
+        Item::FnDef(_) => "fn",
+        Item::ModuleDef(_) => "module",
+        Item::ImportDecl(_) => "import",
+        Item::FromImportDecl(_) => "from ... import",
+        Item::StructDef(_) => "struct",
+        Item::InterfaceDef(_) => "interface",
+        Item::ImplDef(_) => "impl",
+        Item::TypeAliasDef(_) | Item::SumTypeDef(_) => "type",
+        Item::ActorDef(_) => "actor",
+        Item::ServiceDef(_) => "service",
+        Item::SupervisorDef(_) => "supervisor",
+        Item::LetBinding(_) => return,
+    };
+    // The definition's first line, not all of it.
+    let span = item
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia())
+        .take_while(|token| token.kind() != SyntaxKind::NEWLINE)
+        .map(|token| token.text_range())
+        .reduce(|first, last| first.cover(last))
+        .unwrap_or_else(|| item.syntax().text_range());
+    ctx.errors
+        .push(TypeError::NestedDefinition { keyword, span });
 }
 
 /// Infer the type of a tuple expression.

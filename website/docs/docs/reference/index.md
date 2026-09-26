@@ -646,6 +646,9 @@ language features. Use:
 - There are no module-level bindings: a `let` outside a function is error E0080
   in a build. Use a function, such as `fn limit() -> Int do 10 end`. The REPL
   keeps its `let` bindings between inputs.
+- Functions, types, imports and other definitions go at the top level of a
+  module; inside a function, only `let` binds, and a definition there is
+  error E0084. Bind a closure instead: `let helper = fn x -> x + 1 end`.
 - There is no bracket indexing: an index expression is error E0078. Use
   module functions such as `List.get`, `Map.get`, `Tuple.nth`, and
   `Json.array_get`.

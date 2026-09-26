@@ -332,6 +332,10 @@ fn one_of_each() -> Vec<TypeError> {
             name: "Name".to_string(),
             span: span(19, 24),
         },
+        TypeError::NestedDefinition {
+            keyword: "fn",
+            span: span(19, 24),
+        },
         TypeError::UnknownInterface {
             name: "name".to_string(),
             span: span(19, 24),

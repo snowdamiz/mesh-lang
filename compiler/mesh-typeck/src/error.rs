@@ -400,6 +400,12 @@ pub enum TypeError {
     UnknownFieldOwner { field: String, span: TextRange },
     /// A struct or sum type's name used as a value (`let x = Point`).
     TypeNotValue { name: String, span: TextRange },
+    /// A definition (`fn`, `struct`, `import`, ...) inside a function body:
+    /// only `let` binds there.
+    NestedDefinition {
+        keyword: &'static str,
+        span: TextRange,
+    },
     /// A method parameter whose type nothing fixes: a method is compiled
     /// once, for the type it is implemented for, not for each call.
     UntypedMethodParam {
@@ -572,6 +578,7 @@ impl TypeError {
             | TypeError::UnknownFieldOwner { span, .. }
             | TypeError::UntypedMethodParam { span, .. }
             | TypeError::TypeNotValue { span, .. }
+            | TypeError::NestedDefinition { span, .. }
             | TypeError::UnknownInterface { span, .. }
             | TypeError::InvalidLiteral { span, .. }
             | TypeError::InvalidConcat { span, .. }
@@ -1122,6 +1129,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::TypeNotValue { name, .. } => {
                 write!(f, "`{name}` is a type, not a value")
+            }
+            TypeError::NestedDefinition { keyword, .. } => {
+                write!(
+                    f,
+                    "`{keyword}` belongs at the top level of a module, not inside a function"
+                )
             }
             TypeError::UntypedMethodParam { method, param, .. } => {
                 write!(f, "the type of `{param}` in method `{method}` is not known")

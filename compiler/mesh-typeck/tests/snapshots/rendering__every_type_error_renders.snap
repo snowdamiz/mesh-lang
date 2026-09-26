@@ -700,6 +700,17 @@ expression: rendered
 ───╯
 {"code":"E0083","severity":"error","message":"`Name` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`"}
 
+[E0084] Error: `fn` belongs at the top level of a module, not inside a function
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── inside a function
+   │
+   │ Help: move it to the top level, or bind a closure: `let name = fn x -> ... end`
+───╯
+{"code":"E0084","severity":"error","message":"`fn` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level, or bind a closure: `let name = fn x -> ... end`"}
+
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
    │

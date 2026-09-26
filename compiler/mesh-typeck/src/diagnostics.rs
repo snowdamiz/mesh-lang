@@ -194,6 +194,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::ModuleNotImported { .. } => "E0081",
         TypeError::UntypedMethodParam { .. } => "E0082",
         TypeError::TypeNotValue { .. } => "E0083",
+        TypeError::NestedDefinition { .. } => "E0084",
     }
 }
 
@@ -1753,6 +1754,15 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                 "nothing here fixes the type of this value",
             )
             .with_help("annotate the value's type, such as a parameter `p :: Point`")
+        }
+        TypeError::NestedDefinition { keyword, span } => {
+            let range = clamp(text_range_to_range(*span));
+            let help = if *keyword == "fn" {
+                "move it to the top level, or bind a closure: `let name = fn x -> ... end`"
+            } else {
+                "move it to the top level of the module"
+            };
+            Description::error(range, error.to_string(), "inside a function").with_help(help)
         }
         TypeError::TypeNotValue { name, span } => {
             let range = clamp(text_range_to_range(*span));
