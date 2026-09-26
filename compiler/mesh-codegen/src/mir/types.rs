@@ -7,6 +7,7 @@
 use mesh_typeck::ty::{Ty, TyCon};
 use mesh_typeck::TypeRegistry;
 
+use super::lower::ty_head;
 use super::MirType;
 
 /// Convert a type checker `Ty` to a concrete `MirType`.
@@ -45,7 +46,10 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
             MirType::Closure(param_types, ret_type)
         }
 
-        Ty::App(con_ty, args) => resolve_app(con_ty, args, registry),
+        Ty::App(..) => {
+            let (name, args) = ty_head(ty).expect("an applied type has a named head");
+            resolve_app(name, args, registry)
+        }
 
         Ty::Tuple(elems) => {
             if elems.is_empty() {
@@ -127,18 +131,12 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
 }
 
 /// Resolve a type application (e.g., Option<Int>, Result<T, E>, or user struct/sum).
-fn resolve_app(con_ty: &Ty, args: &[Ty], registry: &TypeRegistry) -> MirType {
-    // Extract the base name from the constructor.
-    let base_name = match con_ty {
-        Ty::Con(con) => &con.name,
-        _ => return MirType::Ptr, // fallback for complex type expressions
-    };
-
+fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType {
     // Collection types are opaque pointers regardless of type parameters. So is
     // a tuple known only by its first elements (`Ty::tuple_row`): a tuple is a
     // pointer whatever it holds.
     if matches!(
-        base_name.as_str(),
+        base_name,
         "List" | "Map" | "Set" | "Range" | "Queue" | "Iter" | mesh_typeck::ty::TUPLE_ROW
     ) {
         return MirType::Ptr;

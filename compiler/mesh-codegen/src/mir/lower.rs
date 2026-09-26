@@ -46,57 +46,30 @@ fn ty_is_json(ty: &Ty) -> bool {
     matches!(ty, Ty::Con(con) if con.name == "Json")
 }
 
-/// Extract the element type T from a `Ty::App(Con("List"), [T])`.
-/// Returns `None` if the type is not a List.
-fn extract_list_elem_type(ty: &Ty) -> Option<Ty> {
+/// `ty`'s constructor name and arguments (`List<Int>`: `List`, `[Int]`).
+pub(crate) fn ty_head(ty: &Ty) -> Option<(&str, &[Ty])> {
     match ty {
-        Ty::App(con_ty, args) => {
-            if let Ty::Con(con) = con_ty.as_ref() {
-                if con.name == "List" && !args.is_empty() {
-                    return Some(args[0].clone());
-                }
-            }
-            None
-        }
-        Ty::Con(con) if con.name == "List" => {
-            // Bare List without type args -- default to Int
-            Some(Ty::int())
-        }
+        Ty::Con(tc) => Some((tc.name.as_str(), &[])),
+        Ty::App(con, args) => Some((ty_head(con)?.0, args.as_slice())),
         _ => None,
     }
 }
 
-/// Extract key and value types from a `Ty::App(Con("Map"), [K, V])`.
-/// Returns `None` if the type is not a Map.
-fn extract_map_types(ty: &Ty) -> Option<(Ty, Ty)> {
-    match ty {
-        Ty::App(con_ty, args) => {
-            if let Ty::Con(con) = con_ty.as_ref() {
-                if con.name == "Map" && args.len() >= 2 {
-                    return Some((args[0].clone(), args[1].clone()));
-                }
-            }
-            None
-        }
-        Ty::Con(con) if con.name == "Map" => Some((Ty::int(), Ty::int())),
-        _ => None,
-    }
+/// The element types of `ty` when it is the collection `name`: `[T]` for a
+/// `List<T>` or `Set<T>`, `[K, V]` for a `Map<K, V>`. A bare `List` or
+/// `Map` (as an annotation or an untyped builtin gives it) holds `Int`s.
+fn collection_elems(ty: &Ty, name: &str) -> Option<Vec<Ty>> {
+    let (head, args) = ty_head(ty).filter(|(head, _)| *head == name)?;
+    Some(if args.is_empty() {
+        vec![Ty::int(); if head == "Map" { 2 } else { 1 }]
+    } else {
+        args.to_vec()
+    })
 }
 
-/// Extract the element type T from a `Ty::App(Con("Set"), [T])`.
-/// Returns `None` if the type is not a Set.
-fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
-    match ty {
-        Ty::App(con_ty, args) => {
-            if let Ty::Con(con) = con_ty.as_ref() {
-                if con.name == "Set" && !args.is_empty() {
-                    return Some(args[0].clone());
-                }
-            }
-            None
-        }
-        _ => None,
-    }
+/// The element type of a `List<T>`.
+fn list_elem(ty: &Ty) -> Option<Ty> {
+    collection_elems(ty, "List").map(|mut elems| elems.swap_remove(0))
 }
 
 /// The name prefix of the temporaries resource scopes bind their values to
@@ -196,18 +169,11 @@ fn mangle_trait_method(
 /// mutually-recursive type finite.
 fn sum_type_reach(registry: &mesh_typeck::TypeRegistry) -> HashMap<String, HashSet<String>> {
     let direct = |ty: &Ty| -> Option<String> {
-        let name = match ty {
-            Ty::Con(tc) => &tc.name,
-            Ty::App(con, _) => match con.as_ref() {
-                Ty::Con(tc) => &tc.name,
-                _ => return None,
-            },
-            _ => return None,
-        };
+        let (name, _) = ty_head(ty)?;
         registry
             .sum_type_defs
             .contains_key(name)
-            .then(|| name.clone())
+            .then(|| name.to_string())
     };
     let mut reach: HashMap<String, HashSet<String>> = registry
         .sum_type_defs
@@ -883,21 +849,15 @@ impl<'a> Lowerer<'a> {
                     })
                     .collect(),
             )),
-            Ty::App(constructor, arguments) => {
-                let Ty::Con(constructor) = constructor.as_ref() else {
-                    return Some(MirResourceDestructor::Opaque);
-                };
-                if self.registry.sum_type_defs.contains_key(&constructor.name) {
-                    return self.resource_sum_destructor_inner(
-                        &constructor.name,
-                        arguments,
-                        visiting,
-                    );
+            Ty::App(..) => {
+                let (constructor, arguments) = ty_head(ty)?;
+                if self.registry.sum_type_defs.contains_key(constructor) {
+                    return self.resource_sum_destructor_inner(constructor, arguments, visiting);
                 }
-                let Some(definition) = self.registry.struct_defs.get(&constructor.name) else {
+                let Some(definition) = self.registry.struct_defs.get(constructor) else {
                     return Some(MirResourceDestructor::Opaque);
                 };
-                if !visiting.insert(constructor.name.clone()) {
+                if !visiting.insert(constructor.to_string()) {
                     return None;
                 }
                 let substitutions: HashMap<String, &Ty> = definition
@@ -920,7 +880,7 @@ impl<'a> Lowerer<'a> {
                             })
                     })
                     .collect();
-                visiting.remove(&constructor.name);
+                visiting.remove(constructor);
                 Some(MirResourceDestructor::Aggregate(fields))
             }
             Ty::Fun(_, _) | Ty::Var(_) | Ty::Never => None,
@@ -1450,11 +1410,7 @@ impl<'a> Lowerer<'a> {
             Ty::Tuple(elems) => {
                 return MsgShape::Tuple(elems.iter().map(|e| self.msg_shape(e, open)).collect())
             }
-            Ty::Con(con) => (&con.name, &[]),
-            Ty::App(con, args) => match con.as_ref() {
-                Ty::Con(con) => (&con.name, args),
-                _ => return MsgShape::Shared,
-            },
+            Ty::Con(_) | Ty::App(..) => ty_head(ty).expect("a named type has a head"),
         };
         let mut arg = |index: usize| {
             Box::new(
@@ -1553,25 +1509,10 @@ impl<'a> Lowerer<'a> {
     /// Check if a Ty represents Map<String, V> or List<(String, V)> (i.e., has
     /// string keys that should be preserved through collect operations).
     fn ty_has_string_map_keys(ty: &Ty) -> bool {
-        match ty {
-            Ty::App(con, args) => {
-                if let Ty::Con(ref tc) = **con {
-                    match tc.name.as_str() {
-                        "Map" if !args.is_empty() => args[0] == Ty::string(),
-                        "List" if !args.is_empty() => {
-                            // Check if the element is a tuple (String, V)
-                            if let Ty::Tuple(elems) = &args[0] {
-                                !elems.is_empty() && elems[0] == Ty::string()
-                            } else {
-                                false
-                            }
-                        }
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
+        match ty_head(ty) {
+            Some(("Map", [key, ..])) => *key == Ty::string(),
+            // A list of (String, V) tuples.
+            Some(("List", [Ty::Tuple(elems)])) => elems.first() == Some(&Ty::string()),
             _ => false,
         }
     }
@@ -7243,18 +7184,6 @@ impl<'a> Lowerer<'a> {
     // value the way a collection slot does (`__mesh_uniform_encode`), which
     // is what `mesh_json_to_list` stores and `json_payload` reads back.
 
-    /// `ty`'s constructor name and arguments (`List<Int>`: `List`, `[Int]`).
-    fn ty_head(ty: &Ty) -> Option<(&str, &[Ty])> {
-        match ty {
-            Ty::Con(tc) => Some((tc.name.as_str(), &[])),
-            Ty::App(con, args) => match con.as_ref() {
-                Ty::Con(tc) => Some((tc.name.as_str(), args.as_slice())),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
-
     fn json_call(f: &str, args: Vec<MirExpr>) -> MirExpr {
         let params = args.iter().map(|arg| arg.ty().clone()).collect();
         Self::call_named(f, params, args, MirType::Ptr)
@@ -7351,7 +7280,7 @@ impl<'a> Lowerer<'a> {
             let f = self.json_tuple_encode_fn(elems);
             return Self::json_call(&f, vec![value]);
         }
-        let Some((name, args)) = Self::ty_head(ty) else {
+        let Some((name, args)) = ty_head(ty) else {
             return MirExpr::Block(vec![value, null()], MirType::Ptr);
         };
         let arg = |i: usize| args.get(i).cloned().unwrap_or_else(Ty::int);
@@ -7436,7 +7365,7 @@ impl<'a> Lowerer<'a> {
             let f = self.json_tuple_decode_fn(elems);
             return Self::json_call(&f, vec![json]);
         }
-        let Some((name, args)) = Self::ty_head(ty) else {
+        let Some((name, args)) = ty_head(ty) else {
             return fail(json);
         };
         let arg = |i: usize| args.get(i).cloned().unwrap_or_else(Ty::int);
@@ -7521,7 +7450,7 @@ impl<'a> Lowerer<'a> {
     /// `mesh_json_from_map` call per element of type `elem`.
     fn json_encode_callback(&mut self, elem: &Ty) -> MirExpr {
         let fn_ty = MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr));
-        let name = match Self::ty_head(elem) {
+        let name = match ty_head(elem) {
             Some(("Int", _)) => "mesh_json_from_int".to_string(),
             Some(("String", _)) => "mesh_json_from_string".to_string(),
             _ => {
@@ -7551,7 +7480,7 @@ impl<'a> Lowerer<'a> {
     /// `elem`; its Ok payload is the element's slot.
     fn json_decode_callback(&mut self, elem: &Ty) -> MirExpr {
         let fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-        let name = match Self::ty_head(elem) {
+        let name = match ty_head(elem) {
             Some((scalar @ ("Int" | "Float" | "Bool" | "String"), _)) => {
                 format!("mesh_json_as_{}", scalar.to_lowercase())
             }
@@ -9321,14 +9250,8 @@ impl<'a> Lowerer<'a> {
                     .is_some_and(|ret| resolve_type(ret, self.registry) == result)
             })?
         };
-        let name_of = |ty: &Ty| match ty {
-            Ty::Con(tc) => tc.name.clone(),
-            Ty::App(con, _) => match con.as_ref() {
-                Ty::Con(tc) => tc.name.clone(),
-                other => format!("{other}"),
-            },
-            other => format!("{other}"),
-        };
+        let name_of =
+            |ty: &Ty| ty_head(ty).map_or_else(|| format!("{ty}"), |(name, _)| name.to_string());
         let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
         let source = [name_of(&imp.impl_type)];
         let mangled = match (imp.trait_name.as_str(), args.first()) {
@@ -9611,15 +9534,8 @@ impl<'a> Lowerer<'a> {
                 let field_holds_function = fa
                     .base()
                     .and_then(|base| self.get_ty(base.syntax().text_range()))
-                    .and_then(|ty| match ty {
-                        Ty::App(con, _) => match con.as_ref() {
-                            Ty::Con(tc) => Some(tc.name.clone()),
-                            _ => None,
-                        },
-                        Ty::Con(tc) => Some(tc.name.clone()),
-                        _ => None,
-                    })
-                    .and_then(|name| self.registry.struct_defs.get(&name))
+                    .and_then(ty_head)
+                    .and_then(|(name, _)| self.registry.struct_defs.get(name))
                     .is_some_and(|info| {
                         info.fields
                             .iter()
@@ -10178,7 +10094,7 @@ impl<'a> Lowerer<'a> {
                 // raw word was read as a tree (a map printed as a number,
                 // an Int crashed). A `Json` value is a tree already.
                 if let Some(source) = source {
-                    let tree = match Self::ty_head(&source) {
+                    let tree = match ty_head(&source) {
                         Some((head, _)) => head != "Json",
                         None => matches!(source, Ty::Tuple(_)),
                     };
@@ -10963,13 +10879,13 @@ impl<'a> Lowerer<'a> {
             .cloned();
 
         if let Some(ref ty) = iterable_ty {
-            if let Some((key_ty, val_ty)) = extract_map_types(ty) {
-                return self.lower_for_in_map(for_in, &key_ty, &val_ty);
+            if let Some([key_ty, val_ty]) = collection_elems(ty, "Map").as_deref() {
+                return self.lower_for_in_map(for_in, key_ty, val_ty);
             }
-            if let Some(elem_ty) = extract_set_elem_type(ty) {
-                return self.lower_for_in_set(for_in, &elem_ty);
+            if let Some([elem_ty]) = collection_elems(ty, "Set").as_deref() {
+                return self.lower_for_in_set(for_in, elem_ty);
             }
-            if let Some(elem_ty) = extract_list_elem_type(ty) {
+            if let Some(elem_ty) = list_elem(ty) {
                 return self.lower_for_in_list(for_in, &elem_ty);
             }
 
@@ -11072,17 +10988,7 @@ impl<'a> Lowerer<'a> {
 
             // Extract iterator type name directly from Ty::Con to preserve
             // opaque handle names like "ListIterator" (which resolve to MirType::Ptr).
-            let iter_type_name = match &iter_type {
-                Ty::Con(tc) => tc.name.clone(),
-                Ty::App(base, _) => {
-                    if let Ty::Con(tc) = base.as_ref() {
-                        tc.name.clone()
-                    } else {
-                        "Unknown".to_string()
-                    }
-                }
-                _ => "Unknown".to_string(),
-            };
+            let iter_type_name = ty_head(&iter_type).map_or("Unknown", |(name, _)| name);
             let next_fn_name = format!("Iterator__next__{}", iter_type_name);
 
             // Resolve Item type from Iterable impl.
@@ -11494,14 +11400,7 @@ impl<'a> Lowerer<'a> {
     /// The fields of struct type `ty`, in declaration order, with the type
     /// arguments of `ty` substituted: `Box<Int>`'s `value` is an `Int`.
     fn concrete_struct_fields(&self, ty: &Ty) -> Option<Vec<(String, Ty)>> {
-        let (name, args) = match ty {
-            Ty::Con(tc) => (tc.name.as_str(), &[][..]),
-            Ty::App(con, args) => match con.as_ref() {
-                Ty::Con(tc) => (tc.name.as_str(), args.as_slice()),
-                _ => return None,
-            },
-            _ => return None,
-        };
+        let (name, args) = ty_head(ty)?;
         let def = self.registry.struct_defs.get(name)?;
         let subst: HashMap<String, &Ty> = def.generic_params.iter().cloned().zip(args).collect();
         Some(
@@ -11699,7 +11598,7 @@ impl<'a> Lowerer<'a> {
                     .get_ty(cons_pat.syntax().text_range())
                     .cloned()
                     .or_else(|| expected.cloned());
-                let elem_src = list_src.as_ref().and_then(extract_list_elem_type);
+                let elem_src = list_src.as_ref().and_then(list_elem);
                 // A tuple element is a heap pointer, as everywhere. If the
                 // list type is not resolved, Int is the default element type.
                 let elem_mir_ty = elem_src
@@ -11728,7 +11627,7 @@ impl<'a> Lowerer<'a> {
                 let elem_src = self
                     .get_ty(list_pat.syntax().text_range())
                     .cloned()
-                    .and_then(|ty| extract_list_elem_type(&ty));
+                    .and_then(|ty| list_elem(&ty));
                 let elem_mir_ty = elem_src
                     .as_ref()
                     .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
@@ -12337,17 +12236,7 @@ impl<'a> Lowerer<'a> {
     ) -> Option<MirExpr> {
         // Match Ty::App(Con("List"|"Map"|"Set"), args).
         // Also handle Ty::Con("List"|"Map"|"Set") without type args (empty collections).
-        let (base_name, args) = match ty {
-            Ty::App(con_ty, args) => {
-                if let Ty::Con(con) = con_ty.as_ref() {
-                    (con.name.as_str(), args.as_slice())
-                } else {
-                    return None;
-                }
-            }
-            Ty::Con(con) => (con.name.as_str(), &[] as &[Ty]),
-            _ => return None,
-        };
+        let (base_name, args) = ty_head(ty)?;
 
         let fn_ptr_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
 
@@ -12461,28 +12350,21 @@ impl<'a> Lowerer<'a> {
     /// - `Ty::App(Con("Option"), [Con("Int")])` -> `"Option_Int"`
     /// - `Ty::App(Con("List"), [App(Con("List"), [Con("Int")])])` -> `"list_list_Int"`
     fn mangle_ty_for_display(&self, ty: &Ty) -> String {
-        match ty {
-            Ty::Con(con) => con.name.clone(),
-            Ty::App(con_ty, args) => {
-                if let Ty::Con(con) = con_ty.as_ref() {
-                    let base = match con.name.as_str() {
-                        "List" => "list",
-                        "Set" => "set",
-                        "Map" => "map",
-                        other => other,
-                    };
-                    let mut name = base.to_string();
-                    for arg in args {
-                        name.push('_');
-                        name.push_str(&self.mangle_ty_for_display(arg));
-                    }
-                    name
-                } else {
-                    "Unknown".to_string()
-                }
-            }
-            _ => "Unknown".to_string(),
+        let Some((name, args)) = ty_head(ty) else {
+            return "Unknown".to_string();
+        };
+        let mut mangled = match (name, args) {
+            ("List", [_, ..]) => "list",
+            ("Set", [_, ..]) => "set",
+            ("Map", [_, ..]) => "map",
+            _ => name,
         }
+        .to_string();
+        for arg in args {
+            mangled.push('_');
+            mangled.push_str(&self.mangle_ty_for_display(arg));
+        }
+        mangled
     }
 
     // ── Equality, ordering and display decided by type ───────────────
@@ -12714,11 +12596,9 @@ impl<'a> Lowerer<'a> {
                     MirType::Bool,
                 )
             }
-            Ty::App(con, args) => {
-                let Ty::Con(tc) = con.as_ref() else {
-                    return hardware(lhs, rhs);
-                };
-                match tc.name.as_str() {
+            Ty::App(..) => {
+                let (name, args) = ty_head(ty).expect("an applied type has a named head");
+                match name {
                     "List" => {
                         let elem_eq = self.resolve_eq_callback(args.first().unwrap_or(&Ty::int()));
                         let callback = MirExpr::Var(
@@ -12786,8 +12666,7 @@ impl<'a> Lowerer<'a> {
                     },
                     _ => {
                         self.ensure_instantiation_traits(ty);
-                        let f =
-                            format!("Eq__eq__{}", self.instantiation_helper_name(&tc.name, args));
+                        let f = format!("Eq__eq__{}", self.instantiation_helper_name(name, args));
                         // An imported type (`App(Point, [])`) has its helpers
                         // in its own module.
                         if self.known_functions.contains_key(&f)
@@ -13117,11 +12996,9 @@ impl<'a> Lowerer<'a> {
                     MirType::Int,
                 )
             }
-            Ty::App(con, args) => {
-                let Ty::Con(tc) = con.as_ref() else {
-                    return three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs));
-                };
-                if tc.name == "List" {
+            Ty::App(..) => {
+                let (name, args) = ty_head(ty).expect("an applied type has a named head");
+                if name == "List" {
                     let elem_cmp =
                         self.resolve_compare_callback(args.first().unwrap_or(&Ty::int()));
                     let callback = MirExpr::Var(
@@ -13136,10 +13013,7 @@ impl<'a> Lowerer<'a> {
                     );
                 }
                 self.ensure_instantiation_traits(ty);
-                let f = format!(
-                    "Ord__lt__{}",
-                    self.instantiation_helper_name(&tc.name, args)
-                );
+                let f = format!("Ord__lt__{}", self.instantiation_helper_name(name, args));
                 if self.known_functions.contains_key(&f)
                     || (args.is_empty() && self.trait_registry.has_impl("Ord", ty))
                 {
@@ -13199,11 +13073,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::Block(vec![value, MirExpr::IntLit(0, MirType::Int)], MirType::Int)
         };
         let (name, args) = match ty {
-            Ty::Con(tc) => (tc.name.as_str(), &[] as &[Ty]),
-            Ty::App(con, args) => match con.as_ref() {
-                Ty::Con(tc) => (tc.name.as_str(), args.as_slice()),
-                _ => return constant(value),
-            },
+            Ty::Con(_) | Ty::App(..) => ty_head(ty).expect("a named type has a head"),
             Ty::Tuple(elems) if elems.is_empty() => return constant(value),
             Ty::Tuple(elems) => {
                 let f = self.tuple_hash_fn(elems);
@@ -13961,15 +13831,13 @@ impl<'a> Lowerer<'a> {
                     MirType::String,
                 ))
             }
-            Ty::App(con, args) => {
-                let Ty::Con(tc) = con.as_ref() else {
-                    return None;
-                };
-                if matches!(tc.name.as_str(), "List" | "Map" | "Set") {
+            Ty::App(..) => {
+                let (name, args) = ty_head(ty).expect("an applied type has a named head");
+                if matches!(name, "List" | "Map" | "Set") {
                     return self.wrap_collection_to_string(expr, ty, debug);
                 }
                 self.ensure_instantiation_traits(ty);
-                let mangled = self.instantiation_helper_name(&tc.name, args);
+                let mangled = self.instantiation_helper_name(name, args);
                 let candidates = if debug {
                     [
                         format!("Debug__inspect__{mangled}"),
@@ -17702,11 +17570,7 @@ fn builtin_call(name: &str, params: &[MirType], ret: &MirType, args: Vec<MirExpr
 
 /// Whether `ty` is a process's PID, typed or not: an integer at run time.
 fn is_pid(ty: &Ty) -> bool {
-    match ty {
-        Ty::Con(con) => con.name == "Pid",
-        Ty::App(con, _) => matches!(con.as_ref(), Ty::Con(con) if con.name == "Pid"),
-        _ => false,
-    }
+    matches!(ty_head(ty), Some(("Pid", _)))
 }
 
 /// The variables a pattern binds.
