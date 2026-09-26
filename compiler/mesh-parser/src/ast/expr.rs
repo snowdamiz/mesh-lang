@@ -356,10 +356,20 @@ ast_node!(IndexExpr, INDEX_EXPR);
 
 ast_node!(IfExpr, IF_EXPR);
 
+/// The first expression of `node` before its `do`: an `if` or `while`
+/// condition, a `case` scrutinee, a `for` iterable. One the parser could not
+/// finish is `None`, not the block after the `do`.
+fn expr_before_do(node: &SyntaxNode) -> Option<Expr> {
+    node.children_with_tokens()
+        .take_while(|element| element.kind() != SyntaxKind::DO_KW)
+        .filter_map(|element| element.into_node())
+        .find_map(Expr::cast)
+}
+
 impl IfExpr {
     /// The condition expression.
     pub fn condition(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
+        expr_before_do(&self.syntax)
     }
 
     /// The then-branch block.
@@ -394,7 +404,7 @@ ast_node!(CaseExpr, CASE_EXPR);
 impl CaseExpr {
     /// The scrutinee expression being matched.
     pub fn scrutinee(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
+        expr_before_do(&self.syntax)
     }
 
     /// The match arms.
@@ -672,7 +682,7 @@ ast_node!(WhileExpr, WHILE_EXPR);
 impl WhileExpr {
     /// The condition expression.
     pub fn condition(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
+        expr_before_do(&self.syntax)
     }
 
     /// The loop body block.
@@ -711,7 +721,7 @@ impl ForInExpr {
 
     /// The iterable expression (e.g., 0..10).
     pub fn iterable(&self) -> Option<Expr> {
-        self.syntax.children().find_map(Expr::cast)
+        expr_before_do(&self.syntax)
     }
 
     /// The filter expression (after `when`), if present.

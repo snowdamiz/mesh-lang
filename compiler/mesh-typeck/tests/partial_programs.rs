@@ -46,6 +46,27 @@ fn imports_without_a_module_are_skipped() {
     }
 }
 
+/// A condition or iterable cut off before its `do` is missing, not the
+/// block after the `do`: `if do 1 end` was "expected `Bool`, found `Int`".
+#[test]
+fn a_missing_condition_is_not_the_block_after_it() {
+    for source in [
+        "fn f() do\n  if do\n    1\n  end\nend\n",
+        "fn f() do\n  while do\n    1\n  end\nend\n",
+        "fn f() do\n  for x in do\n    x\n  end\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+        assert!(
+            result.warnings.is_empty(),
+            "{source:?}: {:?}",
+            result.warnings
+        );
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]
