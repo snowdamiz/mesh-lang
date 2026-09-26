@@ -893,6 +893,140 @@ fn get_from_served_fixture(fixture: &str, paths: &[&str]) -> Vec<String> {
     // ServerGuard Drop stops the server process.
 }
 
+/// A CA and a certificate it signs for localhost and 127.0.0.1, as PEM
+/// files in `directory`: (ca, certificate, key).
+fn localhost_certificate(directory: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let file = |name: &str| directory.join(name).to_str().unwrap().to_string();
+    let (ca_key, ca, key, request, cert) = (
+        file("ca.key.pem"),
+        file("ca.pem"),
+        file("key.pem"),
+        file("server.csr"),
+        file("cert.pem"),
+    );
+    #[rustfmt::skip]
+    let steps: [&[&str]; 3] = [
+        &["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+          "-subj", "/CN=mesh-test-ca", "-keyout", &ca_key, "-out", &ca],
+        &["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=localhost",
+          "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+          "-keyout", &key, "-out", &request],
+        &["x509", "-req", "-in", &request, "-CA", &ca, "-CAkey", &ca_key,
+          "-CAcreateserial", "-days", "1", "-copy_extensions", "copy", "-out", &cert],
+    ];
+    for step in steps {
+        let output = Command::new("openssl")
+            .args(step)
+            .output()
+            .expect("openssl runs");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    (ca.into(), cert.into(), key.into())
+}
+
+/// HTTP.serve_tls answers over TLS with a PEM certificate a client trusts
+/// through its CA, and a client without that CA refuses it.
+#[test]
+fn e2e_https_server_serves_with_a_pem_certificate() {
+    let certificates = tempfile::tempdir().unwrap();
+    let (ca, cert, key) = localhost_certificate(certificates.path());
+    let port = free_port();
+    let source = format!(
+        r#"
+fn hello(request) do
+  HTTP.response(200, "hello over tls")
+end
+
+fn main() do
+  let r = HTTP.router()
+  let r = HTTP.on_get(r, "/hello", hello)
+  HTTP.serve_tls(r, {port}, "{cert}", "{key}")
+end
+"#,
+        cert = cert.display(),
+        key = key.display(),
+    );
+    let mut guard = compile_and_start_server(&source);
+    wait_for_server_ready(&mut guard);
+    let url = format!("https://127.0.0.1:{port}/hello");
+    let trusted = Command::new("curl")
+        .args(["--silent", "--show-error", "--max-time", "30", "--cacert"])
+        .arg(&ca)
+        .arg(&url)
+        .output()
+        .expect("curl runs");
+    assert!(
+        trusted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&trusted.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&trusted.stdout), "hello over tls");
+    let untrusted = Command::new("curl")
+        .args(["--silent", "--max-time", "30", &url])
+        .output()
+        .expect("curl runs");
+    assert!(
+        !untrusted.status.success(),
+        "a client without the CA connected"
+    );
+}
+
+/// HTTP.serve_tls with certificate or key files it cannot load says so and
+/// returns without serving.
+#[test]
+fn e2e_https_server_refuses_certificates_it_cannot_load() {
+    let certificates = tempfile::tempdir().unwrap();
+    let (_, cert, key) = localhost_certificate(certificates.path());
+    let missing = certificates.path().join("missing.pem");
+    // A key of a kind TLS here cannot sign with.
+    let ed448 = certificates.path().join("ed448.pem");
+    let output = Command::new("openssl")
+        .args(["genpkey", "-algorithm", "ed448", "-out"])
+        .arg(&ed448)
+        .output()
+        .expect("openssl runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for (cert, key, error) in [
+        (&missing, &key, "open cert file"),
+        (&cert, &missing, "load key"),
+        (&cert, &ed448, "TLS config"),
+    ] {
+        let source = format!(
+            r#"
+fn main() do
+  HTTP.serve_tls(HTTP.router(), 0, "{cert}", "{key}")
+  println("returned")
+end
+"#,
+            cert = cert.display(),
+            key = key.display(),
+        );
+        let mut guard = compile_and_start_server(&source);
+        let mut stderr = String::new();
+        guard
+            .child
+            .stderr
+            .take()
+            .expect("no stderr pipe")
+            .read_to_string(&mut stderr)
+            .unwrap();
+        assert!(
+            stderr.contains(&format!(
+                "[mesh-rt] Failed to load TLS certificates: {error}"
+            )),
+            "{error}: {stderr}"
+        );
+    }
+}
+
 #[test]
 fn e2e_http_server_runtime() {
     // This test starts a real HTTP server from a compiled Mesh program,

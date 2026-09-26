@@ -1279,26 +1279,57 @@ fn drain_accepted_connections() {
 /// - If handler_env is non-null: `fn(handler_env, request_ptr) -> response_ptr`
 #[no_mangle]
 pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
+    serve(router, port, None);
+}
+
+// ── HTTPS Server ────────────────────────────────────────────────────────
+
+/// Start an HTTPS server on the given port with TLS, blocking the calling thread.
+///
+/// Loads PEM-encoded certificate and private key files, builds a rustls
+/// `ServerConfig`, and enters the same accept loop as `mesh_http_serve`.
+/// Each accepted connection is wrapped in `HttpStream::Tls` and dispatched
+/// to a lightweight actor.
+///
+/// The TLS handshake is lazy: `StreamOwned::new()` does NO I/O. The actual
+/// handshake occurs on the first `read` call inside the actor's coroutine,
+/// ensuring the accept loop is never blocked by slow TLS clients.
+#[no_mangle]
+pub extern "C" fn mesh_http_serve_tls(
+    router: *mut u8,
+    port: i64,
+    cert_path: *const MeshString,
+    key_path: *const MeshString,
+) {
+    let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
+    match build_server_config(cert_path, key_path) {
+        Ok(tls) => serve(router, port, Some(tls)),
+        Err(error) => eprintln!("[mesh-rt] Failed to load TLS certificates: {error}"),
+    }
+}
+
+/// The accept loop HTTP.serve and HTTP.serve_tls share, until a shutdown is
+/// requested: each accepted connection (in TLS when `tls` is given) is
+/// admitted and handled on an actor of its own, or refused.
+fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
     // Ensure the actor scheduler is initialized (idempotent).
     crate::actor::mesh_rt_init_actor(0);
+    let scheme = if tls.is_some() { "HTTPS" } else { "HTTP" };
 
     let addr = format!("[::]:{}", port);
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[mesh-rt] Failed to start HTTP server on {}: {}", addr, e);
+            eprintln!("[mesh-rt] Failed to start {scheme} server on {addr}: {e}");
             return;
         }
     };
     if let Err(e) = listener.set_nonblocking(true) {
-        eprintln!(
-            "[mesh-rt] Failed to configure HTTP listener on {}: {}",
-            addr, e
-        );
+        eprintln!("[mesh-rt] Failed to configure {scheme} listener on {addr}: {e}");
         return;
     }
 
-    eprintln!("[mesh-rt] HTTP server listening on {}", addr);
+    eprintln!("[mesh-rt] {scheme} server listening on {addr}");
     crate::dist::node::mesh_trigger_startup_work();
 
     let router_addr = router as usize;
@@ -1316,14 +1347,28 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
             }
         };
         if let Err(error) = configure_accepted_stream(&tcp_stream) {
-            eprintln!("[mesh-rt] failed to configure HTTP connection: {error}");
+            eprintln!("[mesh-rt] failed to configure {scheme} connection: {error}");
             continue;
         }
         let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
 
-        let http_stream = HttpStream::Plain(tcp_stream);
+        let http_stream = match &tls {
+            None => HttpStream::Plain(tcp_stream),
+            // No I/O here: the handshake happens on the connection's actor, at
+            // its first read.
+            Some(config) => match ServerConnection::new(Arc::clone(config)) {
+                Ok(connection) => HttpStream::Tls(StreamOwned::new(connection, tcp_stream)),
+                Err(e) => {
+                    eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
+                    continue;
+                }
+            },
+        };
         let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
             Ok(permit) => permit,
+            // A refused HTTPS connection just closes: answering would take a
+            // handshake with the client, here in the accept loop.
+            Err(_) if tls.is_some() => continue,
             Err(rejection) => {
                 let mut stream = http_stream;
                 let _ = write_response(
@@ -1354,130 +1399,7 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
         );
     }
     drain_accepted_connections();
-    eprintln!("[mesh-rt] HTTP server stopped");
-}
-
-// ── HTTPS Server ────────────────────────────────────────────────────────
-
-/// Start an HTTPS server on the given port with TLS, blocking the calling thread.
-///
-/// Loads PEM-encoded certificate and private key files, builds a rustls
-/// `ServerConfig`, and enters the same accept loop as `mesh_http_serve`.
-/// Each accepted connection is wrapped in `HttpStream::Tls` and dispatched
-/// to a lightweight actor.
-///
-/// The TLS handshake is lazy: `StreamOwned::new()` does NO I/O. The actual
-/// handshake occurs on the first `read` call inside the actor's coroutine,
-/// ensuring the accept loop is never blocked by slow TLS clients.
-#[no_mangle]
-pub extern "C" fn mesh_http_serve_tls(
-    router: *mut u8,
-    port: i64,
-    cert_path: *const MeshString,
-    key_path: *const MeshString,
-) {
-    crate::actor::mesh_rt_init_actor(0);
-
-    let cert_str = unsafe { (*cert_path).as_str() };
-    let key_str = unsafe { (*key_path).as_str() };
-
-    let tls_config = match build_server_config(cert_str, key_str) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[mesh-rt] Failed to load TLS certificates: {}", e);
-            return;
-        }
-    };
-
-    let addr = format!("[::]:{}", port);
-    let listener = match std::net::TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("[mesh-rt] Failed to bind {}: {}", addr, e);
-            return;
-        }
-    };
-    if let Err(e) = listener.set_nonblocking(true) {
-        eprintln!(
-            "[mesh-rt] Failed to configure HTTPS listener on {}: {}",
-            addr, e
-        );
-        return;
-    }
-
-    eprintln!("[mesh-rt] HTTPS server listening on {}", addr);
-    crate::dist::node::mesh_trigger_startup_work();
-
-    let router_addr = router as usize;
-    // Leak the Arc<ServerConfig> as a raw pointer for transfer into the loop.
-    // The server runs forever, so this is intentional (no cleanup needed).
-    let config_ptr = Arc::into_raw(tls_config) as usize;
-
-    while !crate::process_signal::shutdown_requested() {
-        let tcp_stream = match listener.accept() {
-            Ok((stream, _peer)) => stream,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(25));
-                continue;
-            }
-            Err(e) => {
-                eprintln!("[mesh-rt] accept error: {}", e);
-                continue;
-            }
-        };
-        if let Err(error) = configure_accepted_stream(&tcp_stream) {
-            eprintln!("[mesh-rt] failed to configure HTTPS connection: {error}");
-            continue;
-        }
-        let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
-
-        // Reconstruct the Arc without dropping it (we leaked it intentionally).
-        let tls_config = unsafe { Arc::from_raw(config_ptr as *const ServerConfig) };
-        let conn = match ServerConnection::new(Arc::clone(&tls_config)) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
-                // Re-leak the Arc so it's available for the next connection.
-                std::mem::forget(tls_config);
-                continue;
-            }
-        };
-        // Re-leak the Arc so it's available for the next connection.
-        std::mem::forget(tls_config);
-
-        // StreamOwned::new does NO I/O -- handshake is lazy on first read/write.
-        // The actual handshake happens inside the actor when parse_request calls
-        // BufReader::read_line -> HttpStream::Tls::read -> StreamOwned::read.
-        let tls_stream = StreamOwned::new(conn, tcp_stream);
-        let http_stream = HttpStream::Tls(tls_stream);
-        let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
-            Ok(permit) => permit,
-            Err(_) => continue,
-        };
-
-        let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
-        let args = ConnectionArgs {
-            router_addr,
-            request_ptr: stream_ptr,
-            queue_permit_ptr: Box::into_raw(Box::new(queue_permit)) as usize,
-            connection_permit_ptr: Box::into_raw(Box::new(connection_permit)) as usize,
-        };
-        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
-        let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
-
-        let sched = actor::global_scheduler();
-        sched.spawn(
-            connection_handler_entry as *const u8,
-            args_ptr,
-            args_size,
-            1,
-        );
-    }
-    drain_accepted_connections();
-    unsafe {
-        drop(Arc::from_raw(config_ptr as *const ServerConfig));
-    }
-    eprintln!("[mesh-rt] HTTPS server stopped");
+    eprintln!("[mesh-rt] {scheme} server stopped");
 }
 
 // ── Middleware chain infrastructure ──────────────────────────────────
