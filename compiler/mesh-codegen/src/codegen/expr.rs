@@ -3795,7 +3795,8 @@ impl<'ctx> CodeGen<'ctx> {
         //           id_len(u32 LE) + id_bytes + fn_ptr_placeholder(u64) +
         //           start_args_ptr(u64 LE=0) + start_args_size(u64 LE=0) +
         //           restart_type(u8) + shutdown_type(u8) +
-        //           shutdown_timeout_ms(u64 LE) + child_type(u8)
+        //           shutdown_timeout_ms(u64 LE) + child_type(u8) +
+        //           has_target_node(u8=0)
         let mut config_bytes: Vec<u8> = Vec::new();
 
         // Strategy (1 byte)
@@ -3848,6 +3849,11 @@ impl<'ctx> CodeGen<'ctx> {
 
             // child_type (1 byte)
             config_bytes.push(child.child_type);
+
+            // has_target_node (1 byte): a local child. Left out, the runtime
+            // read the next child's first byte in its place, and an id one
+            // byte long (a 1) made the next child look remote.
+            config_bytes.push(0);
         }
 
         // Create a global constant for the config buffer.

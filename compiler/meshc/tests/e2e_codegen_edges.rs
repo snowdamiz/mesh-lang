@@ -761,3 +761,47 @@ end
         "3 2 -3\ntrue false\ntrue\n[1, 2] %{1 => 2} #{3}\ntrue true\nfalse\n"
     );
 }
+
+/// A supervisor starts every child. The byte saying a child is local was
+/// left out, so the runtime read the next child's first byte in its place:
+/// after a child whose id is one letter long (a 1), the next looked remote,
+/// and the supervisor did not start.
+#[test]
+fn supervisors_start_every_child() {
+    let out = compile_and_run(
+        r##"actor a1() do
+  println("a1 started")
+end
+
+actor a2() do
+  println("a2 started")
+end
+
+supervisor Two do
+  strategy: one_for_one
+  max_restarts: 10
+  max_seconds: 5
+
+  child x do
+    start: fn -> spawn(a1) end
+    restart: temporary
+    shutdown: 1000
+  end
+
+  child y do
+    start: fn -> spawn(a2) end
+    restart: temporary
+    shutdown: 1000
+  end
+end
+
+fn main() do
+  let _ = spawn(Two)
+  Timer.sleep(1000)
+end
+"##,
+    );
+    let mut lines: Vec<&str> = out.lines().collect();
+    lines.sort();
+    assert_eq!(lines, ["a1 started", "a2 started"]);
+}
