@@ -30,3 +30,15 @@ fn programs_cut_off_partway_are_checked_without_panicking() {
         }
     }
 }
+
+/// An import cut off before its module names nothing, and adds no error to
+/// its parse error.
+#[test]
+fn imports_without_a_module_are_skipped() {
+    for source in ["import\n", "from\n", "from import length\n"] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+    }
+}

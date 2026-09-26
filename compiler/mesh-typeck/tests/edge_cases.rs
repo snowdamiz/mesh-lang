@@ -1468,6 +1468,29 @@ end
     );
 }
 
+/// `import Module` brings in the module's functions, structs and services
+/// under its name, and a standard module needs no import at all.
+#[test]
+fn import_brings_in_a_module_by_its_name() {
+    assert_eq!(
+        errors_importing(
+            "Store",
+            STORE,
+            r#"
+import Store
+import String
+
+fn main() do
+  let pid = Counter.start(0)
+  let n = Counter.get(pid)
+  Store.pad(1) + Store.pad(n, 2) + String.length("abc")
+end
+"#
+        ),
+        Vec::<String>::new()
+    );
+}
+
 /// What an import cannot bring in: a name a module does not export or
 /// keeps private, a function a standard module does not have (it was left
 /// out without a word), or anything of a module that does not exist. The

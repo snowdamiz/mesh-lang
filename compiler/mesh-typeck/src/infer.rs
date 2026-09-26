@@ -5778,14 +5778,15 @@ fn register_import(
 ) {
     match item {
         Item::ImportDecl(import_decl) => {
-            let Some(path) = import_decl.module_path() else {
+            // An import cut off before its module names nothing.
+            let segments = import_decl.module_path().map(|path| path.segments());
+            let segments = segments.unwrap_or_default();
+            let Some(module) = segments.last().cloned() else {
                 return;
             };
-            let segments = path.segments();
-            let module = segments.last().cloned().unwrap_or_default();
             let Some(mod_exports) = import_ctx.module_exports.get(&module) else {
                 // A standard module's functions are found where they are used.
-                if !is_stdlib_module(&module) {
+                if !stdlib_modules(import_ctx.test_builtins).contains_key(&module) {
                     ctx.errors.push(TypeError::ImportModuleNotFound {
                         module_name: segments.join("."),
                         span: import_decl.syntax().text_range(),
@@ -5820,11 +5821,12 @@ fn register_import(
             }
         }
         Item::FromImportDecl(from_import) => {
-            let Some(path) = from_import.module_path() else {
+            // An import cut off before its module names nothing.
+            let segments = from_import.module_path().map(|path| path.segments());
+            let segments = segments.unwrap_or_default();
+            let Some(module) = segments.last().cloned() else {
                 return;
             };
-            let segments = path.segments();
-            let module = segments.last().cloned().unwrap_or_default();
             let import_list = from_import.import_list();
             let names = import_list
                 .iter()
