@@ -183,12 +183,7 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             }
             MirExpr::ForInIterator {
                 next_fn, iter_fn, ..
-            } => {
-                refs.push(next_fn.clone());
-                if !iter_fn.is_empty() {
-                    refs.push(iter_fn.clone());
-                }
-            }
+            } => refs.extend(iter_fn.iter().chain([next_fn]).cloned()),
             _ => {}
         }
     }

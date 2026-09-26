@@ -9894,47 +9894,37 @@ impl<'a> Lowerer<'a> {
     fn lower_for_in_iterator(&mut self, for_in: &ForInExpr, ty: &Ty, is_iterable: bool) -> MirExpr {
         let var_name = self.loop_var_name(for_in);
 
-        // Resolve the MIR type to get the impl name for mangling. A builtin
-        // handle type (`Range`) is a plain pointer in MIR: name it by its
-        // source type.
-        let mir_ty = resolve_type(ty, self.registry);
-        let type_name = match (mir_type_to_impl_name(&mir_ty), ty) {
-            (name, Ty::Con(tc)) if name == "Unknown" => tc.name.clone(),
-            (name, _) => name,
-        };
-
-        // Determine iter_fn and next_fn names, and the element type.
-        let (iter_fn, next_fn, elem_ty) = if is_iterable {
-            // Iterable path: call iter() to get iterator, then next() on iterator.
-            let iter_fn_name = format!("Iterable__iter__{}", type_name);
-
-            // Resolve Iter type from Iterable impl to get the iterator type name.
-            let iter_type = self
+        // An Iterable hands over its iterator; an Iterator is its own.
+        let trait_name = if is_iterable { "Iterable" } else { "Iterator" };
+        let (iter_fn, iterator_ty) = if is_iterable {
+            let iter_fn = match ty_head(ty) {
+                Some(("Range", _)) => "mesh_range_iter".to_string(),
+                _ => format!(
+                    "Iterable__iter__{}",
+                    mir_type_to_impl_name(&resolve_type(ty, self.registry))
+                ),
+            };
+            let iterator_ty = self
                 .trait_registry
                 .resolve_associated_type("Iterable", "Iter", ty)
-                .unwrap_or_else(|| Ty::Con(mesh_typeck::ty::TyCon::new("Unknown")));
-
-            // Extract iterator type name directly from Ty::Con to preserve
-            // opaque handle names like "ListIterator" (which resolve to MirType::Ptr).
-            let iter_type_name = ty_head(&iter_type).map_or("Unknown", |(name, _)| name);
-            let next_fn_name = format!("Iterator__next__{}", iter_type_name);
-
-            // Resolve Item type from Iterable impl.
-            let item_ty = self
-                .trait_registry
-                .resolve_associated_type("Iterable", "Item", ty)
-                .unwrap_or(Ty::int());
-
-            (iter_fn_name, next_fn_name, item_ty)
+                .expect("an Iterable impl names its Iter");
+            (Some(iter_fn), iterator_ty)
         } else {
-            // Direct Iterator path: no iter() call, just next().
-            let next_fn_name = format!("Iterator__next__{}", type_name);
-            let item_ty = self
+            (None, ty.clone())
+        };
+        // A runtime iterator (`Iter<T>`, a `ListIterator`, an adapter) is a
+        // pointer in MIR, and the runtime's `next` advances any of them.
+        let next_fn = match resolve_type(&iterator_ty, self.registry) {
+            MirType::Ptr => "mesh_iter_generic_next".to_string(),
+            iterator => format!("Iterator__next__{}", mir_type_to_impl_name(&iterator)),
+        };
+        // An `Iter<T>` yields `T`.
+        let elem_ty = match ty_head(&iterator_ty) {
+            Some(("Iter", [elem])) => elem.clone(),
+            _ => self
                 .trait_registry
-                .resolve_associated_type("Iterator", "Item", ty)
-                .unwrap_or(Ty::int());
-
-            (String::new(), next_fn_name, item_ty)
+                .resolve_associated_type(trait_name, "Item", ty)
+                .expect("an iterator impl names its Item"),
         };
 
         // Lower the iterable/iterator expression.

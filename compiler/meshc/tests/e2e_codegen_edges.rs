@@ -1369,3 +1369,30 @@ end
     );
     assert_eq!(output, "[2, 12] [5, 0]\n");
 }
+
+/// A for-in loop over an `Iter` value (from `Iter.from`, or an adapter
+/// chained on one) advances it with the runtime's generic `next`. The build
+/// panicked looking for a function named `Iterator__next__Unknown`.
+#[test]
+fn loops_run_over_iter_values() {
+    let output = compile_and_run(
+        r#"fn main() do
+  let r = 2..5
+  let tens = for i in r do
+    i * 10
+  end
+  let all = for v in Iter.from([1, 2, 3]) do
+    v
+  end
+  let big = for v in Iter.from([1, 2, 3, 4]) |> Iter.filter(fn x -> x > 2 end) do
+    v
+  end
+  let pairs = for v in Iter.from([1, 2, 3]) |> Iter.zip(Iter.from(["x", "y"])) do
+    v
+  end
+  println("${tens} ${List.length(all)} ${List.length(big)} ${List.length(pairs)}")
+end
+"#,
+    );
+    assert_eq!(output, "[20, 30, 40] 3 2 2\n");
+}

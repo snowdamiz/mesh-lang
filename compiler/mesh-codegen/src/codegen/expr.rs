@@ -258,7 +258,7 @@ impl<'ctx> CodeGen<'ctx> {
                 elem_ty,
                 body_ty,
                 next_fn,
-                iter_fn,
+                iter_fn.as_deref(),
                 ty,
             ),
 
@@ -5013,38 +5013,6 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── For-in over Iterator (Iterable/Iterator protocol) ─────────────
 
-    /// Resolve a mangled trait method name to its runtime function name.
-    /// For built-in iterator types (ListIterator, MapIterator, etc.), the
-    /// mangled name (e.g., "Iterator__next__ListIterator") maps to a C runtime
-    /// function (e.g., "mesh_list_iter_next"). For user-defined types, the
-    /// mangled name IS the function name (compiled from their impl block).
-    fn resolve_iterator_fn(&self, mangled: &str) -> Option<inkwell::values::FunctionValue<'ctx>> {
-        // First: try to find as a user-compiled function in the module.
-        if let Some(f) = self.module.get_function(mangled) {
-            return Some(f);
-        }
-        // Second: map known built-in iterator mangled names to runtime names.
-        let runtime_name = match mangled {
-            "Iterator__next__ListIterator" => "mesh_list_iter_next",
-            "Iterator__next__MapIterator" => "mesh_map_iter_next",
-            "Iterator__next__SetIterator" => "mesh_set_iter_next",
-            "Iterator__next__RangeIterator" => "mesh_range_iter_next",
-            "Iterable__iter__List" => "mesh_list_iter_new",
-            "Iterable__iter__Map" => "mesh_map_iter_new",
-            "Iterable__iter__Set" => "mesh_set_iter_new",
-            "Iterable__iter__Range" => "mesh_range_iter",
-            // Phase 78: Adapter iterator next dispatch
-            "Iterator__next__MapAdapterIterator" => "mesh_iter_map_next",
-            "Iterator__next__FilterAdapterIterator" => "mesh_iter_filter_next",
-            "Iterator__next__TakeAdapterIterator" => "mesh_iter_take_next",
-            "Iterator__next__SkipAdapterIterator" => "mesh_iter_skip_next",
-            "Iterator__next__EnumerateAdapterIterator" => "mesh_iter_enumerate_next",
-            "Iterator__next__ZipAdapterIterator" => "mesh_iter_zip_next",
-            _ => mangled, // Fall through to intrinsic lookup.
-        };
-        self.module.get_function(runtime_name)
-    }
-
     fn codegen_for_in_iterator(
         &mut self,
         var: &str,
@@ -5054,7 +5022,7 @@ impl<'ctx> CodeGen<'ctx> {
         elem_ty: &MirType,
         body_ty: &MirType,
         next_fn: &str,
-        iter_fn: &str,
+        iter_fn: Option<&str>,
         _ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let fn_val = self.current_function();
@@ -5065,23 +5033,21 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 1: Codegen the collection/iterator expression.
         let collection_val = self.codegen_expr(iterator_expr)?;
 
-        // Step 2: If iter_fn is non-empty, call iter() to get the iterator.
-        let iter_val = if !iter_fn.is_empty() {
-            let iter_func = self
-                .resolve_iterator_fn(iter_fn)
-                .unwrap_or_else(|| get_intrinsic(&self.module, iter_fn));
-            let result = self
+        // Step 2: An Iterable gives its iterator. An Iterator is its own (a
+        // runtime handle, or a user struct passed to its `next` by value).
+        let iter_val = match iter_fn {
+            Some(iter_fn) => self
                 .builder
-                .build_call(iter_func, &[collection_val.into()], "iter")
+                .build_call(
+                    get_intrinsic(&self.module, iter_fn),
+                    &[collection_val.into()],
+                    "iter",
+                )
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
-                .ok_or_else(|| format!("{} returned void", iter_fn))?;
-            result
-        } else {
-            // Direct Iterator: the expression IS the iterator (a runtime
-            // handle, or a user struct passed to its `next` by value).
-            collection_val
+                .ok_or_else(|| format!("{} returned void", iter_fn))?,
+            None => collection_val,
         };
 
         // Step 3: Store iterator in alloca.
@@ -5137,13 +5103,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(iter_ty, iter_alloca, "iter_loaded")
             .map_err(|e| e.to_string())?;
 
-        // Call Iterator__next__TypeName(iter) or mesh_*_iter_next(iter).
-        let next_func = self
-            .resolve_iterator_fn(next_fn)
-            .unwrap_or_else(|| get_intrinsic(&self.module, next_fn));
         let next_value = self
             .builder
-            .build_call(next_func, &[iter_loaded.into()], "next_result")
+            .build_call(
+                get_intrinsic(&self.module, next_fn),
+                &[iter_loaded.into()],
+                "next_result",
+            )
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .basic()

@@ -535,8 +535,7 @@ pub enum MirExpr {
     ForInIterator {
         /// Loop variable name.
         var: String,
-        /// The iterator expression (result of calling iter() on the collection,
-        /// or the collection itself if it directly implements Iterator).
+        /// The Iterable, or the Iterator itself.
         iterator: Box<MirExpr>,
         /// Optional filter expression (`when condition`).
         filter: Option<Box<MirExpr>>,
@@ -546,11 +545,12 @@ pub enum MirExpr {
         elem_ty: MirType,
         /// Type of body expression (for list builder element conversion).
         body_ty: MirType,
-        /// Mangled name for the next() function: "Iterator__next__TypeName".
+        /// The function that advances the iterator: a user impl's
+        /// `Iterator__next__TypeName`, or the runtime's generic `next`.
         next_fn: String,
-        /// Mangled name for the iter() function (if Iterable): "Iterable__iter__TypeName".
-        /// Empty string if the type directly implements Iterator (no iter() call needed).
-        iter_fn: String,
+        /// The function that gives an Iterable's iterator (`iter()`); none
+        /// when the value is its own iterator.
+        iter_fn: Option<String>,
         /// Result type (Ptr for comprehension semantics -- list of body results).
         ty: MirType,
     },
