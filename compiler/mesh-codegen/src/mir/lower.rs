@@ -5619,7 +5619,7 @@ impl<'a> Lowerer<'a> {
             }
             // Row: only via explicit deriving(Row), never auto-derived
             if derive_list.iter().any(|t| t == "Row") {
-                self.generate_from_row_struct(&name, &fields);
+                self.generate_from_row_struct(&name, &typed_fields);
             }
 
             // Schema: only via explicit deriving(Schema), never auto-derived
@@ -6233,463 +6233,136 @@ impl<'a> Lowerer<'a> {
         result
     }
 
-    /// Generate a `FromRow__from_row__StructName` MIR function that extracts
-    /// struct fields from a Map<String, String> (database row).
-    ///
-    /// Takes a Ptr (Map<String, String>) parameter and returns a Ptr (MeshResult).
-    /// For each field: calls mesh_row_from_row_get to get the column value,
-    /// then parses it to the correct type (Int/Float/Bool/String/Option<T>).
-    /// Option fields receive None for missing columns and empty strings (NULL).
-    fn generate_from_row_struct(&mut self, name: &str, fields: &[(String, MirType)]) {
-        let mangled = format!("FromRow__from_row__{}", name);
-        let struct_ty = MirType::Struct(name.to_string());
-
-        let row_var = MirExpr::Var("row".to_string(), MirType::Ptr);
-
-        let is_ok_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Int));
-        let unwrap_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-        let alloc_result_ty =
-            MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr));
-        let row_get_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
-        let str_len_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Int));
-
-        // Build the innermost expression: alloc_result(0, struct_ptr)
-        let field_bindings: Vec<(String, MirExpr)> = fields
-            .iter()
-            .enumerate()
-            .map(|(i, (fname, fty))| {
-                // For Option fields at MIR level, they're SumType("Option_X") but stored as Ptr
-                let var_ty = if matches!(fty, MirType::SumType(ref s) if s.starts_with("Option_")) {
-                    MirType::Ptr
-                } else {
-                    fty.clone()
-                };
-                (
-                    fname.clone(),
-                    MirExpr::Var(format!("__field_{}", i), var_ty),
-                )
-            })
-            .collect();
-
+    /// Derived `from_row` for the struct `name`: each field from the row's
+    /// (a `Map<String, String>`'s) column of its name, parsed as its type.
+    /// An `Option` field is `None` for a missing column or an empty value
+    /// (SQL NULL); a missing column of any other field is an error.
+    fn generate_from_row_struct(&mut self, name: &str, fields: &[(String, Ty)]) {
+        let mangled = format!("FromRow__from_row__{name}");
+        self.known_functions.insert(
+            mangled.clone(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
         let struct_lit = MirExpr::StructLit {
             name: name.to_string(),
-            fields: field_bindings,
-            ty: struct_ty.clone(),
+            fields: fields
+                .iter()
+                .enumerate()
+                .map(|(i, (field, ty))| {
+                    let value = MirExpr::Var(format!("__f_{i}"), self.binding_type(ty));
+                    (field.clone(), value)
+                })
+                .collect(),
+            ty: MirType::Struct(name.to_string()),
         };
-
-        let ok_result = MirExpr::Call {
-            func: Box::new(MirExpr::Var(
-                "mesh_alloc_result".to_string(),
-                alloc_result_ty.clone(),
-            )),
-            args: vec![MirExpr::IntLit(0, MirType::Int), struct_lit],
-            ty: MirType::Ptr,
-        };
-
-        // Wrap each field extraction around the inner expression, from last to first.
-        let mut body = ok_result;
-
-        for (i, (field_name, field_ty)) in fields.iter().enumerate().rev() {
-            let is_option = matches!(field_ty, MirType::SumType(ref s) if s.starts_with("Option_"));
-
-            let key_lit = MirExpr::StringLit(field_name.clone(), MirType::String);
-            let get_result_var = format!("__get_res_{}", i);
-            let col_str_var = format!("__col_str_{}", i);
-            let val_var = format!("__field_{}", i);
-
-            // mesh_row_from_row_get(row, "field_name")
-            let get_call = MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_row_from_row_get".to_string(),
-                    row_get_ty.clone(),
+        let row = MirExpr::Var("row".to_string(), MirType::Ptr);
+        let mut body = Self::json_ok(struct_lit);
+        for (i, (field, ty)) in fields.iter().enumerate().rev() {
+            let (got, text, parsed) = (
+                self.json_fresh("column"),
+                self.json_fresh("text"),
+                self.json_fresh("parsed"),
+            );
+            let column = Self::json_call(
+                "mesh_row_from_row_get",
+                vec![
+                    row.clone(),
+                    MirExpr::StringLit(field.clone(), MirType::String),
+                ],
+            );
+            let decode = MirExpr::Let {
+                name: text.clone(),
+                ty: MirType::String,
+                value: Box::new(Self::json_call(
+                    "mesh_result_unwrap",
+                    vec![MirExpr::Var(got.clone(), MirType::Ptr)],
                 )),
-                args: vec![row_var.clone(), key_lit],
-                ty: MirType::Ptr,
+                body: Box::new(self.row_decode(&text, ty)),
             };
-
-            if is_option {
-                // Option field: missing column -> Ok(None), empty string -> Ok(None)
-                let inner_type_str = if let MirType::SumType(ref s) = field_ty {
-                    s.strip_prefix("Option_").unwrap_or("String")
-                } else {
-                    "String"
-                };
-                let option_sum_name = if let MirType::SumType(ref s) = field_ty {
-                    s.clone()
-                } else {
-                    format!("Option_{}", inner_type_str)
-                };
-
-                // None variant: ConstructVariant with no fields
-                let none_expr = MirExpr::ConstructVariant {
-                    type_name: option_sum_name.clone(),
-                    variant: "None".to_string(),
-                    fields: vec![],
-                    ty: MirType::SumType(option_sum_name.clone()),
-                };
-
-                // Ok(None) result
-                let ok_none = MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_alloc_result".to_string(),
-                        alloc_result_ty.clone(),
-                    )),
-                    args: vec![MirExpr::IntLit(0, MirType::Int), none_expr.clone()],
+            let value = match ty_head(ty) {
+                // A missing column is NULL too.
+                Some(("Option", _)) => MirExpr::Let {
+                    name: got.clone(),
                     ty: MirType::Ptr,
-                };
-
-                // Build the "column present" branch: check empty string, parse inner type
-                let some_branch = self.emit_from_row_option_some(
-                    &col_str_var,
-                    inner_type_str,
-                    &option_sum_name,
-                    &alloc_result_ty,
-                    &is_ok_ty,
-                    &unwrap_ty,
-                    &str_len_ty,
-                    i,
-                );
-
-                // Check string length == 0 (NULL) -> Ok(None), else parse
-                let null_check = MirExpr::Let {
-                    name: col_str_var.clone(),
-                    ty: MirType::Ptr,
-                    value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var(
-                            "mesh_result_unwrap".to_string(),
-                            unwrap_ty.clone(),
+                    value: Box::new(column),
+                    body: Box::new(MirExpr::If {
+                        cond: Box::new(Self::call_named(
+                            "mesh_result_is_ok",
+                            vec![MirType::Ptr],
+                            vec![MirExpr::Var(got, MirType::Ptr)],
+                            MirType::Int,
                         )),
-                        args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
+                        then_body: Box::new(decode),
+                        else_body: Box::new(Self::json_ok(self.option_variant(ty, None))),
                         ty: MirType::Ptr,
                     }),
-                    body: Box::new(MirExpr::If {
-                        cond: Box::new(MirExpr::BinOp {
-                            op: BinOp::Eq,
-                            lhs: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_string_length".to_string(),
-                                    str_len_ty.clone(),
-                                )),
-                                args: vec![MirExpr::Var(col_str_var.clone(), MirType::Ptr)],
-                                ty: MirType::Int,
-                            }),
-                            rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
-                            ty: MirType::Bool,
-                        }),
-                        then_body: Box::new(ok_none.clone()),
-                        else_body: Box::new(some_branch),
-                        ty: MirType::Ptr,
-                    }),
-                };
-
-                // Clone body before it's consumed: Option needs it in two branches
-                // (get-succeeded path and missing-column path both continue to body)
-                let body_for_missing = body.clone();
-
-                // Outer: if get succeeded, check null; if get failed (missing column), Ok(None)
-                let outer_result_var = format!("__opt_res_{}", i);
-                body = MirExpr::Let {
-                    name: get_result_var.clone(),
-                    ty: MirType::Ptr,
-                    value: Box::new(get_call),
-                    body: Box::new(MirExpr::If {
-                        cond: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                "mesh_result_is_ok".to_string(),
-                                is_ok_ty.clone(),
-                            )),
-                            args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
-                            ty: MirType::Int,
-                        }),
-                        then_body: Box::new(MirExpr::Let {
-                            name: outer_result_var.clone(),
-                            ty: MirType::Ptr,
-                            value: Box::new(null_check),
-                            body: Box::new(MirExpr::If {
-                                cond: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_result_is_ok".to_string(),
-                                        is_ok_ty.clone(),
-                                    )),
-                                    args: vec![MirExpr::Var(
-                                        outer_result_var.clone(),
-                                        MirType::Ptr,
-                                    )],
-                                    ty: MirType::Int,
-                                }),
-                                then_body: Box::new(MirExpr::Let {
-                                    name: val_var.clone(),
-                                    ty: MirType::Ptr,
-                                    value: Box::new(MirExpr::Call {
-                                        func: Box::new(MirExpr::Var(
-                                            "mesh_result_unwrap".to_string(),
-                                            unwrap_ty.clone(),
-                                        )),
-                                        args: vec![MirExpr::Var(
-                                            outer_result_var.clone(),
-                                            MirType::Ptr,
-                                        )],
-                                        ty: MirType::Ptr,
-                                    }),
-                                    body: Box::new(body),
-                                }),
-                                else_body: Box::new(MirExpr::Var(outer_result_var, MirType::Ptr)),
-                                ty: MirType::Ptr,
-                            }),
-                        }),
-                        // Missing column for Option -> assign None and continue
-                        else_body: Box::new(MirExpr::Let {
-                            name: val_var,
-                            ty: MirType::Ptr,
-                            value: Box::new(none_expr),
-                            body: Box::new(body_for_missing),
-                        }),
-                        ty: MirType::Ptr,
-                    }),
-                };
-            } else {
-                // Non-Option field: missing column is an error
-
-                // For String type: no parsing needed, column value used directly
-                let is_string = matches!(field_ty, MirType::String);
-
-                if is_string {
-                    // String: get column value, use directly
-                    body = MirExpr::Let {
-                        name: get_result_var.clone(),
-                        ty: MirType::Ptr,
-                        value: Box::new(get_call),
-                        body: Box::new(MirExpr::If {
-                            cond: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_result_is_ok".to_string(),
-                                    is_ok_ty.clone(),
-                                )),
-                                args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
-                                ty: MirType::Int,
-                            }),
-                            then_body: Box::new(MirExpr::Let {
-                                name: val_var,
-                                ty: MirType::String,
-                                value: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_result_unwrap".to_string(),
-                                        unwrap_ty.clone(),
-                                    )),
-                                    args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
-                                    ty: MirType::Ptr,
-                                }),
-                                body: Box::new(body),
-                            }),
-                            else_body: Box::new(MirExpr::Var(get_result_var, MirType::Ptr)),
-                            ty: MirType::Ptr,
-                        }),
-                    };
-                } else {
-                    // Int, Float, Bool: get column value, then parse
-                    let parse_fn = match field_ty {
-                        MirType::Int => "mesh_row_parse_int",
-                        MirType::Float => "mesh_row_parse_float",
-                        MirType::Bool => "mesh_row_parse_bool",
-                        _ => "mesh_row_parse_int", // fallback
-                    };
-                    let parse_fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-                    let parse_result_var = format!("__parse_res_{}", i);
-
-                    // Inner: parse the column string
-                    let inner_parse = MirExpr::Let {
-                        name: col_str_var.clone(),
-                        ty: MirType::Ptr,
-                        value: Box::new(MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                "mesh_result_unwrap".to_string(),
-                                unwrap_ty.clone(),
-                            )),
-                            args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
-                            ty: MirType::Ptr,
-                        }),
-                        body: Box::new(MirExpr::Let {
-                            name: parse_result_var.clone(),
-                            ty: MirType::Ptr,
-                            value: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var(parse_fn.to_string(), parse_fn_ty)),
-                                args: vec![MirExpr::Var(col_str_var, MirType::Ptr)],
-                                ty: MirType::Ptr,
-                            }),
-                            body: Box::new(MirExpr::If {
-                                cond: Box::new(MirExpr::Call {
-                                    func: Box::new(MirExpr::Var(
-                                        "mesh_result_is_ok".to_string(),
-                                        is_ok_ty.clone(),
-                                    )),
-                                    args: vec![MirExpr::Var(
-                                        parse_result_var.clone(),
-                                        MirType::Ptr,
-                                    )],
-                                    ty: MirType::Int,
-                                }),
-                                then_body: Box::new(MirExpr::Let {
-                                    name: val_var,
-                                    ty: field_ty.clone(),
-                                    value: Box::new(MirExpr::Call {
-                                        func: Box::new(MirExpr::Var(
-                                            "mesh_result_unwrap".to_string(),
-                                            unwrap_ty.clone(),
-                                        )),
-                                        args: vec![MirExpr::Var(
-                                            parse_result_var.clone(),
-                                            MirType::Ptr,
-                                        )],
-                                        ty: MirType::Ptr,
-                                    }),
-                                    body: Box::new(body),
-                                }),
-                                else_body: Box::new(MirExpr::Var(parse_result_var, MirType::Ptr)),
-                                ty: MirType::Ptr,
-                            }),
-                        }),
-                    };
-
-                    // Outer: check if row_get succeeded
-                    body = MirExpr::Let {
-                        name: get_result_var.clone(),
-                        ty: MirType::Ptr,
-                        value: Box::new(get_call),
-                        body: Box::new(MirExpr::If {
-                            cond: Box::new(MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "mesh_result_is_ok".to_string(),
-                                    is_ok_ty.clone(),
-                                )),
-                                args: vec![MirExpr::Var(get_result_var.clone(), MirType::Ptr)],
-                                ty: MirType::Int,
-                            }),
-                            then_body: Box::new(inner_parse),
-                            else_body: Box::new(MirExpr::Var(get_result_var, MirType::Ptr)),
-                            ty: MirType::Ptr,
-                        }),
-                    };
-                }
-            }
+                },
+                _ => Self::json_then(&got, column, decode),
+            };
+            let bound = self.json_bind(&format!("__f_{i}"), &parsed, ty, body);
+            body = Self::json_then(&parsed, value, bound);
         }
-
-        let func = MirFunction {
-            name: mangled.clone(),
-            params: vec![("row".to_string(), MirType::Ptr)],
-            return_type: MirType::Ptr,
+        self.push_helper_fn(
+            &mangled,
+            vec![("row".to_string(), MirType::Ptr)],
+            MirType::Ptr,
             body,
-            is_closure_fn: false,
-            captures: vec![],
-            has_tail_calls: false,
-        };
-
-        self.functions.push(func);
-        self.known_functions.insert(
-            mangled,
-            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
     }
 
-    /// Emit the "Some" branch for an Option field in from_row.
-    /// When the column value is non-empty, parse the inner type and wrap in Some.
-    fn emit_from_row_option_some(
-        &self,
-        col_str_var: &str,
-        inner_type_str: &str,
-        option_sum_name: &str,
-        alloc_result_ty: &MirType,
-        is_ok_ty: &MirType,
-        unwrap_ty: &MirType,
-        _str_len_ty: &MirType,
-        field_idx: usize,
-    ) -> MirExpr {
-        let col_str = MirExpr::Var(col_str_var.to_string(), MirType::Ptr);
-
-        // For String: wrap directly in Some
-        if inner_type_str == "String" {
-            let some_expr = MirExpr::ConstructVariant {
-                type_name: option_sum_name.to_string(),
-                variant: "Some".to_string(),
-                fields: vec![col_str],
-                ty: MirType::SumType(option_sum_name.to_string()),
-            };
-            return MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_alloc_result".to_string(),
-                    alloc_result_ty.clone(),
-                )),
-                args: vec![MirExpr::IntLit(0, MirType::Int), some_expr],
-                ty: MirType::Ptr,
-            };
-        }
-
-        // For Int/Float/Bool: parse, then wrap in Some
-        let parse_fn = match inner_type_str {
-            "Int" => "mesh_row_parse_int",
-            "Float" => "mesh_row_parse_float",
-            "Bool" => "mesh_row_parse_bool",
-            _ => "mesh_row_parse_int",
-        };
-        let parse_fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr));
-        let parse_var = format!("__opt_parse_{}", field_idx);
-
-        let inner_ty = match inner_type_str {
-            "Int" => MirType::Int,
-            "Float" => MirType::Float,
-            "Bool" => MirType::Bool,
-            _ => MirType::Ptr,
-        };
-
-        let parsed_val_var = format!("__opt_val_{}", field_idx);
-
-        MirExpr::Let {
-            name: parse_var.clone(),
-            ty: MirType::Ptr,
-            value: Box::new(MirExpr::Call {
-                func: Box::new(MirExpr::Var(parse_fn.to_string(), parse_fn_ty)),
-                args: vec![col_str],
-                ty: MirType::Ptr,
-            }),
-            body: Box::new(MirExpr::If {
-                cond: Box::new(MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_result_is_ok".to_string(),
-                        is_ok_ty.clone(),
-                    )),
-                    args: vec![MirExpr::Var(parse_var.clone(), MirType::Ptr)],
-                    ty: MirType::Int,
-                }),
-                then_body: Box::new(MirExpr::Let {
-                    name: parsed_val_var.clone(),
-                    ty: inner_ty.clone(),
-                    value: Box::new(MirExpr::Call {
-                        func: Box::new(MirExpr::Var(
-                            "mesh_result_unwrap".to_string(),
-                            unwrap_ty.clone(),
-                        )),
-                        args: vec![MirExpr::Var(parse_var.clone(), MirType::Ptr)],
-                        ty: MirType::Ptr,
+    /// The column text in `text` parsed as a `ty` (an `Int`, `Float`,
+    /// `Bool`, `String`, or an `Option` of one: the type checker allows no
+    /// other field in a row), as a `*mut MeshResult`. An empty text is an
+    /// `Option`'s `None`.
+    fn row_decode(&mut self, text: &str, ty: &Ty) -> MirExpr {
+        let text_var = MirExpr::Var(text.to_string(), MirType::String);
+        let parse = match ty_head(ty) {
+            Some(("Int", _)) => "mesh_row_parse_int",
+            Some(("Float", _)) => "mesh_row_parse_float",
+            Some(("Bool", _)) => "mesh_row_parse_bool",
+            Some(("Option", [inner])) => {
+                let decoded = self.json_fresh("decoded");
+                let some = self.option_variant(ty, Some(self.json_payload(&decoded, inner)));
+                let present =
+                    Self::json_then(&decoded, self.row_decode(text, inner), Self::json_ok(some));
+                let length = Self::call_named(
+                    "mesh_string_length",
+                    vec![MirType::String],
+                    vec![text_var],
+                    MirType::Int,
+                );
+                return MirExpr::If {
+                    cond: Box::new(MirExpr::BinOp {
+                        op: BinOp::Eq,
+                        lhs: Box::new(length),
+                        rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
+                        ty: MirType::Bool,
                     }),
-                    body: Box::new({
-                        let some_expr = MirExpr::ConstructVariant {
-                            type_name: option_sum_name.to_string(),
-                            variant: "Some".to_string(),
-                            fields: vec![MirExpr::Var(parsed_val_var, inner_ty)],
-                            ty: MirType::SumType(option_sum_name.to_string()),
-                        };
-                        MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                "mesh_alloc_result".to_string(),
-                                alloc_result_ty.clone(),
-                            )),
-                            args: vec![MirExpr::IntLit(0, MirType::Int), some_expr],
-                            ty: MirType::Ptr,
-                        }
-                    }),
-                }),
-                else_body: Box::new(MirExpr::Var(parse_var, MirType::Ptr)),
-                ty: MirType::Ptr,
-            }),
+                    then_body: Box::new(Self::json_ok(self.option_variant(ty, None))),
+                    else_body: Box::new(present),
+                    ty: MirType::Ptr,
+                };
+            }
+            _ => return Self::json_ok(text_var),
+        };
+        Self::json_call(parse, vec![text_var])
+    }
+
+    /// `Some(value)`, or `None` without one, of the `Option` type `ty`.
+    fn option_variant(&self, ty: &Ty, value: Option<MirExpr>) -> MirExpr {
+        let option = self.binding_type(ty);
+        let MirType::SumType(type_name) = option.clone() else {
+            unreachable!("an Option is a sum type")
+        };
+        let (variant, fields) = match value {
+            Some(value) => ("Some", vec![value]),
+            None => ("None", vec![]),
+        };
+        MirExpr::ConstructVariant {
+            type_name,
+            variant: variant.to_string(),
+            fields,
+            ty: option,
         }
     }
 

@@ -650,3 +650,51 @@ end
     // 2 + 1 + 0 + 0 + 1 from the loops' results.
     assert_eq!(out, "19875\nclean\n");
 }
+
+/// A derived `from_row` fills `Option` fields with values that read back:
+/// `Some` of each parsed type, `None` for a missing or empty column, and an
+/// `Option` of an `Option`. The fields held the address of the option where
+/// the option itself belongs, so reading one panicked on its tag.
+#[test]
+fn row_option_fields_hold_their_values() {
+    let out = compile_and_run(
+        r##"struct Rec do
+  i :: Option<Int>
+  f :: Option<Float>
+  b :: Option<Bool>
+  s :: Option<String>
+end deriving(Row)
+
+struct Deep do
+  x :: Option<Option<Int>>
+end deriving(Row)
+
+fn show(row :: Map<String, String>) -> String do
+  case Rec.from_row(row) do
+    Ok(r) -> "${r.i} ${r.f} ${r.b} ${r.s}"
+    Err(e) -> "err ${e}"
+  end
+end
+
+fn main() do
+  let row = Map.put(Map.put(Map.new(), "i", "3"), "f", "2.5")
+  println(show(Map.put(Map.put(row, "b", "true"), "s", "hi")))
+  println(show(Map.put(Map.new(), "f", "")))
+  println(show(Map.put(Map.new(), "f", "x")))
+  case Deep.from_row(Map.put(Map.new(), "x", "5")) do
+    Ok(d) -> case d.x do
+      Some(Some(n)) -> println("deep ${n}")
+      Some(None) -> println("deep some none")
+      None -> println("deep none")
+    end
+    Err(e) -> println("err ${e}")
+  end
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "Some(3) Some(2.5) Some(true) Some(hi)\nNone None None None\n\
+         err cannot parse 'x' as Float\ndeep 5\n"
+    );
+}
