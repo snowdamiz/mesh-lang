@@ -9153,7 +9153,9 @@ fn is_named_type(type_registry: &TypeRegistry, name: &str) -> bool {
 
 /// A struct or sum type's name names no value: it is the base of a
 /// qualified name (`Point.origin()`, `Shape.Circle`) or an error. It type
-/// checked as a value of the type, and code generation failed on it.
+/// checked as a value of the type, and code generation failed on it. An
+/// alias's name is not even such a base (`Id.parse` for `type Id = Int`):
+/// it was "undefined variable".
 fn reject_type_as_value(
     ctx: &mut InferCtx,
     env: &TypeEnv,
@@ -9169,7 +9171,9 @@ fn reject_type_as_value(
         .and_then(FieldAccess::cast)
         .and_then(|fa| fa.base())
         .is_some_and(|base| base.syntax() == name_ref.syntax());
-    if is_base || env.is_local(&name) || !is_named_type(type_registry, &name) {
+    let is_type = type_registry.lookup_alias(&name).is_some()
+        || (!is_base && is_named_type(type_registry, &name));
+    if !is_type || env.is_local(&name) {
         return Ok(());
     }
     let err = TypeError::TypeNotValue {

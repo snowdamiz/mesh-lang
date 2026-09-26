@@ -1004,6 +1004,32 @@ end
     );
 }
 
+/// An alias's name is a type's, not a value's, alone or before a dot: it
+/// was "undefined variable".
+#[test]
+fn an_alias_names_no_value() {
+    assert_eq!(
+        errors(
+            r#"
+type Shade = Int
+
+fn decoded() do
+  Shade.from_json("1")
+end
+
+fn alone() do
+  let s = Shade
+  s
+end
+"#
+        ),
+        [
+            "`Shade` is a type, not a value",
+            "`Shade` is a type, not a value",
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the
