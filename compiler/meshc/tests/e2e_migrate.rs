@@ -157,6 +157,20 @@ fn migrations_apply_report_and_roll_back() {
     assert!(text.contains("[ ] 29990101000003_fails"), "{text}");
     std::fs::remove_file(project.join("migrations/29990101000003_fails.mpl")).unwrap();
 
+    // One whose program exits on its own, before reporting anything.
+    write_migration(
+        project,
+        "29990101000003_exits.mpl",
+        "Process.exit(3)\n  Ok(0)",
+        "Ok(0)",
+    );
+    let (ok, text) = run(&["up"]);
+    assert!(
+        !ok && text.contains("Migration 29990101000003_exits exited with non-zero status"),
+        "{text}"
+    );
+    std::fs::remove_file(project.join("migrations/29990101000003_exits.mpl")).unwrap();
+
     // One that does not compile names itself.
     write_migration(
         project,
