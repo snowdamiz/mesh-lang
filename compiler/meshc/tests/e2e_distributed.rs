@@ -124,6 +124,12 @@ const HUB: &str = r#"actor echo() do
   echo()
 end
 
+actor relay(to :: Pid<String>) do
+  receive do
+    text -> send(to, "relayed " <> text)
+  end
+end
+
 actor greeter() do
   receive do
     (reply_to, name, tags) -> send(reply_to, "hello #{name}, #{List.length(tags)} tags: #{tags}")
@@ -192,8 +198,9 @@ end
 }
 
 /// A message's strings, literals among them, and lists cross to the other
-/// node, sent at once or by a timer, and so does a pid in it, which the
-/// other node can answer at. Code cannot cross: a send of a closure fails.
+/// node, sent at once or by a timer, and so does a pid in it, or in a remote
+/// spawn's arguments, which the other node can answer at. Code cannot
+/// cross: a send of a closure fails.
 #[test]
 fn nodes_exchange_heap_values_and_answer_the_pids_they_carry() {
     let spoke = r#"actor asker() do
@@ -206,6 +213,17 @@ fn nodes_exchange_heap_values_and_answer_the_pids_they_carry() {
   Timer.send_after(Global.whereis("greeter"), 10, (self(), "timer", ["blue"]))
   receive do
     reply -> println("reply=#{reply}")
+  end
+  let relay = Node.spawn("HUB", relay, self())
+  send(relay, "via spawn")
+  receive do
+    reply -> println("reply=#{reply}")
+  end
+end
+
+actor relay(to :: Pid<String>) do
+  receive do
+    text -> send(to, "relayed " <> text)
   end
 end
 
@@ -233,6 +251,7 @@ end
             "closure_send=6",
             "reply=hello spoke, 2 tags: [red, green]",
             "reply=hello timer, 1 tags: [blue]",
+            "reply=relayed via spawn",
         ],
         &hub,
     );

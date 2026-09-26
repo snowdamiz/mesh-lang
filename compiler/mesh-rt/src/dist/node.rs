@@ -1750,25 +1750,33 @@ fn decode_dist_send(
     Vec<u8>,
     crate::actor::msg_shape::Captured,
 )> {
-    use crate::actor::process::ProcessId;
     let target = own_pid(u64::from_le_bytes(msg.get(1..9)?.try_into().ok()?));
     let len = usize::try_from(u64::from_le_bytes(msg.get(9..17)?.try_into().ok()?)).ok()?;
     let end = 17usize.checked_add(len)?;
     let mut data = msg.get(17..end)?.to_vec();
     let (mut captured, nodes) = crate::actor::msg_shape::Captured::decode(&msg[end..], len)?;
-    let state = node_state()?;
     let mut nodes = nodes.into_iter();
     captured.map_pids(&mut data, |local| {
-        let local = ProcessId(local).local_id();
-        match nodes.next().unwrap_or_default() {
-            node if node.is_empty() => 0,
-            node if node == state.name => local,
-            node => state.sessions.read().get(&node).map_or(0, |session| {
-                ProcessId::from_remote(session.node_id, session.remote_creation, local).as_u64()
-            }),
-        }
+        pid_on_node(&nodes.next().unwrap_or_default(), local)
     });
     Some((target, data, captured))
+}
+
+/// The pid, as this node addresses it, of process `local` on the node named
+/// `node`: 0 for no node, and for one this node is not connected to.
+fn pid_on_node(node: &str, local: u64) -> u64 {
+    use crate::actor::process::ProcessId;
+    let local = ProcessId(local).local_id();
+    let Some(state) = node_state() else {
+        return 0;
+    };
+    match node {
+        "" => 0,
+        _ if node == state.name => local,
+        _ => state.sessions.read().get(node).map_or(0, |session| {
+            ProcessId::from_remote(session.node_id, session.remote_creation, local).as_u64()
+        }),
+    }
 }
 
 /// The session to the node `pid` lives on, if it is connected.
@@ -7168,8 +7176,16 @@ fn encode_remote_spawn_args(args_data: &[u8], arg_tags: &[u8]) -> Result<Vec<u8>
     for (raw_bytes, tag) in args_data.chunks_exact(8).zip(arg_tags.iter().copied()) {
         let raw = u64::from_le_bytes(raw_bytes.try_into().unwrap());
         match tag {
-            REMOTE_SPAWN_ARG_INT | REMOTE_SPAWN_ARG_FLOAT | REMOTE_SPAWN_ARG_PID => {
+            REMOTE_SPAWN_ARG_INT | REMOTE_SPAWN_ARG_FLOAT => {
                 payload.extend_from_slice(&raw.to_le_bytes());
+            }
+            REMOTE_SPAWN_ARG_PID => {
+                // Its local id, and the node it is on: `[u64][u16 len][name]`.
+                let pid = crate::actor::process::ProcessId(raw);
+                let node = pid_node_name(pid).unwrap_or_default();
+                payload.extend_from_slice(&pid.local_id().to_le_bytes());
+                payload.extend_from_slice(&(node.len() as u16).to_le_bytes());
+                payload.extend_from_slice(node.as_bytes());
             }
             REMOTE_SPAWN_ARG_BOOL => {
                 payload.push((raw != 0) as u8);
@@ -7257,12 +7273,24 @@ fn decode_remote_spawn_args(data: &[u8], expected_tags: &[u8]) -> Result<Vec<u64
 
     for tag in arg_tags.iter().copied() {
         match tag {
-            REMOTE_SPAWN_ARG_INT | REMOTE_SPAWN_ARG_FLOAT | REMOTE_SPAWN_ARG_PID => {
+            REMOTE_SPAWN_ARG_INT | REMOTE_SPAWN_ARG_FLOAT => {
                 if pos + 8 > data.len() {
                     return Err("remote_spawn_arg_value_truncated".to_string());
                 }
                 values.push(u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap()));
                 pos += 8;
+            }
+            REMOTE_SPAWN_ARG_PID => {
+                let local = data.get(pos..pos + 8);
+                pos += 8;
+                let node = crate::dist::global::decode_str(data, &mut pos);
+                let (Some(local), Some(node)) = (local, node) else {
+                    return Err("remote_spawn_arg_pid_truncated".to_string());
+                };
+                values.push(pid_on_node(
+                    &node,
+                    u64::from_le_bytes(local.try_into().unwrap()),
+                ));
             }
             REMOTE_SPAWN_ARG_BOOL => {
                 if pos + 1 > data.len() {
@@ -10989,6 +11017,22 @@ mod tests {
         assert_eq!(args.len(), 1);
         let decoded = unsafe { &*(args[0] as *const crate::string::MeshString) };
         assert_eq!(unsafe { decoded.as_bytes() }, b"hello");
+    }
+
+    /// A pid argument goes as its local id and the name of its node; one
+    /// whose node is unknown here, or whose bytes are cut short, is none.
+    #[test]
+    fn a_remote_spawn_pid_argument_names_its_node() {
+        let tags = [REMOTE_SPAWN_ARG_PID];
+        let unknown = crate::actor::process::ProcessId::from_remote(9, 1, 5);
+        let encoded = encode_remote_spawn_args(&unknown.as_u64().to_le_bytes(), &tags).unwrap();
+        assert_eq!(&encoded[3..11], &5u64.to_le_bytes(), "the local id");
+        assert_eq!(&encoded[11..], &0u16.to_le_bytes(), "and no node");
+        assert_eq!(decode_remote_spawn_args(&encoded, &tags), Ok(vec![0]));
+        assert_eq!(
+            decode_remote_spawn_args(&encoded[..12], &tags),
+            Err("remote_spawn_arg_pid_truncated".to_string())
+        );
     }
 
     #[test]
