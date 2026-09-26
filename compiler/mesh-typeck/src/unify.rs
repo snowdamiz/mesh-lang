@@ -74,6 +74,7 @@ fn first_of(ty: &Ty, vars: &[TyVar]) -> Option<TyVar> {
 /// All type inference happens through this context. It creates fresh type
 /// variables, unifies types, tracks levels for generalization, and collects
 /// errors.
+#[derive(Default)]
 pub struct InferCtx {
     /// The union-find unification table (ena).
     table: InPlaceUnificationTable<TyVar>,
@@ -211,52 +212,7 @@ pub struct InferCtx {
 impl InferCtx {
     /// Create a new, empty inference context.
     pub fn new() -> Self {
-        InferCtx {
-            table: InPlaceUnificationTable::new(),
-            current_level: 0,
-            var_levels: Vec::new(),
-            errors: Vec::new(),
-            warnings: Vec::new(),
-            loop_depth: 0,
-            current_interface: None,
-            qualified_modules: FxHashMap::default(),
-            imported_functions: Vec::new(),
-            imported_function_origins: FxHashMap::default(),
-            qualified_module_origins: FxHashMap::default(),
-            project_modules: Vec::new(),
-            module_variants: FxHashMap::default(),
-            qualified_module_private_names: FxHashMap::default(),
-            top_level_function_visibility: FxHashMap::default(),
-            clustered_route_wrappers: FxHashMap::default(),
-            consumed_clustered_route_wrappers: FxHashSet::default(),
-            discarded_callback_results: FxHashSet::default(),
-            clustered_route_replication_counts: FxHashMap::default(),
-            imported_service_methods: FxHashMap::default(),
-            local_service_exports: FxHashMap::default(),
-            current_module: None,
-            test_builtins: false,
-            fn_return_type_stack: Vec::new(),
-            fn_returned_types: Vec::new(),
-            where_bounds: Vec::new(),
-            rigid_params: Vec::new(),
-            assoc_projections: Vec::new(),
-            scheme_requirements: FxHashMap::default(),
-            projection_requirements: Vec::new(),
-            json_types: Default::default(),
-            local_variants: Default::default(),
-            registered_items: Default::default(),
-            unknown_types: Default::default(),
-            operand_traits: Vec::new(),
-            pending_fields: Vec::new(),
-            concat_operands: Vec::new(),
-            default_calls: Vec::new(),
-            actor_message_types: Vec::new(),
-            impl_choices: Vec::new(),
-            trait_method_fns: FxHashSet::default(),
-            overloaded_fn_names: FxHashSet::default(),
-            overloaded_call_targets: FxHashMap::default(),
-            expr_spans: Vec::new(),
-        }
+        Self::default()
     }
 
     /// Enter a loop body -- increments loop_depth.
@@ -317,24 +273,18 @@ impl InferCtx {
 
     /// Create a fresh type variable at the current level.
     pub fn fresh_var(&mut self) -> Ty {
+        // The table numbers its keys in order, as `var_levels` holds them.
         let var = self.table.new_key(None);
-        // Ensure var_levels is large enough.
-        while self.var_levels.len() <= var.0 as usize {
-            self.var_levels.push(0);
-        }
-        self.var_levels[var.0 as usize] = self.current_level;
+        self.var_levels.push(self.current_level);
         Ty::Var(var)
     }
 
     /// The `let` level `v` was created at, or lowered to.
     fn level_of(&self, v: TyVar) -> u32 {
-        self.var_levels.get(v.0 as usize).copied().unwrap_or(0)
+        self.var_levels[v.0 as usize]
     }
 
     fn set_level(&mut self, v: TyVar, level: u32) {
-        while self.var_levels.len() <= v.0 as usize {
-            self.var_levels.push(0);
-        }
         self.var_levels[v.0 as usize] = level;
     }
 
@@ -359,9 +309,7 @@ impl InferCtx {
     pub fn fresh_var_beside(&mut self, anchor: &Ty) -> Ty {
         let fresh = self.fresh_var();
         if let (Ty::Var(anchor), Ty::Var(var)) = (self.resolve(anchor.clone()), &fresh) {
-            if let Some(&level) = self.var_levels.get(anchor.0 as usize) {
-                self.var_levels[var.0 as usize] = level;
-            }
+            self.set_level(*var, self.level_of(anchor));
         }
         fresh
     }
@@ -758,11 +706,6 @@ impl InferCtx {
         self.current_level -= 1;
     }
 
-    /// Current nesting level.
-    pub fn current_level(&self) -> u32 {
-        self.current_level
-    }
-
     // ── Generalization ──────────────────────────────────────────────────
 
     /// Generalize a type into a polymorphic scheme.
@@ -934,12 +877,6 @@ impl InferCtx {
             }
             _ => ty.map_parts(|part| self.apply_substitution(part, subst)),
         }
-    }
-}
-
-impl Default for InferCtx {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

@@ -21,7 +21,7 @@ pub struct TyVar(pub u32);
 ///
 /// The `display_prefix` field is used ONLY for display in error messages
 /// (e.g., "Geometry.Point"). It is intentionally excluded from `PartialEq`
-/// and `Hash` to preserve type identity semantics.
+/// to preserve type identity semantics.
 #[derive(Clone, Debug)]
 pub struct TyCon {
     pub name: String,
@@ -37,12 +37,6 @@ impl PartialEq for TyCon {
 }
 
 impl Eq for TyCon {}
-
-impl std::hash::Hash for TyCon {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state); // display_prefix intentionally excluded
-    }
-}
 
 impl TyCon {
     pub fn new(name: impl Into<String>) -> Self {
@@ -79,7 +73,7 @@ impl fmt::Display for TyCon {
 /// - `App`: a type constructor application (Option<Int>, Result<T, E>)
 /// - `Tuple`: a tuple type (Int, String)
 /// - `Never`: the bottom type (never returns)
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     /// A type variable (unresolved during inference).
     Var(TyVar),

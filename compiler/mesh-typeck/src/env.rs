@@ -22,9 +22,7 @@ pub struct TypeEnv {
 impl TypeEnv {
     /// Create a new type environment with one empty global scope.
     pub fn new() -> Self {
-        TypeEnv {
-            scopes: vec![FxHashMap::default()],
-        }
+        Self::default()
     }
 
     /// Push a new empty scope onto the stack.
@@ -104,7 +102,9 @@ impl TypeEnv {
 
 impl Default for TypeEnv {
     fn default() -> Self {
-        Self::new()
+        TypeEnv {
+            scopes: vec![FxHashMap::default()],
+        }
     }
 }
 
