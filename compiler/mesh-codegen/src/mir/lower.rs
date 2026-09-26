@@ -99,6 +99,10 @@ fn extract_set_elem_type(ty: &Ty) -> Option<Ty> {
     }
 }
 
+/// The name prefix of the temporaries resource scopes bind their values to
+/// (see `Lowerer::wrap_resource_scope`).
+const RESOURCE_TEMP_PREFIX: &str = "__resource_value_";
+
 /// How a call of `Base.method(...)` whose base names an interface or a type
 /// is lowered (see `Lowerer::qualified_route`).
 enum QualifiedRoute {
@@ -791,7 +795,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn next_resource_temp(&mut self) -> String {
-        let name = format!("__resource_value_{}", self.resource_temp_counter);
+        let name = format!("{RESOURCE_TEMP_PREFIX}{}", self.resource_temp_counter);
         self.resource_temp_counter += 1;
         name
     }
@@ -989,7 +993,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// `expression` with `cleanup` run before each way out of it: a return,
-    /// a panic, a tail call, and a `break` or `continue` of a loop outside it
+    /// a panic, and a `break` or `continue` of a loop outside it
     /// (`loop_depth` counts the loops inside it around the current point).
     fn cleanup_before_exits(
         &mut self,
@@ -1023,36 +1027,6 @@ impl<'a> Lowerer<'a> {
             }
             MirExpr::Continue if loop_depth == 0 => {
                 MirExpr::Block(vec![cleanup.clone(), MirExpr::Continue], MirType::Never)
-            }
-            MirExpr::TailCall { args, ty } => {
-                let mut evaluated = Vec::with_capacity(args.len());
-                let mut tail_args = Vec::with_capacity(args.len());
-                for argument in args {
-                    let argument = self.cleanup_before_exits(argument, cleanup, loop_depth);
-                    let argument_ty = effective_return_type(&argument);
-                    let name = self.next_resource_temp();
-                    tail_args.push(MirExpr::Var(name.clone(), argument_ty.clone()));
-                    evaluated.push((name, argument_ty, argument));
-                }
-                let mut result = MirExpr::Block(
-                    vec![
-                        cleanup.clone(),
-                        MirExpr::TailCall {
-                            args: tail_args,
-                            ty,
-                        },
-                    ],
-                    MirType::Never,
-                );
-                for (name, argument_ty, argument) in evaluated.into_iter().rev() {
-                    result = MirExpr::Let {
-                        name,
-                        ty: argument_ty,
-                        value: Box::new(argument),
-                        body: Box::new(result),
-                    };
-                }
-                result
             }
             mut other => {
                 // A loop's condition, filter and body run inside it; a range's
@@ -17228,86 +17202,181 @@ fn collect_free_vars<'a>(
 /// Post-lowering rewrite pass: detect self-recursive calls in tail position
 /// and rewrite them to TailCall nodes. Returns true if any rewrites were made.
 fn rewrite_tail_calls(expr: &mut MirExpr, current_fn_name: &str) -> bool {
-    match expr {
-        MirExpr::Call { func, args, ty } => {
-            // Check if this is a self-recursive call by name
-            if let MirExpr::Var(name, _) = func.as_ref() {
-                if name == current_fn_name {
-                    let taken_args = std::mem::take(args);
-                    let taken_ty = ty.clone();
-                    *expr = MirExpr::TailCall {
-                        args: taken_args,
-                        ty: taken_ty,
-                    };
-                    return true;
+    TailCalls {
+        name: current_fn_name,
+        cleanups: Vec::new(),
+        temps: 0,
+    }
+    .rewrite(expr)
+}
+
+/// The walk of `rewrite_tail_calls`. A resource scope, `let r = value;
+/// drop; r` (see `Lowerer::wrap_resource_scope`), keeps its value in tail
+/// position: a self-call ending it evaluates its arguments, runs the drops
+/// of the scopes around it (`cleanups`, innermost last), then jumps. The
+/// call used to end up in the scope's value, out of tail position, so a
+/// function holding a resource recursed on the stack.
+struct TailCalls<'a> {
+    name: &'a str,
+    cleanups: Vec<MirExpr>,
+    temps: usize,
+}
+
+impl TailCalls<'_> {
+    fn rewrite(&mut self, expr: &mut MirExpr) -> bool {
+        match expr {
+            MirExpr::Call { func, args, ty } => {
+                if !matches!(func.as_ref(), MirExpr::Var(name, _) if name == self.name) {
+                    return false;
                 }
+                // The jump drops what the scopes around it own: an argument
+                // still reading one of those (lending it to the next call)
+                // needs it alive, so the call stays an ordinary call.
+                if args.iter().any(|arg| self.reads_dropped(arg)) {
+                    return false;
+                }
+                let args = std::mem::take(args);
+                let ty = ty.clone();
+                *expr = self.tail_call(args, ty);
+                true
             }
-            false
+            MirExpr::Block(exprs, _) => {
+                // Only the LAST expression in a block is in tail position
+                exprs.last_mut().is_some_and(|last| self.rewrite(last))
+            }
+            MirExpr::Let {
+                name, value, body, ..
+            } if name.starts_with(RESOURCE_TEMP_PREFIX) => {
+                let Some(cleanup) = (match body.as_ref() {
+                    MirExpr::Block(parts, _) => parts.first().cloned(),
+                    _ => None,
+                }) else {
+                    return false;
+                };
+                self.cleanups.push(cleanup);
+                let rewritten = self.rewrite(value);
+                self.cleanups.pop();
+                // A value that ends in the jump never reaches the scope's own
+                // drop and result: emitted after the jump, they would follow a
+                // terminator in its block.
+                if ends_in_tail_call(value) {
+                    let value = std::mem::replace(value.as_mut(), MirExpr::Unit);
+                    *expr = value;
+                }
+                rewritten
+            }
+            MirExpr::Let { body, .. } => {
+                // The body (continuation) of a let is in tail position; the value is NOT
+                self.rewrite(body)
+            }
+            MirExpr::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                // BOTH branches are in tail position; the condition is NOT
+                let a = self.rewrite(then_body);
+                let b = self.rewrite(else_body);
+                a || b
+            }
+            MirExpr::Match { arms, .. } => {
+                // All arm bodies are in tail position; the scrutinee is NOT
+                let mut any = false;
+                for arm in arms.iter_mut() {
+                    any |= self.rewrite(&mut arm.body);
+                }
+                any
+            }
+            MirExpr::ActorReceive {
+                arms, timeout_body, ..
+            } => {
+                // All receive arm bodies and timeout body are in tail position
+                let mut any = false;
+                for arm in arms.iter_mut() {
+                    any |= self.rewrite(&mut arm.body);
+                }
+                if let Some(tb) = timeout_body.as_deref_mut() {
+                    any |= self.rewrite(tb);
+                }
+                any
+            }
+            MirExpr::Return(inner) => {
+                // The inner expression of Return IS in tail position. A tail call
+                // jumps back to the top of the function, so `return self(...)` is
+                // the tail call itself: a `ret` after the jump would be a second
+                // terminator in the block.
+                let rewritten = self.rewrite(inner);
+                if ends_in_tail_call(inner) {
+                    let tail_call = std::mem::replace(inner.as_mut(), MirExpr::Unit);
+                    *expr = tail_call;
+                }
+                rewritten
+            }
+            // Everything else is NOT a tail context -- do NOT recurse.
+            // This includes: BinOp, UnaryOp, Call (non-self), ClosureCall, StructLit,
+            // FieldAccess, ConstructVariant, MakeClosure, ListLit, While, ForIn*, etc.
+            _ => false,
         }
-        MirExpr::Block(exprs, _) => {
-            // Only the LAST expression in a block is in tail position
-            if let Some(last) = exprs.last_mut() {
-                rewrite_tail_calls(last, current_fn_name)
-            } else {
+    }
+
+    /// Whether `expr` reads a resource the scopes around the walk drop,
+    /// other than by moving it out.
+    fn reads_dropped(&self, expr: &MirExpr) -> bool {
+        match expr {
+            MirExpr::ResourceMove { value, .. } if matches!(value.as_ref(), MirExpr::Var(..)) => {
                 false
             }
+            MirExpr::Var(name, _) => self.cleanups.iter().any(|cleanup| {
+                matches!(cleanup, MirExpr::ResourceDrop { value, .. }
+                    if matches!(value.as_ref(), MirExpr::Var(dropped, _) if dropped == name))
+            }),
+            other => other
+                .children()
+                .into_iter()
+                .any(|child| self.reads_dropped(child)),
         }
-        MirExpr::Let { body, .. } => {
-            // The body (continuation) of a let is in tail position; the value is NOT
-            rewrite_tail_calls(body, current_fn_name)
+    }
+
+    /// The jump back to the top of the function with `args`, after the
+    /// drops of the scopes it leaves: the arguments are evaluated first,
+    /// since they may read what the drops destroy.
+    fn tail_call(&mut self, args: Vec<MirExpr>, ty: MirType) -> MirExpr {
+        if self.cleanups.is_empty() {
+            return MirExpr::TailCall { args, ty };
         }
-        MirExpr::If {
-            then_body,
-            else_body,
-            ..
-        } => {
-            // BOTH branches are in tail position; the condition is NOT
-            let a = rewrite_tail_calls(then_body, current_fn_name);
-            let b = rewrite_tail_calls(else_body, current_fn_name);
-            a || b
+        let mut evaluated = Vec::with_capacity(args.len());
+        let mut tail_args = Vec::with_capacity(args.len());
+        for argument in args {
+            let argument_ty = effective_return_type(&argument);
+            let name = format!("__tail_arg_{}", self.temps);
+            self.temps += 1;
+            tail_args.push(MirExpr::Var(name.clone(), argument_ty.clone()));
+            evaluated.push((name, argument_ty, argument));
         }
-        MirExpr::Match { arms, .. } => {
-            // All arm bodies are in tail position; the scrutinee is NOT
-            let mut any = false;
-            for arm in arms.iter_mut() {
-                if rewrite_tail_calls(&mut arm.body, current_fn_name) {
-                    any = true;
-                }
-            }
-            any
+        let mut steps: Vec<MirExpr> = self.cleanups.iter().rev().cloned().collect();
+        steps.push(MirExpr::TailCall {
+            args: tail_args,
+            ty,
+        });
+        let mut result = MirExpr::Block(steps, MirType::Never);
+        for (name, argument_ty, argument) in evaluated.into_iter().rev() {
+            result = MirExpr::Let {
+                name,
+                ty: argument_ty,
+                value: Box::new(argument),
+                body: Box::new(result),
+            };
         }
-        MirExpr::ActorReceive {
-            arms, timeout_body, ..
-        } => {
-            // All receive arm bodies and timeout body are in tail position
-            let mut any = false;
-            for arm in arms.iter_mut() {
-                if rewrite_tail_calls(&mut arm.body, current_fn_name) {
-                    any = true;
-                }
-            }
-            if let Some(tb) = timeout_body.as_deref_mut() {
-                if rewrite_tail_calls(tb, current_fn_name) {
-                    any = true;
-                }
-            }
-            any
-        }
-        MirExpr::Return(inner) => {
-            // The inner expression of Return IS in tail position. A tail call
-            // jumps back to the top of the function, so `return self(...)` is
-            // the tail call itself: a `ret` after the jump would be a second
-            // terminator in the block.
-            let rewritten = rewrite_tail_calls(inner, current_fn_name);
-            if matches!(inner.as_ref(), MirExpr::TailCall { .. }) {
-                let tail_call = std::mem::replace(inner.as_mut(), MirExpr::Unit);
-                *expr = tail_call;
-            }
-            rewritten
-        }
-        // Everything else is NOT a tail context -- do NOT recurse.
-        // This includes: BinOp, UnaryOp, Call (non-self), ClosureCall, StructLit,
-        // FieldAccess, ConstructVariant, MakeClosure, ListLit, While, ForIn*, etc.
+        result
+    }
+}
+
+/// Whether `expr` ends in a tail call, which never returns.
+fn ends_in_tail_call(expr: &MirExpr) -> bool {
+    match expr {
+        MirExpr::TailCall { .. } => true,
+        MirExpr::Block(exprs, _) => exprs.last().is_some_and(ends_in_tail_call),
+        MirExpr::Let { body, .. } => ends_in_tail_call(body),
         _ => false,
     }
 }
@@ -18480,6 +18549,83 @@ mod tests {
             "one cleanup is required on each reachable exit path: {:?}",
             early.body
         );
+    }
+
+    fn function_body(mir: &MirModule, name: &str) -> MirExpr {
+        mir.functions
+            .iter()
+            .find(|function| function.name == name)
+            .unwrap()
+            .body
+            .clone()
+    }
+
+    /// A resource still owned where control leaves its scope another way
+    /// than by returning is destroyed first: at a `break` or `continue` out
+    /// of the loop body that holds it, and before a self tail call, which
+    /// stays a tail call. The call used to end up in the scope's value, out
+    /// of tail position: a deep recursion kept every level's secret alive.
+    #[test]
+    fn owned_resources_drop_before_break_continue_and_tail_calls() {
+        let mir = lower(
+            "fn scan(n :: Int) -> Int ! CryptoError do\n\
+               for i in 0..n do\n\
+                 let s = Secret.random(1) ?\n\
+                 if i == 1 do\n\
+                   break\n\
+                 end\n\
+                 if i == 2 do\n\
+                   continue\n\
+                 end\n\
+                 Secret.destroy(s)\n\
+               end\n\
+               Ok(0)\n\
+             end\n\
+             fn spin(n :: Int) -> Int ! CryptoError do\n\
+               let s = Secret.random(1) ?\n\
+               if n == 0 do\n\
+                 Secret.destroy(s)\n\
+                 Ok(0)\n\
+               else\n\
+                 spin(n - 1)\n\
+               end\n\
+             end",
+        );
+        let scan = function_body(&mir, "scan");
+        // One at each exit of the body: the break, the continue, and its
+        // end, where a moved `s` is already null and dropping it does nothing.
+        assert_eq!(drops_of(&scan, "s"), 3, "{scan:?}");
+        let spin = function_body(&mir, "spin");
+        assert!(
+            spin.descendants()
+                .iter()
+                .any(|node| matches!(node, MirExpr::TailCall { .. })),
+            "{spin:?}"
+        );
+        // Before the tail call, and at the end of the scope.
+        assert_eq!(drops_of(&spin, "s"), 2, "{spin:?}");
+
+        // Lent to the next call, `s` must outlive it: no tail call, and it
+        // is dropped once, after the call returns.
+        let mir = lower(
+            "fn chain(n :: Int, prev :: borrow SecretBytes) -> Int ! CryptoError do\n\
+               if n == 0 do\n\
+                 Ok(0)\n\
+               else\n\
+                 let s = Secret.random(1) ?\n\
+                 chain(n - 1, s)\n\
+               end\n\
+             end",
+        );
+        let chain = function_body(&mir, "chain");
+        assert!(
+            !chain
+                .descendants()
+                .iter()
+                .any(|node| matches!(node, MirExpr::TailCall { .. })),
+            "{chain:?}"
+        );
+        assert_eq!(drops_of(&chain, "s"), 1, "{chain:?}");
     }
 
     #[test]

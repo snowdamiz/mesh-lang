@@ -5373,3 +5373,29 @@ end
         "n1,n2,n3 [0.5, 1.0] [(0, 0), (1, 1)] [5, 6]\n[false, true] [1, 2] [4]\n"
     );
 }
+
+/// A self tail call that ends a resource's scope runs as a loop, with the
+/// resource dropped before the jump: the scope's own drop after it failed
+/// LLVM verification ("Terminator found in the middle of a basic block").
+#[test]
+fn a_tail_call_ending_a_resource_scope_runs_as_a_loop() {
+    let source = r##"
+fn walk(n :: Int, total :: Int) -> Int ! CryptoError do
+  if n == 0 do
+    Ok(total)
+  else
+    let s = Secret.random(1) ?
+    Secret.destroy(s)
+    walk(n - 1, total + 1)
+  end
+end
+
+fn main() do
+  case walk(100000, 0) do
+    Ok(v) -> println("walked #{v}")
+    Err(_) -> println("err")
+  end
+end
+"##;
+    assert_eq!(run(source), "walked 100000\n");
+}
