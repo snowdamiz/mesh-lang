@@ -138,7 +138,6 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::InvalidShutdownValue { .. } => "E0021",
         TypeError::CatchAllNotLast { .. } => "E0022",
         TypeError::NonConsecutiveClauses { .. } => "E0023",
-        TypeError::ClauseArityMismatch { .. } => "E0024",
         TypeError::NonFirstClauseAnnotation { .. } => "W0002",
         TypeError::DuplicateImpl { .. } => "E0026",
         TypeError::AmbiguousMethod { .. } => "E0027",
@@ -1088,24 +1087,6 @@ fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> 
                         .with_message("non-consecutive redefinition here")
                         .with_color(Color::Red),
                 )
-        }
-        TypeError::ClauseArityMismatch {
-            fn_name,
-            expected_arity,
-            found_arity,
-            span,
-        } => {
-            let msg = format!(
-                "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
-                fn_name, expected_arity, found_arity
-            );
-            let range = clamp(text_range_to_range(*span));
-
-            Description::error(
-                range,
-                &msg,
-                format!("expected {} parameters", expected_arity),
-            )
         }
         TypeError::NonFirstClauseAnnotation {
             fn_name,

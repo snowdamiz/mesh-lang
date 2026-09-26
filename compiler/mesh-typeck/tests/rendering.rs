@@ -161,12 +161,6 @@ fn one_of_each() -> Vec<TypeError> {
             first_span: span(19, 24),
             second_span: span(51, 56),
         },
-        TypeError::ClauseArityMismatch {
-            fn_name: "fn_name".to_string(),
-            expected_arity: 2,
-            found_arity: 2,
-            span: span(19, 24),
-        },
         TypeError::NonFirstClauseAnnotation {
             fn_name: "fn_name".to_string(),
             what: "what".to_string(),

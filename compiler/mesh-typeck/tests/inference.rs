@@ -346,3 +346,48 @@ fn clause_parameter_annotations_are_checked() {
         );
     }
 }
+
+/// A function's clauses are one function when they are consecutive:
+/// another definition between them is an error. Visibility, generics, a
+/// return type or a where-clause belong on the first clause; on a later
+/// one they are ignored, with a warning. Clauses of another arity are
+/// another function, not a mismatch.
+#[test]
+fn clause_groups_are_consecutive_and_annotated_on_their_first_clause() {
+    let check = |defs: &str| {
+        mesh_typeck::check(&mesh_parser::parse(&format!(
+            "{defs}\n\nfn main() do\n  f(1)\nend\n"
+        )))
+    };
+    let split = check("fn f(0) = 1\nfn g() = 2\nfn f(n) = n");
+    assert!(
+        split.errors.iter().any(|error| matches!(
+            error,
+            mesh_typeck::error::TypeError::NonConsecutiveClauses { fn_name, arity: 1, .. } if fn_name == "f"
+        )),
+        "{:?}",
+        split.errors
+    );
+    for (defs, what) in [
+        ("fn f(0) = 1\npub fn f(n) = n", "visibility"),
+        ("fn f(0) = 1\nfn f<T>(n) = 2", "generic parameters"),
+        (
+            "fn f(0) -> Int = 1\nfn f(n) -> Int = n",
+            "return type annotation",
+        ),
+        ("fn f(0) = 1\nfn f(n) where n: Display = 2", "where clause"),
+    ] {
+        let result = check(defs);
+        assert!(result.errors.is_empty(), "{defs}: {:?}", result.errors);
+        assert!(
+            result.warnings.iter().any(|warning| matches!(
+                warning,
+                mesh_typeck::error::TypeError::NonFirstClauseAnnotation { what: found, .. } if found == what
+            )),
+            "{defs}: {:?}",
+            result.warnings
+        );
+    }
+    let overloads = check("fn f(0) = 1\nfn f(n) = n\nfn f(a, b) = a + b");
+    assert!(overloads.errors.is_empty(), "{:?}", overloads.errors);
+}

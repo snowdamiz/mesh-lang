@@ -227,13 +227,6 @@ pub enum TypeError {
         first_span: TextRange,
         second_span: TextRange,
     },
-    /// Clauses in a multi-clause function have inconsistent arities.
-    ClauseArityMismatch {
-        fn_name: String,
-        expected_arity: usize,
-        found_arity: usize,
-        span: TextRange,
-    },
     /// Visibility/generics/return type on a non-first clause of a multi-clause function.
     NonFirstClauseAnnotation {
         fn_name: String,
@@ -534,7 +527,6 @@ impl TypeError {
             TypeError::InvalidShutdownValue { span, .. } => Some(*span),
             TypeError::CatchAllNotLast { span, .. } => Some(*span),
             TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
-            TypeError::ClauseArityMismatch { span, .. } => Some(*span),
             TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
             TypeError::DuplicateImpl { .. } => None,
             TypeError::AmbiguousMethod { span, .. } => Some(*span),
@@ -835,18 +827,6 @@ impl fmt::Display for TypeError {
                     f,
                     "function `{}/{}` already defined; multi-clause functions must have consecutive clauses",
                     fn_name, arity
-                )
-            }
-            TypeError::ClauseArityMismatch {
-                fn_name,
-                expected_arity,
-                found_arity,
-                ..
-            } => {
-                write!(
-                    f,
-                    "all clauses of `{}` must have the same number of parameters; expected {}, found {}",
-                    fn_name, expected_arity, found_arity
                 )
             }
             TypeError::NonFirstClauseAnnotation { fn_name, what, .. } => {

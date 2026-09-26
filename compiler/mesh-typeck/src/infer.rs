@@ -5403,20 +5403,6 @@ fn infer_multi_clause_fn(
             });
         }
 
-        // Verify arity consistency.
-        let clause_arity = clause
-            .param_list()
-            .map(|pl| pl.params().count())
-            .unwrap_or(0);
-        if clause_arity != arity {
-            ctx.errors.push(TypeError::ClauseArityMismatch {
-                fn_name: fn_name.clone(),
-                expected_arity: arity,
-                found_arity: clause_arity,
-                span: clause.syntax().text_range(),
-            });
-        }
-
         // Check for where clause on non-first clause.
         let has_where = clause
             .syntax()

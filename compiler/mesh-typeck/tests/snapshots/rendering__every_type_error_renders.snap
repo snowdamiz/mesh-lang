@@ -302,15 +302,6 @@ expression: rendered
 ───╯
 {"code":"E0023","severity":"error","message":"function `fn_name/2` already defined; multi-clause functions must have consecutive clauses","file":"main.mpl","spans":[{"start":51,"end":56,"label":"non-consecutive redefinition here"},{"start":19,"end":24,"label":"first definition here"}],"fix":null}
 
-[E0024] Error: all clauses of `fn_name` must have the same number of parameters; expected 2, found 2
-   ╭─[ main.mpl:2:7 ]
-   │
- 2 │   let value = compute(1, 2)
-   │       ──┬──
-   │         ╰──── expected 2 parameters
-───╯
-{"code":"E0024","severity":"error","message":"all clauses of `fn_name` must have the same number of parameters; expected 2, found 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected 2 parameters"}],"fix":null}
-
 [W0002] Warning: what on non-first clause of `fn_name` will be ignored
    ╭─[ main.mpl:2:7 ]
    │
