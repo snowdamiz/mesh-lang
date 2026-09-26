@@ -410,10 +410,9 @@ fn copy_sources_recursive(
             continue;
         }
         let dest = tmp_dir.join(&relative);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
-        }
+        let parent = dest.parent().unwrap_or(Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create '{}': {}", parent.display(), e))?;
         // A module's test-support fragment is appended to it.
         let mut source = read_file(&path)?;
         let module_name = name_str.strip_suffix(".mpl").unwrap_or(&name_str);

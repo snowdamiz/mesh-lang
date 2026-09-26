@@ -138,6 +138,11 @@ fn cluster_commands_inspect_and_control_a_running_node() {
         assert!(Instant::now() < deadline, "no continuity record: {list}");
         std::thread::sleep(Duration::from_millis(250));
     };
+    let listed = cluster(&["continuity", &target], &project);
+    assert!(
+        listed.contains(&format!("- request_key={key} ")),
+        "the record listed as text: {listed}"
+    );
     let record = cluster_json(&["continuity", &target, &key], &project);
     assert_eq!(record["record"]["phase"], "completed", "{record}");
     assert!(cluster(&["continuity", &target, &key], &project).contains("completed"));
