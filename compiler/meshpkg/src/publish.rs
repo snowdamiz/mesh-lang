@@ -95,12 +95,8 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
         }
         for library in native.libraries {
             let member = declared_package_member(project_dir, &library.path)?;
-            let bytes = std::fs::read(project_dir.join(&member)).map_err(|error| {
-                format!(
-                    "Failed to read native archive '{}': {error}",
-                    member.display()
-                )
-            })?;
+            let archive = project_dir.join(&member);
+            let bytes = std::fs::read(&archive).map_err(failed("read native archive", &archive))?;
             let actual = format!("{:x}", Sha256::digest(&bytes));
             if actual != library.sha256 {
                 return Err(format!(
@@ -119,52 +115,16 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(archive_members)
 }
 
+/// A file the manifest declares, as its archive member: a file inside the
+/// package, reached through no symbolic link.
 fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, String> {
-    reject_declared_member_symlinks(project_root, relative)?;
-    let canonical_root = project_root.canonicalize().map_err(|error| {
-        format!(
-            "Failed to resolve package root '{}': {error}",
-            project_root.display()
-        )
-    })?;
-    let source = project_root.join(relative);
-    let canonical_source = source.canonicalize().map_err(|error| {
-        format!(
-            "Declared package file '{}' does not exist or cannot be read: {error}",
-            relative.display()
-        )
-    })?;
-    if !canonical_source.starts_with(&canonical_root) || !canonical_source.is_file() {
-        return Err(format!(
-            "Declared package file '{}' must be a file inside '{}'",
-            relative.display(),
-            project_root.display()
-        ));
-    }
+    let source = mesh_pkg::checked_package_file(project_root, relative, "Declared package file")?;
     relative_archive_member_path(project_root, &source)
 }
 
-fn reject_declared_member_symlinks(project_root: &Path, relative: &Path) -> Result<(), String> {
-    let mut current = project_root.to_path_buf();
-    for component in relative.components() {
-        let Component::Normal(segment) = component else {
-            continue;
-        };
-        current.push(segment);
-        let metadata = std::fs::symlink_metadata(&current).map_err(|error| {
-            format!(
-                "Declared package file '{}' does not exist or cannot be read: {error}",
-                relative.display()
-            )
-        })?;
-        if metadata.file_type().is_symlink() {
-            return Err(format!(
-                "Declared package file '{}' must not contain a symbolic link",
-                relative.display()
-            ));
-        }
-    }
-    Ok(())
+/// The error for an I/O step on `path`: what it was, then why.
+fn failed<'a>(doing: &'a str, path: &'a Path) -> impl FnOnce(std::io::Error) -> String + 'a {
+    move |error| format!("Failed to {doing} '{}': {error}", path.display())
 }
 
 fn discover_publish_source_members(
@@ -172,13 +132,11 @@ fn discover_publish_source_members(
     dir: &Path,
     members: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| format!("Failed to read '{}': {}", dir.display(), e))?;
+    let entries = std::fs::read_dir(dir).map_err(failed("read", dir))?;
     let mut child_dirs = Vec::new();
 
     for entry in entries {
-        let entry =
-            entry.map_err(|e| format!("Failed to read entry under '{}': {}", dir.display(), e))?;
+        let entry = entry.map_err(failed("read an entry under", dir))?;
         let path = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -187,12 +145,9 @@ fn discover_publish_source_members(
             continue;
         }
 
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "Failed to inspect package path '{}': {error}",
-                path.display()
-            )
-        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(failed("inspect package path", &path))?;
         if file_type.is_symlink() {
             return Err(format!(
                 "Package source path '{}' must not be a symbolic link",
@@ -231,13 +186,10 @@ fn relative_archive_member_path(
     project_root: &Path,
     source_path: &Path,
 ) -> Result<PathBuf, String> {
-    let relative_path = source_path.strip_prefix(project_root).map_err(|_| {
-        format!(
-            "Failed to preserve '{}' relative to project root '{}'",
-            source_path.display(),
-            project_root.display()
-        )
-    })?;
+    // Both the walk and the declared files find paths under the root.
+    let relative_path = source_path
+        .strip_prefix(project_root)
+        .expect("a package file is under its root");
     validate_archive_member_path(relative_path, source_path)?;
     Ok(relative_path.to_path_buf())
 }
@@ -709,6 +661,9 @@ sha256 = "{sha256}"
             err.contains("malformed member"),
             "unexpected validation error: {err}"
         );
+        let err = validate_archive_member_path(Path::new(""), Path::new("/project"))
+            .expect_err("an empty member name should be rejected");
+        assert!(err.contains("empty member name"), "{err}");
     }
 
     #[test]

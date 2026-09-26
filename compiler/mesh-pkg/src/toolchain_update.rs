@@ -25,6 +25,16 @@ pub enum ToolchainUpdateMode {
     DetachedBootstrap,
 }
 
+/// What an update that got this far tells its user.
+impl fmt::Display for ToolchainUpdateMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Completed => "Mesh toolchain update completed via the canonical installer.",
+            Self::DetachedBootstrap => "Mesh toolchain update bootstrap launched; the installer will finish replacing the toolchain after this process exits.",
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolchainUpdateOutcome {
     pub installer_url: String,
@@ -737,6 +747,16 @@ mod tests {
                 mode: ToolchainUpdateMode::Completed
             }
         );
+    }
+
+    #[test]
+    fn each_outcome_says_where_the_update_is() {
+        assert!(ToolchainUpdateMode::Completed
+            .to_string()
+            .contains("completed"));
+        assert!(ToolchainUpdateMode::DetachedBootstrap
+            .to_string()
+            .contains("after this process exits"));
     }
 
     /// Each platform runs the installer its way; one with no way is refused

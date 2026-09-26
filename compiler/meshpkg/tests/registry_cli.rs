@@ -184,6 +184,28 @@ fn search_lists_what_the_registry_finds() {
         dir,
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "[]");
+
+    // A registry that is not there.
+    let output = meshpkg(
+        &["search", "widget", "--registry", "http://127.0.0.1:9"],
+        dir,
+        dir,
+    );
+    assert!(!output.status.success(), "{}", text(&output));
+}
+
+/// Where `~/.mesh` cannot be a directory, logging in cannot store the token.
+#[test]
+fn login_needs_a_mesh_directory() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::write(home.path().join(".mesh"), "").unwrap();
+    let output = meshpkg(&["login", "--token", "t"], home.path(), home.path());
+    assert!(!output.status.success());
+    assert!(
+        text(&output).contains("Failed to create ~/.mesh/"),
+        "{}",
+        text(&output)
+    );
 }
 
 #[test]
@@ -357,6 +379,80 @@ fn install_fetches_verifies_and_locks_packages() {
     );
 }
 
+/// A registry answer that is not JSON, lacks what install needs, or a
+/// download that is its checksum but no package: each is an error.
+#[test]
+fn install_refuses_answers_it_cannot_use() {
+    let garbage = b"not a tarball".to_vec();
+    let garbage_sha = format!("{:x}", Sha256::digest(&garbage));
+    let registry = Registry::serve(vec![
+        (
+            "GET",
+            "/api/v1/packages/acme/text".to_string(),
+            200,
+            b"<html>".to_vec(),
+        ),
+        (
+            "GET",
+            "/api/v1/packages/acme/unversioned".to_string(),
+            200,
+            json!({"latest": {"sha256": "ab"}}).to_string().into_bytes(),
+        ),
+        (
+            "GET",
+            "/api/v1/packages/acme/junk".to_string(),
+            200,
+            json!({"latest": {"version": "1.0.0", "sha256": garbage_sha}})
+                .to_string()
+                .into_bytes(),
+        ),
+        (
+            "GET",
+            "/api/v1/packages/acme/junk/1.0.0/download".to_string(),
+            200,
+            garbage,
+        ),
+        (
+            "GET",
+            "/api/v1/packages/acme/unsummed/2.0.0".to_string(),
+            200,
+            json!({"version": "2.0.0"}).to_string().into_bytes(),
+        ),
+    ]);
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let dir = project.path();
+    let install = |args: &[&str]| {
+        let mut all = vec!["install"];
+        all.extend_from_slice(args);
+        all.extend(["--registry", registry.url.as_str()]);
+        let output = meshpkg(&all, dir, home.path());
+        assert!(!output.status.success(), "{args:?}");
+        text(&output)
+    };
+    for (package, message) in [
+        ("acme/text", "Failed to parse registry response"),
+        (
+            "acme/unversioned",
+            "Registry response missing latest/version for acme/unversioned",
+        ),
+        ("acme/junk", "Failed to extract package"),
+    ] {
+        let output = install(&[package]);
+        assert!(output.contains(message), "{package}: {output}");
+    }
+    std::fs::write(
+        dir.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\n\"acme/unsummed\" = \"2.0.0\"\n",
+    )
+    .unwrap();
+    let output = install(&[]);
+    assert!(
+        output.contains("Registry response missing sha256 for acme/unsummed@2.0.0"),
+        "{output}"
+    );
+}
+
 #[test]
 fn login_and_publish_upload_the_package_with_the_token() {
     let home = tempfile::tempdir().unwrap();
@@ -527,10 +623,7 @@ fn publish_packs_native_members_and_refuses_bad_ones() {
             manifest("bindings/missing.mpl", &archive_sha),
             "does not exist or cannot be read",
         ),
-        (
-            manifest("bindings/dir.mpl", &archive_sha),
-            "must be a file inside",
-        ),
+        (manifest("bindings/dir.mpl", &archive_sha), "is not a file"),
     ];
     if cfg!(unix) {
         refusals.push((
@@ -538,8 +631,8 @@ fn publish_packs_native_members_and_refuses_bad_ones() {
             "must not contain a symbolic link",
         ));
     }
-    for (manifest, message) in refusals {
-        std::fs::write(dir.join("mesh.toml"), &manifest).unwrap();
+    let publish_refuses = |manifest: &str, message: &str| {
+        std::fs::write(dir.join("mesh.toml"), manifest).unwrap();
         let output = meshpkg(&["publish", "--registry", &registry.url], dir, home.path());
         assert!(!output.status.success(), "{message}");
         assert!(
@@ -547,6 +640,23 @@ fn publish_packs_native_members_and_refuses_bad_ones() {
             "{message}: {}",
             text(&output)
         );
+    };
+    for (manifest, message) in refusals {
+        publish_refuses(&manifest, message);
+    }
+    // An archive it cannot read (permissions do not bind a privileged user).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let archive_path = dir.join("native/x86_64-unknown-linux-gnu/libmath.a");
+        std::fs::set_permissions(&archive_path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&archive_path).is_err() {
+            publish_refuses(
+                &manifest("bindings/math.mpl", &archive_sha),
+                "Failed to read native archive",
+            );
+        }
+        std::fs::set_permissions(&archive_path, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
     assert_eq!(
         registry.requests().len(),

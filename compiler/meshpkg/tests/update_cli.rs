@@ -98,3 +98,39 @@ fn json_mode_rejects_update_before_installer_launch() {
         "guard should fail before the shared updater runs, got: {message}"
     );
 }
+
+/// An update runs the installer it downloads (here from a local override);
+/// one it cannot download is an error.
+#[cfg(unix)]
+#[test]
+fn update_runs_the_downloaded_installer() {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/install.sh", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = stream.read(&mut [0_u8; 1024]);
+        let body = "exit 0\n";
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+    });
+    let update = |url: &str| {
+        Command::new(meshpkg_bin())
+            .arg("update")
+            .env("MESH_UPDATE_INSTALLER_URL", url)
+            .output()
+            .expect("meshpkg runs")
+    };
+    let output = update(&url);
+    server.join().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stdout).contains("update completed"));
+
+    let output = update("http://127.0.0.1:1/install.sh");
+    assert!(!output.status.success());
+}

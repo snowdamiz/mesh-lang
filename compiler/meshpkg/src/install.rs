@@ -66,58 +66,22 @@ fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<()
         };
 
         // Versions are exact: a lock entry for another version is stale.
-        let locked = existing_lock.as_ref().and_then(|lock| {
-            lock.packages
-                .iter()
-                .find(|p| p.name == *name && p.version == version && p.sha256.is_some())
+        let pinned = existing_lock.as_ref().and_then(|lock| {
+            lock.packages.iter().find_map(|p| {
+                (p.name == *name && p.version == version)
+                    .then(|| p.sha256.clone())
+                    .flatten()
+            })
         });
-        let (resolved_version, sha256_opt) = match locked {
-            Some(entry) => (entry.version.clone(), entry.sha256.clone()),
-            None => {
-                let (v, s) = resolve_version(name, version, registry)?;
-                (v, Some(s))
-            }
+        let sha256 = match pinned {
+            Some(sha256) => sha256,
+            None => resolve_version(name, version, registry)?,
         };
-
-        let msg = format!("Downloading {}@{}...", name, resolved_version);
-        let (tarball_bytes, actual_sha256) = crate::publish::with_spinner(&msg, json_mode, || {
-            download_tarball(name, &resolved_version, registry)
-        })?;
-
-        // Verify SHA-256 if we have a lockfile entry
-        if let Some(expected) = &sha256_opt {
-            if *expected != actual_sha256 {
-                return Err(format!(
-                    "SHA-256 mismatch for {}@{}: expected {}, got {}",
-                    name, resolved_version, expected, actual_sha256
-                ));
-            }
-        }
-
-        extract_tarball(
-            &tarball_bytes,
-            &package_install_dir(project_dir, name, &resolved_version)?,
-        )?;
-
-        let source_url = format!(
-            "{}/api/v1/packages/{}/{}/download",
-            registry, name, resolved_version
-        );
-        locked_packages.push(LockedPackage {
-            name: name.clone(),
-            version: resolved_version.clone(),
-            source: source_url,
-            revision: resolved_version.clone(),
-            sha256: Some(actual_sha256.clone()),
-        });
+        let locked = fetch_package(project_dir, name, version, &sha256, registry, json_mode)?;
+        locked_packages.push(locked);
 
         if !json_mode {
-            println!(
-                "{} Installed {}@{}",
-                "✓".green().bold(),
-                name,
-                resolved_version
-            );
+            println!("{} Installed {}@{}", "✓".green().bold(), name, version);
         }
     }
 
@@ -157,26 +121,8 @@ fn install_named(
     registry: &str,
     json_mode: bool,
 ) -> Result<(), String> {
-    // Resolve latest version from registry
     let (version, sha256) = resolve_latest(name, registry)?;
-
-    let msg = format!("Downloading {}@{}...", name, version);
-    let (tarball_bytes, actual_sha256) = crate::publish::with_spinner(&msg, json_mode, || {
-        download_tarball(name, &version, registry)
-    })?;
-
-    // Verify SHA-256
-    if sha256 != actual_sha256 {
-        return Err(format!(
-            "SHA-256 mismatch for {}@{}: expected {}, got {}",
-            name, version, sha256, actual_sha256
-        ));
-    }
-
-    extract_tarball(
-        &tarball_bytes,
-        &package_install_dir(project_dir, name, &version)?,
-    )?;
+    let locked = fetch_package(project_dir, name, &version, &sha256, registry, json_mode)?;
 
     // Update mesh.lock
     let lock_path = project_dir.join(LOCKFILE_NAME);
@@ -188,13 +134,7 @@ fn install_named(
 
     // Replace or add the entry
     packages.retain(|p| p.name != name);
-    packages.push(LockedPackage {
-        name: name.to_string(),
-        version: version.clone(),
-        source: format!("{}/api/v1/packages/{}/{}/download", registry, name, version),
-        revision: version.clone(),
-        sha256: Some(actual_sha256),
-    });
+    packages.push(locked);
     Lockfile::new(packages).write(&lock_path)?;
 
     if json_mode {
@@ -235,64 +175,75 @@ fn download_tarball(
     Ok((buf, sha256))
 }
 
-/// Resolve a version constraint against the registry (returns exact version + sha256).
-/// For now, if the constraint is an exact version ("1.0.0"), use it directly.
-fn resolve_version(
+/// Download `name@version`, check it is the release `sha256` pins, and
+/// unpack it: its lock entry.
+fn fetch_package(
+    project_dir: &Path,
     name: &str,
-    constraint: &str,
+    version: &str,
+    sha256: &str,
     registry: &str,
-) -> Result<(String, String), String> {
-    // In v14.0, only exact versions are supported (no semver range solving per REQUIREMENTS.md)
-    // Query registry for metadata to get the sha256
-    let url = format!("{}/api/v1/packages/{}/{}", registry, name, constraint);
-    let agent = ureq::Agent::new_with_defaults();
-    let mut response = agent.get(&url).call().map_err(|e| {
-        format!(
-            "Failed to query registry for {}@{}: {}",
-            name, constraint, e
-        )
+    json_mode: bool,
+) -> Result<LockedPackage, String> {
+    let msg = format!("Downloading {}@{}...", name, version);
+    let (tarball_bytes, actual_sha256) = crate::publish::with_spinner(&msg, json_mode, || {
+        download_tarball(name, version, registry)
     })?;
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read registry response: {}", e))?;
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Failed to parse registry response: {}", e))?;
-    let sha256 = json["sha256"]
-        .as_str()
-        .ok_or_else(|| {
-            format!(
-                "Registry response missing sha256 for {}@{}",
-                name, constraint
-            )
-        })?
-        .to_string();
-    Ok((constraint.to_string(), sha256))
+    if sha256 != actual_sha256 {
+        return Err(format!(
+            "SHA-256 mismatch for {}@{}: expected {}, got {}",
+            name, version, sha256, actual_sha256
+        ));
+    }
+    extract_tarball(
+        &tarball_bytes,
+        &package_install_dir(project_dir, name, version)?,
+    )?;
+    Ok(LockedPackage {
+        name: name.to_string(),
+        version: version.to_string(),
+        source: format!("{registry}/api/v1/packages/{name}/{version}/download"),
+        revision: version.to_string(),
+        sha256: Some(actual_sha256),
+    })
 }
 
-/// Resolve latest version of a package from the registry.
-fn resolve_latest(name: &str, registry: &str) -> Result<(String, String), String> {
-    let url = format!("{}/api/v1/packages/{}", registry, name);
-    let agent = ureq::Agent::new_with_defaults();
-    let mut response = agent
+/// The registry's answer about `package` (a name, or `name/version`).
+fn registry_json(registry: &str, package: &str) -> Result<serde_json::Value, String> {
+    let url = format!("{registry}/api/v1/packages/{package}");
+    let body = ureq::Agent::new_with_defaults()
         .get(&url)
         .call()
-        .map_err(|e| format!("Failed to query registry for {}: {}", name, e))?;
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read registry response: {}", e))?;
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Failed to parse registry response: {}", e))?;
-    let version = json["latest"]["version"]
-        .as_str()
-        .ok_or_else(|| format!("Registry response missing version for {}", name))?
-        .to_string();
-    let sha256 = json["latest"]["sha256"]
-        .as_str()
-        .ok_or_else(|| format!("Registry response missing sha256 for {}", name))?
-        .to_string();
-    Ok((version, sha256))
+        .and_then(|mut response| response.body_mut().read_to_string())
+        .map_err(|e| format!("Failed to query registry for {package}: {e}"))?;
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse registry response: {e}"))
+}
+
+/// The string at `pointer` in a registry answer about `package`.
+fn registry_field(
+    json: &serde_json::Value,
+    pointer: &str,
+    package: &str,
+) -> Result<String, String> {
+    json.pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("Registry response missing {} for {package}", &pointer[1..]))
+}
+
+/// The checksum of an exact version (the only constraint there is).
+fn resolve_version(name: &str, version: &str, registry: &str) -> Result<String, String> {
+    let json = registry_json(registry, &format!("{name}/{version}"))?;
+    registry_field(&json, "/sha256", &format!("{name}@{version}"))
+}
+
+/// The latest release of a package: its version and checksum.
+fn resolve_latest(name: &str, registry: &str) -> Result<(String, String), String> {
+    let json = registry_json(registry, name)?;
+    Ok((
+        registry_field(&json, "/latest/version", name)?,
+        registry_field(&json, "/latest/sha256", name)?,
+    ))
 }
 
 /// Create `.mesh/packages/<name>@<version>/` and remove any other installed

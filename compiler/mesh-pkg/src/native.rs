@@ -213,7 +213,7 @@ impl ResolveContext<'_> {
 /// A file of a package, named by a path inside it: no `..` or absolute part,
 /// no symbolic link on the way (either could lead out of the package), and
 /// every component there. The package root is canonical, so the path is too.
-fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<PathBuf, String> {
+pub fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<PathBuf, String> {
     let mut path = root.to_path_buf();
     for component in relative.components() {
         match component {

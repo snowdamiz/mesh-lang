@@ -436,16 +436,7 @@ fn or_exit<T>(result: Result<T, String>) -> T {
 
 fn run_update_command() -> Result<(), String> {
     let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_string())?;
-    match outcome.mode {
-        mesh_pkg::ToolchainUpdateMode::Completed => {
-            println!("Mesh toolchain update completed via the canonical installer.");
-        }
-        mesh_pkg::ToolchainUpdateMode::DetachedBootstrap => {
-            println!(
-                "Mesh toolchain update bootstrap launched; the installer will finish replacing the toolchain after this process exits."
-            );
-        }
-    }
+    println!("{}", outcome.mode);
     Ok(())
 }
 

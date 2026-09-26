@@ -22,7 +22,8 @@ pub use manifest::{
     NativeLibrary, NativePackage, Package, DEFAULT_CLUSTER_REPLICATION_COUNT,
 };
 pub use native::{
-    resolve_native_archives, resolve_native_bindings, ResolvedNativeArchive, ResolvedNativeBinding,
+    checked_package_file, resolve_native_archives, resolve_native_bindings, ResolvedNativeArchive,
+    ResolvedNativeBinding,
 };
 pub use resolver::resolve_dependencies;
 pub use scaffold::{
