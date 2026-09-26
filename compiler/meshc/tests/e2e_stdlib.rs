@@ -2069,18 +2069,14 @@ fn e2e_sqlite_upsert_subquery_runtime() {
 // operations. Tests connect (SCRAM-SHA-256/MD5 auth), execute (DDL + DML
 // with $1/$2 params), query with column names, filtered query, and close.
 //
-// Requires a running PostgreSQL instance with:
-//   User: mesh_test  Password: mesh_test  Database: mesh_test
-//
-// Easiest setup:
-//   docker run --name mesh-pg-test -e POSTGRES_USER=mesh_test \
-//     -e POSTGRES_PASSWORD=mesh_test -e POSTGRES_DB=mesh_test \
-//     -p 5432:5432 -d postgres:16
+// Requires a running PostgreSQL instance at MESH_TEST_DATABASE_URL, or else
+// user, password and database mesh_test on localhost:5432. The coverage run
+// (scripts/compiler-coverage.py) starts one in a container.
 //
 // Run with: cargo test e2e_pg -- --ignored
 
 #[test]
-#[ignore] // requires a running PostgreSQL instance
+#[ignore = "requires MESH_TEST_DATABASE_URL or the documented local mesh_test PostgreSQL"]
 fn e2e_pg() {
     let source = read_fixture("stdlib_pg.mpl");
     let output = compile_and_run(&source);
