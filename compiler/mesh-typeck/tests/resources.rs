@@ -916,3 +916,56 @@ fn a_method_receiver_is_borrowed_in_both_call_forms() {
         result.errors
     );
 }
+
+/// A resource goes nowhere its single owner cannot follow it: into a
+/// wrapper with no destructor for it, into text through a method, or into
+/// JSON; a resource a call returns is named by its type. An actor or a
+/// function whose parameters have no type is left to the type errors.
+#[test]
+fn resources_go_nowhere_their_owner_cannot_follow() {
+    let parse = mesh_parser::parse(
+        r##"resource H
+
+fn wrapped(q :: Queue<H>) -> Int do
+  0
+end
+
+fn shown(h :: H) -> String do
+  let s = h.inspect()
+  s
+end
+
+fn encoded(h :: H) do
+  h.to_json()
+end
+
+fn passed(h :: H) -> H do
+  h
+end
+
+fn label(h :: H) -> String do
+  "#{passed(h)}"
+end
+
+actor holder(n) do
+  receive do
+    m -> holder(n)
+  end
+end
+
+fn broken(x) do
+  nope()
+end
+"##,
+    );
+    let result = mesh_typeck::check(&parse);
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource-bearing wrapper `Queue<H>` has no registered resource destructor",
+            "resource `h` cannot be interpolated or formatted",
+            "resource `h` cannot cross JSON or serialization boundaries",
+            "resource `H` cannot be interpolated or formatted",
+        ]
+    );
+}
