@@ -4278,18 +4278,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             .name()
             .and_then(|name| name.text())
             .unwrap_or_else(|| "<unnamed>".to_string());
-        let generic_params: Vec<String> = struct_def
-            .syntax()
-            .children()
-            .filter(|node| node.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-            .flat_map(|parameters| {
-                parameters
-                    .children_with_tokens()
-                    .filter_map(|element| element.into_token())
-                    .filter(|token| token.kind() == SyntaxKind::IDENT)
-                    .map(|token| token.text().to_string())
-            })
-            .collect();
+        let generic_params = generic_param_names(struct_def.syntax());
         let fields = struct_def
             .fields()
             .map(|field| {
@@ -5388,20 +5377,10 @@ fn infer_multi_clause_fn(
     env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters from the FIRST clause only.
-    let mut type_params: FxHashMap<String, Ty> = FxHashMap::default();
-    for child in first.syntax().children() {
-        if child.kind() == SyntaxKind::GENERIC_PARAM_LIST {
-            for tok in child.children_with_tokens() {
-                if let Some(token) = tok.as_token() {
-                    if token.kind() == SyntaxKind::IDENT {
-                        let param_name = token.text().to_string();
-                        let param_ty = ctx.fresh_var();
-                        type_params.insert(param_name, param_ty);
-                    }
-                }
-            }
-        }
-    }
+    let type_params: FxHashMap<String, Ty> = generic_param_names(first.syntax())
+        .into_iter()
+        .map(|name| (name, ctx.fresh_var()))
+        .collect();
 
     // Extract where-clause constraints from the first clause.
     let where_constraints = extract_where_constraints(first);
@@ -6007,17 +5986,7 @@ fn register_struct_def(
         .unwrap_or_else(|| "<unnamed>".to_string());
 
     // Extract generic type parameters.
-    let generic_params: Vec<String> = struct_def
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-        .flat_map(|gpl| {
-            gpl.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
-        .collect();
+    let generic_params = generic_param_names(struct_def.syntax());
 
     // Extract fields.
     let mut fields = Vec::new();
@@ -6418,17 +6387,7 @@ fn register_type_alias(alias_def: &TypeAliasDef, type_registry: &mut TypeRegistr
         .and_then(|n| n.text())
         .unwrap_or_else(|| "<unnamed>".to_string());
 
-    let generic_params: Vec<String> = alias_def
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-        .flat_map(|gpl| {
-            gpl.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
-        .collect();
+    let generic_params = generic_param_names(alias_def.syntax());
 
     // Parse the aliased type from tokens after the `=` sign.
     let aliased_type = parse_alias_type(alias_def.syntax(), &generic_params);
@@ -6754,17 +6713,7 @@ fn validate_type_aliases(
 
         // Only validate simple (non-generic) aliases — generic aliases like
         // `type Pair<A, B> = (A, B)` use type variables that aren't in the registry.
-        let generic_params: Vec<String> = alias_def
-            .syntax()
-            .children()
-            .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-            .flat_map(|gpl| {
-                gpl.children_with_tokens()
-                    .filter_map(|t| t.into_token())
-                    .filter(|t| t.kind() == SyntaxKind::IDENT)
-                    .map(|t| t.text().to_string())
-            })
-            .collect();
+        let generic_params = generic_param_names(alias_def.syntax());
 
         // If the alias has generic parameters, the target may use those params as
         // types (e.g. `type Pair<A, B> = (A, B)`) — skip validation for them.
@@ -6826,17 +6775,7 @@ fn sum_type_def_info(
         .unwrap_or_else(|| "<unnamed>".to_string());
 
     // Extract generic type parameters.
-    let generic_params: Vec<String> = sum_def
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-        .flat_map(|gpl| {
-            gpl.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-        })
-        .collect();
+    let generic_params = generic_param_names(sum_def.syntax());
 
     // Extract variants.
     let mut variants = Vec::new();
@@ -8015,20 +7954,10 @@ fn infer_fn_def(
     env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters if present.
-    let mut type_params: FxHashMap<String, Ty> = FxHashMap::default();
-    for child in fn_.syntax().children() {
-        if child.kind() == SyntaxKind::GENERIC_PARAM_LIST {
-            for tok in child.children_with_tokens() {
-                if let Some(token) = tok.as_token() {
-                    if token.kind() == SyntaxKind::IDENT {
-                        let param_name = token.text().to_string();
-                        let param_ty = ctx.fresh_var();
-                        type_params.insert(param_name, param_ty);
-                    }
-                }
-            }
-        }
-    }
+    let type_params: FxHashMap<String, Ty> = generic_param_names(fn_.syntax())
+        .into_iter()
+        .map(|name| (name, ctx.fresh_var()))
+        .collect();
 
     // Extract where-clause constraints.
     let where_constraints = extract_where_constraints(fn_);
