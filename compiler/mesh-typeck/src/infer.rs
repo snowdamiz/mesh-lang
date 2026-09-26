@@ -50,7 +50,7 @@ enum ChildKind {
     /// An item, identified by its index in the original items list.
     ItemIndex(usize),
     /// A bare expression (not wrapped in an item).
-    Expr(mesh_parser::SyntaxNode),
+    Expr(Expr),
 }
 
 // ── Struct & Type Registry (03-03) ────────────────────────────────────
@@ -4272,8 +4272,8 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         if let Some(item) = Item::cast(child.clone()) {
             children_ordered.push((range, ChildKind::ItemIndex(items_for_grouping.len())));
             items_for_grouping.push(item);
-        } else if let Some(_expr) = Expr::cast(child.clone()) {
-            children_ordered.push((range, ChildKind::Expr(child)));
+        } else if let Some(expr) = Expr::cast(child) {
+            children_ordered.push((range, ChildKind::Expr(expr)));
         }
     }
 
@@ -4500,23 +4500,14 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         })
     };
     for item in singles() {
-        let range = match item {
-            Item::ImportDecl(import) => import.syntax().text_range(),
-            Item::FromImportDecl(import) => import.syntax().text_range(),
-            _ => continue,
-        };
-        infer_item(
+        register_import(
             &mut ctx,
             &mut env,
             item,
-            &mut types,
             &mut type_registry,
-            &mut trait_registry,
             &mut fn_constraints,
-            &mut default_method_bodies,
             import_ctx,
         );
-        ctx.registered_items.insert(range);
     }
     let mut defined_types: Vec<String> = Vec::new();
     for item in singles() {
@@ -4547,7 +4538,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     &mut type_registry,
                     &mut trait_registry,
                 );
-                ctx.registered_items.insert(def.syntax().text_range());
             }
             Item::SumTypeDef(def) => {
                 register_sum_type_def(
@@ -4557,7 +4547,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     &mut type_registry,
                     &mut trait_registry,
                 );
-                ctx.registered_items.insert(def.syntax().text_range());
             }
             _ => {}
         }
@@ -4583,86 +4572,52 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
-    // Process in source order, but skip duplicate grouped item references,
-    // and check a function, top-level `let`, actor or service after those
-    // it names further down (see `dependency_order`).
-    let mut processed_grouped: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
+    // Check the items and expressions in source order, except that a
+    // function, top-level `let`, actor or service comes after those it names
+    // further down (see `dependency_order`, which gives each multi-clause
+    // function once).
     let mut child_types: Vec<Option<Ty>> = vec![None; children_ordered.len()];
-
     for child in dependency_order(&children_ordered, &item_idx_to_grouped, &grouped) {
-        let mut result_type: Option<Ty> = None;
-        let (_range, child_kind) = &children_ordered[child];
-        match child_kind {
-            ChildKind::ItemIndex(orig_idx) => {
-                if let Some(&grouped_idx) = item_idx_to_grouped.get(orig_idx) {
-                    if processed_grouped.contains(&grouped_idx) {
-                        continue; // Already processed as part of a multi-clause group.
-                    }
-                    processed_grouped.insert(grouped_idx);
-
-                    match &grouped[grouped_idx] {
-                        GroupedItem::Single(item) => {
-                            let ty = infer_item(
-                                &mut ctx,
-                                &mut env,
-                                item,
-                                &mut types,
-                                &mut type_registry,
-                                &mut trait_registry,
-                                &mut fn_constraints,
-                                &mut default_method_bodies,
-                                import_ctx,
-                            );
-                            if let Some(ty) = ty {
-                                result_type = Some(ty);
-                            }
-                        }
-                        GroupedItem::MultiClause { clauses } => {
-                            match infer_multi_clause_fn(
-                                &mut ctx,
-                                &mut env,
-                                clauses,
-                                &mut types,
-                                &type_registry,
-                                &trait_registry,
-                                &mut fn_constraints,
-                                import_ctx,
-                            ) {
-                                Ok(ty) => {
-                                    result_type = Some(ty);
-                                }
-                                Err(_) => {
-                                    // Error already recorded in ctx.errors
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            ChildKind::Expr(child_node) => {
-                if let Some(expr) = Expr::cast(child_node.clone()) {
-                    match infer_expr(
-                        &mut ctx,
-                        &mut env,
-                        &expr,
-                        &mut types,
-                        &type_registry,
-                        &trait_registry,
-                        &fn_constraints,
-                    ) {
-                        Ok(ty) => {
-                            let resolved = ctx.resolve(ty.clone());
-                            types.insert(expr.syntax().text_range(), resolved.clone());
-                            result_type = Some(resolved);
-                        }
-                        Err(_) => {
-                            // Error already recorded in ctx.errors
-                        }
-                    }
-                }
-            }
-        }
-        child_types[child] = result_type;
+        child_types[child] = match &children_ordered[child].1 {
+            ChildKind::ItemIndex(item) => match &grouped[item_idx_to_grouped[item]] {
+                GroupedItem::Single(item) => infer_item(
+                    &mut ctx,
+                    &mut env,
+                    item,
+                    &mut types,
+                    &mut type_registry,
+                    &mut trait_registry,
+                    &mut fn_constraints,
+                    &mut default_method_bodies,
+                ),
+                GroupedItem::MultiClause { clauses } => infer_multi_clause_fn(
+                    &mut ctx,
+                    &mut env,
+                    clauses,
+                    &mut types,
+                    &type_registry,
+                    &trait_registry,
+                    &mut fn_constraints,
+                    import_ctx,
+                )
+                .ok(),
+            },
+            ChildKind::Expr(expr) => infer_expr(
+                &mut ctx,
+                &mut env,
+                expr,
+                &mut types,
+                &type_registry,
+                &trait_registry,
+                &fn_constraints,
+            )
+            .ok()
+            .map(|ty| {
+                let resolved = ctx.resolve(ty);
+                types.insert(expr.syntax().text_range(), resolved.clone());
+                resolved
+            }),
+        };
     }
     // The type of the last item or expression in source order.
     let result_type = child_types.into_iter().flatten().last();
@@ -5728,7 +5683,7 @@ fn infer_multi_clause_fn(
 
 // ── Item Inference ─────────────────────────────────────────────────────
 
-/// Infer the type of a top-level or nested item.
+/// Infer the type of a top-level item.
 /// Returns the type of the item (for let bindings, the type of the initializer;
 /// for function defs, the function type).
 fn infer_item(
@@ -5740,7 +5695,6 @@ fn infer_item(
     trait_registry: &mut TraitRegistry,
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
     default_method_bodies: &mut FxHashMap<(String, String), TextRange>,
-    import_ctx: &ImportContext,
 ) -> Option<Ty> {
     match item {
         Item::LetBinding(let_) => infer_let_binding(
@@ -5763,15 +5717,6 @@ fn infer_item(
             fn_constraints,
         )
         .ok(),
-        Item::StructDef(struct_def) => {
-            if !ctx
-                .registered_items
-                .contains(&struct_def.syntax().text_range())
-            {
-                register_struct_def(ctx, env, struct_def, type_registry, trait_registry);
-            }
-            None
-        }
         Item::TypeAliasDef(alias_def) => {
             register_type_alias(alias_def, type_registry);
             None
@@ -5801,15 +5746,57 @@ fn infer_item(
             );
             None
         }
-        // Module declarations -- skip module def, handle imports.
-        Item::ModuleDef(_) => None,
-        Item::ImportDecl(ref import_decl) => {
-            if ctx
-                .registered_items
-                .contains(&import_decl.syntax().text_range())
-            {
-                return None;
-            }
+        // Registered before any item is checked (see `infer_with_imports`),
+        // and a module block is checked as a module of its own.
+        Item::ImportDecl(_)
+        | Item::FromImportDecl(_)
+        | Item::StructDef(_)
+        | Item::SumTypeDef(_)
+        | Item::ModuleDef(_) => None,
+        Item::ActorDef(actor_def) => infer_actor_def(
+            ctx,
+            env,
+            actor_def,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )
+        .ok(),
+        Item::ServiceDef(service_def) => infer_service_def(
+            ctx,
+            env,
+            service_def,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )
+        .ok(),
+        Item::SupervisorDef(sup_def) => infer_supervisor_def(
+            ctx,
+            env,
+            sup_def,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )
+        .ok(),
+    }
+}
+
+/// Bring what an `import` or `from ... import` names into scope.
+fn register_import(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    item: &Item,
+    type_registry: &mut TypeRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    import_ctx: &ImportContext,
+) {
+    match item {
+        Item::ImportDecl(import_decl) => {
             // Resolve import: check user modules first, then stdlib.
             if let Some(path) = import_decl.module_path() {
                 let segments = path.segments();
@@ -5889,15 +5876,8 @@ fn infer_item(
                     });
                 }
             }
-            None
         }
-        Item::FromImportDecl(ref from_import) => {
-            if ctx
-                .registered_items
-                .contains(&from_import.syntax().text_range())
-            {
-                return None;
-            }
+        Item::FromImportDecl(from_import) => {
             if let Some(path) = from_import.module_path() {
                 let segments = path.segments();
                 let full_name = segments.join(".");
@@ -6127,47 +6107,8 @@ fn infer_item(
                     }
                 }
             }
-            None
         }
-        Item::SumTypeDef(sum_def) => {
-            if !ctx
-                .registered_items
-                .contains(&sum_def.syntax().text_range())
-            {
-                register_sum_type_def(ctx, env, sum_def, type_registry, trait_registry);
-            }
-            None
-        }
-        Item::ActorDef(actor_def) => infer_actor_def(
-            ctx,
-            env,
-            actor_def,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-        .ok(),
-        Item::ServiceDef(service_def) => infer_service_def(
-            ctx,
-            env,
-            service_def,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-        .ok(),
-        Item::SupervisorDef(sup_def) => infer_supervisor_def(
-            ctx,
-            env,
-            sup_def,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-        .ok(),
+        _ => {}
     }
 }
 

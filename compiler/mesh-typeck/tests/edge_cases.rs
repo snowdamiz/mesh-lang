@@ -549,3 +549,107 @@ fn an_or_pattern_arm_is_redundant_when_all_its_alternatives_are() {
     let warnings: Vec<String> = result.warnings.iter().map(|w| w.to_string()).collect();
     assert_eq!(warnings, ["redundant match arm (arm 3)"]);
 }
+
+// ── Imports ────────────────────────────────────────────────────────────
+
+const STORE: &str = r#"
+pub struct User do
+  name :: String
+end deriving(Schema)
+
+pub type Shade = Int
+
+pub type Kind do
+  Big
+  Small
+end
+
+pub interface Labelled do
+  fn label(self) -> String
+end
+
+fn secret() do
+  1
+end
+
+pub fn pad(x :: Int) -> Int do
+  x
+end
+
+pub fn pad(x :: Int, y :: Int) -> Int do
+  x + y
+end
+
+actor Pinger(n :: Int) do
+  receive do
+    m -> Pinger(n)
+  end
+end
+
+service Counter do
+  fn init(n :: Int) -> Int do
+    n
+  end
+  call Get() :: Int do |n|
+    (n, n)
+  end
+end
+"#;
+
+/// `from Module import ...` brings in each kind of definition a module
+/// exports: a struct with its schema functions, an alias, a sum type's
+/// variants, an interface, both arities of an overloaded function, an
+/// actor and a service. A standard module's functions come in under their
+/// own name and with the module's prefix.
+#[test]
+fn from_import_brings_in_every_kind_of_definition() {
+    assert_eq!(
+        errors_importing(
+            "Store",
+            STORE,
+            r#"
+from Store import User, Shade, Kind, Labelled, pad, Pinger, Counter
+from String import length
+
+fn main() do
+  let t = User.__table__()
+  let c = User.__name_col__()
+  let columns = [User.__fields__(), User.__relationships__(), User.__field_types__(), User.__relationship_meta__()]
+  let key = User.__primary_key__()
+  let s :: Shade = 3
+  let k = Big
+  let pid = Counter.start(0)
+  let n = Counter.get(pid)
+  let p = spawn(Pinger, 1)
+  pad(1) + pad(1, 2) + length("abc") + string_length("ab")
+end
+"#
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// What an import cannot bring in: a name a module does not export or
+/// keeps private, or anything of a module that does not exist.
+#[test]
+fn imports_of_what_is_not_there_are_errors() {
+    let errors = errors_importing(
+        "Store",
+        STORE,
+        "from Store import secret, Nope\nfrom Nowhere import thing\nimport Elsewhere\n",
+    );
+    // The names a module does export follow, in no particular order.
+    let headlines: Vec<&str> = errors
+        .iter()
+        .map(|error| error.split("; ").next().unwrap())
+        .collect();
+    assert_eq!(
+        headlines,
+        [
+            "`secret` is private in module `Store`",
+            "`Nope` is not exported by module `Store`",
+            "module `Nowhere` not found",
+            "module `Elsewhere` not found",
+        ]
+    );
+}

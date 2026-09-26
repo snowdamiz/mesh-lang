@@ -169,8 +169,6 @@ pub struct InferCtx {
     /// The variants of this module's sum types, by name, with the type that
     /// declares each: one name may belong to only one of them.
     pub local_variants: FxHashMap<String, String>,
-    /// Type definitions registered before the main pass, which skips them.
-    pub registered_items: FxHashSet<TextRange>,
     /// Names reported as unknown types: a value said to be one is not
     /// reported again, field by field.
     pub unknown_types: FxHashSet<String>,
