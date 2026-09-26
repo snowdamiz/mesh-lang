@@ -149,6 +149,30 @@ fn constructs_cut_off_at_a_part_add_no_error() {
     }
 }
 
+/// A literal or pattern cut off at a part adds no error to its parse
+/// error: `P { : 1 }` was "missing field `x`", a cons pattern without its
+/// tail made its case non-exhaustive, and a struct pattern cut off inside
+/// made its arm "no `->`".
+#[test]
+fn literals_and_patterns_cut_off_at_a_part_add_no_error() {
+    for source in [
+        "struct P do\n  x :: Int\nend\n\nfn f() do\n  P { : 1 }\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  %{p | : 1}\nend\n",
+        "fn f() do\n  %{1 => 2, => 3}\nend\n",
+        "fn f() do\n  %{1 => }\nend\n",
+        "fn f() do\n  json { a: }\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  case p do\n    P { : 1 } -> 1\n  end\nend\n",
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  case p do\n    P { x: } -> 1\n  end\nend\n",
+        "fn f(xs) do\n  case xs do\n    h :: -> 1\n    _ -> 2\n  end\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+        assert!(result.warnings.is_empty(), "{source:?}: {:?}", result.warnings);
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]

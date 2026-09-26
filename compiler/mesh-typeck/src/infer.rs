@@ -12459,10 +12459,7 @@ fn infer_struct_literal(
     let mut provided_fields: Vec<String> = Vec::new();
 
     for field in sl.fields() {
-        let field_name = match field.name().and_then(|n| n.text()) {
-            Some(n) => n,
-            None => continue,
-        };
+        let field_name = field.name().and_then(|n| n.text()).ok_or_else(incomplete)?;
         // A field's error is reported and the literal keeps its type: its
         // uses are checked as the struct's, not reported again as unknown.
         if provided_fields.contains(&field_name) {
@@ -12607,10 +12604,7 @@ fn infer_struct_update(
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
     // Infer the type of the base expression.
-    let base_expr = match update.base_expr() {
-        Some(e) => e,
-        None => return Ok(ctx.fresh_var()),
-    };
+    let base_expr = update.base_expr().ok_or_else(incomplete)?;
     let base_ty = infer_expr(
         ctx,
         env,
@@ -12649,10 +12643,7 @@ fn infer_struct_update(
     // Validate and infer each override field.
     let mut updated: Vec<String> = Vec::new();
     for field in update.override_fields() {
-        let field_name = match field.name().and_then(|n| n.text()) {
-            Some(n) => n,
-            None => continue,
-        };
+        let field_name = field.name().and_then(|n| n.text()).ok_or_else(incomplete)?;
         // As in a struct literal, a field's error leaves the update typed.
         if updated.contains(&field_name) {
             ctx.errors.push(TypeError::DuplicateField {
@@ -12727,43 +12718,41 @@ fn infer_map_literal(
     let v_ty = ctx.fresh_var();
 
     for entry in map_lit.entries() {
-        if let Some(key_expr) = entry.key() {
-            // For keyword argument entries (name: value), the key is a NAME_REF
-            // representing the identifier text as a string key, not a variable reference.
-            let key_inferred = if entry.is_keyword_entry() {
-                Ty::string()
-            } else {
-                infer_expr(
-                    ctx,
-                    env,
-                    &key_expr,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?
-            };
-            // The map's keys are of the first one's type.
-            let origin = ConstraintOrigin::Expr {
-                span: key_expr.syntax().text_range(),
-            };
-            ctx.unify(k_ty.clone(), key_inferred, origin)?;
-        }
-        if let Some(val_expr) = entry.value() {
-            let val_inferred = infer_expr(
+        let key_expr = entry.key().ok_or_else(incomplete)?;
+        // For keyword argument entries (name: value), the key is a NAME_REF
+        // representing the identifier text as a string key, not a variable reference.
+        let key_inferred = if entry.is_keyword_entry() {
+            Ty::string()
+        } else {
+            infer_expr(
                 ctx,
                 env,
-                &val_expr,
+                &key_expr,
                 types,
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?;
-            let origin = ConstraintOrigin::Expr {
-                span: val_expr.syntax().text_range(),
-            };
-            ctx.unify(v_ty.clone(), val_inferred, origin)?;
-        }
+            )?
+        };
+        // The map's keys are of the first one's type.
+        let origin = ConstraintOrigin::Expr {
+            span: key_expr.syntax().text_range(),
+        };
+        ctx.unify(k_ty.clone(), key_inferred, origin)?;
+        let val_expr = entry.value().ok_or_else(incomplete)?;
+        let val_inferred = infer_expr(
+            ctx,
+            env,
+            &val_expr,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
+        let origin = ConstraintOrigin::Expr {
+            span: val_expr.syntax().text_range(),
+        };
+        ctx.unify(v_ty.clone(), val_inferred, origin)?;
     }
 
     Ok(Ty::map(k_ty, v_ty))
@@ -12943,9 +12932,8 @@ fn infer_struct_pattern(
     };
     let mut seen: Vec<String> = Vec::new();
     for field in struct_pat.fields() {
-        let (Some(field_name), Some(sub)) = (field.name(), field.pattern()) else {
-            continue;
-        };
+        let field_name = field.name().ok_or_else(incomplete)?;
+        let sub = field.pattern().ok_or_else(incomplete)?;
         let field_name = field_name.text().to_string();
         let span = field.syntax().text_range();
         if seen.contains(&field_name) {
@@ -13251,11 +13239,8 @@ fn infer_as_pattern(
     type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
     // Infer the inner pattern.
-    let inner_ty = if let Some(inner_pat) = as_pat.pattern() {
-        infer_pattern(ctx, env, &inner_pat, types, type_registry)?
-    } else {
-        ctx.fresh_var()
-    };
+    let inner_pat = as_pat.pattern().ok_or_else(incomplete)?;
+    let inner_ty = infer_pattern(ctx, env, &inner_pat, types, type_registry)?;
 
     // Bind the "as" name to the whole matched value's type.
     if let Some(binding_name_tok) = as_pat.binding_name() {
@@ -13285,16 +13270,14 @@ fn infer_cons_pattern(
     let list_ty = Ty::list(elem_ty.clone());
 
     // Infer head pattern and unify with element type T.
-    if let Some(head_pat) = cons_pat.head() {
-        let head_ty = infer_pattern(ctx, env, &head_pat, types, type_registry)?;
-        ctx.unify(head_ty, elem_ty.clone(), ConstraintOrigin::Builtin)?;
-    }
+    let head_pat = cons_pat.head().ok_or_else(incomplete)?;
+    let head_ty = infer_pattern(ctx, env, &head_pat, types, type_registry)?;
+    ctx.unify(head_ty, elem_ty.clone(), ConstraintOrigin::Builtin)?;
 
     // Infer tail pattern and unify with List<T>.
-    if let Some(tail_pat) = cons_pat.tail() {
-        let tail_ty = infer_pattern(ctx, env, &tail_pat, types, type_registry)?;
-        ctx.unify(tail_ty, list_ty.clone(), ConstraintOrigin::Builtin)?;
-    }
+    let tail_pat = cons_pat.tail().ok_or_else(incomplete)?;
+    let tail_ty = infer_pattern(ctx, env, &tail_pat, types, type_registry)?;
+    ctx.unify(tail_ty, list_ty.clone(), ConstraintOrigin::Builtin)?;
 
     types.insert(pat.syntax().text_range(), list_ty.clone());
     Ok(list_ty)
@@ -15262,17 +15245,16 @@ fn infer_json_expr(
     // compile-time errors (satisfies must_haves truth: "Using an undefined variable
     // inside `json { }` produces a compile-time type error").
     for field in json_expr.fields() {
-        if let Some(val_expr) = field.value() {
-            infer_expr(
-                ctx,
-                env,
-                &val_expr,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
-        }
+        let val_expr = field.value().ok_or_else(incomplete)?;
+        infer_expr(
+            ctx,
+            env,
+            &val_expr,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
     }
     // Return the Json newtype -- NOT Ty::string(). The Json type auto-coerces to
     // String at call sites via the `json_string_compatible` rule in unify.rs.
