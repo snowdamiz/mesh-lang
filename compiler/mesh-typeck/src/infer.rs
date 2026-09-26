@@ -12265,53 +12265,16 @@ fn infer_field_access(
                     return Ok(resolved_field);
                 }
             }
-            // Field not found in struct -- try method resolution if in method call context.
-            if is_method_call {
-                let matching_traits =
-                    trait_registry.find_method_traits(&field_name, &resolved_base);
-                if matching_traits.len() > 1 {
-                    let err = TypeError::AmbiguousMethod {
-                        method_name: field_name.clone(),
-                        candidate_traits: matching_traits,
-                        ty: resolved_base.clone(),
-                        span: fa.syntax().text_range(),
-                    };
-                    ctx.errors.push(err.clone());
-                    return Err(err);
-                }
-                if let Some(ret_ty) = method_return_type(
-                    ctx,
-                    trait_registry,
-                    &field_name,
-                    &resolved_base,
-                    fa.syntax().text_range(),
-                ) {
-                    let method_fn_ty = build_method_fn_type(
-                        trait_registry,
-                        &field_name,
-                        &resolved_base,
-                        &ret_ty,
-                        ctx,
-                    );
-                    return Ok(method_fn_ty);
-                }
-                // Method not found -- emit NoSuchMethod (not NoSuchField).
-                let err = TypeError::NoSuchMethod {
+            // Not a field: a method, as of any type, when it is called.
+            if !is_method_call {
+                let err = TypeError::NoSuchField {
                     ty: resolved_base,
-                    method_name: field_name,
+                    field_name,
                     span: fa.syntax().text_range(),
                 };
                 ctx.errors.push(err.clone());
                 return Err(err);
             }
-            // Not a method call -- emit NoSuchField.
-            let err = TypeError::NoSuchField {
-                ty: resolved_base,
-                field_name,
-                span: fa.syntax().text_range(),
-            };
-            ctx.errors.push(err.clone());
-            return Err(err);
         }
     }
 
