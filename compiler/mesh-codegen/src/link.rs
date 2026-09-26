@@ -391,7 +391,7 @@ fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<Pa
         ["release", "debug"]
     };
 
-    let workspace_candidates = find_workspace_target_dir()
+    let workspace_candidates = workspace_target_dirs()
         .into_iter()
         .flat_map(|target_dir| mesh_rt_candidates(&target_dir, target, &PROFILES, runtime_flavor));
     first_existing_runtime(
@@ -771,28 +771,41 @@ fn windows_clang_path(llvm_prefix: Option<String>) -> Result<PathBuf, String> {
     ))
 }
 
-/// The cargo target directory this meshc was built in: the first directory
-/// above it that cargo tagged (whatever its name: a meshc built with
-/// `CARGO_TARGET_DIR=target/other` links the runtime built beside it), that
-/// is named `target`, or that holds one. Else `CARGO_TARGET_DIR`, which,
-/// when relative, is relative to where cargo ran rather than to meshc.
-fn find_workspace_target_dir() -> Option<PathBuf> {
+/// The cargo target directories to look for the runtime in. An absolute
+/// `CARGO_TARGET_DIR` names the one outright. Otherwise (a relative one is
+/// relative to where cargo ran, not to meshc) they are the directories above
+/// meshc, nearest first, that cargo tagged (whatever their name: a meshc
+/// built with `CARGO_TARGET_DIR=target/other` links the runtime built beside
+/// it), that are named `target`, or that hold one; the enclosing ones count
+/// too, as cargo-llvm-cov builds meshc in `target/llvm-cov-target` and the
+/// runtime in `target`.
+fn workspace_target_dirs() -> Vec<PathBuf> {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+    {
+        return vec![dir];
+    }
     std::env::current_exe()
-        .ok()
-        .and_then(|exe| target_dir_above(&exe))
-        .or_else(|| std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from))
+        .map(|exe| target_dirs_above(&exe))
+        .unwrap_or_default()
 }
 
-fn target_dir_above(path: &Path) -> Option<PathBuf> {
-    path.ancestors().skip(1).find_map(|dir| {
-        if dir.join("CACHEDIR.TAG").is_file()
+fn target_dirs_above(path: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for dir in path.ancestors().skip(1) {
+        let candidate = if dir.join("CACHEDIR.TAG").is_file()
             || dir.file_name().is_some_and(|name| name == "target")
         {
-            Some(dir.to_path_buf())
+            dir.to_path_buf()
         } else {
-            Some(dir.join("target")).filter(|target| target.exists())
+            dir.join("target")
+        };
+        if candidate.exists() && !dirs.contains(&candidate) {
+            dirs.push(candidate);
         }
-    })
+    }
+    dirs
 }
 
 #[cfg(test)]
@@ -803,15 +816,15 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn find_workspace_target_dir_should_find_target_dir_during_cargo_test() {
+    fn workspace_target_dirs_are_found_during_cargo_test() {
         assert!(
-            find_workspace_target_dir().is_some(),
+            !workspace_target_dirs().is_empty(),
             "Should find workspace target dir during cargo test"
         );
     }
 
     #[test]
-    fn target_dir_is_the_tagged_one_meshc_was_built_in() {
+    fn target_dirs_start_with_the_tagged_one_meshc_was_built_in() {
         let root = std::env::temp_dir().join(format!("mesh-target-dir-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let outer = root.join("target");
@@ -820,19 +833,19 @@ mod tests {
         std::fs::write(outer.join("CACHEDIR.TAG"), "").unwrap();
         std::fs::write(inner.join("CACHEDIR.TAG"), "").unwrap();
         assert_eq!(
-            target_dir_above(&inner.join("debug/meshc")),
-            Some(inner.clone()),
-            "not the `target` above it"
+            target_dirs_above(&inner.join("debug/meshc")),
+            [inner.clone(), outer.clone()],
+            "its own first, then the `target` around it"
         );
         std::fs::create_dir_all(root.join("custom/release")).unwrap();
         std::fs::write(root.join("custom/CACHEDIR.TAG"), "").unwrap();
         assert_eq!(
-            target_dir_above(&root.join("custom/release/meshc")),
-            Some(root.join("custom"))
+            target_dirs_above(&root.join("custom/release/meshc")),
+            [root.join("custom"), outer.clone()]
         );
         assert_eq!(
-            target_dir_above(&root.join("bin/meshc")),
-            Some(outer),
+            target_dirs_above(&root.join("bin/meshc")),
+            [outer],
             "untagged: a `target` beside an ancestor"
         );
         std::fs::remove_dir_all(&root).unwrap();
@@ -1333,7 +1346,7 @@ mod tests {
 
     #[test]
     fn a_compiler_outside_any_target_directory_has_none() {
-        assert_eq!(target_dir_above(Path::new("/meshc")), None);
+        assert!(target_dirs_above(Path::new("/meshc")).is_empty());
     }
 
     #[cfg(unix)]
