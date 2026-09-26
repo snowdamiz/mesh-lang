@@ -3580,14 +3580,14 @@ mod tests {
             &["event_count".into(), "status".into(), "last_seen".into()],
             &[
                 SqlExpr::Binary {
-                    op: "+",
+                    op: "+".into(),
                     lhs: Box::new(SqlExpr::Column("event_count".into())),
                     rhs: Box::new(SqlExpr::Value("1".into())),
                 },
                 SqlExpr::Case {
                     branches: vec![(
                         SqlExpr::Binary {
-                            op: "=",
+                            op: "=".into(),
                             lhs: Box::new(SqlExpr::Column("status".into())),
                             rhs: Box::new(SqlExpr::Value("resolved".into())),
                         },
@@ -3634,14 +3634,14 @@ mod tests {
             &["event_count".into(), "status".into(), "last_seen".into()],
             &[
                 SqlExpr::Binary {
-                    op: "+",
+                    op: "+".into(),
                     lhs: Box::new(SqlExpr::Column("event_count".into())),
                     rhs: Box::new(SqlExpr::Value("1".into())),
                 },
                 SqlExpr::Case {
                     branches: vec![(
                         SqlExpr::Binary {
-                            op: "=",
+                            op: "=".into(),
                             lhs: Box::new(SqlExpr::Column("status".into())),
                             rhs: Box::new(SqlExpr::Value("resolved".into())),
                         },

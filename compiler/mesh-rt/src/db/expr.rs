@@ -6,9 +6,9 @@
 //! UPDATE, and ON CONFLICT clauses.
 
 use crate::collections::list::{mesh_list_get, mesh_list_length};
-use crate::string::MeshString;
+use crate::string::{mesh_string_new, MeshString};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SqlExpr {
     Column(String),
     Value(String),
@@ -18,7 +18,7 @@ pub enum SqlExpr {
         args: Vec<SqlExpr>,
     },
     Binary {
-        op: &'static str,
+        op: String,
         lhs: Box<SqlExpr>,
         rhs: Box<SqlExpr>,
     },
@@ -43,12 +43,15 @@ unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
     (*ms).as_str()
 }
 
+/// An `Expr` value: the expression as JSON in a Mesh string, which the GC
+/// frees with the last value holding it (a boxed `SqlExpr` was never freed).
 fn alloc_expr(expr: SqlExpr) -> *mut u8 {
-    Box::into_raw(Box::new(expr)) as *mut u8
+    let json = serde_json::to_string(&expr).expect("an SqlExpr serializes");
+    mesh_string_new(json.as_ptr(), json.len() as u64) as *mut u8
 }
 
 pub(crate) unsafe fn clone_expr(ptr: *mut u8) -> SqlExpr {
-    (*(ptr as *const SqlExpr)).clone()
+    serde_json::from_str(mesh_str_ref(ptr)).expect("an Expr value holds an SqlExpr")
 }
 
 fn quote_ident(name: &str) -> String {
@@ -158,10 +161,10 @@ unsafe fn expr_list_to_vec(list_ptr: *mut u8) -> Vec<SqlExpr> {
     exprs
 }
 
-fn binary_expr(op: &'static str, lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
+fn binary_expr(op: &str, lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
     unsafe {
         alloc_expr(SqlExpr::Binary {
-            op,
+            op: op.to_string(),
             lhs: Box::new(clone_expr(lhs)),
             rhs: Box::new(clone_expr(rhs)),
         })
@@ -419,7 +422,7 @@ mod tests {
         let expr = SqlExpr::Case {
             branches: vec![(
                 SqlExpr::Binary {
-                    op: "=",
+                    op: "=".into(),
                     lhs: Box::new(SqlExpr::Column("status".into())),
                     rhs: Box::new(SqlExpr::Value("resolved".into())),
                 },
@@ -502,7 +505,7 @@ mod tests {
     #[test]
     fn serialize_jsonb_contains_uses_pg_operator() {
         let expr = SqlExpr::Binary {
-            op: "@>",
+            op: "@>".into(),
             lhs: Box::new(SqlExpr::Column("events.tags".into())),
             rhs: Box::new(SqlExpr::Cast {
                 expr: Box::new(SqlExpr::Value("{\"env\":\"prod\"}".into())),
