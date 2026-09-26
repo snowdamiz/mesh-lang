@@ -617,6 +617,62 @@ end
     );
 }
 
+/// Each alternative of an or-pattern matches the first one's type and binds
+/// the same names at the same types, and a mistake is reported at the
+/// alternative that makes it.
+#[test]
+fn or_pattern_alternatives_agree_with_the_first() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"type Shape do
+  Wide(Int)
+  Tall(Int)
+  Dot
+end
+
+fn both(s :: Shape) -> Int do
+  case s do
+    Wide(n) | Tall(n) -> n
+    Dot -> 0
+  end
+end
+
+fn unbound(o :: Option<Int>) -> Int do
+  case o do
+    Some(x) | None -> 1
+  end
+end
+
+fn kinds(n :: Int) -> Int do
+  case n do
+    1 | "s" -> 1
+    _ -> 2
+  end
+end
+
+fn names(p :: (Int, String)) -> Int do
+  case p do
+    (1, x) | (x, "s") -> 1
+    _ -> 2
+  end
+end
+"#
+        ),
+        [
+            at(
+                "or-pattern binding mismatch: expected [x], found []",
+                "Some(x) | None"
+            ),
+            at("type mismatch: expected `Int`, found `String`", "\"s\""),
+            at(
+                "type mismatch: expected `String`, found `Int`",
+                "(x, \"s\")"
+            ),
+        ]
+    );
+}
+
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
 /// `true | false` inside another pattern covers every Bool: the column's

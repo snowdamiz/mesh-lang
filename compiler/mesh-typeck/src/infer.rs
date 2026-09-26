@@ -13839,13 +13839,8 @@ fn infer_or_pattern(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
+    // The parser gives an or-pattern two alternatives or more.
     let alternatives: Vec<Pattern> = or_pat.alternatives().collect();
-
-    if alternatives.is_empty() {
-        let ty = ctx.fresh_var();
-        types.insert(pat.syntax().text_range(), ty.clone());
-        return Ok(ty);
-    }
 
     // Collect binding names using semantic-aware collection (needs env).
     let first_names = collect_pattern_binding_names(&alternatives[0]);
@@ -13870,14 +13865,15 @@ fn infer_or_pattern(
 
         env.push_scope();
         let alt_ty = infer_pattern(ctx, env, alt, types, type_registry)?;
-        ctx.unify(first_ty.clone(), alt_ty, ConstraintOrigin::Builtin)?;
-        // A name means one value: each alternative must bind it at one type.
+        // Each alternative matches the first one's type, and binds a name
+        // at one type: a name means one value.
+        let origin = ConstraintOrigin::Pattern {
+            pattern_span: alt.syntax().text_range(),
+        };
+        ctx.unify(first_ty.clone(), alt_ty, origin.clone())?;
         for (name, first_scheme) in &first_bindings {
             if let Some(alt_scheme) = env.lookup(name).cloned() {
-                let origin = ConstraintOrigin::Expr {
-                    span: alt.syntax().text_range(),
-                };
-                ctx.unify(first_scheme.ty.clone(), alt_scheme.ty, origin)?;
+                ctx.unify(first_scheme.ty.clone(), alt_scheme.ty, origin.clone())?;
             }
         }
         env.pop_scope();
