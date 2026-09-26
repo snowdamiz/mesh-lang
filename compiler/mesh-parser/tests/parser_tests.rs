@@ -194,6 +194,22 @@ fn field_access_chain() {
     assert_snapshot!(parse_and_debug("a.b.c"));
 }
 
+#[test]
+fn field_access_names_a_keyword_member() {
+    // Stdlib functions named like keywords: Expr.alias, Expr.call, Expr.case.
+    for member in ["alias", "call", "case", "self", "send", "cast", "json"] {
+        let parse = parse_expr(&format!("Expr.{member}(x)"));
+        assert!(parse.errors().is_empty(), "Expr.{member}(x): {:?}", parse.errors());
+        let field = parse
+            .syntax()
+            .descendants()
+            .find_map(mesh_parser::ast::expr::FieldAccess::cast)
+            .and_then(|access| access.field())
+            .map(|token| token.text().to_string());
+        assert_eq!(field.as_deref(), Some(member));
+    }
+}
+
 // ── Index Access ───────────────────────────────────────────────────────
 
 #[test]

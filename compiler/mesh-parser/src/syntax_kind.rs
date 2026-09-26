@@ -460,6 +460,9 @@ impl SyntaxKind {
         matches!(
             self,
             SyntaxKind::IDENT
+                | SyntaxKind::ALIAS_KW
+                | SyntaxKind::CALL_KW
+                | SyntaxKind::CASE_KW
                 | SyntaxKind::SELF_KW
                 | SyntaxKind::MONITOR_KW
                 | SyntaxKind::SPAWN_KW
