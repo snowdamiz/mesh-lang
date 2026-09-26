@@ -490,6 +490,55 @@ end
     );
 }
 
+// ── Operators ──────────────────────────────────────────────────────────
+
+/// Negating a value with no `Neg` is reported at the negation (it was
+/// reported at the whole file); `!` takes a Bool; a `Neg` impl that leaves
+/// out its `Output` negates to its own type.
+#[test]
+fn unary_operators_check_their_operand() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"struct P do
+  x :: Int
+end
+
+impl Neg for P do
+  fn neg(self) -> P do
+    self
+  end
+end
+
+fn negated(p :: P) -> P do
+  -p
+end
+
+fn text() do
+  -"s"
+end
+
+fn not_bool() do
+  !5
+end
+
+fn undefined() do
+  -nope
+end
+"#
+        ),
+        [
+            at(
+                "impl `Neg` for `P` is missing associated type `Output`",
+                "impl Neg for P do"
+            ),
+            at("`String` does not implement `Neg`", "-\"s\""),
+            at("type mismatch: expected `Bool`, found `Int`", "!"),
+            at("undefined variable `nope`", "nope"),
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the

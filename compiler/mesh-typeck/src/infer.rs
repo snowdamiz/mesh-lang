@@ -9687,53 +9687,38 @@ fn infer_unary(
         fn_constraints,
     )?;
 
-    let op_kind = un.op().map(|t| t.kind());
-
-    match op_kind {
-        Some(SyntaxKind::MINUS) => {
-            let resolved = ctx.resolve(operand_ty.clone());
-
-            // Deferred: type variable, return as-is.
-            if is_type_var(&resolved) {
-                return Ok(resolved);
-            }
-
-            // Fast path: primitive Int/Float -- no trait check needed.
-            if matches!(&resolved, Ty::Con(ref tc) if tc.name == "Int" || tc.name == "Float") {
-                return Ok(resolved);
-            }
-
-            // User type: check Neg trait.
-            if trait_registry.has_impl("Neg", &resolved) {
-                if let Some(output_ty) =
-                    trait_registry.resolve_associated_type("Neg", "Output", &resolved)
-                {
-                    Ok(output_ty)
-                } else {
-                    Ok(resolved)
-                }
-            } else {
-                let err = TypeError::TraitNotSatisfied {
-                    ty: resolved,
-                    trait_name: "Neg".to_string(),
-                    origin: ConstraintOrigin::Builtin,
-                };
-                ctx.errors.push(err.clone());
-                Err(err)
-            }
-        }
-        Some(SyntaxKind::BANG | SyntaxKind::NOT_KW) => {
-            let origin = un
-                .op()
-                .map(|op| ConstraintOrigin::BinOp {
-                    op_span: op.text_range(),
-                })
-                .unwrap_or(ConstraintOrigin::Builtin);
-            ctx.unify(Ty::bool(), operand_ty, origin)?;
-            Ok(Ty::bool())
-        }
-        _ => Ok(operand_ty),
+    // `!x` and `not x` take a Bool; `-x` a number, or a type with `Neg`.
+    let op = un.op().ok_or_else(incomplete)?;
+    if op.kind() != SyntaxKind::MINUS {
+        let origin = ConstraintOrigin::BinOp {
+            op_span: op.text_range(),
+        };
+        ctx.unify(Ty::bool(), operand_ty, origin)?;
+        return Ok(Ty::bool());
     }
+    let resolved = ctx.resolve(operand_ty);
+    // A type not known yet, or a number: negated, it is itself.
+    if is_type_var(&resolved)
+        || matches!(&resolved, Ty::Con(tc) if tc.name == "Int" || tc.name == "Float")
+    {
+        return Ok(resolved);
+    }
+    // An impl without its `Output` is reported already, and negates to its
+    // own type.
+    if trait_registry.has_impl("Neg", &resolved) {
+        return Ok(trait_registry
+            .resolve_associated_type("Neg", "Output", &resolved)
+            .unwrap_or(resolved));
+    }
+    let err = TypeError::TraitNotSatisfied {
+        ty: resolved,
+        trait_name: "Neg".to_string(),
+        origin: ConstraintOrigin::Expr {
+            span: un.syntax().text_range(),
+        },
+    };
+    ctx.errors.push(err.clone());
+    Err(err)
 }
 
 #[derive(Debug, Clone)]
