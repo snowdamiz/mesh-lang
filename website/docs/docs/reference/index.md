@@ -460,7 +460,7 @@ See [Panics](/docs/language-basics/#panics).
 | `self()` | Current actor PID; actor context only |
 | `link(pid)` | Bidirectional failure link |
 | `terminate do ... end` | One actor cleanup callback |
-| `Process.monitor` / `Process.demonitor` | One-way process observation; actor context required (`0`/`1` failure sentinels) |
+| `Process.monitor` / `Process.demonitor` | One-way process observation: a message of the watching actor's type when the process ends; actor context required |
 | `service` | Stateful call/cast actor with generated client functions |
 | `supervisor` | Child restart tree |
 | `Job` | Short-lived async result |

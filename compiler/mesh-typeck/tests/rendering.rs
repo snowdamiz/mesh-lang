@@ -132,6 +132,7 @@ fn one_of_each() -> Vec<TypeError> {
             span: span(19, 24),
         },
         TypeError::SelfOutsideActor { span: span(19, 24) },
+        TypeError::MonitorOutsideActor { span: span(19, 24) },
         TypeError::SpawnNonFunction {
             found: Ty::string(),
             span: span(19, 24),

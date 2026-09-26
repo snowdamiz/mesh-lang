@@ -234,6 +234,17 @@ expression: rendered
 ───╯
 {"code":"E0015","severity":"error","message":"self() used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"self() is only available inside an actor block"}],"fix":null}
 
+[E0086] Error: monitor used outside actor block
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a monitor delivers its message to the actor that sets it up
+   │
+   │ Help: call `Process.monitor` or `Node.monitor` inside an actor block
+───╯
+{"code":"E0086","severity":"error","message":"monitor used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a monitor delivers its message to the actor that sets it up"}],"fix":"call `Process.monitor` or `Node.monitor` inside an actor block"}
+
 [E0016] Error: cannot spawn non-function: found `String`
    ╭─[ main.mpl:2:7 ]
    │

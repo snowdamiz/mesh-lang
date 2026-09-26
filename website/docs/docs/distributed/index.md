@@ -272,7 +272,9 @@ This means you do not need to manually unregister names in crash or disconnect s
 
 ## Node Monitoring
 
-`Node.monitor(name)` persistently registers the calling actor for node-up and node-down signals. It returns `0` on success and `1` when called outside an actor, before node startup, or with an invalid name. Register from the actor that will receive the events, after local node startup. Unlike `Process.monitor`, the current node-monitor surface does not return a removable monitor reference.
+`Node.monitor(name, message)` sends the calling actor `message`, one of its own messages, once, when the node `name` disconnects; at once when it is not connected. It returns `0` on success and `1` before node startup or for a name that is not valid text. Like `Process.monitor`, it is only available inside an actor.
+
+`Process.monitor(pid, message)` watches a process on another node as it does a local one: the message comes when the process ends, or when its node disconnects.
 
 ## API Reference
 
@@ -285,7 +287,7 @@ This means you do not need to manually unregister names in crash or disconnect s
 | `Node.list()` | `List<String>` | Connected node names |
 | `Node.spawn(node, actor, args...)` | `Pid<M>` | Spawn remotely; `0` signals failure. Arguments and messages are checked against the actor |
 | `Node.spawn_link(node, actor, args...)` | `Pid<M>` | Spawn remotely and link, checked like `Node.spawn` |
-| `Node.monitor(name)` | `Int` | Monitor a remote node; `0` is success and `1` is failure |
+| `Node.monitor(name, message)` | `Int` | Send the calling actor `message` when node `name` disconnects; `0` is success and `1` is failure |
 | `Process.register(name, pid)` | `Int` | Register a local process |
 | `Process.whereis(name)` | `Pid` | Resolve a local process |
 | `Global.register(name, pid)` | `Int` | Register a process name cluster-wide |

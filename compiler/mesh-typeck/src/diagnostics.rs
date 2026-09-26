@@ -139,6 +139,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NonExhaustiveClauses { .. } => "W0003",
         TypeError::SendTypeMismatch { .. } => "E0014",
         TypeError::SelfOutsideActor { .. } => "E0015",
+        TypeError::MonitorOutsideActor { .. } => "E0086",
         TypeError::SpawnNonFunction { .. } => "E0016",
         TypeError::ReceiveOutsideActor { .. } => "E0017",
         TypeError::InvalidChildStart { .. } => "E0018",
@@ -932,6 +933,16 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, "self() is only available inside an actor block")
+        }
+
+        TypeError::MonitorOutsideActor { span } => {
+            let range = clamp(text_range_to_range(*span));
+
+            Description::error(
+                range,
+                "a monitor delivers its message to the actor that sets it up",
+            )
+            .with_help("call `Process.monitor` or `Node.monitor` inside an actor block")
         }
 
         TypeError::SpawnNonFunction { found, span } => {

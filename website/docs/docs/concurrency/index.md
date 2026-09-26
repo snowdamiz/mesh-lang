@@ -181,8 +181,25 @@ end
 ```
 
 - **`link(pid)`** -- bidirectionally links two actors. If one ends abnormally (a panic or runtime error), the other ends too; a normal exit only removes the link. Exit signals never arrive as messages in an actor's own `receive`; only supervisors observe them.
-- **`Process.monitor(pid)`** -- creates a one-way monitor and returns its reference; it returns sentinel `0` outside actor context.
-- **`Process.demonitor(reference)`** -- removes a monitor and returns `0` on success or `1` outside actor context or when the reference is unknown.
+- **`Process.monitor(pid, message)`** -- a one-way monitor: when `pid` ends, for whatever reason, the calling actor is sent `message`, one of its own messages. It is sent at once when there is no such process. Returns the monitor's reference.
+- **`Process.demonitor(reference)`** -- removes a monitor, so its message is never sent; returns `0` on success or `1` when the reference is unknown.
+
+```mesh
+actor worker() do
+  receive do
+    n -> println("working on #{n}")
+  end
+end
+
+actor watcher() do
+  let pid :: Pid<Int> = spawn(worker)
+  Process.monitor(pid, "worker ended")
+  send(pid, 1)
+  receive do
+    text -> println(text)
+  end
+end
+```
 
 Linking is the foundation for building fault-tolerant systems: supervisors use links to detect and restart failed actors.
 
@@ -509,7 +526,7 @@ A queued value takes eight bytes plus the size of whatever it references: a `Str
 |----------|---------|-------------|
 | `Process.register(name, pid)` | `Int` | Register a local name; `0` is success and `1` is failure |
 | `Process.whereis(name)` | `Pid` | Resolve a local name; PID `0` (`<0.0>`) means not found |
-| `Process.monitor(pid)` | `Int` | Monitor an actor; returns reference `0` outside actor context |
+| `Process.monitor(pid, message)` | `Int` | Send the calling actor `message` when `pid` ends; returns the monitor's reference |
 | `Process.demonitor(reference)` | `Int` | Remove a monitor; `0` is success and `1` is failure |
 | `Process.install_shutdown_signals()` | `Unit` | Treat native `SIGINT` and `SIGTERM` as shutdown requests |
 | `Process.shutdown_requested()` | `Bool` | Read the process-wide shutdown flag |
@@ -538,10 +555,10 @@ end
 
 HTTP servers observe the same shutdown flag: after shutdown is requested they stop accepting new connections and drain connections already accepted.
 
-Create and remove monitors from the actor that owns them. Calls to
-`Process.monitor` outside actor context return reference `0`;
-`Process.demonitor` returns `1` outside actor context or for an unknown
-reference.
+Create and remove monitors from the actor that owns them: a monitor's
+message is one of that actor's messages, so `Process.monitor` outside an
+actor is a compile-time error (E0086). `Process.demonitor` returns `1` for a
+reference the calling actor does not hold.
 
 ## Deterministic Random Values
 

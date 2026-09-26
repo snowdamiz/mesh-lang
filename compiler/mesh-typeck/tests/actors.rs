@@ -263,10 +263,52 @@ fn test_unify_pid_typed_different_msg() {
 #[test]
 fn process_monitor_takes_a_pid() {
     let result = check_source(
-        "actor worker() do\n  receive do\n    n -> n + 1\n  end\nend\n\nfn main() do\n  let pid = spawn(worker)\n  let reference = Process.monitor(pid)\n  Process.demonitor(reference)\nend\n",
+        "actor worker() do\n  receive do\n    n -> n + 1\n  end\nend\n\nactor watcher() do\n  let pid :: Pid<Int> = spawn(worker)\n  let reference = Process.monitor(pid, 0)\n  Process.demonitor(reference)\n  receive do\n    n -> n + 1\n  end\nend\n",
     );
     assert_no_errors(&result);
 
-    let result = check_source("fn main() do\n  Process.monitor(\"worker\")\nend\n");
+    let result = check_source(
+        "actor watcher() do\n  Process.monitor(\"worker\", 0)\n  receive do\n    n -> n + 1\n  end\nend\n",
+    );
     assert!(!result.errors.is_empty());
+}
+
+// ── Monitors ───────────────────────────────────────────────────────────
+
+/// A monitor's message goes to the actor that sets it up, so it is one of
+/// that actor's messages.
+#[test]
+fn test_monitor_message_is_the_actor_message_type() {
+    let ok = check_source(
+        "actor worker() do\nreceive do\nn -> n\nend\nend\n\
+         actor watcher() do\nlet w :: Pid<Int> = spawn(worker)\n\
+         let r = Process.monitor(w, \"worker ended\")\n\
+         let n = Node.monitor(\"other@127.0.0.1:1\", \"other gone\")\n\
+         receive do\ntext -> println(text)\nend\nend",
+    );
+    assert_no_errors(&ok);
+
+    let mismatched = check_source(
+        "actor watcher() do\nlet r = Process.monitor(self(), 1)\n\
+         receive do\ntext -> println(text)\nend\nend",
+    );
+    assert!(
+        !mismatched.errors.is_empty(),
+        "an Int message for an actor that receives Strings"
+    );
+}
+
+#[test]
+fn test_monitor_outside_actor_error() {
+    for call in [
+        "Process.monitor(Process.whereis(\"x\"), 1)",
+        "Node.monitor(\"a@b:1\", 1)",
+    ] {
+        let result = check_source(&format!("fn main() do\nlet r = {call}\nend"));
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::MonitorOutsideActor { .. }),
+            "MonitorOutsideActor",
+        );
+    }
 }

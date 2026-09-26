@@ -1073,11 +1073,9 @@ fn handle_process_exit(
             // Local monitor: deliver DOWN message directly.
             if let Some(mon_proc_arc) = process_table.read().get(monitoring_pid) {
                 let mut mon_proc = mon_proc_arc.lock();
-                mon_proc.monitors.remove(monitor_ref);
-                let down_data = link::encode_down_signal(*monitor_ref, pid, &reason);
-                let buffer = super::heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
-                mon_proc.mailbox.push(super::process::Message { buffer });
-                if matches!(mon_proc.state, ProcessState::Waiting) {
+                if mon_proc.fire_monitor(*monitor_ref)
+                    && matches!(mon_proc.state, ProcessState::Waiting)
+                {
                     mon_proc.set_live_state(ProcessState::Ready);
                 }
             }
@@ -1286,7 +1284,13 @@ mod tests {
             let mut observer_process = observer_process.lock();
             observer_process.trap_exit = true;
             observer_process.links.insert(target);
-            observer_process.monitors.insert(monitor_ref, target);
+            observer_process.monitors.insert(
+                monitor_ref,
+                crate::actor::process::Monitor {
+                    target,
+                    message: crate::actor::heap::MessageBuffer::new(vec![7], 99),
+                },
+            );
         }
         crate::secret::insert_test_secret(target);
         scheduler
@@ -1312,7 +1316,8 @@ mod tests {
         let second_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
         assert_eq!(
             [first_tag, second_tag],
-            [link::EXIT_SIGNAL_TAG, link::DOWN_SIGNAL_TAG]
+            [link::EXIT_SIGNAL_TAG, 99],
+            "the exit signal, then the monitor's own message"
         );
     }
 

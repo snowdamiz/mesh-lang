@@ -92,9 +92,16 @@ pub struct NodeState {
     pub node_id_map: RwLock<FxHashMap<u16, String>>,
     /// Signals the listener thread to stop accepting connections
     pub listener_shutdown: AtomicBool,
-    /// Processes monitoring specific nodes for :nodedown/:nodeup events.
-    /// Maps node_name -> list of (monitoring_pid, is_once) pairs.
-    pub node_monitors: RwLock<FxHashMap<String, Vec<(crate::actor::process::ProcessId, bool)>>>,
+    /// Messages for processes watching a node, sent once when it disconnects.
+    pub node_monitors: RwLock<
+        FxHashMap<
+            String,
+            Vec<(
+                crate::actor::process::ProcessId,
+                crate::actor::heap::MessageBuffer,
+            )>,
+        >,
+    >,
 }
 
 impl NodeState {
@@ -1442,10 +1449,6 @@ pub(crate) const DIST_DEMONITOR: u8 = 0x17;
 /// Wire format: [tag][u64 monitored_pid][u64 monitoring_pid][u64 ref][reason_bytes]
 pub(crate) const DIST_MONITOR_EXIT: u8 = 0x18;
 
-/// Reserved type_tag for :nodedown messages delivered to node monitors.
-pub(crate) const NODEDOWN_TAG: u64 = u64::MAX - 2;
-/// Reserved type_tag for :nodeup messages delivered to node monitors.
-pub(crate) const NODEUP_TAG: u64 = u64::MAX - 3;
 /// Distribution message tag: bidirectional link request.
 /// Wire format: [tag][u64 from_pid][u64 to_pid]
 pub(crate) const DIST_LINK: u8 = 0x13;
@@ -2178,34 +2181,17 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         }
                     }
                     DIST_MONITOR_EXIT => {
-                        // Wire format: [tag][u64 monitored_pid][u64 monitoring_pid][u64 ref][reason_bytes]
+                        // [tag][u64 monitored_pid][u64 monitoring_pid][u64 ref][reason]
                         if msg.len() >= 25 {
-                            use crate::actor::heap::MessageBuffer;
-                            use crate::actor::link;
-                            use crate::actor::process::Message;
-
-                            let monitored_pid =
-                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let monitoring_pid =
                                 own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
-                            let reason_bytes = &msg[25..];
-
-                            let reason = if let Some((r, _)) = link::decode_reason(reason_bytes) {
-                                r
-                            } else {
-                                crate::actor::process::ExitReason::Error("unknown".to_string())
-                            };
-
                             let sched = crate::actor::global_scheduler();
                             if let Some(mon_arc) = sched.get_process(monitoring_pid) {
                                 let mut mon_proc = mon_arc.lock();
-                                mon_proc.monitors.remove(&monitor_ref);
-                                let down_data =
-                                    link::encode_down_signal(monitor_ref, monitored_pid, &reason);
-                                let buffer = MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
-                                mon_proc.mailbox.push(Message { buffer });
-                                sched.wake_if_waiting(monitoring_pid, mon_proc);
+                                if mon_proc.fire_monitor(monitor_ref) {
+                                    sched.wake_if_waiting(monitoring_pid, mon_proc);
+                                }
                             }
                         }
                     }
@@ -2984,8 +2970,8 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
     // Phase 1: Collect under read lock.
     // For links: (local_pid, Vec<remote_pid_to_unlink>)
     let mut link_actions: Vec<(ProcessId, Vec<ProcessId>)> = Vec::new();
-    // For monitors: (local_pid, Vec<(monitor_ref, monitored_pid)>)
-    let mut monitor_actions: Vec<(ProcessId, Vec<(u64, ProcessId)>)> = Vec::new();
+    // For monitors: (local_pid, Vec<monitor_ref>)
+    let mut monitor_actions: Vec<(ProcessId, Vec<u64>)> = Vec::new();
 
     {
         let table = sched.process_table().read();
@@ -3005,11 +2991,11 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
             }
 
             // Collect remote monitors to the disconnected node.
-            let remote_monitors: Vec<(u64, ProcessId)> = proc
+            let remote_monitors: Vec<u64> = proc
                 .monitors
                 .iter()
-                .filter(|(_, monitored_pid)| monitored_pid.node_id() == node_id)
-                .map(|(ref_id, pid)| (*ref_id, *pid))
+                .filter(|(_, monitor)| monitor.target.node_id() == node_id)
+                .map(|(monitor_ref, _)| *monitor_ref)
                 .collect();
 
             if !remote_monitors.is_empty() {
@@ -3076,34 +3062,22 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
                 continue;
             }
 
-            for (monitor_ref, monitored_pid) in monitors {
-                proc.monitors.remove(monitor_ref);
-                let down_data =
-                    link::encode_down_signal(*monitor_ref, *monitored_pid, &noconnection);
-                let buffer = MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
-                proc.mailbox.push(Message { buffer });
+            for monitor_ref in monitors {
+                proc.fire_monitor(*monitor_ref);
             }
 
             sched.wake_if_waiting(*local_pid, proc);
         }
     }
 
-    // Deliver :nodedown to node monitors.
+    // Tell the processes watching the node, once.
     if let Some(state) = node_state() {
-        let watchers = {
-            let monitors = state.node_monitors.read();
-            monitors.get(node_name).cloned()
-        };
-
-        if let Some(watchers) = watchers {
-            for (watcher_pid, _once) in &watchers {
-                deliver_node_event(*watcher_pid, node_name, NODEDOWN_TAG, sched);
-            }
-
-            // Remove "once" monitors.
-            let mut monitors = state.node_monitors.write();
-            if let Some(watchers) = monitors.get_mut(node_name) {
-                watchers.retain(|(_, once)| !once);
+        let watchers = state.node_monitors.write().remove(node_name);
+        for (watcher_pid, buffer) in watchers.into_iter().flatten() {
+            if let Some(proc_arc) = sched.get_process(watcher_pid) {
+                let proc = proc_arc.lock();
+                proc.mailbox.push(Message { buffer });
+                sched.wake_if_waiting(watcher_pid, proc);
             }
         }
     }
@@ -3148,56 +3122,6 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
     let removed_names = crate::dist::global::global_name_registry().cleanup_node(node_name);
     for name in &removed_names {
         crate::dist::global::broadcast_global_unregister(name);
-    }
-}
-
-/// Deliver a :nodeup or :nodedown message to a process.
-///
-/// Encodes the node name as the payload with the given type_tag (NODEDOWN_TAG or NODEUP_TAG).
-fn deliver_node_event(
-    target_pid: crate::actor::process::ProcessId,
-    node_name: &str,
-    type_tag: u64,
-    sched: &crate::actor::Scheduler,
-) {
-    use crate::actor::heap::MessageBuffer;
-    use crate::actor::process::Message;
-
-    let data = node_name.as_bytes().to_vec();
-    let buffer = MessageBuffer::new(data, type_tag);
-    let msg = Message { buffer };
-
-    if let Some(proc_arc) = sched.get_process(target_pid) {
-        let proc = proc_arc.lock();
-        proc.mailbox.push(msg);
-        sched.wake_if_waiting(target_pid, proc);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// handle_node_connect -- deliver :nodeup to node monitors
-// ---------------------------------------------------------------------------
-
-/// Handle a new node connection: deliver :nodeup to all registered node monitors.
-///
-/// Called from register_session after the session and id_map are fully set up.
-fn handle_node_connect(node_name: &str) {
-    let sched = match crate::actor::GLOBAL_SCHEDULER.get() {
-        Some(s) => s,
-        None => return,
-    };
-
-    if let Some(state) = node_state() {
-        let watchers = {
-            let monitors = state.node_monitors.read();
-            monitors.get(node_name).cloned()
-        };
-
-        if let Some(watchers) = watchers {
-            for (watcher_pid, _once) in &watchers {
-                deliver_node_event(*watcher_pid, node_name, NODEUP_TAG, sched);
-            }
-        }
     }
 }
 
@@ -4951,7 +4875,7 @@ fn register_session(
     ));
 
     let mut replaced_node_id = None;
-    let inserted_fresh = {
+    {
         let mut sessions = state.sessions.write();
         match sessions.get(&remote_name).cloned() {
             Some(existing) => {
@@ -4967,14 +4891,12 @@ fn register_session(
                 replaced.shutdown.store(true, Ordering::SeqCst);
                 replaced_node_id = Some(replaced.node_id);
                 sessions.insert(remote_name.clone(), Arc::clone(&session));
-                false
             }
             None => {
                 sessions.insert(remote_name.clone(), Arc::clone(&session));
-                true
             }
         }
-    };
+    }
 
     let mut id_map = state.node_id_map.write();
     if let Some(previous_node_id) = replaced_node_id {
@@ -4982,13 +4904,6 @@ fn register_session(
     }
     id_map.insert(node_id, remote_name.clone());
     drop(id_map);
-
-    // Deliver :nodeup only for a fresh node-name registration. Transport
-    // replacement during simultaneous connect or stale-session takeover keeps
-    // the node logically up.
-    if inserted_fresh {
-        handle_node_connect(&remote_name);
-    }
 
     Ok(session)
 }

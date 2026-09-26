@@ -2842,10 +2842,15 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         "list".to_string(),
         Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
     );
-    // Node.monitor: fn(String) -> Int  (node_name -> monitor ref)
+    // Node.monitor: fn(String, M) -> Int  (node name, message for when it
+    // disconnects -> 0 on success); M is the monitoring actor's message type,
+    // which `infer_field_access` supplies.
     node_mod.insert(
         "monitor".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::int())),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::Var(TyVar(u32::MAX - 31))],
+            Ty::int(),
+        )),
     );
     // Node.spawn/spawn_link are NOT defined here because they are variadic
     // (node_name, func_ref, args...). The type checker handles them specially
@@ -2855,10 +2860,15 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
 
     // ── Process module (Phase 67) ───────────────────────────────────
     let mut process_mod = HashMap::new();
-    // Process.monitor: fn(Pid) -> Int  (target pid -> monitor ref)
+    // Process.monitor: fn(Pid, M) -> Int  (target pid, message for when it
+    // ends -> monitor ref); M is the monitoring actor's message type, which
+    // `infer_field_access` supplies.
     process_mod.insert(
         "monitor".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::untyped_pid()], Ty::int())),
+        Scheme::mono(Ty::fun(
+            vec![Ty::untyped_pid(), Ty::Var(TyVar(u32::MAX - 31))],
+            Ty::int(),
+        )),
     );
     // Process.demonitor: fn(Int) -> Int  (monitor_ref -> 0 on success)
     process_mod.insert(
@@ -12122,6 +12132,27 @@ fn infer_field_access(
             .and_then(|qualified| env.lookup(&qualified).cloned())
         {
             return Ok(ctx.instantiate(&scheme));
+        }
+
+        // A monitor's message goes to the actor that sets it up: it is of
+        // that actor's message type, and there must be one.
+        if field_name == "monitor"
+            && matches!(base_name.as_str(), "Process" | "Node")
+            && env.lookup(&base_name).is_none()
+        {
+            let Some(message) = env.lookup(ACTOR_MSG_TYPE_KEY).map(|s| ctx.instantiate(s)) else {
+                let err = TypeError::MonitorOutsideActor {
+                    span: fa.syntax().text_range(),
+                };
+                ctx.errors.push(err.clone());
+                return Err(err);
+            };
+            let target = if base_name == "Process" {
+                Ty::untyped_pid()
+            } else {
+                Ty::string()
+            };
+            return Ok(Ty::fun(vec![target, message], Ty::int()));
         }
 
         // A standard module's function (`String.length`).

@@ -1608,184 +1608,133 @@ pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
     deliver_exit_signal(global_scheduler(), ProcessId(target_pid), reason);
 }
 
-/// Monitor a target process.
-///
-/// Creates a unidirectional monitor: when the target process exits, the
-/// caller receives a DOWN message containing the monitor reference, the
-/// monitored PID, and the exit reason.
-///
-/// If the target process is already dead or does not exist, a DOWN message
-/// with reason "noproc" is delivered immediately.
-///
-/// Returns a unique monitor reference (u64) that can be used to demonitor.
+/// Monitor a target process: when it ends, for whatever reason, the calling
+/// actor is sent `msg` (`msg_size` bytes, whose heap references `shape`
+/// describes). It is sent at once when there is no such process, or no node
+/// to ask about one. Returns the reference `Process.demonitor` takes, or 0
+/// outside an actor.
 #[no_mangle]
-pub extern "C" fn mesh_process_monitor(target_pid: u64) -> u64 {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return 0,
+pub extern "C" fn mesh_process_monitor(
+    target_pid: u64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+    shape: *const u32,
+) -> u64 {
+    let Some(my_pid) = stack::get_current_pid() else {
+        return 0;
     };
-
     let sched = global_scheduler();
+    let Some(me) = sched.get_process(my_pid) else {
+        return 0;
+    };
     let monitor_ref = link::next_monitor_ref();
     let target = ProcessId(target_pid);
-
-    if target.is_local() {
-        // Local monitoring path.
-        match sched.get_process(target) {
-            Some(target_arc) => {
-                let mut target_proc = target_arc.lock();
-
-                // If target is already exited, deliver DOWN immediately with noproc.
-                if matches!(target_proc.state, ProcessState::Exited(_)) {
-                    drop(target_proc);
-                    deliver_down_immediately(sched, my_pid, monitor_ref, target, "noproc");
-                    return monitor_ref;
-                }
-
-                // Register monitor bidirectionally.
+    let mut message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    message.addressed_to(&me);
+    // Recorded first: the target may end as soon as it knows of the monitor.
+    me.lock()
+        .monitors
+        .insert(monitor_ref, process::Monitor { target, message });
+    let watched = if target.is_local() {
+        sched.get_process(target).is_some_and(|target_arc| {
+            let mut target_proc = target_arc.lock();
+            let alive = !matches!(target_proc.state, ProcessState::Exited(_));
+            if alive {
                 target_proc.monitored_by.insert(monitor_ref, my_pid);
-                drop(target_proc);
-
-                if let Some(my_arc) = sched.get_process(my_pid) {
-                    my_arc.lock().monitors.insert(monitor_ref, target);
-                }
             }
-            None => {
-                // Target does not exist -- deliver DOWN(noproc) immediately.
-                deliver_down_immediately(sched, my_pid, monitor_ref, target, "noproc");
-            }
-        }
+            alive
+        })
     } else {
-        // Remote monitoring: record locally and send DIST_MONITOR to the remote node.
-        if let Some(my_arc) = sched.get_process(my_pid) {
-            my_arc.lock().monitors.insert(monitor_ref, target);
-        }
-        // Send DIST_MONITOR wire message; if session not found, deliver DOWN(noconnection).
-        if !send_dist_monitor(my_pid, target, monitor_ref) {
-            // Session not found -- deliver DOWN(noconnection) immediately.
-            if let Some(my_arc) = sched.get_process(my_pid) {
-                my_arc.lock().monitors.remove(&monitor_ref);
-            }
-            deliver_down_immediately(sched, my_pid, monitor_ref, target, "noconnection");
-        }
+        send_monitor_frame(crate::dist::node::DIST_MONITOR, my_pid, target, monitor_ref)
+    };
+    if !watched {
+        me.lock().fire_monitor(monitor_ref);
     }
-
     monitor_ref
 }
 
-/// Send a DIST_MONITOR wire message to a remote node.
-///
-/// Returns true if the message was sent, false if the session was not found.
-fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -> bool {
-    let Some(session) = crate::dist::node::session_for_pid(to_pid) else {
+/// `[tag][u64 from][u64 to][u64 ref]` to the node `to` is on: false when
+/// there is no session to it.
+fn send_monitor_frame(tag: u8, from: ProcessId, to: ProcessId, monitor_ref: u64) -> bool {
+    let Some(session) = crate::dist::node::session_for_pid(to) else {
         return false;
     };
-
-    // Wire format: [DIST_MONITOR][u64 from_pid][u64 to_pid][u64 ref]
-    let mut payload = Vec::with_capacity(1 + 8 + 8 + 8);
-    payload.push(crate::dist::node::DIST_MONITOR);
-    payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
-    payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
+    let mut payload = vec![tag];
+    payload.extend_from_slice(&from.as_u64().to_le_bytes());
+    payload.extend_from_slice(&to.as_u64().to_le_bytes());
     payload.extend_from_slice(&monitor_ref.to_le_bytes());
     send_application_frame(&session, payload) == 0
 }
 
-/// Remove a monitor.
-///
-/// Removes the monitor identified by `monitor_ref` from both the caller's
-/// monitors map and the target's monitored_by map.
-///
-/// Returns 0 on success, 1 on failure (monitor not found).
+/// Remove a monitor, so its message is never sent. Returns 0 on success, 1
+/// outside an actor or for a reference it does not hold.
 #[no_mangle]
 pub extern "C" fn mesh_process_demonitor(monitor_ref: u64) -> u64 {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return 1,
-    };
-
-    let sched = global_scheduler();
-
-    // Remove from caller's monitors map to get the monitored PID.
-    let monitored_pid = if let Some(my_arc) = sched.get_process(my_pid) {
-        my_arc.lock().monitors.remove(&monitor_ref)
-    } else {
+    let Some(my_pid) = stack::get_current_pid() else {
         return 1;
     };
-
-    let monitored_pid = match monitored_pid {
-        Some(pid) => pid,
-        None => return 1,
+    let sched = global_scheduler();
+    let Some(monitor) = sched
+        .get_process(my_pid)
+        .and_then(|me| me.lock().monitors.remove(&monitor_ref))
+    else {
+        return 1;
     };
-
-    // If the monitored process is local, remove from its monitored_by map.
-    if monitored_pid.is_local() {
-        if let Some(target_arc) = sched.get_process(monitored_pid) {
+    if monitor.target.is_local() {
+        if let Some(target_arc) = sched.get_process(monitor.target) {
             target_arc.lock().monitored_by.remove(&monitor_ref);
         }
+    } else {
+        send_monitor_frame(
+            crate::dist::node::DIST_DEMONITOR,
+            my_pid,
+            monitor.target,
+            monitor_ref,
+        );
     }
-
     0
 }
 
-/// Deliver a DOWN message immediately to the monitoring process.
-///
-/// Used when monitoring an already-dead or nonexistent process.
-fn deliver_down_immediately(
-    sched: &scheduler::Scheduler,
-    monitoring_pid: ProcessId,
-    monitor_ref: u64,
-    monitored_pid: ProcessId,
-    reason_str: &str,
-) {
-    if let Some(proc_arc) = sched.get_process(monitoring_pid) {
-        let mut proc = proc_arc.lock();
-        let reason = ExitReason::Error(reason_str.to_string());
-        let down_data = link::encode_down_signal(monitor_ref, monitored_pid, &reason);
-        let buffer = heap::MessageBuffer::new(down_data, link::DOWN_SIGNAL_TAG);
-        proc.mailbox.push(Message { buffer });
-
-        if matches!(proc.state, ProcessState::Waiting) {
-            proc.set_live_state(ProcessState::Ready);
-        }
-    }
-}
-
-/// Monitor a node for :nodedown/:nodeup events.
-///
-/// Registers the calling process to receive NODEDOWN_TAG and NODEUP_TAG
-/// messages when the specified node disconnects or reconnects.
-///
-/// Returns 0 on success, 1 on failure.
+/// Monitor a node: when it disconnects, the calling actor is sent `msg`
+/// (as for `mesh_process_monitor`), once. It is sent at once when the node
+/// is not connected. Returns 0 on success, 1 outside an actor, before this
+/// node has started, or for a name that is not UTF-8.
 #[no_mangle]
-pub extern "C" fn mesh_node_monitor(node_ptr: *const u8, node_len: u64) -> u64 {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return 1,
+pub extern "C" fn mesh_node_monitor(
+    node_ptr: *const u8,
+    node_len: u64,
+    msg_ptr: *const u8,
+    msg_size: u64,
+    shape: *const u32,
+) -> u64 {
+    let Some(my_pid) = stack::get_current_pid() else {
+        return 1;
     };
-
-    if node_ptr.is_null() || node_len == 0 {
+    let sched = global_scheduler();
+    let (Some(me), Some(state)) = (sched.get_process(my_pid), crate::dist::node::node_state())
+    else {
+        return 1;
+    };
+    if node_ptr.is_null() {
         return 1;
     }
-
-    let node_name = unsafe {
-        let slice = std::slice::from_raw_parts(node_ptr, node_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return 1,
-        }
+    let bytes = unsafe { std::slice::from_raw_parts(node_ptr, node_len as usize) };
+    let Ok(node_name) = std::str::from_utf8(bytes) else {
+        return 1;
     };
-
-    let state = match crate::dist::node::node_state() {
-        Some(s) => s,
-        None => return 1,
-    };
-
+    let mut message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    message.addressed_to(&me);
+    // Checked and recorded under the lock a disconnect takes its monitors
+    // under, so the disconnect either finds this one or came first.
     let mut monitors = state.node_monitors.write();
-    monitors
-        .entry(node_name)
-        .or_insert_with(Vec::new)
-        .push((my_pid, false)); // false = persistent monitor (not once)
-
+    if state.sessions.read().contains_key(node_name) {
+        monitors
+            .entry(node_name.to_string())
+            .or_default()
+            .push((my_pid, message));
+    } else {
+        me.lock().mailbox.push(Message { buffer: message });
+    }
     0
 }
 

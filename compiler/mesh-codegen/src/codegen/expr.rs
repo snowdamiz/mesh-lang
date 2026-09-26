@@ -1077,10 +1077,10 @@ impl<'ctx> CodeGen<'ctx> {
             // (`send` is `ActorSend`): `mesh_actor_send(pid, tag, args...)`.
             "mesh_actor_send" => self.codegen_service_cast_helper(args)?,
             "mesh_node_start" => self.codegen_node_start(args)?,
-            "mesh_node_connect"
-            | "mesh_node_monitor"
-            | "mesh_global_whereis"
-            | "mesh_global_unregister" => self.codegen_node_string_call(args, name)?,
+            "mesh_node_monitor" | "mesh_process_monitor" => self.codegen_monitor(args, name)?,
+            "mesh_node_connect" | "mesh_global_whereis" | "mesh_global_unregister" => {
+                self.codegen_node_string_call(args, name)?
+            }
             "mesh_node_spawn" => self.codegen_node_spawn(args, 0)?,
             "mesh_node_spawn_link" => self.codegen_node_spawn(args, 1)?,
             "mesh_global_register" => self.codegen_global_register(args)?,
@@ -2509,35 +2509,11 @@ impl<'ctx> CodeGen<'ctx> {
         target: &MirExpr,
         message: &MirExpr,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
         // Evaluate the target PID (i64).
         let target_val = self.codegen_expr(target)?.into_int_value();
 
-        // Serialize the message to bytes.
         let msg_val = self.codegen_expr(message)?;
-        let mut shape_table = None;
-        let (msg_ptr, msg_size) = if matches!(message.ty(), MirType::Unit) {
-            (ptr_ty.const_null(), i64_ty.const_int(0, false))
-        } else {
-            // Store the message value on the stack and pass a pointer + size.
-            let msg_ty = self.llvm_type(message.ty());
-            shape_table = self.shape_table_for_value(&self.message_shape(message), msg_ty);
-            let msg_alloca = self
-                .builder
-                .build_alloca(msg_ty, "msg_buf")
-                .map_err(|e| e.to_string())?;
-            self.builder
-                .build_store(msg_alloca, msg_val)
-                .map_err(|e| e.to_string())?;
-
-            // Compute size via target data.
-            let target_data = self.target_machine.get_target_data();
-            let size = target_data.get_store_size(&msg_ty);
-
-            (msg_alloca, i64_ty.const_int(size, false))
-        };
+        let (msg_ptr, msg_size, shape_table) = self.message_bytes(message, msg_val)?;
 
         // A message that references heap values points into this actor's heap.
         // The shape table tells the runtime where, so the receiver gets a copy.
@@ -2567,6 +2543,86 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| "mesh_actor_send returned void".to_string())
     }
 
+    /// `value`, what `message` evaluated to, as the runtime takes a message: a
+    /// pointer to its bytes on the stack, their size, and the shape table
+    /// when it references heap values. Unit is no bytes.
+    fn message_bytes(
+        &mut self,
+        message: &MirExpr,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<
+        (
+            inkwell::values::PointerValue<'ctx>,
+            inkwell::values::IntValue<'ctx>,
+            Option<inkwell::values::PointerValue<'ctx>>,
+        ),
+        String,
+    > {
+        let i64_ty = self.context.i64_type();
+        if matches!(message.ty(), MirType::Unit) {
+            let null = self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .const_null();
+            return Ok((null, i64_ty.const_int(0, false), None));
+        }
+        let msg_ty = self.llvm_type(message.ty());
+        let shape_table = self.shape_table_for_value(&self.message_shape(message), msg_ty);
+        let msg_alloca = self
+            .builder
+            .build_alloca(msg_ty, "msg_buf")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(msg_alloca, value)
+            .map_err(|e| e.to_string())?;
+        let size = self
+            .target_machine
+            .get_target_data()
+            .get_store_size(&msg_ty);
+        Ok((msg_alloca, i64_ty.const_int(size, false), shape_table))
+    }
+
+    /// `Process.monitor(pid, message)` and `Node.monitor(name, message)`: the
+    /// runtime keeps its own copy of the message for when the monitor fires.
+    fn codegen_monitor(
+        &mut self,
+        args: &[MirExpr],
+        intrinsic_name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let [target, message] = args else {
+            return Err(format!("{intrinsic_name} takes a target and a message"));
+        };
+        let target_val = self.codegen_expr(target)?;
+        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> =
+            if intrinsic_name == "mesh_node_monitor" {
+                let (name_ptr, name_len) = self.codegen_unpack_string(target_val)?;
+                vec![name_ptr.into(), name_len.into()]
+            } else {
+                vec![target_val.into()]
+            };
+        let msg_val = self.codegen_expr(message)?;
+        let (msg_ptr, msg_size, shape_table) = self.message_bytes(message, msg_val)?;
+        let null = self
+            .context
+            .ptr_type(inkwell::AddressSpace::default())
+            .const_null();
+        call_args.extend::<[BasicMetadataValueEnum<'ctx>; 3]>([
+            msg_ptr.into(),
+            msg_size.into(),
+            shape_table.unwrap_or(null).into(),
+        ]);
+        self.builder
+            .build_call(
+                get_intrinsic(&self.module, intrinsic_name),
+                &call_args,
+                "monitor",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{intrinsic_name} returned void"))
+    }
+
     /// Codegen for Timer.send_after(pid, ms, msg).
     ///
     /// Serializes the message (3rd arg) to (ptr, size) like codegen_actor_send,
@@ -2576,8 +2632,6 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[MirExpr],
         evaluated: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let i64_ty = self.context.i64_type();
-
         // The caller has already evaluated the arguments. Evaluating them
         // again here ran the message expression, and its side effects, twice.
         let values: Vec<BasicValueEnum<'ctx>> = evaluated
@@ -2588,23 +2642,7 @@ impl<'ctx> CodeGen<'ctx> {
             return Err("Timer.send_after takes a pid, a delay and a message".to_string());
         };
         let (pid_val, ms_val) = (pid_val.into_int_value(), ms_val.into_int_value());
-
-        // Serialize the message (3rd arg) to (ptr, size) -- same pattern as codegen_actor_send.
-        let (msg_ptr, msg_size) = {
-            let msg_ty = self.llvm_type(args[2].ty());
-            let msg_alloca = self
-                .builder
-                .build_alloca(msg_ty, "timer_msg_buf")
-                .map_err(|e| e.to_string())?;
-            self.builder
-                .build_store(msg_alloca, msg_val)
-                .map_err(|e| e.to_string())?;
-
-            let target_data = self.target_machine.get_target_data();
-            let size = target_data.get_store_size(&msg_ty);
-
-            (msg_alloca, i64_ty.const_int(size, false))
-        };
+        let (msg_ptr, msg_size, shape_table) = self.message_bytes(&args[2], msg_val)?;
 
         // Call mesh_timer_send_after[_shaped](pid, ms, msg_ptr, msg_size[, shape])
         let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
@@ -2613,8 +2651,6 @@ impl<'ctx> CodeGen<'ctx> {
             msg_ptr.into(),
             msg_size.into(),
         ];
-        let shape_table =
-            self.shape_table_for_value(&self.message_shape(&args[2]), self.llvm_type(args[2].ty()));
         let send_after_fn = match shape_table {
             Some(shape_table) => {
                 call_args.push(shape_table.into());

@@ -259,8 +259,8 @@ pub struct Process {
     /// Used by supervisors to monitor child processes.
     pub trap_exit: bool,
 
-    /// Processes being monitored by this process. Maps monitor_ref -> monitored_pid.
-    pub monitors: FxHashMap<u64, ProcessId>,
+    /// The monitors this process set up, by reference.
+    pub monitors: FxHashMap<u64, Monitor>,
     /// Processes monitoring this process. Maps monitor_ref -> monitoring_pid.
     pub monitored_by: FxHashMap<u64, ProcessId>,
 
@@ -335,7 +335,26 @@ impl fmt::Debug for HeapBorrow {
     }
 }
 
+/// A monitor a process set up: the message it gets when `target` ends.
+pub struct Monitor {
+    pub target: ProcessId,
+    pub message: super::heap::MessageBuffer,
+}
+
 impl Process {
+    /// Queue the message of monitor `monitor_ref`, whose process has ended,
+    /// and forget the monitor. False when there is none, as after
+    /// `Process.demonitor`.
+    pub(crate) fn fire_monitor(&mut self, monitor_ref: u64) -> bool {
+        let Some(monitor) = self.monitors.remove(&monitor_ref) else {
+            return false;
+        };
+        self.mailbox.push(Message {
+            buffer: monitor.message,
+        });
+        true
+    }
+
     /// Create a new process with the given PID and priority.
     pub fn new(pid: ProcessId, priority: Priority) -> Self {
         Process {

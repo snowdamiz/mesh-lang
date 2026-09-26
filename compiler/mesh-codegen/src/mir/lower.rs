@@ -8631,16 +8631,25 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
-        // Timer.send_after(pid, ms, message): the message crosses to another actor.
+        // A message that crosses to another actor, last of the arguments:
+        // `Timer.send_after(pid, ms, message)`'s, and the one a monitor sends.
         let MirExpr::Call { func, mut args, ty } = lowered else {
             return lowered;
         };
-        let message = call.arg_list().and_then(|list| list.args().nth(2));
-        if let (MirExpr::Var(name, _), 3, Some(message)) = (func.as_ref(), args.len(), message) {
-            if name == "mesh_timer_send_after" {
-                let value = args.pop().unwrap();
-                args.push(self.shaped(value, message.syntax().text_range()));
-            }
+        let arity = match func.as_ref() {
+            MirExpr::Var(name, _) => match name.as_str() {
+                "mesh_timer_send_after" => 3,
+                "mesh_process_monitor" | "mesh_node_monitor" => 2,
+                _ => 0,
+            },
+            _ => 0,
+        };
+        let message = call
+            .arg_list()
+            .and_then(|list| list.args().nth(arity.max(1) - 1));
+        if let (true, Some(message)) = (arity > 0 && args.len() == arity, message) {
+            let value = args.pop().unwrap();
+            args.push(self.shaped(value, message.syntax().text_range()));
         }
         MirExpr::Call { func, args, ty }
     }

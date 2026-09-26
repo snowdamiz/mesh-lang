@@ -490,3 +490,57 @@ end
         assert!(output.contains(expected), "{expected} in:\n{output}");
     }
 }
+
+/// A monitor delivers the message it was set up with, one of the watching
+/// actor's own messages: when the process ends, at once when it already has,
+/// and never once removed.
+#[test]
+fn a_monitor_delivers_its_message_when_the_process_ends() {
+    let source = r##"actor child() do
+  receive do
+    n -> println("child got #{n}")
+  end
+end
+
+actor watcher() do
+  let first :: Pid<Int> = spawn(child)
+  Process.monitor(first, "first ended")
+  send(first, 1)
+  receive do
+    text -> println("watcher got [#{text}]")
+  end
+  Process.monitor(first, "first already ended")
+  receive do
+    text -> println("watcher got [#{text}]")
+  end
+  let second :: Pid<Int> = spawn(child)
+  let reference = Process.monitor(second, "second ended")
+  println("demonitor=#{Process.demonitor(reference)}")
+  println("demonitor_again=#{Process.demonitor(reference)}")
+  send(second, 2)
+  receive do
+    text -> println("unexpected [#{text}]")
+  after 300 -> println("nothing after demonitor")
+  end
+end
+
+fn main() do
+  let w :: Pid<String> = spawn(watcher)
+  Timer.sleep(1000)
+end
+"##;
+    let output = compile_and_run(source, &["--opt-level", "2"], 60);
+    assert_eq!(
+        output.lines().collect::<Vec<_>>(),
+        [
+            "child got 1",
+            "watcher got [first ended]",
+            "watcher got [first already ended]",
+            "demonitor=0",
+            "demonitor_again=1",
+            "child got 2",
+            "nothing after demonitor",
+        ],
+        "{output}"
+    );
+}

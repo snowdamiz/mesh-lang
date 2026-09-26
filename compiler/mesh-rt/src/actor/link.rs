@@ -28,12 +28,6 @@ use super::process::{ExitReason, Message, Process, ProcessId, ProcessState};
 /// should use this tag. The data payload encodes the exiting PID and reason.
 pub const EXIT_SIGNAL_TAG: u64 = u64::MAX;
 
-/// Special type_tag used for DOWN signal messages (monitor notifications).
-///
-/// u64::MAX - 1 is reserved for monitor DOWN signals. The data payload
-/// encodes [monitor_ref, monitored_pid, reason].
-pub const DOWN_SIGNAL_TAG: u64 = u64::MAX - 1;
-
 /// Generate a globally unique monitor reference.
 ///
 /// Each call returns a new u64, guaranteed unique across all threads.
@@ -183,20 +177,6 @@ pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
         6 => Some((ExitReason::Noconnection, 1)),
         _ => None,
     }
-}
-
-/// Encode a DOWN message for monitor notification.
-/// Layout: [u64 monitor_ref][u64 monitored_pid][reason bytes via encode_reason]
-pub fn encode_down_signal(
-    monitor_ref: u64,
-    monitored_pid: ProcessId,
-    reason: &ExitReason,
-) -> Vec<u8> {
-    let mut data = Vec::new();
-    data.extend_from_slice(&monitor_ref.to_le_bytes());
-    data.extend_from_slice(&monitored_pid.0.to_le_bytes());
-    encode_reason(&mut data, reason);
-    data
 }
 
 /// Propagate exit signals to all linked processes.

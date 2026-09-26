@@ -114,9 +114,10 @@ fn assert_lines(output: &str, expected: &[&str], other: &str) {
 }
 
 /// The hub: under global names, an `echo` actor that answers each number
-/// with the next to whoever is registered as `spoke`, and a `greeter` that
-/// answers a request at the pid it carries. It ends once the spoke has come
-/// and gone.
+/// with the next to whoever is registered as `spoke`, a `greeter` that
+/// answers a request at the pid it carries, and a `mortal` that ends on its
+/// first message. A spoke may spawn a `crasher` on it. It watches the spoke's
+/// node, and ends once the spoke has come and gone.
 const HUB: &str = r#"actor echo() do
   receive do
     n -> send(Global.whereis("spoke"), n + 1)
@@ -127,6 +128,36 @@ end
 actor relay(to :: Pid<String>) do
   receive do
     text -> send(to, "relayed " <> text)
+  end
+end
+
+actor mortal() do
+  receive do
+    _ -> println("mortal ends")
+  end
+end
+
+fn deliberate_crash(0) -> Int do
+  0
+end
+
+actor crasher() do
+  receive do
+    n -> println("crasher got #{deliberate_crash(n)}")
+  end
+end
+
+actor node_watcher() do
+  Node.monitor("SPOKE", "spoke node gone")
+  receive do
+    text -> println(text)
+  end
+end
+
+fn await_local_gone(name :: String) do
+  if Process.whereis(name) != Process.whereis("none-such") do
+    Timer.sleep(10)
+    await_local_gone(name)
   end
 end
 
@@ -150,10 +181,15 @@ fn main() do
   println("register=#{Global.register("echo", echo)}")
   let greeter :: Pid<(Pid<String>, String, List<String>)> = spawn(greeter)
   Global.register("greeter", greeter)
+  let mortal :: Pid<Int> = spawn(mortal)
+  Global.register("mortal", mortal)
   println("start=#{started}")
   println("ready")
   await_nodes(1)
+  let watcher :: Pid<String> = spawn(node_watcher)
+  Process.register("node_watcher", watcher)
   await_nodes(0)
+  await_local_gone("node_watcher")
   println("spoke_name_gone=#{Global.whereis("spoke") == Process.whereis("none-such")}")
 end
 "#;
@@ -255,4 +291,72 @@ end
         ],
         &hub,
     );
+}
+
+/// A monitor on another node's process fires when it ends, and one removed
+/// never does; a process linked to a remote one that crashes ends too; and a
+/// node watching another hears when it leaves.
+#[test]
+fn nodes_monitor_and_link_across_the_connection() {
+    let spoke = r#"fn deliberate_crash(0) -> Int do
+  0
+end
+
+actor crasher() do
+  receive do
+    n -> println("crasher got #{deliberate_crash(n)}")
+  end
+end
+
+actor linked() do
+  let crasher = Node.spawn_link("HUB", crasher)
+  send(crasher, 1)
+  receive do
+    _ -> println("linked outlived its link")
+  end
+end
+
+actor watcher() do
+  let mortal = Global.whereis("mortal")
+  Process.monitor(mortal, "mortal ended")
+  send(mortal, 0)
+  receive do
+    text -> println("got [#{text}]")
+  end
+  let reference = Process.monitor(Global.whereis("echo"), "echo ended")
+  println("remote_demonitor=#{Process.demonitor(reference)}")
+  let linked :: Pid<Int> = spawn(linked)
+  Process.monitor(linked, "linked ended")
+  receive do
+    text -> println("got [#{text}]")
+  end
+end
+
+fn await_gone(name :: String) do
+  if Global.whereis(name) != Process.whereis("none-such") do
+    Timer.sleep(10)
+    await_gone(name)
+  end
+end
+
+fn main() do
+  Node.start("SPOKE", "COOKIE")
+  Node.connect("HUB")
+  let watcher :: Pid<String> = spawn(watcher)
+  Global.register("spoke", watcher)
+  await_gone("spoke")
+end
+"#;
+    let (hub, spoke) = run_pair(HUB, spoke);
+    assert_lines(
+        &spoke,
+        &[
+            "got [mortal ended]",
+            "remote_demonitor=0",
+            "got [linked ended]",
+        ],
+        &hub,
+    );
+    assert!(!spoke.contains("outlived"), "{spoke}");
+    assert_lines(&hub, &["mortal ends", "spoke node gone"], &spoke);
 }

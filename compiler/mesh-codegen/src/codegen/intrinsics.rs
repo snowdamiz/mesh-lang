@@ -3427,10 +3427,19 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_node_monitor(node_ptr: ptr, node_len: i64) -> i64
+    // mesh_node_monitor(node_ptr: ptr, node_len: i64, msg_ptr: ptr, msg_size: i64, shape: ptr) -> i64
     module.add_function(
         "mesh_node_monitor",
-        i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        i64_type.fn_type(
+            &[
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -3506,10 +3515,18 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_process_monitor(target_pid: i64) -> i64
+    // mesh_process_monitor(target_pid: i64, msg_ptr: ptr, msg_size: i64, shape: ptr) -> i64
     module.add_function(
         "mesh_process_monitor",
-        i64_type.fn_type(&[i64_type.into()], false),
+        i64_type.fn_type(
+            &[
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
         Some(inkwell::module::Linkage::External),
     );
 

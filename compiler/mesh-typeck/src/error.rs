@@ -190,6 +190,9 @@ pub enum TypeError {
     },
     /// self() called outside an actor block.
     SelfOutsideActor { span: TextRange },
+    /// `Process.monitor` or `Node.monitor` outside an actor block: its message
+    /// has no actor to go to.
+    MonitorOutsideActor { span: TextRange },
     /// spawn called with a non-function argument.
     SpawnNonFunction { found: Ty, span: TextRange },
     /// receive used outside an actor block.
@@ -540,6 +543,7 @@ impl TypeError {
             | TypeError::RedundantArm { span, .. }
             | TypeError::SendTypeMismatch { span, .. }
             | TypeError::SelfOutsideActor { span, .. }
+            | TypeError::MonitorOutsideActor { span, .. }
             | TypeError::SpawnNonFunction { span, .. }
             | TypeError::ReceiveOutsideActor { span, .. }
             | TypeError::InvalidChildStart { span, .. }
@@ -814,6 +818,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::SelfOutsideActor { .. } => {
                 write!(f, "self() used outside actor block")
+            }
+            TypeError::MonitorOutsideActor { .. } => {
+                write!(f, "monitor used outside actor block")
             }
             TypeError::SpawnNonFunction { found, .. } => {
                 write!(
