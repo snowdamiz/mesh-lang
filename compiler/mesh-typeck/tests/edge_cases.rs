@@ -653,3 +653,51 @@ fn imports_of_what_is_not_there_are_errors() {
         ]
     );
 }
+
+// ── Supervisors ────────────────────────────────────────────────────────
+
+/// A supervisor with the given child specs (each a `child ... end` block).
+fn supervisor(children: &str) -> String {
+    format!(
+        "actor worker() do\n  receive do\n    m -> worker()\n  end\nend\n\
+         fn restart() do\n  spawn(worker)\nend\n\
+         supervisor Sup do\n  strategy: one_for_one\n{children}end\n"
+    )
+}
+
+/// A child spec's restart and shutdown values are checked, and its start
+/// expression is not read for them: a start function calling one named
+/// `restart` was taken for the key. A duplicate child name was reported as
+/// an unknown strategy.
+#[test]
+fn child_spec_values_are_checked_where_they_are_given() {
+    assert_clean(&supervisor(
+        "  child a do\n    start: fn -> restart() end\n    restart: transient\n    shutdown: 10_000\n  end\n",
+    ));
+    assert_eq!(
+        errors(&supervisor(
+            "  child a do\n    start: fn -> spawn(worker) end\n    shutdown: 0\n  end\n\
+               child b do\n    start: fn -> spawn(worker) end\n    shutdown: 99999999999999999999\n  end\n\
+               child a do\n    start: fn -> spawn(worker) end\n  end\n",
+        )),
+        [
+            "invalid shutdown value `0` for child `a`, expected a positive integer or brutal_kill",
+            "invalid shutdown value `99999999999999999999` for child `b`, expected a positive integer or brutal_kill",
+            "child `a` is defined twice",
+        ]
+    );
+}
+
+/// A supervisor the parser could not finish is checked as far as it goes.
+#[test]
+fn an_unfinished_supervisor_is_checked_as_far_as_it_goes() {
+    for source in [
+        "supervisor Sup do\n  strategy: 5\nend\n",
+        "supervisor Sup do\n  child a do\n    start: fn -> nope() end\n    restart: 5\n  end\nend\n",
+        "supervisor Sup do\n  child a\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.ok(), "{source}");
+        mesh_typeck::check(&parse);
+    }
+}

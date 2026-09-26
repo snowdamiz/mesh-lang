@@ -14200,168 +14200,114 @@ fn infer_supervisor_def(
         .unwrap_or_else(|| "<unnamed_supervisor>".to_string());
 
     // ── Strategy validation ──────────────────────────────────────────
-    if let Some(strategy_node) = sup_def.strategy() {
-        let idents: Vec<_> = strategy_node
+    // `strategy: one_for_one`: the value is the clause's second name.
+    let strategy = sup_def.strategy().and_then(|clause| {
+        clause
             .children_with_tokens()
             .filter_map(|c| c.into_token())
             .filter(|t| t.kind() == SyntaxKind::IDENT)
-            .collect();
-        // The first IDENT is "strategy", the second is the value.
-        if idents.len() >= 2 {
-            let strategy_text = idents[1].text().to_string();
-            match strategy_text.as_str() {
-                "one_for_one" | "one_for_all" | "rest_for_one" | "simple_one_for_one" => {}
-                _ => {
-                    ctx.errors.push(TypeError::InvalidStrategy {
-                        found: strategy_text,
-                        span: idents[1].text_range(),
-                    });
-                }
-            }
+            .nth(1)
+    });
+    if let Some(strategy) = strategy {
+        if !matches!(
+            strategy.text(),
+            "one_for_one" | "one_for_all" | "rest_for_one" | "simple_one_for_one"
+        ) {
+            ctx.errors.push(TypeError::InvalidStrategy {
+                found: strategy.text().to_string(),
+                span: strategy.text_range(),
+            });
         }
     }
 
     // ── Child spec validation ────────────────────────────────────────
-    let child_specs = sup_def.child_specs();
     let mut seen_child_names: Vec<String> = Vec::new();
-
-    for child_node in &child_specs {
-        // Extract child name.
-        let child_name = child_node
+    for child_node in sup_def.child_specs() {
+        let name = child_node
             .children()
             .find(|c| c.kind() == SyntaxKind::NAME)
-            .and_then(|n| {
-                n.children_with_tokens()
-                    .filter_map(|c| c.into_token())
-                    .find(|t| t.kind() == SyntaxKind::IDENT)
-                    .map(|t| t.text().to_string())
-            })
-            .unwrap_or_else(|| "<unnamed_child>".to_string());
-
-        // Check for duplicate child names.
+            .and_then(|n| n.first_token());
+        let child_name = name
+            .as_ref()
+            .map_or_else(|| "<unnamed_child>".to_string(), |t| t.text().to_string());
         if seen_child_names.contains(&child_name) {
-            ctx.errors.push(TypeError::InvalidStrategy {
-                found: format!("duplicate child name `{}`", child_name),
-                span: child_node.text_range(),
+            ctx.errors.push(TypeError::DuplicateDefinition {
+                kind: "child",
+                name: child_name.clone(),
+                span: name.map_or(child_node.text_range(), |t| t.text_range()),
             });
         }
         seen_child_names.push(child_name.clone());
 
-        // Walk the BLOCK child for key-value validation.
-        let block = child_node
+        let Some(block) = child_node
             .children()
-            .find(|c| c.kind() == SyntaxKind::BLOCK);
-
-        if let Some(block) = block {
-            let tokens: Vec<_> = block
-                .descendants_with_tokens()
-                .filter_map(|c| c.into_token())
-                .filter(|t| t.kind() != SyntaxKind::WHITESPACE)
-                .collect();
-
-            let mut i = 0;
-            let mut found_start = false;
-
-            while i < tokens.len() {
-                let text = tokens[i].text();
-
-                if text == "start" {
-                    found_start = true;
-                    // The start value is the child spec's only expression: a
-                    // function that spawns the child and returns its pid.
-                    // Unchecked, a misspelled actor in it compiled and crashed.
-                    if let Some(start) = block.children().find_map(Expr::cast) {
-                        if let Ok(start_ty) = infer_expr(
-                            ctx,
-                            env,
-                            &start,
-                            types,
-                            type_registry,
-                            trait_registry,
-                            fn_constraints,
-                        ) {
-                            let expected = Ty::Fun(vec![], Box::new(Ty::pid(ctx.fresh_var())));
-                            if ctx
-                                .unify(start_ty.clone(), expected, ConstraintOrigin::Builtin)
-                                .is_err()
-                            {
-                                let found = ctx.resolve(start_ty);
-                                ctx.errors.push(TypeError::InvalidChildStart {
-                                    child_name: child_name.clone(),
-                                    found,
-                                    span: start.syntax().text_range(),
-                                });
-                            }
-                        }
-                    }
-                } else if text == "restart" {
-                    // Validate restart type.
-                    let mut j = i + 1;
-                    while j < tokens.len() {
-                        if tokens[j].kind() == SyntaxKind::IDENT && tokens[j].text() != "restart" {
-                            let restart_text = tokens[j].text().to_string();
-                            match restart_text.as_str() {
-                                "permanent" | "transient" | "temporary" => {}
-                                _ => {
-                                    ctx.errors.push(TypeError::InvalidRestartType {
-                                        found: restart_text,
-                                        child_name: child_name.clone(),
-                                        span: tokens[j].text_range(),
-                                    });
-                                }
-                            }
-                            break;
-                        }
-                        if tokens[j].kind() == SyntaxKind::COLON {
-                            j += 1;
-                            continue;
-                        }
-                        break;
-                    }
-                } else if text == "shutdown" {
-                    // Validate shutdown value.
-                    let mut j = i + 1;
-                    while j < tokens.len() {
-                        if tokens[j].kind() == SyntaxKind::COLON {
-                            j += 1;
-                            continue;
-                        }
-                        if tokens[j].kind() == SyntaxKind::INT_LITERAL {
-                            // Valid: positive integer.
-                            if let Ok(val) = tokens[j].text().parse::<i64>() {
-                                if val <= 0 {
-                                    ctx.errors.push(TypeError::InvalidShutdownValue {
-                                        found: tokens[j].text().to_string(),
-                                        child_name: child_name.clone(),
-                                        span: tokens[j].text_range(),
-                                    });
-                                }
-                            }
-                            break;
-                        }
-                        if tokens[j].kind() == SyntaxKind::IDENT {
-                            let shutdown_text = tokens[j].text().to_string();
-                            if shutdown_text == "brutal_kill" {
-                                // Valid.
-                            } else {
-                                ctx.errors.push(TypeError::InvalidShutdownValue {
-                                    found: shutdown_text,
-                                    child_name: child_name.clone(),
-                                    span: tokens[j].text_range(),
-                                });
-                            }
-                            break;
-                        }
-                        break;
-                    }
+            .find(|c| c.kind() == SyntaxKind::BLOCK)
+        else {
+            continue;
+        };
+        // The start value is the child spec's only expression: a function
+        // that spawns the child and returns its pid. Unchecked, a misspelled
+        // actor in it compiled and crashed.
+        if let Some(start) = block.children().find_map(Expr::cast) {
+            if let Ok(start_ty) = infer_expr(
+                ctx,
+                env,
+                &start,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            ) {
+                let expected = Ty::Fun(vec![], Box::new(Ty::pid(ctx.fresh_var())));
+                if ctx
+                    .unify(start_ty.clone(), expected, ConstraintOrigin::Builtin)
+                    .is_err()
+                {
+                    let found = ctx.resolve(start_ty);
+                    ctx.errors.push(TypeError::InvalidChildStart {
+                        child_name: child_name.clone(),
+                        found,
+                        span: start.syntax().text_range(),
+                    });
                 }
-
-                i += 1;
             }
-
-            // If no start clause was found, that's also an error (but the parser
-            // should catch this, so we only flag it if we need to).
-            let _ = found_start;
+        }
+        // `restart: permanent` and `shutdown: 5000`: the block's own tokens
+        // (not those of the start expression), each value after its key and
+        // colon.
+        let tokens: Vec<_> = block
+            .children_with_tokens()
+            .filter_map(|c| c.into_token())
+            .filter(|t| !t.kind().is_trivia() && t.kind() != SyntaxKind::NEWLINE)
+            .collect();
+        for pair in tokens
+            .windows(3)
+            .filter(|pair| pair[1].kind() == SyntaxKind::COLON)
+        {
+            let (key, value) = (&pair[0], &pair[2]);
+            let found = value.text().to_string();
+            match key.text() {
+                "restart" if !matches!(value.text(), "permanent" | "transient" | "temporary") => {
+                    ctx.errors.push(TypeError::InvalidRestartType {
+                        found,
+                        child_name: child_name.clone(),
+                        span: value.text_range(),
+                    });
+                }
+                // A timeout in milliseconds, or `brutal_kill`.
+                "shutdown"
+                    if value.text() != "brutal_kill"
+                        && !(value.kind() == SyntaxKind::INT_LITERAL
+                            && found.replace('_', "").parse::<i64>().is_ok_and(|ms| ms > 0)) =>
+                {
+                    ctx.errors.push(TypeError::InvalidShutdownValue {
+                        found,
+                        child_name: child_name.clone(),
+                        span: value.text_range(),
+                    });
+                }
+                _ => {}
+            }
         }
     }
 
