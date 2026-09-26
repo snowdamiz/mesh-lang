@@ -895,27 +895,6 @@ pub enum BinOp {
     Concat,
 }
 
-impl fmt::Display for BinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BinOp::Add => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
-            BinOp::Mul => write!(f, "*"),
-            BinOp::Div => write!(f, "/"),
-            BinOp::Mod => write!(f, "%"),
-            BinOp::Eq => write!(f, "=="),
-            BinOp::NotEq => write!(f, "!="),
-            BinOp::Lt => write!(f, "<"),
-            BinOp::Gt => write!(f, ">"),
-            BinOp::LtEq => write!(f, "<="),
-            BinOp::GtEq => write!(f, ">="),
-            BinOp::And => write!(f, "and"),
-            BinOp::Or => write!(f, "or"),
-            BinOp::Concat => write!(f, "++"),
-        }
-    }
-}
-
 /// Unary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
@@ -923,15 +902,6 @@ pub enum UnaryOp {
     Neg,
     /// Boolean negation.
     Not,
-}
-
-impl fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UnaryOp::Neg => write!(f, "-"),
-            UnaryOp::Not => write!(f, "not"),
-        }
-    }
 }
 
 // ── MirStructDef ──────────────────────────────────────────────────────
