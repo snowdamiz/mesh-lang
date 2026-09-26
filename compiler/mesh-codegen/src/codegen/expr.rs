@@ -6,7 +6,9 @@
 
 use inkwell::intrinsics::Intrinsic;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue, StructValue};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue, StructValue,
+};
 use inkwell::IntPredicate;
 
 use super::intrinsics::get_intrinsic;
@@ -3708,94 +3710,105 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Reduction check ─────────────────────────────────────────────────
 
+    /// Coerce a value to the 8-byte word that carries it in an argument slot
+    /// (spawn arguments, service arguments and replies): an aggregate that
+    /// fits a word travels as its bits, a larger one in a box, and anything
+    /// else as `coerce_argument` makes it a word.
+    fn coerce_to_i64(
+        &mut self,
+        val: BasicValueEnum<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let i64_ty = self.context.i64_type();
+        let BasicValueEnum::StructValue(sv) = val else {
+            return Ok(self
+                .coerce_argument(val.into(), i64_ty.into())?
+                .into_int_value());
+        };
+        let size = self
+            .target_machine
+            .get_target_data()
+            .get_store_size(&sv.get_type());
+        if size > 8 {
+            let boxed = self.box_value(sv.into(), "arg_box")?.into_pointer_value();
+            return self
+                .builder
+                .build_ptr_to_int(boxed, i64_ty, "arg_box_to_i64")
+                .map_err(|e| e.to_string());
+        }
+        // Zeroed first: the bits are narrower than the word read back.
+        let alloca = self
+            .builder
+            .build_alloca(i64_ty, "struct_tmp")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(alloca, i64_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(alloca, sv)
+            .map_err(|e| e.to_string())?;
+        Ok(self
+            .builder
+            .build_load(i64_ty, alloca, "struct_to_i64")
+            .map_err(|e| e.to_string())?
+            .into_int_value())
+    }
+
+    /// The value of LLVM type `ty` that `coerce_to_i64` made the word `word`.
+    fn word_as(
+        &mut self,
+        word: inkwell::values::IntValue<'ctx>,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let error = |e: inkwell::builder::BuilderError| e.to_string();
+        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+        Ok(match ty {
+            inkwell::types::BasicTypeEnum::IntType(int_ty) if int_ty.get_bit_width() < 64 => self
+                .builder
+                .build_int_truncate(word, int_ty, name)
+                .map_err(error)?
+                .into(),
+            inkwell::types::BasicTypeEnum::FloatType(float_ty) => self
+                .builder
+                .build_bit_cast(word, float_ty, name)
+                .map_err(error)?,
+            inkwell::types::BasicTypeEnum::PointerType(_) => self
+                .builder
+                .build_int_to_ptr(word, ptr_ty, name)
+                .map_err(error)?
+                .into(),
+            inkwell::types::BasicTypeEnum::StructType(struct_ty) => {
+                let size = self
+                    .target_machine
+                    .get_target_data()
+                    .get_store_size(&struct_ty);
+                let source = if size > 8 {
+                    self.builder
+                        .build_int_to_ptr(word, ptr_ty, name)
+                        .map_err(error)?
+                } else {
+                    let slot = self
+                        .builder
+                        .build_alloca(word.get_type(), name)
+                        .map_err(error)?;
+                    self.builder.build_store(slot, word).map_err(error)?;
+                    slot
+                };
+                self.builder
+                    .build_load(struct_ty, source, name)
+                    .map_err(error)?
+            }
+            _ => word.into(),
+        })
+    }
+
     /// Emit a call to mesh_reduction_check() for preemptive scheduling.
     ///
     /// Inserted after function call sites and closure calls to enable
     /// cooperative preemption of actor processes.
-    /// Coerce any BasicValueEnum to an i64 IntValue.
-    /// - IntValue: zero-extend if narrower than 64 bits, identity if already i64
-    /// - PointerValue: ptrtoint
-    /// - FloatValue: bitcast f64 to i64
-    /// - StructValue: store to alloca, load as i64 (first 8 bytes)
-    fn coerce_to_i64(
-        &self,
-        val: BasicValueEnum<'ctx>,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
-        let i64_ty = self.context.i64_type();
-        match val {
-            BasicValueEnum::IntValue(iv) => {
-                if iv.get_type().get_bit_width() < 64 {
-                    self.builder
-                        .build_int_z_extend(iv, i64_ty, "zext_to_i64")
-                        .map_err(|e| e.to_string())
-                } else {
-                    Ok(iv)
-                }
-            }
-            BasicValueEnum::PointerValue(pv) => self
-                .builder
-                .build_ptr_to_int(pv, i64_ty, "ptr_to_i64")
-                .map_err(|e| e.to_string()),
-            BasicValueEnum::FloatValue(fv) => {
-                let alloca = self
-                    .builder
-                    .build_alloca(self.context.f64_type(), "f64_tmp")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(alloca, fv)
-                    .map_err(|e| e.to_string())?;
-                Ok(self
-                    .builder
-                    .build_load(i64_ty, alloca, "f64_to_i64")
-                    .map_err(|e| e.to_string())?
-                    .into_int_value())
-            }
-            BasicValueEnum::StructValue(sv) => {
-                // Same convention as tuple slots and service replies: an
-                // aggregate that fits a word travels as its bits, a larger one
-                // in a box. Loading a wide struct as one i64 kept only its
-                // first field.
-                let size = self
-                    .target_machine
-                    .get_target_data()
-                    .get_store_size(&sv.get_type());
-                if size > 8 {
-                    let boxed = self.box_value(sv.into(), "arg_box")?.into_pointer_value();
-                    return self
-                        .builder
-                        .build_ptr_to_int(boxed, i64_ty, "arg_box_to_i64")
-                        .map_err(|e| e.to_string());
-                }
-                // Zeroed first: the bits are narrower than the word read back.
-                let alloca = self
-                    .builder
-                    .build_alloca(i64_ty, "struct_tmp")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(alloca, i64_ty.const_zero())
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(alloca, sv)
-                    .map_err(|e| e.to_string())?;
-                Ok(self
-                    .builder
-                    .build_load(i64_ty, alloca, "struct_to_i64")
-                    .map_err(|e| e.to_string())?
-                    .into_int_value())
-            }
-            _ => Err(format!("Cannot coerce {:?} to i64", val)),
-        }
-    }
-
     fn emit_reduction_check(&self) {
-        if let Some(check_fn) = self.module.get_function("mesh_reduction_check") {
-            // Only emit if the current block is not yet terminated.
-            if let Some(bb) = self.builder.get_insert_block() {
-                if bb.get_terminator().is_none() {
-                    let _ = self.builder.build_call(check_fn, &[], "");
-                }
-            }
-        }
+        let check_fn = get_intrinsic(&self.module, "mesh_reduction_check");
+        let _ = self.builder.build_call(check_fn, &[], "");
     }
 
     // ── Supervisor start ──────────────────────────────────────────────
@@ -4034,7 +4047,6 @@ impl<'ctx> CodeGen<'ctx> {
     /// 7. For cast handlers: tail-calls loop with new state
     pub(crate) fn codegen_service_loop(
         &mut self,
-        _loop_fn_name: &str,
         call_handlers: &[(u64, String, usize)],
         cast_handlers: &[(u64, String, usize)],
     ) -> Result<(), String> {
@@ -4044,62 +4056,33 @@ impl<'ctx> CodeGen<'ctx> {
 
         let fn_val = self.current_function();
 
-        // Determine the state LLVM type from the first handler function's first param.
-        // All handlers share the same state type (the init function's return type).
-        // The state may be a struct type (e.g., RateLimitState, StreamState), a pointer,
-        // or i64. We must use the actual LLVM type, not just ptr-vs-i64.
-        let first_handler_name = call_handlers
+        // Every handler takes the state (the init function's result) first:
+        // a struct, a pointer or a word.
+        let all_handlers: Vec<(u64, FunctionValue<'ctx>, usize, bool)> = call_handlers
+            .iter()
+            .map(|handler| (handler, true))
+            .chain(cast_handlers.iter().map(|handler| (handler, false)))
+            .map(|((tag, name, nargs), is_call)| (*tag, self.functions[name], *nargs, is_call))
+            .collect();
+        let state_llvm_ty: inkwell::types::BasicTypeEnum<'ctx> = all_handlers
             .first()
-            .map(|(_, name, _)| name.as_str())
-            .or_else(|| cast_handlers.first().map(|(_, name, _)| name.as_str()));
-        let state_llvm_ty: inkwell::types::BasicTypeEnum<'ctx> = if let Some(name) =
-            first_handler_name
-        {
-            if let Some(handler_fn) = self.functions.get(name) {
-                let param_types = handler_fn.get_type().get_param_types();
-                if !param_types.is_empty() {
-                    inkwell::types::BasicTypeEnum::try_from(param_types[0]).unwrap_or(i64_ty.into())
-                } else {
-                    i64_ty.into()
-                }
-            } else {
-                i64_ty.into()
-            }
-        } else {
-            i64_ty.into()
-        };
+            .and_then(|(_, handler, _, _)| handler.get_type().get_param_types().first().copied())
+            .and_then(|state| inkwell::types::BasicTypeEnum::try_from(state).ok())
+            .unwrap_or(i64_ty.into());
 
-        // The service loop function receives a ptr to the args buffer.
-        // Load the initial state from the args buffer (first 8-byte slot).
-        let args_ptr_alloca = *self
-            .locals
-            .get("__args_ptr")
-            .ok_or("Missing __args_ptr parameter in service loop")?;
+        // The service loop function receives a ptr to the args buffer, whose
+        // first slot is the initial state.
         let args_ptr_val = self
             .builder
-            .build_load(ptr_ty, args_ptr_alloca, "args_ptr_val")
+            .build_load(ptr_ty, self.locals["__args_ptr"], "args_ptr_val")
             .map_err(|e| e.to_string())?
             .into_pointer_value();
-        // Spawn arguments are 8-byte slots: a state struct wider than a word
-        // arrives in a box (see `coerce_to_i64`).
-        let state_is_boxed = state_llvm_ty.is_struct_type()
-            && self
-                .target_machine
-                .get_target_data()
-                .get_store_size(&state_llvm_ty)
-                > 8;
-        let state_source = if state_is_boxed {
-            self.builder
-                .build_load(ptr_ty, args_ptr_val, "init_state_box")
-                .map_err(|e| e.to_string())?
-                .into_pointer_value()
-        } else {
-            args_ptr_val
-        };
-        let init_state = self
+        let init_word = self
             .builder
-            .build_load(state_llvm_ty, state_source, "init_state")
-            .map_err(|e| e.to_string())?;
+            .build_load(i64_ty, args_ptr_val, "init_state_word")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let init_state = self.word_as(init_word, state_llvm_ty, "init_state")?;
 
         // Create a state alloca to hold the mutable state across iterations.
         let state_alloca = self
@@ -4155,259 +4138,83 @@ impl<'ctx> CodeGen<'ctx> {
         // Continue block: process the message normally.
         self.builder.position_at_end(continue_bb);
 
-        // Message layout after 16-byte header: [u64 type_tag][u64 caller_pid][i64... args]
-        // Skip the 16-byte MessageBuffer header.
-        let data_ptr = unsafe {
-            self.builder
-                .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "data_ptr")
-                .map_err(|e| e.to_string())?
+        // Message layout after the 16-byte header: [u64 type_tag][u64 caller_pid][i64... args]
+        // The word at `offset` bytes into the message's data.
+        let data_word = |this: &mut Self, offset: u64, name: &str| {
+            let word_ptr = unsafe {
+                this.builder
+                    .build_gep(
+                        i8_ty,
+                        msg_ptr,
+                        &[i64_ty.const_int(16 + offset, false)],
+                        name,
+                    )
+                    .map_err(|e| e.to_string())?
+            };
+            this.builder
+                .build_load(i64_ty, word_ptr, name)
+                .map(|word| word.into_int_value())
+                .map_err(|e| e.to_string())
         };
+        let type_tag = data_word(self, 0, "type_tag")?;
+        let caller_pid = data_word(self, 8, "caller_pid")?;
 
-        // Extract type_tag (offset 0 from data_ptr).
-        let type_tag = self
-            .builder
-            .build_load(i64_ty, data_ptr, "type_tag")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Extract caller_pid (offset 8 from data_ptr).
-        let caller_ptr = unsafe {
-            self.builder
-                .build_gep(i8_ty, data_ptr, &[i64_ty.const_int(8, false)], "caller_ptr")
-                .map_err(|e| e.to_string())?
-        };
-        let caller_pid = self
-            .builder
-            .build_load(i64_ty, caller_ptr, "caller_pid")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-
-        // Build dispatch: if/else chain on type_tag.
-        let all_handlers: Vec<(u64, &str, usize, bool)> = call_handlers
-            .iter()
-            .map(|(tag, name, nargs)| (*tag, name.as_str(), *nargs, true))
-            .chain(
-                cast_handlers
-                    .iter()
-                    .map(|(tag, name, nargs)| (*tag, name.as_str(), *nargs, false)),
-            )
-            .collect();
-
-        // Create blocks for each handler + default.
+        // Dispatch on type_tag; an unknown tag loops again with the state unchanged.
         let default_bb = self.context.append_basic_block(fn_val, "default");
-
-        // Build the switch instruction.
-        let _switch = self
-            .builder
-            .build_switch(
-                type_tag,
-                default_bb,
-                &all_handlers
-                    .iter()
-                    .map(|(tag, _, _, _)| {
-                        let bb = self
-                            .context
-                            .append_basic_block(fn_val, &format!("handler_{}", tag));
-                        (i64_ty.const_int(*tag, false), bb)
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .map_err(|e| e.to_string())?;
-
-        // Re-collect blocks from the switch (they're in the same order).
         let handler_blocks: Vec<_> = all_handlers
             .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                // The switch cases are added in order; find the corresponding block.
-                let block_name = format!("handler_{}", all_handlers[i].0);
-                fn_val
-                    .get_basic_blocks()
-                    .into_iter()
-                    .find(|bb| bb.get_name().to_str().unwrap_or("") == block_name)
-                    .unwrap()
+            .map(|(tag, ..)| {
+                let block = self
+                    .context
+                    .append_basic_block(fn_val, &format!("handler_{tag}"));
+                (i64_ty.const_int(*tag, false), block)
             })
             .collect();
+        self.builder
+            .build_switch(type_tag, default_bb, &handler_blocks)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(default_bb);
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|e| e.to_string())?;
 
         // Generate code for each handler.
-        for (i, (_tag, handler_fn_name, num_args, is_call)) in all_handlers.iter().enumerate() {
-            let bb = handler_blocks[i];
-            self.builder.position_at_end(bb);
+        for ((_, handler_fn, num_args, is_call), (_, bb)) in
+            all_handlers.iter().zip(&handler_blocks)
+        {
+            self.builder.position_at_end(*bb);
+            let param_types = handler_fn.get_type().get_param_types();
 
-            // Look up handler function to get parameter types for correct arg loading.
-            let handler_fn = self
-                .functions
-                .get(*handler_fn_name)
-                .copied()
-                .ok_or_else(|| format!("Handler function '{}' not found", handler_fn_name))?;
-            let handler_param_types = handler_fn.get_type().get_param_types();
-
-            // Extract handler arguments from the message (offset 16 from data_ptr).
-            // First arg is state (already loaded), then handler params.
+            // The state, then the arguments from the message's slots (the
+            // handler's parameters after the state), each a word
+            // `coerce_to_i64` made.
             let mut handler_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![state_val.into()];
-            for arg_idx in 0..*num_args {
-                let arg_offset = 16 + (arg_idx * 8);
-                let arg_ptr = unsafe {
-                    self.builder
-                        .build_gep(
-                            i8_ty,
-                            data_ptr,
-                            &[i64_ty.const_int(arg_offset as u64, false)],
-                            &format!("arg_{}_ptr", arg_idx),
-                        )
-                        .map_err(|e| e.to_string())?
-                };
-                // Load arg with the correct type based on handler function param type.
-                // Param index is arg_idx + 1 (first param is state).
-                let param_idx = arg_idx + 1;
-                let load_ty: inkwell::types::BasicTypeEnum<'ctx> = if param_idx
-                    < handler_param_types.len()
-                    && handler_param_types[param_idx].is_pointer_type()
-                {
-                    ptr_ty.into()
-                } else {
-                    i64_ty.into()
-                };
-                let arg_val = self
-                    .builder
-                    .build_load(load_ty, arg_ptr, &format!("arg_{}", arg_idx))
-                    .map_err(|e| e.to_string())?;
-
-                // Convert loaded i64 to the expected handler parameter type.
-                // The sender (coerce_to_i64) encodes: Bool→zext i1→i64, Float→bitcast f64→i64,
-                // Struct→store+load as i64. We reverse those operations here.
-                let arg_val = if param_idx < handler_param_types.len() {
-                    let expected_meta_ty = handler_param_types[param_idx];
-                    if expected_meta_ty.is_int_type() {
-                        let int_ty = expected_meta_ty.into_int_type();
-                        if int_ty.get_bit_width() < 64 {
-                            // Bool (i1) or other narrow int: truncate i64 -> iN
-                            self.builder
-                                .build_int_truncate(
-                                    arg_val.into_int_value(),
-                                    int_ty,
-                                    &format!("trunc_arg_{}", arg_idx),
-                                )
-                                .map_err(|e| e.to_string())?
-                                .into()
-                        } else {
-                            arg_val
-                        }
-                    } else if expected_meta_ty.is_float_type() {
-                        // Float: bitcast i64 -> f64 via alloca
-                        let alloca = self
-                            .builder
-                            .build_alloca(
-                                self.context.i64_type(),
-                                &format!("arg_{}_f64_tmp", arg_idx),
-                            )
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_store(alloca, arg_val)
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_load(
-                                self.context.f64_type(),
-                                alloca,
-                                &format!("arg_{}_as_f64", arg_idx),
-                            )
-                            .map_err(|e| e.to_string())?
-                    } else if expected_meta_ty.is_struct_type() {
-                        let expected_ty = inkwell::types::BasicTypeEnum::try_from(expected_meta_ty)
-                            .map_err(|_| {
-                                format!("Cannot convert struct param type for arg {}", arg_idx)
-                            })?;
-                        let size = self
-                            .target_machine
-                            .get_target_data()
-                            .get_store_size(&expected_ty);
-                        if size > 8 {
-                            // Large struct: the slot points at a box; see coerce_to_i64.
-                            let boxed = self
-                                .builder
-                                .build_int_to_ptr(
-                                    arg_val.into_int_value(),
-                                    ptr_ty,
-                                    &format!("arg_{}_box", arg_idx),
-                                )
-                                .map_err(|e| e.to_string())?;
-                            handler_args.push(
-                                self.builder
-                                    .build_load(
-                                        expected_ty,
-                                        boxed,
-                                        &format!("arg_{}_as_struct", arg_idx),
-                                    )
-                                    .map_err(|e| e.to_string())?
-                                    .into(),
-                            );
-                            continue;
-                        }
-                        // Small struct: bitcast i64 -> struct via alloca
-                        let alloca = self
-                            .builder
-                            .build_alloca(
-                                self.context.i64_type(),
-                                &format!("arg_{}_struct_tmp", arg_idx),
-                            )
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_store(alloca, arg_val)
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_load(expected_ty, alloca, &format!("arg_{}_as_struct", arg_idx))
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        arg_val
-                    }
-                } else {
-                    arg_val
-                };
-
-                handler_args.push(arg_val.into());
+            for (arg_idx, param_ty) in param_types.iter().skip(1).take(*num_args).enumerate() {
+                let name = format!("arg_{arg_idx}");
+                let word = data_word(self, 16 + 8 * arg_idx as u64, &name)?;
+                let param_ty = inkwell::types::BasicTypeEnum::try_from(*param_ty)
+                    .map_err(|_| format!("handler parameter {arg_idx} is not a value"))?;
+                handler_args.push(self.word_as(word, param_ty, &name)?.into());
             }
 
             // Call the handler function.
             let handler_result = self
                 .builder
-                .build_call(handler_fn, &handler_args, "handler_result")
+                .build_call(*handler_fn, &handler_args, "handler_result")
                 .map_err(|e| e.to_string())?
                 .try_as_basic_value()
                 .basic()
                 .ok_or("Handler returned void")?;
 
+            // A cast handler returns the new state; a call handler the tuple
+            // `(new_state, reply)`.
             let new_state = if *is_call {
-                // The handler returns a heap-allocated tuple pointer.
-                // Integer-encoded ABI results must be cast back to a pointer;
-                // pointer results can be used directly.
-                let result_ptr = if handler_result.is_pointer_value() {
-                    handler_result.into_pointer_value()
-                } else {
-                    self.builder
-                        .build_int_to_ptr(handler_result.into_int_value(), ptr_ty, "result_ptr")
-                        .map_err(|e| e.to_string())?
-                };
-
-                // Extract new_state = tuple_first(result_ptr) -> i64
-                let tuple_first_fn = get_intrinsic(&self.module, "mesh_tuple_first");
-                let new_state_val = self
-                    .builder
-                    .build_call(tuple_first_fn, &[result_ptr.into()], "new_state")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_tuple_first returned void")?
+                let result_ptr = handler_result.into_pointer_value();
+                let new_state_word = self
+                    .codegen_runtime_call("mesh_tuple_first", &[result_ptr.into()], "new_state")?
                     .into_int_value();
-
-                // Extract reply = tuple_second(result_ptr) -> i64
-                let tuple_second_fn = get_intrinsic(&self.module, "mesh_tuple_second");
                 let reply_val = self
-                    .builder
-                    .build_call(tuple_second_fn, &[result_ptr.into()], "reply")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_tuple_second returned void")?
+                    .codegen_runtime_call("mesh_tuple_second", &[result_ptr.into()], "reply")?
                     .into_int_value();
 
                 // Send reply to caller: mesh_service_reply(caller_pid, &reply, 8)
@@ -4423,17 +4230,15 @@ impl<'ctx> CodeGen<'ctx> {
                 // The reply is one tuple slot. What it references must outlive
                 // this service changing state or exiting, so the caller gets a
                 // copy; the call helper carries the reply's shape.
-                let helper_name = handler_fn_name.replacen("_handle_call_", "_call_", 1);
-                let reply_shape = self
+                let handler_name = handler_fn.get_name().to_string_lossy();
+                let helper_name = handler_name.replacen("_handle_call_", "_call_", 1);
+                let shape_table = self
                     .mir_functions
                     .iter()
                     .find(|f| f.name == helper_name)
-                    .map(|helper| match &helper.body {
-                        MirExpr::Shaped { shape, .. } => shape.clone(),
-                        body => self.message_shape(body),
+                    .and_then(|helper| {
+                        self.shape_table_for_slots(&[self.message_shape(&helper.body)])
                     });
-                let shape_table =
-                    reply_shape.and_then(|shape| self.shape_table_for_slots(&[shape]));
                 let mut reply_args: Vec<BasicMetadataValueEnum<'ctx>> =
                     vec![caller_pid.into(), reply_alloca.into(), reply_size.into()];
                 let service_reply_fn = match shape_table {
@@ -4450,53 +4255,8 @@ impl<'ctx> CodeGen<'ctx> {
                         "",
                     )
                     .map_err(|e| e.to_string())?;
-
-                // Convert new_state_val (i64 from tuple) to the proper state type.
-                // Tuples store all values as i64. For pointer/struct state types,
-                // the i64 is actually a pointer value (inttoptr). For struct types,
-                // the tuple encoding depends on size:
-                //   - Small structs (<= 8 bytes): bitcast from i64 (struct bits stored directly)
-                //   - Large structs (> 8 bytes): heap-allocated, i64 is pointer-as-int
-                if state_llvm_ty.is_pointer_type() {
-                    let state_ptr: inkwell::values::PointerValue<'ctx> = self
-                        .builder
-                        .build_int_to_ptr(new_state_val, ptr_ty, "new_state_ptr")
-                        .map_err(|e| e.to_string())?;
-                    state_ptr.into()
-                } else if state_llvm_ty.is_struct_type() {
-                    let target_data = self.target_machine.get_target_data();
-                    let struct_size = target_data.get_store_size(&state_llvm_ty.into_struct_type());
-                    if struct_size <= 8 {
-                        // Small struct (<= 8 bytes): the i64 IS the struct bits (bitcast).
-                        // Reinterpret i64 bits as the struct type via alloca + load.
-                        let tmp = self
-                            .builder
-                            .build_alloca(i64_ty, "state_i64_tmp")
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_store(tmp, new_state_val)
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_load(state_llvm_ty, tmp, "new_state_small_struct")
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        // Large struct (> 8 bytes): the i64 from the tuple is a pointer
-                        // to the heap-allocated struct. Convert to pointer, then load.
-                        let state_ptr = self
-                            .builder
-                            .build_int_to_ptr(new_state_val, ptr_ty, "new_state_struct_ptr")
-                            .map_err(|e| e.to_string())?;
-                        self.builder
-                            .build_load(state_llvm_ty, state_ptr, "new_state_struct")
-                            .map_err(|e| e.to_string())?
-                    }
-                } else {
-                    let v: inkwell::values::BasicValueEnum<'ctx> = new_state_val.into();
-                    v
-                }
+                self.word_as(new_state_word, state_llvm_ty, "new_state")?
             } else {
-                // For cast handlers, the result IS the new state.
-                // The handler already returns the correct type.
                 handler_result
             };
 
@@ -4509,14 +4269,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
         }
 
-        // Default block: just loop again with unchanged state (unknown tag).
-        self.builder.position_at_end(default_bb);
-        self.builder
-            .build_unconditional_branch(loop_bb)
-            .map_err(|e| e.to_string())?;
-
-        // The function never returns normally (it loops forever).
-        // We already have terminators on all blocks.
         Ok(())
     }
 
@@ -4534,117 +4286,36 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), String> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Get the body function (already forward-declared).
-        let body_fn = *self
-            .functions
-            .get(body_fn_name)
-            .ok_or_else(|| format!("Actor body function '{}' not found", body_fn_name))?;
-
-        // Load the __args_ptr parameter value.
-        let args_ptr_alloca = *self
-            .locals
-            .get("__args_ptr")
-            .ok_or("Missing __args_ptr parameter in actor wrapper")?;
+        let body_fn = self.functions[body_fn_name];
         let args_ptr_val = self
             .builder
-            .build_load(ptr_ty, args_ptr_alloca, "args_ptr_val")
+            .build_load(ptr_ty, self.locals["__args_ptr"], "args_ptr_val")
             .map_err(|e| e.to_string())?
             .into_pointer_value();
 
-        // Get the body function's parameter types from LLVM.
+        // Each argument is a word `coerce_to_i64` made, in 8-byte slots.
         let body_param_types = body_fn.get_type().get_param_types();
-        let num_params = body_param_types.len();
-
-        // Create an array type for GEP indexing (same as codegen_actor_spawn).
-        let arr_ty = i64_ty.array_type(num_params as u32);
-
-        // Load each argument from the buffer at 8-byte offsets.
-        let mut call_args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> =
-            Vec::with_capacity(num_params);
-
-        for (i, &body_param_type) in body_param_types.iter().enumerate() {
-            let idx = self.context.i32_type().const_int(i as u64, false);
-            let zero = self.context.i32_type().const_int(0, false);
-            let element_ptr = unsafe {
+        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        for (i, param_ty) in body_param_types.iter().enumerate() {
+            let name = format!("arg_{i}");
+            let slot = unsafe {
                 self.builder
                     .build_gep(
-                        arr_ty,
+                        i64_ty,
                         args_ptr_val,
-                        &[zero, idx],
-                        &format!("arg_ptr_{}", i),
+                        &[i64_ty.const_int(i as u64, false)],
+                        &name,
                     )
                     .map_err(|e| e.to_string())?
             };
-
-            // Convert BasicMetadataTypeEnum to BasicTypeEnum for type checking.
-            let param_ty: inkwell::types::BasicTypeEnum<'ctx> =
-                inkwell::types::BasicTypeEnum::try_from(body_param_type).unwrap_or(i64_ty.into());
-
-            let loaded_val = if param_ty.is_pointer_type() {
-                // Load as i64 then inttoptr
-                let raw = self
-                    .builder
-                    .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
-                    .map_err(|e| e.to_string())?
-                    .into_int_value();
-                self.builder
-                    .build_int_to_ptr(raw, ptr_ty, &format!("arg_ptr_{}", i))
-                    .map_err(|e| e.to_string())?
-                    .into()
-            } else if param_ty.is_float_type() {
-                // Load as i64 then bitcast to float
-                let raw = self
-                    .builder
-                    .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_bit_cast(raw, param_ty, &format!("arg_float_{}", i))
-                    .map_err(|e| e.to_string())?
-            } else if param_ty.is_struct_type() {
-                // Aggregates arrive as their bits when they fit a word, and in
-                // a box otherwise; see `coerce_to_i64`.
-                let size = self
-                    .target_machine
-                    .get_target_data()
-                    .get_store_size(&param_ty);
-                let source = if size > 8 {
-                    let raw = self
-                        .builder
-                        .build_load(i64_ty, element_ptr, &format!("arg_raw_{}", i))
-                        .map_err(|e| e.to_string())?
-                        .into_int_value();
-                    self.builder
-                        .build_int_to_ptr(raw, ptr_ty, &format!("arg_box_{}", i))
-                        .map_err(|e| e.to_string())?
-                } else {
-                    element_ptr
-                };
-                self.builder
-                    .build_load(param_ty, source, &format!("arg_struct_{}", i))
-                    .map_err(|e| e.to_string())?
-            } else {
-                // Integer type: load as i64, narrowed for Bool.
-                let raw = self
-                    .builder
-                    .build_load(i64_ty, element_ptr, &format!("arg_{}", i))
-                    .map_err(|e| e.to_string())?;
-                let int_ty = param_ty.into_int_type();
-                if int_ty.get_bit_width() < 64 {
-                    self.builder
-                        .build_int_truncate(
-                            raw.into_int_value(),
-                            int_ty,
-                            &format!("arg_narrow_{}", i),
-                        )
-                        .map_err(|e| e.to_string())?
-                        .into()
-                } else {
-                    raw
-                }
-            };
-
-            call_args.push(loaded_val.into());
+            let word = self
+                .builder
+                .build_load(i64_ty, slot, &name)
+                .map_err(|e| e.to_string())?
+                .into_int_value();
+            let param_ty = inkwell::types::BasicTypeEnum::try_from(*param_ty)
+                .map_err(|_| format!("actor parameter {i} is not a value"))?;
+            call_args.push(self.word_as(word, param_ty, &name)?.into());
         }
 
         // Call the body function with deserialized arguments.
@@ -4652,14 +4323,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(body_fn, &call_args, "body_call")
             .map_err(|e| e.to_string())?;
 
+        // A declared work wrapper's body takes the request key and attempt id
+        // it reports its completion with (`generate_declared_work_wrapper`).
         if wrapper_name.starts_with("__declared_work_") {
-            if call_args.len() < 2 {
-                return Err(format!(
-                    "declared work wrapper '{}' expected request_key and attempt_id arguments",
-                    wrapper_name
-                ));
-            }
-
             let complete_declared_work =
                 get_intrinsic(&self.module, "mesh_continuity_complete_declared_work");
             self.builder
@@ -4919,118 +4585,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?
             .into_int_value();
 
-        // The reply is a tuple-encoded i64. How to interpret it depends on the
-        // expected return type. In the service handler's return tuple, each
-        // element is stored as i64:
-        //   - Small structs (≤ 8 bytes): bitcast to i64 (struct bits stored directly)
-        //   - Large structs (> 8 bytes): heap-allocated, i64 is pointer-as-int
-        //   - Pointers (String, Ptr): ptrtoint'd to i64
-        //   - Scalars (Int, Bool, Float, Pid): i64 IS the value
-        //
-        // We must reverse this encoding based on the reply type.
-        match reply_ty {
-            MirType::SumType(name) => {
-                let layout = self.lookup_sum_type_layout(name).ok_or_else(|| {
-                    format!("Unknown sum type layout '{}' in service call reply", name)
-                })?;
-                let layout = *layout;
-                let target_data = self.target_machine.get_target_data();
-                let struct_size = target_data.get_store_size(&layout);
-                if struct_size <= 8 {
-                    // Small sum type: i64 contains the struct bits (bitcast).
-                    let tmp = self
-                        .builder
-                        .build_alloca(i64_ty, "reply_i64_tmp")
-                        .map_err(|e| e.to_string())?;
-                    self.builder
-                        .build_store(tmp, reply_i64)
-                        .map_err(|e| e.to_string())?;
-                    let reply_val = self
-                        .builder
-                        .build_load(layout, tmp, "reply_small_sum")
-                        .map_err(|e| e.to_string())?;
-                    Ok(reply_val)
-                } else {
-                    // Large sum type: i64 is a heap pointer. Load the struct.
-                    let reply_ptr = self
-                        .builder
-                        .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
-                        .map_err(|e| e.to_string())?;
-                    let reply_val = self
-                        .builder
-                        .build_load(layout, reply_ptr, "reply_sum")
-                        .map_err(|e| e.to_string())?;
-                    Ok(reply_val)
-                }
-            }
-            MirType::Struct(name) => {
-                let struct_ty = self.struct_types.get(name).ok_or_else(|| {
-                    format!("Unknown struct type '{}' in service call reply", name)
-                })?;
-                let struct_ty = *struct_ty;
-                let target_data = self.target_machine.get_target_data();
-                let struct_size = target_data.get_store_size(&struct_ty);
-                if struct_size <= 8 {
-                    let tmp = self
-                        .builder
-                        .build_alloca(i64_ty, "reply_i64_tmp")
-                        .map_err(|e| e.to_string())?;
-                    self.builder
-                        .build_store(tmp, reply_i64)
-                        .map_err(|e| e.to_string())?;
-                    let reply_val = self
-                        .builder
-                        .build_load(struct_ty, tmp, "reply_small_struct")
-                        .map_err(|e| e.to_string())?;
-                    Ok(reply_val)
-                } else {
-                    let reply_ptr = self
-                        .builder
-                        .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
-                        .map_err(|e| e.to_string())?;
-                    let reply_val = self
-                        .builder
-                        .build_load(struct_ty, reply_ptr, "reply_struct")
-                        .map_err(|e| e.to_string())?;
-                    Ok(reply_val)
-                }
-            }
-            MirType::String | MirType::Ptr => {
-                let reply_ptr = self
-                    .builder
-                    .build_int_to_ptr(reply_i64, ptr_ty, "reply_ptr")
-                    .map_err(|e| e.to_string())?;
-                Ok(reply_ptr.into())
-            }
-            MirType::Bool => {
-                // Bool is i1 in LLVM. Truncate the i64 reply to i1.
-                let bool_val = self
-                    .builder
-                    .build_int_truncate(reply_i64, self.context.bool_type(), "reply_bool")
-                    .map_err(|e| e.to_string())?;
-                Ok(bool_val.into())
-            }
-            MirType::Float => {
-                // Float is f64 in LLVM. The i64 reply contains the float bits.
-                // Reinterpret via alloca store+load.
-                let tmp = self
-                    .builder
-                    .build_alloca(i64_ty, "reply_float_tmp")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(tmp, reply_i64)
-                    .map_err(|e| e.to_string())?;
-                let float_val = self
-                    .builder
-                    .build_load(self.context.f64_type(), tmp, "reply_float")
-                    .map_err(|e| e.to_string())?;
-                Ok(float_val)
-            }
-            _ => {
-                // Int, Pid, Unit: i64 is the value itself.
-                Ok(reply_i64.into())
-            }
-        }
+        // The reply is the handler's reply tuple slot, a word `coerce_to_i64`
+        // made of the reply value.
+        let reply_llvm_ty = self.llvm_type(reply_ty);
+        self.word_as(reply_i64, reply_llvm_ty, "reply")
     }
 
     /// Generate a service cast helper function body.

@@ -747,7 +747,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Check if this is a service loop function that needs special codegen.
         if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
             if let Some(dispatch_info) = self.service_dispatch.get(&func.name).cloned() {
-                return self.codegen_service_loop(&func.name, &dispatch_info.0, &dispatch_info.1);
+                return self.codegen_service_loop(&dispatch_info.0, &dispatch_info.1);
             }
         }
 
