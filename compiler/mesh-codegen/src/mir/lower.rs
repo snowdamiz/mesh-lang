@@ -430,6 +430,15 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+/// The parameter and result types of a function's type (the type checker
+/// gives every function one).
+fn fun_parts(ty: &Ty) -> (&[Ty], &Ty) {
+    match ty {
+        Ty::Fun(params, ret) => (params, ret),
+        _ => unreachable!("a function typed {ty:?}"),
+    }
+}
+
 /// `ty` with every type variable left open taken as Unit.
 fn apply_default_unit(ty: &Ty) -> Ty {
     match ty {
@@ -1165,13 +1174,11 @@ impl<'a> Lowerer<'a> {
     fn specialize_types(
         &mut self,
         fn_range: TextRange,
-        generic: Option<&Ty>,
-        concrete: Option<&Ty>,
+        generic: &Ty,
+        concrete: &Ty,
     ) -> FxHashMap<TextRange, Ty> {
         let mut bindings = Vec::new();
-        if let (Some(generic), Some(concrete)) = (generic, concrete) {
-            bind_type_vars(generic, concrete, &mut bindings);
-        }
+        bind_type_vars(generic, concrete, &mut bindings);
         // An associated type reached through a type parameter is known once
         // the parameter is: `Self.Item` of `StrBox` is String.
         for (var, trait_name, assoc, receiver) in self.assoc_projections {
@@ -4911,7 +4918,9 @@ impl<'a> Lowerer<'a> {
             Item::FnDef(fn_def) => self.lower_fn_def(&fn_def),
             Item::StructDef(struct_def) => self.lower_struct_def(&struct_def),
             Item::SumTypeDef(sum_def) => self.lower_sum_type_def(&sum_def),
-            Item::LetBinding(let_) => self.lower_top_level_let(&let_),
+            // A module has no global bindings: building a project rejects
+            // them (E0080), and the REPL moves them into what it evaluates.
+            Item::LetBinding(_) => {}
             Item::ImplDef(impl_def) => {
                 let (trait_name, trait_type_args, type_name) = extract_impl_names(&impl_def);
 
@@ -4929,7 +4938,7 @@ impl<'a> Lowerer<'a> {
                         &method_name,
                         &type_name,
                     );
-                    self.lower_impl_method(&method, &mangled, &type_name);
+                    self.lower_impl_method(&method, &mangled);
                 }
 
                 // Lower default method bodies for methods not provided by the impl.
@@ -4992,8 +5001,10 @@ impl<'a> Lowerer<'a> {
             .fn_def_name(fn_def)
             .unwrap_or_else(|| "<anonymous>".to_string());
 
-        let fn_range = fn_def.syntax().text_range();
-        let fn_ty_raw = self.get_ty(fn_range).cloned();
+        let fn_ty_raw = self
+            .get_ty(fn_def.syntax().text_range())
+            .cloned()
+            .expect("the type checker types every function");
 
         let base_name = if original_name == "main" {
             self.entry_function = Some("mesh_main".to_string());
@@ -5003,9 +5014,7 @@ impl<'a> Lowerer<'a> {
         };
 
         if let Some(native) = fn_def.native_decl() {
-            let Some(Ty::Fun(param_tys, return_ty)) = fn_ty_raw.as_ref() else {
-                return;
-            };
+            let (param_tys, return_ty) = fun_parts(&fn_ty_raw);
             let source_params = fn_def
                 .param_list()
                 .map(|params| params.params().collect::<Vec<_>>())
@@ -5044,8 +5053,8 @@ impl<'a> Lowerer<'a> {
                 self.lower_fn_def_variant(
                     clauses,
                     &original_name,
-                    fn_ty_raw.as_ref(),
-                    Some(&usage_ty),
+                    &fn_ty_raw,
+                    &usage_ty,
                     emitted_name,
                     false,
                 );
@@ -5053,11 +5062,11 @@ impl<'a> Lowerer<'a> {
             return;
         }
 
-        let concrete_fn_ty = specialization_tys.first().or(fn_ty_raw.as_ref());
+        let concrete_fn_ty = specialization_tys.first().unwrap_or(&fn_ty_raw);
         self.lower_fn_def_variant(
             clauses,
             &original_name,
-            fn_ty_raw.as_ref(),
+            &fn_ty_raw,
             concrete_fn_ty,
             base_name,
             true,
@@ -5068,8 +5077,8 @@ impl<'a> Lowerer<'a> {
         &mut self,
         clauses: &[&FnDef],
         original_name: &str,
-        fn_ty_raw: Option<&Ty>,
-        concrete_fn_ty: Option<&Ty>,
+        fn_ty_raw: &Ty,
+        concrete_fn_ty: &Ty,
         emitted_name: String,
         update_original_name: bool,
     ) {
@@ -5086,66 +5095,32 @@ impl<'a> Lowerer<'a> {
             || fn_def
                 .param_list()
                 .is_some_and(|pl| pl.params().any(|param| param.pattern().is_some()));
-        let param_srcs: Vec<Ty> = match concrete_fn_ty.or(fn_ty_raw) {
-            Some(Ty::Fun(param_tys, _)) => param_tys.clone(),
-            _ => Vec::new(),
-        };
+        let (param_srcs, ret) = fun_parts(concrete_fn_ty);
 
-        if let (true, Some(param_list)) = (matched, fn_def.param_list()) {
-            for (param_idx, _) in param_list.params().enumerate() {
+        if matched {
+            for (param_idx, param_ty) in param_srcs.iter().enumerate() {
                 let param_name = format!("__param_{param_idx}");
-                let mir_ty = runtime_value_type(
-                    param_srcs
-                        .get(param_idx)
-                        .map(|ty| resolve_type(ty, self.registry))
-                        .unwrap_or(MirType::Unit),
-                );
+                let mir_ty = runtime_value_type(resolve_type(param_ty, self.registry));
                 self.insert_var(param_name.clone(), mir_ty.clone());
                 params.push((param_name, mir_ty));
             }
         } else if let Some(param_list) = fn_def.param_list() {
-            let param_ty_source = concrete_fn_ty.or(fn_ty_raw);
-            if let Some(Ty::Fun(param_tys, _)) = param_ty_source {
-                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
-                    let param_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let mir_ty = runtime_value_type(resolve_type(param_ty, self.registry));
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
-                        owned_resource_params.push((param_name.clone(), ty));
-                    }
-                    params.push((param_name, mir_ty));
+            for (param, param_ty) in param_list.params().zip(param_srcs) {
+                let param_name = param
+                    .name()
+                    .map(|t| t.text().to_string())
+                    .unwrap_or_else(|| "_".to_string());
+                let mir_ty = runtime_value_type(resolve_type(param_ty, self.registry));
+                self.insert_var(param_name.clone(), mir_ty.clone());
+                if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
+                    owned_resource_params.push((param_name.clone(), ty));
                 }
-            } else {
-                for param in param_list.params() {
-                    let param_name = param
-                        .name()
-                        .map(|t| t.text().to_string())
-                        .unwrap_or_else(|| "_".to_string());
-                    let mir_ty =
-                        runtime_value_type(self.resolve_range(param.syntax().text_range()));
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    if let Some(ty) =
-                        self.owned_resource(&param, self.get_ty(param.syntax().text_range()))
-                    {
-                        owned_resource_params.push((param_name.clone(), ty));
-                    }
-                    params.push((param_name, mir_ty));
-                }
+                params.push((param_name, mir_ty));
             }
         }
 
-        let return_type = if let Some(Ty::Fun(_, ret)) = concrete_fn_ty.or(fn_ty_raw) {
-            runtime_value_type(resolve_type(ret, self.registry))
-        } else {
-            MirType::Unit
-        };
-        let return_typeck = concrete_fn_ty.or(fn_ty_raw).and_then(|ty| match ty {
-            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
-            _ => None,
-        });
+        let return_type = runtime_value_type(resolve_type(ret, self.registry));
+        let return_typeck = Some(ret.clone());
 
         let prev_fn_return_type = self.current_fn_return_type.take();
         let prev_fn_return_typeck = self.current_fn_return_typeck.take();
@@ -5153,13 +5128,9 @@ impl<'a> Lowerer<'a> {
         self.current_fn_return_typeck = return_typeck;
 
         let mut body = if matched {
-            self.lower_clause_match(clauses, &params, &param_srcs, &return_type, &emitted_name)
-        } else if let Some(block) = fn_def.body() {
-            self.lower_block(&block)
-        } else if let Some(expr) = fn_def.expr_body() {
-            self.lower_expr(&expr)
+            self.lower_clause_match(clauses, &params, param_srcs, &return_type, &emitted_name)
         } else {
-            MirExpr::Unit
+            self.lower_fn_body(fn_def)
         };
 
         body = self.wrap_resource_scopes(body, owned_resource_params);
@@ -5193,15 +5164,30 @@ impl<'a> Lowerer<'a> {
         });
     }
 
+    /// A function's body: its block, or the expression after `=`.
+    fn lower_fn_body(&mut self, fn_def: &FnDef) -> MirExpr {
+        match fn_def.body() {
+            Some(block) => self.lower_block(&block),
+            None => {
+                let expr = fn_def
+                    .expr_body()
+                    .expect("the parser gives every function a body");
+                self.lower_expr(&expr)
+            }
+        }
+    }
+
     // ── Impl method lowering ───────────────────────────────────────
 
     /// Lower a single impl method to a MirFunction with a mangled name.
     /// The `self` parameter is named "self", with the concrete implementing
     /// struct type.
-    fn lower_impl_method(&mut self, method: &FnDef, mangled_name: &str, type_name: &str) {
-        // Get function type from typeck.
-        let fn_range = method.syntax().text_range();
-        let fn_ty_raw = self.get_ty(fn_range).cloned();
+    fn lower_impl_method(&mut self, method: &FnDef, mangled_name: &str) {
+        let fn_ty = self
+            .get_ty(method.syntax().text_range())
+            .cloned()
+            .expect("the type checker types every method");
+        let (param_tys, ret) = fun_parts(&fn_ty);
 
         // Extract parameter names and types.
         let mut params = Vec::new();
@@ -5209,70 +5195,29 @@ impl<'a> Lowerer<'a> {
         self.push_scope();
 
         if let Some(param_list) = method.param_list() {
-            if let Some(Ty::Fun(param_tys, _)) = &fn_ty_raw {
-                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
-                    let is_self = param.is_self();
+            for (param, param_ty) in param_list.params().zip(param_tys) {
+                let param_name = if param.is_self() {
+                    "self".to_string()
+                } else {
+                    param
+                        .name()
+                        .map(|t| t.text().to_string())
+                        .unwrap_or_else(|| "_".to_string())
+                };
 
-                    let param_name = if is_self {
-                        "self".to_string()
-                    } else {
-                        param
-                            .name()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_else(|| "_".to_string())
-                    };
-
-                    // Use the Ty::Fun param type for all params (including self).
-                    // The type checker stores the impl type as the first param type.
-                    let mir_ty = resolve_type(param_ty, self.registry);
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
-                        owned.push((param_name.clone(), ty));
-                    }
-                    params.push((param_name, mir_ty));
+                // Use the Ty::Fun param type for all params (including self).
+                // The type checker stores the impl type as the first param type.
+                let mir_ty = resolve_type(param_ty, self.registry);
+                self.insert_var(param_name.clone(), mir_ty.clone());
+                if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
+                    owned.push((param_name.clone(), ty));
                 }
-            } else {
-                // Fallback: use range-based type lookup for each param.
-                for param in param_list.params() {
-                    let is_self = param.is_self();
-
-                    let param_name = if is_self {
-                        "self".to_string()
-                    } else {
-                        param
-                            .name()
-                            .map(|t| t.text().to_string())
-                            .unwrap_or_else(|| "_".to_string())
-                    };
-
-                    let self_ty = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
-                    let (mir_ty, typeck_ty) = if is_self {
-                        // For self, resolve to the concrete struct type.
-                        (resolve_type(&self_ty, self.registry), Some(self_ty))
-                    } else {
-                        let range = param.syntax().text_range();
-                        (self.resolve_range(range), self.get_ty(range).cloned())
-                    };
-
-                    self.insert_var(param_name.clone(), mir_ty.clone());
-                    if let Some(ty) = self.owned_resource(&param, typeck_ty.as_ref()) {
-                        owned.push((param_name.clone(), ty));
-                    }
-                    params.push((param_name, mir_ty));
-                }
+                params.push((param_name, mir_ty));
             }
         }
 
-        // Return type.
-        let return_type = if let Some(Ty::Fun(_, ret)) = &fn_ty_raw {
-            resolve_type(ret, self.registry)
-        } else {
-            MirType::Unit
-        };
-        let return_typeck = match &fn_ty_raw {
-            Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-            _ => None,
-        };
+        let return_type = resolve_type(ret, self.registry);
+        let return_typeck = Some(ret.clone());
 
         // Track current function return type for ? operator desugaring (Phase 45).
         let prev_fn_return_type = self.current_fn_return_type.take();
@@ -5280,14 +5225,7 @@ impl<'a> Lowerer<'a> {
         self.current_fn_return_type = Some(return_type.clone());
         self.current_fn_return_typeck = return_typeck;
 
-        // Monomorphization depth tracking.
-        let body = if let Some(block) = method.body() {
-            self.lower_block(&block)
-        } else if let Some(expr) = method.expr_body() {
-            self.lower_expr(&expr)
-        } else {
-            MirExpr::Unit
-        };
+        let body = self.lower_fn_body(method);
         let mut body = self.wrap_resource_scopes(body, owned);
 
         // Restore previous function return type.
@@ -5324,26 +5262,17 @@ impl<'a> Lowerer<'a> {
         method_name: &str,
         type_name: &str,
     ) {
-        // Find the InterfaceMethod AST node by its text range.
-        let tree = self.parse.syntax();
-        let method_node = tree
+        // The type checker found the default body at this range.
+        let interface_method = self
+            .parse
+            .syntax()
             .descendants()
-            .find(|n| n.kind() == SyntaxKind::INTERFACE_METHOD && n.text_range() == method_range);
-
-        let method_node = match method_node {
-            Some(n) => n,
-            None => return, // Could not find the interface method node
-        };
-
-        let interface_method = match InterfaceMethod::cast(method_node) {
-            Some(m) => m,
-            None => return,
-        };
-
-        let body_block = match interface_method.body() {
-            Some(b) => b,
-            None => return, // No default body (should not happen since has_default_body is true)
-        };
+            .filter_map(InterfaceMethod::cast)
+            .find(|method| method.syntax().text_range() == method_range)
+            .expect("an interface method's default body is where the type checker found it");
+        let body_block = interface_method
+            .body()
+            .expect("an interface method with a default body has one");
 
         let mangled = mangle_trait_method(trait_name, trait_type_args, method_name, type_name);
 
@@ -5352,7 +5281,6 @@ impl<'a> Lowerer<'a> {
         // the way a generic function's body is specialized per instantiation.
         let self_ty = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
         let substitutions: HashMap<String, &Ty> = [("Self".to_string(), &self_ty)].into();
-        let method_range = interface_method.syntax().text_range();
         let specialized: FxHashMap<TextRange, Ty> = self
             .types
             .iter()
@@ -5360,10 +5288,11 @@ impl<'a> Lowerer<'a> {
             .map(|(range, ty)| (*range, substitute_type_params(ty, &substitutions)))
             .collect();
         let outer_spec_types = std::mem::replace(&mut self.spec_types, specialized);
-        let (checked_params, checked_return) = match self.get_ty(method_range).cloned() {
-            Some(Ty::Fun(params, ret)) => (params, Some(*ret)),
-            _ => (Vec::new(), None),
-        };
+        let checked = self
+            .get_ty(method_range)
+            .cloned()
+            .expect("the type checker types every interface method");
+        let (checked_params, checked_return) = fun_parts(&checked);
 
         // Build parameters: bind `self` to the concrete type.
         let mut params = Vec::new();
@@ -5384,28 +5313,22 @@ impl<'a> Lowerer<'a> {
                 };
 
                 // The checked signature (with `Self` already this type).
-                let typeck_ty = if is_self {
-                    Some(self_ty.clone())
+                let (typeck_ty, mir_ty) = if is_self {
+                    (&self_ty, resolve_type(&self_ty, self.registry))
                 } else {
-                    checked_params.get(params.len()).cloned()
-                };
-                let mir_ty = match &typeck_ty {
-                    Some(ty) if is_self => resolve_type(ty, self.registry),
-                    Some(ty) => runtime_value_type(resolve_type(ty, self.registry)),
-                    None => self.resolve_range(param.syntax().text_range()),
+                    let ty = &checked_params[params.len()];
+                    (ty, runtime_value_type(resolve_type(ty, self.registry)))
                 };
 
                 self.insert_var(param_name.clone(), mir_ty.clone());
-                if let Some(ty) = self.owned_resource(&param, typeck_ty.as_ref()) {
+                if let Some(ty) = self.owned_resource(&param, Some(typeck_ty)) {
                     owned.push((param_name.clone(), ty));
                 }
                 params.push((param_name, mir_ty));
             }
         }
 
-        let return_type = checked_return
-            .map(|ty| runtime_value_type(resolve_type(&ty, self.registry)))
-            .unwrap_or(MirType::Unit);
+        let return_type = runtime_value_type(resolve_type(checked_return, self.registry));
 
         // Lower the default body.
         let body = self.lower_block(&body_block);
@@ -7723,28 +7646,6 @@ impl<'a> Lowerer<'a> {
         );
     }
 
-    // ── Top-level let ────────────────────────────────────────────────
-
-    fn lower_top_level_let(&mut self, let_: &LetBinding) {
-        let name = let_
-            .name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
-
-        let value = if let Some(init) = let_.initializer() {
-            self.lower_expr(&init)
-        } else {
-            MirExpr::Unit
-        };
-
-        let ty = value.ty().clone();
-        self.insert_var(name.clone(), ty.clone());
-
-        // Top-level lets become a function that returns the value (for globals).
-        // In practice, these would be part of an init function, but for now
-        // we store the binding in scope for use by other functions.
-    }
-
     // ── Block lowering ───────────────────────────────────────────────
 
     fn lower_block(&mut self, block: &Block) -> MirExpr {
@@ -7765,92 +7666,87 @@ impl<'a> Lowerer<'a> {
 
         let mut parts = Vec::new();
         for child in block.syntax().children() {
-            if let Some(item) = Item::cast(child.clone()) {
-                match item {
-                    Item::LetBinding(ref let_) => {
-                        let initializer = let_.initializer();
-                        let initializer_ty = initializer
-                            .as_ref()
-                            .and_then(|init| self.get_ty(init.syntax().text_range()))
-                            .cloned();
-                        // A polymorphic closure, or a generic function named
-                        // by the `let` (`let id = identity`, `let pop =
-                        // Queue.pop`), gets one compiled copy per concrete
-                        // type it is used at, bound here so its captures are
-                        // the values in scope at the `let`.
-                        let mut specialized_everywhere = false;
-                        let poly_value = match initializer.as_ref() {
-                            Some(expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_))) => Some(expr),
-                            Some(expr @ Expr::FieldAccess(fa))
-                                if matches!(fa.base(), Some(Expr::NameRef(_))) =>
-                            {
-                                Some(expr)
-                            }
-                            _ => None,
-                        };
-                        if let (Some(poly_value), Some(generic), Some(name)) = (
-                            poly_value,
-                            initializer_ty.as_ref(),
-                            let_.name().and_then(|name| name.text()),
-                        ) {
-                            if Self::ty_contains_var(generic) {
-                                let (uses, all_concrete) =
-                                    self.poly_closure_uses(block, let_, &name);
-                                specialized_everywhere = all_concrete;
-                                for (use_ty, spec_name) in uses {
-                                    let value = self
-                                        .lower_closure_specialized(poly_value, generic, &use_ty);
-                                    let ty = value.ty().clone();
-                                    self.insert_var(spec_name.clone(), ty.clone());
-                                    self.poly_closure_specs
-                                        .entry(name.clone())
-                                        .or_default()
-                                        .push((use_ty, spec_name.clone()));
-                                    parts.push(Part::Binding {
-                                        name: spec_name,
-                                        ty,
-                                        value,
-                                        resource_ty: None,
-                                    });
-                                }
-                            }
-                        }
-                        // Every use has its own copy: the generic one (whose
-                        // operators may not know their operand types) is unused.
-                        let value = match initializer {
-                            Some(_) if specialized_everywhere => MirExpr::Unit,
-                            Some(init) => self.lower_expr(&init),
-                            None => MirExpr::Unit,
-                        };
-
-                        if let Some(pattern) = let_.pattern() {
-                            let resources = self.resource_pattern_bindings(&pattern);
-                            let pattern =
-                                self.lower_pattern_with_expected(&pattern, initializer_ty.as_ref());
-                            parts.push(Part::Destructure {
-                                pattern,
-                                value,
-                                resources,
-                            });
-                        } else {
-                            let name = let_
-                                .name()
-                                .and_then(|name| name.text())
-                                .unwrap_or_else(|| "_".to_string());
+            // The type checker rejects any definition but a `let` in a
+            // function (E0084).
+            if let Some(let_) = LetBinding::cast(child.clone()) {
+                let initializer = let_.initializer();
+                let initializer_ty = initializer
+                    .as_ref()
+                    .and_then(|init| self.get_ty(init.syntax().text_range()))
+                    .cloned();
+                // A polymorphic closure, or a generic function named
+                // by the `let` (`let id = identity`, `let pop =
+                // Queue.pop`), gets one compiled copy per concrete
+                // type it is used at, bound here so its captures are
+                // the values in scope at the `let`.
+                let mut specialized_everywhere = false;
+                let poly_value = match initializer.as_ref() {
+                    Some(expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_))) => Some(expr),
+                    Some(expr @ Expr::FieldAccess(fa))
+                        if matches!(fa.base(), Some(Expr::NameRef(_))) =>
+                    {
+                        Some(expr)
+                    }
+                    _ => None,
+                };
+                if let (Some(poly_value), Some(generic), Some(name)) = (
+                    poly_value,
+                    initializer_ty.as_ref(),
+                    let_.name().and_then(|name| name.text()),
+                ) {
+                    if Self::ty_contains_var(generic) {
+                        let (uses, all_concrete) = self.poly_closure_uses(block, &let_, &name);
+                        specialized_everywhere = all_concrete;
+                        for (use_ty, spec_name) in uses {
+                            let value =
+                                self.lower_closure_specialized(poly_value, generic, &use_ty);
                             let ty = value.ty().clone();
-                            let resource_ty =
-                                initializer_ty.filter(|ty| self.registry.is_resource_type(ty));
-                            self.insert_var(name.clone(), ty.clone());
+                            self.insert_var(spec_name.clone(), ty.clone());
+                            self.poly_closure_specs
+                                .entry(name.clone())
+                                .or_default()
+                                .push((use_ty, spec_name.clone()));
                             parts.push(Part::Binding {
-                                name,
+                                name: spec_name,
                                 ty,
                                 value,
-                                resource_ty,
+                                resource_ty: None,
                             });
                         }
                     }
-                    Item::FnDef(ref fn_def) => self.lower_fn_def(fn_def),
-                    _ => {}
+                }
+                // Every use has its own copy: the generic one (whose
+                // operators may not know their operand types) is unused.
+                let value = match initializer {
+                    Some(_) if specialized_everywhere => MirExpr::Unit,
+                    Some(init) => self.lower_expr(&init),
+                    None => MirExpr::Unit,
+                };
+
+                if let Some(pattern) = let_.pattern() {
+                    let resources = self.resource_pattern_bindings(&pattern);
+                    let pattern =
+                        self.lower_pattern_with_expected(&pattern, initializer_ty.as_ref());
+                    parts.push(Part::Destructure {
+                        pattern,
+                        value,
+                        resources,
+                    });
+                } else {
+                    let name = let_
+                        .name()
+                        .and_then(|name| name.text())
+                        .unwrap_or_else(|| "_".to_string());
+                    let ty = value.ty().clone();
+                    let resource_ty =
+                        initializer_ty.filter(|ty| self.registry.is_resource_type(ty));
+                    self.insert_var(name.clone(), ty.clone());
+                    parts.push(Part::Binding {
+                        name,
+                        ty,
+                        value,
+                        resource_ty,
+                    });
                 }
                 continue;
             }
@@ -17778,7 +17674,7 @@ mod tests {
 
     #[test]
     fn lower_int_literal() {
-        let mir = lower("let x = 42");
+        let mir = lower("fn answer() -> Int do 42 end");
         assert!(
             !mir.sum_types.is_empty(),
             "expected builtin sum types to survive MIR lowering"
