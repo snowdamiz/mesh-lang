@@ -1721,54 +1721,21 @@ impl<'ctx> CodeGen<'ctx> {
         value: &MirExpr,
         body: &MirExpr,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let llvm_ty = self.llvm_type(ty);
-        let alloca = self
-            .builder
-            .build_alloca(llvm_ty, name)
-            .map_err(|e| e.to_string())?;
-
         let val = self.codegen_expr(value)?;
-
-        // When binding a runtime-returned pointer to a sum type or struct variable,
-        // dereference the pointer to load the actual value.
-        // Runtime functions like mesh_file_read return *mut MeshResult (ptr)
-        // but the variable type is SumType (a by-value struct).
-        // Similarly, from_json for nested structs returns a heap pointer via
-        // mesh_alloc_result/mesh_result_unwrap, but the field type is Struct.
-        let val = if matches!(ty, MirType::SumType(_) | MirType::Struct(_))
-            && val.is_pointer_value()
-            && !llvm_ty.is_pointer_type()
-        {
-            self.builder
-                .build_load(llvm_ty, val.into_pointer_value(), "deref_sum")
-                .map_err(|e| e.to_string())?
-        } else {
-            val
-        };
-
-        self.builder
-            .build_store(alloca, val)
-            .map_err(|e| e.to_string())?;
-
-        // Register the variable
-        let old_alloca = self.locals.insert(name.to_string(), alloca);
-        let old_type = self.local_types.insert(name.to_string(), ty.clone());
-
-        // Compile the body
+        // A runtime function returns a struct or sum value (a `MeshResult`
+        // from `mesh_file_read`, a nested struct from `from_json`) as a
+        // pointer to it: the variable holds the value.
+        let val =
+            if matches!(ty, MirType::SumType(_) | MirType::Struct(_)) && val.is_pointer_value() {
+                self.builder
+                    .build_load(self.llvm_type(ty), val.into_pointer_value(), "deref_sum")
+                    .map_err(|e| e.to_string())?
+            } else {
+                val
+            };
+        let saved = self.bind_local(name, ty, val)?;
         let result = self.codegen_expr(body)?;
-
-        // Restore previous binding (if any)
-        if let Some(prev) = old_alloca {
-            self.locals.insert(name.to_string(), prev);
-        } else {
-            self.locals.remove(name);
-        }
-        if let Some(prev_ty) = old_type {
-            self.local_types.insert(name.to_string(), prev_ty);
-        } else {
-            self.local_types.remove(name);
-        }
-
+        self.restore_locals(vec![saved]);
         Ok(result)
     }
 

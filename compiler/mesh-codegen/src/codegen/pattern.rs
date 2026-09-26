@@ -21,7 +21,7 @@ use inkwell::IntPredicate;
 
 use super::intrinsics::get_intrinsic;
 use super::types::variant_struct_type;
-use super::CodeGen;
+use super::{CodeGen, SavedLocal};
 use crate::mir::{MirLiteral, MirMatchArm, MirType};
 use crate::pattern::{AccessPath, DecisionTree};
 
@@ -40,9 +40,6 @@ pub(crate) struct MatchTarget<'a, 'ctx> {
 }
 
 type Binding = (String, MirType, AccessPath);
-
-/// What a name meant before a pattern bound it: its slot and type.
-type SavedLocal<'ctx> = (String, Option<PointerValue<'ctx>>, Option<MirType>);
 
 impl<'ctx> CodeGen<'ctx> {
     /// Generate LLVM IR for a decision tree, compiled from the match arms of
@@ -144,45 +141,20 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Bind each pattern variable to a fresh entry-block alloca holding the
-    /// value at its access path. Returns what the names meant before, for
-    /// `restore_locals`.
+    /// Bind each pattern variable to the value at its access path. Returns
+    /// what the names meant before, for `restore_locals`.
     fn bind_pattern_values(
         &mut self,
         bindings: &[Binding],
         target: MatchTarget<'_, 'ctx>,
     ) -> Result<Vec<SavedLocal<'ctx>>, String> {
-        let mut saved = Vec::with_capacity(bindings.len());
-        for (name, ty, path) in bindings {
-            let val = self.navigate_access_path(target.scrutinee, target.scrutinee_ty, path)?;
-            let alloca = self
-                .builder
-                .build_alloca(self.llvm_type(ty), name)
-                .map_err(|e| e.to_string())?;
-            self.builder
-                .build_store(alloca, val)
-                .map_err(|e| e.to_string())?;
-            saved.push((
-                name.clone(),
-                self.locals.insert(name.clone(), alloca),
-                self.local_types.insert(name.clone(), ty.clone()),
-            ));
-        }
-        Ok(saved)
-    }
-
-    /// Undo `bind_pattern_values`, innermost binding last in, first out.
-    fn restore_locals(&mut self, saved: Vec<SavedLocal<'ctx>>) {
-        for (name, alloca, ty) in saved.into_iter().rev() {
-            match alloca {
-                Some(alloca) => self.locals.insert(name.clone(), alloca),
-                None => self.locals.remove(&name),
-            };
-            match ty {
-                Some(ty) => self.local_types.insert(name, ty),
-                None => self.local_types.remove(&name),
-            };
-        }
+        bindings
+            .iter()
+            .map(|(name, ty, path)| {
+                let val = self.navigate_access_path(target.scrutinee, target.scrutinee_ty, path)?;
+                self.bind_local(name, ty, val)
+            })
+            .collect()
     }
 
     // ── Switch node ──────────────────────────────────────────────────

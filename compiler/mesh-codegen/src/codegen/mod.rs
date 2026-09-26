@@ -27,7 +27,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::StructType;
-use inkwell::values::{FunctionValue, InstructionOpcode, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, InstructionOpcode, PointerValue};
 use inkwell::OptimizationLevel;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -656,19 +656,10 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Alloca for each parameter and store incoming values.
         for (i, (name, ty)) in func.params.iter().enumerate() {
-            let llvm_ty = llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts);
-            let alloca = self
-                .builder
-                .build_alloca(llvm_ty, name)
-                .map_err(|e| e.to_string())?;
             let param_val = fn_val
                 .get_nth_param(i as u32)
                 .ok_or_else(|| format!("Missing parameter {} for function '{}'", i, func.name))?;
-            self.builder
-                .build_store(alloca, param_val)
-                .map_err(|e| e.to_string())?;
-            self.locals.insert(name.clone(), alloca);
-            self.local_types.insert(name.clone(), ty.clone());
+            self.bind_local(name, ty, param_val)?;
         }
 
         // For closure functions, load captured variables from the __env struct.
@@ -716,15 +707,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_load(cap_llvm_ty, field_ptr, name)
                     .map_err(|e| e.to_string())?;
-                let alloca = self
-                    .builder
-                    .build_alloca(cap_llvm_ty, name)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_store(alloca, val)
-                    .map_err(|e| e.to_string())?;
-                self.locals.insert(name.clone(), alloca);
-                self.local_types.insert(name.clone(), ty.clone());
+                self.bind_local(name, ty, val)?;
             }
         }
 
@@ -1232,7 +1215,46 @@ impl<'ctx> CodeGen<'ctx> {
             .to_string_lossy()
             .into_owned()
     }
+
+    /// Bind `name` to a new stack slot holding `value`. Returns what the
+    /// name meant before, for `restore_locals`.
+    pub(crate) fn bind_local(
+        &mut self,
+        name: &str,
+        ty: &MirType,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<SavedLocal<'ctx>, String> {
+        let slot = self
+            .builder
+            .build_alloca(self.llvm_type(ty), name)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, value)
+            .map_err(|e| e.to_string())?;
+        Ok((
+            name.to_string(),
+            self.locals.insert(name.to_string(), slot),
+            self.local_types.insert(name.to_string(), ty.clone()),
+        ))
+    }
+
+    /// Undo `bind_local`s, the last one first.
+    pub(crate) fn restore_locals(&mut self, saved: Vec<SavedLocal<'ctx>>) {
+        for (name, slot, ty) in saved.into_iter().rev() {
+            match slot {
+                Some(slot) => self.locals.insert(name.clone(), slot),
+                None => self.locals.remove(&name),
+            };
+            match ty {
+                Some(ty) => self.local_types.insert(name, ty),
+                None => self.local_types.remove(&name),
+            };
+        }
+    }
 }
+
+/// What a local name meant before a binding shadowed it: its slot and type.
+pub(crate) type SavedLocal<'ctx> = (String, Option<PointerValue<'ctx>>, Option<MirType>);
 
 #[cfg(test)]
 mod tests {
