@@ -771,10 +771,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             span,
             ..
         } => {
-            let span = clamp(
-                span.map(text_range_to_range)
-                    .unwrap_or(0..source_len.max(1).min(source_len)),
-            );
+            let span = clamp(text_range_to_range(*span));
 
             Description::error(span, format!("missing `{}`", method_name)).with_help(format!(
                 "add `fn {}` as `{}` declares it to the impl block",
@@ -789,10 +786,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             span,
             ..
         } => {
-            let span = clamp(
-                span.map(text_range_to_range)
-                    .unwrap_or(0..source_len.max(1).min(source_len)),
-            );
+            let span = clamp(text_range_to_range(*span));
 
             Description::error(
                 span,
@@ -1006,8 +1000,10 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                     .with_color(Color::Yellow),
             )
         }
-        TypeError::DuplicateImpl { first_impl, .. } => {
-            let span = clamp(0..source_len.max(1).min(source_len));
+        TypeError::DuplicateImpl {
+            first_impl, span, ..
+        } => {
+            let span = clamp(text_range_to_range(*span));
 
             Description::error(span, first_impl.to_string())
                 .with_help("remove one of the conflicting impl blocks")
@@ -1232,8 +1228,10 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 .with_help("only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)")
         }
 
-        TypeError::MissingAssocType { assoc_name, .. } => {
-            let span = clamp(0..source_len.max(1).min(source_len));
+        TypeError::MissingAssocType {
+            assoc_name, span, ..
+        } => {
+            let span = clamp(text_range_to_range(*span));
 
             Description::error(span, format!("missing `type {} = ...`", assoc_name)).with_help(
                 format!(
@@ -1246,9 +1244,10 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         TypeError::ExtraAssocType {
             trait_name,
             assoc_name,
+            span,
             ..
         } => {
-            let span = clamp(0..source_len.max(1).min(source_len));
+            let span = clamp(text_range_to_range(*span));
 
             Description::error(
                 span,
@@ -1628,10 +1627,10 @@ mod tests {
         assert_eq!(json["spans"][0]["start"], second, "{json}");
         assert_eq!(json["spans"][0]["end"], second + 11, "{json}");
         // An error about no one place still covers the whole source.
-        let error = TypeError::DuplicateImpl {
-            trait_name: "Show".to_string(),
-            impl_type: "Int".to_string(),
-            first_impl: "here".to_string(),
+        let error = TypeError::Mismatch {
+            expected: Ty::int(),
+            found: Ty::string(),
+            origin: ConstraintOrigin::Builtin,
         };
         let json: serde_json::Value =
             serde_json::from_str(&render_json_diagnostic(&error, source, "m.mpl", None)).unwrap();

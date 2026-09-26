@@ -34,8 +34,8 @@ use crate::exhaustiveness::{
     TypeRegistry as AbsTypeRegistry,
 };
 use crate::traits::{
-    AssocTypeDef as TraitAssocTypeDef, ImplDef as TraitImplDef, ImplMethodSig, TraitDef,
-    TraitMethodSig, TraitRegistry,
+    AssocTypeDef as TraitAssocTypeDef, ImplDef as TraitImplDef, ImplMethodSig, ImplProblem,
+    TraitDef, TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
 use crate::unify::{EarlyReturn, ImplChoice, InferCtx, PendingField};
@@ -7964,7 +7964,9 @@ fn register_impl_signature(
     trait_registry: &mut TraitRegistry,
 ) {
     let signature = impl_signature(ctx, impl_, type_registry);
-    let errors = trait_registry.register_impl(signature);
+    let trait_name = signature.trait_name.clone();
+    let impl_ty = signature.impl_type_name.clone();
+    let problems = trait_registry.register_impl(signature);
     let header = impl_
         .syntax()
         .children_with_tokens()
@@ -7976,22 +7978,57 @@ fn register_impl_signature(
             )
         })
         .unwrap_or_else(|| impl_.syntax().text_range());
-    ctx.errors.extend(errors.into_iter().map(|mut error| {
-        match &mut error {
-            TypeError::MissingTraitMethod { span, .. } => *span = Some(header),
-            TypeError::TraitMethodSignatureMismatch {
-                method_name, span, ..
-            } => {
-                *span = impl_
-                    .methods()
-                    .find(|m| m.name().and_then(|n| n.text()).as_deref() == Some(method_name))
-                    .map(|m| m.syntax().text_range())
-                    .or(Some(header));
-            }
-            _ => {}
-        }
-        error
-    }));
+    // A method, or an associated type's binding, is where the impl says it.
+    let method_span = |name: &str| {
+        impl_
+            .methods()
+            .find(|m| m.name().and_then(|n| n.text()).as_deref() == Some(name))
+            .map_or(header, |m| m.syntax().text_range())
+    };
+    let binding_span = |name: &str| {
+        impl_
+            .assoc_type_bindings()
+            .find(|b| b.name().and_then(|n| n.text()).as_deref() == Some(name))
+            .map_or(header, |b| b.syntax().text_range())
+    };
+    ctx.errors
+        .extend(problems.into_iter().map(|problem| match problem {
+            ImplProblem::MissingMethod(method_name) => TypeError::MissingTraitMethod {
+                trait_name: trait_name.clone(),
+                method_name,
+                impl_ty: impl_ty.clone(),
+                span: header,
+            },
+            ImplProblem::MethodMismatch {
+                method_name,
+                expected,
+                found,
+            } => TypeError::TraitMethodSignatureMismatch {
+                trait_name: trait_name.clone(),
+                span: method_span(&method_name),
+                method_name,
+                expected,
+                found,
+            },
+            ImplProblem::MissingAssocType(assoc_name) => TypeError::MissingAssocType {
+                trait_name: trait_name.clone(),
+                assoc_name,
+                impl_ty: impl_ty.clone(),
+                span: header,
+            },
+            ImplProblem::ExtraAssocType(assoc_name) => TypeError::ExtraAssocType {
+                trait_name: trait_name.clone(),
+                span: binding_span(&assoc_name),
+                assoc_name,
+                impl_ty: impl_ty.clone(),
+            },
+            ImplProblem::Duplicate(first) => TypeError::DuplicateImpl {
+                trait_name: trait_name.clone(),
+                impl_type: impl_ty.clone(),
+                first_impl: format!("previously defined for `{first}`"),
+                span: header,
+            },
+        }));
 }
 
 /// Type-check an impl's method bodies (the impl itself was registered by
@@ -8167,7 +8204,8 @@ fn infer_impl_def(
             ) {
                 Ok(body_ty) => match return_type {
                     Some(ref ret_ty) => {
-                        let _ = ctx.unify(ret_ty.clone(), body_ty, ConstraintOrigin::Builtin);
+                        let origin = body_origin(Some(body.clone()));
+                        let _ = ctx.unify(ret_ty.clone(), body_ty, origin);
                     }
                     None => return_type = Some(ctx.resolve(body_ty)),
                 },

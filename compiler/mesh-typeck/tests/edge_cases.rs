@@ -16,6 +16,20 @@ fn assert_clean(src: &str) {
     assert_eq!(errors(src), Vec::<String>::new());
 }
 
+/// The messages of the errors `src` gets, each with the source text it is
+/// reported at (empty for an error at no one place).
+fn located_errors(src: &str) -> Vec<(String, String)> {
+    let parse = mesh_parser::parse(src);
+    mesh_typeck::check(&parse)
+        .errors
+        .iter()
+        .map(|error| {
+            let at = error.span().map_or("", |span| &src[span]);
+            (error.to_string(), at.to_string())
+        })
+        .collect()
+}
+
 // ── Tuple rows ─────────────────────────────────────────────────────────
 
 /// A parameter read by its elements is one tuple of at least as many
@@ -197,5 +211,75 @@ end
 "#
         ),
         ["unknown type `T`"]
+    );
+}
+
+/// What is wrong with an impl is reported where the impl says it: a missing
+/// method or associated type at its header, an extra associated type at its
+/// binding, a method unlike the interface's at the method, a duplicate at
+/// the second impl's header, and a method's body at its value. They were
+/// all reported at the whole file, and the language server showed none.
+#[test]
+fn impl_errors_are_reported_where_the_impl_says_it() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"struct P do
+  x :: Int
+end
+
+interface Named do
+  type Item
+  fn name(self) -> String
+  fn id(self) -> Int
+end
+
+impl Named for P do
+  type Extra = Int
+  fn name(self, extra :: Int) -> String do
+    "p"
+  end
+end
+
+interface Sized do
+  fn size(self) -> Int
+end
+
+impl Sized for P do
+  fn size(self) -> Int do
+    "big"
+  end
+end
+
+impl Sized for P do
+  fn size(self) -> Int do
+    2
+  end
+end
+"#
+        ),
+        [
+            at(
+                "method `name` in impl `Named` has wrong signature: expected `(Self) -> _`, found `(Self, Int) -> _`",
+                "fn name(self, extra :: Int) -> String do\n    \"p\"\n  end"
+            ),
+            at(
+                "impl `Named` for `P` is missing method `id`",
+                "impl Named for P do"
+            ),
+            at(
+                "impl `Named` for `P` is missing associated type `Item`",
+                "impl Named for P do"
+            ),
+            at(
+                "impl `Named` for `P` provides associated type `Extra` which is not declared by the trait",
+                "type Extra = Int"
+            ),
+            at(
+                "duplicate impl: `Sized` is already implemented for `P` (previously defined for `P`)",
+                "impl Sized for P do"
+            ),
+            at("type mismatch: expected `Int`, found `String`", "\"big\""),
+        ]
     );
 }

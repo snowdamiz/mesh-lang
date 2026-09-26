@@ -116,8 +116,8 @@ pub enum TypeError {
         trait_name: String,
         method_name: String,
         impl_ty: String,
-        /// The impl's header, once the checker knows it.
-        span: Option<TextRange>,
+        /// The impl's header.
+        span: TextRange,
     },
     /// An impl method's signature does not match the trait's method signature.
     TraitMethodSignatureMismatch {
@@ -125,8 +125,8 @@ pub enum TypeError {
         method_name: String,
         expected: Ty,
         found: Ty,
-        /// The impl method, once the checker knows it.
-        span: Option<TextRange>,
+        /// The impl method.
+        span: TextRange,
     },
     /// A struct literal is missing a required field.
     MissingField {
@@ -239,6 +239,8 @@ pub enum TypeError {
         impl_type: String,
         /// Description of the first impl location (e.g. "previously defined here").
         first_impl: String,
+        /// The second impl's header.
+        span: TextRange,
     },
     /// Multiple traits provide a method with the same name for a given type, causing ambiguity.
     AmbiguousMethod {
@@ -341,12 +343,16 @@ pub enum TypeError {
         trait_name: String,
         assoc_name: String,
         impl_ty: String,
+        /// The impl's header.
+        span: TextRange,
     },
     /// An impl block provides an associated type not declared by the trait.
     ExtraAssocType {
         trait_name: String,
         assoc_name: String,
         impl_ty: String,
+        /// The binding of the associated type.
+        span: TextRange,
     },
     /// An associated type reference (Self.Item) could not be resolved.
     UnresolvedAssocType { assoc_name: String, span: TextRange },
@@ -503,62 +509,62 @@ pub enum TypeError {
 
 impl TypeError {
     /// Where in the source the error is: its own span, or its constraint's
-    /// origin; `None` for an error about no one place.
+    /// origin; `None` for a constraint of the builtins, at no one place.
     pub fn span(&self) -> Option<TextRange> {
         match self {
-            TypeError::Mismatch { origin, .. } => origin.span(),
-            TypeError::InfiniteType { origin, .. } => origin.span(),
-            TypeError::ArityMismatch { origin, .. } => origin.span(),
-            TypeError::UnboundVariable { span, .. } => Some(*span),
-            TypeError::NotAFunction { span, .. } => Some(*span),
-            TypeError::TraitNotSatisfied { origin, .. } => origin.span(),
-            TypeError::UnboundedTypeParam { origin, .. } => origin.span(),
-            TypeError::MissingTraitMethod { span, .. } => *span,
-            TypeError::TraitMethodSignatureMismatch { span, .. } => *span,
-            TypeError::MissingField { span, .. } => Some(*span),
-            TypeError::UnknownField { span, .. } => Some(*span),
-            TypeError::NoSuchField { span, .. } => Some(*span),
-            TypeError::UnknownVariant { span, .. } => Some(*span),
-            TypeError::OrPatternBindingMismatch { span, .. } => Some(*span),
-            TypeError::NonExhaustiveMatch { span, .. } => Some(*span),
-            TypeError::NonExhaustiveClauses { span, .. } => Some(*span),
-            TypeError::RedundantArm { span, .. } => Some(*span),
-            TypeError::SendTypeMismatch { span, .. } => Some(*span),
-            TypeError::SelfOutsideActor { span, .. } => Some(*span),
-            TypeError::SpawnNonFunction { span, .. } => Some(*span),
-            TypeError::ReceiveOutsideActor { span, .. } => Some(*span),
-            TypeError::InvalidChildStart { span, .. } => Some(*span),
-            TypeError::InvalidStrategy { span, .. } => Some(*span),
-            TypeError::InvalidRestartType { span, .. } => Some(*span),
-            TypeError::InvalidShutdownValue { span, .. } => Some(*span),
-            TypeError::CatchAllNotLast { span, .. } => Some(*span),
+            TypeError::Mismatch { origin, .. }
+            | TypeError::InfiniteType { origin, .. }
+            | TypeError::ArityMismatch { origin, .. }
+            | TypeError::TraitNotSatisfied { origin, .. }
+            | TypeError::UnboundedTypeParam { origin, .. } => origin.span(),
             TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
-            TypeError::NonFirstClauseAnnotation { span, .. } => Some(*span),
-            TypeError::DuplicateImpl { .. } => None,
-            TypeError::AmbiguousMethod { span, .. } => Some(*span),
-            TypeError::UnsupportedDerive { span, .. } => Some(*span),
-            TypeError::MissingDerivePrerequisite { span, .. } => Some(*span),
-            TypeError::NoSuchMethod { span, .. } => Some(*span),
-            TypeError::ManualContinuityPromotionDisabled { span } => Some(*span),
-            TypeError::BreakOutsideLoop { span, .. } => Some(*span),
-            TypeError::ContinueOutsideLoop { span, .. } => Some(*span),
-            TypeError::ImportModuleNotFound { span, .. } => Some(*span),
-            TypeError::ImportNameNotFound { span, .. } => Some(*span),
-            TypeError::PrivateItem { span, .. } => Some(*span),
-            TypeError::HttpClusteredInvalidArguments { span, .. } => Some(*span),
-            TypeError::HttpClusteredPrivateHandler { span, .. } => Some(*span),
-            TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => Some(*span),
-            TypeError::HttpClusteredConflictingReplicationCount { span, .. } => Some(*span),
-            TypeError::HttpClusteredImportedOriginMissing { span, .. } => Some(*span),
-            TypeError::TryIncompatibleReturn { span, .. } => Some(*span),
-            TypeError::TryOnNonResultOption { span, .. } => Some(*span),
-            TypeError::NonSerializableField { span, .. } => Some(*span),
-            TypeError::NonMappableField { span, .. } => Some(*span),
-            TypeError::MissingAssocType { .. } => None,
-            TypeError::ExtraAssocType { .. } => None,
-            TypeError::UnresolvedAssocType { span, .. } => Some(*span),
-            TypeError::SlotPipeOutOfRange { span, .. } => Some(*span),
-            TypeError::UndefinedType { span, .. }
+            TypeError::UnboundVariable { span, .. }
+            | TypeError::NotAFunction { span, .. }
+            | TypeError::MissingTraitMethod { span, .. }
+            | TypeError::TraitMethodSignatureMismatch { span, .. }
+            | TypeError::MissingField { span, .. }
+            | TypeError::UnknownField { span, .. }
+            | TypeError::NoSuchField { span, .. }
+            | TypeError::UnknownVariant { span, .. }
+            | TypeError::OrPatternBindingMismatch { span, .. }
+            | TypeError::NonExhaustiveMatch { span, .. }
+            | TypeError::NonExhaustiveClauses { span, .. }
+            | TypeError::RedundantArm { span, .. }
+            | TypeError::SendTypeMismatch { span, .. }
+            | TypeError::SelfOutsideActor { span, .. }
+            | TypeError::SpawnNonFunction { span, .. }
+            | TypeError::ReceiveOutsideActor { span, .. }
+            | TypeError::InvalidChildStart { span, .. }
+            | TypeError::InvalidStrategy { span, .. }
+            | TypeError::InvalidRestartType { span, .. }
+            | TypeError::InvalidShutdownValue { span, .. }
+            | TypeError::CatchAllNotLast { span, .. }
+            | TypeError::NonFirstClauseAnnotation { span, .. }
+            | TypeError::DuplicateImpl { span, .. }
+            | TypeError::AmbiguousMethod { span, .. }
+            | TypeError::UnsupportedDerive { span, .. }
+            | TypeError::MissingDerivePrerequisite { span, .. }
+            | TypeError::NoSuchMethod { span, .. }
+            | TypeError::ManualContinuityPromotionDisabled { span }
+            | TypeError::BreakOutsideLoop { span, .. }
+            | TypeError::ContinueOutsideLoop { span, .. }
+            | TypeError::ImportModuleNotFound { span, .. }
+            | TypeError::ImportNameNotFound { span, .. }
+            | TypeError::PrivateItem { span, .. }
+            | TypeError::HttpClusteredInvalidArguments { span, .. }
+            | TypeError::HttpClusteredPrivateHandler { span, .. }
+            | TypeError::HttpClusteredOutsideRouteHandlerPosition { span }
+            | TypeError::HttpClusteredConflictingReplicationCount { span, .. }
+            | TypeError::HttpClusteredImportedOriginMissing { span, .. }
+            | TypeError::TryIncompatibleReturn { span, .. }
+            | TypeError::TryOnNonResultOption { span, .. }
+            | TypeError::NonSerializableField { span, .. }
+            | TypeError::NonMappableField { span, .. }
+            | TypeError::MissingAssocType { span, .. }
+            | TypeError::ExtraAssocType { span, .. }
+            | TypeError::UnresolvedAssocType { span, .. }
+            | TypeError::SlotPipeOutOfRange { span, .. }
+            | TypeError::UndefinedType { span, .. }
             | TypeError::NativeDeclarationInvalid { span, .. }
             | TypeError::ExportDeclarationInvalid { span, .. }
             | TypeError::InvalidLetPattern { span, .. }
@@ -847,6 +853,7 @@ impl fmt::Display for TypeError {
                 trait_name,
                 impl_type,
                 first_impl,
+                ..
             } => {
                 write!(
                     f,
@@ -1018,6 +1025,7 @@ impl fmt::Display for TypeError {
                 trait_name,
                 assoc_name,
                 impl_ty,
+                ..
             } => {
                 write!(
                     f,
@@ -1029,6 +1037,7 @@ impl fmt::Display for TypeError {
                 trait_name,
                 assoc_name,
                 impl_ty,
+                ..
             } => {
                 write!(
                     f,

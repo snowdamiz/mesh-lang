@@ -54,14 +54,14 @@ fn one_of_each() -> Vec<TypeError> {
             trait_name: "trait_name".to_string(),
             method_name: "method_name".to_string(),
             impl_ty: "impl_ty".to_string(),
-            span: Some(span(27, 40)),
+            span: span(27, 40),
         },
         TypeError::TraitMethodSignatureMismatch {
             trait_name: "trait_name".to_string(),
             method_name: "method_name".to_string(),
             expected: Ty::int(),
             found: Ty::string(),
-            span: Some(span(27, 40)),
+            span: span(27, 40),
         },
         TypeError::MissingField {
             struct_name: "struct_name".to_string(),
@@ -170,6 +170,7 @@ fn one_of_each() -> Vec<TypeError> {
             trait_name: "trait_name".to_string(),
             impl_type: "impl_type".to_string(),
             first_impl: "first_impl".to_string(),
+            span: span(19, 24),
         },
         TypeError::AmbiguousMethod {
             method_name: "method_name".to_string(),
@@ -254,11 +255,13 @@ fn one_of_each() -> Vec<TypeError> {
             trait_name: "trait_name".to_string(),
             assoc_name: "assoc_name".to_string(),
             impl_ty: "impl_ty".to_string(),
+            span: span(19, 24),
         },
         TypeError::ExtraAssocType {
             trait_name: "trait_name".to_string(),
             assoc_name: "assoc_name".to_string(),
             impl_ty: "impl_ty".to_string(),
+            span: span(19, 24),
         },
         TypeError::UnresolvedAssocType {
             assoc_name: "assoc_name".to_string(),

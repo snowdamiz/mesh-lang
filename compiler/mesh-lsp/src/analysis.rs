@@ -1359,6 +1359,23 @@ mod tests {
         }));
     }
 
+    /// An impl's errors are shown at the impl: a duplicate impl had no place
+    /// in the source and was not shown at all.
+    #[test]
+    fn analyze_impl_errors_are_shown_at_the_impl() {
+        let source = "interface Sized do\n  fn size(self) -> Int\nend\n\
+                      impl Sized for Int do\n  fn size(self) -> Int do\n    1\n  end\nend\n\
+                      impl Sized for Int do\n  fn size(self) -> Int do\n    2\n  end\nend\n";
+        let result = analyze_document("file:///test.mpl", source, &[]);
+        let duplicate = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.starts_with("duplicate impl"))
+            .expect("the duplicate impl is shown");
+        assert_eq!(duplicate.range.start, Position::new(8, 0));
+        assert_eq!(duplicate.range.end, Position::new(8, 21));
+    }
+
     #[test]
     fn analyze_multiple_errors_all_reported() {
         // Two undefined variables should produce at least two diagnostics.

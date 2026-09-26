@@ -312,17 +312,15 @@ expression: rendered
 {"code":"W0002","severity":"warning","message":"what on non-first clause of `fn_name` will be ignored","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only the first clause should have this annotation"}],"fix":null}
 
 [E0026] Error: duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)
-   ╭─[ main.mpl:1:1 ]
+   ╭─[ main.mpl:2:7 ]
    │
- 1 │ ╭─▶ fn main() do
-   ┆ ┆
- 4 │ ├─▶ end
-   │ │
-   │ ╰───────── first_impl
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── first_impl
    │
-   │     Help: remove one of the conflicting impl blocks
+   │ Help: remove one of the conflicting impl blocks
 ───╯
-{"code":"E0026","severity":"error","message":"duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)","file":"main.mpl","spans":[{"start":0,"end":61,"label":"first_impl"}],"fix":"remove one of the conflicting impl blocks"}
+{"code":"E0026","severity":"error","message":"duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"first_impl"}],"fix":"remove one of the conflicting impl blocks"}
 
 [E0027] Error: ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]
    ╭─[ main.mpl:2:7 ]
@@ -508,28 +506,24 @@ expression: rendered
 {"code":"E0039","severity":"error","message":"field `field_name` has type `field_type` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not row-mappable"}],"fix":"only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)"}
 
 [E0040] Error: impl `trait_name` for `impl_ty` is missing associated type `assoc_name`
-   ╭─[ main.mpl:1:1 ]
+   ╭─[ main.mpl:2:7 ]
    │
- 1 │ ╭─▶ fn main() do
-   ┆ ┆
- 4 │ ├─▶ end
-   │ │
-   │ ╰───────── missing `type assoc_name = ...`
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── missing `type assoc_name = ...`
    │
-   │     Help: add `type assoc_name = <ConcreteType>` to the impl block
+   │ Help: add `type assoc_name = <ConcreteType>` to the impl block
 ───╯
-{"code":"E0040","severity":"error","message":"impl `trait_name` for `impl_ty` is missing associated type `assoc_name`","file":"main.mpl","spans":[{"start":0,"end":61,"label":"missing `type assoc_name = ...`"}],"fix":"add `type assoc_name = <ConcreteType>` to the impl block"}
+{"code":"E0040","severity":"error","message":"impl `trait_name` for `impl_ty` is missing associated type `assoc_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing `type assoc_name = ...`"}],"fix":"add `type assoc_name = <ConcreteType>` to the impl block"}
 
 [E0041] Error: impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait
-   ╭─[ main.mpl:1:1 ]
+   ╭─[ main.mpl:2:7 ]
    │
- 1 │ ╭─▶ fn main() do
-   ┆ ┆
- 4 │ ├─▶ end
-   │ │
-   │ ╰───────── `assoc_name` is not declared by `trait_name`
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── `assoc_name` is not declared by `trait_name`
 ───╯
-{"code":"E0041","severity":"error","message":"impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait","file":"main.mpl","spans":[{"start":0,"end":61,"label":"`assoc_name` is not declared by `trait_name`"}],"fix":null}
+{"code":"E0041","severity":"error","message":"impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`assoc_name` is not declared by `trait_name`"}],"fix":null}
 
 [E0042] Error: no associated type `assoc_name` is declared
    ╭─[ main.mpl:2:7 ]

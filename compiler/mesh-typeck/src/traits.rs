@@ -6,7 +6,7 @@
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::error::{ConstraintOrigin, TypeError};
+use crate::error::ConstraintOrigin;
 use crate::ty::{Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
@@ -78,6 +78,27 @@ pub struct ImplDef {
     pub methods: FxHashMap<String, ImplMethodSig>,
     /// Associated type bindings (e.g., `type Item = Int`).
     pub associated_types: FxHashMap<String, Ty>,
+}
+
+/// What is wrong with an impl, as its registration finds it; the type
+/// checker reports each where the impl says it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImplProblem {
+    /// A method the interface declares, without a default, is missing.
+    MissingMethod(String),
+    /// A method differs from the interface's: its `self`, its parameters
+    /// (`expected` and `found` are then function types) or its return type.
+    MethodMismatch {
+        method_name: String,
+        expected: Ty,
+        found: Ty,
+    },
+    /// An associated type the interface declares is not bound.
+    MissingAssocType(String),
+    /// An associated type is bound that the interface does not declare.
+    ExtraAssocType(String),
+    /// An earlier impl, for the named type, covers the same types.
+    Duplicate(String),
 }
 
 /// A method signature in an impl block.
@@ -208,7 +229,7 @@ impl TraitRegistry {
     /// Register an impl: `impl Trait for Type`. Returns what is wrong with
     /// it: a method or associated type missing or unlike the interface's,
     /// or an earlier impl for the same types.
-    pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<TypeError> {
+    pub fn register_impl(&mut self, impl_def: ImplDef) -> Vec<ImplProblem> {
         self.register_impl_checking_overlap(impl_def, true)
     }
 
@@ -224,9 +245,9 @@ impl TraitRegistry {
         &mut self,
         impl_def: ImplDef,
         check_overlap: bool,
-    ) -> Vec<TypeError> {
+    ) -> Vec<ImplProblem> {
         let mut impl_def = impl_def;
-        let mut errors = Vec::new();
+        let mut problems = Vec::new();
 
         // Look up the trait definition.
         if let Some(trait_def) = self.traits.get(&impl_def.trait_name).cloned() {
@@ -258,12 +279,7 @@ impl TraitRegistry {
                                 },
                             );
                         } else {
-                            errors.push(TypeError::MissingTraitMethod {
-                                trait_name: impl_def.trait_name.clone(),
-                                method_name: method.name.clone(),
-                                impl_ty: impl_def.impl_type_name.clone(),
-                                span: None,
-                            });
+                            problems.push(ImplProblem::MissingMethod(method.name.clone()));
                         }
                     }
                     Some(impl_method) => {
@@ -292,8 +308,7 @@ impl TraitRegistry {
                             _ => false,
                         };
                         if shape_differs || types_differ {
-                            errors.push(TypeError::TraitMethodSignatureMismatch {
-                                trait_name: impl_def.trait_name.clone(),
+                            problems.push(ImplProblem::MethodMismatch {
                                 method_name: method.name.clone(),
                                 expected: method_ty(
                                     method.has_self,
@@ -305,7 +320,6 @@ impl TraitRegistry {
                                     impl_method.param_count,
                                     &impl_method.param_types,
                                 ),
-                                span: None,
                             });
                             continue;
                         }
@@ -318,12 +332,10 @@ impl TraitRegistry {
                             let expected_ret = in_impl(expected_ret);
                             let expected_involves_self = ty_contains_self(&expected_ret);
                             if !expected_involves_self && expected_ret != *actual_ret {
-                                errors.push(TypeError::TraitMethodSignatureMismatch {
-                                    trait_name: impl_def.trait_name.clone(),
+                                problems.push(ImplProblem::MethodMismatch {
                                     method_name: method.name.clone(),
                                     expected: expected_ret,
                                     found: actual_ret.clone(),
-                                    span: None,
                                 });
                             }
                         }
@@ -334,22 +346,14 @@ impl TraitRegistry {
             // Check for missing associated types.
             for assoc in &trait_def.associated_types {
                 if !impl_def.associated_types.contains_key(&assoc.name) {
-                    errors.push(TypeError::MissingAssocType {
-                        trait_name: impl_def.trait_name.clone(),
-                        assoc_name: assoc.name.clone(),
-                        impl_ty: impl_def.impl_type_name.clone(),
-                    });
+                    problems.push(ImplProblem::MissingAssocType(assoc.name.clone()));
                 }
             }
 
             // Check for extra associated types.
             for name in impl_def.associated_types.keys() {
                 if !trait_def.associated_types.iter().any(|a| &a.name == name) {
-                    errors.push(TypeError::ExtraAssocType {
-                        trait_name: impl_def.trait_name.clone(),
-                        assoc_name: name.clone(),
-                        impl_ty: impl_def.impl_type_name.clone(),
-                    });
+                    problems.push(ImplProblem::ExtraAssocType(name.clone()));
                 }
             }
         }
@@ -364,11 +368,7 @@ impl TraitRegistry {
             .filter(|_| check_overlap)
             .find(|existing| self.overlap(existing, &impl_def))
         {
-            errors.push(TypeError::DuplicateImpl {
-                trait_name: impl_def.trait_name.clone(),
-                impl_type: impl_def.impl_type_name.clone(),
-                first_impl: format!("previously defined for `{}`", existing.impl_type_name),
-            });
+            problems.push(ImplProblem::Duplicate(existing.impl_type_name.clone()));
         }
 
         // Store the impl (even if it has errors, for method lookup).
@@ -478,7 +478,7 @@ impl TraitRegistry {
                 .push(try_into_impl);
         }
 
-        errors
+        problems
     }
 
     /// Check whether a concrete type satisfies a trait constraint.
@@ -877,8 +877,7 @@ mod tests {
             associated_types: FxHashMap::default(),
         });
 
-        assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], TypeError::MissingTraitMethod { .. }));
+        assert!(matches!(&errors[..], [ImplProblem::MissingMethod(_)]));
     }
 
     // ── New tests for structural matching ────────────────────────────
@@ -1094,19 +1093,7 @@ mod tests {
             methods: display_method_sig(),
             associated_types: FxHashMap::default(),
         });
-        assert_eq!(errors.len(), 1);
-        match &errors[0] {
-            TypeError::DuplicateImpl {
-                trait_name,
-                impl_type,
-                first_impl,
-            } => {
-                assert_eq!(trait_name, "Printable");
-                assert_eq!(impl_type, "Int");
-                assert!(first_impl.contains("Int"));
-            }
-            other => panic!("expected DuplicateImpl, got {:?}", other),
-        }
+        assert_eq!(errors, [ImplProblem::Duplicate("Int".to_string())]);
     }
 
     #[test]
@@ -1324,10 +1311,7 @@ mod tests {
         // A second impl for the same type is still a duplicate; one imported
         // from a module checked earlier is not compared again.
         let errors = registry.register_impl(display(Ty::string(), "String"));
-        assert!(
-            matches!(errors.as_slice(), [TypeError::DuplicateImpl { .. }]),
-            "{errors:?}"
-        );
+        assert_eq!(errors, [ImplProblem::Duplicate("String".to_string())]);
         registry.register_imported_impl(display(Ty::string(), "String"));
     }
 }
