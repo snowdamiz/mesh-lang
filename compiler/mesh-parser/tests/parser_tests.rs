@@ -4,7 +4,7 @@
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, ForInExpr, IfExpr, Literal, MatchArm};
+use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, Expr, ForInExpr, IfExpr, Literal, MatchArm};
 use mesh_parser::ast::item::{
     FnDef, LetBinding, Param, ParamOwnership, SourceFile, StructDef, SumTypeDef,
 };
@@ -199,7 +199,11 @@ fn field_access_names_a_keyword_member() {
     // Stdlib functions named like keywords: Expr.alias, Expr.call, Expr.case.
     for member in ["alias", "call", "case", "self", "send", "cast", "json"] {
         let parse = parse_expr(&format!("Expr.{member}(x)"));
-        assert!(parse.errors().is_empty(), "Expr.{member}(x): {:?}", parse.errors());
+        assert!(
+            parse.errors().is_empty(),
+            "Expr.{member}(x): {:?}",
+            parse.errors()
+        );
         let field = parse
             .syntax()
             .descendants()
@@ -3414,6 +3418,21 @@ fn for_in_when_filter_ast_accessors() {
     // body() returns the block
     let body = for_in.body();
     assert!(body.is_some(), "ForInExpr::body() should return Some");
+}
+
+/// A filter that calls a function is not a call with a trailing closure:
+/// the `do` after it opens the loop's body, as after a condition.
+#[test]
+fn for_in_when_filter_may_end_in_a_call() {
+    let p = parse_expr("for x in list when valid(x) do\n  x\nend");
+    assert!(p.ok(), "parse errors: {:?}", p.errors());
+    let for_in: ForInExpr = p
+        .syntax()
+        .children()
+        .find_map(ForInExpr::cast)
+        .expect("should have ForInExpr");
+    assert!(matches!(for_in.filter(), Some(Expr::CallExpr(_))));
+    assert!(for_in.body().is_some());
 }
 
 #[test]

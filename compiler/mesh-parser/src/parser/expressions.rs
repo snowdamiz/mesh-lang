@@ -904,6 +904,16 @@ fn looks_like_expr_start(p: &Parser) -> bool {
     )
 }
 
+/// Parse the expression before a construct's `do` block (a condition, a
+/// scrutinee, what a loop goes over): there `do` opens the block, so
+/// `if ready(x) do` is not a call of `ready` with a trailing closure.
+fn expr_before_do(p: &mut Parser) {
+    let old = p.suppress_trailing_closure;
+    p.suppress_trailing_closure = true;
+    expr(p);
+    p.suppress_trailing_closure = old;
+}
+
 // ── If/Else Expression ────────────────────────────────────────────────
 
 /// Parse an if expression: `if cond do body [else [if ...] body] end`
@@ -911,11 +921,7 @@ fn parse_if_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // IF_KW
 
-    // Parse condition — suppress trailing closures so `do` is the block opener.
-    let old = p.suppress_trailing_closure;
-    p.suppress_trailing_closure = true;
-    expr(p);
-    p.suppress_trailing_closure = old;
+    expr_before_do(p);
 
     // Expect `do`.
     let do_span = p.current_span();
@@ -962,11 +968,7 @@ fn parse_case_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // CASE_KW or MATCH_KW
 
-    // Parse scrutinee — suppress trailing closures so `do` is the block opener.
-    let old = p.suppress_trailing_closure;
-    p.suppress_trailing_closure = true;
-    expr(p);
-    p.suppress_trailing_closure = old;
+    expr_before_do(p);
 
     // Expect `do`.
     let do_span = p.current_span();
@@ -1681,11 +1683,7 @@ fn parse_while_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // WHILE_KW
 
-    // Parse condition — suppress trailing closures so `do` is the block opener.
-    let old = p.suppress_trailing_closure;
-    p.suppress_trailing_closure = true;
-    expr(p);
-    p.suppress_trailing_closure = old;
+    expr_before_do(p);
 
     // Expect `do`.
     let do_span = p.current_span();
@@ -1773,18 +1771,14 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     p.expect(SyntaxKind::IN_KW);
 
     // Parse iterable expression (e.g., 0..10 parses as BINARY_EXPR with DOT_DOT).
-    // Suppress trailing closures so `do` is the block opener.
     if !p.has_error() {
-        let old = p.suppress_trailing_closure;
-        p.suppress_trailing_closure = true;
-        expr(p);
-        p.suppress_trailing_closure = old;
+        expr_before_do(p);
     }
 
     // Optional filter clause: `when condition`
     if p.at(SyntaxKind::WHEN_KW) {
         p.advance(); // WHEN_KW
-        expr(p); // filter expression
+        expr_before_do(p);
     }
 
     // Expect `do`.
