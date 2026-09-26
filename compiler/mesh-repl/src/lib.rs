@@ -51,8 +51,6 @@ pub enum CommandResult {
     TypeInfo(String),
     /// Exit the REPL.
     Quit,
-    /// No output, continue to next prompt.
-    Continue,
     /// Error message.
     Error(String),
 }
@@ -207,30 +205,12 @@ fn type_check_expression(expr: &str, session: &ReplSession) -> CommandResult {
     // Wrap in a temporary function to get its type
     full_source.push_str(&format!("fn __repl_type_check() do\n  {}\nend\n", expr));
 
-    // Parse
-    let parse = mesh_parser::parse(&full_source);
-    if !parse.ok() {
-        let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
-        return CommandResult::Error(format!("Parse error: {}", errors.join(", ")));
+    match jit::check_source(&full_source) {
+        Ok((_, typeck)) => {
+            CommandResult::TypeInfo(format!("{expr} :: {}", jit::wrapped_result(&typeck)))
+        }
+        Err(error) => CommandResult::Error(error),
     }
-
-    // Type check
-    let typeck = mesh_typeck::check(&parse);
-    if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(
-            &full_source,
-            "<repl>",
-            &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-        );
-        return CommandResult::Error(rendered.join("\n"));
-    }
-
-    // The wrapper is the last item: `() -> T`, with T the expression's type.
-    let ty = match typeck.result_type {
-        Some(mesh_typeck::ty::Ty::Fun(_, result)) => *result,
-        _ => mesh_typeck::ty::Ty::Tuple(Vec::new()),
-    };
-    CommandResult::TypeInfo(format!("{expr} :: {ty}"))
 }
 
 /// Load a file and evaluate each top-level item.
@@ -284,13 +264,11 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
 /// The actor runtime is initialized at startup so that spawn/send/receive
 /// work in the REPL.
 pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
-    use rustyline::error::ReadlineError;
-    use rustyline::DefaultEditor;
-
     // Initialize runtime (GC arena + actor scheduler) once at startup
     jit::init_runtime();
 
-    let mut editor = DefaultEditor::new().map_err(|e| format!("Failed to create editor: {}", e))?;
+    let mut editor =
+        rustyline::DefaultEditor::new().map_err(|e| format!("Failed to create editor: {}", e))?;
 
     // Load history from file (ignore errors -- first run won't have history)
     let history_path = dirs_for_history();
@@ -298,9 +276,49 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
         let _ = editor.load_history(path);
     }
 
-    let mut session = ReplSession::new();
-
     println!("Mesh REPL v0.1.0 (type :help for commands)");
+    repl_loop(
+        config,
+        &mut ReplSession::new(),
+        &mut editor,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    );
+
+    // Save history
+    if let Some(ref path) = history_path {
+        let _ = editor.save_history(path);
+    }
+
+    Ok(())
+}
+
+/// Where the REPL reads lines, and keeps the inputs it evaluates.
+trait LineEditor {
+    fn read_line(&mut self, prompt: &str) -> Result<String, rustyline::error::ReadlineError>;
+    fn remember(&mut self, input: &str);
+}
+
+impl LineEditor for rustyline::DefaultEditor {
+    fn read_line(&mut self, prompt: &str) -> Result<String, rustyline::error::ReadlineError> {
+        self.readline(prompt)
+    }
+
+    fn remember(&mut self, input: &str) {
+        let _ = self.add_history_entry(input);
+    }
+}
+
+/// Read, evaluate and print until the input ends, `:quit`, or the editor
+/// fails. Ctrl-C drops an unfinished multi-line input.
+fn repl_loop(
+    config: &ReplConfig,
+    session: &mut ReplSession,
+    editor: &mut dyn LineEditor,
+    out: &mut dyn std::io::Write,
+    err: &mut dyn std::io::Write,
+) {
+    use rustyline::error::ReadlineError;
 
     let mut input_buffer = String::new();
     let mut in_continuation = false;
@@ -312,7 +330,7 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
             &config.prompt
         };
 
-        match editor.readline(prompt) {
+        match editor.read_line(prompt) {
             Ok(line) => {
                 if in_continuation {
                     input_buffer.push('\n');
@@ -334,42 +352,46 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
                     continue;
                 }
 
-                // Add to history
-                let _ = editor.add_history_entry(&input);
+                editor.remember(&input);
 
                 // Check if it's a REPL command
                 if is_command(&input) {
-                    match process_command(&input, &mut session) {
+                    match process_command(&input, session) {
                         CommandResult::Output(text) => {
                             if !text.is_empty() {
-                                println!("{}", text);
+                                let _ = writeln!(out, "{}", text);
                             }
                         }
-                        CommandResult::TypeInfo(info) => println!("{}", info),
+                        CommandResult::TypeInfo(info) => {
+                            let _ = writeln!(out, "{}", info);
+                        }
                         CommandResult::Quit => {
-                            println!("Goodbye!");
+                            let _ = writeln!(out, "Goodbye!");
                             break;
                         }
-                        CommandResult::Continue => {}
-                        CommandResult::Error(msg) => eprintln!("Error: {}", msg),
+                        CommandResult::Error(msg) => {
+                            let _ = writeln!(err, "Error: {}", msg);
+                        }
                     }
                     continue;
                 }
 
                 // Evaluate the input
-                match jit::jit_eval(&input, &mut session) {
+                match jit::jit_eval(&input, session) {
                     Ok(result) => {
                         let formatted = format_result(&result);
                         if !formatted.is_empty() {
-                            println!("{}", formatted);
+                            let _ = writeln!(out, "{}", formatted);
                         }
                     }
-                    Err(msg) => eprintln!("Error: {}", msg),
+                    Err(msg) => {
+                        let _ = writeln!(err, "Error: {}", msg);
+                    }
                 }
             }
             Err(ReadlineError::Eof) => {
                 // Ctrl-D
-                println!("Goodbye!");
+                let _ = writeln!(out, "Goodbye!");
                 break;
             }
             Err(ReadlineError::Interrupted) => {
@@ -377,24 +399,17 @@ pub fn run_repl(config: &ReplConfig) -> Result<(), String> {
                 if in_continuation {
                     in_continuation = false;
                     input_buffer.clear();
-                    println!("^C");
+                    let _ = writeln!(out, "^C");
                 } else {
-                    println!("^C (use :quit or Ctrl-D to exit)");
+                    let _ = writeln!(out, "^C (use :quit or Ctrl-D to exit)");
                 }
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                let _ = writeln!(err, "Error: {}", e);
                 break;
             }
         }
     }
-
-    // Save history
-    if let Some(ref path) = history_path {
-        let _ = editor.save_history(path);
-    }
-
-    Ok(())
 }
 
 /// Get the history file path, if available.
@@ -408,6 +423,82 @@ fn dirs_for_history() -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lines as an editor would read them, then an end of input.
+    struct Script(std::collections::VecDeque<Result<String, rustyline::error::ReadlineError>>);
+
+    impl LineEditor for Script {
+        fn read_line(&mut self, _prompt: &str) -> Result<String, rustyline::error::ReadlineError> {
+            self.0
+                .pop_front()
+                .unwrap_or(Err(rustyline::error::ReadlineError::Eof))
+        }
+
+        fn remember(&mut self, _input: &str) {}
+    }
+
+    /// What the loop prints and reports for `lines`.
+    fn run_script(lines: Vec<Result<&str, rustyline::error::ReadlineError>>) -> (String, String) {
+        jit::init_runtime();
+        let mut script = Script(
+            lines
+                .into_iter()
+                .map(|line| line.map(str::to_string))
+                .collect(),
+        );
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        repl_loop(
+            &ReplConfig::default(),
+            &mut ReplSession::new(),
+            &mut script,
+            &mut out,
+            &mut err,
+        );
+        (
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_source_without_items_has_a_unit_result() {
+        let typeck = mesh_typeck::check(&mesh_parser::parse(""));
+        assert_eq!(
+            jit::wrapped_result(&typeck),
+            mesh_typeck::ty::Ty::Tuple(Vec::new())
+        );
+    }
+
+    /// Ctrl-C drops an unfinished input, or says how to leave; an editor
+    /// failure ends the loop.
+    #[test]
+    fn the_loop_evaluates_cancels_and_stops() {
+        use rustyline::error::ReadlineError;
+        let (out, err) = run_script(vec![
+            Ok("1 + 2"),
+            Ok("if true do"),
+            Err(ReadlineError::Interrupted),
+            Err(ReadlineError::Interrupted),
+            Ok(""),
+            Ok(":type 1"),
+            Ok(":nonsense"),
+            Ok("undefined_name"),
+            Err(ReadlineError::Io(std::io::Error::other("terminal gone"))),
+            Ok("never read"),
+        ]);
+        assert!(out.contains("3"), "{out}");
+        assert!(out.contains("^C\n"), "{out}");
+        assert!(out.contains("^C (use :quit or Ctrl-D to exit)"), "{out}");
+        assert!(out.contains("1 :: Int"), "{out}");
+        assert!(err.contains("Error: "), "{err}");
+        assert!(err.contains("terminal gone"), "{err}");
+        assert!(!out.contains("Goodbye"), "{out}");
+
+        let (out, _) = run_script(vec![Ok(":quit")]);
+        assert!(out.contains("Goodbye!"), "{out}");
+        let (out, _) = run_script(vec![]);
+        assert!(out.contains("Goodbye!"), "{out}");
+    }
 
     // ── Multi-line detection tests ────────────────────────────────────
 

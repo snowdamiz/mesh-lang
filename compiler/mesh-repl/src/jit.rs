@@ -1529,7 +1529,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::db::expr::mesh_pg_tsvector_matches as *const (),
         ),
         ("mesh_pg_uuid", mesh_rt::db::expr::mesh_pg_uuid as *const ()),
-        ("mesh_pid_to_string", mesh_rt::mesh_pid_to_string as *const ()),
+        (
+            "mesh_pid_to_string",
+            mesh_rt::mesh_pid_to_string as *const (),
+        ),
         (
             "mesh_pool_close",
             mesh_rt::db::pool::mesh_pool_close as *const (),
@@ -2464,23 +2467,7 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
         full_source = session.wrap_expression(&format!("{input}\n  ()")).0;
     }
 
-    // Parse to check for syntax errors
-    let parse = mesh_parser::parse(&full_source);
-    if !parse.ok() {
-        let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
-        return Err(format!("Parse error: {}", errors.join(", ")));
-    }
-
-    // Type check to validate the definition
-    let typeck = mesh_typeck::check(&parse);
-    if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(
-            &full_source,
-            "<repl>",
-            &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-        );
-        return Err(rendered.join("\n"));
-    }
+    let (_, typeck) = check_source(&full_source)?;
 
     // Extract the definition name for display
     let def_name = extract_definition_name(input);
@@ -2507,35 +2494,42 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     })
 }
 
-/// Process an expression: wrap it, compile via full pipeline, and execute via JIT.
-fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult, String> {
-    let (full_source, wrapper_fn) = session.wrap_expression(input);
-
-    // Step 1: Parse
-    let parse = mesh_parser::parse(&full_source);
+/// `source` parsed and type-checked, or its errors as the REPL reports them.
+pub(crate) fn check_source(
+    source: &str,
+) -> Result<(mesh_parser::Parse, mesh_typeck::TypeckResult), String> {
+    let parse = mesh_parser::parse(source);
     if !parse.ok() {
         let errors: Vec<String> = parse.errors().iter().map(|e| format!("{}", e)).collect();
         return Err(format!("Parse error: {}", errors.join(", ")));
     }
-
-    // Step 2: Type check
     let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
         let rendered = typeck.render_errors(
-            &full_source,
+            source,
             "<repl>",
             &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
         );
         return Err(rendered.join("\n"));
     }
+    Ok((parse, typeck))
+}
 
-    // The wrapper is the last item, so the checker's result type is the
-    // wrapper's, `() -> T`; the expression's type is what it returns.
-    let result_type_name = match &typeck.result_type {
-        Some(mesh_typeck::ty::Ty::Fun(_, ret)) => format!("{}", ret),
-        Some(ty) => format!("{}", ty),
-        None => "Unit".to_string(),
-    };
+/// What the wrapper function checked last (`() -> T`) returns: T. A source
+/// with no items has no result: Unit.
+pub(crate) fn wrapped_result(typeck: &mesh_typeck::TypeckResult) -> mesh_typeck::ty::Ty {
+    match &typeck.result_type {
+        Some(mesh_typeck::ty::Ty::Fun(_, result)) => (**result).clone(),
+        _ => mesh_typeck::ty::Ty::Tuple(Vec::new()),
+    }
+}
+
+/// Process an expression: wrap it, compile via full pipeline, and execute via JIT.
+fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult, String> {
+    let (full_source, wrapper_fn) = session.wrap_expression(input);
+
+    let (parse, typeck) = check_source(&full_source)?;
+    let result_type_name = wrapped_result(&typeck).to_string();
 
     // Step 3: Lower to MIR
     let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
