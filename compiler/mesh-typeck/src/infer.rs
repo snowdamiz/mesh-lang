@@ -11574,7 +11574,7 @@ fn bind_clause_params(
                     pattern_span: pat.syntax().text_range(),
                 },
             )?;
-            clause_pats.push(ast_pattern_to_abstract(&pat, env, type_registry));
+            clause_pats.push(ast_pattern_to_abstract(ctx, &pat, env, type_registry));
         } else {
             if let Some(name) = param.name() {
                 env.insert(name.text().to_string(), Scheme::mono(param_ty.clone()));
@@ -11875,7 +11875,12 @@ fn infer_tuple(
 ///
 /// Variable bindings become wildcards (they match anything). Literals, constructors,
 /// and or-patterns are mapped directly to their abstract equivalents.
-fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeRegistry) -> AbsPat {
+fn ast_pattern_to_abstract(
+    ctx: &InferCtx,
+    pat: &Pattern,
+    env: &TypeEnv,
+    type_registry: &TypeRegistry,
+) -> AbsPat {
     match pat {
         Pattern::Wildcard(_) => AbsPat::Wildcard,
         Pattern::Ident(ident) => {
@@ -11948,7 +11953,7 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
         Pattern::Tuple(tuple_pat) => {
             let args: Vec<AbsPat> = tuple_pat
                 .patterns()
-                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                .map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
                 .collect();
             AbsPat::Constructor {
                 name: exhaustiveness::TUPLE.to_string(),
@@ -11957,28 +11962,21 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
             }
         }
         Pattern::Constructor(ctor_pat) => {
-            let variant_name = ctor_pat
-                .variant_name()
-                .map(|t| t.text().to_string())
-                .unwrap_or_else(|| "<unknown>".to_string());
-
-            // Determine the type name.
-            let type_name = if ctor_pat.is_qualified() {
-                ctor_pat
-                    .type_name()
-                    .map(|t| t.text().to_string())
-                    .unwrap_or_default()
-            } else {
-                // Look up unqualified variant in the type registry.
-                type_registry
-                    .lookup_variant(&variant_name)
-                    .map(|(sum, _)| sum.name.clone())
-                    .unwrap_or_default()
+            // The type it belongs to, however it is named: `Shape.Circle`,
+            // `Geo.Circle` (through the module that exports `Shape`), or
+            // `Circle`.
+            let name = constructor_lookup_name(ctx, ctor_pat);
+            let (type_name, variant_name) = match name.rsplit_once('.') {
+                Some((owner, variant)) => (owner.to_string(), variant.to_string()),
+                None => match type_registry.lookup_variant(&name) {
+                    Some((sum, _)) => (sum.name.clone(), name),
+                    None => (String::new(), name),
+                },
             };
 
             let args: Vec<AbsPat> = ctor_pat
                 .fields()
-                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                .map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
                 .collect();
 
             AbsPat::Constructor {
@@ -12005,7 +12003,7 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                                 .fields()
                                 .find(|f| f.name().is_some_and(|n| n.text() == field))
                                 .and_then(|f| f.pattern())
-                                .map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                                .map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
                                 .unwrap_or(AbsPat::Wildcard)
                         })
                         .collect(),
@@ -12016,14 +12014,14 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
         Pattern::Or(or_pat) => {
             let alts: Vec<AbsPat> = or_pat
                 .alternatives()
-                .map(|alt| ast_pattern_to_abstract(&alt, env, type_registry))
+                .map(|alt| ast_pattern_to_abstract(ctx, &alt, env, type_registry))
                 .collect();
             AbsPat::Or { alternatives: alts }
         }
         Pattern::As(as_pat) => {
             // For exhaustiveness, an as-pattern is equivalent to its inner pattern.
             if let Some(inner) = as_pat.pattern() {
-                ast_pattern_to_abstract(&inner, env, type_registry)
+                ast_pattern_to_abstract(ctx, &inner, env, type_registry)
             } else {
                 AbsPat::Wildcard
             }
@@ -12031,7 +12029,7 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
         Pattern::Cons(cons_pat) => {
             // `head :: tail` is the non-empty constructor of the list type.
             let lower = |sub: Option<Pattern>| {
-                sub.map(|sub| ast_pattern_to_abstract(&sub, env, type_registry))
+                sub.map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
                     .unwrap_or(AbsPat::Wildcard)
             };
             AbsPat::Constructor {
@@ -12055,7 +12053,10 @@ fn ast_pattern_to_abstract(pat: &Pattern, env: &TypeEnv, type_registry: &TypeReg
                 .fold(nil, |tail, elem| AbsPat::Constructor {
                     name: exhaustiveness::CONS.to_string(),
                     type_name: exhaustiveness::LIST.to_string(),
-                    args: vec![ast_pattern_to_abstract(&elem, env, type_registry), tail],
+                    args: vec![
+                        ast_pattern_to_abstract(ctx, &elem, env, type_registry),
+                        tail,
+                    ],
                 })
         }
     }
@@ -12256,7 +12257,7 @@ fn infer_case(
             )?;
 
             // Convert to abstract pattern for exhaustiveness.
-            let abs_pat = ast_pattern_to_abstract(&pat, env, type_registry);
+            let abs_pat = ast_pattern_to_abstract(ctx, &pat, env, type_registry);
             arm_patterns.push(abs_pat);
         } else {
             arm_patterns.push(AbsPat::Wildcard);
@@ -15070,7 +15071,7 @@ fn infer_receive(
             )?;
             // Lowering reads the message type from the pattern's range.
             types.insert(pat.syntax().text_range(), actor_msg_ty.clone());
-            arm_patterns.push(ast_pattern_to_abstract(&pat, env, type_registry));
+            arm_patterns.push(ast_pattern_to_abstract(ctx, &pat, env, type_registry));
         } else {
             arm_patterns.push(AbsPat::Wildcard);
         }

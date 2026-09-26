@@ -11,6 +11,26 @@ fn errors(src: &str) -> Vec<String> {
         .collect()
 }
 
+/// The messages of the errors `src` gets when it may import the module
+/// `name` of source `module`, which must check cleanly.
+fn errors_importing(name: &str, module: &str, src: &str) -> Vec<String> {
+    let module_parse = mesh_parser::parse(module);
+    let module_check = mesh_typeck::check(&module_parse);
+    assert!(module_check.errors.is_empty(), "{:?}", module_check.errors);
+    let exports = mesh_typeck::collect_exports(&module_parse, &module_check);
+    let mut imports = mesh_typeck::ImportContext::empty();
+    imports.all_trait_impls = exports.trait_impls.clone();
+    imports.module_exports.insert(
+        name.to_string(),
+        mesh_typeck::ModuleExports::new(name.to_string(), &exports),
+    );
+    mesh_typeck::check_with_imports(&mesh_parser::parse(src), &imports)
+        .errors
+        .iter()
+        .map(|error| error.to_string())
+        .collect()
+}
+
 /// Checks that `src` type-checks without errors.
 fn assert_clean(src: &str) {
     assert_eq!(errors(src), Vec::<String>::new());
@@ -365,4 +385,50 @@ end
             "type mismatch: expected `Option<Int>`, found `Int`",
         ]
     );
+}
+
+/// A variant named through the module that exports its type (`Geo.Dot`)
+/// belongs to that type inside another pattern too: the module's name was
+/// taken for the type's, so `Some(Geo.Dot)` and `Some(Geo.Line(_))` did
+/// not cover `Some(_)`.
+#[test]
+fn variants_named_through_their_module_cover_their_type() {
+    let geo = "pub type Shape do\n  Dot\n  Line(Int)\nend\n";
+    assert_eq!(
+        errors_importing(
+            "Geo",
+            geo,
+            r#"
+import Geo
+
+fn every(o :: Option<Geo.Shape>) -> Int do
+  case o do
+    Some(Geo.Dot) -> 1
+    Some(Geo.Line(_)) -> 2
+    None -> 3
+  end
+end
+
+fn some(o :: Option<Geo.Shape>) -> Int do
+  case o do
+    Some(Geo.Dot) -> 1
+    None -> 3
+  end
+end
+"#
+        ),
+        ["non-exhaustive match on `Option<Shape>`: missing patterns [Some(Line(_))]"]
+    );
+}
+
+/// An or-pattern arm is redundant only when every alternative is.
+#[test]
+fn an_or_pattern_arm_is_redundant_when_all_its_alternatives_are() {
+    let parse = mesh_parser::parse(
+        "fn f(n :: Int) -> Int do\n  case n do\n    1 -> 1\n    1 | 2 -> 2\n    1 | 2 -> 3\n    _ -> 4\n  end\nend\n",
+    );
+    let result = mesh_typeck::check(&parse);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let warnings: Vec<String> = result.warnings.iter().map(|w| w.to_string()).collect();
+    assert_eq!(warnings, ["redundant match arm (arm 3)"]);
 }
