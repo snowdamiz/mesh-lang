@@ -25,11 +25,23 @@ pub enum AccessPath {
     Root,
     /// Field N of a runtime tuple, with its concrete element type.
     TupleField(Box<AccessPath>, usize, MirType),
-    /// Field N of a variant (variant name for disambiguation), retaining the
-    /// concrete semantic type even when a generic sum stores it as a pointer.
-    VariantField(Box<AccessPath>, String, usize, MirType),
-    /// Named field of a struct.
-    StructField(Box<AccessPath>, String),
+    /// Field `index` of `variant` of the sum type `type_name`, with the
+    /// field's concrete semantic type even when a generic sum stores it as a
+    /// pointer.
+    VariantField {
+        parent: Box<AccessPath>,
+        type_name: String,
+        variant: String,
+        index: usize,
+        ty: MirType,
+    },
+    /// Field `index` (in declaration order) of the struct `name`, of type `ty`.
+    StructField {
+        parent: Box<AccessPath>,
+        name: String,
+        index: usize,
+        ty: MirType,
+    },
     /// Head element of a list (first element), with its element type.
     ListHead(Box<AccessPath>, MirType),
     /// Tail of a list (remaining elements after head).
@@ -37,6 +49,23 @@ pub enum AccessPath {
     /// Value N of a match on several values at once (`case (a, b)`, or the
     /// parameters of a clause function), held unboxed in a stack struct.
     Column(usize, MirType),
+}
+
+impl AccessPath {
+    /// The type of the value the path reaches in a scrutinee of type
+    /// `scrutinee_ty`.
+    pub fn ty<'a>(&'a self, scrutinee_ty: &'a MirType) -> &'a MirType {
+        match self {
+            AccessPath::Root => scrutinee_ty,
+            AccessPath::TupleField(_, _, ty)
+            | AccessPath::VariantField { ty, .. }
+            | AccessPath::StructField { ty, .. }
+            | AccessPath::ListHead(_, ty)
+            | AccessPath::Column(_, ty) => ty,
+            // The tail of a list is a list.
+            AccessPath::ListTail(_) => &MirType::Ptr,
+        }
+    }
 }
 
 // ── ConstructorTag ──────────────────────────────────────────────────
@@ -80,10 +109,12 @@ pub enum DecisionTree {
         success: Box<DecisionTree>,
         failure: Box<DecisionTree>,
     },
-    /// Evaluate a guard expression and branch.
+    /// Evaluate the guard of the arm at `arm_index`, with its bindings in
+    /// scope: run the arm when it holds, `failure` when it does not.
     Guard {
         guard_expr: MirExpr,
-        success: Box<DecisionTree>,
+        arm_index: usize,
+        bindings: Vec<(String, MirType, AccessPath)>,
         failure: Box<DecisionTree>,
     },
     /// List deconstruction: test if list is non-empty, then bind head/tail.

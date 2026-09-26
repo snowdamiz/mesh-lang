@@ -9,9 +9,11 @@
 //! 4. Recursing on specialized sub-matrices
 //! 5. Producing Leaf nodes when all patterns are wildcards/variables
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::mir::{MirExpr, MirLiteral, MirMatchArm, MirPattern, MirSumTypeDef, MirType};
+use crate::mir::{
+    by_sum_type_name, MirExpr, MirLiteral, MirMatchArm, MirPattern, MirSumTypeDef, MirType,
+};
 use crate::pattern::{AccessPath, ConstructorTag, DecisionTree};
 
 // ── Pattern Matrix ──────────────────────────────────────────────────
@@ -314,20 +316,14 @@ fn compile_matrix(
 
     // Step 1.5: If the selected column contains tuple or struct patterns,
     // expand them first: they need no switch or test, only decomposition.
-    if column_has_products(&matrix, col) {
-        let expanded = expand_product_column(&matrix, col);
+    if let Some(sub_columns) = product_columns(&matrix, col) {
+        let expanded = expand_product_column(&matrix, col, sub_columns);
         return compile_matrix(expanded, file, line, sum_type_defs);
     }
 
-    // Step 2: Collect head constructors from the selected column.
+    // Step 2: Collect head constructors from the selected column. The first
+    // row tests something, so the selected column holds at least one.
     let head_ctors = collect_head_constructors(&matrix, col, sum_type_defs);
-
-    if head_ctors.is_empty() {
-        // All patterns in this column are wildcards/variables.
-        // Collect bindings and remove the column.
-        let reduced = remove_wildcard_column(&matrix, col);
-        return compile_matrix(reduced, file, line, sum_type_defs);
-    }
 
     // Step 3: Determine if we need a Switch (constructors), ListDecons, or Tests (literals).
     let has_list_cons = head_ctors
@@ -359,18 +355,19 @@ fn make_leaf_or_guard(
     line: u32,
     sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> DecisionTree {
-    let leaf = DecisionTree::Leaf {
-        arm_index: row.arm_index,
-        bindings: row.bindings.clone(),
-    };
-
+    let arm_index = row.arm_index;
+    let bindings = row.bindings.clone();
     match &row.guard {
         Some(guard_expr) => DecisionTree::Guard {
             guard_expr: guard_expr.clone(),
-            success: Box::new(leaf),
+            arm_index,
+            bindings,
             failure: Box::new(compile_matrix(rest, file, line, sum_type_defs)),
         },
-        None => leaf,
+        None => DecisionTree::Leaf {
+            arm_index,
+            bindings,
+        },
     }
 }
 
@@ -413,40 +410,23 @@ fn collect_bindings_from_row(
 /// Select the column with the most constructor diversity.
 /// This heuristic produces better (smaller) decision trees.
 fn select_column(matrix: &PatMatrix) -> usize {
-    let num_cols = matrix.column_paths.len();
-    if num_cols == 0 {
-        return 0;
-    }
-
-    let mut best_col = 0;
-    let mut best_score = 0usize;
-
-    for col in 0..num_cols {
-        let mut score = 0;
-        let mut seen_ctors: Vec<String> = Vec::new();
-
-        for row in &matrix.rows {
-            if col < row.patterns.len() {
-                let ctor_key = head_ctor_key(&row.patterns[col]);
-                if let Some(key) = ctor_key {
-                    if !seen_ctors.contains(&key) {
-                        seen_ctors.push(key);
-                        score += 1;
-                    }
-                }
-            }
-        }
-
-        if score > best_score {
-            best_score = score;
-            best_col = col;
-        }
-    }
-
-    best_col
+    let score = |col: usize| {
+        matrix
+            .rows
+            .iter()
+            .filter_map(|row| head_ctor_key(&row.patterns[col]))
+            .collect::<FxHashSet<_>>()
+            .len()
+    };
+    // The first of the columns with the highest score.
+    (0..matrix.column_paths.len())
+        .rev()
+        .max_by_key(|&col| score(col))
+        .unwrap_or(0)
 }
 
-/// Get a unique string key for the head constructor of a pattern.
+/// Get a unique string key for the head constructor of a pattern. (`As` is
+/// peeled and `Or` expanded before a column is selected.)
 fn head_ctor_key(p: &MirPattern) -> Option<String> {
     match p {
         MirPattern::Literal(lit) => Some(format!("lit:{}", literal_key(lit))),
@@ -455,12 +435,15 @@ fn head_ctor_key(p: &MirPattern) -> Option<String> {
         MirPattern::Struct { name, .. } => Some(format!("struct:{name}")),
         MirPattern::ListCons { .. } => Some("list_cons".to_string()),
         MirPattern::ListNil => Some("list_nil".to_string()),
-        MirPattern::As { inner, .. } => head_ctor_key(inner),
-        MirPattern::Or(_) => None, // Should be expanded already
-        MirPattern::Wildcard | MirPattern::Var(..) => None,
+        MirPattern::As { .. } | MirPattern::Or(_) | MirPattern::Wildcard | MirPattern::Var(..) => {
+            None
+        }
     }
 }
 
+/// A literal's identity: two literals match the same values exactly when
+/// their keys are equal (a float prints as the shortest text that reads
+/// back as it, so `0.0` and `-0.0` differ).
 fn literal_key(lit: &MirLiteral) -> String {
     match lit {
         MirLiteral::Int(n) => format!("int:{}", n),
@@ -484,76 +467,48 @@ fn collect_head_constructors(
     let mut seen: Vec<String> = Vec::new();
 
     for row in &matrix.rows {
-        if col >= row.patterns.len() {
-            continue;
-        }
-        match &row.patterns[col] {
-            MirPattern::Literal(lit) => {
-                let key = literal_key(lit);
-                if !seen.contains(&key) {
-                    seen.push(key);
-                    result.push(HeadCtor::Literal(lit.clone()));
-                }
-            }
+        let pattern = &row.patterns[col];
+        let ctor = match pattern {
+            MirPattern::Literal(lit) => HeadCtor::Literal(lit.clone()),
             MirPattern::Constructor {
                 type_name,
                 variant,
                 fields,
                 ..
             } => {
-                let key = format!("ctor:{}", variant);
-                if !seen.contains(&key) {
-                    // Look up the actual tag from the sum type definition.
-                    // This ensures tags match the type definition order, not
-                    // the order constructors appear in the user's pattern.
-                    let tag = sum_type_defs
-                        .get(type_name.as_str())
-                        .or_else(|| {
-                            type_name
-                                .split('_')
-                                .next()
-                                .and_then(|base| sum_type_defs.get(base))
-                        })
-                        .and_then(|def| def.variants.iter().find(|v| v.name == *variant))
-                        .map(|v| v.tag)
-                        .unwrap_or_else(|| {
-                            // Fallback: count existing constructors (old behavior)
-                            // if type not found in sum_type_defs map.
-                            result
-                                .iter()
-                                .filter(|c| matches!(c, HeadCtor::Constructor { .. }))
-                                .count() as u8
-                        });
-                    seen.push(key);
-                    result.push(HeadCtor::Constructor {
-                        type_name: type_name.clone(),
-                        variant: variant.clone(),
-                        tag,
-                        arity: fields.len(),
+                // Look up the actual tag from the sum type definition.
+                // This ensures tags match the type definition order, not
+                // the order constructors appear in the user's pattern.
+                let tag = by_sum_type_name(sum_type_defs, type_name)
+                    .and_then(|def| def.variants.iter().find(|v| v.name == *variant))
+                    .map(|v| v.tag)
+                    .unwrap_or_else(|| {
+                        // Fallback: count existing constructors (old behavior)
+                        // if type not found in sum_type_defs map.
+                        result
+                            .iter()
+                            .filter(|c| matches!(c, HeadCtor::Constructor { .. }))
+                            .count() as u8
                     });
+                HeadCtor::Constructor {
+                    type_name: type_name.clone(),
+                    variant: variant.clone(),
+                    tag,
+                    arity: fields.len(),
                 }
             }
-            MirPattern::Tuple(_) => {
-                // Tuples are deconstructed (expanded) rather than switched on.
-                // We don't add them as head constructors; instead we expand the column.
-            }
-            MirPattern::ListCons { elem_ty, .. } => {
-                let key = "list_cons".to_string();
-                if !seen.contains(&key) {
-                    seen.push(key);
-                    result.push(HeadCtor::ListCons {
-                        elem_ty: elem_ty.clone(),
-                    });
-                }
-            }
-            MirPattern::ListNil => {
-                let key = "list_nil".to_string();
-                if !seen.contains(&key) {
-                    seen.push(key);
-                    result.push(HeadCtor::ListNil);
-                }
-            }
-            _ => {} // Wildcards/variables don't contribute head constructors.
+            MirPattern::ListCons { elem_ty, .. } => HeadCtor::ListCons {
+                elem_ty: elem_ty.clone(),
+            },
+            MirPattern::ListNil => HeadCtor::ListNil,
+            // Wildcards and variables match every constructor. (A column of
+            // tuples or structs is taken apart before it gets here.)
+            _ => continue,
+        };
+        let key = head_ctor_key(pattern).unwrap_or_default();
+        if !seen.contains(&key) {
+            seen.push(key);
+            result.push(ctor);
         }
     }
 
@@ -592,7 +547,7 @@ fn compile_constructor_switch(
 
             // Specialize matrix for this constructor.
             let specialized =
-                specialize_for_constructor(matrix, col, variant, *arity, sum_type_defs);
+                specialize_for_constructor(matrix, col, type_name, variant, *arity, sum_type_defs);
             let subtree = compile_matrix(specialized, file, line, sum_type_defs);
             cases.push((ctor_tag, subtree));
         }
@@ -624,102 +579,16 @@ fn compile_constructor_switch(
 fn specialize_for_constructor(
     matrix: &PatMatrix,
     col: usize,
+    type_name: &str,
     target_variant: &str,
     arity: usize,
     sum_type_defs: &FxHashMap<String, MirSumTypeDef>,
 ) -> PatMatrix {
-    let mut new_rows = Vec::new();
-    let parent_path = &matrix.column_paths[col];
-
-    for row in &matrix.rows {
-        let pat = &row.patterns[col];
-        match pat {
-            MirPattern::Constructor {
-                variant, fields, ..
-            } if variant == target_variant => {
-                // This row matches the constructor -- expand sub-patterns.
-                let mut new_pats: Vec<MirPattern> = Vec::new();
-                let new_bindings = row.bindings.clone();
-
-                // Add sub-patterns from the constructor fields.
-                // Variable bindings are carried by the sub-patterns themselves
-                // (e.g., Var("r")) and will be collected when those sub-patterns
-                // are processed in recursive compilation. We do NOT use the
-                // Constructor's `bindings` field here to avoid double-counting.
-                for field_pat in fields.iter() {
-                    new_pats.push(field_pat.clone());
-                }
-
-                // Add the remaining columns (before and after the selected one).
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: new_bindings,
-                });
-            }
-            MirPattern::Wildcard | MirPattern::Var(..) => {
-                // Wildcard/variable rows match any constructor -- pad with wildcards.
-                let mut new_pats: Vec<MirPattern> = Vec::new();
-                let mut new_bindings = row.bindings.clone();
-
-                // Collect binding if it's a variable.
-                if let MirPattern::Var(name, ty) = pat {
-                    new_bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
-                }
-
-                // Add wildcard sub-patterns for each constructor field.
-                for _ in 0..arity {
-                    new_pats.push(MirPattern::Wildcard);
-                }
-
-                // Add remaining columns.
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: new_bindings,
-                });
-            }
-            _ => {
-                // Different constructor -- skip this row.
-            }
-        }
-    }
-
-    // Build new column paths: sub-pattern paths + remaining column paths.
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-
     // Look up actual field types from the sum type definition.
-    let parent_ty = &matrix.column_types[col];
-    let mut field_types: Vec<MirType> = if let MirType::SumType(type_name) = parent_ty {
-        sum_type_defs
-            .get(type_name.as_str())
-            .or_else(|| {
-                type_name
-                    .split('_')
-                    .next()
-                    .and_then(|base| sum_type_defs.get(base))
-            })
-            .and_then(|def| def.variants.iter().find(|v| v.name == target_variant))
-            .map(|v| v.fields.clone())
-            .unwrap_or_else(|| vec![MirType::Unit; arity])
-    } else {
-        vec![MirType::Unit; arity]
-    };
+    let mut field_types = by_sum_type_name(sum_type_defs, type_name)
+        .and_then(|def| def.variants.iter().find(|v| v.name == target_variant))
+        .map(|v| v.fields.clone())
+        .unwrap_or_else(|| vec![MirType::Unit; arity]);
 
     // Generic sum definitions use pointer storage for their type parameters.
     // Recover the concrete semantic type from the already type-checked pattern
@@ -735,44 +604,48 @@ fn specialize_for_constructor(
         if variant != target_variant {
             continue;
         }
-        for (index, field_pattern) in fields.iter().enumerate() {
+        for (field_ty, field_pattern) in field_types.iter_mut().zip(fields) {
             if let Some(concrete_ty) = pattern_type_hint(field_pattern) {
-                if let Some(field_ty) = field_types.get_mut(index) {
-                    if (matches!(&*field_ty, MirType::Ptr) && !matches!(&concrete_ty, MirType::Ptr))
-                        || (matches!(&*field_ty, MirType::Unit)
-                            && !matches!(&concrete_ty, MirType::Unit))
-                    {
-                        *field_ty = concrete_ty;
-                    }
+                if (matches!(&*field_ty, MirType::Ptr) && !matches!(&concrete_ty, MirType::Ptr))
+                    || (matches!(&*field_ty, MirType::Unit)
+                        && !matches!(&concrete_ty, MirType::Unit))
+                {
+                    *field_ty = concrete_ty;
                 }
             }
         }
     }
 
     // Sub-pattern paths for the constructor fields.
-    for i in 0..arity {
-        new_paths.push(AccessPath::VariantField(
-            Box::new(parent_path.clone()),
-            target_variant.to_string(),
-            i,
-            field_types.get(i).cloned().unwrap_or(MirType::Unit),
-        ));
-        new_types.push(field_types.get(i).cloned().unwrap_or(MirType::Unit));
-    }
+    let parent_path = &matrix.column_paths[col];
+    let columns = field_types
+        .into_iter()
+        .enumerate()
+        .map(|(index, ty)| {
+            let path = AccessPath::VariantField {
+                parent: Box::new(parent_path.clone()),
+                type_name: type_name.to_string(),
+                variant: target_variant.to_string(),
+                index,
+                ty: ty.clone(),
+            };
+            (path, ty)
+        })
+        .collect();
 
-    // Remaining columns.
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
+    replace_column(matrix, col, columns, |pattern| match pattern {
+        MirPattern::Constructor {
+            variant, fields, ..
+        } if variant == target_variant => {
+            // Variable bindings are carried by the sub-patterns themselves and
+            // are collected when those are processed, not from the
+            // constructor's `bindings`, which would count them twice.
+            Some(fields.clone())
         }
-    }
-
-    PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
-    }
+        MirPattern::Wildcard | MirPattern::Var(..) => Some(vec![MirPattern::Wildcard; arity]),
+        // Different constructor -- skip this row.
+        _ => None,
+    })
 }
 
 // ── List cons compilation ────────────────────────────────────────────
@@ -825,93 +698,26 @@ fn compile_list_cons(
 /// Rows with ListCons patterns have head/tail expanded as two new columns.
 /// Rows with wildcards/variables are kept with wildcard sub-patterns for head/tail.
 fn specialize_for_list_cons(matrix: &PatMatrix, col: usize, elem_ty: &MirType) -> PatMatrix {
-    let mut new_rows = Vec::new();
     let parent_path = &matrix.column_paths[col];
-
-    for row in &matrix.rows {
-        let pat = &row.patterns[col];
-        match pat {
-            MirPattern::ListCons { head, tail, .. } => {
-                // This row has a cons pattern -- expand head and tail as new columns.
-                let mut new_pats = Vec::new();
-                new_pats.push((**head).clone());
-                new_pats.push((**tail).clone());
-
-                // Add remaining columns (before and after the selected one).
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: row.bindings.clone(),
-                });
-            }
-            MirPattern::Wildcard | MirPattern::Var(..) => {
-                // Wildcard/variable rows match any list (including non-empty).
-                let mut new_pats = Vec::new();
-                let mut new_bindings = row.bindings.clone();
-
-                if let MirPattern::Var(name, ty) = pat {
-                    new_bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
-                }
-
-                // Add wildcard sub-patterns for head and tail.
-                new_pats.push(MirPattern::Wildcard);
-                new_pats.push(MirPattern::Wildcard);
-
-                // Add remaining columns.
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: new_bindings,
-                });
-            }
-            _ => {
-                // Different pattern kind -- skip.
-            }
+    let columns = vec![
+        (
+            AccessPath::ListHead(Box::new(parent_path.clone()), elem_ty.clone()),
+            elem_ty.clone(),
+        ),
+        // The tail is always a list (Ptr).
+        (
+            AccessPath::ListTail(Box::new(parent_path.clone())),
+            MirType::Ptr,
+        ),
+    ];
+    replace_column(matrix, col, columns, |pattern| match pattern {
+        MirPattern::ListCons { head, tail, .. } => Some(vec![(**head).clone(), (**tail).clone()]),
+        MirPattern::Wildcard | MirPattern::Var(..) => {
+            Some(vec![MirPattern::Wildcard, MirPattern::Wildcard])
         }
-    }
-
-    // Build new column paths: head path, tail path, then remaining columns.
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-
-    // Head element path: special ListHead access from parent.
-    new_paths.push(AccessPath::ListHead(
-        Box::new(parent_path.clone()),
-        elem_ty.clone(),
-    ));
-    new_types.push(elem_ty.clone());
-
-    // Tail list path: special ListTail access from parent.
-    new_paths.push(AccessPath::ListTail(Box::new(parent_path.clone())));
-    new_types.push(MirType::Ptr); // Tail is always a list (Ptr).
-
-    // Remaining columns.
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
-        }
-    }
-
-    PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
-    }
+        // `[]` cannot match a non-empty list.
+        _ => None,
+    })
 }
 
 // ── Literal test compilation ────────────────────────────────────────
@@ -960,79 +766,12 @@ fn compile_literal_tests(
 
 /// Specialize the matrix for a specific literal value.
 fn specialize_for_literal(matrix: &PatMatrix, col: usize, target_lit: &MirLiteral) -> PatMatrix {
-    let mut new_rows = Vec::new();
-
-    for row in &matrix.rows {
-        let pat = &row.patterns[col];
-        match pat {
-            MirPattern::Literal(lit) if literals_equal(lit, target_lit) => {
-                // This row matches the literal -- remove the column.
-                let mut new_pats = Vec::new();
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: row.bindings.clone(),
-                });
-            }
-            MirPattern::Wildcard | MirPattern::Var(..) => {
-                // Wildcard/variable rows match any literal -- keep them.
-                let mut new_pats = Vec::new();
-                let mut new_bindings = row.bindings.clone();
-
-                if let MirPattern::Var(name, ty) = pat {
-                    new_bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
-                }
-
-                for (i, p) in row.patterns.iter().enumerate() {
-                    if i != col {
-                        new_pats.push(p.clone());
-                    }
-                }
-                new_rows.push(PatRow {
-                    patterns: new_pats,
-                    arm_index: row.arm_index,
-                    guard: row.guard.clone(),
-                    bindings: new_bindings,
-                });
-            }
-            _ => {
-                // Different literal -- skip.
-            }
-        }
-    }
-
-    // Build new column paths (remove the tested column).
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
-        }
-    }
-
-    PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
-    }
-}
-
-/// Compare two MirLiteral values for structural equality.
-fn literals_equal(a: &MirLiteral, b: &MirLiteral) -> bool {
-    match (a, b) {
-        (MirLiteral::Int(x), MirLiteral::Int(y)) => x == y,
-        (MirLiteral::Float(x), MirLiteral::Float(y)) => x.to_bits() == y.to_bits(),
-        (MirLiteral::Bool(x), MirLiteral::Bool(y)) => x == y,
-        (MirLiteral::String(x), MirLiteral::String(y)) => x == y,
-        _ => false,
-    }
+    let target = literal_key(target_lit);
+    default_matrix_with(
+        matrix,
+        col,
+        |pattern| matches!(pattern, MirPattern::Literal(lit) if literal_key(lit) == target),
+    )
 }
 
 // ── Default matrix ──────────────────────────────────────────────────
@@ -1051,110 +790,67 @@ fn default_matrix_with(
     col: usize,
     also: impl Fn(&MirPattern) -> bool,
 ) -> PatMatrix {
-    let mut new_rows = Vec::new();
+    replace_column(matrix, col, Vec::new(), |pattern| {
+        (is_wildcard_like(pattern) || also(pattern)).then(Vec::new)
+    })
+}
 
-    for row in &matrix.rows {
-        let pat = &row.patterns[col];
-        if is_wildcard_like(pat) || also(pat) {
-            let mut new_pats = Vec::new();
-            let mut new_bindings = row.bindings.clone();
-
-            if let MirPattern::Var(name, ty) = pat {
-                new_bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
+/// `matrix` with column `col` replaced by `columns` (their paths and types),
+/// placed first. `row_patterns` gives, for a row's pattern in `col`, the
+/// row's patterns for the new columns, or `None` to leave the row out. A
+/// variable in `col` binds the column's whole value.
+fn replace_column(
+    matrix: &PatMatrix,
+    col: usize,
+    columns: Vec<(AccessPath, MirType)>,
+    row_patterns: impl Fn(&MirPattern) -> Option<Vec<MirPattern>>,
+) -> PatMatrix {
+    let rows = matrix
+        .rows
+        .iter()
+        .filter_map(|row| {
+            let pattern = &row.patterns[col];
+            let mut patterns = row_patterns(pattern)?;
+            let mut bindings = row.bindings.clone();
+            if let MirPattern::Var(name, ty) = pattern {
+                bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
             }
-
-            for (i, p) in row.patterns.iter().enumerate() {
-                if i != col {
-                    new_pats.push(p.clone());
-                }
-            }
-            new_rows.push(PatRow {
-                patterns: new_pats,
+            patterns.extend(without(&row.patterns, col));
+            Some(PatRow {
+                patterns,
                 arm_index: row.arm_index,
                 guard: row.guard.clone(),
-                bindings: new_bindings,
-            });
-        }
-    }
-
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
-        }
-    }
-
+                bindings,
+            })
+        })
+        .collect();
+    let (mut column_paths, mut column_types): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
+    column_paths.extend(without(&matrix.column_paths, col));
+    column_types.extend(without(&matrix.column_types, col));
     PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
+        rows,
+        column_paths,
+        column_types,
     }
 }
 
-/// Remove a column that contains only wildcards/variables.
-/// Collects any variable bindings before removing.
-fn remove_wildcard_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
-    let mut new_rows = Vec::new();
-
-    for row in &matrix.rows {
-        let mut new_pats = Vec::new();
-        let mut new_bindings = row.bindings.clone();
-
-        // Collect binding if it's a variable.
-        if let MirPattern::Var(name, ty) = &row.patterns[col] {
-            new_bindings.push((name.clone(), ty.clone(), matrix.column_paths[col].clone()));
-        }
-
-        for (i, p) in row.patterns.iter().enumerate() {
-            if i != col {
-                new_pats.push(p.clone());
-            }
-        }
-
-        new_rows.push(PatRow {
-            patterns: new_pats,
-            arm_index: row.arm_index,
-            guard: row.guard.clone(),
-            bindings: new_bindings,
-        });
-    }
-
-    let mut new_paths = Vec::new();
-    let mut new_types = Vec::new();
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            new_paths.push(path.clone());
-            new_types.push(matrix.column_types[i].clone());
-        }
-    }
-
-    PatMatrix {
-        rows: new_rows,
-        column_paths: new_paths,
-        column_types: new_types,
-    }
+/// The items of `items` other than the one at `index`.
+fn without<T: Clone>(items: &[T], index: usize) -> impl Iterator<Item = T> + '_ {
+    items
+        .iter()
+        .enumerate()
+        .filter(move |(i, _)| *i != index)
+        .map(|(_, item)| item.clone())
 }
 
 // ── Tuple and struct expansion ──────────────────────────────────────
-
-/// Whether a column holds tuple or struct patterns: values that are taken
-/// apart into their elements or fields, with no test.
-fn column_has_products(matrix: &PatMatrix, col: usize) -> bool {
-    matrix.rows.iter().any(|row| {
-        matches!(
-            row.patterns.get(col),
-            Some(MirPattern::Tuple(_) | MirPattern::Struct { .. })
-        )
-    })
-}
 
 /// Recover the concrete runtime type represented by a sub-pattern.
 ///
 /// Generic constructor layouts intentionally erase payloads to `Ptr`. Tuple
 /// patterns still retain enough type information in their elements for codegen
-/// to unpack the heap-backed runtime tuple correctly.
+/// to unpack the heap-backed runtime tuple correctly. (Or-patterns are
+/// expanded before any column is taken apart.)
 fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
     match pattern {
         MirPattern::Var(_, ty) => Some(ty.clone()),
@@ -1168,111 +864,76 @@ fn pattern_type_hint(pattern: &MirPattern) -> Option<MirType> {
         MirPattern::Tuple(_) | MirPattern::ListCons { .. } | MirPattern::ListNil => {
             Some(MirType::Ptr)
         }
-        MirPattern::Or(alternatives) => alternatives.iter().find_map(pattern_type_hint),
         MirPattern::As { inner, .. } => pattern_type_hint(inner),
-        MirPattern::Wildcard => None,
+        MirPattern::Or(_) | MirPattern::Wildcard => None,
     }
 }
 
-/// Expand a tuple or struct column into one column per element or field.
-/// Tuple and struct patterns become their sub-patterns; wildcards and
-/// variables become wildcards (a variable binds the whole value).
-fn expand_product_column(matrix: &PatMatrix, col: usize) -> PatMatrix {
+/// The columns (paths and types) a column of tuple or struct patterns is
+/// taken apart into, one per element or field, or `None` when the column
+/// holds no tuple or struct pattern.
+fn product_columns(matrix: &PatMatrix, col: usize) -> Option<Vec<(AccessPath, MirType)>> {
     let parent_path = &matrix.column_paths[col];
-    let parent_type = &matrix.column_types[col];
-    let first_product = matrix
-        .rows
-        .iter()
-        .find_map(|row| match row.patterns.get(col) {
-            Some(pattern @ (MirPattern::Tuple(_) | MirPattern::Struct { .. })) => Some(pattern),
-            _ => None,
-        });
-
-    // Each new column's path and type.
-    let sub_columns: Vec<(AccessPath, MirType)> = match first_product {
-        Some(MirPattern::Struct { fields, .. }) => fields
-            .iter()
-            .map(|(name, ty, _)| {
-                (
-                    AccessPath::StructField(Box::new(parent_path.clone()), name.clone()),
-                    ty.clone(),
-                )
-            })
-            .collect(),
-        Some(MirPattern::Tuple(elements)) => (0..elements.len())
-            .map(|index| {
-                let ty = match parent_type {
-                    MirType::Tuple(elements) => elements.get(index).cloned(),
-                    _ => matrix
-                        .rows
-                        .iter()
-                        .find_map(|row| match row.patterns.get(col) {
-                            Some(MirPattern::Tuple(elements)) => {
+    matrix.rows.iter().find_map(|row| match &row.patterns[col] {
+        MirPattern::Struct { name, fields } => Some(
+            fields
+                .iter()
+                .enumerate()
+                .map(|(index, (_, ty, _))| {
+                    let path = AccessPath::StructField {
+                        parent: Box::new(parent_path.clone()),
+                        name: name.clone(),
+                        index,
+                        ty: ty.clone(),
+                    };
+                    (path, ty.clone())
+                })
+                .collect(),
+        ),
+        MirPattern::Tuple(elements) => Some(
+            (0..elements.len())
+                .map(|index| {
+                    let ty = match &matrix.column_types[col] {
+                        MirType::Tuple(elements) => elements.get(index).cloned(),
+                        _ => matrix.rows.iter().find_map(|row| match &row.patterns[col] {
+                            MirPattern::Tuple(elements) => {
                                 elements.get(index).and_then(pattern_type_hint)
                             }
                             _ => None,
                         }),
-                }
-                .unwrap_or(MirType::Unit);
-                (
-                    AccessPath::TupleField(Box::new(parent_path.clone()), index, ty.clone()),
-                    ty,
-                )
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-    if sub_columns.is_empty() {
-        // `()` or a struct without fields: nothing to take apart.
-        return remove_wildcard_column(matrix, col);
-    }
-
-    let rows = matrix
-        .rows
-        .iter()
-        .map(|row| {
-            let mut bindings = row.bindings.clone();
-            let mut patterns: Vec<MirPattern> = match &row.patterns[col] {
-                MirPattern::Tuple(elements) => elements.clone(),
-                MirPattern::Struct { fields, .. } => fields
-                    .iter()
-                    .map(|(_, _, pattern)| pattern.clone())
-                    .collect(),
-                other => {
-                    if let MirPattern::Var(name, ty) = other {
-                        bindings.push((name.clone(), ty.clone(), parent_path.clone()));
                     }
-                    vec![MirPattern::Wildcard; sub_columns.len()]
-                }
-            };
-            patterns.extend(
-                row.patterns
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| *i != col)
-                    .map(|(_, pattern)| pattern.clone()),
-            );
-            PatRow {
-                patterns,
-                arm_index: row.arm_index,
-                guard: row.guard.clone(),
-                bindings,
-            }
-        })
-        .collect();
+                    .unwrap_or(MirType::Unit);
+                    (
+                        AccessPath::TupleField(Box::new(parent_path.clone()), index, ty.clone()),
+                        ty,
+                    )
+                })
+                .collect(),
+        ),
+        _ => None,
+    })
+}
 
-    let (mut column_paths, mut column_types): (Vec<_>, Vec<_>) = sub_columns.into_iter().unzip();
-    for (i, path) in matrix.column_paths.iter().enumerate() {
-        if i != col {
-            column_paths.push(path.clone());
-            column_types.push(matrix.column_types[i].clone());
-        }
-    }
-    PatMatrix {
-        rows,
-        column_paths,
-        column_types,
-    }
+/// Expand a tuple or struct column into `sub_columns`, one per element or
+/// field. Tuple and struct patterns become their sub-patterns; wildcards and
+/// variables become wildcards (a variable binds the whole value). `()` and a
+/// struct without fields have nothing to take apart: the column goes.
+fn expand_product_column(
+    matrix: &PatMatrix,
+    col: usize,
+    sub_columns: Vec<(AccessPath, MirType)>,
+) -> PatMatrix {
+    let arity = sub_columns.len();
+    replace_column(matrix, col, sub_columns, |pattern| {
+        Some(match pattern {
+            MirPattern::Tuple(elements) => elements.clone(),
+            MirPattern::Struct { fields, .. } => fields
+                .iter()
+                .map(|(_, _, pattern)| pattern.clone())
+                .collect(),
+            _ => vec![MirPattern::Wildcard; arity],
+        })
+    })
 }
 
 #[cfg(test)]
@@ -1579,12 +1240,13 @@ mod tests {
                         assert_eq!(bindings[0].0, "r");
                         assert_eq!(
                             bindings[0].2,
-                            AccessPath::VariantField(
-                                Box::new(AccessPath::Root),
-                                "Circle".to_string(),
-                                0,
-                                MirType::Float,
-                            )
+                            AccessPath::VariantField {
+                                parent: Box::new(AccessPath::Root),
+                                type_name: "Shape".to_string(),
+                                variant: "Circle".to_string(),
+                                index: 0,
+                                ty: MirType::Float,
+                            }
                         );
                     }
                     other => panic!("Expected Leaf for Circle, got {:?}", other),
@@ -1795,20 +1457,15 @@ mod tests {
 
         match &tree {
             DecisionTree::Guard {
-                success, failure, ..
+                arm_index,
+                bindings,
+                failure,
+                ..
             } => {
-                match success.as_ref() {
-                    DecisionTree::Leaf {
-                        arm_index,
-                        bindings,
-                    } => {
-                        assert_eq!(*arm_index, 0);
-                        assert_eq!(bindings.len(), 1);
-                        assert_eq!(bindings[0].0, "n");
-                        assert_eq!(bindings[0].2, AccessPath::Root);
-                    }
-                    other => panic!("Expected Leaf for guard success, got {:?}", other),
-                }
+                assert_eq!(*arm_index, 0);
+                assert_eq!(bindings.len(), 1);
+                assert_eq!(bindings[0].0, "n");
+                assert_eq!(bindings[0].2, AccessPath::Root);
                 match failure.as_ref() {
                     DecisionTree::Leaf { arm_index, .. } => {
                         assert_eq!(*arm_index, 1);
@@ -1843,12 +1500,9 @@ mod tests {
 
         match &tree {
             DecisionTree::Guard {
-                success, failure, ..
+                arm_index, failure, ..
             } => {
-                assert!(matches!(
-                    success.as_ref(),
-                    DecisionTree::Leaf { arm_index: 0, .. }
-                ));
+                assert_eq!(*arm_index, 0);
                 match failure.as_ref() {
                     DecisionTree::Fail { message, .. } => {
                         assert!(message.contains("non-exhaustive"));
@@ -1974,9 +1628,7 @@ mod tests {
                             .as_ref()
                             .is_some_and(|d| contains_tuple_field_test(d))
                 }
-                DecisionTree::Guard {
-                    success, failure, ..
-                } => contains_tuple_field_test(success) || contains_tuple_field_test(failure),
+                DecisionTree::Guard { failure, .. } => contains_tuple_field_test(failure),
                 _ => false,
             }
         }
@@ -2069,32 +1721,22 @@ mod tests {
         // Should be Guard(pos_guard, Leaf(0), Guard(neg_guard, Leaf(1), Leaf(2)))
         match &tree {
             DecisionTree::Guard {
-                success,
+                arm_index: 0,
                 failure: first_failure,
                 ..
-            } => {
-                assert!(matches!(
-                    success.as_ref(),
-                    DecisionTree::Leaf { arm_index: 0, .. }
-                ));
-                match first_failure.as_ref() {
-                    DecisionTree::Guard {
-                        success: s2,
-                        failure: f2,
-                        ..
-                    } => {
-                        assert!(matches!(
-                            s2.as_ref(),
-                            DecisionTree::Leaf { arm_index: 1, .. }
-                        ));
-                        assert!(matches!(
-                            f2.as_ref(),
-                            DecisionTree::Leaf { arm_index: 2, .. }
-                        ));
-                    }
-                    other => panic!("Expected nested Guard, got {:?}", other),
+            } => match first_failure.as_ref() {
+                DecisionTree::Guard {
+                    arm_index: 1,
+                    failure: f2,
+                    ..
+                } => {
+                    assert!(matches!(
+                        f2.as_ref(),
+                        DecisionTree::Leaf { arm_index: 2, .. }
+                    ));
                 }
-            }
+                other => panic!("Expected nested Guard, got {:?}", other),
+            },
             other => panic!("Expected Guard, got {:?}", other),
         }
     }
@@ -2415,12 +2057,13 @@ mod tests {
         };
         assert_eq!(
             scrutinee_path,
-            &AccessPath::VariantField(
-                Box::new(AccessPath::Root),
-                "Err".to_string(),
-                0,
-                MirType::SumType("CryptoError".to_string()),
-            )
+            &AccessPath::VariantField {
+                parent: Box::new(AccessPath::Root),
+                type_name: "Result_SecretBytes_CryptoError".to_string(),
+                variant: "Err".to_string(),
+                index: 0,
+                ty: MirType::SumType("CryptoError".to_string()),
+            }
         );
     }
 }

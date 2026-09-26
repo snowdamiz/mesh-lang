@@ -12,6 +12,7 @@ use inkwell::IntPredicate;
 use super::intrinsics::get_intrinsic;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
+use super::pattern::MatchTarget;
 use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirResourceDestructor, MirResourceField,
     MirResourceMoveSource, MirType, UnaryOp,
@@ -2422,12 +2423,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Generate code for the decision tree
         self.codegen_decision_tree(
             &tree,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            ty,
-            result_alloca,
-            merge_bb,
+            MatchTarget {
+                scrutinee: scrutinee_alloca,
+                scrutinee_ty,
+                arms,
+                result_ty: ty,
+                result: result_alloca,
+                merge_bb,
+            },
         )?;
 
         // Merge block
@@ -2473,12 +2476,14 @@ impl<'ctx> CodeGen<'ctx> {
             .append_basic_block(self.current_function(), "match_merge");
         self.codegen_decision_tree(
             &tree,
-            scrutinee_alloca,
-            &scrutinee_ty,
-            arms,
-            ty,
-            result_alloca,
-            merge_bb,
+            MatchTarget {
+                scrutinee: scrutinee_alloca,
+                scrutinee_ty: &scrutinee_ty,
+                arms,
+                result_ty: ty,
+                result: result_alloca,
+                merge_bb,
+            },
         )?;
         self.builder.position_at_end(merge_bb);
         self.builder

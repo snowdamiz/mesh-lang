@@ -107,3 +107,100 @@ end
         "some: true 0\njob: true\niterator: [true, false]\nfind: true\nnext: true\ndate: true\n"
     );
 }
+
+/// Patterns the decision-tree compiler takes apart in less common shapes: a
+/// match on a tuple literal with a catch-all arm (matched as columns) or a
+/// variable arm (the tuple built after all), a variable beside constructor
+/// arms, a float literal and an `as` pattern inside a generic payload, a
+/// tuple column whose first row binds it whole, `()`, a struct without
+/// fields, and variants whose payload is `()`.
+#[test]
+fn patterns_in_uncommon_shapes_match() {
+    let out = compile_and_run(
+        r##"struct Marker do
+end
+
+type Signal do
+  Ping(())
+  Quit
+end
+
+fn columns(a :: Int, b :: Int) -> String do
+  case (a, b) do
+    (0, y) -> "zero ${y}"
+    _ -> "other"
+  end
+end
+
+fn whole(a :: Int, b :: Int) -> String do
+  case (a, b) do
+    (1, y) -> "one ${y}"
+    pair -> "pair ${Tuple.first(pair)}"
+  end
+end
+
+fn describe(o :: Option<Int>) -> String do
+  case o do
+    Some(0) -> "zero"
+    other -> "other ${other}"
+  end
+end
+
+fn half(o :: Option<Float>) -> String do
+  case o do
+    Some(2.5) -> "two and a half"
+    Some(x) -> "${x}"
+    None -> "none"
+  end
+end
+
+fn named(o :: Option<(Int, String)>) -> String do
+  case o do
+    Some((n, s) as pair) -> "${n} ${s} ${Tuple.second(pair)}"
+    None -> "none"
+  end
+end
+
+fn nested(pair :: (Int, Int), n :: Int) -> String do
+  case (pair, n) do
+    (p, 0) -> "whole ${Tuple.first(p)}"
+    ((a, b), _) -> "parts ${a + b}"
+  end
+end
+
+fn unit_case(u :: ()) -> String do
+  case u do
+    () -> "unit"
+  end
+end
+
+fn marker_case(m :: Marker) -> String do
+  case m do
+    Marker {} -> "marker"
+  end
+end
+
+fn signal(s :: Signal) -> String do
+  case s do
+    Ping(()) -> "ping"
+    Quit -> "quit"
+  end
+end
+
+fn main() do
+  println("${columns(0, 7)} ${columns(1, 7)}")
+  println("${whole(1, 2)} ${whole(3, 4)}")
+  println("${describe(Some(0))} ${describe(Some(5))} ${describe(None)}")
+  println("${half(Some(2.5))} ${half(Some(1.5))} ${half(None)}")
+  println("${named(Some((3, "x")))} ${named(None)}")
+  println("${nested((1, 2), 0)} ${nested((1, 2), 1)}")
+  println("${unit_case(())} ${marker_case(Marker {})} ${signal(Ping(()))} ${signal(Quit)}")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "zero 7 other\none 2 pair 3\nzero other Some(5) other None\n\
+         two and a half 1.5 none\n3 x x none\nwhole 1 parts 3\nunit marker ping quit\n"
+    );
+}

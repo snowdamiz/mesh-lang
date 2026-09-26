@@ -25,115 +25,85 @@ use super::CodeGen;
 use crate::mir::{MirLiteral, MirMatchArm, MirType};
 use crate::pattern::{AccessPath, DecisionTree};
 
+/// Where a match's decision tree reads its scrutinee and leaves its result.
+#[derive(Clone, Copy)]
+pub(crate) struct MatchTarget<'a, 'ctx> {
+    /// The stack slot holding the scrutinee, which access paths start from.
+    pub(crate) scrutinee: PointerValue<'ctx>,
+    pub(crate) scrutinee_ty: &'a MirType,
+    pub(crate) arms: &'a [MirMatchArm],
+    /// The type every arm evaluates to, and the slot an arm stores it in.
+    pub(crate) result_ty: &'a MirType,
+    pub(crate) result: PointerValue<'ctx>,
+    /// Where an arm branches once it is done.
+    pub(crate) merge_bb: BasicBlock<'ctx>,
+}
+
+type Binding = (String, MirType, AccessPath);
+
+/// What a name meant before a pattern bound it: its slot and type.
+type SavedLocal<'ctx> = (String, Option<PointerValue<'ctx>>, Option<MirType>);
+
 impl<'ctx> CodeGen<'ctx> {
-    /// Generate LLVM IR for a decision tree.
-    ///
-    /// The decision tree was compiled from pattern matching arms and controls
-    /// which arm body to execute based on the scrutinee value.
-    ///
-    /// # Arguments
-    ///
-    /// * `tree` - The decision tree to codegen
-    /// * `scrutinee_alloca` - Pointer to the scrutinee value (alloca'd)
-    /// * `scrutinee_ty` - The MIR type of the scrutinee
-    /// * `arms` - The original match arms (for arm body codegen)
-    /// * `result_ty` - The MIR type shared by every match arm
-    /// * `result_alloca` - Pointer to store the match result
-    /// * `merge_bb` - Block to branch to after an arm body executes
+    /// Generate LLVM IR for a decision tree, compiled from the match arms of
+    /// `target`, which controls which arm body runs.
     pub(crate) fn codegen_decision_tree(
         &mut self,
         tree: &DecisionTree,
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         match tree {
             DecisionTree::Leaf {
                 arm_index,
                 bindings,
-            } => self.codegen_leaf(
-                *arm_index,
-                bindings,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            ),
+            } => self.codegen_leaf(*arm_index, bindings, target),
             DecisionTree::Switch {
                 scrutinee_path,
                 cases,
                 default,
-            } => self.codegen_switch(
-                scrutinee_path,
-                cases,
-                default.as_deref(),
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            ),
+            } => self.codegen_switch(scrutinee_path, cases, default.as_deref(), target),
             DecisionTree::Test {
                 scrutinee_path,
                 value,
                 success,
                 failure,
-            } => self.codegen_test(
-                scrutinee_path,
-                value,
-                success,
-                failure,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            ),
+            } => self.codegen_test(scrutinee_path, value, success, failure, target),
             DecisionTree::Guard {
                 guard_expr,
-                success,
+                arm_index,
+                bindings,
                 failure,
-            } => self.codegen_guard(
-                guard_expr,
-                success,
-                failure,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            ),
+            } => self.codegen_guard(guard_expr, *arm_index, bindings, failure, target),
             DecisionTree::ListDecons {
                 scrutinee_path,
-                elem_ty,
                 non_empty,
                 empty,
-            } => self.codegen_list_decons(
-                scrutinee_path,
-                elem_ty,
-                non_empty,
-                empty,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            ),
+                ..
+            } => self.codegen_list_decons(scrutinee_path, non_empty, empty, target),
             DecisionTree::Fail {
                 message,
                 file,
                 line,
-            } => self.codegen_fail(message, file, *line),
+            } => self.codegen_panic(message, file, *line).map(drop),
         }
+    }
+
+    /// Branch to `success_bb` when `cond` holds and to `failure_bb` when it
+    /// does not, then generate `success` in the one and `failure` in the other.
+    fn codegen_branches(
+        &mut self,
+        cond: IntValue<'ctx>,
+        (success_bb, success): (BasicBlock<'ctx>, &DecisionTree),
+        (failure_bb, failure): (BasicBlock<'ctx>, &DecisionTree),
+        target: MatchTarget<'_, 'ctx>,
+    ) -> Result<(), String> {
+        self.builder
+            .build_conditional_branch(cond, success_bb, failure_bb)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(success_bb);
+        self.codegen_decision_tree(success, target)?;
+        self.builder.position_at_end(failure_bb);
+        self.codegen_decision_tree(failure, target)
     }
 
     // ── Leaf node ────────────────────────────────────────────────────
@@ -141,23 +111,13 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_leaf(
         &mut self,
         arm_index: usize,
-        bindings: &[(String, MirType, AccessPath)],
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        bindings: &[Binding],
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         // Bind variables from access paths. A binding shadows an outer name
         // only for the arm body.
-        let saved = self.bind_pattern_values(bindings, scrutinee_alloca, scrutinee_ty)?;
-
-        // Codegen arm body
-        let arm = arms
-            .get(arm_index)
-            .ok_or_else(|| format!("Invalid arm index {}", arm_index))?;
-        let body_val = self.codegen_expr(&arm.body);
+        let saved = self.bind_pattern_values(bindings, target)?;
+        let body_val = self.codegen_expr(&target.arms[arm_index].body);
         self.restore_locals(saved);
         let body_val = body_val?;
 
@@ -172,12 +132,12 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
-            let body_val = self.coerce_value_to_type(body_val, self.llvm_type(result_ty))?;
+            let body_val = self.coerce_value_to_type(body_val, self.llvm_type(target.result_ty))?;
             self.builder
-                .build_store(result_alloca, body_val)
+                .build_store(target.result, body_val)
                 .map_err(|e| e.to_string())?;
             self.builder
-                .build_unconditional_branch(merge_bb)
+                .build_unconditional_branch(target.merge_bb)
                 .map_err(|e| e.to_string())?;
         }
 
@@ -187,33 +147,16 @@ impl<'ctx> CodeGen<'ctx> {
     /// Bind each pattern variable to a fresh entry-block alloca holding the
     /// value at its access path. Returns what the names meant before, for
     /// `restore_locals`.
-    #[allow(clippy::type_complexity)]
     fn bind_pattern_values(
         &mut self,
-        bindings: &[(String, MirType, AccessPath)],
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-    ) -> Result<Vec<(String, Option<PointerValue<'ctx>>, Option<MirType>)>, String> {
+        bindings: &[Binding],
+        target: MatchTarget<'_, 'ctx>,
+    ) -> Result<Vec<SavedLocal<'ctx>>, String> {
         let mut saved = Vec::with_capacity(bindings.len());
         for (name, ty, path) in bindings {
-            let val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, path)?;
-            let llvm_ty = self.llvm_type(ty);
-
-            // When the binding type is a Struct, SumType, or opaque i64 handle (e.g., DateTime,
-            // SqliteConn — MirType::Int) but the extracted value is a pointer, dereference the
-            // pointer to load the actual value. This covers:
-            // - Result<Struct, String> where Ok's payload is heap-allocated (Ptr)
-            // - Result<DateTime, String> where Ok's i64 payload is boxed via alloc_result
-            let val = if should_deref_boxed_payload(ty, &val, &llvm_ty) {
-                self.builder
-                    .build_load(llvm_ty, val.into_pointer_value(), "deref_struct")
-                    .map_err(|e| e.to_string())?
-            } else {
-                val
-            };
-
+            let val = self.navigate_access_path(target.scrutinee, target.scrutinee_ty, path)?;
             // Place alloca in the function entry block for proper LLVM domination.
-            let alloca = self.build_entry_alloca(llvm_ty, name)?;
+            let alloca = self.build_entry_alloca(self.llvm_type(ty), name)?;
             self.builder
                 .build_store(alloca, val)
                 .map_err(|e| e.to_string())?;
@@ -227,11 +170,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Undo `bind_pattern_values`, innermost binding last in, first out.
-    #[allow(clippy::type_complexity)]
-    fn restore_locals(
-        &mut self,
-        saved: Vec<(String, Option<PointerValue<'ctx>>, Option<MirType>)>,
-    ) {
+    fn restore_locals(&mut self, saved: Vec<SavedLocal<'ctx>>) {
         for (name, alloca, ty) in saved.into_iter().rev() {
             match alloca {
                 Some(alloca) => self.locals.insert(name.clone(), alloca),
@@ -251,36 +190,16 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_path: &AccessPath,
         cases: &[(crate::pattern::ConstructorTag, DecisionTree)],
         default: Option<&DecisionTree>,
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         let fn_val = self.current_function();
 
-        // Navigate to the value at the access path to get its pointer
+        // Every sum type layout starts with its i8 tag.
         let switch_ptr =
-            self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
-
-        // The type at the path should be a sum type -- load the tag (i8 at offset 0)
-        let path_ty = self.resolve_path_type(scrutinee_ty, scrutinee_path)?;
-        let sum_layout = match &path_ty {
-            MirType::SumType(name) => self
-                .lookup_sum_type_layout(name)
-                .ok_or_else(|| format!("Unknown sum type layout '{}'", name))?,
-            _ => return Err(format!("Switch on non-sum type: {:?}", path_ty)),
-        };
-        let sum_layout = *sum_layout;
-
-        let tag_ptr = self
-            .builder
-            .build_struct_gep(sum_layout, switch_ptr, 0, "tag_ptr")
-            .map_err(|e| e.to_string())?;
+            self.navigate_access_path_ptr(target.scrutinee, target.scrutinee_ty, scrutinee_path)?;
         let tag_val = self
             .builder
-            .build_load(self.context.i8_type(), tag_ptr, "tag")
+            .build_load(self.context.i8_type(), switch_ptr, "tag")
             .map_err(|e| e.to_string())?
             .into_int_value();
 
@@ -311,36 +230,20 @@ impl<'ctx> CodeGen<'ctx> {
         // Generate code for each case
         for (i, (_, subtree)) in cases.iter().enumerate() {
             self.builder.position_at_end(case_bbs[i]);
-            self.codegen_decision_tree(
-                subtree,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            )?;
+            self.codegen_decision_tree(subtree, target)?;
         }
 
         // Generate default case
         self.builder.position_at_end(default_bb);
-        if let Some(default_tree) = default {
-            self.codegen_decision_tree(
-                default_tree,
-                scrutinee_alloca,
-                scrutinee_ty,
-                arms,
-                result_ty,
-                result_alloca,
-                merge_bb,
-            )?;
-        } else {
+        match default {
+            Some(default_tree) => self.codegen_decision_tree(default_tree, target),
             // Default: unreachable (exhaustive match guaranteed by type checker)
-            let fn_name = self.current_function_name();
-            self.codegen_fail("non-exhaustive match in switch", &fn_name, 0)?;
+            None => {
+                let fn_name = self.current_function_name();
+                self.codegen_panic("non-exhaustive match in switch", &fn_name, 0)
+                    .map(drop)
+            }
         }
-
-        Ok(())
     }
 
     // ── Test node ────────────────────────────────────────────────────
@@ -351,48 +254,14 @@ impl<'ctx> CodeGen<'ctx> {
         value: &MirLiteral,
         success: &DecisionTree,
         failure: &DecisionTree,
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         let fn_val = self.current_function();
 
-        // Load the value at the access path
-        let test_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
-        // Generic Result/Option layouts store scalar payloads in a canonical
-        // pointer slot. Constructors box those scalars, so literal patterns
-        // must load the source-level value before comparing it.
-        let test_val = if test_val.is_pointer_value() {
-            let payload_ptr = test_val.into_pointer_value();
-            match value {
-                MirLiteral::Int(_) => self
-                    .builder
-                    .build_load(self.context.i64_type(), payload_ptr, "literal_int_payload")
-                    .map_err(|e| e.to_string())?,
-                MirLiteral::Float(_) => self
-                    .builder
-                    .build_load(
-                        self.context.f64_type(),
-                        payload_ptr,
-                        "literal_float_payload",
-                    )
-                    .map_err(|e| e.to_string())?,
-                MirLiteral::Bool(_) => self
-                    .builder
-                    .build_load(
-                        self.context.bool_type(),
-                        payload_ptr,
-                        "literal_bool_payload",
-                    )
-                    .map_err(|e| e.to_string())?,
-                MirLiteral::String(_) => test_val,
-            }
-        } else {
-            test_val
-        };
+        // The value at the access path. A literal inside a generic payload is
+        // read through its box: the path has the literal's own type.
+        let test_val =
+            self.navigate_access_path(target.scrutinee, target.scrutinee_ty, scrutinee_path)?;
 
         // Compare with the literal
         let cond = match value {
@@ -458,98 +327,37 @@ impl<'ctx> CodeGen<'ctx> {
 
         let success_bb = self.context.append_basic_block(fn_val, "test_success");
         let failure_bb = self.context.append_basic_block(fn_val, "test_failure");
-
-        self.builder
-            .build_conditional_branch(cond, success_bb, failure_bb)
-            .map_err(|e| e.to_string())?;
-
-        // Success branch
-        self.builder.position_at_end(success_bb);
-        self.codegen_decision_tree(
-            success,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        // Failure branch
-        self.builder.position_at_end(failure_bb);
-        self.codegen_decision_tree(
-            failure,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        Ok(())
+        self.codegen_branches(cond, (success_bb, success), (failure_bb, failure), target)
     }
 
     // ── Guard node ───────────────────────────────────────────────────
 
+    /// Evaluate a guard with the bindings of the arm it guards in scope, and
+    /// run that arm when it holds.
     fn codegen_guard(
         &mut self,
         guard_expr: &crate::mir::MirExpr,
-        success: &DecisionTree,
+        arm_index: usize,
+        bindings: &[Binding],
         failure: &DecisionTree,
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         let fn_val = self.current_function();
 
-        // Guard expressions may reference variables bound by the pattern, so
-        // the success Leaf's bindings are bound while the guard is evaluated.
-        let saved = match success {
-            DecisionTree::Leaf { bindings, .. } => {
-                self.bind_pattern_values(bindings, scrutinee_alloca, scrutinee_ty)?
-            }
-            _ => Vec::new(),
-        };
+        let saved = self.bind_pattern_values(bindings, target)?;
         let guard_val = self.codegen_expr(guard_expr);
         self.restore_locals(saved);
         let guard_val = guard_val?.into_int_value();
 
         let success_bb = self.context.append_basic_block(fn_val, "guard_pass");
         let failure_bb = self.context.append_basic_block(fn_val, "guard_fail");
-
         self.builder
             .build_conditional_branch(guard_val, success_bb, failure_bb)
             .map_err(|e| e.to_string())?;
-
-        // Guard passed
         self.builder.position_at_end(success_bb);
-        self.codegen_decision_tree(
-            success,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        // Guard failed
+        self.codegen_leaf(arm_index, bindings, target)?;
         self.builder.position_at_end(failure_bb);
-        self.codegen_decision_tree(
-            failure,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        Ok(())
+        self.codegen_decision_tree(failure, target)
     }
 
     // ── ListDecons node ──────────────────────────────────────────────
@@ -557,20 +365,15 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_list_decons(
         &mut self,
         scrutinee_path: &AccessPath,
-        _elem_ty: &MirType,
         non_empty: &DecisionTree,
         empty: &DecisionTree,
-        scrutinee_alloca: PointerValue<'ctx>,
-        scrutinee_ty: &MirType,
-        arms: &[MirMatchArm],
-        result_ty: &MirType,
-        result_alloca: PointerValue<'ctx>,
-        merge_bb: BasicBlock<'ctx>,
+        target: MatchTarget<'_, 'ctx>,
     ) -> Result<(), String> {
         let fn_val = self.current_function();
 
         // Load the list pointer at the access path.
-        let list_val = self.navigate_access_path(scrutinee_alloca, scrutinee_ty, scrutinee_path)?;
+        let list_val =
+            self.navigate_access_path(target.scrutinee, target.scrutinee_ty, scrutinee_path)?;
         let list_ptr = list_val.into_pointer_value();
 
         // Call mesh_list_length(list) to check if non-empty.
@@ -594,45 +397,12 @@ impl<'ctx> CodeGen<'ctx> {
 
         let non_empty_bb = self.context.append_basic_block(fn_val, "list_non_empty");
         let empty_bb = self.context.append_basic_block(fn_val, "list_empty");
-
-        self.builder
-            .build_conditional_branch(is_non_empty, non_empty_bb, empty_bb)
-            .map_err(|e| e.to_string())?;
-
-        // Non-empty branch: compile the non_empty decision tree.
-        self.builder.position_at_end(non_empty_bb);
-        self.codegen_decision_tree(
-            non_empty,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        // Empty branch: compile the empty decision tree.
-        self.builder.position_at_end(empty_bb);
-        self.codegen_decision_tree(
-            empty,
-            scrutinee_alloca,
-            scrutinee_ty,
-            arms,
-            result_ty,
-            result_alloca,
-            merge_bb,
-        )?;
-
-        Ok(())
-    }
-
-    // ── Fail node ────────────────────────────────────────────────────
-
-    fn codegen_fail(&mut self, message: &str, file: &str, line: u32) -> Result<(), String> {
-        // Emit panic call
-        self.codegen_panic(message, file, line)?;
-        // codegen_panic already emits unreachable
-        Ok(())
+        self.codegen_branches(
+            is_non_empty,
+            (non_empty_bb, non_empty),
+            (empty_bb, empty),
+            target,
+        )
     }
 
     // ── Access path navigation ───────────────────────────────────────
@@ -645,21 +415,18 @@ impl<'ctx> CodeGen<'ctx> {
         path: &AccessPath,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
-        let path_ty = self.resolve_path_type(scrutinee_ty, path)?;
         // Tuple expressions use a runtime pointer, including control-flow results
         // and nested tuple fields. Do not load the semantic by-value tuple type.
-        let llvm_ty = if matches!(path_ty, MirType::Tuple(_)) {
-            self.context
+        let llvm_ty = match path.ty(scrutinee_ty) {
+            MirType::Tuple(_) => self
+                .context
                 .ptr_type(inkwell::AddressSpace::default())
-                .into()
-        } else {
-            self.llvm_type(&path_ty)
+                .into(),
+            path_ty => self.llvm_type(path_ty),
         };
-        let val = self
-            .builder
+        self.builder
             .build_load(llvm_ty, ptr, "path_val")
-            .map_err(|e| e.to_string())?;
-        Ok(val)
+            .map_err(|e| e.to_string())
     }
 
     /// Navigate an access path and return a pointer to the value.
@@ -685,32 +452,14 @@ impl<'ctx> CodeGen<'ctx> {
             AccessPath::TupleField(parent, index, element_ty) => {
                 // Tuples use the runtime layout `{ u64 len, u64 elements[] }`,
                 // including when a generic constructor stores the tuple as Ptr.
-                let parent_val =
-                    self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
-                let tuple_ptr = match parent_val {
-                    BasicValueEnum::PointerValue(value) => value,
-                    other => {
-                        return Err(format!(
-                            "TupleField parent is not a runtime tuple pointer: {:?}",
-                            other.get_type()
-                        ));
-                    }
-                };
-
+                let tuple_ptr = self
+                    .navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?
+                    .into_pointer_value();
                 let nth_fn = get_intrinsic(&self.module, "mesh_tuple_nth");
+                let index = self.context.i64_type().const_int(*index as u64, false);
                 let element = self
                     .builder
-                    .build_call(
-                        nth_fn,
-                        &[
-                            tuple_ptr.into(),
-                            self.context
-                                .i64_type()
-                                .const_int(*index as u64, false)
-                                .into(),
-                        ],
-                        "tuple_field",
-                    )
+                    .build_call(nth_fn, &[tuple_ptr.into(), index.into()], "tuple_field")
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .basic()
@@ -720,31 +469,20 @@ impl<'ctx> CodeGen<'ctx> {
                 self.materialize_tuple_element_ptr(element, element_ty)
             }
 
-            AccessPath::VariantField(parent, variant_name, index, semantic_ty) => {
+            AccessPath::VariantField {
+                parent,
+                type_name,
+                variant,
+                index,
+                ty: semantic_ty,
+            } => {
                 let parent_ptr =
                     self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-
-                // Get sum type info
-                let type_name = match &parent_ty {
-                    MirType::SumType(name) => name.clone(),
-                    _ => return Err(format!("VariantField on non-sum type: {:?}", parent_ty)),
-                };
-
-                let sum_def = self
-                    .lookup_sum_type_def(&type_name)
-                    .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?
-                    .clone();
-
-                let variant_def = sum_def
-                    .variants
-                    .iter()
-                    .find(|v| v.name == *variant_name)
-                    .ok_or_else(|| format!("Unknown variant '{}'", variant_name))?;
-                let storage_ty = variant_def
-                    .fields
-                    .get(*index)
-                    .ok_or_else(|| format!("Variant field {} out of bounds", index))?;
+                let variant_def = self
+                    .lookup_sum_type_def(type_name)
+                    .and_then(|def| def.variants.iter().find(|v| v.name == *variant))
+                    .ok_or_else(|| format!("Unknown variant '{type_name}.{variant}'"))?;
+                let storage_ty = variant_def.fields[*index].clone();
 
                 // Create variant overlay type { i8 tag, field0, field1, ... }
                 let variant_ty = variant_struct_type(
@@ -780,28 +518,20 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
 
-            AccessPath::StructField(parent, field_name) => {
+            AccessPath::StructField {
+                parent,
+                name,
+                index,
+                ..
+            } => {
                 let parent_ptr =
                     self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, parent)?;
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                let struct_name = match &parent_ty {
-                    MirType::Struct(name) => name.clone(),
-                    _ => return Err(format!("StructField on non-struct type: {:?}", parent_ty)),
-                };
-
                 let struct_ty = self
-                    .struct_types
-                    .get(&struct_name)
-                    .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
-                let struct_ty = *struct_ty;
-
-                let field_idx = self.find_struct_field_index(&struct_name, field_name)?;
-
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(struct_ty, parent_ptr, field_idx as u32, "struct_field")
-                    .map_err(|e| e.to_string())?;
-                Ok(field_ptr)
+                    .llvm_type(&MirType::Struct(name.clone()))
+                    .into_struct_type();
+                self.builder
+                    .build_struct_gep(struct_ty, parent_ptr, *index as u32, "struct_field")
+                    .map_err(|e| e.to_string())
             }
 
             AccessPath::ListHead(parent, elem_ty) => {
@@ -822,14 +552,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value();
 
                 // Convert u64 -> the element type.
-                let path_ty = elem_ty.clone();
-                let converted = self.convert_from_list_element(head_i64, &path_ty)?;
+                let converted = self.convert_from_list_element(head_i64, elem_ty)?;
 
                 // Store in an alloca so we can return a pointer.
-                let llvm_ty = self.llvm_type(&path_ty);
                 let alloca = self
                     .builder
-                    .build_alloca(llvm_ty, "list_head_alloca")
+                    .build_alloca(self.llvm_type(elem_ty), "list_head_alloca")
                     .map_err(|e| e.to_string())?;
                 self.builder
                     .build_store(alloca, converted)
@@ -908,77 +636,4 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         Ok(alloca)
     }
-
-    /// Resolve the MIR type at a given access path.
-    fn resolve_path_type(
-        &self,
-        scrutinee_ty: &MirType,
-        path: &AccessPath,
-    ) -> Result<MirType, String> {
-        match path {
-            AccessPath::Root => Ok(scrutinee_ty.clone()),
-
-            AccessPath::TupleField(_, _, element_ty) => Ok(element_ty.clone()),
-
-            AccessPath::Column(_, column_ty) => Ok(column_ty.clone()),
-
-            AccessPath::VariantField(_, _, _, field_ty) => Ok(field_ty.clone()),
-
-            AccessPath::StructField(parent, field_name) => {
-                let parent_ty = self.resolve_path_type(scrutinee_ty, parent)?;
-                match &parent_ty {
-                    MirType::Struct(struct_name) => {
-                        let fields = self
-                            .mir_struct_defs
-                            .get(struct_name)
-                            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
-                        fields
-                            .iter()
-                            .find(|(n, _)| n == field_name)
-                            .map(|(_, ty)| ty.clone())
-                            .ok_or_else(|| {
-                                format!(
-                                    "Field '{}' not found in struct '{}'",
-                                    field_name, struct_name
-                                )
-                            })
-                    }
-                    _ => Err(format!("StructField on non-struct type: {:?}", parent_ty)),
-                }
-            }
-
-            AccessPath::ListHead(_, elem_ty) => Ok(elem_ty.clone()),
-
-            AccessPath::ListTail(_parent) => {
-                // Tail of a list is always a list (Ptr at MIR level).
-                Ok(MirType::Ptr)
-            }
-        }
-    }
-}
-
-/// Returns true if a case arm binding value needs to be dereferenced.
-///
-/// This covers two cases:
-/// 1. Struct/SumType bindings from generic `Result<Struct, String>` where the
-///    Ok payload is a heap pointer (Ptr) but the target type is a struct.
-/// 2. Opaque i64 handle types (DateTime, SqliteConn, etc.) lowered as
-///    `MirType::Int` where the Ok payload is boxed via `alloc_result` as
-///    `Box::into_raw(Box::new(i64))`. The extracted value is a Ptr to the i64;
-///    we must dereference it to get the actual i64.
-///
-/// The guard conditions: the value IS a pointer, but the binding's LLVM type
-/// is NOT a pointer, meaning a load is needed to get the true value.
-fn should_deref_boxed_payload(
-    ty: &MirType,
-    val: &inkwell::values::BasicValueEnum<'_>,
-    llvm_ty: &inkwell::types::BasicTypeEnum<'_>,
-) -> bool {
-    if !val.is_pointer_value() || llvm_ty.is_pointer_type() {
-        return false;
-    }
-    matches!(
-        ty,
-        MirType::Struct(_) | MirType::SumType(_) | MirType::Int | MirType::Float | MirType::Bool
-    )
 }
