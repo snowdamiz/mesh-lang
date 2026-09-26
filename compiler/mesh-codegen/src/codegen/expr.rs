@@ -2836,50 +2836,21 @@ impl<'ctx> CodeGen<'ctx> {
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
         // args[0] = node name (String expression).
-        // When the arg is a variable with MirType::Unit (from unresolved Ty::Var),
-        // codegen_expr loads from the alloca with type {} and returns an empty struct.
-        // The actual stored value is an i64 (string pointer). Reload as i64 directly
-        // from the local alloca to recover the correct runtime value.
-        let node_val = match &args[0] {
-            MirExpr::Var(name, MirType::Unit) => {
-                // Variable has unresolved type -- load as i64 from the alloca directly
-                if let Some(alloca) = self.locals.get(name).copied() {
-                    self.builder
-                        .build_load(i64_ty, alloca, &format!("{}_as_i64", name))
-                        .map_err(|e| e.to_string())?
-                } else {
-                    self.codegen_expr(&args[0])?
-                }
-            }
-            _ => self.codegen_expr(&args[0])?,
-        };
+        let node_val = self.codegen_expr(&args[0])?;
         let (node_ptr, node_len) = self.codegen_unpack_string(node_val)?;
 
-        // args[1] = function reference -- extract the name as a string constant.
-        // The MIR has this as MirExpr::Var("function_name", FnPtr(...)).
+        // args[1] = the function the remote node starts, which it looks up by
+        // name: one defined at the top level, not a closure.
         let (fn_name, expected_arg_types) = match &args[1] {
-            MirExpr::Var(name, MirType::FnPtr(params, _))
-            | MirExpr::Var(name, MirType::Closure(params, _)) => (name.clone(), params.clone()),
-            MirExpr::Var(name, _) => {
-                let params = self
-                    .mir_functions
-                    .iter()
-                    .find(|function| function.name == *name)
-                    .map(|function| {
-                        function
-                            .params
-                            .iter()
-                            .map(|(_, ty)| ty.clone())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                (name.clone(), params)
+            MirExpr::Var(name, MirType::FnPtr(params, _) | MirType::Closure(params, _)) => {
+                (name.clone(), params.clone())
             }
             _ => {
-                // Fallback: try to evaluate and use a placeholder.
-                // This should not happen in practice -- Node.spawn's second arg
-                // should always be a named function reference.
-                ("unknown".to_string(), Vec::new())
+                return Err(
+                    "Node.spawn needs a function defined at the top level: the remote node \
+                     starts it by name"
+                        .to_string(),
+                )
             }
         };
 
@@ -2902,36 +2873,21 @@ impl<'ctx> CodeGen<'ctx> {
                 i64_ty.const_int(0, false),
             )
         } else {
-            let arg_vals: Vec<BasicValueEnum<'ctx>> = spawn_args
+            let arg_types: Vec<MirType> = spawn_args
                 .iter()
                 .enumerate()
-                .map(|(i, arg)| {
-                    let expected_ty = expected_arg_types.get(i).unwrap_or(arg.ty());
-                    match arg {
-                        MirExpr::Var(name, MirType::Unit) => {
-                            if let Some(alloca) = self.locals.get(name).copied() {
-                                self.builder
-                                    .build_load(
-                                        self.llvm_type(expected_ty),
-                                        alloca,
-                                        &format!("{}_as_remote_arg", name),
-                                    )
-                                    .map_err(|e| e.to_string())
-                            } else {
-                                self.codegen_expr(arg)
-                            }
-                        }
-                        _ => self.codegen_expr(arg),
-                    }
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let arg_tags: Vec<u8> = spawn_args
+                .map(|(i, arg)| expected_arg_types.get(i).unwrap_or(arg.ty()).clone())
+                .collect();
+            let arg_tags: Vec<u8> = arg_types
                 .iter()
-                .enumerate()
-                .map(|(i, arg)| {
-                    self.remote_spawn_arg_tag(expected_arg_types.get(i).unwrap_or(arg.ty()))
-                })
+                .map(|ty| self.remote_spawn_arg_tag(ty))
                 .collect::<Result<Vec<_>, _>>()?;
+            // Each argument as its raw word, the way a list slot holds it.
+            let mut arg_vals = Vec::with_capacity(spawn_args.len());
+            for (arg, ty) in spawn_args.iter().zip(&arg_types) {
+                let value = self.codegen_expr(arg)?;
+                arg_vals.push(self.convert_to_list_element(value, ty)?);
+            }
 
             let total_size = (arg_vals.len() * 8) as u64;
             let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
@@ -2951,21 +2907,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .into_pointer_value();
             let arr_ty = i64_ty.array_type(arg_vals.len() as u32);
 
-            for (i, val) in arg_vals.iter().enumerate() {
-                let int_val = if val.is_int_value() {
-                    val.into_int_value()
-                } else if val.is_pointer_value() {
-                    self.builder
-                        .build_ptr_to_int(val.into_pointer_value(), i64_ty, "arg_int")
-                        .map_err(|e| e.to_string())?
-                } else if val.is_float_value() {
-                    self.builder
-                        .build_bit_cast(val.into_float_value(), i64_ty, "arg_int")
-                        .map_err(|e: inkwell::builder::BuilderError| e.to_string())?
-                        .into_int_value()
-                } else {
-                    i64_ty.const_int(0, false)
-                };
+            for (i, int_val) in arg_vals.iter().copied().enumerate() {
                 let idx = self.context.i32_type().const_int(i as u64, false);
                 let zero = self.context.i32_type().const_int(0, false);
                 let element_ptr = unsafe {

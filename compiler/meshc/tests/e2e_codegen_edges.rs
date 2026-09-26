@@ -1210,3 +1210,109 @@ end
     );
     assert_eq!(out, "2 2 20\n");
 }
+
+/// A free local TCP port.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+/// `Node.spawn` starts an actor on another node with an argument of each
+/// type a remote spawn carries, and an actor that takes none: one binary
+/// runs as the host node, and again as the guest that spawns on it.
+#[test]
+fn remote_spawns_carry_each_argument_type() {
+    use std::io::{BufRead, BufReader};
+    let (_guard, project_dir) = project(
+        r##"actor typed(i :: Int, f :: Float, b :: Bool, s :: String, u :: ()) do
+  println("typed #{i} #{f} #{b} #{s} #{u}")
+end
+
+actor bare() do
+  println("bare")
+end
+
+actor spawner(host_name :: String) do
+  let _ = Node.spawn(host_name, typed, 7, 2.5, true, "remote", ())
+  let _ = Node.spawn_link(host_name, bare)
+  println("spawned")
+end
+
+fn main() do
+  let cookie = "a-development-cookie-0123456789"
+  let host_name = "host@127.0.0.1:#{Env.get_int("HOST_PORT", 0)}"
+  let role = Env.get("ROLE", "warm")
+  if role == "host" do
+    println("host start=#{Node.start(host_name, cookie)}")
+    Timer.sleep(4000)
+  else if role == "guest" do
+    let name = "guest@127.0.0.1:#{Env.get_int("GUEST_PORT", 0)}"
+    println("guest start=#{Node.start(name, cookie)}")
+    println("connect=#{Node.connect(host_name)}")
+    let _ = spawn(spawner, host_name)
+    Timer.sleep(1000)
+  else
+    println("warm")
+  end
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(output.status.success(), "{}", stderr(&output));
+    let binary = project_dir.join("project");
+    // The first run of a new binary waits for the system's scan of it.
+    let warm = Command::new(&binary).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&warm.stdout), "warm\n");
+
+    let host_port = free_port().to_string();
+    let mut host = Command::new(&binary)
+        .env("ROLE", "host")
+        .env("HOST_PORT", &host_port)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut host_lines = BufReader::new(host.stdout.take().unwrap()).lines();
+    assert_eq!(host_lines.next().unwrap().unwrap(), "host start=0");
+    let guest = Command::new(&binary)
+        .env("ROLE", "guest")
+        .env("HOST_PORT", &host_port)
+        .env("GUEST_PORT", free_port().to_string())
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&guest.stdout),
+        "guest start=0\nconnect=0\nspawned\n"
+    );
+    let mut spawned: Vec<String> = host_lines.map(Result::unwrap).collect();
+    host.wait().unwrap();
+    spawned.sort();
+    assert_eq!(spawned, ["bare", "typed 7 2.5 true remote ()"]);
+}
+
+/// A remote node starts the function `Node.spawn` names by its name, so a
+/// closure cannot be spawned remotely: the build says so. It built a spawn
+/// of a function named `unknown`.
+#[test]
+fn remote_spawns_need_a_named_function() {
+    let (_guard, project_dir) = project(
+        r##"actor spawner(host_name :: String) do
+  let _ = Node.spawn(host_name, fn () -> self() end)
+end
+
+fn main() do
+  let _ = spawn(spawner, "absent@127.0.0.1:1")
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(
+        stderr(&output).contains(
+            "Node.spawn needs a function defined at the top level: the remote node starts it by name"
+        ),
+        "{}",
+        stderr(&output)
+    );
+}
