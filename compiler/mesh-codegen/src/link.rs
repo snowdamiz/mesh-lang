@@ -196,39 +196,43 @@ pub(crate) fn archive_with_plan(
         }
         command.arg(&plan.rt_path).output()
     } else if plan.target.kind == LinkTargetKind::Unix {
-        let archiver = plan.target.archiver_program()?;
-        let child = Command::new(&archiver)
-            .arg("-M")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        match child {
-            Ok(mut child) => {
-                let mut script = format!(
-                    "CREATE {}\nADDMOD {}\n",
-                    output_path.display(),
-                    object_path.display()
-                );
-                for archive in &plan.native_archives {
-                    script.push_str(&format!("ADDLIB {}\n", archive.display()));
-                }
-                script.push_str(&format!("ADDLIB {}\nSAVE\nEND\n", plan.rt_path.display()));
-                if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(script.as_bytes()).map_err(|error| {
-                        format!("Failed to drive '{}': {error}", archiver.display())
-                    })?;
-                }
-                child.wait_with_output()
-            }
-            Err(error) => Err(error),
-        }
+        let script = archiver_script(object_path, output_path, plan);
+        run_archiver(&plan.target.archiver_program()?, &script)
     } else {
         return Err("static library artifacts are not yet supported for Windows MSVC".to_string());
     }
     .map_err(|error| format!("Failed to create static library: {error}"))?;
 
     finish_library_link(output, object_path, output_path, "Static library creation")
+}
+
+/// Run `archiver -M` on the MRI `script`.
+fn run_archiver(archiver: &Path, script: &str) -> std::io::Result<std::process::Output> {
+    let mut child = Command::new(archiver)
+        .arg("-M")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("the archiver's stdin is piped");
+    stdin.write_all(script.as_bytes())?;
+    drop(stdin);
+    child.wait_with_output()
+}
+
+/// The MRI script `ar -M` builds a static library from: the program's
+/// object, then every member of the native archives and of the runtime.
+fn archiver_script(object_path: &Path, output_path: &Path, plan: &LinkPlan) -> String {
+    let mut script = format!(
+        "CREATE {}\nADDMOD {}\n",
+        output_path.display(),
+        object_path.display()
+    );
+    for archive in plan.native_archives.iter().chain([&plan.rt_path]) {
+        script.push_str(&format!("ADDLIB {}\n", archive.display()));
+    }
+    script.push_str("SAVE\nEND\n");
+    script
 }
 
 /// The name a host that links the library records for it: the file name
@@ -252,6 +256,18 @@ pub(crate) fn link_dynamic_with_plan(
     output_path: &Path,
     plan: &LinkPlan,
 ) -> Result<(), String> {
+    let output = dynamic_link_command(object_path, output_path, plan)?
+        .output()
+        .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
+    finish_library_link(output, object_path, output_path, "Dynamic library linking")
+}
+
+/// The command that links the program's object into a dynamic library.
+fn dynamic_link_command(
+    object_path: &Path,
+    output_path: &Path,
+    plan: &LinkPlan,
+) -> Result<Command, String> {
     if plan.target.kind == LinkTargetKind::WindowsMsvc {
         let mut command = build_link_command(object_path, output_path, plan);
         command.arg("-shared");
@@ -264,10 +280,7 @@ pub(crate) fn link_dynamic_with_plan(
         ] {
             command.arg(format!("-Wl,/EXPORT:{symbol}"));
         }
-        let output = command
-            .output()
-            .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
-        return finish_library_link(output, object_path, output_path, "Dynamic library linking");
+        return Ok(command);
     }
     let mut command = plan.target.dynamic_linker_command()?;
     command.arg(object_path);
@@ -292,10 +305,7 @@ pub(crate) fn link_dynamic_with_plan(
             command.arg("-framework").arg(framework);
         }
     }
-    let output = command
-        .output()
-        .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
-    finish_library_link(output, object_path, output_path, "Dynamic library linking")
+    Ok(command)
 }
 
 fn finish_library_link(
@@ -375,15 +385,15 @@ fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -
 /// profiles. Prefers the profile matching the compiler's own build: a release
 /// `meshc` links the release runtime, a debug `meshc` links the debug runtime.
 fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<PathBuf, String> {
-    let profiles: &[&str] = if cfg!(debug_assertions) {
-        &["debug", "release"]
+    const PROFILES: [&str; 2] = if cfg!(debug_assertions) {
+        ["debug", "release"]
     } else {
-        &["release", "debug"]
+        ["release", "debug"]
     };
 
     let workspace_candidates = find_workspace_target_dir()
         .into_iter()
-        .flat_map(|target_dir| mesh_rt_candidates(&target_dir, target, profiles, runtime_flavor));
+        .flat_map(|target_dir| mesh_rt_candidates(&target_dir, target, &PROFILES, runtime_flavor));
     first_existing_runtime(
         installed_mesh_rt_candidates(target, runtime_flavor)
             .into_iter()
@@ -399,34 +409,22 @@ fn first_existing_runtime(
     target: &LinkTarget,
     runtime_flavor: RuntimeFlavor,
 ) -> Result<PathBuf, String> {
-    let mut searched_paths = Vec::new();
+    let mut searched = String::new();
     for candidate in candidates {
         if candidate.exists() {
             return Ok(candidate);
         }
-        searched_paths.push(candidate);
+        searched.push_str(&format!("\n  - {}", candidate.display()));
     }
 
-    let mut message = format!(
-        "Could not locate {} static library for target '{}'. Expected {} in the `lib` directory beside the installed meshc; reinstall Mesh, or in a source checkout run `cargo build -p {}{}` first.",
+    Err(format!(
+        "Could not locate {} static library for target '{}'. Expected {} in the `lib` directory beside the installed meshc; reinstall Mesh, or in a source checkout run `cargo build -p {}{}` first.\nSearched:{searched}",
         runtime_flavor.display_name(),
         target.display_triple(),
         target.runtime_filename(runtime_flavor),
         runtime_flavor.package_name(),
         target.cargo_build_hint(),
-    );
-
-    if !searched_paths.is_empty() {
-        message.push_str("\nSearched:\n");
-        for path in searched_paths {
-            message.push_str("  - ");
-            message.push_str(&path.display().to_string());
-            message.push('\n');
-        }
-        message.pop();
-    }
-
-    Err(message)
+    ))
 }
 
 /// Where an installed toolchain keeps the runtime: `<prefix>/lib/` beside
@@ -436,14 +434,12 @@ fn installed_mesh_rt_candidates(
     target: &LinkTarget,
     runtime_flavor: RuntimeFlavor,
 ) -> Vec<PathBuf> {
-    let Some(prefix) = std::env::current_exe()
+    std::env::current_exe()
         .ok()
         .map(|exe| std::fs::canonicalize(&exe).unwrap_or(exe))
         .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()))
-    else {
-        return Vec::new();
-    };
-    installed_runtime_candidates_under(&prefix, target, runtime_flavor)
+        .map(|prefix| installed_runtime_candidates_under(&prefix, target, runtime_flavor))
+        .unwrap_or_default()
 }
 
 fn installed_runtime_candidates_under(
@@ -580,7 +576,9 @@ impl LinkTarget {
     fn linker_program(&self) -> Result<PathBuf, String> {
         match self.kind {
             LinkTargetKind::Unix => Ok(PathBuf::from("cc")),
-            LinkTargetKind::WindowsMsvc => windows_clang_path(),
+            LinkTargetKind::WindowsMsvc => {
+                windows_clang_path(std::env::var("LLVM_SYS_211_PREFIX").ok())
+            }
         }
     }
 
@@ -615,13 +613,10 @@ impl LinkTarget {
     }
 
     fn archiver_program(&self) -> Result<PathBuf, String> {
-        let Some(triple) = self.requested_triple.as_deref() else {
-            return Ok(PathBuf::from("ar"));
-        };
-        if triple.contains("linux-android") {
-            return android_tool("llvm-ar");
+        match self.requested_triple.as_deref() {
+            Some(triple) if triple.contains("linux-android") => android_tool("llvm-ar"),
+            _ => Ok(PathBuf::from("ar")),
         }
-        Ok(PathBuf::from("ar"))
     }
 
     fn dynamic_linker_command(&self) -> Result<Command, String> {
@@ -665,10 +660,13 @@ fn ndk_clang_triple(triple: &str) -> String {
 }
 
 fn android_tool(name: &str) -> Result<PathBuf, String> {
-    let ndk = std::env::var_os("ANDROID_NDK_HOME")
-        .or_else(|| std::env::var_os("ANDROID_NDK_ROOT"))
-        .map(PathBuf::from)
-        .ok_or("Android target requires ANDROID_NDK_HOME or ANDROID_NDK_ROOT")?;
+    let ndk = std::env::var_os("ANDROID_NDK_HOME").or_else(|| std::env::var_os("ANDROID_NDK_ROOT"));
+    android_tool_in(ndk.map(PathBuf::from), name)
+}
+
+/// The NDK tool `name` in the NDK at `ndk`.
+fn android_tool_in(ndk: Option<PathBuf>, name: &str) -> Result<PathBuf, String> {
+    let ndk = ndk.ok_or("Android target requires ANDROID_NDK_HOME or ANDROID_NDK_ROOT")?;
     let prebuilt = ndk.join("toolchains/llvm/prebuilt");
     let entries = std::fs::read_dir(&prebuilt).map_err(|error| {
         format!(
@@ -708,20 +706,21 @@ fn classify_requested_target(target_triple: &str) -> Result<LinkTargetKind, Stri
     ))
 }
 
-fn classify_host_target() -> Result<LinkTargetKind, String> {
+/// The linker family of the host meshc was built for, if it has one.
+const HOST_LINK_TARGET: Option<LinkTargetKind> =
     if cfg!(all(target_os = "windows", target_env = "msvc")) {
-        return Ok(LinkTargetKind::WindowsMsvc);
-    }
+        Some(LinkTargetKind::WindowsMsvc)
+    } else if cfg!(target_family = "unix") {
+        Some(LinkTargetKind::Unix)
+    } else {
+        None
+    };
 
-    if cfg!(target_family = "unix") {
-        return Ok(LinkTargetKind::Unix);
-    }
-
-    Err(format!(
-        "Unsupported host linker target '{}'. Supported linker families are Unix-like targets and Windows MSVC targets.",
-        host_target_triple()
-    ))
+fn classify_host_target() -> Result<LinkTargetKind, String> {
+    HOST_LINK_TARGET.ok_or_else(|| UNSUPPORTED_HOST.to_string())
 }
+
+const UNSUPPORTED_HOST: &str = "Unsupported host linker target: meshc links for Unix-like and Windows MSVC hosts; pass `--target` with a supported triple.";
 
 fn is_unix_like_target(target_triple: &str) -> bool {
     [
@@ -739,39 +738,37 @@ fn is_unix_like_target(target_triple: &str) -> bool {
     .any(|needle| target_triple.contains(needle))
 }
 
+/// The vendor and system parts of the host's target triple.
+const HOST_VENDOR_SYSTEM: (&str, &str) = if cfg!(all(target_os = "windows", target_env = "msvc")) {
+    ("pc", "windows-msvc")
+} else if cfg!(target_os = "macos") {
+    ("apple", "darwin")
+} else if cfg!(target_os = "linux") {
+    ("unknown", "linux-gnu")
+} else {
+    ("unknown", std::env::consts::OS)
+};
+
 fn host_target_triple() -> String {
-    let arch = std::env::consts::ARCH;
-
-    if cfg!(all(target_os = "windows", target_env = "msvc")) {
-        format!("{arch}-pc-windows-msvc")
-    } else if cfg!(target_os = "macos") {
-        format!("{arch}-apple-darwin")
-    } else if cfg!(target_os = "linux") {
-        format!("{arch}-unknown-linux-gnu")
-    } else {
-        format!("{arch}-unknown-{}", std::env::consts::OS)
-    }
+    let (vendor, system) = HOST_VENDOR_SYSTEM;
+    format!("{}-{vendor}-{system}", std::env::consts::ARCH)
 }
 
-fn windows_clang_path() -> Result<PathBuf, String> {
-    if let Ok(prefix) = std::env::var("LLVM_SYS_211_PREFIX") {
-        let candidate = windows_clang_path_from_prefix(Path::new(&prefix));
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-
-        return Err(format!(
-            "LLVM_SYS_211_PREFIX='{}' does not contain bin/clang.exe at '{}'. Install LLVM 21 or set LLVM_SYS_211_PREFIX correctly.",
-            prefix,
-            candidate.display(),
-        ));
+/// The clang that links for Windows: the one in the LLVM at `llvm_prefix`
+/// (`LLVM_SYS_211_PREFIX`), or else `clang` on the `PATH`.
+fn windows_clang_path(llvm_prefix: Option<String>) -> Result<PathBuf, String> {
+    let Some(prefix) = llvm_prefix else {
+        return Ok(PathBuf::from("clang"));
+    };
+    let candidate = Path::new(&prefix).join("bin").join("clang.exe");
+    if candidate.exists() {
+        return Ok(candidate);
     }
-
-    Ok(PathBuf::from("clang"))
-}
-
-fn windows_clang_path_from_prefix(prefix: &Path) -> PathBuf {
-    prefix.join("bin").join("clang.exe")
+    Err(format!(
+        "LLVM_SYS_211_PREFIX='{}' does not contain bin/clang.exe at '{}'. Install LLVM 21 or set LLVM_SYS_211_PREFIX correctly.",
+        prefix,
+        candidate.display(),
+    ))
 }
 
 /// The cargo target directory this meshc was built in: the first directory
@@ -1087,12 +1084,279 @@ mod tests {
     }
 
     #[test]
-    fn windows_clang_path_from_prefix_should_append_bin_clang_exe() {
-        let actual = windows_clang_path_from_prefix(Path::new("C:/llvm"));
-        assert_eq!(
-            actual,
-            PathBuf::from("C:/llvm").join("bin").join("clang.exe")
+    fn windows_links_with_the_clang_of_the_named_llvm_or_the_path() {
+        assert_eq!(windows_clang_path(None), Ok(PathBuf::from("clang")));
+        let llvm = unique_temp_target_dir("llvm-prefix");
+        let missing = windows_clang_path(Some(llvm.display().to_string())).unwrap_err();
+        assert!(
+            missing.contains("does not contain bin/clang.exe"),
+            "{missing}"
         );
+        let clang = llvm.join("bin").join("clang.exe");
+        fs::create_dir_all(clang.parent().unwrap()).unwrap();
+        fs::write(&clang, b"").unwrap();
+        assert_eq!(
+            windows_clang_path(Some(llvm.display().to_string())),
+            Ok(clang)
+        );
+        fs::remove_dir_all(llvm).unwrap();
+    }
+
+    #[test]
+    fn android_tools_come_from_the_ndk_prebuilt_toolchain() {
+        let error = android_tool_in(None, "llvm-ar").unwrap_err();
+        assert!(error.contains("ANDROID_NDK_HOME"), "{error}");
+        let ndk = unique_temp_target_dir("ndk");
+        let error = android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err();
+        assert!(error.contains("is unavailable"), "{error}");
+        let bin = ndk.join("toolchains/llvm/prebuilt/host/bin");
+        fs::create_dir_all(&bin).unwrap();
+        let error = android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err();
+        assert!(error.contains("'llvm-ar' was not found"), "{error}");
+        fs::write(bin.join("llvm-ar"), b"").unwrap();
+        assert_eq!(
+            android_tool_in(Some(ndk.clone()), "llvm-ar"),
+            Ok(bin.join("llvm-ar"))
+        );
+        fs::remove_dir_all(ndk).unwrap();
+
+        // Android targets archive and link with the NDK's tools.
+        let android = LinkTarget::detect(Some("aarch64-linux-android")).unwrap();
+        assert_eq!(android.archiver_program(), android_tool("llvm-ar"));
+        assert_eq!(
+            android
+                .dynamic_linker_command()
+                .map(|c| c.get_program().to_owned()),
+            android_tool("aarch64-linux-android26-clang").map(Into::into)
+        );
+    }
+
+    #[test]
+    fn each_target_has_its_archiver_and_dynamic_linker() {
+        assert_eq!(
+            LinkTarget::detect(None).unwrap().archiver_program(),
+            Ok(PathBuf::from("ar"))
+        );
+        let linux = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        assert_eq!(linux.archiver_program(), Ok(PathBuf::from("ar")));
+        let command = |triple: &str| {
+            let command = LinkTarget::detect(Some(triple))
+                .unwrap()
+                .dynamic_linker_command()
+                .unwrap();
+            let args = command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned());
+            std::iter::once(command.get_program().to_string_lossy().into_owned())
+                .chain(args)
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert_eq!(
+            command("aarch64-apple-ios"),
+            "xcrun --sdk iphoneos clang -target aarch64-apple-ios"
+        );
+        assert_eq!(
+            command("aarch64-apple-ios-sim"),
+            "xcrun --sdk iphonesimulator clang -target aarch64-apple-ios-sim"
+        );
+        assert_eq!(
+            command("x86_64-apple-darwin"),
+            "xcrun --sdk macosx clang -target x86_64-apple-darwin"
+        );
+        assert_eq!(
+            command("x86_64-unknown-linux-musl"),
+            "cc -target x86_64-unknown-linux-musl"
+        );
+    }
+
+    #[test]
+    fn dynamic_libraries_link_the_whole_runtime_and_export_the_host_abi() {
+        let args = |triple: &str| {
+            dynamic_link_command(
+                Path::new("/tmp/lib.o"),
+                Path::new("/tmp/out/libapp.so"),
+                &plan_for(triple),
+            )
+            .unwrap()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+        };
+        let windows = args("x86_64-pc-windows-msvc");
+        assert!(windows.contains(&"-shared".to_string()), "{windows:?}");
+        assert!(
+            windows.contains(&"-Wl,/EXPORT:mesh_library_init".to_string()),
+            "{windows:?}"
+        );
+        let linux = args("x86_64-unknown-linux-gnu");
+        let whole = linux
+            .iter()
+            .position(|arg| arg == "-Wl,--whole-archive")
+            .unwrap();
+        assert_eq!(linux[whole + 1], "/tmp/libmesh_rt.a");
+        assert!(
+            linux.contains(&"-Wl,-soname,libapp.so".to_string()),
+            "{linux:?}"
+        );
+        let apple = args("aarch64-apple-darwin");
+        assert!(
+            apple.contains(&"-Wl,-force_load,/tmp/libmesh_rt.a".to_string()),
+            "{apple:?}"
+        );
+        assert!(apple.contains(&"Security".to_string()), "{apple:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn static_libraries_are_archived_from_an_mri_script() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_temp_target_dir("archiver");
+        let plan = LinkPlan {
+            native_archives: vec![dir.join("libnative.a")],
+            ..plan_for("x86_64-unknown-linux-gnu")
+        };
+        let script = archiver_script(&dir.join("lib.o"), &dir.join("libapp.a"), &plan);
+        assert_eq!(
+            script,
+            format!(
+                "CREATE {0}/libapp.a\nADDMOD {0}/lib.o\nADDLIB {0}/libnative.a\nADDLIB /tmp/libmesh_rt.a\nSAVE\nEND\n",
+                dir.display()
+            )
+        );
+
+        // The archiver reads the script from its input.
+        let archiver = dir.join("fake-ar");
+        let received = dir.join("received");
+        fs::write(
+            &archiver,
+            format!("#!/bin/sh\ncat > '{}'\n", received.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&archiver, fs::Permissions::from_mode(0o755)).unwrap();
+        let output = run_archiver(&archiver, &script).unwrap();
+        assert!(output.status.success());
+        assert_eq!(fs::read_to_string(&received).unwrap(), script);
+
+        // A failed archive says why; Windows has none yet.
+        let error =
+            archive_with_plan(&dir.join("missing.o"), &dir.join("libapp.a"), &plan).unwrap_err();
+        assert!(error.to_lowercase().contains("static library"), "{error}");
+        let windows = plan_for("x86_64-pc-windows-msvc");
+        let error =
+            archive_with_plan(&dir.join("lib.o"), &dir.join("app.lib"), &windows).unwrap_err();
+        assert!(
+            error.contains("not yet supported for Windows MSVC"),
+            "{error}"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_finished_library_link_removes_its_object_or_says_what_failed() {
+        use std::process::Output;
+
+        #[cfg(unix)]
+        let status = |code: i32| std::os::unix::process::ExitStatusExt::from_raw(code << 8);
+        #[cfg(windows)]
+        let status = |code: u32| std::os::windows::process::ExitStatusExt::from_raw(code);
+        let dir = unique_temp_target_dir("finish-library");
+        let object = dir.join("lib.o");
+        fs::write(&object, b"").unwrap();
+        let output = |code, stdout: &str, stderr: &str| Output {
+            status: status(code),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+        let lib = dir.join("libapp.a");
+        let error =
+            finish_library_link(output(1, "out", " err "), &object, &lib, "Linking").unwrap_err();
+        assert!(error.ends_with("libapp.a': err"), "{error}");
+        let error =
+            finish_library_link(output(1, " out ", ""), &object, &lib, "Linking").unwrap_err();
+        assert!(error.ends_with("libapp.a': out"), "{error}");
+        assert!(object.exists());
+        finish_library_link(output(0, "", ""), &object, &lib, "Linking").unwrap();
+        assert!(!object.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn runtime_and_native_archive_paths_are_checked_before_linking() {
+        let unix = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        let windows = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
+        assert_eq!(
+            windows.runtime_filename(RuntimeFlavor::Test),
+            "mesh_test_rt.lib"
+        );
+        let error =
+            validate_runtime_override(Path::new("/"), &unix, RuntimeFlavor::Standard).unwrap_err();
+        assert!(error.contains("does not name a file"), "{error}");
+
+        let dir = unique_temp_target_dir("native-archives");
+        let relative = validate_native_archive(Path::new("libnative.a"), &unix).unwrap_err();
+        assert!(
+            relative.contains("existing absolute file path"),
+            "{relative}"
+        );
+        let missing = validate_native_archive(&dir.join("libnative.a"), &unix).unwrap_err();
+        assert!(missing.contains("existing absolute file path"), "{missing}");
+        let archive = dir.join("libnative.a");
+        fs::write(&archive, b"").unwrap();
+        assert_eq!(validate_native_archive(&archive, &unix), Ok(()));
+        let error = validate_native_archive(&archive, &windows).unwrap_err();
+        assert!(error.contains("`.lib` static-library extension"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn unsupported_targets_are_refused() {
+        let error = classify_requested_target("wasm32-unknown-unknown").unwrap_err();
+        assert!(error.contains("Supported linker families"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_runtime_lists_where_it_was_looked_for() {
+        let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        let error = first_existing_runtime(
+            [PathBuf::from("/nowhere/a"), PathBuf::from("/nowhere/b")],
+            &target,
+            RuntimeFlavor::Standard,
+        )
+        .unwrap_err();
+        assert!(
+            error.ends_with("first.\nSearched:\n  - /nowhere/a\n  - /nowhere/b"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_compiler_outside_any_target_directory_has_none() {
+        assert_eq!(target_dir_above(Path::new("/meshc")), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linker_that_fails_quietly_or_on_stdout_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_temp_target_dir("quiet-linker");
+        let link_error = |script: &str| {
+            let linker = dir.join("linker");
+            fs::write(&linker, script).unwrap();
+            fs::set_permissions(&linker, fs::Permissions::from_mode(0o755)).unwrap();
+            let plan = LinkPlan {
+                linker_program: linker,
+                ..plan_for("x86_64-unknown-linux-gnu")
+            };
+            link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err()
+        };
+        let error = link_error("#!/bin/sh\necho undefined symbol\nexit 1\n");
+        assert!(error.ends_with("stdout:\nundefined symbol"), "{error}");
+        let error = link_error("#!/bin/sh\nexit 1\n");
+        assert!(error.contains("without emitting output"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     fn find_mesh_rt_in(
