@@ -4587,20 +4587,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         operand_traits,
     );
 
-    // Associated types reached through a type parameter are known wherever
-    // the receiver ended up concrete (a call of a generic function).
-    for (var, trait_name, assoc, receiver) in ctx.assoc_projections.clone() {
-        let receiver = ctx.resolve(receiver);
-        if !matches!(ctx.resolve(var.clone()), Ty::Var(_)) || receiver.has_type_vars() {
-            continue;
-        }
-        if let Some(assoc_ty) =
-            trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
-        {
-            let _ = ctx.unify(var, assoc_ty, ConstraintOrigin::Builtin);
-        }
-    }
-
+    // An associated type reached through a method is the receiver's, known
+    // wherever the receiver ended up concrete: as a call of a generic
+    // function makes it, or as it was all along.
     for (required, trait_name, assoc, receiver, span) in ctx.projection_requirements.clone() {
         let receiver = ctx.resolve(receiver);
         if receiver.has_type_vars() {
@@ -4609,10 +4598,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         if let Some(assoc_ty) =
             trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
         {
-            let origin = match span {
-                Some(span) => ConstraintOrigin::Expr { span },
-                None => ConstraintOrigin::Builtin,
-            };
+            let origin = span.map_or(ConstraintOrigin::Builtin, |span| ConstraintOrigin::Expr {
+                span,
+            });
             let _ = ctx.unify(required, assoc_ty, origin);
         }
     }
@@ -15047,6 +15035,16 @@ fn trait_method_type(
                 trait_name.to_string(),
                 assoc.to_string(),
                 receiver.clone(),
+            ));
+            // Whatever the call's use takes it for, it is the receiver's
+            // associated type once the receiver is known.
+            let span = ctx.expr_spans.last().copied();
+            ctx.projection_requirements.push((
+                var.clone(),
+                trait_name.to_string(),
+                assoc.to_string(),
+                receiver.clone(),
+                span,
             ));
             Some(var)
         })

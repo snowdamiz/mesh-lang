@@ -146,10 +146,10 @@ end
     );
 }
 
-/// What a generic function returns of an associated type is, at each call,
-/// that associated type of the receiver the call gives it: a call taken
-/// for another type was let through. A qualified call and a method call
-/// through a bound find the method's type through the interface.
+/// What a method returns of an associated type is the receiver's, and so,
+/// at each call, is what a generic function returns of one: a call taken
+/// for another type, directly (`Container.first(box)`) or through the
+/// generic function, was let through.
 #[test]
 fn an_associated_type_returned_through_a_call_is_the_receivers() {
     let at = |message: &str, text: &str| (message.to_string(), text.to_string());
@@ -187,15 +187,27 @@ fn qualified(b :: Box) -> Int do
   Container.first(b)
 end
 
+fn qualified_wrong(b :: Box) do
+  let s :: String = Container.first(b)
+  s
+end
+
 fn main() do
   let n = head(Box { v: 1 }) + 1
   let m :: String = head(Box { v: 2 })
   let b = refill(Box { v: 3 }, 4)
+  let k = head(Box { v: 5 })
   n
 end
 "#
         ),
-        [at("type mismatch: expected `String`, found `Int`", "head")]
+        [
+            at(
+                "type mismatch: expected `String`, found `Int`",
+                "Container.first"
+            ),
+            at("type mismatch: expected `String`, found `Int`", "head"),
+        ]
     );
 }
 
