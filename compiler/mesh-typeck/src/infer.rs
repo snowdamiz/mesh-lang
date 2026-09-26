@@ -12602,12 +12602,7 @@ fn infer_field_access(
                     .get_trait(&iface)
                     .and_then(|def| def.methods.iter().find(|m| m.name == field_name))
                 {
-                    let ret = sig.return_type.clone().unwrap_or_else(|| ctx.fresh_var());
-                    let mut params = vec![resolved_base.clone()];
-                    for _ in 0..sig.param_count {
-                        params.push(ctx.fresh_var());
-                    }
-                    return Ok(Ty::Fun(params, Box::new(ret)));
+                    return Ok(trait_method_type(ctx, &iface, sig, &resolved_base));
                 }
             }
         }
@@ -15398,6 +15393,11 @@ fn trait_method_type(
                 return Some(receiver.clone());
             }
             let assoc = tc.name.strip_prefix("Self.")?;
+            // In the interface's own default methods, `Self.Item` is what
+            // the implementing type makes it, as `Self` is.
+            if receiver.con_name() == Some("Self") {
+                return None;
+            }
             // Beside the type parameter, so that a `let` holding it keeps
             // this variable, which specializations bind.
             let var = ctx.fresh_var_beside(receiver);

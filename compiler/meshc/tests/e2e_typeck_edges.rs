@@ -115,6 +115,41 @@ end
     assert_eq!(compile_and_run(source), "0 7 some none\n");
 }
 
+/// A default method calling the interface's own methods, with the
+/// arguments they declare, runs as the implementing type's methods.
+#[test]
+fn default_methods_call_the_implementing_types_methods() {
+    let source = r##"
+interface Counter do
+  fn count(self) -> Int
+  fn plus(self, n :: Int) -> Int
+  fn doubled(self) -> Int do
+    self.plus(self.count())
+  end
+end
+
+struct Box do
+  n :: Int
+end
+
+impl Counter for Box do
+  fn count(self) -> Int do
+    self.n
+  end
+
+  fn plus(self, n :: Int) -> Int do
+    self.n + n
+  end
+end
+
+fn main() do
+  let b = Box { n: 4 }
+  println("#{b.doubled()}")
+end
+"##;
+    assert_eq!(compile_and_run(source), "8\n");
+}
+
 /// A generic function returning an associated type of its receiver runs as
 /// each call's receiver's, the call's result used as that type.
 #[test]

@@ -357,6 +357,41 @@ end
     );
 }
 
+/// A default method calls the interface's own methods with the arguments
+/// they declare, and gets what they return, `Self.Item` included:
+/// `self.plus("s")` was let through.
+#[test]
+fn default_methods_call_their_interfaces_methods_as_declared() {
+    assert_eq!(
+        errors(
+            r#"
+interface Counted do
+  type Item
+  fn count(self) -> Int
+  fn plus(self, n :: Int) -> Int
+  fn first(self) -> Self.Item
+  fn bad(self) -> Int do
+    self.plus("s")
+  end
+  fn fine(self) -> Int do
+    self.plus(self.count())
+  end
+  fn again(self) -> Self.Item do
+    self.first()
+  end
+  fn missing(self) -> Int do
+    self.nothing()
+  end
+end
+"#
+        ),
+        [
+            "type mismatch: expected `Int`, found `String`",
+            "no method `nothing` on type `Self`",
+        ]
+    );
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────
 
 /// An expression given up on midway does not leave the checker inside it:
