@@ -184,9 +184,33 @@ struct OperatorControlState {
     autoscaler_paused: bool,
     desired_capacity_override: Option<u16>,
     drain_intents: BTreeSet<String>,
+    /// The name each drained identity was recorded under in `drain_intents`.
+    drain_intent_names: BTreeMap<String, String>,
     actor_sequences: BTreeMap<String, u64>,
     control_sequence: u64,
     last_consensus_log_index: u64,
+}
+
+impl OperatorControlState {
+    /// Records whether `node_id` drains, under the runtime name it resolves
+    /// to now. The name is remembered: a node that has left the membership
+    /// resolves no more, and its drain must still end when it is cancelled.
+    fn set_drain_intent(&mut self, node_id: &str, draining: bool) {
+        let runtime_node_id = super::node::resolve_runtime_node_id(node_id).ok();
+        if draining {
+            let name = runtime_node_id.unwrap_or_else(|| node_id.to_string());
+            self.drain_intents.insert(name.clone());
+            self.drain_intent_names.insert(node_id.to_string(), name);
+        } else {
+            self.drain_intents.remove(node_id);
+            if let Some(name) = self.drain_intent_names.remove(node_id) {
+                self.drain_intents.remove(&name);
+            }
+            if let Some(name) = runtime_node_id {
+                self.drain_intents.remove(&name);
+            }
+        }
+    }
 }
 
 static OPERATOR_CONTROL_STATE: OnceLock<Mutex<OperatorControlState>> = OnceLock::new();
@@ -215,12 +239,7 @@ pub(crate) fn set_runtime_drain_intent(node_id: &str, draining: bool) {
     let runtime_node_id =
         super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.to_string());
     let mut state = operator_control_state().lock();
-    if draining {
-        state.drain_intents.insert(runtime_node_id.clone());
-    } else {
-        state.drain_intents.remove(node_id);
-        state.drain_intents.remove(&runtime_node_id);
-    }
+    state.set_drain_intent(node_id, draining);
     state.control_sequence = state.control_sequence.saturating_add(1);
     drop(state);
     if node_state().is_some_and(|state| state.name == runtime_node_id) {
@@ -1033,11 +1052,7 @@ fn apply_operator_control(
         if node_state().is_none_or(|local| local.name != runtime_node_id) {
             return Err("operator_internal_control_target_mismatch".to_string());
         }
-        if draining {
-            state.drain_intents.insert(runtime_node_id.clone());
-        } else {
-            state.drain_intents.remove(&runtime_node_id);
-        }
+        state.set_drain_intent(&runtime_node_id, draining);
         state
             .actor_sequences
             .insert(request.actor.clone(), request.sequence);
@@ -1136,7 +1151,15 @@ fn apply_operator_control(
         },
         Duration::from_secs(10),
     )?;
-    apply_committed_control_mutation(&mut state, &mutation)?;
+    // Every entry committed before this one applies first, in order. Moving
+    // the applied index past them skipped them for good: a drain the
+    // reconciler had finished stayed listed. Until this node's copy of the
+    // log reaches the new entry it is applied here, and again (harmlessly)
+    // when the copy does.
+    apply_committed_control_entries(&mut state);
+    if state.last_consensus_log_index < response.log_index {
+        apply_committed_control_mutation(&mut state, &mutation)?;
+    }
     if let super::scaling::ControlMutation::DrainIntent { node_id, cancelled } = &mutation {
         if *cancelled {
             drain_to_cancel = Some(node_id.clone());
@@ -1144,7 +1167,6 @@ fn apply_operator_control(
             drain_to_prepare = Some(node_id.clone());
         }
     }
-    state.last_consensus_log_index = state.last_consensus_log_index.max(response.log_index);
     state
         .actor_sequences
         .insert(request.actor.clone(), request.sequence);
@@ -1193,17 +1215,7 @@ fn apply_committed_control_mutation(
             if node_id.trim().is_empty() {
                 return Err("operator_control_drain_node_invalid".to_string());
             }
-            if *cancelled {
-                state.drain_intents.remove(node_id);
-                if let Ok(runtime_node_id) = super::node::resolve_runtime_node_id(node_id) {
-                    state.drain_intents.remove(&runtime_node_id);
-                }
-            } else {
-                state.drain_intents.insert(
-                    super::node::resolve_runtime_node_id(node_id)
-                        .unwrap_or_else(|_| node_id.clone()),
-                );
-            }
+            state.set_drain_intent(node_id, !*cancelled);
         }
         super::scaling::ControlMutation::DriverOperation(_)
         | super::scaling::ControlMutation::PolicyRevision { .. }
@@ -1248,15 +1260,19 @@ fn validate_control_mutation(mutation: &super::scaling::ControlMutation) -> Resu
 }
 
 fn refresh_operator_control_from_consensus() {
+    apply_committed_control_entries(&mut operator_control_state().lock());
+}
+
+/// Applies the committed control entries `state` has not seen, in order.
+fn apply_committed_control_entries(state: &mut OperatorControlState) {
     let Some(snapshot) = super::consensus::consensus_runtime_snapshot() else {
         return;
     };
-    let mut state = operator_control_state().lock();
     for entry in &snapshot.entries {
         if entry.index <= state.last_consensus_log_index {
             continue;
         }
-        if apply_committed_control_mutation(&mut state, &entry.mutation).is_ok() {
+        if apply_committed_control_mutation(state, &entry.mutation).is_ok() {
             if entry.actor_sequence > 0 {
                 state
                     .actor_sequences

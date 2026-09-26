@@ -2263,7 +2263,7 @@ impl CapacityReconciler {
             constraints: Vec::new(),
         };
 
-        self.finish_removed_drains(&active);
+        self.finish_removed_drains(quorum, leader, acknowledgements, committed, actor, &active)?;
 
         // A provider object can exist without ever becoming a Ready runtime
         // member (bad image, failed health check, crash during warm-up). It is
@@ -2836,19 +2836,46 @@ impl CapacityReconciler {
         Ok(outcome)
     }
 
-    fn finish_removed_drains(&mut self, active: &[ObservedCapacityNode]) {
+    /// A terminated node the provider no longer has is drained: its intent
+    /// ends in the control log too, or every later leader would resume the
+    /// drain and every operator would see the node draining for good.
+    fn finish_removed_drains(
+        &mut self,
+        quorum: &dyn ControlPlaneCommitter,
+        leader: &str,
+        acknowledgements: &BTreeSet<String>,
+        committed: &CommittedDesiredCapacity,
+        actor: &str,
+        active: &[ObservedCapacityNode],
+    ) -> Result<(), String> {
         let removed: Vec<_> = self
             .draining
             .iter()
-            .filter_map(|(node_id, progress)| {
-                (progress.phase == DrainPhase::Terminating
-                    && !active.iter().any(|node| &node.node_id == node_id))
-                .then_some(node_id.clone())
+            .filter(|(node_id, progress)| {
+                progress.phase == DrainPhase::Terminating
+                    && !active.iter().any(|node| &node.node_id == *node_id)
             })
+            .map(|(node_id, progress)| (node_id.clone(), progress.runtime_node_id.clone()))
             .collect();
-        for node_id in removed {
+        for (node_id, runtime_node_id) in removed {
+            quorum.commit(
+                leader,
+                committed.term,
+                acknowledgements,
+                actor,
+                "finish drain of removed worker",
+                ControlMutation::DrainIntent {
+                    node_id: node_id.clone(),
+                    cancelled: true,
+                },
+            )?;
+            // The fence this leader set on the node's runtime name.
+            if !runtime_node_id.is_empty() {
+                crate::dist::operator::set_runtime_drain_intent(&runtime_node_id, false);
+            }
             self.draining.remove(&node_id);
         }
+        Ok(())
     }
 
     fn cancel_pretermination_drains(
@@ -3648,6 +3675,32 @@ mod tests {
                 .count(),
             1
         );
+
+        // Once the node is gone its drain is over, in the log as well: a
+        // later leader has nothing to resume.
+        let finished = reconciler
+            .reconcile(
+                &quorum,
+                "cluster",
+                "a",
+                &voters,
+                &desired_one,
+                "autoscaler",
+                &safety,
+            )
+            .expect("finish drain");
+        assert!(finished.drains.is_empty(), "{:?}", finished.drains);
+        assert!(log.entries().iter().any(|entry| matches!(
+            &entry.mutation,
+            ControlMutation::DrainIntent { node_id, cancelled: true }
+                if *node_id == draining.drains[0].node_id
+        )));
+        let mut recovered =
+            CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
+        recovered
+            .restore_from_control_entries(&log.entries())
+            .expect("restore after the drain finished");
+        assert!(recovered.drain_progress().is_empty());
     }
 
     #[test]
