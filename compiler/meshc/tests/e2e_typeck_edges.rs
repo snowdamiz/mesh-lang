@@ -194,3 +194,26 @@ end
 "##;
     assert_eq!(compile_and_run(source), "42 items\n");
 }
+
+/// `Node.spawn` piped into, first or at a slot, builds and runs as the
+/// call it stands for: a spawn on a node that cannot be reached is PID 0.
+#[test]
+fn node_spawn_piped_into_is_the_call() {
+    let source = r##"
+actor worker(prefix :: String) do
+  receive do
+    msg -> println("#{prefix}: #{msg}")
+  end
+end
+
+fn main() do
+  let piped = "absent@127.0.0.1:1" |> Node.spawn(worker, "piped")
+  send(piped, "unheard")
+  println("piped=#{piped}")
+  let slotted = "linked" |3> Node.spawn_link("absent@127.0.0.1:1", worker)
+  send(slotted, "unheard")
+  println("slotted=#{slotted}")
+end
+"##;
+    assert_eq!(compile_and_run(source), "piped=<0.0>\nslotted=<0.0>\n");
+}
