@@ -115,18 +115,9 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         | "Regex" => MirType::Ptr,
         // Atom type resolves to String at MIR level (atoms are compile-time only, lowered to StringLit)
         "Atom" => MirType::String,
-        name => {
-            // Check registry: struct or sum type?
-            if registry.struct_defs.contains_key(name) {
-                MirType::Struct(name.to_string())
-            } else if registry.sum_type_defs.contains_key(name) {
-                MirType::SumType(name.to_string())
-            } else {
-                // Could be a type alias that was already resolved, or an unknown type.
-                // Default to struct-like reference for now.
-                MirType::Struct(name.to_string())
-            }
-        }
+        // A struct (sum types were resolved above), or a name no definition
+        // gives, which is laid out as an opaque struct.
+        name => MirType::Struct(name.to_string()),
     }
 }
 
@@ -148,13 +139,8 @@ fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType
     }
 
     // Handle Pid<M> -> MirType::Pid(Some(M))
-    if base_name == "Pid" {
-        return if args.len() == 1 {
-            let msg_ty = resolve_type(&args[0], registry);
-            MirType::Pid(Some(Box::new(msg_ty)))
-        } else {
-            MirType::Pid(None)
-        };
+    if let ("Pid", [msg_ty]) = (base_name, args) {
+        return MirType::Pid(Some(Box::new(resolve_type(msg_ty, registry))));
     }
 
     // For monomorphization: generate a mangled name from base + args
@@ -207,11 +193,8 @@ fn mir_type_suffix(ty: &MirType) -> String {
             format!("Tuple_{}", parts.join("_"))
         }
         MirType::Struct(name) | MirType::SumType(name) => name.clone(),
-        MirType::FnPtr(params, ret) => {
-            let p: Vec<String> = params.iter().map(mir_type_suffix).collect();
-            format!("Fn_{}_to_{}", p.join("_"), mir_type_suffix(ret))
-        }
-        MirType::Closure(params, ret) => {
+        // `resolve_type` makes every function type a closure.
+        MirType::FnPtr(params, ret) | MirType::Closure(params, ret) => {
             let p: Vec<String> = params.iter().map(mir_type_suffix).collect();
             format!("Closure_{}_to_{}", p.join("_"), mir_type_suffix(ret))
         }
