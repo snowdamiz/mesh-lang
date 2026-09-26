@@ -1664,13 +1664,7 @@ impl<'ctx> CodeGen<'ctx> {
         let then_val = self.codegen_expr(then_body)?;
         // Only store result and branch if block is not already terminated
         // (break/continue/return may have terminated the block)
-        if self
-            .builder
-            .get_insert_block()
-            .unwrap()
-            .get_terminator()
-            .is_none()
-        {
+        if self.block_is_open() {
             let then_val = self.coerce_value_to_type(then_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, then_val)
@@ -1683,13 +1677,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Else branch
         self.builder.position_at_end(else_bb);
         let else_val = self.codegen_expr(else_body)?;
-        if self
-            .builder
-            .get_insert_block()
-            .unwrap()
-            .get_terminator()
-            .is_none()
-        {
+        if self.block_is_open() {
             let else_val = self.coerce_value_to_type(else_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, else_val)
@@ -1749,18 +1737,11 @@ impl<'ctx> CodeGen<'ctx> {
     // ── Block expression ─────────────────────────────────────────────
 
     fn codegen_block(&mut self, exprs: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, String> {
-        if exprs.is_empty() {
-            return Ok(self.context.struct_type(&[], false).const_zero().into());
-        }
-
         let mut result = self.context.struct_type(&[], false).const_zero().into();
         for expr in exprs {
-            // If the current block is already terminated (e.g., by break/continue/return),
-            // skip remaining expressions -- they are unreachable.
-            if let Some(bb) = self.builder.get_insert_block() {
-                if bb.get_terminator().is_some() {
-                    break;
-                }
+            // What follows a `break`, `continue`, `return` or panic never runs.
+            if !self.block_is_open() {
+                break;
             }
             result = self.codegen_expr(expr)?;
         }
@@ -2997,13 +2978,7 @@ impl<'ctx> CodeGen<'ctx> {
             // timeout_bb: execute the timeout body expression.
             self.builder.position_at_end(timeout_bb);
             let timeout_val = self.codegen_expr(timeout_expr)?;
-            if self
-                .builder
-                .get_insert_block()
-                .unwrap()
-                .get_terminator()
-                .is_none()
-            {
+            if self.block_is_open() {
                 self.builder
                     .build_store(result_alloca, timeout_val)
                     .map_err(|e| e.to_string())?;
@@ -3016,13 +2991,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.position_at_end(msg_bb);
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
             let msg_result = self.codegen_recv_handler(handler, msg_ptr, msg_val)?;
-            if self
-                .builder
-                .get_insert_block()
-                .unwrap()
-                .get_terminator()
-                .is_none()
-            {
+            if self.block_is_open() {
                 self.builder
                     .build_store(result_alloca, msg_result)
                     .map_err(|e| e.to_string())?;
@@ -3369,13 +3338,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // After body codegen, if block is NOT terminated (break/continue may have terminated it),
         // emit reduction check and branch back to cond_check (the back-edge).
-        if let Some(bb) = self.builder.get_insert_block() {
-            if bb.get_terminator().is_none() {
-                self.emit_reduction_check();
-                self.builder
-                    .build_unconditional_branch(cond_bb)
-                    .map_err(|e| e.to_string())?;
-            }
+        if self.block_is_open() {
+            self.emit_reduction_check();
+            self.builder
+                .build_unconditional_branch(cond_bb)
+                .map_err(|e| e.to_string())?;
         }
 
         // Pop loop context
@@ -3498,11 +3465,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
         let value = self.codegen_expr(body)?;
         // A body that ends in `break`, `continue` or `return` has left.
-        if self
-            .builder
-            .get_insert_block()
-            .is_some_and(|bb| bb.get_terminator().is_none())
-        {
+        if self.block_is_open() {
             let value = self.convert_to_list_element(value, body.ty())?;
             let list = self
                 .builder

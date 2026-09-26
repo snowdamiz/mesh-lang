@@ -122,13 +122,7 @@ impl<'ctx> CodeGen<'ctx> {
         // return/panic). The ? operator desugaring generates match arms with
         // MirExpr::Return for early-return paths -- these emit a `ret`
         // instruction that terminates the block, so we must skip the store.
-        if self
-            .builder
-            .get_insert_block()
-            .unwrap()
-            .get_terminator()
-            .is_none()
-        {
+        if self.block_is_open() {
             let body_val = self.coerce_value_to_type(body_val, self.llvm_type(target.result_ty))?;
             self.builder
                 .build_store(target.result, body_val)

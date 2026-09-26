@@ -751,8 +751,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self.codegen_expr(&func.body)?;
 
         // Build return instruction (if not already terminated).
-        let current_block = self.builder.get_insert_block().unwrap();
-        if current_block.get_terminator().is_none() {
+        if self.block_is_open() {
             match func.return_type {
                 MirType::Unit => {
                     let unit_val = self.context.struct_type(&[], false).const_zero();
