@@ -14730,9 +14730,7 @@ fn infer_bare_method_call(
     let Some(Expr::NameRef(name_ref)) = call.callee() else {
         return Ok(None);
     };
-    let Some(name) = name_ref.text() else {
-        return Ok(None);
-    };
+    let name = name_ref.text().unwrap_or_default();
     let args = call.args();
     // The test DSL's names are global builtins, and too common to take from
     // every program: an interface method called `describe` wins over them.

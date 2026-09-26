@@ -1143,6 +1143,75 @@ end
     );
 }
 
+/// An interface method called bare dispatches on its first argument: to a
+/// type parameter's bound, or to the impl of the argument's type, whose
+/// other arguments it then checks.
+#[test]
+fn bare_calls_of_interface_methods_dispatch_on_their_first_argument() {
+    assert_eq!(
+        errors(
+            r#"
+interface Shows do
+  fn shows(self) -> String
+end
+
+interface Sized do
+  fn size(self) -> Int
+end
+
+interface Scales do
+  fn scale(self, by :: Int) -> Int
+end
+
+struct P do
+  x :: Int
+end
+
+impl Shows for P do
+  fn shows(self) -> String do
+    "p"
+  end
+end
+
+impl Scales for P do
+  fn scale(self, by :: Int) -> Int do
+    self.x * by
+  end
+end
+
+fn both<T>(a :: T) -> String where T: Sized, T: Shows do
+  shows(a)
+end
+
+fn second<A, B>(a :: A, b :: B) -> String where A: Sized, B: Shows do
+  shows(b)
+end
+
+fn unbound<A>(a :: A) -> String where A: Sized do
+  shows(a)
+end
+
+fn scaled(p :: P) -> Int do
+  scale(p, 2)
+end
+
+fn wrong_arg(p :: P) -> Int do
+  scale(p, "two")
+end
+
+fn undefined_receiver() do
+  shows(nope)
+end
+"#
+        ),
+        [
+            "type parameter `A` stands for any type, but this function makes it `P`",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+        ]
+    );
+}
+
 /// An alias's name is a type's, not a value's, alone or before a dot: it
 /// was "undefined variable".
 #[test]
