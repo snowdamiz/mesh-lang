@@ -7428,12 +7428,8 @@ impl<'a> Lowerer<'a> {
     fn box_next_scalar(&self, expr: MirExpr, range: TextRange) -> MirExpr {
         let is_next = matches!(&expr, MirExpr::Call { func, .. }
             if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "mesh_iter_generic_next"));
-        let scalar = match self.get_ty(range) {
-            Some(Ty::App(con, elems)) if matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Option") => {
-                elems
-                    .first()
-                    .is_some_and(|elem| is_scalar_word(&resolve_type(elem, self.registry)))
-            }
+        let scalar = match self.get_ty(range).and_then(ty_head) {
+            Some(("Option", [elem, ..])) => is_scalar_word(&resolve_type(elem, self.registry)),
             _ => false,
         };
         if is_next && scalar {
@@ -8126,17 +8122,14 @@ impl<'a> Lowerer<'a> {
         source: &Ty,
         var_ty: &MirType,
     ) -> Option<MirExpr> {
-        let Ty::App(con, args) = source else {
-            return None;
-        };
-        let Ty::Con(tc) = con.as_ref() else {
+        let (Ty::App(..), Some((type_name, args))) = (source, ty_head(source)) else {
             return None;
         };
         if self.known_functions.contains_key(name) {
             return None;
         }
         self.ensure_instantiation_traits(source);
-        let helper = self.instantiation_helper_name(&tc.name, args);
+        let helper = self.instantiation_helper_name(type_name, args);
         ["Display", "Debug", "Eq", "Ord", "Hash"]
             .iter()
             .map(|t| format!("{t}__{name}__{helper}"))
@@ -9377,14 +9370,11 @@ impl<'a> Lowerer<'a> {
                     "from_list" | "collect" => Some(ret.as_ref().clone()),
                     _ => params.first().cloned(),
                 };
-                let key = table_ty.as_ref().and_then(|ty| match ty {
-                    Ty::App(con, args)
-                        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == type_name) =>
-                    {
-                        args.first().cloned()
-                    }
-                    _ => None,
-                });
+                let key = table_ty
+                    .as_ref()
+                    .and_then(ty_head)
+                    .filter(|(name, _)| *name == type_name)
+                    .and_then(|(_, args)| args.first().cloned());
                 if let Some(key) = key {
                     let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
                     if let Some(helper) =
@@ -9402,13 +9392,10 @@ impl<'a> Lowerer<'a> {
                 Some(Ty::Fun(params, _)) => params.first(),
                 _ => None,
             };
-            let constructor = match source {
-                Some(Ty::App(con, _)) => match con.as_ref() {
-                    Ty::Con(tc) if tc.name == "Map" => Some("mesh_map_iter_new"),
-                    Ty::Con(tc) if tc.name == "Set" => Some("mesh_set_iter_new"),
-                    _ => None,
-                },
-                Some(Ty::Con(tc)) if tc.name == "Range" => Some("mesh_range_iter"),
+            let constructor = match source.and_then(ty_head) {
+                Some(("Map", _)) => Some("mesh_map_iter_new"),
+                Some(("Set", _)) => Some("mesh_set_iter_new"),
+                Some(("Range", _)) => Some("mesh_range_iter"),
                 _ => None,
             };
             if let Some(constructor) = constructor {
@@ -10286,15 +10273,9 @@ impl<'a> Lowerer<'a> {
                     .variants
                     .iter()
                     .find(|variant| variant.name == variant_name)?;
-                let substitutions = match expected {
-                    Some(Ty::App(con, args))
-                        if matches!(con.as_ref(), Ty::Con(name) if name.name == type_name) =>
-                    {
-                        info.generic_params
-                            .iter()
-                            .cloned()
-                            .zip(args.iter())
-                            .collect()
+                let substitutions: HashMap<String, &Ty> = match expected.and_then(ty_head) {
+                    Some((name, args)) if name == type_name => {
+                        info.generic_params.iter().cloned().zip(args).collect()
                     }
                     _ => HashMap::new(),
                 };
@@ -11331,21 +11312,22 @@ impl<'a> Lowerer<'a> {
     /// generic sum type (`Option<Int>`: Eq, Ord, Display, Debug) or struct
     /// (`Box<List<Int>>`), once, on first use.
     fn ensure_instantiation_traits(&mut self, ty: &Ty) {
-        let Ty::App(con, args) = ty else { return };
-        let Ty::Con(tc) = con.as_ref() else { return };
+        let (Ty::App(..), Some((type_name, args))) = (ty, ty_head(ty)) else {
+            return;
+        };
         if self
             .registry
             .struct_defs
-            .get(&tc.name)
+            .get(type_name)
             .is_some_and(|info| !info.generic_params.is_empty())
         {
-            self.ensure_monomorphized_struct_trait_fns(&tc.name, ty);
+            self.ensure_monomorphized_struct_trait_fns(type_name, ty);
             return;
         }
-        let Some((mangled, variants)) = self.sum_instantiation(&tc.name, args) else {
+        let Some((mangled, variants)) = self.sum_instantiation(type_name, args) else {
             return;
         };
-        let helper = self.instantiation_helper_name(&tc.name, args);
+        let helper = self.instantiation_helper_name(type_name, args);
         let known = |lowerer: &Self, prefix: &str| {
             lowerer
                 .known_functions
@@ -11366,10 +11348,10 @@ impl<'a> Lowerer<'a> {
             self.generate_hash_sum_typed(&mangled, &helper, &variants);
         }
         if self.trait_registry.has_impl("Display", ty) && !known(self, "Display__to_string__") {
-            self.generate_display_sum_typed_as(&mangled, &helper, &tc.name, &variants, false);
+            self.generate_display_sum_typed_as(&mangled, &helper, type_name, &variants, false);
         }
         if self.trait_registry.has_impl("Debug", ty) && !known(self, "Debug__inspect__") {
-            self.generate_display_sum_typed_as(&mangled, &helper, &tc.name, &variants, true);
+            self.generate_display_sum_typed_as(&mangled, &helper, type_name, &variants, true);
         }
     }
 
@@ -13188,20 +13170,14 @@ impl<'a> Lowerer<'a> {
     fn lower_struct_literal(&mut self, sl: &StructLiteral) -> MirExpr {
         // The struct the literal builds: its type's, which differs from the
         // written name for a literal through an alias (`IntBox { .. }`).
-        let base_name = match self.get_ty(sl.syntax().text_range()) {
-            Some(Ty::App(con, _)) => match con.as_ref() {
-                Ty::Con(tc) if self.registry.struct_defs.contains_key(&tc.name) => {
-                    Some(tc.name.clone())
-                }
-                _ => None,
-            },
-            Some(Ty::Con(tc)) if self.registry.struct_defs.contains_key(&tc.name) => {
-                Some(tc.name.clone())
-            }
-            _ => None,
-        }
-        .or_else(|| sl.type_name())
-        .unwrap_or_else(|| "<unnamed>".to_string());
+        let base_name = self
+            .get_ty(sl.syntax().text_range())
+            .and_then(ty_head)
+            .map(|(name, _)| name)
+            .filter(|name| self.registry.struct_defs.contains_key(*name))
+            .map(str::to_string)
+            .or_else(|| sl.type_name())
+            .unwrap_or_else(|| "<unnamed>".to_string());
 
         let fields: Vec<(String, MirExpr)> = sl
             .fields()
