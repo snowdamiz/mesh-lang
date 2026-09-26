@@ -203,10 +203,9 @@ pub fn fetch_git_dep(
         repo
     } else {
         // Clone fresh
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
-        }
+        let parent = dest.parent().unwrap_or(Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
         git2::Repository::clone(url, dest).map_err(|e| format!("Failed to clone {}: {}", url, e))?
     };
 

@@ -45,6 +45,20 @@ pub fn to_pascal_case(s: &str) -> String {
 /// - `math/linear_algebra.mpl` -> `Some("Math.LinearAlgebra")`
 /// - `a/b/c/d.mpl` -> `Some("A.B.C.D")`
 /// - `main.mpl` -> `None`
+/// The module a project file is: `Main` for the default entrypoint, else
+/// its path's module name, which a path not in UTF-8 lacks.
+fn project_module_name(relative_path: &Path) -> Result<String, String> {
+    if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
+        return Ok("Main".to_string());
+    }
+    path_to_module_name(relative_path).ok_or_else(|| {
+        format!(
+            "Cannot determine module name for '{}'",
+            relative_path.display()
+        )
+    })
+}
+
 pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
     let stem = relative_path.file_stem()?.to_str()?;
     // A directory whose name is not UTF-8 names no module.
@@ -307,16 +321,7 @@ pub fn build_project(
     for relative_path in &files {
         let source = read_source(&project_root.join(relative_path))?;
         let is_entry = relative_path == entry_relative_path;
-        let name = if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
-            "Main".to_string()
-        } else {
-            path_to_module_name(relative_path).ok_or_else(|| {
-                format!(
-                    "Cannot determine module name for '{}'",
-                    relative_path.display()
-                )
-            })?
-        };
+        let name = project_module_name(relative_path)?;
 
         let parse = mesh_parser::parse(&source);
         let _id = graph.add_module(name, relative_path.clone(), is_entry);
@@ -644,6 +649,26 @@ pub fn build_import_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_files_name_their_modules() {
+        assert_eq!(
+            project_module_name(Path::new("main.mpl")),
+            Ok("Main".to_string())
+        );
+        assert_eq!(
+            project_module_name(Path::new("api/user_store.mpl")),
+            Ok("Api.UserStore".to_string())
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt as _;
+            let not_utf8 = Path::new(std::ffi::OsStr::from_bytes(b"api/\xff.mpl"));
+            assert!(project_module_name(not_utf8)
+                .unwrap_err()
+                .starts_with("Cannot determine module name for 'api/"));
+        }
+    }
     use std::fs;
 
     fn build_project_with_entrypoint(root: &Path, entry: &Path) -> Result<ProjectData, String> {

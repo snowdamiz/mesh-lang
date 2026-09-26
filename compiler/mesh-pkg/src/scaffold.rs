@@ -65,10 +65,9 @@ fn create_project(name: &str, dir: &Path, files: &[(&str, &str)]) -> Result<(), 
 fn write_project_files(project_dir: &Path, files: &[(&str, &str)]) -> Result<(), String> {
     for (relative, contents) in files {
         let path = project_dir.join(relative);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory '{}': {}", parent.display(), e))?;
-        }
+        let parent = path.parent().unwrap_or(project_dir);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory '{}': {}", parent.display(), e))?;
         std::fs::write(&path, contents)
             .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
     }

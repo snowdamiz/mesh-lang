@@ -558,6 +558,11 @@ bindings = ["bindings/helper.mpl"]
             error.contains("must be a path inside its package"),
             "{error}"
         );
+        assert_eq!(
+            checked_package_file(&app, Path::new("./bindings/n.mpl"), "native binding"),
+            Ok(app.join("bindings/n.mpl")),
+            "`.` stays where it is"
+        );
 
         package("shared", "bindings/n.mpl", "");
         package(

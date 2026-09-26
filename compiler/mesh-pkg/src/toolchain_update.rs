@@ -12,6 +12,7 @@ const DEFAULT_UNIX_INSTALLER_URL: &str = "https://meshlang.dev/install.sh";
 const DEFAULT_WINDOWS_INSTALLER_URL: &str = "https://meshlang.dev/install.ps1";
 const DEFAULT_DOWNLOAD_TIMEOUT_SEC: u64 = 120;
 const WINDOWS_BOOTSTRAP_SETTLE_MS: u64 = 50;
+const WAIT_FAILED: &str = "failed while waiting for installer process";
 const FORWARDED_INSTALLER_ENV_KEYS: [&str; 4] = [
     "MESH_INSTALL_RELEASE_API_URL",
     "MESH_INSTALL_RELEASE_BASE_URL",
@@ -332,10 +333,9 @@ pub(crate) fn run_unix_installer_with_command(
         .take()
         .expect("the launcher's stdin is piped")
         .write_all(installer_text.as_bytes());
-    let status = child.wait().map_err(attempt.failed(
-        "wait-launcher",
-        "failed while waiting for installer process",
-    ))?;
+    let status = child
+        .wait()
+        .map_err(attempt.failed("wait-launcher", WAIT_FAILED))?;
     if !status.success() {
         return Err(attempt.error(
             "wait-launcher",
@@ -471,14 +471,14 @@ pub(crate) fn launch_windows_bootstrap(
             ),
     )?;
     let installer_path = temp_dir.join("install.ps1");
-    write_script_file(&installer_path, installer_text, installer_url, &platform)?;
     let bootstrap_path = temp_dir.join("mesh-update-bootstrap.ps1");
-    write_script_file(
-        &bootstrap_path,
-        &build_windows_bootstrap_script(&installer_path, parent_pid),
-        installer_url,
-        &platform,
-    )?;
+    let bootstrap = build_windows_bootstrap_script(&installer_path, parent_pid);
+    for (path, contents) in [
+        (&installer_path, installer_text),
+        (&bootstrap_path, &bootstrap),
+    ] {
+        write_script_file(path, contents, installer_url, &platform)?;
+    }
     spawn_windows_bootstrap_command(
         &windows_launcher_command(&bootstrap_path),
         forwarded_env,
@@ -827,5 +827,12 @@ mod tests {
 
         let outcome = spawn_windows_bootstrap_command(&sh("exit 0"), &[], url).unwrap();
         assert_eq!(outcome.mode, ToolchainUpdateMode::DetachedBootstrap);
+        // A bootstrap that fails before it detaches is reported.
+        let error = spawn_windows_bootstrap_command(&sh("exit 3"), &[], url).unwrap_err();
+        assert_eq!(error.phase, "bootstrap");
+        assert!(
+            error.to_string().contains("bootstrap exited early"),
+            "{error}"
+        );
     }
 }
