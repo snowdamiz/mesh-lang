@@ -9499,63 +9499,49 @@ fn infer_binary(
         fn_constraints,
     )?;
 
-    let op = bin.op();
-    let op_kind = op.as_ref().map(|t| t.kind());
-
+    let op = bin.op().ok_or_else(incomplete)?;
     let origin = ConstraintOrigin::BinOp {
         op_span: bin.syntax().text_range(),
     };
 
-    match op_kind {
+    match op.kind() {
         // Arithmetic: dispatch via compiler-known traits
-        Some(SyntaxKind::PLUS) => {
-            infer_trait_binary_op(ctx, "Add", &lhs_ty, &rhs_ty, trait_registry, &origin)
-        }
-        Some(SyntaxKind::MINUS) => {
-            infer_trait_binary_op(ctx, "Sub", &lhs_ty, &rhs_ty, trait_registry, &origin)
-        }
-        Some(SyntaxKind::STAR) => {
-            infer_trait_binary_op(ctx, "Mul", &lhs_ty, &rhs_ty, trait_registry, &origin)
-        }
-        Some(SyntaxKind::SLASH) => {
-            infer_trait_binary_op(ctx, "Div", &lhs_ty, &rhs_ty, trait_registry, &origin)
-        }
-        Some(SyntaxKind::PERCENT) => {
-            infer_trait_binary_op(ctx, "Mod", &lhs_ty, &rhs_ty, trait_registry, &origin)
+        SyntaxKind::PLUS
+        | SyntaxKind::MINUS
+        | SyntaxKind::STAR
+        | SyntaxKind::SLASH
+        | SyntaxKind::PERCENT => {
+            let trait_name = match op.kind() {
+                SyntaxKind::PLUS => "Add",
+                SyntaxKind::MINUS => "Sub",
+                SyntaxKind::STAR => "Mul",
+                SyntaxKind::SLASH => "Div",
+                _ => "Mod",
+            };
+            infer_trait_binary_op(ctx, trait_name, &lhs_ty, &rhs_ty, trait_registry, &origin)
         }
 
-        // Equality: dispatch via Eq trait, return Bool
-        Some(SyntaxKind::EQ_EQ | SyntaxKind::NOT_EQ) => {
+        // Equality and ordering: operands of one type with `Eq` or `Ord`.
+        SyntaxKind::EQ_EQ
+        | SyntaxKind::NOT_EQ
+        | SyntaxKind::LT
+        | SyntaxKind::GT
+        | SyntaxKind::LT_EQ
+        | SyntaxKind::GT_EQ => {
+            let trait_name = if matches!(op.kind(), SyntaxKind::EQ_EQ | SyntaxKind::NOT_EQ) {
+                "Eq"
+            } else {
+                "Ord"
+            };
             ctx.unify(lhs_ty.clone(), rhs_ty, origin.clone())?;
             let resolved = ctx.resolve(lhs_ty);
             if is_type_var(&resolved) {
                 ctx.operand_traits
-                    .push((resolved.clone(), "Eq".to_string(), origin.clone()));
-            }
-            if !is_type_var(&resolved) && !trait_registry.has_impl("Eq", &resolved) {
+                    .push((resolved, trait_name.to_string(), origin));
+            } else if !trait_registry.has_impl(trait_name, &resolved) {
                 let err = TypeError::TraitNotSatisfied {
                     ty: resolved,
-                    trait_name: "Eq".to_string(),
-                    origin,
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-            Ok(Ty::bool())
-        }
-
-        // Ordering: dispatch via Ord trait, return Bool
-        Some(SyntaxKind::LT | SyntaxKind::GT | SyntaxKind::LT_EQ | SyntaxKind::GT_EQ) => {
-            ctx.unify(lhs_ty.clone(), rhs_ty, origin.clone())?;
-            let resolved = ctx.resolve(lhs_ty);
-            if is_type_var(&resolved) {
-                ctx.operand_traits
-                    .push((resolved.clone(), "Ord".to_string(), origin.clone()));
-            }
-            if !is_type_var(&resolved) && !trait_registry.has_impl("Ord", &resolved) {
-                let err = TypeError::TraitNotSatisfied {
-                    ty: resolved,
-                    trait_name: "Ord".to_string(),
+                    trait_name: trait_name.to_string(),
                     origin,
                 };
                 ctx.errors.push(err.clone());
@@ -9565,18 +9551,16 @@ fn infer_binary(
         }
 
         // Logical: unify both sides with Bool, return Bool
-        Some(
-            SyntaxKind::AND_KW | SyntaxKind::OR_KW | SyntaxKind::AMP_AMP | SyntaxKind::PIPE_PIPE,
-        ) => {
+        SyntaxKind::AND_KW | SyntaxKind::OR_KW | SyntaxKind::AMP_AMP | SyntaxKind::PIPE_PIPE => {
             ctx.unify(Ty::bool(), lhs_ty, origin.clone())?;
             ctx.unify(Ty::bool(), rhs_ty, origin)?;
             Ok(Ty::bool())
         }
 
         // Concatenation operators join two strings or two lists.
-        Some(SyntaxKind::DIAMOND | SyntaxKind::PLUS_PLUS) => {
+        SyntaxKind::DIAMOND | SyntaxKind::PLUS_PLUS => {
             ctx.unify(lhs_ty.clone(), rhs_ty, origin)?;
-            let op = if op_kind == Some(SyntaxKind::DIAMOND) {
+            let op = if op.kind() == SyntaxKind::DIAMOND {
                 "<>"
             } else {
                 "++"
@@ -9597,17 +9581,12 @@ fn infer_binary(
             Ok(lhs_ty)
         }
 
-        // `start..end` is a Range of Int, wherever it appears.
-        Some(SyntaxKind::DOT_DOT) => {
+        // `start..end`, the one operator left, is a Range of Int wherever it
+        // appears.
+        _ => {
             ctx.unify(Ty::int(), lhs_ty, origin.clone())?;
             ctx.unify(Ty::int(), rhs_ty, origin)?;
             Ok(Ty::range())
-        }
-
-        // Unknown op: return a fresh variable
-        _ => {
-            let result = ctx.fresh_var();
-            Ok(result)
         }
     }
 }
@@ -9643,26 +9622,20 @@ fn infer_trait_binary_op(
         return Ok(resolved);
     }
 
+    // The result is the impl's `Output` (`Int` for `Int + Int`); an impl
+    // without one is reported already, and gives its operand's type.
     if trait_registry.has_impl(trait_name, &resolved) {
-        // Resolve the Output associated type for the result type.
-        // For Int + Int, Output = Int; for Float * Float, Output = Float.
-        // Falls back to the operand type if no Output is defined (backward compat).
-        if let Some(output_ty) =
-            trait_registry.resolve_associated_type(trait_name, "Output", &resolved)
-        {
-            Ok(output_ty)
-        } else {
-            Ok(resolved)
-        }
-    } else {
-        let err = TypeError::TraitNotSatisfied {
-            ty: resolved,
-            trait_name: trait_name.to_string(),
-            origin: origin.clone(),
-        };
-        ctx.errors.push(err.clone());
-        Err(err)
+        return Ok(trait_registry
+            .resolve_associated_type(trait_name, "Output", &resolved)
+            .unwrap_or(resolved));
     }
+    let err = TypeError::TraitNotSatisfied {
+        ty: resolved,
+        trait_name: trait_name.to_string(),
+        origin: origin.clone(),
+    };
+    ctx.errors.push(err.clone());
+    Err(err)
 }
 
 /// Infer the type of a unary expression.

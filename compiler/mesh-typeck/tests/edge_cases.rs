@@ -539,6 +539,39 @@ end
     );
 }
 
+/// An arithmetic operand whose type only the other operand settles is
+/// checked once it is known, and an `Add` impl that leaves out its `Output`
+/// adds to its own type.
+#[test]
+fn arithmetic_checks_the_type_the_operands_settle_on() {
+    assert_eq!(
+        errors(
+            r#"struct V do
+  x :: Int
+end
+
+impl Add for V do
+  fn add(self, other :: V) -> V do
+    self
+  end
+end
+
+fn sum(a :: V, b :: V) -> V do
+  a + b
+end
+
+fn text(x) do
+  x + "s"
+end
+"#
+        ),
+        [
+            "impl `Add` for `V` is missing associated type `Output`",
+            "`String` does not implement `Add`",
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the
