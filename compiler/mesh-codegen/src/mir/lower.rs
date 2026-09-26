@@ -437,6 +437,30 @@ fn fun_parts(ty: &Ty) -> (&[Ty], &Ty) {
     }
 }
 
+/// What a function's clauses match: its one parameter, several as a tuple,
+/// or nothing.
+fn clause_scrutinee(params: &[(String, MirType)]) -> MirExpr {
+    let mut vars: Vec<MirExpr> = params
+        .iter()
+        .map(|(name, ty)| MirExpr::Var(name.clone(), ty.clone()))
+        .collect();
+    match vars.len() {
+        0 => MirExpr::Unit,
+        1 => vars.pop().unwrap(),
+        _ => MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                "__mesh_make_tuple".to_string(),
+                MirType::FnPtr(
+                    vars.iter().map(|var| var.ty().clone()).collect(),
+                    Box::new(MirType::Ptr),
+                ),
+            )),
+            args: vars,
+            ty: MirType::Ptr,
+        },
+    }
+}
+
 /// A service's new state, `body`, and its type, as the service loop keeps
 /// it: a Unit state is the Int 0.
 fn service_state(body: MirExpr) -> (MirExpr, MirType) {
@@ -5344,22 +5368,12 @@ impl<'a> Lowerer<'a> {
         return_type: &MirType,
         fn_name: &str,
     ) -> MirExpr {
-        let arity = params.len();
         let mut arms = Vec::new();
         for clause in clauses {
             self.push_scope();
-            let mut patterns: Vec<MirPattern> = (0..arity)
-                .map(|index| {
-                    self.lower_clause_param_pattern(clause, index, params, param_srcs.get(index))
-                })
-                .collect();
-            let pattern = match arity {
-                0 => MirPattern::Wildcard,
-                1 => patterns.pop().unwrap(),
-                _ => MirPattern::Tuple(patterns),
-            };
+            let pattern = self.clause_pattern(clause.param_list(), params, param_srcs);
             let guard = self.lower_clause_guard(clause);
-            let mut body = self.lower_clause_body(clause);
+            let mut body = self.lower_fn_body(clause);
             for (name, ty) in self
                 .clause_resource_bindings(clause, param_srcs)
                 .into_iter()
@@ -5411,51 +5425,45 @@ impl<'a> Lowerer<'a> {
             });
         }
 
-        let param_vars: Vec<MirExpr> = params
-            .iter()
-            .map(|(pname, pty)| MirExpr::Var(pname.clone(), pty.clone()))
-            .collect();
-        let scrutinee = match arity {
-            0 => MirExpr::Unit,
-            1 => param_vars[0].clone(),
-            _ => Self::call_named(
-                "__mesh_make_tuple",
-                param_vars.iter().map(|var| var.ty().clone()).collect(),
-                param_vars,
-                MirType::Ptr,
-            ),
-        };
         MirExpr::Match {
-            scrutinee: Box::new(scrutinee),
+            scrutinee: Box::new(clause_scrutinee(params)),
             arms,
             ty: return_type.clone(),
         }
     }
 
-    /// Lower a single clause's parameter at `param_idx` to a MirPattern,
-    /// matched as the parameter's type (`expected`).
-    fn lower_clause_param_pattern(
+    /// What a clause's parameters (in `param_list`) match the arguments,
+    /// bound as `params` and typed `param_srcs`, against: one parameter's
+    /// pattern, several as a tuple (matched as columns), none anything. A
+    /// parameter written as a name binds it.
+    fn clause_pattern(
         &mut self,
-        clause: &FnDef,
-        param_idx: usize,
-        mir_params: &[(String, MirType)],
-        expected: Option<&Ty>,
+        param_list: Option<ParamList>,
+        params: &[(String, MirType)],
+        param_srcs: &[Ty],
     ) -> MirPattern {
-        if let Some(param_list) = clause.param_list() {
-            if let Some(param) = param_list.params().nth(param_idx) {
-                if let Some(pat) = param.pattern() {
-                    return self.lower_pattern_with_expected(&pat, expected);
+        let mut patterns: Vec<MirPattern> = param_list
+            .iter()
+            .flat_map(ParamList::params)
+            .zip(params.iter().zip(param_srcs))
+            .map(|(param, ((_, ty), source))| match param.pattern() {
+                Some(pattern) => self.lower_pattern_with_expected(&pattern, Some(source)),
+                None => {
+                    let name = param
+                        .name()
+                        .expect("a parameter is a pattern or a name")
+                        .text()
+                        .to_string();
+                    self.insert_var(name.clone(), ty.clone());
+                    MirPattern::Var(name, ty.clone())
                 }
-                // Regular named parameter -> wildcard-like variable binding.
-                if let Some(name_tok) = param.name() {
-                    let pname = name_tok.text().to_string();
-                    let pty = mir_params[param_idx].1.clone();
-                    self.insert_var(pname.clone(), pty.clone());
-                    return MirPattern::Var(pname, pty);
-                }
-            }
+            })
+            .collect();
+        match patterns.len() {
+            0 => MirPattern::Wildcard,
+            1 => patterns.pop().unwrap(),
+            _ => MirPattern::Tuple(patterns),
         }
-        MirPattern::Wildcard
     }
 
     /// The resources a clause's parameters own: a resource-typed name, or
@@ -5486,17 +5494,6 @@ impl<'a> Lowerer<'a> {
             .guard()
             .and_then(|gc| gc.expr())
             .map(|e| self.lower_expr(&e))
-    }
-
-    /// Lower a clause's body expression.
-    fn lower_clause_body(&mut self, clause: &FnDef) -> MirExpr {
-        if let Some(expr) = clause.expr_body() {
-            self.lower_expr(&expr)
-        } else if let Some(block) = clause.body() {
-            self.lower_block(&block)
-        } else {
-            MirExpr::Unit
-        }
     }
 
     // ── Struct lowering ──────────────────────────────────────────────
@@ -10691,21 +10688,13 @@ impl<'a> Lowerer<'a> {
             )
         };
 
-        let closure_range = closure.syntax().text_range();
-        let closure_ty = self.get_ty(closure_range).cloned();
-
-        // Extract parameter types from the closure's function type.
-        let mut param_types = Vec::new();
-        let return_type;
-        if let Some(Ty::Fun(params, ret)) = &closure_ty {
-            param_types = params
-                .iter()
-                .map(|p| runtime_value_type(resolve_type(p, self.registry)))
-                .collect();
-            return_type = runtime_value_type(resolve_type(ret, self.registry));
-        } else {
-            return_type = MirType::Unit;
-        }
+        let closure_ty = self
+            .get_ty(closure.syntax().text_range())
+            .cloned()
+            .expect("the type checker types every closure");
+        let (param_srcs, ret) = fun_parts(&closure_ty);
+        let param_types: Vec<MirType> = param_srcs.iter().map(|p| self.binding_type(p)).collect();
+        let return_type = self.binding_type(ret);
 
         // Extract parameter names.
         let mut param_names = Vec::new();
@@ -10723,10 +10712,7 @@ impl<'a> Lowerer<'a> {
         let mut fn_params = Vec::new();
         fn_params.push(("__env".to_string(), MirType::Ptr));
 
-        for (i, name) in param_names.iter().enumerate() {
-            let ty = param_types.get(i).cloned().unwrap_or(MirType::Unit);
-            fn_params.push((name.clone(), ty));
-        }
+        fn_params.extend(param_names.iter().cloned().zip(param_types.iter().cloned()));
 
         // Determine captured variables by scanning the closure body.
         // Any variable referenced in the body that is not a parameter and
@@ -10746,21 +10732,14 @@ impl<'a> Lowerer<'a> {
         let prev_fn_return_type = self.current_fn_return_type.take();
         let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
-        self.current_fn_return_typeck = closure_ty.as_ref().and_then(|ty| match ty {
-            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
-            _ => None,
-        });
+        self.current_fn_return_typeck = Some(ret.clone());
 
         self.push_scope();
         for (name, ty) in &fn_params {
             self.insert_var(name.clone(), ty.clone());
         }
 
-        let body = if let Some(block) = closure.body() {
-            self.lower_block(&block)
-        } else {
-            MirExpr::Unit
-        };
+        let body = self.lower_block(&closure.body().expect("the parser gives a closure its body"));
 
         self.pop_scope();
 
@@ -10817,23 +10796,13 @@ impl<'a> Lowerer<'a> {
             )
         };
 
-        let closure_range = closure.syntax().text_range();
-        let closure_ty = self.get_ty(closure_range).cloned();
-
-        // Extract parameter types and return type from the closure's function type.
-        let (param_types, return_type) = if let Some(Ty::Fun(params, ret)) = &closure_ty {
-            (
-                params
-                    .iter()
-                    .map(|p| runtime_value_type(resolve_type(p, self.registry)))
-                    .collect::<Vec<_>>(),
-                runtime_value_type(resolve_type(ret, self.registry)),
-            )
-        } else {
-            (Vec::new(), MirType::Unit)
-        };
-
-        let arity = param_types.len();
+        let closure_ty = self
+            .get_ty(closure.syntax().text_range())
+            .cloned()
+            .expect("the type checker types every closure");
+        let (param_srcs, ret) = fun_parts(&closure_ty);
+        let param_types: Vec<MirType> = param_srcs.iter().map(|p| self.binding_type(p)).collect();
+        let return_type = self.binding_type(ret);
 
         // Create synthetic parameter names: __cparam_0, __cparam_1, etc.
         let params: Vec<(String, MirType)> = param_types
@@ -10863,10 +10832,7 @@ impl<'a> Lowerer<'a> {
         let prev_fn_return_type = self.current_fn_return_type.take();
         let prev_fn_return_typeck = self.current_fn_return_typeck.take();
         self.current_fn_return_type = Some(return_type.clone());
-        self.current_fn_return_typeck = closure_ty.as_ref().and_then(|ty| match ty {
-            Ty::Fun(_, ret) => Some(ret.as_ref().clone()),
-            _ => None,
-        });
+        self.current_fn_return_typeck = Some(ret.clone());
 
         // Build the body using match or if-else chain.
         self.push_scope();
@@ -10875,11 +10841,7 @@ impl<'a> Lowerer<'a> {
         }
 
         // The clauses are the arms of one match on the parameters (see
-        // `lower_multi_clause_fn`).
-        let param_srcs: Vec<Option<Ty>> = match &closure_ty {
-            Some(Ty::Fun(pts, _)) => pts.iter().cloned().map(Some).collect(),
-            _ => vec![None; arity],
-        };
+        // `lower_clause_match`).
         let clauses: Vec<(Option<ParamList>, Option<GuardClause>, Option<Block>)> =
             std::iter::once((closure.param_list(), closure.guard(), closure.body()))
                 .chain(
@@ -10891,31 +10853,13 @@ impl<'a> Lowerer<'a> {
         let mut arms = Vec::new();
         for (param_list, guard, block) in &clauses {
             self.push_scope();
-            let mut patterns: Vec<MirPattern> = (0..arity)
-                .map(|index| {
-                    self.lower_closure_clause_param_pattern(
-                        param_list.as_ref(),
-                        index,
-                        &params,
-                        param_srcs[index].as_ref(),
-                    )
-                })
-                .collect();
-            let pattern = if arity == 1 {
-                patterns.pop().unwrap()
-            } else if arity == 0 {
-                MirPattern::Wildcard
-            } else {
-                MirPattern::Tuple(patterns)
-            };
+            let pattern = self.clause_pattern(param_list.clone(), &params, param_srcs);
             let guard = guard
                 .as_ref()
                 .and_then(|gc| gc.expr())
                 .map(|e| self.lower_expr(&e));
-            let body = block
-                .as_ref()
-                .map(|block| self.lower_block(block))
-                .unwrap_or(MirExpr::Unit);
+            let body =
+                self.lower_block(block.as_ref().expect("the parser gives a clause its body"));
             self.pop_scope();
             arms.push(MirMatchArm {
                 pattern,
@@ -10923,22 +10867,8 @@ impl<'a> Lowerer<'a> {
                 body,
             });
         }
-        let param_vars: Vec<MirExpr> = params
-            .iter()
-            .map(|(pname, pty)| MirExpr::Var(pname.clone(), pty.clone()))
-            .collect();
-        let scrutinee = match arity {
-            0 => MirExpr::Unit,
-            1 => param_vars[0].clone(),
-            _ => Self::call_named(
-                "__mesh_make_tuple",
-                param_vars.iter().map(|var| var.ty().clone()).collect(),
-                param_vars,
-                MirType::Ptr,
-            ),
-        };
         let body = MirExpr::Match {
-            scrutinee: Box::new(scrutinee),
+            scrutinee: Box::new(clause_scrutinee(&params)),
             arms,
             ty: return_type.clone(),
         };
@@ -10977,32 +10907,6 @@ impl<'a> Lowerer<'a> {
             captures: capture_exprs,
             ty: mir_ty,
         }
-    }
-
-    /// Lower a closure clause's parameter at `param_idx` to a MirPattern,
-    /// matched as the parameter's type (`expected`).
-    fn lower_closure_clause_param_pattern(
-        &mut self,
-        param_list: Option<&mesh_parser::ast::item::ParamList>,
-        param_idx: usize,
-        mir_params: &[(String, MirType)],
-        expected: Option<&Ty>,
-    ) -> MirPattern {
-        if let Some(pl) = param_list {
-            if let Some(param) = pl.params().nth(param_idx) {
-                if let Some(pat) = param.pattern() {
-                    return self.lower_pattern_with_expected(&pat, expected);
-                }
-                // Regular named parameter -> variable binding.
-                if let Some(name_tok) = param.name() {
-                    let pname = name_tok.text().to_string();
-                    let pty = mir_params[param_idx].1.clone();
-                    self.insert_var(pname.clone(), pty.clone());
-                    return MirPattern::Var(pname, pty);
-                }
-            }
-        }
-        MirPattern::Wildcard
     }
 
     // ── String expression lowering (INTERPOLATION DESUGARING) ────────
