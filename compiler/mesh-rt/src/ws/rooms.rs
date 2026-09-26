@@ -202,8 +202,10 @@ pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
     };
 
     for session in &sessions {
-        let mut stream = session.stream.lock();
-        let _ = crate::dist::node::write_msg(&mut *stream, &payload);
+        let _ = session.send(
+            crate::dist::node::OutboundClass::Application,
+            payload.clone(),
+        );
     }
 }
 

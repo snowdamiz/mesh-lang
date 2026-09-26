@@ -680,26 +680,8 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
 /// or the write fails.
 #[cold]
 fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
-    let state = match crate::dist::node::node_state() {
-        Some(s) => s,
-        None => return 4,
-    };
-
-    let node_id = (target_pid >> 48) as u16;
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return 4,
-        }
-    };
-
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => std::sync::Arc::clone(s),
-            None => return 4,
-        }
+    let Some(session) = crate::dist::node::session_for_pid(ProcessId(target_pid)) else {
+        return 4;
     };
 
     // Build wire message: [DIST_SEND][u64 target_pid LE][raw message bytes]
@@ -710,10 +692,13 @@ fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
         let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
         payload.extend_from_slice(slice);
     }
+    send_application_frame(&session, payload)
+}
 
-    // Write to the active TLS session and report failure to the caller.
-    let mut stream = session.stream.lock();
-    match crate::dist::node::write_msg(&mut *stream, &payload) {
+/// Queue `payload` on a peer session: 0 once queued, 5 when the session
+/// cannot take it.
+fn send_application_frame(session: &crate::dist::node::NodeSession, payload: Vec<u8>) -> i64 {
+    match session.send(crate::dist::node::OutboundClass::Application, payload) {
         Ok(()) => 0,
         Err(_) => 5,
     }
@@ -775,12 +760,7 @@ pub extern "C" fn mesh_actor_send_named(
         let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
         payload.extend_from_slice(slice);
     }
-
-    let mut stream = session.stream.lock();
-    match crate::dist::node::write_msg(&mut *stream, &payload) {
-        Ok(()) => 0,
-        Err(_) => 5,
-    }
+    send_application_frame(&session, payload)
 }
 
 /// Receive a message from the current actor's mailbox.
@@ -1711,26 +1691,8 @@ pub extern "C" fn mesh_process_monitor(target_pid: u64) -> u64 {
 ///
 /// Returns true if the message was sent, false if the session was not found.
 fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -> bool {
-    let state = match crate::dist::node::node_state() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    let node_id = to_pid.node_id();
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return false,
-        }
-    };
-
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => std::sync::Arc::clone(s),
-            None => return false,
-        }
+    let Some(session) = crate::dist::node::session_for_pid(to_pid) else {
+        return false;
     };
 
     // Wire format: [DIST_MONITOR][u64 from_pid][u64 to_pid][u64 ref]
@@ -1739,9 +1701,7 @@ fn send_dist_monitor(from_pid: ProcessId, to_pid: ProcessId, monitor_ref: u64) -
     payload.extend_from_slice(&from_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&to_pid.as_u64().to_le_bytes());
     payload.extend_from_slice(&monitor_ref.to_le_bytes());
-
-    let mut stream = session.stream.lock();
-    crate::dist::node::write_msg(&mut *stream, &payload).is_ok()
+    send_application_frame(&session, payload) == 0
 }
 
 /// Remove a monitor.

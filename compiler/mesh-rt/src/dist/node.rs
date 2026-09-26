@@ -774,6 +774,18 @@ struct OutboundReceivers {
 }
 
 impl NodeSession {
+    /// A pid this peer sent for one of its own processes, as this node
+    /// addresses it: a peer sends its local pids as they are.
+    fn peer_pid(&self, raw: u64) -> crate::actor::process::ProcessId {
+        use crate::actor::process::ProcessId;
+        let pid = ProcessId(raw);
+        if pid.is_local() {
+            ProcessId::from_remote(self.node_id, self.remote_creation, pid.local_id())
+        } else {
+            pid
+        }
+    }
+
     pub(crate) fn remote_has_role(&self, role: &str) -> bool {
         self.remote_identity
             .as_ref()
@@ -1688,28 +1700,26 @@ fn handle_peer_list(data: &[u8]) {
 // DIST_LINK / DIST_EXIT send helpers
 // ---------------------------------------------------------------------------
 
+/// A pid a peer sent for one of this node's processes. The peer qualifies it
+/// with the node id its own table gives this node; here it is local.
+fn own_pid(raw: u64) -> crate::actor::process::ProcessId {
+    let pid = crate::actor::process::ProcessId(raw);
+    crate::actor::process::ProcessId(pid.local_id())
+}
+
+/// The session to the node `pid` lives on, if it is connected.
+pub(crate) fn session_for_pid(pid: crate::actor::ProcessId) -> Option<Arc<NodeSession>> {
+    let state = node_state()?;
+    let name = state.node_id_map.read().get(&pid.node_id())?.clone();
+    state.sessions.read().get(&name).cloned()
+}
+
 /// Send DIST_LINK to register a bidirectional link on the remote node.
 /// Wire format: [DIST_LINK][u64 from_pid][u64 to_pid]
 /// Silently drops if session unavailable (node already disconnected).
 pub(crate) fn send_dist_link(from_pid: crate::actor::ProcessId, to_pid: crate::actor::ProcessId) {
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
-    let node_id = to_pid.node_id();
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return,
-        }
-    };
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => Arc::clone(s),
-            None => return,
-        }
+    let Some(session) = session_for_pid(to_pid) else {
+        return;
     };
     let mut payload = Vec::with_capacity(1 + 8 + 8);
     payload.push(DIST_LINK);
@@ -1726,24 +1736,8 @@ pub(crate) fn send_dist_exit(
     to_pid: crate::actor::ProcessId,
     reason: &crate::actor::ExitReason,
 ) {
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
-    let node_id = to_pid.node_id();
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return,
-        }
-    };
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => Arc::clone(s),
-            None => return,
-        }
+    let Some(session) = session_for_pid(to_pid) else {
+        return;
     };
     let mut payload = Vec::with_capacity(1 + 8 + 8 + 16);
     payload.push(DIST_EXIT);
@@ -1761,24 +1755,8 @@ pub(crate) fn send_dist_monitor_exit_by_pid(
     monitor_ref: u64,
     reason: &crate::actor::ExitReason,
 ) {
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
-    let node_id = monitoring_pid.node_id();
-    let node_name = {
-        let map = state.node_id_map.read();
-        match map.get(&node_id) {
-            Some(name) => name.clone(),
-            None => return,
-        }
-    };
-    let session = {
-        let sessions = state.sessions.read();
-        match sessions.get(&node_name) {
-            Some(s) => Arc::clone(s),
-            None => return,
-        }
+    let Some(session) = session_for_pid(monitoring_pid) else {
+        return;
     };
     send_dist_monitor_exit(&session, monitored_pid, monitoring_pid, monitor_ref, reason);
 }
@@ -2061,10 +2039,11 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_SEND => {
                         // Wire format: [tag][u64 target_pid LE][raw message bytes]
                         if msg.len() >= 9 {
-                            let target_pid = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+                            let target_pid =
+                                own_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let msg_data = &msg[9..];
                             crate::actor::local_send(
-                                target_pid,
+                                target_pid.as_u64(),
                                 msg_data.as_ptr(),
                                 msg_data.len() as u64,
                             );
@@ -2098,11 +2077,11 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_MONITOR => {
                         // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
                         if msg.len() >= 25 {
-                            use crate::actor::process::{ExitReason, ProcessId, ProcessState};
+                            use crate::actor::process::{ExitReason, ProcessState};
                             let from_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let to_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
 
                             let sched = crate::actor::global_scheduler();
@@ -2142,11 +2121,8 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_DEMONITOR => {
                         // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
                         if msg.len() >= 25 {
-                            use crate::actor::process::ProcessId;
-                            let _from_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let to_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
 
                             let sched = crate::actor::global_scheduler();
@@ -2160,12 +2136,12 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         if msg.len() >= 25 {
                             use crate::actor::heap::MessageBuffer;
                             use crate::actor::link;
-                            use crate::actor::process::{Message, ProcessId};
+                            use crate::actor::process::Message;
 
                             let monitored_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let monitoring_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
                             let reason_bytes = &msg[25..];
 
@@ -2190,11 +2166,10 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_LINK => {
                         // Wire format: [tag][u64 from_pid][u64 to_pid]
                         if msg.len() >= 17 {
-                            use crate::actor::process::ProcessId;
                             let from_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let to_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             // Add from_pid to the local process's links set
                             let sched = crate::actor::global_scheduler();
                             if let Some(proc_arc) = sched.get_process(to_pid) {
@@ -2205,11 +2180,10 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_UNLINK => {
                         // Wire format: [tag][u64 from_pid][u64 to_pid]
                         if msg.len() >= 17 {
-                            use crate::actor::process::ProcessId;
                             let from_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let to_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let sched = crate::actor::global_scheduler();
                             if let Some(proc_arc) = sched.get_process(to_pid) {
                                 proc_arc.lock().links.remove(&from_pid);
@@ -2221,14 +2195,12 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                         if msg.len() >= 17 {
                             use crate::actor::heap::MessageBuffer;
                             use crate::actor::link;
-                            use crate::actor::process::{
-                                ExitReason, Message, ProcessId, ProcessState,
-                            };
+                            use crate::actor::process::{ExitReason, Message, ProcessState};
 
                             let from_pid =
-                                ProcessId(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
                             let to_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                             let reason_bytes = &msg[17..];
                             if let Some((reason, _)) = link::decode_reason(reason_bytes) {
                                 let sched = crate::actor::global_scheduler();
@@ -2300,11 +2272,8 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                             // The requester_pid as received over the wire has node_id=0
                                             // (it's the caller's local PID). We need to construct a
                                             // remote-qualified PID using this session's node_id and creation.
-                                            let remote_requester = ProcessId::from_remote(
-                                                session.node_id,
-                                                session.remote_creation,
-                                                requester_pid.local_id(),
-                                            );
+                                            let remote_requester =
+                                                session.peer_pid(requester_pid.as_u64());
                                             if let Some(proc_arc) = sched.get_process(spawned) {
                                                 proc_arc.lock().links.insert(remote_requester);
                                             }
@@ -2390,15 +2359,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                             // Reconstruct the PID for our local view.
                                             // If the PID has node_id=0 (local to sender), replace
                                             // with this session's node_id so it routes correctly.
-                                            use crate::actor::process::ProcessId;
-                                            let mut pid = ProcessId(pid_raw);
-                                            if pid.node_id() == 0 {
-                                                pid = ProcessId::from_remote(
-                                                    session.node_id,
-                                                    session.remote_creation,
-                                                    pid.local_id(),
-                                                );
-                                            }
+                                            let pid = session.peer_pid(pid_raw);
                                             let _ = crate::dist::global::global_name_registry()
                                                 .register(
                                                     name.to_string(),
@@ -2427,7 +2388,6 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                     DIST_GLOBAL_SYNC => {
                         // Wire format: [tag][u32 count][(u16 name_len, name, u64 pid, u16 node_len, node)*]
                         if msg.len() >= 5 {
-                            use crate::actor::process::ProcessId;
                             let count = u32::from_le_bytes(msg[1..5].try_into().unwrap()) as usize;
                             let mut pos = 5;
                             let mut entries = Vec::with_capacity(count);
@@ -2464,15 +2424,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                 };
                                 pos += node_len;
 
-                                // Reconstruct PID: if node_id=0, qualify with session info.
-                                let mut pid = ProcessId(pid_raw);
-                                if pid.node_id() == 0 {
-                                    pid = ProcessId::from_remote(
-                                        session.node_id,
-                                        session.remote_creation,
-                                        pid.local_id(),
-                                    );
-                                }
+                                let pid = session.peer_pid(pid_raw);
                                 entries.push((name.to_string(), pid, node_name.to_string()));
                             }
                             crate::dist::global::global_name_registry().merge_snapshot(entries);
