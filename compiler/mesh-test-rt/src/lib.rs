@@ -50,6 +50,28 @@ fn test_push_tokens() -> &'static Mutex<TestPushTokens> {
     TEST_PUSH_TOKENS.get_or_init(|| Mutex::new(TestPushTokens::default()))
 }
 
+/// The bytes of a host call's input, if it holds `bounds` of them.
+unsafe fn call_input<'a>(
+    input: *const u8,
+    input_len: u64,
+    bounds: std::ops::RangeInclusive<usize>,
+) -> Option<&'a [u8]> {
+    let len = usize::try_from(input_len)
+        .ok()
+        .filter(|len| bounds.contains(len))?;
+    (!input.is_null()).then(|| std::slice::from_raw_parts(input, len))
+}
+
+/// Copies `value` to a host call's output, if it fits.
+unsafe fn write_output(value: &[u8], output: *mut u8, capacity: u64, output_len: *mut u64) -> i32 {
+    if value.len() as u64 > capacity {
+        return OUTPUT_TOO_LARGE;
+    }
+    ptr::copy_nonoverlapping(value.as_ptr(), output, value.len());
+    output_len.write(value.len() as u64);
+    MESH_LIBRARY_OK
+}
+
 unsafe extern "C" fn secure_store_put(
     _context: *mut c_void,
     input: *const u8,
@@ -62,20 +84,14 @@ unsafe extern "C" fn secure_store_put(
         return INVALID_INPUT;
     }
     output_len.write(0);
-    let Ok(input_len) = usize::try_from(input_len) else {
-        return OUTPUT_TOO_LARGE;
-    };
-    if input.is_null() || !(5..=MAX_BOUNDARY_BYTES).contains(&input_len) {
+    let Some(input) = call_input(input, input_len, 5..=MAX_BOUNDARY_BYTES) else {
         return INVALID_INPUT;
-    }
-
-    let input = std::slice::from_raw_parts(input, input_len);
+    };
     let key_len = u32::from_be_bytes(input[..4].try_into().expect("four-byte prefix")) as usize;
     if key_len == 0 || key_len > MAX_KEY_BYTES || key_len >= input.len() - 4 {
         return INVALID_INPUT;
     }
-    let key = &input[4..4 + key_len];
-    let value = &input[4 + key_len..];
+    let (key, value) = input[4..].split_at(key_len);
 
     let mut store = test_secure_store().lock();
     if !store.installed {
@@ -85,13 +101,8 @@ unsafe extern "C" fn secure_store_put(
     if replaced_bytes == 0 && store.values.len() == MAX_ENTRIES {
         return OUTPUT_TOO_LARGE;
     }
-    let Some(total_bytes) = store
-        .total_bytes
-        .checked_sub(replaced_bytes)
-        .and_then(|total| total.checked_add(key.len() + value.len()))
-    else {
-        return OUTPUT_TOO_LARGE;
-    };
+    // Every entry is bounded, and the total counts each one's bytes.
+    let total_bytes = store.total_bytes - replaced_bytes + key.len() + value.len();
     if total_bytes > MAX_STORED_BYTES {
         return OUTPUT_TOO_LARGE;
     }
@@ -115,16 +126,9 @@ unsafe extern "C" fn secure_store_get(
         return INVALID_INPUT;
     }
     output_len.write(0);
-    let (Ok(input_len), Ok(output_capacity)) =
-        (usize::try_from(input_len), usize::try_from(output_capacity))
-    else {
-        return OUTPUT_TOO_LARGE;
-    };
-    if input.is_null() || input_len == 0 || input_len > MAX_KEY_BYTES {
+    let Some(key) = call_input(input, input_len, 1..=MAX_KEY_BYTES) else {
         return INVALID_INPUT;
-    }
-
-    let key = std::slice::from_raw_parts(input, input_len);
+    };
     let store = test_secure_store().lock();
     if !store.installed {
         return PLATFORM_FAILURE;
@@ -132,12 +136,7 @@ unsafe extern "C" fn secure_store_get(
     let Some(value) = store.values.get(key) else {
         return NOT_FOUND;
     };
-    if value.len() > output_capacity {
-        return OUTPUT_TOO_LARGE;
-    }
-    ptr::copy_nonoverlapping(value.as_ptr(), output, value.len());
-    output_len.write(value.len() as u64);
-    MESH_LIBRARY_OK
+    write_output(value, output, output_capacity, output_len)
 }
 
 unsafe extern "C" fn secure_store_delete(
@@ -152,14 +151,9 @@ unsafe extern "C" fn secure_store_delete(
         return INVALID_INPUT;
     }
     output_len.write(0);
-    let Ok(input_len) = usize::try_from(input_len) else {
-        return OUTPUT_TOO_LARGE;
-    };
-    if input.is_null() || input_len == 0 || input_len > MAX_KEY_BYTES {
+    let Some(key) = call_input(input, input_len, 1..=MAX_KEY_BYTES) else {
         return INVALID_INPUT;
-    }
-
-    let key = std::slice::from_raw_parts(input, input_len);
+    };
     let mut store = test_secure_store().lock();
     if !store.installed {
         return PLATFORM_FAILURE;
@@ -182,31 +176,17 @@ unsafe extern "C" fn push_get_token(
         return INVALID_INPUT;
     }
     output_len.write(0);
-    let (Ok(input_len), Ok(output_capacity)) =
-        (usize::try_from(input_len), usize::try_from(output_capacity))
-    else {
-        return OUTPUT_TOO_LARGE;
-    };
-    if input.is_null() || input_len == 0 || input_len > MAX_KEY_BYTES {
+    let Some(selector) = call_input(input, input_len, 1..=MAX_KEY_BYTES) else {
         return INVALID_INPUT;
-    }
-
+    };
     let fixtures = test_push_tokens().lock();
     if fixtures.values.is_empty() {
         return PLATFORM_FAILURE;
     }
-    let Some(token) = fixtures
-        .values
-        .get(std::slice::from_raw_parts(input, input_len))
-    else {
+    let Some(token) = fixtures.values.get(selector) else {
         return INVALID_INPUT;
     };
-    if token.len() > output_capacity {
-        return OUTPUT_TOO_LARGE;
-    }
-    ptr::copy_nonoverlapping(token.as_ptr(), output, token.len());
-    output_len.write(token.len() as u64);
-    MESH_LIBRARY_OK
+    write_output(token, output, output_capacity, output_len)
 }
 
 fn clear_secure_store() {
@@ -214,6 +194,12 @@ fn clear_secure_store() {
     store.values.clear();
     store.total_bytes = 0;
     store.installed = false;
+}
+
+fn clear_push_tokens() {
+    let mut push_tokens = test_push_tokens().lock();
+    push_tokens.values.clear();
+    push_tokens.total_bytes = 0;
 }
 
 fn register_host_fixtures() -> i32 {
@@ -229,12 +215,15 @@ fn register_host_fixtures() -> i32 {
     mesh_library_register_host_callbacks(&callbacks)
 }
 
+/// Starts the runtime if needed and registers the fixtures; after a
+/// library shutdown there is no runtime to start.
+fn activate_host_fixtures() -> bool {
+    mesh_library_init() == MESH_LIBRARY_OK && register_host_fixtures() == MESH_LIBRARY_OK
+}
+
 fn reset_host_fixtures() {
     clear_secure_store();
-    let mut push_tokens = test_push_tokens().lock();
-    push_tokens.values.clear();
-    push_tokens.total_bytes = 0;
-    drop(push_tokens);
+    clear_push_tokens();
 
     // Keep the runtime initialized but remove all fixture callbacks between
     // test bodies. Registration remains lifecycle-checked by mesh-rt.
@@ -246,18 +235,21 @@ fn reset_host_fixtures() {
 #[no_mangle]
 pub extern "C" fn mesh_test_install_in_memory_secure_store() -> u8 {
     clear_secure_store();
-    if mesh_library_init() != MESH_LIBRARY_OK {
-        return 0;
-    }
-
     test_secure_store().lock().installed = true;
-    if register_host_fixtures() != MESH_LIBRARY_OK {
-        test_secure_store().lock().installed = false;
+    if !activate_host_fixtures() {
+        clear_secure_store();
         return 0;
     }
 
     mesh_rt::test::register_test_case_cleanup_hook(reset_host_fixtures);
     1
+}
+
+/// The bytes a length-checked `MeshBytes` holds.
+fn bytes_of(bytes: *const MeshBytes, len: u64) -> Vec<u8> {
+    let mut value = vec![0; len as usize];
+    mesh_bytes_copy_to(bytes, 0, value.as_mut_ptr(), len);
+    value
 }
 
 /// Set or replace a bounded binary value returned for one exact push selector in a test body.
@@ -269,59 +261,32 @@ pub extern "C" fn mesh_test_set_push_token(
     if selector.is_null() || token.is_null() {
         return 0;
     }
-    let (Ok(selector_len), Ok(token_len)) = (
-        usize::try_from(mesh_bytes_length(selector)),
-        usize::try_from(mesh_bytes_length(token)),
-    ) else {
-        return 0;
-    };
-    if selector_len == 0 || selector_len > MAX_KEY_BYTES || token_len > MAX_BOUNDARY_BYTES {
-        return 0;
-    }
-    let mut selector_value = vec![0; selector_len];
-    if mesh_bytes_copy_to(
-        selector,
-        0,
-        selector_value.as_mut_ptr(),
-        selector_len as u64,
-    ) != selector_len as i64
+    // A negative length is out of bounds too.
+    let length = |bytes| u64::try_from(mesh_bytes_length(bytes)).unwrap_or(u64::MAX);
+    let (selector_len, token_len) = (length(selector), length(token));
+    if selector_len == 0
+        || selector_len > MAX_KEY_BYTES as u64
+        || token_len > MAX_BOUNDARY_BYTES as u64
     {
         return 0;
     }
-    let mut value = Zeroizing::new(vec![0; token_len]);
-    if mesh_bytes_copy_to(token, 0, value.as_mut_ptr(), token_len as u64) != token_len as i64 {
-        return 0;
-    }
-    if mesh_library_init() != MESH_LIBRARY_OK {
-        return 0;
-    }
+    let selector = bytes_of(selector, selector_len);
+    let value = Zeroizing::new(bytes_of(token, token_len));
 
     let mut push_tokens = test_push_tokens().lock();
-    let replacing = push_tokens.values.contains_key(&selector_value);
-    let replaced_bytes = push_tokens
-        .values
-        .get(&selector_value)
-        .map_or(0, |old| old.len());
-    if !replacing && push_tokens.values.len() == MAX_ENTRIES {
+    let replaced_bytes = push_tokens.values.get(&selector).map(|old| old.len());
+    if replaced_bytes.is_none() && push_tokens.values.len() == MAX_ENTRIES {
         return 0;
     }
-    let Some(total_bytes) = push_tokens
-        .total_bytes
-        .checked_sub(replaced_bytes)
-        .and_then(|total| total.checked_add(value.len()))
-    else {
-        return 0;
-    };
+    let total_bytes = push_tokens.total_bytes - replaced_bytes.unwrap_or(0) + value.len();
     if total_bytes > MAX_STORED_BYTES {
         return 0;
     }
-    push_tokens.values.insert(selector_value, value);
+    push_tokens.values.insert(selector, value);
     push_tokens.total_bytes = total_bytes;
     drop(push_tokens);
-    if register_host_fixtures() != MESH_LIBRARY_OK {
-        let mut push_tokens = test_push_tokens().lock();
-        push_tokens.values.clear();
-        push_tokens.total_bytes = 0;
+    if !activate_host_fixtures() {
+        clear_push_tokens();
         return 0;
     }
 
@@ -484,6 +449,83 @@ mod tests {
         let empty_selector = mesh_rt::bytes::mesh_bytes_new(b"".as_ptr(), 0);
         assert_eq!(mesh_test_set_push_token(empty_selector, token), 0);
 
+        reset_host_fixtures();
+    }
+
+    /// Calls with no room to report, no input, or an input out of bounds are
+    /// refused before anything is read; a store that is not installed, or
+    /// no push token set, is a platform failure.
+    #[test]
+    fn host_calls_refuse_what_they_cannot_read() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_host_fixtures();
+        let callbacks: [MeshLibraryHostCallback; 4] = [
+            secure_store_put,
+            secure_store_get,
+            secure_store_delete,
+            push_get_token,
+        ];
+        let mut output = [0u8; 4];
+        let mut output_len = 7u64;
+        for callback in callbacks {
+            let call = |input: *const u8, len: u64, out: *mut u8, out_len: *mut u64| unsafe {
+                callback(ptr::null_mut(), input, len, out, 4, out_len)
+            };
+            // Nowhere to report the output length.
+            assert_eq!(
+                call(b"k".as_ptr(), 1, output.as_mut_ptr(), ptr::null_mut()),
+                1
+            );
+            // No input, or one of no bytes.
+            assert_eq!(
+                call(ptr::null(), 5, output.as_mut_ptr(), &mut output_len),
+                1
+            );
+            assert_eq!(output_len, 0);
+            assert_eq!(
+                call(b"k".as_ptr(), 0, output.as_mut_ptr(), &mut output_len),
+                1
+            );
+        }
+        // Get and push need an output buffer.
+        for callback in [secure_store_get, push_get_token] {
+            let status = unsafe {
+                callback(
+                    ptr::null_mut(),
+                    b"k".as_ptr(),
+                    1,
+                    ptr::null_mut(),
+                    4,
+                    &mut output_len,
+                )
+            };
+            assert_eq!(status, 1);
+        }
+        // Nothing installed: the store fails; no token set: push fails.
+        assert_eq!(invoke(2, b"key", &mut output), (3, 0));
+        assert_eq!(invoke(3, b"key", &mut output), (3, 0));
+        assert_eq!(invoke(4, b"expo/v1", &mut output), (3, 0));
+        assert_eq!(
+            mesh_test_set_push_token(ptr::null(), ptr::null()),
+            0,
+            "no selector"
+        );
+    }
+
+    /// Push tokens are bounded in number and in bytes, replacing aside.
+    #[test]
+    fn push_tokens_are_bounded() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset_host_fixtures();
+        for index in 0..MAX_ENTRIES {
+            assert_eq!(set_push_token(&(index as u32).to_be_bytes(), b"t"), 1);
+        }
+        assert_eq!(set_push_token(b"one more", b"t"), 0);
+        assert_eq!(set_push_token(&0u32.to_be_bytes(), b"replaced"), 1);
+        reset_host_fixtures();
+
+        assert_eq!(set_push_token(b"big", &vec![0; MAX_BOUNDARY_BYTES - 1]), 1);
+        assert_eq!(set_push_token(b"small", b"xy"), 0);
         reset_host_fixtures();
     }
 
