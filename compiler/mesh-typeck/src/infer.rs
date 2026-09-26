@@ -564,25 +564,13 @@ type StdlibModules = HashMap<String, HashMap<String, Scheme>>;
 /// The standard-library module whose functions are methods of values of
 /// type `ty`: `"hello".length()` is `String.length("hello")`.
 pub fn method_module(ty: &Ty) -> Option<&'static str> {
-    match ty {
-        Ty::Con(tc) => match tc.name.as_str() {
-            "String" => Some("String"),
-            "Range" => Some("Range"),
-            _ => None,
-        },
-        Ty::App(con, _) => match con.as_ref() {
-            Ty::Con(tc) => match tc.name.as_str() {
-                "List" => Some("List"),
-                "Map" => Some("Map"),
-                "Set" => Some("Set"),
-                "Queue" => Some("Queue"),
-                "Iter" => Some("Iter"),
-                _ => None,
-            },
-            _ => None,
-        },
-        _ => None,
-    }
+    // A `List` with no element type is the untyped one, with no methods.
+    let modules: &[&'static str] = match ty {
+        Ty::Con(_) => &["String", "Range"],
+        _ => &["List", "Map", "Set", "Queue", "Iter"],
+    };
+    let name = ty.con_name()?;
+    modules.iter().copied().find(|module| *module == name)
 }
 
 fn stdlib_modules(test_builtins: bool) -> std::rc::Rc<StdlibModules> {
@@ -11987,19 +11975,7 @@ fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
             return exhaustiveness::list_type_info();
         }
     }
-    let resolved = match ty {
-        Ty::App(con, _) => {
-            if let Ty::Con(tc) = con.as_ref() {
-                Some(tc.name.clone())
-            } else {
-                None
-            }
-        }
-        Ty::Con(tc) => Some(tc.name.clone()),
-        _ => None,
-    };
-
-    if let Some(ref name) = resolved {
+    if let Some(name) = ty.con_name() {
         // Check if it's Bool.
         if name == "Bool" {
             return AbsTypeInfo::Bool;
@@ -12039,14 +12015,8 @@ fn struct_type_info(def: &StructDefInfo) -> AbsTypeInfo {
 /// The struct `name` names, directly or through an alias.
 fn struct_def_named<'a>(type_registry: &'a TypeRegistry, name: &str) -> Option<&'a StructDefInfo> {
     type_registry.lookup_struct(name).or_else(|| {
-        match &type_registry.lookup_alias(name)?.aliased_type {
-            Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
-            Ty::App(con, _) => match con.as_ref() {
-                Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
-                _ => None,
-            },
-            _ => None,
-        }
+        let aliased = &type_registry.lookup_alias(name)?.aliased_type;
+        type_registry.lookup_struct(aliased.con_name()?)
     })
 }
 
@@ -12743,20 +12713,8 @@ fn infer_field_access(
         }
     }
 
-    let struct_name = match &resolved_base {
-        Ty::App(con, _) => {
-            if let Ty::Con(tc) = con.as_ref() {
-                Some(tc.name.clone())
-            } else {
-                None
-            }
-        }
-        Ty::Con(tc) => Some(tc.name.clone()),
-        _ => None,
-    };
-
-    if let Some(name) = struct_name {
-        if let Some(struct_info) = type_registry.lookup_struct(&name) {
+    if let Some(name) = resolved_base.con_name() {
+        if let Some(struct_info) = type_registry.lookup_struct(name) {
             let struct_info = struct_info.clone();
             // Get the type arguments from the resolved base type.
             let type_args = match &resolved_base {
@@ -13290,14 +13248,9 @@ fn infer_struct_update(
     let resolved_base = ctx.resolve(base_ty.clone());
 
     // The base must be a struct value.
-    let struct_def = match &resolved_base {
-        Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
-        Ty::App(inner, _) => match inner.as_ref() {
-            Ty::Con(tc) => type_registry.lookup_struct(&tc.name),
-            _ => None,
-        },
-        _ => None,
-    };
+    let struct_def = resolved_base
+        .con_name()
+        .and_then(|name| type_registry.lookup_struct(name));
     let Some(struct_def) = struct_def.cloned() else {
         let err = TypeError::NotAStruct {
             ty: resolved_base.clone(),

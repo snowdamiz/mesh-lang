@@ -113,6 +113,16 @@ impl Ty {
         }
     }
 
+    /// The name of the type constructor this type is, or applies: `Int` for
+    /// `Int`, `List` for `List<Int>`.
+    pub fn con_name(&self) -> Option<&str> {
+        match self {
+            Ty::Con(c) => Some(&c.name),
+            Ty::App(con, _) => con.con_name(),
+            _ => None,
+        }
+    }
+
     /// The arguments of this type if it is the constructor `name` applied to
     /// them: `[Int]` for `Option<Int>` and "Option".
     pub fn args_of(&self, name: &str) -> Option<&[Ty]> {

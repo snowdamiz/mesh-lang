@@ -673,6 +673,38 @@ end
     );
 }
 
+/// A struct pattern may name the struct through an alias; an alias of a
+/// type that is no struct names no struct.
+#[test]
+fn struct_patterns_name_their_struct_through_an_alias() {
+    assert_eq!(
+        errors(
+            r#"struct P do
+  x :: Int
+end
+
+type Q = P
+type N = Int
+
+fn aliased(q :: Q) -> Int do
+  case q do
+    Q { x: 1 } -> 1
+    _ -> 2
+  end
+end
+
+fn not_struct(n :: N) -> Int do
+  case n do
+    N { x: 1 } -> 1
+    _ -> 2
+  end
+end
+"#
+        ),
+        ["`N` is not a struct"]
+    );
+}
+
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
 /// `true | false` inside another pattern covers every Bool: the column's
