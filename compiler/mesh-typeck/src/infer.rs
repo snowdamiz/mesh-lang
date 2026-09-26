@@ -4571,14 +4571,15 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
     for item in singles() {
         if let Item::ImplDef(impl_) = item {
-            check_impl_header(
+            if check_impl_header(
                 &mut ctx,
                 impl_,
                 &type_registry,
                 &trait_registry,
                 &builtin_types,
-            );
-            register_impl_signature(&mut ctx, impl_, &type_registry, &mut trait_registry);
+            ) {
+                register_impl_signature(&mut ctx, impl_, &type_registry, &mut trait_registry);
+            }
         }
     }
 
@@ -4749,6 +4750,15 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // reports the same error a second time; each error is reported once.
     let mut seen = FxHashSet::default();
     ctx.errors.retain(|error| seen.insert(format!("{error:?}")));
+    // A type reported unknown matches nothing; that it does not match a
+    // value says nothing more.
+    let unknown = &ctx.unknown_types;
+    ctx.errors.retain(|error| match error {
+        TypeError::Mismatch {
+            expected, found, ..
+        } => !names_any(expected, unknown) && !names_any(found, unknown),
+        _ => true,
+    });
 
     // Resolve the result type as well.
     let resolved_result = result_type.map(|ty| ctx.resolve(ty));
@@ -6849,6 +6859,13 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
         || type_registry.resource_types.contains(name)
 }
 
+/// Whether `ty` names one of the types `names`.
+fn names_any(ty: &Ty, names: &FxHashSet<String>) -> bool {
+    let mut named = Vec::new();
+    type_constructors(ty, &mut named);
+    named.iter().any(|name| names.contains(name))
+}
+
 /// The name of every type constructor in `ty`.
 fn type_constructors(ty: &Ty, out: &mut Vec<String>) {
     match ty {
@@ -6878,36 +6895,49 @@ fn builtin_type_names(
     for ty in trait_registry.impl_types() {
         type_constructors(ty, &mut names);
     }
+    // A field's type names the type's own parameters too (`Some(T)`), which
+    // are no types anywhere else.
+    let mut field_names = |name: &str, generic_params: &[String], fields: Vec<&Ty>| {
+        names.push(name.to_string());
+        let mut named = Vec::new();
+        fields
+            .into_iter()
+            .for_each(|ty| type_constructors(ty, &mut named));
+        names.extend(named.into_iter().filter(|n| !generic_params.contains(n)));
+    };
     for info in type_registry.struct_defs.values() {
-        names.push(info.name.clone());
-        info.fields
-            .iter()
-            .for_each(|(_, ty)| type_constructors(ty, &mut names));
+        field_names(
+            &info.name,
+            &info.generic_params,
+            info.fields.iter().map(|(_, ty)| ty).collect(),
+        );
     }
     for info in type_registry.sum_type_defs.values() {
-        names.push(info.name.clone());
-        for variant in &info.variants {
-            for field in &variant.fields {
-                match field {
-                    VariantFieldInfo::Positional(ty) | VariantFieldInfo::Named(_, ty) => {
-                        type_constructors(ty, &mut names)
-                    }
-                }
-            }
-        }
+        let fields = info.variants.iter().flat_map(|variant| &variant.fields);
+        field_names(
+            &info.name,
+            &info.generic_params,
+            fields
+                .map(|field| match field {
+                    VariantFieldInfo::Positional(ty) | VariantFieldInfo::Named(_, ty) => ty,
+                })
+                .collect(),
+        );
     }
     names.into_iter().collect()
 }
 
 /// An impl names an interface and a type that exist: `impl Dispaly for P`
-/// (a typo) or `impl Show for Nope` was accepted and did nothing.
+/// (a typo) or `impl Show for Nope` was accepted and did nothing. Returns
+/// whether the type exists: an impl for none implements nothing (`impl Show
+/// for T` was taken for an impl for every type).
 fn check_impl_header(
     ctx: &mut InferCtx,
     impl_: &AstImplDef,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     builtin_types: &FxHashSet<String>,
-) {
+) -> bool {
     if let Some(name) = impl_.interface_name() {
         if trait_registry.get_trait(name.text()).is_none() {
             ctx.errors.push(TypeError::UnknownInterface {
@@ -6916,30 +6946,32 @@ fn check_impl_header(
             });
         }
     }
-    if let Some(ty) = impl_.type_name() {
-        let known = builtin_types.contains(ty.text()) || is_known_type(ty.text(), type_registry);
-        if !known {
-            ctx.errors.push(TypeError::UnknownType {
-                name: ty.text().to_string(),
-                span: ty.text_range(),
-            });
-        }
-        // Registered for the bare type, the impl was accepted but no value
-        // (`Box<Int>`, `Option<Int>`) ever had its methods.
-        let generic = matches!(ty.text(), "List" | "Map" | "Set")
-            || type_registry
-                .lookup_struct(ty.text())
-                .is_some_and(|info| !info.generic_params.is_empty())
-            || type_registry
-                .lookup_sum_type(ty.text())
-                .is_some_and(|info| !info.generic_params.is_empty());
-        if generic {
-            ctx.errors.push(TypeError::GenericImplTarget {
-                name: ty.text().to_string(),
-                span: ty.text_range(),
-            });
-        }
+    let Some(ty) = impl_.type_name() else {
+        return false;
+    };
+    let known = builtin_types.contains(ty.text()) || is_known_type(ty.text(), type_registry);
+    if !known {
+        ctx.errors.push(TypeError::UnknownType {
+            name: ty.text().to_string(),
+            span: ty.text_range(),
+        });
     }
+    // Registered for the bare type, the impl was accepted but no value
+    // (`Box<Int>`, `Option<Int>`) ever had its methods.
+    let generic = matches!(ty.text(), "List" | "Map" | "Set")
+        || type_registry
+            .lookup_struct(ty.text())
+            .is_some_and(|info| !info.generic_params.is_empty())
+        || type_registry
+            .lookup_sum_type(ty.text())
+            .is_some_and(|info| !info.generic_params.is_empty());
+    if generic {
+        ctx.errors.push(TypeError::GenericImplTarget {
+            name: ty.text().to_string(),
+            span: ty.text_range(),
+        });
+    }
+    known
 }
 
 /// Report each type name an annotation uses that names no type: a

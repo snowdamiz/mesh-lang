@@ -166,3 +166,36 @@ end
         ["duplicate impl: `From` is already implemented for `Celsius` (previously defined for `Celsius`)"]
     );
 }
+
+/// `T` and `E`, the parameters of the built-in `Option` and `Result`, name
+/// no type: `x :: T` without a declared `T` is an unknown type, and an impl
+/// for it implements nothing, not every type.
+#[test]
+fn the_builtin_types_parameters_are_no_types() {
+    assert_eq!(
+        errors("fn same(x :: T) -> E do\n  x\nend\n"),
+        ["unknown type `T`", "unknown type `E`"]
+    );
+    assert_eq!(
+        errors(
+            r#"
+interface Named do
+  fn name(self) -> String
+end
+
+impl Named for Int do
+  fn name(self) -> String do
+    "int"
+  end
+end
+
+impl Named for T do
+  fn name(self) -> String do
+    "any"
+  end
+end
+"#
+        ),
+        ["unknown type `T`"]
+    );
+}
