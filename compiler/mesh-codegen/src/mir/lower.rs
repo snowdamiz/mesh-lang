@@ -10468,15 +10468,8 @@ impl<'a> Lowerer<'a> {
                         // Nullary constructor: no fields.
                         // Payload-bearing constructor without explicit binder: treat as
                         // Constructor(_) -- wildcards cover all fields, bind nothing.
-                        let concrete_type_name = expected
-                            .map(|ty| resolve_type(ty, self.registry))
-                            .and_then(|ty| match ty {
-                                MirType::SumType(name) => Some(name),
-                                _ => None,
-                            })
-                            .unwrap_or(type_name);
                         return MirPattern::Constructor {
-                            type_name: concrete_type_name,
+                            type_name: self.pattern_sum_name(expected, type_name),
                             variant: name,
                             fields: vec![MirPattern::Wildcard; variant_fields],
                             bindings: vec![],
@@ -10519,16 +10512,8 @@ impl<'a> Lowerer<'a> {
                 // Collect bindings introduced by sub-patterns.
                 let bindings = collect_pattern_bindings(&fields);
 
-                let concrete_type_name = expected
-                    .map(|ty| resolve_type(ty, self.registry))
-                    .and_then(|ty| match ty {
-                        MirType::SumType(name) => Some(name),
-                        _ => None,
-                    })
-                    .unwrap_or(type_name);
-
                 MirPattern::Constructor {
-                    type_name: concrete_type_name,
+                    type_name: self.pattern_sum_name(expected, type_name),
                     variant: variant_name,
                     fields,
                     bindings,
@@ -10554,17 +10539,16 @@ impl<'a> Lowerer<'a> {
             }
 
             Pattern::Struct(struct_pat) => {
+                // The type checker types a struct pattern as its struct.
                 let struct_ty = expected
                     .cloned()
-                    .or_else(|| self.get_ty(struct_pat.syntax().text_range()).cloned());
-                let Some((mir_ty, fields)) = struct_ty.and_then(|ty| {
-                    let fields = self.concrete_struct_fields(&ty)?;
-                    Some((resolve_type(&ty, self.registry), fields))
-                }) else {
-                    return MirPattern::Wildcard;
-                };
-                let MirType::Struct(name) = mir_ty else {
-                    return MirPattern::Wildcard;
+                    .or_else(|| self.get_ty(struct_pat.syntax().text_range()).cloned())
+                    .expect("the type checker types a struct pattern");
+                let fields = self
+                    .concrete_struct_fields(&struct_ty)
+                    .expect("a struct pattern matches a struct");
+                let MirType::Struct(name) = resolve_type(&struct_ty, self.registry) else {
+                    unreachable!("a struct pattern matches a struct")
                 };
                 let fields = fields
                     .into_iter()
@@ -10602,14 +10586,13 @@ impl<'a> Lowerer<'a> {
                     ty => ty,
                 };
                 self.insert_var(binding_name.clone(), ty.clone());
-
-                match as_pat.pattern() {
-                    Some(inner) => MirPattern::As {
-                        name: binding_name,
-                        ty,
-                        inner: Box::new(self.lower_pattern_with_expected(&inner, expected)),
-                    },
-                    None => MirPattern::Var(binding_name, ty),
+                let inner = as_pat
+                    .pattern()
+                    .expect("the parser gives an `as` its pattern");
+                MirPattern::As {
+                    name: binding_name,
+                    ty,
+                    inner: Box::new(self.lower_pattern_with_expected(&inner, expected)),
                 }
             }
 
@@ -10629,14 +10612,12 @@ impl<'a> Lowerer<'a> {
                     .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
                     .unwrap_or(MirType::Int);
 
-                let head_pat = cons_pat
+                let (head, tail) = cons_pat
                     .head()
-                    .map(|p| self.lower_pattern_with_expected(&p, elem_src.as_ref()))
-                    .unwrap_or(MirPattern::Wildcard);
-                let tail_pat = cons_pat
-                    .tail()
-                    .map(|p| self.lower_pattern_with_expected(&p, list_src.as_ref()))
-                    .unwrap_or(MirPattern::Wildcard);
+                    .zip(cons_pat.tail())
+                    .expect("the parser gives a cons pattern its head and tail");
+                let head_pat = self.lower_pattern_with_expected(&head, elem_src.as_ref());
+                let tail_pat = self.lower_pattern_with_expected(&tail, list_src.as_ref());
 
                 MirPattern::ListCons {
                     head: Box::new(head_pat),
@@ -10666,6 +10647,15 @@ impl<'a> Lowerer<'a> {
                         elem_ty: elem_mir_ty.clone(),
                     })
             }
+        }
+    }
+
+    /// The sum type a constructor pattern matches: the instantiation it is
+    /// matched as (`Option_Int`), else `type_name`.
+    fn pattern_sum_name(&self, expected: Option<&Ty>, type_name: String) -> String {
+        match expected.map(|ty| resolve_type(ty, self.registry)) {
+            Some(MirType::SumType(name)) => name,
+            _ => type_name,
         }
     }
 
