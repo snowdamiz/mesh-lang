@@ -901,3 +901,18 @@ fn platform_storage_key_is_a_typed_resource_constructor() {
         result.errors
     );
 }
+
+/// A method's receiver is borrowed however the method is called: `close(s)`
+/// moved `s` into a method that never dropped it, while `s.close()` only
+/// read it. Both now leave `s` with its caller.
+#[test]
+fn a_method_receiver_is_borrowed_in_both_call_forms() {
+    let result = check_source(
+        "resource struct Session do\n  id :: Int\nend\n\ninterface Closer do\n  fn close(self) -> Int\nend\n\nimpl Closer for Session do\n  fn close(self) -> Int do\n    self.id\n  end\nend\n\nfn use_it(s :: Session) -> Int do\n  let a = close(s)\n  let b = s.close()\n  a + b + s.id\nend\n",
+    );
+    assert!(
+        resource_violations(&result).is_empty(),
+        "{:?}",
+        result.errors
+    );
+}

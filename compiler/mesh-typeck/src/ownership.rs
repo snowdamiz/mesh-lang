@@ -5,7 +5,7 @@ use mesh_parser::ast::expr::{
     StructUpdate,
 };
 use mesh_parser::ast::item::{
-    ActorDef, Block, FnDef, Item, LetBinding, ModuleDef, Param, ParamOwnership,
+    ActorDef, Block, FnDef, ImplDef, Item, LetBinding, ModuleDef, Param, ParamOwnership,
 };
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
@@ -105,7 +105,16 @@ pub(crate) fn check(
                                         .map(|name| Ty::Con(crate::ty::TyCon::new(name.text())))
                                 })
                             });
-                            (parameter.ownership(), formal)
+                            // A method's receiver is borrowed, however the
+                            // method is called: `s.close()` only reads `s`,
+                            // and `close(s)` moved it into a method that never
+                            // dropped it.
+                            let mode = if parameter.is_self() {
+                                ParamOwnership::Borrow
+                            } else {
+                                parameter.ownership()
+                            };
+                            (mode, formal)
                         })
                         .unzip()
                 })
@@ -117,15 +126,33 @@ pub(crate) fn check(
                 .find_map(ModuleDef::cast)
                 .and_then(|module| module.name())
                 .and_then(|name| name.text());
+            let signature = FunctionSignature {
+                modes,
+                formal_types,
+            };
+            // A method is also called through its type or its interface
+            // (`Session.close(s)`, `Closer.close(s)`); two impls defining it
+            // make that name as ambiguous as a bare name defined twice.
+            if let Some(impl_def) = function.syntax().ancestors().find_map(ImplDef::cast) {
+                for owner in [impl_def.type_name(), impl_def.interface_name()]
+                    .into_iter()
+                    .flatten()
+                {
+                    register_signature(
+                        &mut signatures,
+                        &mut ambiguous_bare_signatures,
+                        format!("{}.{name}", owner.text()),
+                        None,
+                        signature.clone(),
+                    );
+                }
+            }
             register_signature(
                 &mut signatures,
                 &mut ambiguous_bare_signatures,
                 name,
                 module_name,
-                FunctionSignature {
-                    modes,
-                    formal_types,
-                },
+                signature,
             );
         }
     }

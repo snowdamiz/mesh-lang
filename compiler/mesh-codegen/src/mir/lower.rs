@@ -1121,6 +1121,27 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// The type of `param`, of type `ty`, when the function owns it and it
+    /// is a resource, which the function then drops as it ends: any
+    /// resource parameter a function, method or default method is given,
+    /// unless it is borrowed. A method's `self` is always borrowed from its
+    /// caller (see the ownership check's signatures).
+    fn owned_resource(&self, param: &mesh_parser::ast::item::Param, ty: Option<&Ty>) -> Option<Ty> {
+        let ty = ty?;
+        (param.ownership() != ParamOwnership::Borrow
+            && !param.is_self()
+            && self.registry.is_resource_type(ty))
+        .then(|| ty.clone())
+    }
+
+    /// `body` inside a resource scope for each of the `owned` resources.
+    fn wrap_resource_scopes(&mut self, mut body: MirExpr, owned: Vec<(String, Ty)>) -> MirExpr {
+        for (name, ty) in owned.into_iter().rev() {
+            body = self.wrap_resource_scope(body, &name, &ty);
+        }
+        body
+    }
+
     fn wrap_resource_scope(&mut self, body: MirExpr, name: &str, typeck_ty: &Ty) -> MirExpr {
         let resource_ty = resolve_type(typeck_ty, self.registry);
         let Some(destructor) = self.resource_destructor(typeck_ty) else {
@@ -5171,10 +5192,8 @@ impl<'a> Lowerer<'a> {
                     }
                     let mir_ty = runtime_value_type(mir_ty);
                     self.insert_var(param_name.clone(), mir_ty.clone());
-                    if param.ownership() != ParamOwnership::Borrow
-                        && self.registry.is_resource_type(param_ty)
-                    {
-                        owned_resource_params.push((param_name.clone(), param_ty.clone()));
+                    if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
+                        owned_resource_params.push((param_name.clone(), ty));
                     }
                     params.push((param_name, mir_ty));
                 }
@@ -5187,14 +5206,10 @@ impl<'a> Lowerer<'a> {
                     let mir_ty =
                         runtime_value_type(self.resolve_range(param.syntax().text_range()));
                     self.insert_var(param_name.clone(), mir_ty.clone());
-                    if param.ownership() != ParamOwnership::Borrow
-                        && self
-                            .get_ty(param.syntax().text_range())
-                            .is_some_and(|ty| self.registry.is_resource_type(ty))
+                    if let Some(ty) =
+                        self.owned_resource(&param, self.get_ty(param.syntax().text_range()))
                     {
-                        if let Some(typeck_ty) = self.get_ty(param.syntax().text_range()).cloned() {
-                            owned_resource_params.push((param_name.clone(), typeck_ty));
-                        }
+                        owned_resource_params.push((param_name.clone(), ty));
                     }
                     params.push((param_name, mir_ty));
                 }
@@ -5237,9 +5252,7 @@ impl<'a> Lowerer<'a> {
         };
         self.mono_depth -= 1;
 
-        for (name, resource_ty) in owned_resource_params.into_iter().rev() {
-            body = self.wrap_resource_scope(body, &name, &resource_ty);
-        }
+        body = self.wrap_resource_scopes(body, owned_resource_params);
 
         self.current_fn_return_type = prev_fn_return_type;
         self.current_fn_return_typeck = prev_fn_return_typeck;
@@ -5282,6 +5295,7 @@ impl<'a> Lowerer<'a> {
 
         // Extract parameter names and types.
         let mut params = Vec::new();
+        let mut owned = Vec::new();
         self.push_scope();
 
         if let Some(param_list) = method.param_list() {
@@ -5302,6 +5316,9 @@ impl<'a> Lowerer<'a> {
                     // The type checker stores the impl type as the first param type.
                     let mir_ty = resolve_type(param_ty, self.registry);
                     self.insert_var(param_name.clone(), mir_ty.clone());
+                    if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
+                        owned.push((param_name.clone(), ty));
+                    }
                     params.push((param_name, mir_ty));
                 }
             } else {
@@ -5318,17 +5335,19 @@ impl<'a> Lowerer<'a> {
                             .unwrap_or_else(|| "_".to_string())
                     };
 
-                    let mir_ty = if is_self {
+                    let self_ty = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
+                    let (mir_ty, typeck_ty) = if is_self {
                         // For self, resolve to the concrete struct type.
-                        resolve_type(
-                            &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
-                            self.registry,
-                        )
+                        (resolve_type(&self_ty, self.registry), Some(self_ty))
                     } else {
-                        self.resolve_range(param.syntax().text_range())
+                        let range = param.syntax().text_range();
+                        (self.resolve_range(range), self.get_ty(range).cloned())
                     };
 
                     self.insert_var(param_name.clone(), mir_ty.clone());
+                    if let Some(ty) = self.owned_resource(&param, typeck_ty.as_ref()) {
+                        owned.push((param_name.clone(), ty));
+                    }
                     params.push((param_name, mir_ty));
                 }
             }
@@ -5353,7 +5372,7 @@ impl<'a> Lowerer<'a> {
 
         // Monomorphization depth tracking.
         self.mono_depth += 1;
-        let mut body = if self.mono_depth > self.max_mono_depth {
+        let body = if self.mono_depth > self.max_mono_depth {
             MirExpr::Panic {
                 message: format!(
                     "monomorphization depth limit ({}) exceeded",
@@ -5370,6 +5389,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::Unit
         };
         self.mono_depth -= 1;
+        let mut body = self.wrap_resource_scopes(body, owned);
 
         // Restore previous function return type.
         self.current_fn_return_type = prev_fn_return_type;
@@ -5448,6 +5468,7 @@ impl<'a> Lowerer<'a> {
 
         // Build parameters: bind `self` to the concrete type.
         let mut params = Vec::new();
+        let mut owned = Vec::new();
         self.push_scope();
 
         if let Some(param_list) = interface_method.param_list() {
@@ -5463,20 +5484,22 @@ impl<'a> Lowerer<'a> {
                         .unwrap_or_else(|| "_".to_string())
                 };
 
-                let mir_ty = if is_self {
-                    resolve_type(
-                        &Ty::Con(mesh_typeck::ty::TyCon::new(type_name)),
-                        self.registry,
-                    )
+                // The checked signature (with `Self` already this type).
+                let typeck_ty = if is_self {
+                    Some(self_ty.clone())
                 } else {
-                    // The checked signature (with `Self` already this type).
-                    checked_params
-                        .get(params.len())
-                        .map(|ty| runtime_value_type(resolve_type(ty, self.registry)))
-                        .unwrap_or_else(|| self.resolve_range(param.syntax().text_range()))
+                    checked_params.get(params.len()).cloned()
+                };
+                let mir_ty = match &typeck_ty {
+                    Some(ty) if is_self => resolve_type(ty, self.registry),
+                    Some(ty) => runtime_value_type(resolve_type(ty, self.registry)),
+                    None => self.resolve_range(param.syntax().text_range()),
                 };
 
                 self.insert_var(param_name.clone(), mir_ty.clone());
+                if let Some(ty) = self.owned_resource(&param, typeck_ty.as_ref()) {
+                    owned.push((param_name.clone(), ty));
+                }
                 params.push((param_name, mir_ty));
             }
         }
@@ -5487,7 +5510,7 @@ impl<'a> Lowerer<'a> {
 
         // Lower the default body.
         self.mono_depth += 1;
-        let mut body = if self.mono_depth > self.max_mono_depth {
+        let body = if self.mono_depth > self.max_mono_depth {
             MirExpr::Panic {
                 message: format!(
                     "monomorphization depth limit ({}) exceeded",
@@ -5500,6 +5523,7 @@ impl<'a> Lowerer<'a> {
             self.lower_block(&body_block)
         };
         self.mono_depth -= 1;
+        let mut body = self.wrap_resource_scopes(body, owned);
 
         self.pop_scope();
         self.spec_types = outer_spec_types;
@@ -9019,6 +9043,7 @@ impl<'a> Lowerer<'a> {
         first_ty: Option<Ty>,
     ) -> MirExpr {
         let ty = self.resolve_range(call_range);
+        let is_method = matches!(route, QualifiedRoute::Interface(..));
         let name_of = |ty: &Ty| match ty {
             Ty::Con(tc) => tc.name.clone(),
             other => format!("{other}"),
@@ -9095,12 +9120,19 @@ impl<'a> Lowerer<'a> {
                     format!("{trait_name}__{method}__{type_name}")
                 }),
         };
-        let var_ty = MirType::FnPtr(
-            args.iter().map(|arg| arg.ty().clone()).collect(),
-            Box::new(ty.clone()),
+        let callee = MirExpr::Var(
+            builtin_trait_redirect(callee),
+            MirType::FnPtr(
+                args.iter().map(|arg| arg.ty().clone()).collect(),
+                Box::new(ty.clone()),
+            ),
         );
+        let args = match is_method {
+            true => self.borrow_receiver(&callee, args),
+            false => args,
+        };
         MirExpr::Call {
-            func: Box::new(MirExpr::Var(builtin_trait_redirect(callee), var_ty)),
+            func: Box::new(callee),
             args,
             ty,
         }
@@ -9186,6 +9218,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        let args = self.borrow_receiver(&callee, args);
         let args = self.apply_direct_resource_modes(&callee, args);
         MirExpr::Call {
             func: Box::new(callee),
@@ -9327,6 +9360,25 @@ impl<'a> Lowerer<'a> {
     }
 
     // ── Call expression lowering ─────────────────────────────────────
+
+    /// A method's receiver is borrowed from its caller, as the ownership
+    /// check has it (`s.close()` leaves `s` with the caller, who drops it),
+    /// unless the callee states its own modes. It was moved out, nulling
+    /// the caller's `s`: its later reads saw zeroes, and nothing dropped it.
+    fn borrow_receiver(&self, callee: &MirExpr, mut args: Vec<MirExpr>) -> Vec<MirExpr> {
+        if matches!(callee, MirExpr::Var(name, _) if self.ownership_signatures.contains_key(name)) {
+            return args;
+        }
+        if let Some(receiver) = args.first_mut() {
+            if let MirExpr::ResourceMove { value, ty, .. } = receiver {
+                *receiver = MirExpr::ResourceBorrow {
+                    value: value.clone(),
+                    ty: ty.clone(),
+                };
+            }
+        }
+        args
+    }
 
     fn apply_direct_resource_modes(&self, callee: &MirExpr, args: Vec<MirExpr>) -> Vec<MirExpr> {
         let MirExpr::Var(name, _) = callee else {
@@ -9963,6 +10015,10 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // The name the call was written with, whose ownership modes hold for
+        // whatever it dispatches to below.
+        let source_callee = callee.clone();
+
         // Trait method call rewriting: use shared resolve_trait_callee helper.
         // If the callee is a bare method name (not in known_functions), check if
         // it's a trait method for the first arg's type. If so, rewrite to the
@@ -10093,7 +10149,16 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let args = self.apply_direct_resource_modes(&callee, args);
+        // A method called bare (`close(s)`) takes the modes of its written
+        // name, with `self` borrowed: the impl function it was dispatched to
+        // has none of its own, so the receiver was moved out of the caller.
+        let modes_of = match &callee {
+            MirExpr::Var(name, _) if !self.ownership_signatures.contains_key(name) => {
+                &source_callee
+            }
+            _ => &callee,
+        };
+        let args = self.apply_direct_resource_modes(modes_of, args);
 
         if matches!(&callee, MirExpr::Var(name, _) if name == "mesh_secret_destroy")
             && args.len() == 1
@@ -18727,6 +18792,23 @@ mod tests {
         let look = function_body(&mir, "look");
         assert_eq!(drops_of(&look, "secret"), 0, "{look:?}");
         assert_eq!(drops_of(&look, "__param_0"), 0, "{look:?}");
+    }
+
+    /// A method, or an interface's default method, drops the resource
+    /// parameters it owns as a function does; they leaked. Its `self` is
+    /// borrowed from the caller, who drops it.
+    #[test]
+    fn methods_drop_owned_resource_parameters_but_not_self() {
+        let mir = lower(
+            "resource struct Session do\n  id :: Int\nend\n\
+             interface Closer do\n  fn close(self) -> Int\n  fn wipe(self, key :: SecretBytes) -> Int do\n    1\n  end\nend\n\
+             impl Closer for Session do\n  fn close(self) -> Int do\n    self.id\n  end\nend",
+        );
+        let close = function_body(&mir, "Closer__close__Session");
+        assert_eq!(drops_of(&close, "self"), 0, "{close:?}");
+        let wipe = function_body(&mir, "Closer__wipe__Session");
+        assert_eq!(drops_of(&wipe, "key"), 1, "{wipe:?}");
+        assert_eq!(drops_of(&wipe, "self"), 0, "{wipe:?}");
     }
 
     #[test]

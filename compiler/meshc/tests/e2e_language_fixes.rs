@@ -2700,6 +2700,42 @@ end
     assert_eq!(run(source), "[a, b] [a=1, b=2] [a:1, b:2]\n");
 }
 
+/// A method's receiver is borrowed from its caller in every call form:
+/// `s.close()` nulled the caller's `s` (its fields then read 0, and nothing
+/// destroyed it), and `close(s)` moved `s` into a method that never dropped
+/// it, so using `s` after it was refused.
+#[test]
+fn a_resource_method_leaves_its_receiver_with_the_caller() {
+    let source = r##"
+resource struct Session do
+  id :: Int
+end
+
+interface Closer do
+  fn close(self) -> Int
+end
+
+impl Closer for Session do
+  fn close(self) -> Int do
+    self.id
+  end
+end
+
+fn use_it(s :: Session) -> Int do
+  let a = close(s)
+  let b = s.close()
+  let c = Closer.close(s)
+  println("#{a} #{b} #{c} #{s.id}")
+  a + b + c + s.id
+end
+
+fn main() do
+  println("#{use_it(Session { id: 7 })}")
+end
+"##;
+    assert_eq!(run(source), "7 7 7 7\n28\n");
+}
+
 #[test]
 fn let_bound_closures_with_operators_work_at_each_type() {
     let source = r##"
