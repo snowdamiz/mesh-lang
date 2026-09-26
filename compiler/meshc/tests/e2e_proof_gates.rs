@@ -167,3 +167,36 @@ fn the_performance_gate_measures_and_reports() {
         command_output_text(&output)
     );
 }
+
+/// One round of the chaos gate runs each fault suite of the runtime once and
+/// records it. The suites build with cargo: the coverage run's compiler
+/// wrapper must not reach them (it would instrument the runtime programs
+/// link against).
+#[test]
+fn one_chaos_round_runs_every_suite() {
+    let evidence = tempfile::tempdir().unwrap();
+    let mut command = Command::new(meshc_bin());
+    command
+        .args([
+            "proof",
+            "autonomous-chaos",
+            "--rounds",
+            "1",
+            "--evidence-dir",
+        ])
+        .arg(evidence.path())
+        .current_dir(repo_root());
+    for (name, _) in std::env::vars_os() {
+        let name = name.to_string_lossy();
+        if name.contains("RUSTFLAGS") || name.starts_with("RUSTC_") || name.contains("LLVM_COV") {
+            command.env_remove(name.as_ref());
+        }
+    }
+    let output = command.output().expect("meshc runs");
+    let text = command_output_text(&output);
+    assert!(output.status.success(), "{text}");
+    assert!(text.contains("autonomous_chaos: PASS (1 rounds"), "{text}");
+    let summary = summary(evidence.path());
+    assert_eq!(summary["rounds_completed"], 1, "{summary}");
+    assert_eq!(summary["passed"], true, "{summary}");
+}

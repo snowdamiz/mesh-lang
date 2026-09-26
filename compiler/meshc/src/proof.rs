@@ -181,58 +181,59 @@ fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
     ];
     let mut assertions = BTreeMap::new();
     let mut executions = Vec::new();
-    let mut passed = true;
-    for round in 0..args.rounds {
-        for offset in 0..filters.len() {
-            // Rotate the deterministic execution order each round so hidden
-            // process-global ordering dependencies cannot pass by accident.
-            let index = (offset + usize::from(round)) % filters.len();
-            let filter = filters[index];
-            let output = Command::new("cargo")
-                .args([
-                    "test",
-                    "-p",
-                    "mesh-rt",
-                    "--locked",
-                    filter,
-                    "--",
-                    "--nocapture",
-                ])
-                .env("CARGO_INCREMENTAL", "0")
-                .env("RUST_TEST_THREADS", if round % 2 == 0 { "1" } else { "4" })
-                .current_dir(&root)
-                .stdin(Stdio::null())
-                .output()
-                .map_err(|error| format!("autonomous_chaos_test_start_failed:{filter}:{error}"))?;
-            let name = format!("round-{round:03}-{index:02}-{filter}");
-            fs::write(evidence.join(format!("{name}.stdout.log")), &output.stdout)
-                .map_err(|error| format!("autonomous_chaos_stdout_write_failed:{error}"))?;
-            fs::write(
-                evidence.join(format!("{name}.stderr.log")),
-                redact(&String::from_utf8_lossy(&output.stderr)),
+    let mut run = |round: u16, offset: usize| -> Result<bool, String> {
+        // Rotate the deterministic execution order each round so hidden
+        // process-global ordering dependencies cannot pass by accident.
+        let index = (offset + usize::from(round)) % filters.len();
+        let filter = filters[index];
+        let output = Command::new("cargo")
+            .args([
+                "test",
+                "-p",
+                "mesh-rt",
+                "--locked",
+                filter,
+                "--",
+                "--nocapture",
+            ])
+            .env("CARGO_INCREMENTAL", "0")
+            .env(
+                "RUST_TEST_THREADS",
+                if round.is_multiple_of(2) { "1" } else { "4" },
             )
-            .map_err(|error| format!("autonomous_chaos_stderr_write_failed:{error}"))?;
-            let success = output.status.success();
-            assertions
-                .entry(filter.to_string())
-                .and_modify(|value| *value = *value && success)
-                .or_insert(success);
-            executions.push(json!({
-                "round": round,
-                "filter": filter,
-                "test_threads": if round % 2 == 0 { 1 } else { 4 },
-                "exit_code": output.status.code(),
-                "passed": success
-            }));
-            passed &= success;
-            if !success {
-                break;
-            }
-        }
-        if !passed {
-            break;
-        }
-    }
+            .current_dir(&root)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("autonomous_chaos_test_start_failed:{filter}:{error}"))?;
+        let name = format!("round-{round:03}-{index:02}-{filter}");
+        fs::write(evidence.join(format!("{name}.stdout.log")), &output.stdout)
+            .map_err(|error| format!("autonomous_chaos_stdout_write_failed:{error}"))?;
+        fs::write(
+            evidence.join(format!("{name}.stderr.log")),
+            redact(&String::from_utf8_lossy(&output.stderr)),
+        )
+        .map_err(|error| format!("autonomous_chaos_stderr_write_failed:{error}"))?;
+        let success = output.status.success();
+        assertions
+            .entry(filter.to_string())
+            .and_modify(|value| *value = *value && success)
+            .or_insert(success);
+        executions.push(json!({
+            "round": round,
+            "filter": filter,
+            "test_threads": if round.is_multiple_of(2) { 1 } else { 4 },
+            "exit_code": output.status.code(),
+            "passed": success
+        }));
+        Ok(success)
+    };
+    // Every filter of every round, until one fails.
+    let passed = (0..args.rounds)
+        .flat_map(|round| (0..filters.len()).map(move |offset| (round, offset)))
+        .map(|(round, offset)| run(round, offset))
+        .find(|outcome| !matches!(outcome, Ok(true)))
+        .transpose()?
+        .is_none();
     let summary = json!({
         "schema_version": 1,
         "rounds_requested": args.rounds,
@@ -253,11 +254,7 @@ fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
         args.rounds,
         evidence.display()
     );
-    if passed {
-        Ok(())
-    } else {
-        Err("autonomous_chaos_gate_failed".to_string())
-    }
+    crate::proof_gates::ensure(passed, "autonomous_chaos_gate_failed")
 }
 
 struct ProofHarness {

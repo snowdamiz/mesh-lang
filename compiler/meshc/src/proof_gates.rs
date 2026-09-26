@@ -490,7 +490,7 @@ fn soak_verdict(release_pass: bool, smoke_pass: bool) -> Result<&'static str, St
 }
 
 /// `error` unless `ok`.
-fn ensure(ok: bool, error: &str) -> Result<(), String> {
+pub(crate) fn ensure(ok: bool, error: &str) -> Result<(), String> {
     if ok {
         Ok(())
     } else {
