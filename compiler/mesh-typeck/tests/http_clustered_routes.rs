@@ -372,6 +372,19 @@ fn clustered_route_wrapper_rejects_each_bad_handler_reference() {
         &check("", "build().handle"),
         "expected a module-qualified handler reference",
     );
+    // A replication count is a positive integer literal, before the handler.
+    for count in ["0", "\"3\"", "build()"] {
+        invalid(
+            &check("", &format!("{count}, Todos.handle")),
+            "the replication count must be a positive integer literal",
+        );
+    }
+    for args in ["", "1, 2, Todos.handle"] {
+        invalid(
+            &check("", args),
+            "expected `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)`",
+        );
+    }
     let private = check("", "Todos.secret");
     assert!(
         private.errors.iter().any(|error| matches!(
