@@ -10255,19 +10255,16 @@ impl<'a> Lowerer<'a> {
     ) -> MirMatchArm {
         self.push_scope();
 
-        let pattern = arm
-            .pattern()
-            .map(|pattern| self.lower_pattern_with_expected(&pattern, expected))
-            .unwrap_or(MirPattern::Wildcard);
+        let written = arm.pattern().expect("the parser gives an arm its pattern");
+        let pattern = self.lower_pattern_with_expected(&written, expected);
 
         let guard = arm.guard().map(|e| self.lower_expr(&e));
 
-        let body = match (arm.body(), arm.pattern()) {
-            (Some(body), _) => self.lower_expr(&body),
-            (None, Some(pattern)) if arm.is_pass_through() => {
-                self.lower_rebuilt_pattern(&pattern, result)
-            }
-            _ => MirExpr::Unit,
+        let body = match arm.body() {
+            Some(body) => self.lower_expr(&body),
+            // An arm without `->` (the parser gives any other its body)
+            // stands for its pattern's value.
+            None => self.lower_rebuilt_pattern(&written, result),
         };
 
         self.pop_scope();
@@ -10320,7 +10317,7 @@ impl<'a> Lowerer<'a> {
                     .collect();
                 (variant, fields)
             }
-            _ => return MirExpr::Unit,
+            _ => unreachable!("the type checker rejects a pattern that is not a value (E0056)"),
         };
         let base_name =
             find_type_for_variant(&variant, Some(&ty), self.registry, Some(fields.len()))

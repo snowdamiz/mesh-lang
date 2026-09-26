@@ -1085,3 +1085,69 @@ end
         "[1, 2]\n[\"a\"]\nabc\n\"abc\"\n%{1 => 2}\n3 0 [] 0.0 false\n"
     );
 }
+
+/// An arm without `->` stands for its pattern's value: a literal of each
+/// kind, a variant, and `nil`, which also matches as a pattern of its own.
+#[test]
+fn pass_through_arms_stand_for_their_patterns() {
+    let out = compile_and_run(
+        r##"fn ints(n :: Int) -> Int do
+  case n do
+    0
+    other -> other + 1
+  end
+end
+
+fn floats(x :: Float) -> Float do
+  case x do
+    1.5
+    other -> other * 2.0
+  end
+end
+
+fn bools(b :: Bool) -> Bool do
+  case b do
+    true
+    false -> true
+  end
+end
+
+fn strings(s :: String) -> String do
+  case s do
+    "same"
+    other -> "${other}!"
+  end
+end
+
+fn options(o :: Option<Int>) -> Option<Int> do
+  case o do
+    None
+    Some(n) -> Some(n + 1)
+  end
+end
+
+fn units(u :: ()) -> () do
+  case u do
+    nil
+  end
+end
+
+fn unit_name(u :: ()) -> String do
+  case u do
+    nil -> "nil"
+  end
+end
+
+fn main() do
+  println("${ints(0)} ${ints(4)} ${floats(1.5)} ${floats(2.0)}")
+  println("${bools(true)} ${bools(false)} ${strings("same")} ${strings("x")}")
+  println("${options(None)} ${options(Some(1))}")
+  println("${units(())} ${unit_name(())}")
+end
+"##,
+    );
+    assert_eq!(
+        out,
+        "0 5 1.5 4.0\ntrue true same x!\nNone Some(2)\n() nil\n"
+    );
+}
