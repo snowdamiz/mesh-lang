@@ -490,6 +490,51 @@ end
     );
 }
 
+// ── Patterns ───────────────────────────────────────────────────────────
+
+/// A variant pattern with too many or too few fields is reported at the
+/// pattern, and a field pattern of the wrong type at that field: the first
+/// was reported at the whole file, and the language server did not show it.
+#[test]
+fn variant_pattern_errors_are_reported_at_the_pattern() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"fn extra(o :: Option<Int>) -> Int do
+  case o do
+    Some(1, 2) -> 1
+    _ -> 3
+  end
+end
+
+fn nullary(o :: Option<Int>) -> Int do
+  case o do
+    None(x) -> 2
+    _ -> 3
+  end
+end
+
+type Count do
+  Many(Int)
+  Zero
+end
+
+fn field(c :: Count) -> Int do
+  case c do
+    Many("s") -> 1
+    _ -> 2
+  end
+end
+"#
+        ),
+        [
+            at("arity mismatch: expected 1 argument, found 2", "Some(1, 2)"),
+            at("arity mismatch: expected 0 arguments, found 1", "None(x)"),
+            at("type mismatch: expected `Int`, found `String`", "\"s\""),
+        ]
+    );
+}
+
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
 /// `true | false` inside another pattern covers every Bool: the column's

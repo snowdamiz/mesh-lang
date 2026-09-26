@@ -13736,48 +13736,32 @@ fn infer_constructor_pattern(
         }
     };
 
-    let ctor_ty = ctx.instantiate(&ctor_scheme);
-
-    // Collect sub-patterns from the constructor.
+    // A variant with fields is a function of them, a nullary one its type.
+    let (field_types, ty) = match ctx.instantiate(&ctor_scheme) {
+        Ty::Fun(field_types, ty) => (field_types, *ty),
+        ty => (Vec::new(), ty),
+    };
     let sub_patterns: Vec<Pattern> = ctor_pat.fields().collect();
-
-    match ctor_ty {
-        Ty::Fun(param_types, ret) => {
-            // Constructor with fields: unify sub-pattern types with param types.
-            if sub_patterns.len() != param_types.len() {
-                let err = TypeError::ArityMismatch {
-                    expected: param_types.len(),
-                    found: sub_patterns.len(),
-                    origin: ConstraintOrigin::Builtin,
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-
-            for (sub_pat, expected_ty) in sub_patterns.iter().zip(param_types.iter()) {
-                let sub_ty = infer_pattern(ctx, env, sub_pat, types, type_registry)?;
-                ctx.unify(expected_ty.clone(), sub_ty, ConstraintOrigin::Builtin)?;
-            }
-
-            types.insert(pat.syntax().text_range(), (*ret).clone());
-            Ok(*ret)
-        }
-        _ => {
-            // Nullary constructor (not a function): no sub-patterns expected.
-            if !sub_patterns.is_empty() {
-                let err = TypeError::ArityMismatch {
-                    expected: 0,
-                    found: sub_patterns.len(),
-                    origin: ConstraintOrigin::Builtin,
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            }
-
-            types.insert(pat.syntax().text_range(), ctor_ty.clone());
-            Ok(ctor_ty)
-        }
+    if sub_patterns.len() != field_types.len() {
+        let err = TypeError::ArityMismatch {
+            expected: field_types.len(),
+            found: sub_patterns.len(),
+            origin: ConstraintOrigin::Pattern {
+                pattern_span: pat.syntax().text_range(),
+            },
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
     }
+    for (sub_pat, field_ty) in sub_patterns.iter().zip(field_types) {
+        let sub_ty = infer_pattern(ctx, env, sub_pat, types, type_registry)?;
+        let origin = ConstraintOrigin::Pattern {
+            pattern_span: sub_pat.syntax().text_range(),
+        };
+        ctx.unify(field_ty, sub_ty, origin)?;
+    }
+    types.insert(pat.syntax().text_range(), ty.clone());
+    Ok(ty)
 }
 
 /// The environment name of a constructor pattern's variant: `Circle` or
