@@ -82,7 +82,7 @@ fn main() do
 end
 ```
 
-`Node.connect` returns `0` after an authenticated session is established, `-1` if the local node has not started, `-2` for a TCP connection failure, and `-3` for invalid input or handshake failure. After authentication, nodes exchange their global registry state.
+`Node.connect` returns `0` after an authenticated session is established, `-1` if the local node has not started, `-2` for a TCP connection failure, and `-3` for invalid input or handshake failure. After authentication, nodes exchange their global registry state; a successful `Node.connect` returns once the peer's global names resolve locally.
 
 ### Querying the Cluster
 

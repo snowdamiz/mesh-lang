@@ -297,14 +297,11 @@ pub(crate) fn broadcast_global_unregister(name: &str) {
 ///
 /// Called right after `send_peer_list` on both server (accept) and client
 /// (connect) sides so that both nodes converge to the union of all known
-/// global names. If there are no local registrations, this is a no-op.
+/// global names. An empty snapshot is sent too: it tells a connecting peer
+/// that it now knows every name there is.
 pub(crate) fn send_global_sync(session: &std::sync::Arc<super::node::NodeSession>) {
     let registry = global_name_registry();
     let snapshot = registry.snapshot();
-
-    if snapshot.is_empty() {
-        return; // Nothing to sync
-    }
 
     let mut payload = Vec::new();
     payload.push(super::node::DIST_GLOBAL_SYNC);

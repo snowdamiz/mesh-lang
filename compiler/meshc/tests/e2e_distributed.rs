@@ -144,19 +144,10 @@ end
 
 #[test]
 fn nodes_exchange_messages_through_global_names() {
-    let spoke = r#"fn await_name(name :: String) -> Pid do
-  let pid = Global.whereis(name)
-  if pid == Process.whereis("none-such") do
-    Timer.sleep(10)
-    await_name(name)
-  else
-    pid
-  end
-end
-
-actor asker() do
+    // `Node.connect` returns once the hub's global names are known here.
+    let spoke = r#"actor asker() do
   receive do
-    _ -> send(await_name("echo"), 41)
+    _ -> send(Global.whereis("echo"), 41)
   end
   receive do
     n -> println("reply=#{n}")

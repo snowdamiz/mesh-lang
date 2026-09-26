@@ -698,6 +698,8 @@ pub struct NodeSession {
     /// Used by DIST_SPAWN_REPLY handler to route the spawned PID back to
     /// the requesting process.
     pub(crate) pending_spawns: std::sync::Mutex<FxHashMap<u64, crate::actor::process::ProcessId>>,
+    /// Set once the peer's global registry snapshot has been merged.
+    global_names_received: AtomicBool,
     /// Pending continuity prepare requests waiting for a replica ack.
     /// The sender side resolves to Ok(()) on ack or Err(reason) on reject/timeout.
     pub(crate) pending_continuity_prepares: PendingCooperativeReplies<()>,
@@ -831,6 +833,7 @@ impl NodeSession {
             negotiated_protocol,
             remote_identity,
             pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
+            global_names_received: AtomicBool::new(false),
             pending_continuity_prepares: std::sync::Mutex::new(FxHashMap::default()),
             pending_operator_queries: std::sync::Mutex::new(FxHashMap::default()),
             pending_consensus_rpcs: std::sync::Mutex::new(FxHashMap::default()),
@@ -2428,6 +2431,7 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                                 entries.push((name.to_string(), pid, node_name.to_string()));
                             }
                             crate::dist::global::global_name_registry().merge_snapshot(entries);
+                            session.global_names_received.store(true, Ordering::Release);
                         }
                     }
                     DIST_CONTINUITY_UPSERT => {
@@ -7072,6 +7076,9 @@ fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSes
 // mesh_node_connect -- extern "C" entry point for outgoing connections
 // ---------------------------------------------------------------------------
 
+/// How long `Node.connect` waits for the peer's global names.
+const GLOBAL_NAMES_WAIT: Duration = Duration::from_secs(5);
+
 /// Connect to a remote node and perform mutual cookie authentication.
 ///
 /// Called from compiled Mesh code via `Node.connect("name@host:port")`.
@@ -7105,7 +7112,18 @@ pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
     };
 
     match connect_to_remote_node(state, &target) {
-        Ok(_) => 0,
+        Ok(session) => {
+            // Each side sends its global names as the session starts; wait
+            // for the peer's, so they resolve as soon as this returns.
+            let deadline = Instant::now() + GLOBAL_NAMES_WAIT;
+            while !session.global_names_received.load(Ordering::Acquire)
+                && !session.shutdown.load(Ordering::Acquire)
+                && Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            0
+        }
         Err(error) => {
             eprintln!("mesh node: {}", error);
             if error.starts_with("TCP connect") {
