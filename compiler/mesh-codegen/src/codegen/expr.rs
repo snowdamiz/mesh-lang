@@ -3392,21 +3392,6 @@ impl<'ctx> CodeGen<'ctx> {
         )
     }
 
-    /// Call a runtime function that returns a value.
-    fn call_runtime(
-        &self,
-        name: &str,
-        args: &[BasicMetadataValueEnum<'ctx>],
-        label: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        self.builder
-            .build_call(get_intrinsic(&self.module, name), args, label)
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| format!("{name} returned void"))
-    }
-
     /// A for-in loop: the list of `body`'s values for the elements `filter`
     /// keeps, with `vars` bound to each element's values.
     ///
@@ -3429,7 +3414,8 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.current_function();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         // The list builder moves when it grows, so it lives in a slot.
-        let list = self.call_runtime("mesh_list_builder_new", &[capacity.into()], "result_list")?;
+        let list =
+            self.codegen_runtime_call("mesh_list_builder_new", &[capacity.into()], "result_list")?;
         let result = self
             .builder
             .build_alloca(ptr_ty, "result_alloca")
@@ -3471,7 +3457,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_load(ptr_ty, result, "res_list")
                 .map_err(|e| e.to_string())?;
-            let pushed = self.call_runtime(
+            let pushed = self.codegen_runtime_call(
                 "mesh_list_builder_push",
                 &[list.into(), value.into()],
                 "res_list_pushed",
@@ -4748,7 +4734,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let list = self.codegen_expr(collection)?;
         let len = self
-            .call_runtime("mesh_list_length", &[list.into()], "len")?
+            .codegen_runtime_call("mesh_list_length", &[list.into()], "len")?
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4758,8 +4744,11 @@ impl<'ctx> CodeGen<'ctx> {
             filter,
             body,
             |cg, index| {
-                let raw =
-                    cg.call_runtime("mesh_list_get", &[list.into(), index.into()], "raw_elem")?;
+                let raw = cg.codegen_runtime_call(
+                    "mesh_list_get",
+                    &[list.into(), index.into()],
+                    "raw_elem",
+                )?;
                 Ok(vec![cg.convert_from_list_element(
                     raw.into_int_value(),
                     elem_ty,
@@ -4781,7 +4770,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let map = self.codegen_expr(collection)?;
         let len = self
-            .call_runtime("mesh_map_size", &[map.into()], "map_len")?
+            .codegen_runtime_call("mesh_map_size", &[map.into()], "map_len")?
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4792,8 +4781,8 @@ impl<'ctx> CodeGen<'ctx> {
             body,
             |cg, index| {
                 let args = [map.into(), index.into()];
-                let key = cg.call_runtime("mesh_map_entry_key", &args, "raw_key")?;
-                let value = cg.call_runtime("mesh_map_entry_value", &args, "raw_val")?;
+                let key = cg.codegen_runtime_call("mesh_map_entry_key", &args, "raw_key")?;
+                let value = cg.codegen_runtime_call("mesh_map_entry_value", &args, "raw_val")?;
                 Ok(vec![
                     cg.convert_from_list_element(key.into_int_value(), key_ty)?,
                     cg.convert_from_list_element(value.into_int_value(), val_ty)?,
@@ -4812,7 +4801,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let set = self.codegen_expr(collection)?;
         let len = self
-            .call_runtime("mesh_set_size", &[set.into()], "set_len")?
+            .codegen_runtime_call("mesh_set_size", &[set.into()], "set_len")?
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4822,7 +4811,7 @@ impl<'ctx> CodeGen<'ctx> {
             filter,
             body,
             |cg, index| {
-                let raw = cg.call_runtime(
+                let raw = cg.codegen_runtime_call(
                     "mesh_set_element_at",
                     &[set.into(), index.into()],
                     "raw_elem",
@@ -4855,7 +4844,7 @@ impl<'ctx> CodeGen<'ctx> {
         // handle, or a user struct passed to its `next` by value).
         let iterable = self.codegen_expr(iterable)?;
         let iterator = match iter_fn {
-            Some(iter_fn) => self.call_runtime(iter_fn, &[iterable.into()], "iter")?,
+            Some(iter_fn) => self.codegen_runtime_call(iter_fn, &[iterable.into()], "iter")?,
             None => iterable,
         };
         self.codegen_comprehension(
@@ -4868,7 +4857,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // (`{ tag, value }`, tag 0 for Some). A user `next` returns
                 // it by value, with a scalar payload boxed; it is spilled to
                 // read it the same way.
-                let next = cg.call_runtime(next_fn, &[iterator.into()], "next_result")?;
+                let next = cg.codegen_runtime_call(next_fn, &[iterator.into()], "next_result")?;
                 let (option, option_ty, boxed) = match next {
                     BasicValueEnum::StructValue(option) => {
                         let option_ty = option.get_type();
