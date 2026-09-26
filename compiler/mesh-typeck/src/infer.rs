@@ -12928,13 +12928,11 @@ fn infer_map_literal(
                     fn_constraints,
                 )?
             };
-            ctx.unify(
-                key_inferred,
-                k_ty.clone(),
-                ConstraintOrigin::Annotation {
-                    annotation_span: entry.syntax().text_range(),
-                },
-            )?;
+            // The map's keys are of the first one's type.
+            let origin = ConstraintOrigin::Expr {
+                span: key_expr.syntax().text_range(),
+            };
+            ctx.unify(k_ty.clone(), key_inferred, origin)?;
         }
         if let Some(val_expr) = entry.value() {
             let val_inferred = infer_expr(
@@ -12946,13 +12944,10 @@ fn infer_map_literal(
                 trait_registry,
                 fn_constraints,
             )?;
-            ctx.unify(
-                val_inferred,
-                v_ty.clone(),
-                ConstraintOrigin::Annotation {
-                    annotation_span: entry.syntax().text_range(),
-                },
-            )?;
+            let origin = ConstraintOrigin::Expr {
+                span: val_expr.syntax().text_range(),
+            };
+            ctx.unify(v_ty.clone(), val_inferred, origin)?;
         }
     }
 
@@ -12985,13 +12980,11 @@ fn infer_list_literal(
             trait_registry,
             fn_constraints,
         )?;
-        ctx.unify(
-            t,
-            elem_ty.clone(),
-            ConstraintOrigin::Annotation {
-                annotation_span: elem.syntax().text_range(),
-            },
-        )?;
+        // The list's elements are of the first one's type.
+        let origin = ConstraintOrigin::Expr {
+            span: elem.syntax().text_range(),
+        };
+        ctx.unify(elem_ty.clone(), t, origin)?;
     }
     let resolved = ctx.resolve(elem_ty);
     let result_ty = Ty::list(resolved);

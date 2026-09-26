@@ -1001,6 +1001,35 @@ end
     );
 }
 
+/// A list's elements, and a map's keys and values, are of the first one's
+/// type, and one of another type is reported at it as found where that
+/// type was expected: it was the other way round, "from annotation".
+#[test]
+fn collection_literal_mismatches_are_reported_at_the_element() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"fn list() do
+  [1, "a"]
+end
+
+fn keys() do
+  %{"a" => 1, 2 => 3}
+end
+
+fn values() do
+  %{"a" => 1, "b" => "c"}
+end
+"#
+        ),
+        [
+            at("type mismatch: expected `Int`, found `String`", "\"a\""),
+            at("type mismatch: expected `String`, found `Int`", "2"),
+            at("type mismatch: expected `Int`, found `String`", "\"c\""),
+        ]
+    );
+}
+
 /// What goes wrong in a pipe is reported: its value, its function, a
 /// clustered route wrapper out of its place, and a slot past the function's
 /// arguments, with the function named as written (a qualified one was ``).
