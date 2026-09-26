@@ -8246,14 +8246,9 @@ fn is_native_abi_return(ty: &Ty) -> bool {
     if is_native_abi_value(ty) {
         return true;
     }
-    matches!(
-        ty,
-        Ty::App(constructor, values)
-            if matches!(
-                constructor.as_ref(),
-                Ty::Con(con) if matches!(con.name.as_str(), "Result" | "Option")
-            ) && values.iter().all(is_native_abi_value)
-    )
+    ty.args_of("Result")
+        .or_else(|| ty.args_of("Option"))
+        .is_some_and(|values| values.iter().all(is_native_abi_value))
 }
 
 fn validate_export_declaration(ctx: &mut InferCtx, function: &FnDef) {
@@ -8316,10 +8311,8 @@ fn validate_export_abi_types(
 ) {
     let valid_params = matches!(params, [Ty::Con(con)] if con.name == "Bytes");
     let valid_return = matches!(
-        return_type,
-        Some(Ty::App(constructor, values))
-            if matches!(constructor.as_ref(), Ty::Con(con) if con.name == "Result")
-                && matches!(values.as_slice(), [Ty::Con(ok), Ty::Con(error)] if ok.name == "Bytes" && error.name == "String")
+        return_type.and_then(|ty| ty.args_of("Result")),
+        Some([Ty::Con(ok), Ty::Con(error)]) if ok.name == "Bytes" && error.name == "String"
     );
     if !valid_params || !valid_return {
         ctx.errors.push(TypeError::ExportDeclarationInvalid {
@@ -11506,10 +11499,8 @@ fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
     if let Ty::Tuple(elems) = ty {
         return exhaustiveness::tuple_type_info(elems.len());
     }
-    if let Ty::App(con, _) = ty {
-        if matches!(con.as_ref(), Ty::Con(tc) if tc.name == exhaustiveness::LIST) {
-            return exhaustiveness::list_type_info();
-        }
+    if ty.args_of(exhaustiveness::LIST).is_some() {
+        return exhaustiveness::list_type_info();
     }
     if let Some(name) = ty.con_name() {
         // Check if it's Bool.
@@ -12314,8 +12305,7 @@ fn infer_field_access(
         // An `Iter<T>` pipeline's methods are the typed `Iter` functions
         // (`it.next()` is `Iter.next(it)`): the untyped built-in `Iterator`
         // impl of the handle behind it would otherwise answer.
-        let is_iter = matches!(&resolved_base, Ty::App(con, _) if matches!(con.as_ref(), Ty::Con(c) if c.name == "Iter"));
-        if is_iter {
+        if resolved_base.args_of("Iter").is_some() {
             if let Some(scheme) = stdlib_modules(ctx.test_builtins)
                 .get("Iter")
                 .and_then(|module| module.get(&field_name))
@@ -12363,14 +12353,10 @@ fn infer_field_access(
     // For known concrete non-struct types (Ty::Con, Ty::App), return
     // Err(NoSuchField) to trigger the retry mechanism in infer_call.
     // Only return Ok(fresh_var) for truly unresolved types (Ty::Var).
-    match &resolved_base {
+    match resolved_base.con_name() {
         // A type already reported unknown has no fields to check.
-        Ty::Con(con) if ctx.unknown_types.contains(&con.name) => return Ok(ctx.fresh_var()),
-        Ty::App(head, _) if matches!(head.as_ref(), Ty::Con(con) if ctx.unknown_types.contains(&con.name)) =>
-        {
-            return Ok(ctx.fresh_var());
-        }
-        Ty::Con(_) | Ty::App(_, _) => {
+        Some(name) if ctx.unknown_types.contains(name) => return Ok(ctx.fresh_var()),
+        Some(_) => {
             let err = TypeError::NoSuchField {
                 ty: resolved_base,
                 field_name,
@@ -12379,7 +12365,7 @@ fn infer_field_access(
             ctx.errors.push(err.clone());
             return Err(err);
         }
-        _ => {} // Ty::Var, Ty::Fun, etc. -- leave as fresh_var for unresolved types
+        None => {} // Ty::Var, Ty::Fun, etc. -- leave as fresh_var for unresolved types
     }
 
     // The value's type may be fixed later in the function (a closure's
@@ -12398,11 +12384,7 @@ fn infer_field_access(
 
 /// Whether `<>`/`++` joins values of type `ty`: strings or lists.
 fn is_concatenable(ty: &Ty) -> bool {
-    match ty {
-        Ty::Con(tc) => tc.name == "String",
-        Ty::App(con, _) => matches!(con.as_ref(), Ty::Con(tc) if tc.name == "List"),
-        _ => false,
-    }
+    matches!(ty.con_name(), Some("String" | "List"))
 }
 
 /// Check the operands of `<>`/`++` whose type was unknown when they were
@@ -12697,14 +12679,11 @@ fn resolve_struct_name(
 /// The type of a value of struct `name` with type arguments `args`, keeping
 /// the display prefix an import gave the struct.
 fn struct_value_type(env: &TypeEnv, name: &str, args: Vec<Ty>) -> Ty {
-    let tycon = match env.lookup(name).map(|scheme| &scheme.ty) {
-        Some(Ty::App(inner, _)) => match inner.as_ref() {
-            Ty::Con(tc) => tc.clone(),
-            _ => TyCon::new(name),
-        },
-        Some(Ty::Con(tc)) => tc.clone(),
-        _ => TyCon::new(name),
-    };
+    let tycon = env
+        .lookup(name)
+        .and_then(|scheme| scheme.ty.con())
+        .cloned()
+        .unwrap_or_else(|| TyCon::new(name));
     Ty::App(Box::new(Ty::Con(tycon)), args)
 }
 
@@ -12952,9 +12931,7 @@ fn infer_pattern(
                     let candidate = ctx.instantiate(scheme);
                     let resolved = ctx.resolve(candidate.clone());
                     // If the name resolves to a sum type (nullary constructor), use it.
-                    let is_sum_type =
-                        matches!(&resolved, Ty::App(con, _) if matches!(con.as_ref(), Ty::Con(_)));
-                    if is_sum_type {
+                    if matches!(resolved, Ty::App(..)) {
                         types.insert(pat.syntax().text_range(), candidate.clone());
                         return Ok(candidate);
                     }

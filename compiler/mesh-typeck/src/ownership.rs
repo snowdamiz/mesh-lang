@@ -1675,10 +1675,7 @@ fn is_resource_sum_constructor(registry: &TypeRegistry, ty: &Ty, callee: &str) -
 }
 
 fn is_unsupported_resource_wrapper(registry: &TypeRegistry, ty: &Ty) -> bool {
-    let Ty::App(constructor, arguments) = ty else {
-        return false;
-    };
-    let Ty::Con(constructor) = constructor.as_ref() else {
+    let (Ty::App(_, arguments), Some(constructor)) = (ty, ty.con_name()) else {
         return false;
     };
 
@@ -1686,12 +1683,12 @@ fn is_unsupported_resource_wrapper(registry: &TypeRegistry, ty: &Ty) -> bool {
         .iter()
         .any(|argument| registry.is_resource_type(argument))
         && !matches!(
-            constructor.name.as_str(),
+            constructor,
             "List" | "Map" | "Set" | "Pid" | "Option" | "Result"
         )
-        && !registry.is_resource_name(&constructor.name)
-        && !registry.struct_defs.contains_key(&constructor.name)
-        && !registry.sum_type_defs.contains_key(&constructor.name)
+        && !registry.is_resource_name(constructor)
+        && !registry.struct_defs.contains_key(constructor)
+        && !registry.sum_type_defs.contains_key(constructor)
 }
 
 fn unsupported_wrapper_reason(ty: &Ty) -> String {
