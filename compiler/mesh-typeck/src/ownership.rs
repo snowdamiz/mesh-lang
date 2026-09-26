@@ -800,15 +800,7 @@ impl Checker<'_> {
                     .filter(|node| node.kind() == SyntaxKind::INTERPOLATION)
                 {
                     for inner in interpolation.children().filter_map(Expr::cast) {
-                        if self.expr_is_resource(&inner) {
-                            self.errors.push(TypeError::ResourceViolation {
-                                reason: format!(
-                                    "resource `{}` cannot be interpolated or formatted",
-                                    self.expr_label(&inner)
-                                ),
-                                span: inner.syntax().text_range(),
-                            });
-                        }
+                        self.reject_resource(&inner, "cannot be interpolated or formatted");
                         self.check_expr(&inner, Usage::Read);
                     }
                 }
@@ -855,14 +847,11 @@ impl Checker<'_> {
             Expr::SendExpr(send) => {
                 if let Some(arguments) = send.arg_list() {
                     for (index, argument) in arguments.args().enumerate() {
-                        if index == 1 && self.expr_is_resource(&argument) {
-                            self.errors.push(TypeError::ResourceViolation {
-                                reason: format!(
-                                    "resource `{}` cannot cross an actor mailbox boundary",
-                                    self.expr_label(&argument)
-                                ),
-                                span: argument.syntax().text_range(),
-                            });
+                        if index == 1 {
+                            self.reject_resource(
+                                &argument,
+                                "cannot cross an actor mailbox boundary",
+                            );
                         }
                         self.check_expr(&argument, Usage::Read);
                     }
@@ -871,14 +860,11 @@ impl Checker<'_> {
             Expr::SpawnExpr(spawn) => {
                 if let Some(arguments) = spawn.arg_list() {
                     for (index, argument) in arguments.args().enumerate() {
-                        if index > 0 && self.expr_is_resource(&argument) {
-                            self.errors.push(TypeError::ResourceViolation {
-                                reason: format!(
-                                    "resource `{}` cannot be transferred into a spawned actor",
-                                    self.expr_label(&argument)
-                                ),
-                                span: argument.syntax().text_range(),
-                            });
+                        if index > 0 {
+                            self.reject_resource(
+                                &argument,
+                                "cannot be transferred into a spawned actor",
+                            );
                         }
                         self.check_expr(&argument, Usage::Read);
                     }
@@ -886,15 +872,7 @@ impl Checker<'_> {
             }
             Expr::ListLiteral(list) => {
                 for element in list.elements() {
-                    if self.expr_is_resource(&element) {
-                        self.errors.push(TypeError::ResourceViolation {
-                            reason: format!(
-                                "resource `{}` cannot enter an unrestricted collection",
-                                self.expr_label(&element)
-                            ),
-                            span: element.syntax().text_range(),
-                        });
-                    }
+                    self.reject_resource(&element, "cannot enter an unrestricted collection");
                     self.check_expr(&element, Usage::Read);
                 }
             }
@@ -902,30 +880,14 @@ impl Checker<'_> {
                 for entry in map.entries() {
                     let key = (!entry.is_keyword_entry()).then(|| entry.key()).flatten();
                     for element in key.into_iter().chain(entry.value()) {
-                        if self.expr_is_resource(&element) {
-                            self.errors.push(TypeError::ResourceViolation {
-                                reason: format!(
-                                    "resource `{}` cannot enter an unrestricted collection",
-                                    self.expr_label(&element)
-                                ),
-                                span: element.syntax().text_range(),
-                            });
-                        }
+                        self.reject_resource(&element, "cannot enter an unrestricted collection");
                         self.check_expr(&element, Usage::Read);
                     }
                 }
             }
             Expr::JsonExpr(json) => {
                 for value in json.fields().filter_map(|field| field.value()) {
-                    if self.expr_is_resource(&value) {
-                        self.errors.push(TypeError::ResourceViolation {
-                            reason: format!(
-                                "resource `{}` cannot cross JSON or serialization boundaries",
-                                self.expr_label(&value)
-                            ),
-                            span: value.syntax().text_range(),
-                        });
-                    }
+                    self.reject_resource(&value, "cannot cross JSON or serialization boundaries");
                     self.check_expr(&value, Usage::Read);
                 }
             }
@@ -933,32 +895,17 @@ impl Checker<'_> {
             Expr::Block(block) => self.check_block(block),
             Expr::TupleExpr(tuple) => {
                 for element in tuple.elements() {
-                    let usage = if self.expr_is_resource(&element) {
-                        Usage::Move
-                    } else {
-                        Usage::Read
-                    };
-                    self.check_expr(&element, usage);
+                    self.check_expr(&element, self.usage_of(&element));
                 }
             }
             Expr::ReturnExpr(return_expr) => {
                 if let Some(value) = return_expr.value() {
-                    let usage = if self.expr_is_resource(&value) {
-                        Usage::Move
-                    } else {
-                        Usage::Read
-                    };
-                    self.check_expr(&value, usage);
+                    self.check_expr(&value, self.usage_of(&value));
                 }
             }
             Expr::TryExpr(try_expr) => {
                 if let Some(operand) = try_expr.operand() {
-                    let usage = if self.expr_is_resource(&operand) {
-                        Usage::Move
-                    } else {
-                        Usage::Read
-                    };
-                    self.check_expr(&operand, usage);
+                    self.check_expr(&operand, self.usage_of(&operand));
                 }
             }
             _ => {
@@ -968,6 +915,27 @@ impl Checker<'_> {
                     }
                 }
             }
+        }
+    }
+
+    /// Report `expr` if it is a resource, which `cannot` (as "cannot be
+    /// interpolated or formatted") says it may not.
+    fn reject_resource(&mut self, expr: &Expr, cannot: &str) {
+        if self.expr_is_resource(expr) {
+            self.errors.push(TypeError::ResourceViolation {
+                reason: format!("resource `{}` {cannot}", self.expr_label(expr)),
+                span: expr.syntax().text_range(),
+            });
+        }
+    }
+
+    /// How a value given up whole is used: a resource moves, anything else
+    /// is read.
+    fn usage_of(&self, expr: &Expr) -> Usage {
+        if self.expr_is_resource(expr) {
+            Usage::Move
+        } else {
+            Usage::Read
         }
     }
 
@@ -1121,23 +1089,12 @@ impl Checker<'_> {
     }
 
     fn check_struct_update(&mut self, update: &StructUpdate) {
-        if let Some(base) = update.base_expr() {
-            let usage = if self.expr_is_resource(&base) {
-                Usage::Move
-            } else {
-                Usage::Read
-            };
-            self.check_expr(&base, usage);
-        }
-        for field in update.override_fields() {
-            if let Some(value) = field.value() {
-                let usage = if self.expr_is_resource(&value) {
-                    Usage::Move
-                } else {
-                    Usage::Read
-                };
-                self.check_expr(&value, usage);
-            }
+        let values = update
+            .override_fields()
+            .into_iter()
+            .filter_map(|field| field.value());
+        for value in update.base_expr().into_iter().chain(values) {
+            self.check_expr(&value, self.usage_of(&value));
         }
     }
 
@@ -1562,15 +1519,16 @@ impl Checker<'_> {
             .is_some_and(|ty| self.registry.is_resource_type(ty))
     }
 
+    /// How an error names a resource: by its name, or else by its type (a
+    /// resource's is always known).
     fn expr_label(&self, expr: &Expr) -> String {
-        if let Expr::NameRef(name) = expr {
-            if let Some(text) = name.text() {
-                return text;
-            }
+        match expr {
+            Expr::NameRef(name) => name.text().unwrap_or_default(),
+            _ => self
+                .known_expr_type(expr)
+                .map(|ty| ty.to_string())
+                .unwrap_or_default(),
         }
-        self.known_expr_type(expr)
-            .map(|ty| ty.to_string())
-            .unwrap_or_else(|| "value".to_string())
     }
 }
 
@@ -1698,38 +1656,22 @@ fn forbidden_call_reason(callee: &str) -> Option<&'static str> {
 }
 
 fn is_unrestricted_collection_type(ty: &Ty) -> bool {
-    match ty {
-        Ty::Con(constructor) => matches!(constructor.name.as_str(), "List" | "Map" | "Set"),
-        Ty::App(constructor, _) => matches!(
-            constructor.as_ref(),
-            Ty::Con(constructor) if matches!(constructor.name.as_str(), "List" | "Map" | "Set")
-        ),
-        _ => false,
-    }
+    matches!(ty.con_name(), Some("List" | "Map" | "Set"))
 }
 
+/// Whether `callee` is a variant of `ty`, a sum type that holds a resource.
 fn is_resource_sum_constructor(registry: &TypeRegistry, ty: &Ty, callee: &str) -> bool {
-    if !registry.is_resource_type(ty) {
-        return false;
-    }
-    let type_name = match ty {
-        Ty::Con(constructor) => constructor.name.as_str(),
-        Ty::App(constructor, _) => match constructor.as_ref() {
-            Ty::Con(constructor) => constructor.name.as_str(),
-            _ => return false,
-        },
-        _ => return false,
-    };
     let variant_name = callee.rsplit('.').next().unwrap_or(callee);
-    registry
-        .sum_type_defs
-        .get(type_name)
-        .is_some_and(|definition| {
-            definition
-                .variants
-                .iter()
-                .any(|variant| variant.name == variant_name)
-        })
+    registry.is_resource_type(ty)
+        && ty
+            .con_name()
+            .and_then(|name| registry.sum_type_defs.get(name))
+            .is_some_and(|definition| {
+                definition
+                    .variants
+                    .iter()
+                    .any(|variant| variant.name == variant_name)
+            })
 }
 
 fn is_unsupported_resource_wrapper(registry: &TypeRegistry, ty: &Ty) -> bool {
