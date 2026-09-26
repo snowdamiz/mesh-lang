@@ -397,3 +397,63 @@ fn clustered_route_wrapper_rejects_each_bad_handler_reference() {
     let fine = check("", "Todos.handle");
     assert!(fine.errors.is_empty(), "{:?}", fine.errors);
 }
+
+/// In a program checked alone, in no module, a handler runs under its own
+/// name; a local or top-level binding of it, a function of two parameters
+/// and a count that is no integer are each an error.
+#[test]
+fn clustered_route_wrapper_in_no_module() {
+    let src = r#"
+pub fn handle(req :: Request) -> Response do
+  HTTP.response(200, "ok")
+end
+
+pub fn two(req :: Request, n :: Int) -> Response do
+  HTTP.response(200, "ok")
+end
+
+let top = handle
+
+fn local_binding() do
+  let local = handle
+  HTTP.router() |> HTTP.on_get("/a", HTTP.clustered(local))
+end
+
+fn two_params() do
+  HTTP.router() |> HTTP.on_get("/b", HTTP.clustered(two))
+end
+
+fn float_count() do
+  HTTP.router() |> HTTP.on_get("/c", HTTP.clustered(1.5, handle))
+end
+
+fn top_level() do
+  HTTP.router() |> HTTP.on_get("/d", HTTP.clustered(top))
+end
+
+fn fine() do
+  HTTP.router() |> HTTP.on_get("/e", HTTP.clustered(handle))
+end
+"#;
+    let result = check_source(src, ImportContext::empty());
+    let reasons: Vec<&str> = result
+        .errors
+        .iter()
+        .filter_map(|error| match error {
+            TypeError::HttpClusteredInvalidArguments { reason, .. } => Some(reason.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "`local` must be a public top-level function reference, not a local binding or unsupported value",
+            "`two` must have type `(Request) -> Response`",
+            "the replication count must be a positive integer literal, e.g. `HTTP.clustered(3, handler)`",
+            "`top` must be a public top-level function reference, not a local binding or unsupported value",
+        ]
+    );
+    assert_eq!(result.errors.len(), 4, "{:?}", result.errors);
+    let handler = metadata_by_runtime_name(&result, "handle");
+    assert_eq!(handler.defining_module, None);
+}
