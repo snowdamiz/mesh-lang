@@ -12057,43 +12057,6 @@ fn build_abs_type_registry(type_registry: &TypeRegistry) -> AbsTypeRegistry {
     abs_reg.register("Bool", AbsTypeInfo::Bool);
     abs_reg.register(exhaustiveness::LIST, exhaustiveness::list_type_info());
 
-    // Register Option and Result as sum types if they exist.
-    // These are built-in but not in our type_registry, so add them.
-    if abs_reg.lookup("Option").is_none() {
-        abs_reg.register(
-            "Option",
-            AbsTypeInfo::SumType {
-                variants: vec![
-                    ConstructorSig {
-                        name: "Some".to_string(),
-                        arity: 1,
-                    },
-                    ConstructorSig {
-                        name: "None".to_string(),
-                        arity: 0,
-                    },
-                ],
-            },
-        );
-    }
-    if abs_reg.lookup("Result").is_none() {
-        abs_reg.register(
-            "Result",
-            AbsTypeInfo::SumType {
-                variants: vec![
-                    ConstructorSig {
-                        name: "Ok".to_string(),
-                        arity: 1,
-                    },
-                    ConstructorSig {
-                        name: "Err".to_string(),
-                        arity: 1,
-                    },
-                ],
-            },
-        );
-    }
-
     abs_reg
 }
 
