@@ -1878,6 +1878,15 @@ fn sum_type_simple() {
 }
 
 #[test]
+fn sum_type_stops_at_a_malformed_variant() {
+    // The unclosed variant is the error; the variants after it are not read
+    // as more of the same mistake.
+    let parse = parse("type Shape do\n  Circle(Float\n  Square\nend\n");
+    let messages: Vec<&str> = parse.errors().iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(messages, ["expected `)`"]);
+}
+
+#[test]
 fn sum_type_generic() {
     assert_snapshot!(source_and_debug(
         "type Option<T> do\n  Some(T)\n  None\nend"
