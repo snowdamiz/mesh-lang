@@ -3,15 +3,11 @@ mod artifacts;
 
 use serde_json::json;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
-/// The program runs in milliseconds, but a host that assesses each new
-/// process before it starts (macOS, under cargo) can hold it for seconds.
-const RUN_TIMEOUT: Duration = Duration::from_secs(60);
+const RUN_TIMEOUT: Duration = Duration::from_secs(10);
 const SQLITE_BUILT_PACKAGE_SOURCE: &str = r#"
 fn ensure_schema(db_path :: String) -> Int!String do
   let db = Sqlite.open(db_path)?
@@ -151,43 +147,6 @@ fn build_package_binary(project_dir: &Path, artifacts: &Path) -> PathBuf {
     binary_path
 }
 
-fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(50);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    out.read_to_end(&mut stdout).ok();
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    err.read_to_end(&mut stderr).ok();
-                }
-                return Ok(Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "binary timed out after {} seconds",
-                        timeout.as_secs()
-                    ));
-                }
-                sleep(poll_interval);
-            }
-            Err(error) => return Err(format!("error waiting for process: {error}")),
-        }
-    }
-}
-
 fn run_binary(binary_path: &Path, current_dir: &Path, artifacts: &Path, label: &str) -> Output {
     let child = Command::new(binary_path)
         .current_dir(current_dir)
@@ -202,8 +161,11 @@ fn run_binary(binary_path: &Path, current_dir: &Path, artifacts: &Path, label: &
             )
         });
 
-    let output = wait_with_timeout(child, RUN_TIMEOUT).unwrap_or_else(|error| {
-        artifacts::write_artifact(&artifacts.join(format!("{label}.timeout.txt")), &error);
+    let output = artifacts::wait_with_timeout(child, RUN_TIMEOUT).unwrap_or_else(|error| {
+        artifacts::write_artifact(
+            &artifacts.join(format!("{label}.timeout.txt")),
+            error.to_string(),
+        );
         panic!(
             "sqlite built-package regression timed out for {}\nartifacts: {}\n{}",
             binary_path.display(),

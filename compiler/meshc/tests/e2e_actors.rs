@@ -5,6 +5,9 @@
 //!
 //! Actor tests use generous timeouts since they involve concurrency.
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -54,7 +57,7 @@ fn compile_and_run(source: &str, build_args: &[&str], timeout_secs: u64) -> Stri
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn binary at {}: {}", binary.display(), e));
 
-    let output = wait_with_timeout(child, Duration::from_secs(timeout_secs));
+    let output = artifacts::wait_with_timeout(child, Duration::from_secs(timeout_secs));
 
     match output {
         Ok(out) => {
@@ -68,51 +71,6 @@ fn compile_and_run(source: &str, build_args: &[&str], timeout_secs: u64) -> Stri
             String::from_utf8_lossy(&out.stdout).to_string()
         }
         Err(msg) => panic!("{}", msg),
-    }
-}
-
-/// Wait for a child process with a timeout. Kill it if it exceeds the timeout.
-fn wait_with_timeout(
-    mut child: std::process::Child,
-    timeout: Duration,
-) -> Result<std::process::Output, String> {
-    let start = std::time::Instant::now();
-    let poll_interval = Duration::from_millis(50);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                // Process exited. Collect stdout/stderr.
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    use std::io::Read;
-                    out.read_to_end(&mut stdout).ok();
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    use std::io::Read;
-                    err.read_to_end(&mut stderr).ok();
-                }
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                // Still running
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "Binary timed out after {} seconds",
-                        timeout.as_secs()
-                    ));
-                }
-                std::thread::sleep(poll_interval);
-            }
-            Err(e) => return Err(format!("Error waiting for process: {}", e)),
-        }
     }
 }
 

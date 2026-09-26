@@ -3,6 +3,9 @@
 //! Each test compiles a .mpl program that exercises supervisor features,
 //! builds it into a native binary, and verifies expected behavior.
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -78,46 +81,13 @@ fn compile_only(source: &str) -> Output {
 
 /// Helper: run a compiled binary with a timeout and return stdout.
 fn run_with_timeout(binary: &Path, timeout_secs: u64) -> String {
-    let mut child = Command::new(binary)
+    let child = Command::new(binary)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn binary: {}", e));
-
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(timeout_secs);
-    let poll_interval = std::time::Duration::from_millis(50);
-
-    let output = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    use std::io::Read;
-                    out.read_to_end(&mut stdout).ok();
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    use std::io::Read;
-                    err.read_to_end(&mut stderr).ok();
-                }
-                break Output {
-                    status,
-                    stdout,
-                    stderr,
-                };
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    panic!("binary timed out after {} seconds", timeout_secs);
-                }
-                std::thread::sleep(poll_interval);
-            }
-            Err(e) => panic!("error waiting for process: {}", e),
-        }
-    };
+    let output = artifacts::wait_with_timeout(child, std::time::Duration::from_secs(timeout_secs))
+        .unwrap_or_else(|timed_out| panic!("{timed_out}"));
 
     assert!(
         output.status.success(),
@@ -143,49 +113,13 @@ fn supervisor_basic() {
     assert!(binary.exists(), "compiled supervisor binary should exist");
 
     // Run the binary with a short timeout -- it should print and exit.
-    let mut child = Command::new(&binary)
+    let child = Command::new(&binary)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn binary: {}", e));
-
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(10);
-    let poll_interval = std::time::Duration::from_millis(50);
-
-    let output = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    use std::io::Read;
-                    out.read_to_end(&mut stdout).ok();
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    use std::io::Read;
-                    err.read_to_end(&mut stderr).ok();
-                }
-                break std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                };
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    panic!(
-                        "supervisor binary timed out after {} seconds",
-                        timeout.as_secs()
-                    );
-                }
-                std::thread::sleep(poll_interval);
-            }
-            Err(e) => panic!("error waiting for process: {}", e),
-        }
-    };
+    let output = artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10))
+        .unwrap_or_else(|timed_out| panic!("supervisor {timed_out}"));
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(

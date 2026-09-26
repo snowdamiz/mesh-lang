@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output};
 use std::sync::OnceLock;
@@ -79,6 +80,70 @@ pub fn stop_child(child: &mut Child) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+/// Time a host that assesses each new process before it starts (macOS, for
+/// a child of a test cargo launched, under load) can hold a program before
+/// its first instruction. A test's run budget bounds the program; this is
+/// added to it.
+pub const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(60);
+
+/// A child still running when its budget (and the launch allowance) ran out,
+/// killed, with what it had printed.
+#[derive(Debug)]
+pub struct TimedOut {
+    pub budget: Duration,
+    pub output: Output,
+}
+
+impl std::fmt::Display for TimedOut {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "binary timed out after {:?} (plus {:?} to start)\n{}",
+            self.budget,
+            LAUNCH_ALLOWANCE,
+            command_output_text(&self.output)
+        )
+    }
+}
+
+/// Wait for `child` at most `budget` plus the launch allowance, reading its
+/// piped output meanwhile (a full pipe would stall it), and kill it after.
+pub fn wait_with_timeout(mut child: Child, budget: Duration) -> Result<Output, TimedOut> {
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    }
+    let (stdout, stderr) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let deadline = Instant::now() + budget + LAUNCH_ALLOWANCE;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait for the child") {
+            break Ok(status);
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            break Err(child.wait().expect("wait for the killed child"));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let collect = |status| Output {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    };
+    match status {
+        Ok(status) => Ok(collect(status)),
+        Err(status) => Err(TimedOut {
+            budget,
+            output: collect(status),
+        }),
+    }
 }
 
 pub fn command_output_text(output: &Output) -> String {

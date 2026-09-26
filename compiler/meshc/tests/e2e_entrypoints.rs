@@ -2,11 +2,9 @@
 mod artifacts;
 
 use std::fs;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 const BUILD_TIMEOUT: Duration = Duration::from_secs(90);
 const TEST_TIMEOUT: Duration = Duration::from_secs(90);
@@ -165,65 +163,6 @@ fn describe_command(command: &Command, description: &str, timeout: Duration) -> 
     )
 }
 
-fn read_child_pipes(child: &mut Child) -> (Vec<u8>, Vec<u8>) {
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-
-    if let Some(mut out) = child.stdout.take() {
-        out.read_to_end(&mut stdout).ok();
-    }
-    if let Some(mut err) = child.stderr.take() {
-        err.read_to_end(&mut stderr).ok();
-    }
-
-    (stdout, stderr)
-}
-
-fn wait_with_timeout(
-    mut child: Child,
-    timeout: Duration,
-    description: &str,
-) -> Result<Output, TimedRunError> {
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(50);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let (stdout, stderr) = read_child_pipes(&mut child);
-                return Ok(Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let status = child.wait().ok();
-                    let (stdout, stderr) = read_child_pipes(&mut child);
-                    return Err(TimedRunError {
-                        message: format!("{description} timed out after {timeout:?}"),
-                        stdout,
-                        stderr,
-                        status_code: status.and_then(|status| status.code()),
-                    });
-                }
-                sleep(poll_interval);
-            }
-            Err(error) => {
-                let (stdout, stderr) = read_child_pipes(&mut child);
-                return Err(TimedRunError {
-                    message: format!("Failed to wait on {description}: {error}"),
-                    stdout,
-                    stderr,
-                    status_code: None,
-                });
-            }
-        }
-    }
-}
-
 fn archive_command_output(artifacts: &Path, label: &str, output: &Output) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -257,7 +196,12 @@ fn run_command_and_archive(
         .spawn()
         .unwrap_or_else(|error| panic!("failed to spawn {description}: {error}"));
 
-    match wait_with_timeout(child, timeout, description) {
+    match artifacts::wait_with_timeout(child, timeout).map_err(|timed_out| TimedRunError {
+        message: format!("{description} {timed_out}"),
+        status_code: timed_out.output.status.code(),
+        stdout: timed_out.output.stdout,
+        stderr: timed_out.output.stderr,
+    }) {
         Ok(output) => {
             archive_command_output(artifacts, label, &output);
             output
