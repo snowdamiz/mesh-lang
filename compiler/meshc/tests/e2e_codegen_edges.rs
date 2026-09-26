@@ -306,3 +306,63 @@ fn builds_that_cannot_produce_their_artifact_say_why() {
         stderr(&output)
     );
 }
+
+/// Resources held in a tuple or in a generic payload are destroyed when the
+/// scope holding them ends; a type that only names a resource as a type
+/// argument holds none. More secrets than an actor may hold at once pass
+/// through, so a leak runs out.
+#[test]
+fn resources_in_tuples_and_payloads_are_destroyed() {
+    let out = compile_and_run(
+        r##"pub resource struct Boxed do
+  key :: SecretBytes
+end
+
+type Phantom<T> do
+  P(Int)
+end
+
+struct Tag<T> do
+  n :: Int
+end
+
+fn pair_and_drop() -> Int ! CryptoError do
+  let pair = (Secret.random(1) ?, 7)
+  Ok(1)
+end
+
+fn option_and_drop() -> Int ! CryptoError do
+  let boxed = Some(Boxed { key: Secret.random(1) ? })
+  Ok(1)
+end
+
+fn phantom() -> Int do
+  let p :: Phantom<SecretBytes> = P(3)
+  let t :: Tag<SecretBytes> = Tag { n: 4 }
+  case p do
+    P(n) -> n + t.n
+  end
+end
+
+fn churn(0) do nil end
+fn churn(count :: Int) do
+  let a = pair_and_drop()
+  let b = option_and_drop()
+  churn(count - 1)
+end
+
+fn main() do
+  churn(2100)
+  println("${phantom()}")
+  case Secret.random(1) do
+    Ok(secret) -> do
+      println("clean")
+      Secret.destroy(secret)
+    end
+    Err(_) -> println("leaked")
+  end
+end
+"##,
+    );
+    assert_eq!(out, "7\nclean\n");
+}

@@ -8684,18 +8684,17 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_local_ref(&self, name: String, ty: MirType, range: TextRange) -> MirExpr {
-        let value = MirExpr::Var(name, ty.clone());
         if self
             .get_ty(range)
             .is_some_and(|typeck_ty| self.registry.is_resource_type(typeck_ty))
         {
             MirExpr::ResourceMove {
-                value: Box::new(value),
+                value: Box::new(MirExpr::Var(name.clone(), ty.clone())),
                 ty,
-                source: MirResourceMoveSource::Slot,
+                source: MirResourceMoveSource::Slot(name),
             }
         } else {
-            value
+            MirExpr::Var(name, ty)
         }
     }
 
@@ -10831,7 +10830,7 @@ impl<'a> Lowerer<'a> {
                 };
             };
             let source = match source {
-                MirResourceMoveSource::Slot => {
+                MirResourceMoveSource::Slot(root) => {
                     let Some(parent_destructor) = self.resource_destructor(&parent_typeck) else {
                         return MirExpr::Panic {
                             message: "resource field move lacked destruction metadata".to_string(),
@@ -10840,6 +10839,7 @@ impl<'a> Lowerer<'a> {
                         };
                     };
                     MirResourceMoveSource::Projection {
+                        root,
                         parent_ty: immediate_parent_ty,
                         parent_destructor,
                         field_index: next_field_index,
@@ -10847,6 +10847,7 @@ impl<'a> Lowerer<'a> {
                     }
                 }
                 MirResourceMoveSource::Projection {
+                    root,
                     parent_ty,
                     parent_destructor,
                     field_index,
@@ -10854,6 +10855,7 @@ impl<'a> Lowerer<'a> {
                 } => {
                     nested_field_indices.push(next_field_index);
                     MirResourceMoveSource::Projection {
+                        root,
                         parent_ty,
                         parent_destructor,
                         field_index,
@@ -17523,9 +17525,10 @@ impl TailCalls<'_> {
     /// other than by moving it out.
     fn reads_dropped(&self, expr: &MirExpr) -> bool {
         match expr {
-            MirExpr::ResourceMove { value, .. } if matches!(value.as_ref(), MirExpr::Var(..)) => {
-                false
-            }
+            MirExpr::ResourceMove {
+                source: MirResourceMoveSource::Slot(_),
+                ..
+            } => false,
             MirExpr::Var(name, _) => self.cleanups.iter().any(|cleanup| {
                 matches!(cleanup, MirExpr::ResourceDrop { value, .. }
                     if matches!(value.as_ref(), MirExpr::Var(dropped, _) if dropped == name))

@@ -5,14 +5,14 @@
 //! for control flow merges.
 
 use inkwell::intrinsics::Intrinsic;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, StructValue};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue, StructValue};
 use inkwell::IntPredicate;
 
 use super::intrinsics::get_intrinsic;
+use super::pattern::MatchTarget;
 use super::types::{closure_type, variant_struct_type};
 use super::CodeGen;
-use super::pattern::MatchTarget;
 use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirPattern, MirResourceDestructor, MirResourceField,
     MirResourceMoveSource, MirType, UnaryOp,
@@ -310,7 +310,16 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    // ── String literals ──────────────────────────────────────────────
+    // ── Resources ────────────────────────────────────────────────────
+
+    /// Clear the local `name`, of type `ty`, whose resource has moved or been
+    /// destroyed: a later drop of it then does nothing.
+    fn clear_resource_local(&mut self, name: &str, ty: &MirType) -> Result<(), String> {
+        self.builder
+            .build_store(self.locals[name], self.llvm_type(ty).const_zero())
+            .map(drop)
+            .map_err(|error| error.to_string())
+    }
 
     fn codegen_resource_move(
         &mut self,
@@ -320,113 +329,106 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let moved = self.codegen_expr(value)?;
         match source {
-            MirResourceMoveSource::Slot => {
-                if let MirExpr::Var(name, _) = value {
-                    if let Some(slot) = self.locals.get(name).copied() {
-                        self.builder
-                            .build_store(slot, self.llvm_type(ty).const_zero())
-                            .map_err(|error| error.to_string())?;
-                    }
-                }
-            }
+            MirResourceMoveSource::Slot(local) => self.clear_resource_local(local, ty)?,
             MirResourceMoveSource::Projection {
+                root,
                 parent_ty,
                 parent_destructor,
                 field_index,
                 nested_field_indices,
             } => {
-                fn projection_root_name(value: &MirExpr) -> Option<&str> {
-                    match value {
-                        MirExpr::Var(name, _) => Some(name),
-                        MirExpr::FieldAccess { object, .. } => projection_root_name(object),
-                        _ => None,
-                    }
-                }
-
-                let parent_name = projection_root_name(value)
-                    .ok_or("resource projection move requires a named root slot")?;
-                let slot =
-                    self.locals.get(parent_name).copied().ok_or_else(|| {
-                        format!("unknown resource projection root: {parent_name}")
-                    })?;
                 let aggregate = self
                     .builder
                     .build_load(
                         self.llvm_type(parent_ty),
-                        slot,
+                        self.locals[root],
                         "resource_projection_parent",
                     )
                     .map_err(|error| error.to_string())?
                     .into_struct_value();
-                let mut field_path = Vec::with_capacity(nested_field_indices.len() + 1);
-                field_path.push(*field_index);
-                field_path.extend(nested_field_indices.iter().copied());
                 self.codegen_resource_projection_siblings(
                     aggregate,
                     parent_destructor,
-                    &field_path,
+                    *field_index,
+                    nested_field_indices,
                 )?;
-                self.builder
-                    .build_store(slot, self.llvm_type(parent_ty).const_zero())
-                    .map_err(|error| error.to_string())?;
+                self.clear_resource_local(root, parent_ty)?;
             }
         }
         Ok(moved)
     }
 
+    /// Destroy the resource fields of `aggregate` other than the one at
+    /// `selected_index`, and, down the rest of the moved field's `path`, the
+    /// other fields at each level.
     fn codegen_resource_projection_siblings(
         &mut self,
         aggregate: StructValue<'ctx>,
         destructor: &MirResourceDestructor,
-        field_path: &[u32],
+        selected_index: u32,
+        path: &[u32],
     ) -> Result<(), String> {
-        let (&selected_index, remaining_path) = field_path
-            .split_first()
-            .ok_or("resource projection had an empty field path")?;
         let MirResourceDestructor::Aggregate(fields) = destructor else {
             return Err("resource projection parent did not have an aggregate destructor".into());
         };
-
-        for field in fields.iter().filter(|field| field.index != selected_index) {
-            let field_value = self
+        for field in fields {
+            let value = self
                 .builder
-                .build_extract_value(aggregate, field.index, "resource_projection_sibling")
+                .build_extract_value(aggregate, field.index, "resource_projection_field")
                 .map_err(|error| error.to_string())?;
-            self.codegen_resource_destructor(field_value, &field.ty, &field.destructor)?;
+            match path.split_first() {
+                _ if field.index != selected_index => {
+                    self.codegen_field_destructor(value, field)?
+                }
+                Some((&next_index, rest)) => self.codegen_resource_projection_siblings(
+                    value.into_struct_value(),
+                    &field.destructor,
+                    next_index,
+                    rest,
+                )?,
+                None => {}
+            }
         }
+        Ok(())
+    }
 
-        if remaining_path.is_empty() {
-            return Ok(());
-        }
-        let selected_field = fields
-            .iter()
-            .find(|field| field.index == selected_index)
-            .ok_or("nested resource projection selected a non-resource field")?;
-        let selected_value = self
+    /// Destroy `value`, the resource field `field` of an aggregate.
+    fn codegen_field_destructor(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        field: &MirResourceField,
+    ) -> Result<(), String> {
+        self.codegen_resource_destructor(value, &field.ty, &field.destructor)
+    }
+
+    /// Run `destroy` on `pointer` unless it is null (moved out already).
+    fn codegen_unless_null(
+        &mut self,
+        pointer: PointerValue<'ctx>,
+        name: &str,
+        destroy: impl FnOnce(&mut Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let is_null = self
             .builder
-            .build_extract_value(
-                aggregate,
-                selected_index,
-                "resource_projection_parent_field",
-            )
+            .build_is_null(pointer, &format!("{name}_is_null"))
             .map_err(|error| error.to_string())?;
-        let selected_aggregate = if selected_value.is_pointer_value() {
-            self.builder
-                .build_load(
-                    self.llvm_type(&selected_field.ty),
-                    selected_value.into_pointer_value(),
-                    "resource_projection_nested_parent",
-                )
-                .map_err(|error| error.to_string())?
-                .into_struct_value()
-        } else {
-            selected_value.into_struct_value()
-        };
-        self.codegen_resource_projection_siblings(
-            selected_aggregate,
-            &selected_field.destructor,
-            remaining_path,
-        )
+        let function = self.current_function();
+        let destroy_block = self
+            .context
+            .append_basic_block(function, &format!("{name}_destroy"));
+        let continue_block = self
+            .context
+            .append_basic_block(function, &format!("{name}_live"));
+        self.builder
+            .build_conditional_branch(is_null, continue_block, destroy_block)
+            .map_err(|error| error.to_string())?;
+        self.builder.position_at_end(destroy_block);
+        destroy(self)?;
+        self.builder
+            .build_unconditional_branch(continue_block)
+            .map_err(|error| error.to_string())?;
+        self.builder.position_at_end(continue_block);
+        Ok(())
     }
 
     fn codegen_resource_destructor(
@@ -437,35 +439,14 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), String> {
         match destructor {
             MirResourceDestructor::Opaque => {
-                if !value.is_pointer_value() {
-                    return Err(format!(
-                        "opaque resource lowered to non-pointer value: {resource_ty:?}"
-                    ));
-                }
                 let pointer = value.into_pointer_value();
-                let is_null = self
-                    .builder
-                    .build_is_null(pointer, "resource_is_null")
-                    .map_err(|error| error.to_string())?;
-                let function = self.current_function();
-                let destroy_block = self
-                    .context
-                    .append_basic_block(function, "resource_destroy");
-                let continue_block = self.context.append_basic_block(function, "resource_live");
-                self.builder
-                    .build_conditional_branch(is_null, continue_block, destroy_block)
-                    .map_err(|error| error.to_string())?;
-
-                self.builder.position_at_end(destroy_block);
-                let destroy = get_intrinsic(&self.module, "mesh_resource_destroy");
-                self.builder
-                    .build_call(destroy, &[pointer.into()], "")
-                    .map_err(|error| error.to_string())?;
-                self.builder
-                    .build_unconditional_branch(continue_block)
-                    .map_err(|error| error.to_string())?;
-                self.builder.position_at_end(continue_block);
-                Ok(())
+                self.codegen_unless_null(pointer, "resource", |this| {
+                    let destroy = get_intrinsic(&this.module, "mesh_resource_destroy");
+                    this.builder
+                        .build_call(destroy, &[pointer.into()], "")
+                        .map_err(|error| error.to_string())?;
+                    Ok(())
+                })
             }
             MirResourceDestructor::PgConnection => {
                 let function = self.current_function();
@@ -474,7 +455,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .append_basic_block(function, "pg_connection_closed");
                 let handle = if value.is_int_value() {
                     value.into_int_value()
-                } else if value.is_pointer_value() && matches!(resource_ty, MirType::Int) {
+                } else {
                     // Generic Result/Option payloads use pointer storage even
                     // when their concrete semantic value is an integer handle.
                     let boxed_handle = value.into_pointer_value();
@@ -497,10 +478,6 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .map_err(|error| error.to_string())?
                         .into_int_value()
-                } else {
-                    return Err(format!(
-                        "PostgreSQL connection resource lowered to incompatible value: {resource_ty:?}"
-                    ));
                 };
                 let is_zero = self
                     .builder
@@ -529,127 +506,60 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(continue_block);
                 Ok(())
             }
-            MirResourceDestructor::Aggregate(fields) => {
-                if matches!(resource_ty, MirType::Tuple(_)) {
-                    let tuple = value
-                        .is_pointer_value()
-                        .then(|| value.into_pointer_value())
-                        .ok_or("resource tuple lowered to a non-pointer value")?;
-                    let is_null = self
-                        .builder
-                        .build_is_null(tuple, "resource_tuple_is_null")
-                        .map_err(|error| error.to_string())?;
-                    let function = self.current_function();
-                    let destroy_block = self
-                        .context
-                        .append_basic_block(function, "resource_tuple_destroy");
-                    let continue_block = self
-                        .context
-                        .append_basic_block(function, "resource_tuple_live");
-                    self.builder
-                        .build_conditional_branch(is_null, continue_block, destroy_block)
-                        .map_err(|error| error.to_string())?;
-                    self.builder.position_at_end(destroy_block);
-
-                    let nth = get_intrinsic(&self.module, "mesh_tuple_nth");
+            // A tuple is a pointer to the runtime tuple, each element a slot.
+            MirResourceDestructor::Aggregate(fields)
+                if matches!(resource_ty, MirType::Tuple(_)) =>
+            {
+                let tuple = value.into_pointer_value();
+                self.codegen_unless_null(tuple, "resource_tuple", |this| {
+                    let nth = get_intrinsic(&this.module, "mesh_tuple_nth");
                     for field in fields {
-                        let raw = self
+                        let index = this.context.i64_type().const_int(field.index as u64, false);
+                        let raw = this
                             .builder
-                            .build_call(
-                                nth,
-                                &[
-                                    tuple.into(),
-                                    self.context
-                                        .i64_type()
-                                        .const_int(field.index as u64, false)
-                                        .into(),
-                                ],
-                                "resource_tuple_field",
-                            )
+                            .build_call(nth, &[tuple.into(), index.into()], "resource_tuple_field")
                             .map_err(|error| error.to_string())?
                             .try_as_basic_value()
                             .basic()
                             .ok_or("mesh_tuple_nth returned void")?
                             .into_int_value();
                         let field_value = if matches!(field.ty, MirType::Tuple(_)) {
-                            self.builder
+                            this.builder
                                 .build_int_to_ptr(
                                     raw,
-                                    self.context.ptr_type(inkwell::AddressSpace::default()),
+                                    this.context.ptr_type(inkwell::AddressSpace::default()),
                                     "resource_nested_tuple",
                                 )
                                 .map_err(|error| error.to_string())?
                                 .into()
                         } else {
-                            let field_ptr = self.materialize_tuple_element_ptr(raw, &field.ty)?;
-                            self.builder
+                            let field_ptr = this.materialize_tuple_element_ptr(raw, &field.ty)?;
+                            this.builder
                                 .build_load(
-                                    self.llvm_type(&field.ty),
+                                    this.llvm_type(&field.ty),
                                     field_ptr,
                                     "resource_tuple_value",
                                 )
                                 .map_err(|error| error.to_string())?
                         };
-                        self.codegen_resource_destructor(
-                            field_value,
-                            &field.ty,
-                            &field.destructor,
-                        )?;
+                        this.codegen_field_destructor(field_value, field)?;
                     }
-                    self.builder
-                        .build_unconditional_branch(continue_block)
-                        .map_err(|error| error.to_string())?;
-                    self.builder.position_at_end(continue_block);
-                    return Ok(());
-                }
-                if value.is_pointer_value() {
-                    let pointer = value.into_pointer_value();
-                    let is_null = self
+                    Ok(())
+                })
+            }
+            // A struct held by pointer (a boxed payload) is loaded first.
+            MirResourceDestructor::Aggregate(fields) if value.is_pointer_value() => {
+                let pointer = value.into_pointer_value();
+                self.codegen_unless_null(pointer, "resource_aggregate", |this| {
+                    let aggregate = this
                         .builder
-                        .build_is_null(pointer, "resource_aggregate_is_null")
+                        .build_load(this.llvm_type(resource_ty), pointer, "resource_aggregate")
                         .map_err(|error| error.to_string())?;
-                    let function = self.current_function();
-                    let destroy_block = self
-                        .context
-                        .append_basic_block(function, "resource_aggregate_destroy");
-                    let continue_block = self
-                        .context
-                        .append_basic_block(function, "resource_aggregate_live");
-                    self.builder
-                        .build_conditional_branch(is_null, continue_block, destroy_block)
-                        .map_err(|error| error.to_string())?;
-                    self.builder.position_at_end(destroy_block);
-                    let aggregate = self
-                        .builder
-                        .build_load(self.llvm_type(resource_ty), pointer, "resource_aggregate")
-                        .map_err(|error| error.to_string())?
-                        .into_struct_value();
-                    for field in fields {
-                        let field_value = self
-                            .builder
-                            .build_extract_value(aggregate, field.index, "resource_field")
-                            .map_err(|error| error.to_string())?;
-                        self.codegen_resource_destructor(
-                            field_value,
-                            &field.ty,
-                            &field.destructor,
-                        )?;
-                    }
-                    self.builder
-                        .build_unconditional_branch(continue_block)
-                        .map_err(|error| error.to_string())?;
-                    self.builder.position_at_end(continue_block);
-                    return Ok(());
-                }
-                let aggregate = value.into_struct_value();
-                for field in fields {
-                    let field_value = self
-                        .builder
-                        .build_extract_value(aggregate, field.index, "resource_field")
-                        .map_err(|error| error.to_string())?;
-                    self.codegen_resource_destructor(field_value, &field.ty, &field.destructor)?;
-                }
-                Ok(())
+                    this.codegen_aggregate_destructor(aggregate.into_struct_value(), fields)
+                })
+            }
+            MirResourceDestructor::Aggregate(fields) => {
+                self.codegen_aggregate_destructor(value.into_struct_value(), fields)
             }
             MirResourceDestructor::SumVariants(variants) => {
                 if variants.is_empty() {
@@ -674,11 +584,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(|error| error.to_string())?;
                     self.builder.position_at_end(load_block);
                     self.builder
-                        .build_load(
-                            self.llvm_type(resource_ty),
-                            value.into_pointer_value(),
-                            "resource_sum",
-                        )
+                        .build_load(self.llvm_type(resource_ty), pointer, "resource_sum")
                         .map_err(|error| error.to_string())?
                         .into_struct_value()
                 } else {
@@ -744,11 +650,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_load(storage_ty, field_ptr, "resource_sum_field")
                             .map_err(|error| error.to_string())?;
-                        self.codegen_resource_destructor(
-                            field_value,
-                            &field.ty,
-                            &field.destructor,
-                        )?;
+                        self.codegen_field_destructor(field_value, field)?;
                     }
                     self.builder
                         .build_unconditional_branch(continue_block)
@@ -763,6 +665,22 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Destroy the resource `fields` of the struct value `aggregate`.
+    fn codegen_aggregate_destructor(
+        &mut self,
+        aggregate: StructValue<'ctx>,
+        fields: &[MirResourceField],
+    ) -> Result<(), String> {
+        for field in fields {
+            let field_value = self
+                .builder
+                .build_extract_value(aggregate, field.index, "resource_field")
+                .map_err(|error| error.to_string())?;
+            self.codegen_field_destructor(field_value, field)?;
+        }
+        Ok(())
+    }
+
     fn codegen_resource_drop(
         &mut self,
         value: &MirExpr,
@@ -772,11 +690,7 @@ impl<'ctx> CodeGen<'ctx> {
         let owned = self.codegen_expr(value)?;
         self.codegen_resource_destructor(owned, resource_ty, destructor)?;
         if let MirExpr::Var(name, _) = value {
-            if let Some(slot) = self.locals.get(name).copied() {
-                self.builder
-                    .build_store(slot, self.llvm_type(resource_ty).const_zero())
-                    .map_err(|error| error.to_string())?;
-            }
+            self.clear_resource_local(name, resource_ty)?;
         }
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
@@ -2530,6 +2444,21 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Struct update ─────────────────────────────────────────────────
 
+    /// The LLVM type and fields of the struct type `ty`.
+    fn struct_layout(
+        &self,
+        ty: &MirType,
+    ) -> Result<(StructType<'ctx>, Vec<(String, MirType)>), String> {
+        match ty {
+            MirType::Struct(name) => {
+                Ok((self.struct_types[name], self.mir_struct_defs[name].clone()))
+            }
+            other => Err(format!("expected a struct, found {other:?}")),
+        }
+    }
+
+    /// `base` with the fields `overrides` names replaced. A replaced field
+    /// that holds a resource destroys its old value.
     fn codegen_struct_update(
         &mut self,
         base: &MirExpr,
@@ -2537,112 +2466,30 @@ impl<'ctx> CodeGen<'ctx> {
         resource_overrides: &[MirResourceField],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        // Determine the struct name from the type.
-        let struct_name = match ty {
-            MirType::Struct(name) => name.clone(),
-            _ => return Err(format!("Struct update on non-struct type: {:?}", ty)),
-        };
-
-        let struct_ty = self
-            .struct_types
-            .get(&struct_name)
-            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
-        let struct_ty = *struct_ty;
-
-        // Get the struct field definitions so we know the order.
-        let field_defs = self
-            .mir_struct_defs
-            .get(&struct_name)
-            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?
-            .clone();
-
-        // Codegen the base expression.
-        let base_val = self.codegen_expr(base)?;
-
-        // Allocate a temporary for the base struct so we can GEP into it.
-        let base_alloca = self
-            .builder
-            .build_alloca(struct_ty.as_basic_type_enum(), "update_base")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(base_alloca, base_val)
-            .map_err(|e| e.to_string())?;
-
-        // Allocate the new struct.
-        let new_alloca = self
-            .builder
-            .build_alloca(struct_ty, "struct_update")
-            .map_err(|e| e.to_string())?;
-
-        // Build a lookup map for the override field names.
-        let override_map: std::collections::HashMap<&str, &MirExpr> = overrides
-            .iter()
-            .map(|(name, expr)| (name.as_str(), expr))
-            .collect();
-
-        // For each field in the struct definition:
-        for (i, (field_name, _field_ty)) in field_defs.iter().enumerate() {
-            let val = if let Some(override_expr) = override_map.get(field_name.as_str()) {
-                let replacement = self.codegen_expr(override_expr)?;
-                if let Some(resource) = resource_overrides
-                    .iter()
-                    .find(|resource| resource.index == i as u32)
-                {
-                    let field_ptr = self
-                        .builder
-                        .build_struct_gep(struct_ty, base_alloca, i as u32, "old_resource_ptr")
-                        .map_err(|error| error.to_string())?;
-                    let field_ty =
-                        struct_ty.get_field_type_at_index(i as u32).ok_or_else(|| {
-                            format!("No field at index {} in struct '{}'", i, struct_name)
-                        })?;
-                    let old_value = self
-                        .builder
-                        .build_load(field_ty, field_ptr, "old_resource")
-                        .map_err(|error| error.to_string())?;
-                    self.codegen_resource_destructor(
-                        old_value,
-                        &resource.ty,
-                        &resource.destructor,
-                    )?;
-                }
-                replacement
-            } else {
-                // Copy from base: load the field from the base struct.
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(struct_ty, base_alloca, i as u32, "base_field_ptr")
-                    .map_err(|e| e.to_string())?;
-                let field_llvm_ty =
-                    struct_ty.get_field_type_at_index(i as u32).ok_or_else(|| {
-                        format!("No field at index {} in struct '{}'", i, struct_name)
-                    })?;
-                self.builder
-                    .build_load(field_llvm_ty, field_ptr, "base_field_val")
-                    .map_err(|e| e.to_string())?
+        let (_, field_defs) = self.struct_layout(ty)?;
+        let base_val = self.codegen_expr(base)?.into_struct_value();
+        let mut updated = base_val;
+        for (index, (field_name, _)) in field_defs.iter().enumerate() {
+            let Some((_, replacement)) = overrides.iter().find(|(name, _)| name == field_name)
+            else {
+                continue;
             };
-
-            // Store the value in the new struct.
-            let new_field_ptr = self
+            let index = index as u32;
+            let replacement = self.codegen_expr(replacement)?;
+            if let Some(resource) = resource_overrides.iter().find(|r| r.index == index) {
+                let old_value = self
+                    .builder
+                    .build_extract_value(base_val, index, "old_resource")
+                    .map_err(|error| error.to_string())?;
+                self.codegen_field_destructor(old_value, resource)?;
+            }
+            updated = self
                 .builder
-                .build_struct_gep(struct_ty, new_alloca, i as u32, "new_field_ptr")
-                .map_err(|e| e.to_string())?;
-            self.builder
-                .build_store(new_field_ptr, val)
-                .map_err(|e| e.to_string())?;
+                .build_insert_value(updated, replacement, index, "struct_update")
+                .map_err(|error| error.to_string())?
+                .into_struct_value();
         }
-
-        // Load and return the new struct value.
-        let result = self
-            .builder
-            .build_load(
-                struct_ty.as_basic_type_enum(),
-                new_alloca,
-                "struct_update_val",
-            )
-            .map_err(|e| e.to_string())?;
-
-        Ok(result)
+        Ok(updated.into())
     }
 
     // ── Field access ─────────────────────────────────────────────────
@@ -2654,25 +2501,11 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let obj_val = self.codegen_expr(object)?;
-
-        // Determine the struct name
-        let struct_name = match object.ty() {
-            MirType::Struct(name) => name.clone(),
-            _ => {
-                return Err(format!(
-                    "Field access on non-struct type: {:?}",
-                    object.ty()
-                ))
-            }
-        };
-
-        let struct_ty = self
-            .struct_types
-            .get(&struct_name)
-            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
-        let struct_ty = *struct_ty;
-
-        let field_idx = self.find_struct_field_index(&struct_name, field)?;
+        let (struct_ty, fields) = self.struct_layout(object.ty())?;
+        let field_idx = fields
+            .iter()
+            .position(|(name, _)| name == field)
+            .ok_or_else(|| format!("no field `{field}` in {:?}", object.ty()))?;
 
         let alloca = self
             .builder
@@ -2694,23 +2527,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         Ok(result)
-    }
-
-    /// Find the field index in a struct definition.
-    pub(crate) fn find_struct_field_index(
-        &self,
-        struct_name: &str,
-        field: &str,
-    ) -> Result<usize, String> {
-        let fields = self
-            .mir_struct_defs
-            .get(struct_name)
-            .ok_or_else(|| format!("Unknown struct type '{}'", struct_name))?;
-
-        fields
-            .iter()
-            .position(|(name, _)| name == field)
-            .ok_or_else(|| format!("Field '{}' not found in struct '{}'", field, struct_name))
     }
 
     // ── Sum type variant construction ────────────────────────────────

@@ -1614,7 +1614,7 @@ mod tests {
                 MirExpr::ResourceMove {
                     value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
                     ty: resource.clone(),
-                    source: MirResourceMoveSource::Slot,
+                    source: MirResourceMoveSource::Slot("secret".to_string()),
                 },
                 MirExpr::ResourceDrop {
                     value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
@@ -1652,14 +1652,14 @@ mod tests {
                     base: Box::new(MirExpr::ResourceMove {
                         value: Box::new(MirExpr::Var("state".to_string(), state_ty.clone())),
                         ty: state_ty.clone(),
-                        source: MirResourceMoveSource::Slot,
+                        source: MirResourceMoveSource::Slot("state".to_string()),
                     }),
                     overrides: vec![(
                         "current".to_string(),
                         MirExpr::ResourceMove {
                             value: Box::new(MirExpr::Var("next".to_string(), MirType::Ptr)),
                             ty: MirType::Ptr,
-                            source: MirResourceMoveSource::Slot,
+                            source: MirResourceMoveSource::Slot("next".to_string()),
                         },
                     )],
                     resource_overrides: vec![MirResourceField {
@@ -1725,6 +1725,7 @@ mod tests {
                     }),
                     ty: MirType::Ptr,
                     source: MirResourceMoveSource::Projection {
+                        root: "pair".to_string(),
                         parent_ty: pair_ty,
                         parent_destructor: destructor,
                         field_index: 0,
@@ -1805,6 +1806,7 @@ mod tests {
                     }),
                     ty: MirType::Ptr,
                     source: MirResourceMoveSource::Projection {
+                        root: "outer".to_string(),
                         parent_ty: outer_ty,
                         parent_destructor: outer_destructor,
                         field_index: 0,

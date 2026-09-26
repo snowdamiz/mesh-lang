@@ -196,10 +196,12 @@ pub struct MirResourceVariant {
 
 #[derive(Debug, Clone)]
 pub enum MirResourceMoveSource {
-    /// Move from a named local/parameter slot.
-    Slot,
-    /// Move one field and destroy every other resource-bearing field in the parent.
+    /// Move out of the named local or parameter, which is cleared.
+    Slot(String),
+    /// Move one field of the struct in the local `root` and destroy every
+    /// other resource-bearing field in it; `root` is cleared.
     Projection {
+        root: String,
         parent_ty: MirType,
         parent_destructor: MirResourceDestructor,
         field_index: u32,
