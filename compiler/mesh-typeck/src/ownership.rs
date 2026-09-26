@@ -729,24 +729,12 @@ impl Checker<'_> {
             return;
         };
         let initializer_ty = self.known_expr_type(&initializer);
-        if let Some(ty) = &initializer_ty {
-            if is_unrestricted_collection_type(ty)
-                && self.registry.is_resource_type(ty)
-                && (!matches!(initializer, Expr::ListLiteral(_) | Expr::MapLiteral(_))
-                    || binding.type_annotation().is_some())
-            {
-                self.errors.push(TypeError::ResourceViolation {
-                    reason: format!(
-                        "resource-bearing type `{ty}` cannot be used as an unrestricted collection"
-                    ),
-                    span: binding.syntax().text_range(),
-                });
-            } else if is_unsupported_resource_wrapper(self.registry, ty) {
-                self.errors.push(TypeError::ResourceViolation {
-                    reason: unsupported_wrapper_reason(ty),
-                    span: binding.syntax().text_range(),
-                });
-            }
+        // An unannotated list or map literal's resources are each reported
+        // where they enter it.
+        let unannotated_literal = matches!(initializer, Expr::ListLiteral(_) | Expr::MapLiteral(_))
+            && binding.type_annotation().is_none();
+        if let Some(ty) = initializer_ty.as_ref().filter(|_| !unannotated_literal) {
+            self.check_resource_holder(ty, binding.syntax().text_range());
         }
         let usage = if initializer_ty
             .as_ref()

@@ -602,6 +602,22 @@ fn rejects_resource_bearing_collection_let_types() {
     );
 }
 
+/// A `let` of a wrapper the checker cannot follow a resource into is
+/// reported at the `let`, as at a parameter.
+#[test]
+fn rejects_resource_bearing_wrapper_let_types() {
+    let result =
+        check_source("fn invalid(q :: Queue<SecretBytes>) do\n  let again = q\n  nil\nend");
+
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource-bearing wrapper `Queue<SecretBytes>` has no registered resource destructor",
+            "resource-bearing wrapper `Queue<SecretBytes>` has no registered resource destructor",
+        ]
+    );
+}
+
 #[test]
 fn resource_tuple_construction_moves_resource_elements() {
     let result = check_source(
