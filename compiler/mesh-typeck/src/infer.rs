@@ -5482,19 +5482,17 @@ fn infer_multi_clause_fn(
                 trait_registry,
                 fn_constraints,
             )?
-        } else if let Some(body) = clause.body() {
+        } else {
             // `do ... end` form (rare for multi-clause but allowed for single clause)
-            infer_block(
+            infer_body(
                 ctx,
                 env,
-                &body,
+                clause.body(),
                 types,
                 type_registry,
                 trait_registry,
                 fn_constraints,
             )
-        } else {
-            Ty::Tuple(vec![])
         };
 
         // Unify body type with previous clause body types.
@@ -8033,18 +8031,16 @@ fn infer_fn_def(
         return_type_annotation
             .clone()
             .unwrap_or_else(|| Ty::Tuple(vec![]))
-    } else if let Some(body) = fn_.body() {
-        infer_block(
+    } else {
+        infer_body(
             ctx,
             env,
-            &body,
+            fn_.body(),
             types,
             type_registry,
             trait_registry,
             fn_constraints,
         )
-    } else {
-        Ty::Tuple(vec![])
     };
     let returns = ctx.pop_fn_return_type();
     if let Some(ref ret_ann) = return_type_annotation {
@@ -10471,19 +10467,15 @@ fn infer_if(
         )?;
     }
 
-    let then_ty = if let Some(then_block) = if_.then_branch() {
-        infer_block(
-            ctx,
-            env,
-            &then_block,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-    } else {
-        Ty::Tuple(vec![])
-    };
+    let then_ty = infer_body(
+        ctx,
+        env,
+        if_.then_branch(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
 
     if let Some(else_branch) = if_.else_branch() {
         let else_ty = if let Some(else_if) = else_branch.if_expr() {
@@ -10496,18 +10488,16 @@ fn infer_if(
                 trait_registry,
                 fn_constraints,
             )?
-        } else if let Some(else_block) = else_branch.block() {
-            infer_block(
+        } else {
+            infer_body(
                 ctx,
                 env,
-                &else_block,
+                else_branch.block(),
                 types,
                 type_registry,
                 trait_registry,
                 fn_constraints,
             )
-        } else {
-            Ty::Tuple(vec![])
         };
 
         let origin = ConstraintOrigin::IfBranches {
@@ -10812,19 +10802,15 @@ fn infer_for_in(
     }
 
     // Infer body -- its type becomes the List element type.
-    let body_ty = if let Some(body) = for_in.body() {
-        infer_block(
-            ctx,
-            env,
-            &body,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-    } else {
-        Ty::Tuple(vec![])
-    };
+    let body_ty = infer_body(
+        ctx,
+        env,
+        for_in.body(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
 
     ctx.exit_loop();
 
@@ -10942,19 +10928,15 @@ fn infer_closure(
     // Reset loop_depth inside closure body (BRKC-05: break/continue cannot cross closure boundary).
     let saved_loop_depth = ctx.enter_closure();
     ctx.push_fn_return_type(expected_return_ty.clone());
-    let body_ty = if let Some(body) = closure.body() {
-        infer_block(
-            ctx,
-            env,
-            &body,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-    } else {
-        Ty::Tuple(vec![])
-    };
+    let body_ty = infer_body(
+        ctx,
+        env,
+        closure.body(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
     let returns = ctx.pop_fn_return_type();
     ctx.exit_closure(saved_loop_depth);
     let body_ty = join_returns(ctx, body_ty, returns)?;
@@ -11141,19 +11123,15 @@ fn infer_multi_clause_closure(
         let saved_loop_depth = ctx.enter_closure();
         ctx.push_fn_return_type(expected_return_ty.clone());
         let origin = body_origin(body.clone());
-        let body_ty = if let Some(body) = body {
-            infer_block(
-                ctx,
-                env,
-                &body,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )
-        } else {
-            Ty::Tuple(vec![])
-        };
+        let body_ty = infer_body(
+            ctx,
+            env,
+            body,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
         let returns = ctx.pop_fn_return_type();
         ctx.exit_closure(saved_loop_depth);
         let body_ty = join_returns(ctx, body_ty, returns)?;
@@ -11195,6 +11173,32 @@ fn infer_multi_clause_closure(
     let body_ty = result_ty.unwrap_or_else(|| Ty::Tuple(vec![]));
 
     Ok(Ty::Fun(param_types, Box::new(body_ty)))
+}
+
+/// The type of a body the parser may have found none of (`if b` cut off
+/// before its `do`): unknown when it is missing, since its parse error says
+/// what is wrong, where `()` mismatched what the body was to give.
+fn infer_body(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    body: Option<Block>,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Ty {
+    match body {
+        Some(body) => infer_block(
+            ctx,
+            env,
+            &body,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        ),
+        None => ctx.fresh_var(),
+    }
 }
 
 /// Infer the type of a block.
@@ -13497,19 +13501,15 @@ fn infer_actor_def(
     }
 
     // Infer the actor body.
-    let _body_ty = if let Some(body) = actor_def.body() {
-        infer_block(
-            ctx,
-            env,
-            &body,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )
-    } else {
-        Ty::Tuple(vec![])
-    };
+    infer_body(
+        ctx,
+        env,
+        actor_def.body(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
 
     env.pop_scope();
 
@@ -13788,19 +13788,15 @@ fn infer_service_def(
             bind_service_params(ctx, env, init_fn.param_list(), types, type_registry);
 
         // Infer init body -- its return type is the initial state.
-        let init_body_ty = if let Some(body) = init_fn.body() {
-            infer_block(
-                ctx,
-                env,
-                &body,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )
-        } else {
-            Ty::Tuple(vec![])
-        };
+        let init_body_ty = infer_body(
+            ctx,
+            env,
+            init_fn.body(),
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
 
         // Unify init return type with state_ty.
         let _ = ctx.unify(init_body_ty, state_ty.clone(), body_origin(init_fn.body()));
@@ -13843,19 +13839,15 @@ fn infer_service_def(
             .unwrap_or_else(|| ctx.fresh_var());
 
         // Infer call handler body -- should return (new_state, reply) tuple.
-        let body_ty = if let Some(body) = handler.body() {
-            infer_block(
-                ctx,
-                env,
-                &body,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )
-        } else {
-            Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()])
-        };
+        let body_ty = infer_body(
+            ctx,
+            env,
+            handler.body(),
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
 
         // Body should return a tuple of (new_state, reply).
         let expected_body_ty = Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()]);
@@ -13888,19 +13880,15 @@ fn infer_service_def(
             bind_service_params(ctx, env, handler.params(), types, type_registry);
 
         // Infer cast handler body -- returns new_state.
-        let body_ty = if let Some(body) = handler.body() {
-            infer_block(
-                ctx,
-                env,
-                &body,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )
-        } else {
-            state_ty.clone()
-        };
+        let body_ty = infer_body(
+            ctx,
+            env,
+            handler.body(),
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        );
 
         // Unify body return with state type.
         let _ = ctx.unify(state_ty.clone(), body_ty, body_origin(handler.body()));

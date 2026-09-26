@@ -69,6 +69,30 @@ fn a_missing_condition_is_not_the_block_after_it() {
     }
 }
 
+/// A body cut off before it begins adds no error to its parse error: it
+/// was taken as `()`, "expected `Int`, found `()`" beside the arms, clauses
+/// or declared type it did not match.
+#[test]
+fn a_body_cut_off_before_it_begins_is_not_unit() {
+    for source in [
+        "fn f(0) = 1\nfn f(n)\n",
+        "fn f() -> Int\n",
+        "fn f() -> List<Int> do\n  for x in [1]\nend\n",
+        "fn f(x) -> Int do\n  case x do\n    1 -> 1\n    _ ->\n  end\nend\n",
+        "fn g() do\n  let h = fn 0 -> 1\n    | n ->\n  end\n  h\nend\n",
+        "actor a() do\n  receive do\n    1 -> 1\n    x ->\n  end\nend\n",
+        "actor a() do\n  receive do\n    x -> 1\n  after 5 ->\n  end\nend\n",
+        "service S do\n  fn init() -> Int\nend\n",
+        "service S do\n  fn init() -> Int do\n    0\n  end\n  call Get() :: Int\nend\n",
+        "service S do\n  fn init() -> Int do\n    0\n  end\n  cast Clear()\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]

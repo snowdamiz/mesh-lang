@@ -4,7 +4,9 @@
 //! and snapshots the debug tree output to verify correct structure.
 
 use insta::assert_snapshot;
-use mesh_parser::ast::expr::{BinaryExpr, ClosureExpr, Expr, ForInExpr, IfExpr, Literal, MatchArm};
+use mesh_parser::ast::expr::{
+    BinaryExpr, ClosureClause, ClosureExpr, Expr, ForInExpr, IfExpr, Literal, MatchArm,
+};
 use mesh_parser::ast::item::{
     FnDef, LetBinding, Param, ParamOwnership, SourceFile, StructDef, SumTypeDef,
 };
@@ -2774,6 +2776,38 @@ fn a_field_may_have_a_schema_options_name() {
         .collect();
     assert_eq!(fields, ["table", "timestamps", "has_many"]);
     assert_eq!(def.schema_options().len(), 1);
+}
+
+/// A body cut off before it begins is missing, not an empty block, which
+/// is one of type `()`: an arm's, a closure clause's, and a block an
+/// earlier error stopped before its first statement (`if b` with no `do`).
+#[test]
+fn a_body_cut_off_before_it_begins_is_missing() {
+    let arm = parse("fn f(x) do\n  case x do\n    1 -> 1\n    _ ->\n  end\nend\n");
+    assert!(!arm.errors().is_empty());
+    let bodies: Vec<_> = arm
+        .syntax()
+        .descendants()
+        .filter_map(MatchArm::cast)
+        .map(|arm| arm.body().is_some())
+        .collect();
+    assert_eq!(bodies, [true, false]);
+
+    let clause = parse("fn g() do\n  let h = fn 0 -> 1\n    | n ->\n  end\nend\n");
+    assert!(!clause.errors().is_empty());
+    let bodies: Vec<_> = clause
+        .syntax()
+        .descendants()
+        .filter_map(ClosureClause::cast)
+        .map(|clause| clause.body().is_some())
+        .collect();
+    // The clauses after the first, each after a `|`.
+    assert_eq!(bodies, [false]);
+
+    let cut = parse("fn f(b) do\n  if b\nend\n");
+    assert!(!cut.errors().is_empty());
+    let if_expr = cut.syntax().descendants().find_map(IfExpr::cast).unwrap();
+    assert!(if_expr.then_branch().is_none());
 }
 
 /// An as-pattern's sub-pattern is what it names, not the name.

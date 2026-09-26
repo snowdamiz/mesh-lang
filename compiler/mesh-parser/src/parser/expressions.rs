@@ -800,6 +800,7 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
 /// expression-statement.
 pub(crate) fn parse_block_body(p: &mut Parser) {
     let m = p.open();
+    let mut statements = 0;
 
     loop {
         p.eat_separators();
@@ -812,6 +813,7 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
 
         // Parse a statement or item.
         super::parse_item_or_stmt(p);
+        statements += 1;
         if !p.has_error() {
             super::expect_statement_end(p);
         }
@@ -821,7 +823,13 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
         }
     }
 
-    p.close(m, SyntaxKind::BLOCK);
+    // A block an earlier error cut off before its first statement (`if b`
+    // with no `do`) is none: an empty block is one of type `()`.
+    if statements == 0 && p.has_error() {
+        p.close(m, SyntaxKind::ERROR_NODE);
+    } else {
+        p.close(m, SyntaxKind::BLOCK);
+    }
 }
 
 // ── Let Binding ───────────────────────────────────────────────────────
@@ -1090,11 +1098,14 @@ fn parse_arm_block_body(p: &mut Parser) {
         }
     }
 
-    if statements == 0 && !p.has_error() {
+    // No statement is no body, not an empty block: that is one of type `()`,
+    // which the arm's other branches would not match.
+    if statements == 0 {
         p.error("expected expression after `->`");
+        p.close(m, SyntaxKind::ERROR_NODE);
+    } else {
+        p.close(m, SyntaxKind::BLOCK);
     }
-
-    p.close(m, SyntaxKind::BLOCK);
 }
 
 /// Whether the current line is a match-arm head: a pattern, optionally
@@ -1273,9 +1284,17 @@ fn parse_closure_arrow_body(p: &mut Parser) {
         p.error("a closure of several statements is `fn params do ... end`, without `->`");
         return;
     }
+    // No expression is no body, not an empty block of type `()`.
     let block = p.open();
-    expr(p);
-    p.close(block, SyntaxKind::BLOCK);
+    let body = expr_bp(p, 0);
+    p.close(
+        block,
+        if body.is_some() {
+            SyntaxKind::BLOCK
+        } else {
+            SyntaxKind::ERROR_NODE
+        },
+    );
     if !p.is_newline_insignificant()
         && matches!(p.peek_past_newlines(), SyntaxKind::BAR | SyntaxKind::END_KW)
     {
