@@ -10679,24 +10679,12 @@ fn infer_for_in(
         return Ok(Ty::Tuple(vec![]));
     };
 
-    // Check if iterable is a DotDot range.
-    // A range, `a..b`: both ends are integers.
-    let is_range = if let Some(Expr::BinaryExpr(ref bin)) = for_in.iterable() {
-        let is_dot_dot = bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT);
-        if is_dot_dot {
-            let origin = ConstraintOrigin::BinOp {
-                op_span: bin.syntax().text_range(),
-            };
-            for end in [bin.lhs(), bin.rhs()].into_iter().flatten() {
-                if let Some(end_ty) = types.get(&end.syntax().text_range()) {
-                    ctx.unify(Ty::int(), end_ty.clone(), origin.clone())?;
-                }
-            }
-        }
-        is_dot_dot
-    } else {
-        false
-    };
+    // A range written in place, `a..b`, iterates its integers (whose ends
+    // its inference already made integers).
+    let is_range = matches!(
+        for_in.iterable(),
+        Some(Expr::BinaryExpr(ref bin)) if bin.op().map(|t| t.kind()) == Some(SyntaxKind::DOT_DOT)
+    );
 
     // Push a new scope for the loop variable(s).
     env.push_scope();
