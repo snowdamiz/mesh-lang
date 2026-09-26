@@ -7950,32 +7950,6 @@ impl<'a> Lowerer<'a> {
         result.unwrap_or(MirExpr::Unit)
     }
 
-    // ── Let binding lowering ─────────────────────────────────────────
-
-    #[allow(dead_code)]
-    fn lower_let_binding(&mut self, let_: &LetBinding) -> MirExpr {
-        let name = let_
-            .name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "_".to_string());
-
-        let value = if let Some(init) = let_.initializer() {
-            self.lower_expr(&init)
-        } else {
-            MirExpr::Unit
-        };
-
-        let ty = value.ty().clone();
-        self.insert_var(name.clone(), ty.clone());
-
-        MirExpr::Let {
-            name,
-            ty,
-            value: Box::new(value),
-            body: Box::new(MirExpr::Unit),
-        }
-    }
-
     // ── Expression lowering ──────────────────────────────────────────
 
     /// Job.async(f) / Job.map(list, f): f's result crosses back to the caller
