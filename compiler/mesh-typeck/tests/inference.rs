@@ -325,7 +325,9 @@ fn test_bare_generic_annotation_infers_its_arguments() {
 }
 
 /// An expression the parser could not complete has its parse error and no
-/// type error besides: it used to add "expected Never, found Never".
+/// type error besides. An operator without its operand used to add
+/// "expected Never, found Never", and a field access without its name
+/// "type `Int` has no field `<unknown>`".
 #[test]
 fn an_unfinished_expression_has_no_type_error_of_its_own() {
     for src in [
@@ -333,6 +335,7 @@ fn an_unfinished_expression_has_no_type_error_of_its_own() {
         "fn main() do\n  let x = 1 |>\nend\n",
         "fn main() do\n  let x = -\nend\n",
         "fn main() do\n  let x =\nend\n",
+        "fn main() do\n  let x = 1\n  let y = x.\nend\n",
     ] {
         let parse = mesh_parser::parse(src);
         assert!(!parse.errors().is_empty(), "{src}");

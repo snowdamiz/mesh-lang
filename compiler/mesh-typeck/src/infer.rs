@@ -12466,10 +12466,7 @@ fn infer_field_access(
 ) -> Result<Ty, TypeError> {
     let base_expr = fa.base().ok_or_else(incomplete)?;
 
-    let field_name = match fa.field() {
-        Some(tok) => tok.text().to_string(),
-        None => "<unknown>".to_string(),
-    };
+    let field_name = fa.field().ok_or_else(incomplete)?.text().to_string();
 
     // Check if base is a NameRef pointing to a module name for qualified access.
     // e.g. Vector.add (user module), String.length (stdlib) -- module-qualified function reference.
