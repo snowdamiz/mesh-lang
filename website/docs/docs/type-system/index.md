@@ -980,7 +980,7 @@ A parameter's mode says what a call does with a resource argument:
 | `x :: consume T` | Moved into the call; states the intent explicitly |
 | `x :: borrow T` | Lent for the duration of the call; the caller keeps it |
 
-A function cannot move a borrowed parameter (``borrowed resource `x` cannot be moved``), but it can read its fields and pass it on to another `borrow` parameter. A function may return without moving a resource parameter it owns.
+A function cannot move a borrowed parameter (``borrowed resource `x` cannot be moved``), but it can read its fields and pass it on to another `borrow` parameter. A function may return without moving a resource parameter it owns. A method's `self` is always borrowed from its caller, whichever way the method is called (`session.close()`, `close(session)`, `Closer.close(session)`); its other resource parameters follow the table above.
 
 ### Restrictions
 
