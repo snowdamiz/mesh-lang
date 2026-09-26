@@ -974,3 +974,74 @@ end
     );
     assert_eq!(out, "6\n13 10\nSome(1) 11\n");
 }
+
+/// A service's state can be missing (no `init`: the Int 0) or Unit, and its
+/// messages can carry `()` arguments and `()` or tuple replies. A service
+/// whose `init` returned `()` did not build: its init and cast handler
+/// functions were declared to return an Int and returned Unit.
+#[test]
+fn services_keep_missing_and_unit_states() {
+    let out = compile_and_run(
+        r##"service NoInit do
+  call Get() :: Int do |state|
+    (state, 42)
+  end
+
+  cast Bump() do |state|
+    state + 1
+  end
+end
+
+service UnitState do
+  fn init() do
+    ()
+  end
+
+  call Ping(n :: Int) :: Int do |state|
+    (state, n + 1)
+  end
+
+  cast Poke() do |state|
+    state
+  end
+end
+
+service Units do
+  fn init() -> Int do
+    5
+  end
+
+  call Ping(u :: ()) :: Int do |state|
+    (state, state + 1)
+  end
+
+  call Nothing() :: () do |state|
+    (state, ())
+  end
+
+  call Pair() :: (Int, String) do |state|
+    (state, (state, "pair"))
+  end
+
+  cast Poke(u :: ()) do |state|
+    state + 1
+  end
+end
+
+fn main() do
+  let a = NoInit.start()
+  NoInit.bump(a)
+  println("${NoInit.get(a)}")
+  let b = UnitState.start()
+  UnitState.poke(b)
+  println("${UnitState.ping(b, 1)}")
+  let c = Units.start()
+  Units.poke(c, ())
+  println("${Units.ping(c, ())} ${Units.nothing(c)}")
+  let p = Units.pair(c)
+  println("${Tuple.first(p)} ${Tuple.second(p)}")
+end
+"##,
+    );
+    assert_eq!(out, "42\n2\n7 ()\n6 pair\n");
+}

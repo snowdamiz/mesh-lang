@@ -451,6 +451,18 @@ fn fun_parts(ty: &Ty) -> (&[Ty], &Ty) {
     }
 }
 
+/// A service's new state, `body`, and its type, as the service loop keeps
+/// it: a Unit state is the Int 0.
+fn service_state(body: MirExpr) -> (MirExpr, MirType) {
+    match effective_return_type(&body) {
+        MirType::Unit => (
+            MirExpr::Block(vec![body, MirExpr::IntLit(0, MirType::Int)], MirType::Int),
+            MirType::Int,
+        ),
+        ty => (body, ty),
+    }
+}
+
 /// `ty` with every type variable left open taken as Unit.
 fn apply_default_unit(ty: &Ty) -> Ty {
     match ty {
@@ -14356,12 +14368,7 @@ impl<'a> Lowerer<'a> {
         };
 
         let init_fn_name = format!("__service_{}_init", name_lower);
-        let init_ret_ty = effective_return_type(&init_body);
-        let init_ret_ty = if matches!(init_ret_ty, MirType::Unit) {
-            MirType::Int
-        } else {
-            init_ret_ty
-        };
+        let (init_body, init_ret_ty) = service_state(init_body);
         self.functions.push(MirFunction {
             name: init_fn_name.clone(),
             params: init_params.clone(),
@@ -14485,14 +14492,8 @@ impl<'a> Lowerer<'a> {
 
             self.pop_scope();
 
-            // Cast handler returns new state. Use effective_return_type to walk
-            // through Let wrappers and find the actual return type.
-            let cast_ret_ty = effective_return_type(&body);
-            let cast_ret_ty = if matches!(cast_ret_ty, MirType::Unit) {
-                MirType::Int
-            } else {
-                cast_ret_ty
-            };
+            // Cast handler returns new state.
+            let (body, cast_ret_ty) = service_state(body);
             self.functions.push(MirFunction {
                 name: handler_fn_name.clone(),
                 params,
