@@ -253,16 +253,16 @@ mod tests {
         );
     }
 
+    /// A type named in an annotation goes to its definition, past the items
+    /// before it.
     #[test]
     fn find_def_type_in_annotation() {
-        let source =
-            "struct Point do\nx :: Int\ny :: Int\nend\nlet p :: Point = Point { x: 1, y: 2 }";
-        // Find "Point" in the type annotation `:: Point`.
-        let after_let = source.find("let p").unwrap();
-        let in_annotation = source[after_let..].find("Point").unwrap() + after_let;
-        let result = def_at(source, in_annotation);
-        // Type annotation context detection -- verify no panic.
-        let _ = result;
+        let source = "fn origin() do\n  0\nend\n\nstruct Point do\n  x :: Int\nend\n\nfn main() do\n  let p :: Point = Point { x: 1 }\n  p\nend\n";
+        let in_annotation = source.find(":: Point").unwrap() + 3;
+        assert_eq!(
+            def_at(source, in_annotation).map(|range| usize::from(range.start())),
+            Some(source.find("Point do").unwrap())
+        );
     }
 
     #[test]
