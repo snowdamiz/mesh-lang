@@ -20,7 +20,10 @@ fn programs_cut_off_partway_are_checked_without_panicking() {
         let source = std::fs::read_to_string(&file).expect("a readable fixture");
         for (line, (end, _)) in source.match_indices('\n').enumerate().step_by(4) {
             let cut = &source[..end];
-            let checked = std::panic::catch_unwind(|| mesh_typeck::check(&mesh_parser::parse(cut)));
+            let checked = std::panic::catch_unwind(|| {
+                let parse = mesh_parser::parse(cut);
+                mesh_typeck::collect_exports(&parse, &mesh_typeck::check(&parse))
+            });
             assert!(
                 checked.is_ok(),
                 "checking {} cut after line {} panicked",
@@ -41,4 +44,20 @@ fn imports_without_a_module_are_skipped() {
         let result = mesh_typeck::check(&parse);
         assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
     }
+}
+
+/// A definition the parser could not name is neither exported nor a
+/// private name.
+#[test]
+fn definitions_without_names_are_not_exported() {
+    let parse = mesh_parser::parse("pub fn (x) do\n  x\nend\n\npub struct do\n  x :: Int\nend\n");
+    assert!(!parse.errors().is_empty());
+    let exports = mesh_typeck::collect_exports(&parse, &mesh_typeck::check(&parse));
+    assert!(exports.functions.is_empty(), "{:?}", exports.functions);
+    assert!(exports.struct_defs.is_empty(), "{:?}", exports.struct_defs);
+    assert!(
+        exports.private_names.is_empty(),
+        "{:?}",
+        exports.private_names
+    );
 }

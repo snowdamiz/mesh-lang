@@ -349,150 +349,99 @@ pub fn check_with_imports(parse: &mesh_parser::Parse, import_ctx: &ImportContext
     infer::infer_with_imports(parse, import_ctx)
 }
 
-/// Collect exported symbols from a type-checked module.
-///
-/// Currently exports ALL top-level definitions (Phase 40 adds pub filtering).
-/// Extracts function schemes from the typeck types map by scanning the parse
-/// tree for FnDef items, struct/sum type defs from TypeRegistry, and
-/// trait defs/impls from TraitRegistry.
+/// Collect what a type-checked module exports: its public functions (each
+/// arity of an overloaded one), structs, sum types, aliases and interfaces,
+/// its actors and services, and the impls it declares or derives, with the
+/// names of the definitions it keeps private.
 pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> ExportedSymbols {
     use mesh_parser::ast::item::Item;
-    use mesh_parser::ast::AstNode;
 
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();
 
+    // What the module makes public, and the names of what it keeps private
+    // (an import of one is "private", not "not found"). Actors and services
+    // have no `pub` and are always exported; `Option`, `Result` and
+    // `Ordering` are the built-in types, whatever a module says.
+    let registry = &typeck.type_registry;
     for item in tree.items() {
-        if let Item::FnDef(fn_def) = item {
-            if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                // Look up the function's inferred type from the typeck result
-                let range = fn_def.syntax().text_range();
-                if let Some(ty) = typeck.types.get(&range) {
-                    if fn_def.visibility().is_some() {
-                        // Each arity of an overloaded name is its own function.
-                        let export_name = if typeck.overloaded_fn_names.contains(&name) {
-                            let arity = fn_def
-                                .param_list()
-                                .map(|pl| pl.params().count())
-                                .unwrap_or(0);
-                            format!("{}__{}", name, arity)
-                        } else {
-                            name
-                        };
-                        if let Some(constraints) = typeck.fn_constraints.get(&export_name) {
-                            exports
-                                .function_constraints
-                                .insert(export_name.clone(), constraints.clone());
-                        }
-                        exports
-                            .functions
-                            .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
-                        exports.function_ownership.insert(
-                            export_name,
-                            fn_def
-                                .param_list()
-                                .map(|parameters| {
-                                    parameters
-                                        .params()
-                                        .map(|parameter| parameter.ownership())
-                                        .collect()
-                                })
-                                .unwrap_or_default(),
-                        );
-                    } else {
-                        exports.private_names.insert(name);
-                    }
-                }
-            }
+        let (name, public) = match &item {
+            Item::FnDef(def) => (def.name(), def.visibility().is_some()),
+            Item::StructDef(def) => (def.name(), def.visibility().is_some()),
+            Item::SumTypeDef(def) => (def.name(), def.visibility().is_some()),
+            Item::TypeAliasDef(def) => (def.name(), def.visibility().is_some()),
+            Item::InterfaceDef(def) => (def.name(), def.visibility().is_some()),
+            Item::ActorDef(def) => (def.name(), true),
+            _ => continue,
+        };
+        let Some(name) = name.and_then(|n| n.text()) else {
+            continue;
+        };
+        if matches!(item, Item::SumTypeDef(_))
+            && ["Option", "Result", "Ordering"].contains(&name.as_str())
+        {
+            continue;
         }
-    }
-
-    // Copy struct defs from type_registry, filtered by AST visibility
-    for item in tree.items() {
-        if let Item::StructDef(struct_def) = &item {
-            if let Some(name) = struct_def.name().and_then(|n| n.text()) {
-                if struct_def.visibility().is_some() {
-                    if let Some(def) = typeck.type_registry.struct_defs.get(&name) {
-                        exports.struct_defs.insert(name.clone(), def.clone());
-                        if typeck.type_registry.is_resource_name(&name) {
-                            exports.resource_types.insert(name);
-                        }
-                    }
+        if !public {
+            exports.private_names.insert(name);
+            continue;
+        }
+        let ty = typeck.types.get(&item.syntax().text_range());
+        match item {
+            Item::FnDef(fn_def) => {
+                let Some(ty) = ty else {
+                    continue;
+                };
+                // Each arity of an overloaded name is its own function.
+                let params = fn_def.param_list();
+                let export_name = if typeck.overloaded_fn_names.contains(&name) {
+                    let arity = params.iter().flat_map(|list| list.params()).count();
+                    format!("{name}__{arity}")
                 } else {
-                    exports.private_names.insert(name);
+                    name
+                };
+                if let Some(constraints) = typeck.fn_constraints.get(&export_name) {
+                    exports
+                        .function_constraints
+                        .insert(export_name.clone(), constraints.clone());
                 }
+                exports
+                    .functions
+                    .insert(export_name.clone(), Scheme::normalize_from_ty(ty.clone()));
+                let ownership = params
+                    .iter()
+                    .flat_map(|list| list.params())
+                    .map(|parameter| parameter.ownership())
+                    .collect();
+                exports.function_ownership.insert(export_name, ownership);
+            }
+            Item::StructDef(_) => {
+                if registry.is_resource_name(&name) {
+                    exports.resource_types.insert(name.clone());
+                }
+                let def = registry.struct_defs.get(&name).cloned();
+                exports.struct_defs.extend(def.map(|def| (name, def)));
+            }
+            Item::SumTypeDef(_) => {
+                let def = registry.sum_type_defs.get(&name).cloned();
+                exports.sum_type_defs.extend(def.map(|def| (name, def)));
+            }
+            Item::TypeAliasDef(_) => {
+                let def = registry.type_aliases.get(&name).cloned();
+                exports.type_aliases.extend(def.map(|def| (name, def)));
+            }
+            Item::InterfaceDef(_) => {
+                let def = typeck.trait_registry.get_trait(&name).cloned();
+                exports.trait_defs.extend(def);
+            }
+            _ => {
+                let scheme = ty.map(|ty| (name, Scheme::normalize_from_ty(ty.clone())));
+                exports.actor_defs.extend(scheme);
             }
         }
     }
-
-    // Copy sum type defs from type_registry, filtered by AST visibility
-    // (filter out builtins: Option, Result, Ordering are built-in)
-    let builtin_sum_types = ["Option", "Result", "Ordering"];
-    for item in tree.items() {
-        if let Item::SumTypeDef(sum_def) = &item {
-            if let Some(name) = sum_def.name().and_then(|n| n.text()) {
-                if !builtin_sum_types.contains(&name.as_str()) {
-                    if sum_def.visibility().is_some() {
-                        if let Some(def) = typeck.type_registry.sum_type_defs.get(&name) {
-                            exports.sum_type_defs.insert(name, def.clone());
-                        }
-                    } else {
-                        exports.private_names.insert(name);
-                    }
-                }
-            }
-        }
-    }
-
-    // Copy pub type aliases from type_registry, filtered by AST visibility
-    for item in tree.items() {
-        if let Item::TypeAliasDef(alias_def) = &item {
-            if let Some(name) = alias_def.name().and_then(|n| n.text()) {
-                if alias_def.visibility().is_some() {
-                    if let Some(def) = typeck.type_registry.type_aliases.get(&name) {
-                        exports.type_aliases.insert(name, def.clone());
-                    }
-                } else {
-                    exports.private_names.insert(name);
-                }
-            }
-        }
-    }
-
-    // Copy service defs from typeck.local_service_exports.
-    // Services are always exported (no `pub` prefix in current grammar).
     for (name, info) in &typeck.local_service_exports {
         exports.service_defs.insert(name.clone(), info.clone());
-    }
-
-    // Copy actor defs from typeck.types via AST traversal.
-    // Actors are always exported (no `pub` prefix in current grammar, same as services).
-    for item in tree.items() {
-        if let Item::ActorDef(actor_def) = item {
-            if let Some(name) = actor_def.name().and_then(|n| n.text()) {
-                let range = actor_def.syntax().text_range();
-                if let Some(ty) = typeck.types.get(&range) {
-                    exports
-                        .actor_defs
-                        .insert(name, Scheme::normalize_from_ty(ty.clone()));
-                }
-            }
-        }
-    }
-
-    // Extract trait defs from AST InterfaceDef items, filtered by visibility.
-    for item in tree.items() {
-        if let Item::InterfaceDef(iface) = item {
-            if let Some(name) = iface.name().and_then(|n| n.text()) {
-                if iface.visibility().is_some() {
-                    if let Some(trait_def) = typeck.trait_registry.get_trait(&name) {
-                        exports.trait_defs.push(trait_def.clone());
-                    }
-                } else {
-                    exports.private_names.insert(name);
-                }
-            }
-        }
     }
 
     // For trait impls: collect from explicit `impl Trait for Type` AST nodes,
