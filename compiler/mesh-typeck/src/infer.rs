@@ -13899,10 +13899,7 @@ fn infer_spawn(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let args: Vec<Expr> = spawn
-        .arg_list()
-        .map(|list| list.args().collect())
-        .unwrap_or_default();
+    let args: Vec<Expr> = spawn.arg_list().ok_or_else(incomplete)?.args().collect();
     // The first argument is the actor, the others its arguments.
     let Some(actor_fn_expr) = args.first() else {
         let err = TypeError::ArityMismatch {
@@ -14039,10 +14036,7 @@ fn infer_send_with(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    let explicit: Vec<Expr> = send
-        .arg_list()
-        .map(|list| list.args().collect())
-        .unwrap_or_default();
+    let explicit: Vec<Expr> = send.arg_list().ok_or_else(incomplete)?.args().collect();
     let mut arg_tys = Vec::new();
     for arg in &explicit {
         let ty = infer_expr(

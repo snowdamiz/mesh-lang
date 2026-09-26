@@ -93,6 +93,22 @@ fn a_body_cut_off_before_it_begins_is_not_unit() {
     }
 }
 
+/// `send`, `spawn` and `link` cut off before their arguments add no error
+/// to their parse error: each was also "expected 2 arguments, found 0".
+#[test]
+fn actor_primitives_without_arguments_are_skipped() {
+    for source in [
+        "fn f() do\n  send\nend\n",
+        "fn f() do\n  spawn\nend\n",
+        "fn f() do\n  link\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]
