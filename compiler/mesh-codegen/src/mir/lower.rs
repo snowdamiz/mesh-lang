@@ -8061,10 +8061,7 @@ impl<'a> Lowerer<'a> {
             Expr::CallExpr(call) => self.lower_call_expr(call),
             Expr::PipeExpr(pipe) => self.lower_pipe_expr(pipe),
             Expr::FieldAccess(fa) => self.lower_field_access(fa),
-            Expr::IndexExpr(_) => {
-                // Index expressions not yet supported in MIR.
-                MirExpr::Unit
-            }
+            Expr::IndexExpr(_) => unreachable!("the type checker rejects indexing (E0078)"),
             Expr::IfExpr(if_) => self.lower_if_expr(if_),
             Expr::CaseExpr(case) => self.lower_case_expr(case),
             Expr::ClosureExpr(closure) => self.lower_closure_expr(closure),
@@ -8101,18 +8098,15 @@ impl<'a> Lowerer<'a> {
                 let name = atom.atom_text().unwrap_or_default();
                 MirExpr::StringLit(name, MirType::String)
             }
-            // Regex literal -- desugar to mesh_regex_from_literal(pattern, flags_bitmask)
-            // mesh_regex_from_literal is declared in Phase 119-02 runtime; we wire the call
-            // site here. Flags bitmask: i=1, m=2, s=4.
+            // Regex literal -- desugar to mesh_regex_from_literal(pattern, flags_bitmask).
+            // Flags bitmask: i=1, m=2, s=4 (the lexer allows no other flag).
             Expr::RegexExpr(rx) => {
                 let pattern = rx.pattern().unwrap_or_default();
-                let flags_str = rx.flags();
-                let flags_bits: i64 = flags_str.chars().fold(0i64, |acc, c| match c {
-                    'i' => acc | 1,
-                    'm' => acc | 2,
-                    's' => acc | 4,
-                    _ => acc,
-                });
+                let flags_bits = rx
+                    .flags()
+                    .chars()
+                    .filter_map(|flag| "ims".find(flag))
+                    .fold(0i64, |bits, bit| bits | 1 << bit);
                 let fn_ty =
                     MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr));
                 MirExpr::Call {
@@ -8138,32 +8132,21 @@ impl<'a> Lowerer<'a> {
 
     // ── Literal lowering ─────────────────────────────────────────────
 
+    /// A number, `true`, `false` or `nil`: the parser makes a literal of one
+    /// of these tokens (a string is a string expression), and the type
+    /// checker rejects a number out of range (E0072).
     fn lower_literal(&self, lit: &Literal) -> MirExpr {
-        let token = match lit.token() {
-            Some(t) => t,
-            None => return MirExpr::Unit,
-        };
-
-        let text = token.text().to_string();
-
+        let token = lit.token().expect("a literal is its token");
+        let text = token.text();
         match token.kind() {
             SyntaxKind::INT_LITERAL => {
-                let val = parse_int_literal(&text).unwrap_or(0);
-                MirExpr::IntLit(val, MirType::Int)
+                MirExpr::IntLit(parse_int_literal(text).unwrap_or(0), MirType::Int)
             }
             SyntaxKind::FLOAT_LITERAL => {
-                let val = parse_float_literal(&text).unwrap_or(0.0);
-                MirExpr::FloatLit(val, MirType::Float)
+                MirExpr::FloatLit(parse_float_literal(text).unwrap_or(0.0), MirType::Float)
             }
             SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
             SyntaxKind::FALSE_KW => MirExpr::BoolLit(false, MirType::Bool),
-            SyntaxKind::NIL_KW => MirExpr::Unit,
-            SyntaxKind::STRING_START => {
-                // Simple string literal (no interpolation in a LITERAL node).
-                // Extract the string content from the syntax node.
-                let content = extract_simple_string_content(lit.syntax());
-                MirExpr::StringLit(content, MirType::String)
-            }
             _ => MirExpr::Unit,
         }
     }
