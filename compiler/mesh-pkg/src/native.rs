@@ -74,12 +74,10 @@ struct ResolveContext<'a> {
 
 impl ResolveContext<'_> {
     fn visit(&mut self, package_root: &Path, manifest: &Manifest) -> Result<(), String> {
-        let package_root = package_root.canonicalize().map_err(|error| {
-            format!(
-                "Failed to resolve native package root '{}': {error}",
-                package_root.display()
-            )
-        })?;
+        // An installed git checkout may be reached through a link.
+        let package_root = package_root
+            .canonicalize()
+            .unwrap_or_else(|_| package_root.to_path_buf());
         if !self.visited.insert(package_root.clone()) {
             return Ok(());
         }
@@ -212,39 +210,26 @@ impl ResolveContext<'_> {
     }
 }
 
+/// A file of a package, named by a path inside it: no `..` or absolute part,
+/// no symbolic link on the way (either could lead out of the package), and
+/// every component there. The package root is canonical, so the path is too.
 fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<PathBuf, String> {
-    reject_symlink_components(root, relative, kind)?;
-    let joined = root.join(relative);
-    let canonical = joined.canonicalize().map_err(|error| {
-        format!(
-            "{kind} '{}' does not exist or cannot be read: {error}",
-            joined.display()
-        )
-    })?;
-    if !canonical.starts_with(root) {
-        return Err(format!(
-            "{kind} '{}' resolves outside package root '{}'",
-            relative.display(),
-            root.display()
-        ));
-    }
-    if !canonical.is_file() {
-        return Err(format!("{kind} '{}' is not a file", joined.display()));
-    }
-    Ok(joined)
-}
-
-fn reject_symlink_components(root: &Path, relative: &Path, kind: &str) -> Result<(), String> {
-    let mut current = root.to_path_buf();
+    let mut path = root.to_path_buf();
     for component in relative.components() {
-        let std::path::Component::Normal(segment) = component else {
-            continue;
-        };
-        current.push(segment);
-        let metadata = std::fs::symlink_metadata(&current).map_err(|error| {
+        match component {
+            std::path::Component::CurDir => continue,
+            std::path::Component::Normal(segment) => path.push(segment),
+            _ => {
+                return Err(format!(
+                    "{kind} '{}' must be a path inside its package",
+                    relative.display()
+                ))
+            }
+        }
+        let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
             format!(
                 "{kind} '{}' does not exist or cannot be read: {error}",
-                current.display()
+                path.display()
             )
         })?;
         if metadata.file_type().is_symlink() {
@@ -254,7 +239,10 @@ fn reject_symlink_components(root: &Path, relative: &Path, kind: &str) -> Result
             ));
         }
     }
-    Ok(())
+    if !path.is_file() {
+        return Err(format!("{kind} '{}' is not a file", path.display()));
+    }
+    Ok(path)
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -519,5 +507,86 @@ bindings = ["bindings/helper.mpl"]
         );
         fs::create_dir(checkout.join("bindings/n.mpl")).unwrap();
         assert!(error().contains("is not a file"), "{}", error());
+
+        // A checkout without a commit has no revision to compare.
+        fs::remove_dir_all(&checkout).unwrap();
+        write_package(&checkout, &native_package("remote"));
+        git2::Repository::init(&checkout).unwrap();
+        assert!(
+            error().contains("Failed to read installed `remote` revision"),
+            "{}",
+            error()
+        );
+    }
+
+    /// A native path names a file inside its package (`./` allowed, `..` not);
+    /// a package two dependencies share resolves once; a path dependency
+    /// that is not there is an error.
+    #[test]
+    fn native_paths_stay_inside_their_packages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let package = |name: &str, binding: &str, dependencies: &str| {
+            let dir = root.join(name);
+            fs::create_dir_all(dir.join("bindings")).unwrap();
+            fs::write(
+                dir.join("bindings/n.mpl"),
+                "pub fn n() -> Int do\n  1\nend\n",
+            )
+            .unwrap();
+            fs::write(
+                dir.join("mesh.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"1.0.0\"\n\n[native]\nabi = 1\nbindings = [\"{binding}\"]\n\n[dependencies]\n{dependencies}"),
+            )
+            .unwrap();
+            dir
+        };
+        let app = package("app", "./bindings/n.mpl", "");
+        assert_eq!(resolve_native_bindings(&app).unwrap().len(), 1);
+        // The manifest refuses a path out of the package; the file check does
+        // too, should a path reach it some other way.
+        package("app", "bindings/../../outside.mpl", "");
+        let error = resolve_native_bindings(&app).unwrap_err();
+        assert!(
+            error.contains("must stay within the package root"),
+            "{error}"
+        );
+        fs::write(root.join("outside.mpl"), "pub fn o() -> Int do\n  1\nend\n").unwrap();
+        let error =
+            checked_package_file(&app, Path::new("../outside.mpl"), "native binding").unwrap_err();
+        assert!(
+            error.contains("must be a path inside its package"),
+            "{error}"
+        );
+
+        package("shared", "bindings/n.mpl", "");
+        package(
+            "left",
+            "bindings/n.mpl",
+            "shared = { path = \"../shared\" }\n",
+        );
+        package(
+            "right",
+            "bindings/n.mpl",
+            "shared = { path = \"../shared\" }\n",
+        );
+        package(
+            "app",
+            "bindings/n.mpl",
+            "left = { path = \"../left\" }\nright = { path = \"../right\" }\n",
+        );
+        let packages: Vec<String> = resolve_native_bindings(&app)
+            .unwrap()
+            .into_iter()
+            .map(|binding| binding.package)
+            .collect();
+        assert_eq!(packages, ["app", "left", "shared", "right"]);
+
+        package("app", "bindings/n.mpl", "gone = { path = \"../gone\" }\n");
+        let error = resolve_native_bindings(&app).unwrap_err();
+        assert!(
+            error.contains("Failed to resolve path dependency `gone`"),
+            "{error}"
+        );
     }
 }

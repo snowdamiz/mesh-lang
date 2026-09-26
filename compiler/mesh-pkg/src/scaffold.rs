@@ -56,6 +56,11 @@ fn create_project_dir(name: &str, dir: &Path) -> Result<PathBuf, String> {
     Ok(project_dir)
 }
 
+/// Create `dir/name`, which must not exist yet, holding `files`.
+fn create_project(name: &str, dir: &Path, files: &[(&str, &str)]) -> Result<(), String> {
+    write_project_files(&create_project_dir(name, dir)?, files)
+}
+
 /// Write each `(path, contents)` under `project_dir`, making directories.
 fn write_project_files(project_dir: &Path, files: &[(&str, &str)]) -> Result<(), String> {
     for (relative, contents) in files {
@@ -78,8 +83,6 @@ pub enum TodoApiDatabase {
 
 /// Create a new hello-world Mesh project with the given name inside the given parent directory.
 pub fn scaffold_project(name: &str, dir: &Path) -> Result<(), String> {
-    let project_dir = create_project_dir(name, dir)?;
-
     let manifest = format!(
         r#"[package]
 name = "{}"
@@ -94,8 +97,9 @@ version = "0.1.0"
   println("Hello from Mesh!")
 end
 "#;
-    write_project_files(
-        &project_dir,
+    create_project(
+        name,
+        dir,
         &[("mesh.toml", &manifest), ("main.mpl", main_mesh)],
     )?;
 
@@ -105,8 +109,6 @@ end
 
 /// Create a new clustered Mesh project that uses only the public clustered-app contract.
 pub fn scaffold_clustered_project(name: &str, dir: &Path) -> Result<(), String> {
-    let project_dir = create_project_dir(name, dir)?;
-
     let manifest = format!(
         r#"[package]
 name = "{}"
@@ -200,8 +202,9 @@ MESH_CONTINUITY_PROMOTION_EPOCH=0 \
         todo_sqlite_readme_url = TODO_SQLITE_README_URL,
         autonomous_cluster_docs_url = AUTONOMOUS_CLUSTER_DOCS_URL
     );
-    write_project_files(
-        &project_dir,
+    create_project(
+        name,
+        dir,
         &[
             ("mesh.toml", &manifest),
             ("main.mpl", main_mesh),
@@ -1596,8 +1599,6 @@ pub fn scaffold_todo_api_project_with_db(
 }
 
 fn scaffold_postgres_todo_api_project(name: &str, dir: &Path) -> Result<(), String> {
-    let project_dir = create_project_dir(name, dir)?;
-
     let manifest = format!(
         r#"[package]
 name = "{}"
@@ -1704,8 +1705,9 @@ end
   created_at :: String
 end deriving(Json)
 "#;
-    write_project_files(
-        &project_dir,
+    create_project(
+        name,
+        dir,
         &[
             ("mesh.toml", &manifest),
             ("main.mpl", postgres_todo_main_mesh()),
@@ -1756,8 +1758,6 @@ end deriving(Json)
 
 /// Create a new local SQLite Todo API starter template.
 fn scaffold_sqlite_todo_api_project(name: &str, dir: &Path) -> Result<(), String> {
-    let project_dir = create_project_dir(name, dir)?;
-
     let manifest = format!(
         r#"[package]
 name = "{}"
@@ -2370,8 +2370,9 @@ describe("SQLite todo storage") do
   end
 end
 "#;
-    write_project_files(
-        &project_dir,
+    create_project(
+        name,
+        dir,
         &[
             ("mesh.toml", &manifest),
             ("config.mpl", config_mesh),
@@ -2521,6 +2522,34 @@ mod tests {
         assert!(!readme.contains("/work"));
         assert!(!readme.contains("Timer.sleep"));
         assert!(!readme.contains("CLUSTER_PROOF_"));
+    }
+
+    /// No scaffold writes into a directory that exists, and a file that
+    /// cannot be written is an error naming it.
+    #[test]
+    fn scaffolds_refuse_existing_directories_and_report_write_failures() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir(tmp.path().join("taken")).unwrap();
+        for scaffold in [
+            scaffold_project,
+            scaffold_clustered_project,
+            scaffold_todo_api_project,
+            |name: &str, dir: &Path| {
+                scaffold_todo_api_project_with_db(name, dir, TodoApiDatabase::Postgres)
+            },
+        ] {
+            let error = scaffold("taken", tmp.path()).unwrap_err();
+            assert!(error.contains("already exists"), "{error}");
+        }
+
+        // A parent that is a file, and a file where a directory must go.
+        std::fs::write(tmp.path().join("plain"), "").unwrap();
+        let error = write_project_files(&tmp.path().join("plain"), &[("a/b.mpl", "")]).unwrap_err();
+        assert!(error.contains("Failed to create directory"), "{error}");
+        let error = write_project_files(tmp.path(), &[("plain/c.mpl", "")]).unwrap_err();
+        assert!(error.contains("Failed to"), "{error}");
+        let error = write_project_files(tmp.path(), &[("taken", "")]).unwrap_err();
+        assert!(error.contains("Failed to write"), "{error}");
     }
 
     #[test]

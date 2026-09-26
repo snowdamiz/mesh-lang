@@ -216,32 +216,18 @@ pub fn fetch_git_dep(
         git2::Oid::from_str(rev).map_err(|e| format!("Invalid revision '{}': {}", rev, e))?
     } else if let Some(tag_name) = tag {
         // Tag -> resolve to commit
-        let ref_name = format!("refs/tags/{}", tag_name);
-        let reference = repo
-            .find_reference(&ref_name)
-            .map_err(|e| format!("Failed to find tag '{}': {}", tag_name, e))?;
-        let commit = reference
-            .peel_to_commit()
-            .map_err(|e| format!("Failed to resolve tag '{}' to commit: {}", tag_name, e))?;
-        commit.id()
+        repo.find_reference(&format!("refs/tags/{tag_name}"))
+            .and_then(|reference| reference.peel_to_commit())
+            .map_err(|e| format!("Failed to resolve tag '{tag_name}' to a commit: {e}"))?
+            .id()
     } else if let Some(branch_name) = branch {
         // Branch -> resolve HEAD of branch
-        let ref_name = format!("refs/remotes/origin/{}", branch_name);
-        let reference = repo
-            .find_reference(&ref_name)
-            .or_else(|_| {
-                // Try local branch
-                let local_ref = format!("refs/heads/{}", branch_name);
-                repo.find_reference(&local_ref)
-            })
-            .map_err(|e| format!("Failed to find branch '{}': {}", branch_name, e))?;
-        let commit = reference.peel_to_commit().map_err(|e| {
-            format!(
-                "Failed to resolve branch '{}' to commit: {}",
-                branch_name, e
-            )
-        })?;
-        commit.id()
+        // The remote's branch, or else a local one.
+        repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
+            .or_else(|_| repo.find_reference(&format!("refs/heads/{branch_name}")))
+            .and_then(|reference| reference.peel_to_commit())
+            .map_err(|e| format!("Failed to resolve branch '{branch_name}' to a commit: {e}"))?
+            .id()
     } else {
         // Default branch HEAD
         let head = repo
@@ -645,8 +631,11 @@ version = "1.0.0"
             resolve(&manifest, &project_dir).map(|resolved| resolved[0].revision.clone())
         };
 
-        // Cloned, then fetched into the checkout it made.
+        // Cloned, then fetched into the checkout it made; the lockfile names
+        // where it came from.
         assert_eq!(resolve_with("").unwrap(), commit.to_string());
+        let (_, lockfile) = resolve_dependencies(&project_dir).unwrap();
+        assert_eq!(lockfile.packages[0].source, upstream.display().to_string());
         assert_eq!(resolve_with("").unwrap(), commit.to_string());
         assert_eq!(
             resolve_with(&format!(", rev = \"{commit}\"")).unwrap(),
@@ -655,8 +644,8 @@ version = "1.0.0"
         assert_eq!(resolve_with(", tag = \"v1\"").unwrap(), commit.to_string());
         for (pin, expected) in [
             (", rev = \"not-a-sha\"", "Invalid revision 'not-a-sha'"),
-            (", tag = \"v9\"", "Failed to find tag 'v9'"),
-            (", branch = \"nope\"", "Failed to find branch 'nope'"),
+            (", tag = \"v9\"", "Failed to resolve tag 'v9'"),
+            (", branch = \"nope\"", "Failed to resolve branch 'nope'"),
         ] {
             let error = resolve_with(pin).unwrap_err();
             assert!(error.contains(expected), "{expected}: {error}");
@@ -684,6 +673,23 @@ version = "1.0.0"
             error.contains("Failed to resolve path dependency `gone`"),
             "{error}"
         );
+    }
+
+    /// A path dependency without a manifest has nothing of its own to
+    /// resolve.
+    #[test]
+    fn a_path_dependency_without_a_manifest_is_a_leaf() {
+        let root = TempDir::new().unwrap();
+        std::fs::create_dir_all(root.path().join("plain")).unwrap();
+        std::fs::create_dir_all(root.path().join("app")).unwrap();
+        write_manifest(
+            &root.path().join("app"),
+            "app",
+            "[dependencies]\nplain = { path = \"../plain\" }",
+        );
+        let (resolved, _) = resolve_dependencies(&root.path().join("app")).unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].name, "plain");
     }
 
     #[test]

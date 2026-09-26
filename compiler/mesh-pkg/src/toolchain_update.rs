@@ -92,6 +92,16 @@ impl<'a> Attempt<'a> {
             detail: detail.into(),
         }
     }
+
+    /// The error for a step that failed: what it was doing, then why.
+    fn failed<E: fmt::Display>(
+        self,
+        phase: &'static str,
+        doing: impl Into<String>,
+    ) -> impl Fn(E) -> ToolchainUpdateError + 'a {
+        let doing = doing.into();
+        move |cause| self.error(phase, format!("{doing}: {cause}"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,12 +113,15 @@ pub(crate) enum ToolchainUpdatePlatform {
 
 impl ToolchainUpdatePlatform {
     pub(crate) fn detect() -> Self {
-        if cfg!(windows) {
-            Self::Windows
-        } else if cfg!(unix) {
-            Self::Unix
-        } else {
-            Self::Unsupported(env::consts::OS.to_string())
+        Self::of(env::consts::FAMILY, env::consts::OS)
+    }
+
+    /// The platform of an OS `family` (`std::env::consts::FAMILY`) and name.
+    fn of(family: &str, os: &str) -> Self {
+        match family {
+            "windows" => Self::Windows,
+            "unix" => Self::Unix,
+            _ => Self::Unsupported(os.to_string()),
         }
     }
 
@@ -183,11 +196,23 @@ pub(crate) struct LauncherCommand {
 }
 
 pub fn run_toolchain_update() -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
-    let platform = ToolchainUpdatePlatform::detect();
-    let update_env = ToolchainUpdateEnv::capture();
-    let installer_url = update_env.installer_url_for(&platform)?;
+    run_toolchain_update_on(
+        &ToolchainUpdatePlatform::detect(),
+        &ToolchainUpdateEnv::capture(),
+        &env::temp_dir(),
+    )
+}
+
+/// The update on `platform`, as `update_env` sets it up; a Windows
+/// bootstrap writes its scripts under `temp_root`.
+pub(crate) fn run_toolchain_update_on(
+    platform: &ToolchainUpdatePlatform,
+    update_env: &ToolchainUpdateEnv,
+    temp_root: &Path,
+) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
+    let installer_url = update_env.installer_url_for(platform)?;
     let installer_text =
-        download_installer_script(&installer_url, update_env.download_timeout(), &platform)?;
+        download_installer_script(&installer_url, update_env.download_timeout(), platform)?;
 
     match platform {
         ToolchainUpdatePlatform::Unix => run_unix_installer_with_command(
@@ -201,9 +226,9 @@ pub fn run_toolchain_update() -> Result<ToolchainUpdateOutcome, ToolchainUpdateE
             update_env.forwarded_env(),
             &installer_url,
             std::process::id(),
-            &env::temp_dir(),
+            temp_root,
         ),
-        ToolchainUpdatePlatform::Unsupported(_) => Err(Attempt::new(&platform, &installer_url)
+        ToolchainUpdatePlatform::Unsupported(_) => Err(Attempt::new(platform, &installer_url)
             .error("plan-launcher", "unsupported host platform")),
     }
 }
@@ -231,28 +256,20 @@ pub(crate) fn download_installer_script(
         .timeout_global(Some(timeout))
         .build();
     let agent = ureq::Agent::new_with_config(config);
-    let mut response = agent.get(installer_url).call().map_err(|error| {
-        attempt.error(
-            "download",
-            format!(
-                "failed to fetch installer with timeout {}s: {}",
-                timeout.as_secs(),
-                error
-            ),
-        )
-    })?;
+    let mut response = agent.get(installer_url).call().map_err(attempt.failed(
+        "download",
+        format!(
+            "failed to fetch installer with timeout {}s",
+            timeout.as_secs()
+        ),
+    ))?;
 
     let mut bytes = Vec::new();
     response
         .body_mut()
         .as_reader()
         .read_to_end(&mut bytes)
-        .map_err(|error| {
-            attempt.error(
-                "download",
-                format!("failed to read installer response body: {}", error),
-            )
-        })?;
+        .map_err(attempt.failed("download", "failed to read installer response body"))?;
 
     validate_installer_bytes(&bytes, installer_url, platform)
 }
@@ -297,12 +314,7 @@ pub(crate) fn run_unix_installer_with_command(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|error| {
-            attempt.error(
-                "spawn-launcher",
-                format!("failed to spawn launcher: {}", error),
-            )
-        })?;
+        .map_err(attempt.failed("spawn-launcher", "failed to spawn launcher"))?;
 
     // Dropped once written, so the launcher sees the script end.
     let written = child
@@ -310,12 +322,10 @@ pub(crate) fn run_unix_installer_with_command(
         .take()
         .expect("the launcher's stdin is piped")
         .write_all(installer_text.as_bytes());
-    let status = child.wait().map_err(|error| {
-        attempt.error(
-            "wait-launcher",
-            format!("failed while waiting for installer process: {}", error),
-        )
-    })?;
+    let status = child.wait().map_err(attempt.failed(
+        "wait-launcher",
+        "failed while waiting for installer process",
+    ))?;
     if !status.success() {
         return Err(attempt.error(
             "wait-launcher",
@@ -324,12 +334,10 @@ pub(crate) fn run_unix_installer_with_command(
     }
     // A launcher that succeeded without reading all of the script ran
     // something else.
-    written.map_err(|error| {
-        attempt.error(
-            "wait-launcher",
-            format!("failed to write installer to launcher stdin: {}", error),
-        )
-    })?;
+    written.map_err(attempt.failed(
+        "wait-launcher",
+        "failed to write installer to launcher stdin",
+    ))?;
 
     Ok(ToolchainUpdateOutcome {
         installer_url: installer_url.to_string(),
@@ -386,14 +394,14 @@ pub(crate) fn write_script_file(
     platform: &ToolchainUpdatePlatform,
 ) -> Result<(), ToolchainUpdateError> {
     let path_label = path.display().to_string();
-    fs::write(path, contents).map_err(|error| {
+    fs::write(path, contents).map_err(
         Attempt::new(platform, installer_url)
             .with_launcher(&path_label)
-            .error(
+            .failed(
                 "write-installer",
-                format!("failed to write script file {}: {}", path.display(), error),
-            )
-    })
+                format!("failed to write script file {}", path.display()),
+            ),
+    )
 }
 
 pub(crate) fn spawn_windows_bootstrap_command(
@@ -410,27 +418,21 @@ pub(crate) fn spawn_windows_bootstrap_command(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|error| {
-            attempt.error(
-                "spawn-launcher",
-                format!("failed to spawn launcher: {}", error),
-            )
-        })?;
+        .map_err(attempt.failed("spawn-launcher", "failed to spawn launcher"))?;
 
     thread::sleep(Duration::from_millis(WINDOWS_BOOTSTRAP_SETTLE_MS));
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => Err(attempt.error(
+    match child
+        .try_wait()
+        .map_err(attempt.failed("bootstrap", "failed to inspect bootstrap status"))?
+    {
+        Some(status) if !status.success() => Err(attempt.error(
             "bootstrap",
             format!("bootstrap exited early with status {}", status),
         )),
-        Ok(_) => Ok(ToolchainUpdateOutcome {
+        _ => Ok(ToolchainUpdateOutcome {
             installer_url: installer_url.to_string(),
             mode: ToolchainUpdateMode::DetachedBootstrap,
         }),
-        Err(error) => Err(attempt.error(
-            "bootstrap",
-            format!("failed to inspect bootstrap status: {}", error),
-        )),
     }
 }
 
@@ -447,18 +449,17 @@ pub(crate) fn launch_windows_bootstrap(
     let platform = ToolchainUpdatePlatform::Windows;
     let temp_dir = temp_root.join(unique_temp_dir_name());
     let temp_label = temp_dir.display().to_string();
-    fs::create_dir_all(&temp_dir).map_err(|error| {
+    fs::create_dir_all(&temp_dir).map_err(
         Attempt::new(&platform, installer_url)
             .with_launcher(&temp_label)
-            .error(
+            .failed(
                 "write-installer",
                 format!(
-                    "failed to create temp script directory {}: {}",
-                    temp_dir.display(),
-                    error
+                    "failed to create temp script directory {}",
+                    temp_dir.display()
                 ),
-            )
-    })?;
+            ),
+    )?;
     let installer_path = temp_dir.join("install.ps1");
     write_script_file(&installer_path, installer_text, installer_url, &platform)?;
     let bootstrap_path = temp_dir.join("mesh-update-bootstrap.ps1");
@@ -736,6 +737,37 @@ mod tests {
                 mode: ToolchainUpdateMode::Completed
             }
         );
+    }
+
+    /// Each platform runs the installer its way; one with no way is refused
+    /// once the installer is in hand.
+    #[cfg(unix)]
+    #[test]
+    fn updates_run_by_platform() {
+        assert_eq!(
+            ToolchainUpdatePlatform::of("windows", "windows"),
+            ToolchainUpdatePlatform::Windows
+        );
+        assert_eq!(
+            ToolchainUpdatePlatform::of("unix", "macos"),
+            ToolchainUpdatePlatform::Unix
+        );
+        assert_eq!(
+            ToolchainUpdatePlatform::of("", "uefi"),
+            ToolchainUpdatePlatform::Unsupported("uefi".to_string())
+        );
+
+        let temp = TempDir::new().unwrap();
+        let update = |platform: ToolchainUpdatePlatform| {
+            let update_env =
+                env_from_pairs(&[(UPDATE_INSTALLER_URL_ENV, &serve_once(b"exit 0\n"))]);
+            run_toolchain_update_on(&platform, &update_env, temp.path()).unwrap_err()
+        };
+        let error = update(ToolchainUpdatePlatform::Unsupported("uefi".to_string()));
+        assert_eq!(error.phase, "plan-launcher");
+        // No powershell.exe here: the bootstrap is written, and starting it fails.
+        let error = update(ToolchainUpdatePlatform::Windows);
+        assert!(error.detail.contains("failed to spawn launcher"), "{error}");
     }
 
     #[cfg(unix)]

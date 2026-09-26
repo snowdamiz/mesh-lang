@@ -440,12 +440,14 @@ pub fn rewrite_test_manifest_source(
         else {
             continue;
         };
-        let Some(path) = path_value.as_str().map(str::to_owned) else {
+        // Only a relative path needs the project root the copy leaves.
+        let Some(path) = path_value
+            .as_str()
+            .filter(|path| Path::new(path).is_relative())
+            .map(str::to_owned)
+        else {
             continue;
         };
-        if Path::new(&path).is_absolute() {
-            continue;
-        }
         let absolute = project_root.join(&path).canonicalize().map_err(|error| {
             format!(
                 "Failed to resolve path dependency `{name}` ({path}) for test manifest: {error}"

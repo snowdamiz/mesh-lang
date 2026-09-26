@@ -1201,12 +1201,16 @@ driver = "docker"
 
 [capacity.docker]
 image = "mesh-worker@sha256:abc"
-pool = "workers"
-template_revision = "v1"
 "#,
         );
 
         assert_eq!(config.validate(), Ok(()));
+        // The pool and template revision a manifest may leave out.
+        let docker = config.capacity.docker.as_ref().unwrap();
+        assert_eq!(
+            (docker.pool.as_str(), docker.template_revision.as_str()),
+            ("workers", "v1")
+        );
 
         let mut config = config;
         let docker = config.capacity.docker.as_mut().unwrap();

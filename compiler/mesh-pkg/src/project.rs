@@ -218,29 +218,16 @@ fn module_reaches(graph: &ModuleGraph, from: ModuleId, to: ModuleId) -> bool {
 /// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
 /// Returns PascalCase dot-separated module names.
 pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
-    let mut imports = Vec::new();
-    for item in source_file.items() {
-        match item {
-            Item::ImportDecl(decl) => {
-                if let Some(path) = decl.module_path() {
-                    let segments = path.segments();
-                    if !segments.is_empty() {
-                        imports.push(segments.join("."));
-                    }
-                }
-            }
-            Item::FromImportDecl(decl) => {
-                if let Some(path) = decl.module_path() {
-                    let segments = path.segments();
-                    if !segments.is_empty() {
-                        imports.push(segments.join("."));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    imports
+    source_file
+        .items()
+        .filter_map(|item| match item {
+            Item::ImportDecl(decl) => decl.module_path(),
+            Item::FromImportDecl(decl) => decl.module_path(),
+            _ => None,
+        })
+        .map(|path| path.segments().join("."))
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// Complete project data after discovery, parsing, and graph construction.
@@ -1449,5 +1436,41 @@ from Baz.Qux import { name1, name2 }
                 .is_empty(),
             "Expected no parse errors in main module"
         );
+    }
+
+    /// Installed packages that cannot be listed, and (where file names need
+    /// not be UTF-8) a source file that names no module, are errors.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_packages_and_unnameable_files_are_errors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("main.mpl"), "fn main() do\nend\n").unwrap();
+        let packages = tmp.path().join(".mesh/packages");
+        std::fs::create_dir_all(packages.join("pkg@1.0.0")).unwrap();
+        std::fs::set_permissions(&packages, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let listed = std::fs::read_dir(&packages).is_ok();
+        let result = build_project(tmp.path());
+        std::fs::set_permissions(&packages, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Permissions do not bind a privileged user.
+        if !listed {
+            let error = result.err().expect("the packages cannot be listed");
+            assert!(
+                error.contains("Failed to walk installed packages"),
+                "{error}"
+            );
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let name = std::ffi::OsStr::from_bytes(b"bad\xff.mpl");
+            std::fs::write(tmp.path().join(name), "pub fn f() do\n  1\nend\n").unwrap();
+            let error = build_project(tmp.path())
+                .err()
+                .expect("an unnameable module");
+            assert!(error.contains("Cannot determine module name"), "{error}");
+        }
     }
 }
