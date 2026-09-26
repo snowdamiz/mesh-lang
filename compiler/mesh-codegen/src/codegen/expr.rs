@@ -1649,14 +1649,10 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.llvm_type(ty)
         };
-        // Use entry-block alloca to prevent stack growth in TCE loops.
-        let result_alloca = if self.tce_loop_header.is_some() {
-            self.build_entry_alloca(result_ty, "if_result")?
-        } else {
-            self.builder
-                .build_alloca(result_ty, "if_result")
-                .map_err(|e| e.to_string())?
-        };
+        let result_alloca = self
+            .builder
+            .build_alloca(result_ty, "if_result")
+            .map_err(|e| e.to_string())?;
 
         let then_bb = self.context.append_basic_block(fn_val, "then");
         let else_bb = self.context.append_basic_block(fn_val, "else");
@@ -1726,14 +1722,10 @@ impl<'ctx> CodeGen<'ctx> {
         body: &MirExpr,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let llvm_ty = self.llvm_type(ty);
-        // Use entry-block alloca to prevent stack growth in TCE loops.
-        let alloca = if self.tce_loop_header.is_some() {
-            self.build_entry_alloca(llvm_ty, name)?
-        } else {
-            self.builder
-                .build_alloca(llvm_ty, name)
-                .map_err(|e| e.to_string())?
-        };
+        let alloca = self
+            .builder
+            .build_alloca(llvm_ty, name)
+            .map_err(|e| e.to_string())?;
 
         let val = self.codegen_expr(value)?;
 
@@ -1835,13 +1827,10 @@ impl<'ctx> CodeGen<'ctx> {
             // (e.g., inline case on a function call result). Use it directly.
             scrutinee_val.into_pointer_value()
         } else {
-            let alloca = if self.tce_loop_header.is_some() {
-                self.build_entry_alloca(scrutinee_llvm_ty, "scrutinee")?
-            } else {
-                self.builder
-                    .build_alloca(scrutinee_llvm_ty, "scrutinee")
-                    .map_err(|e| e.to_string())?
-            };
+            let alloca = self
+                .builder
+                .build_alloca(scrutinee_llvm_ty, "scrutinee")
+                .map_err(|e| e.to_string())?;
             self.builder
                 .build_store(alloca, scrutinee_val)
                 .map_err(|e| e.to_string())?;
@@ -1854,13 +1843,10 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Alloca for the match result
         let result_ty = self.llvm_type(ty);
-        let result_alloca = if self.tce_loop_header.is_some() {
-            self.build_entry_alloca(result_ty, "match_result")?
-        } else {
-            self.builder
-                .build_alloca(result_ty, "match_result")
-                .map_err(|e| e.to_string())?
-        };
+        let result_alloca = self
+            .builder
+            .build_alloca(result_ty, "match_result")
+            .map_err(|e| e.to_string())?;
 
         let fn_val = self.current_function();
         let merge_bb = self.context.append_basic_block(fn_val, "match_merge");
@@ -1899,7 +1885,10 @@ impl<'ctx> CodeGen<'ctx> {
         let column_types: Vec<MirType> = values.iter().map(|value| value.ty().clone()).collect();
         let scrutinee_ty = MirType::Tuple(column_types.clone());
         let struct_ty = self.llvm_type(&scrutinee_ty).into_struct_type();
-        let scrutinee_alloca = self.build_entry_alloca(struct_ty.into(), "columns")?;
+        let scrutinee_alloca = self
+            .builder
+            .build_alloca(struct_ty, "columns")
+            .map_err(|e| e.to_string())?;
         for (index, value) in values.iter().enumerate() {
             let value = self.codegen_expr(value)?;
             let slot = self
@@ -1915,7 +1904,10 @@ impl<'ctx> CodeGen<'ctx> {
         let tree =
             compile::compile_match_columns(&column_types, arms, &fn_name, 0, &self.sum_type_defs);
         let result_ty = self.llvm_type(ty);
-        let result_alloca = self.build_entry_alloca(result_ty, "match_result")?;
+        let result_alloca = self
+            .builder
+            .build_alloca(result_ty, "match_result")
+            .map_err(|e| e.to_string())?;
         let merge_bb = self
             .context
             .append_basic_block(self.current_function(), "match_merge");
@@ -3010,13 +3002,10 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(timeout_expr) = timeout_body {
             let fn_val = self.current_function();
             let result_llvm_ty = self.llvm_type(result_ty);
-            let result_alloca = if self.tce_loop_header.is_some() {
-                self.build_entry_alloca(result_llvm_ty, "recv_result")?
-            } else {
-                self.builder
-                    .build_alloca(result_llvm_ty, "recv_result")
-                    .map_err(|e| e.to_string())?
-            };
+            let result_alloca = self
+                .builder
+                .build_alloca(result_llvm_ty, "recv_result")
+                .map_err(|e| e.to_string())?;
 
             let timeout_bb = self.context.append_basic_block(fn_val, "timeout_bb");
             let msg_bb = self.context.append_basic_block(fn_val, "msg_bb");
@@ -3244,13 +3233,10 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(msg_val);
         };
         let msg_val = self.codegen_recv_message_as(msg_ptr, ty, msg_val)?;
-        let alloca = if self.tce_loop_header.is_some() {
-            self.build_entry_alloca(msg_val.get_type(), name)?
-        } else {
-            self.builder
-                .build_alloca(msg_val.get_type(), name)
-                .map_err(|e| e.to_string())?
-        };
+        let alloca = self
+            .builder
+            .build_alloca(msg_val.get_type(), name)
+            .map_err(|e| e.to_string())?;
         self.builder
             .build_store(alloca, msg_val)
             .map_err(|e| e.to_string())?;
@@ -5123,7 +5109,10 @@ impl<'ctx> CodeGen<'ctx> {
         let (next_result, mesh_option_ty, boxed_payload) = match next_value {
             BasicValueEnum::StructValue(option) => {
                 let option_ty = option.get_type();
-                let slot = self.build_entry_alloca(option_ty.into(), "next_option")?;
+                let slot = self
+                    .builder
+                    .build_alloca(option_ty, "next_option")
+                    .map_err(|e| e.to_string())?;
                 self.builder
                     .build_store(slot, option)
                     .map_err(|e| e.to_string())?;

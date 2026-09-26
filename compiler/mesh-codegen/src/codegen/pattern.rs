@@ -155,8 +155,10 @@ impl<'ctx> CodeGen<'ctx> {
         let mut saved = Vec::with_capacity(bindings.len());
         for (name, ty, path) in bindings {
             let val = self.navigate_access_path(target.scrutinee, target.scrutinee_ty, path)?;
-            // Place alloca in the function entry block for proper LLVM domination.
-            let alloca = self.build_entry_alloca(self.llvm_type(ty), name)?;
+            let alloca = self
+                .builder
+                .build_alloca(self.llvm_type(ty), name)
+                .map_err(|e| e.to_string())?;
             self.builder
                 .build_store(alloca, val)
                 .map_err(|e| e.to_string())?;
