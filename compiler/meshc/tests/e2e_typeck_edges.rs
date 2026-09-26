@@ -114,3 +114,48 @@ end
 "##;
     assert_eq!(compile_and_run(source), "0 7 some none\n");
 }
+
+/// A generic function returning an associated type of its receiver runs as
+/// each call's receiver's, the call's result used as that type.
+#[test]
+fn associated_types_returned_through_generic_calls_run() {
+    let source = r##"
+interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+
+struct Box do
+  v :: Int
+end
+
+struct Label do
+  text :: String
+end
+
+impl Container for Box do
+  type Item = Int
+  fn first(self) -> Int do
+    self.v
+  end
+end
+
+impl Container for Label do
+  type Item = String
+  fn first(self) -> String do
+    self.text
+  end
+end
+
+fn head<C>(c :: C) where C: Container do
+  c.first()
+end
+
+fn main() do
+  let n = head(Box { v: 41 }) + 1
+  let s = head(Label { text: "item" }) <> "s"
+  println("#{n} #{s}")
+end
+"##;
+    assert_eq!(compile_and_run(source), "42 items\n");
+}

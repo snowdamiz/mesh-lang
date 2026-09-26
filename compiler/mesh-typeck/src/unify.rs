@@ -806,22 +806,29 @@ impl InferCtx {
                 continue;
             }
             let instance_receiver = substitution[&receiver_root].clone();
-            match self.resolve(var) {
-                Ty::Var(root) if substitution.contains_key(&root) => instances.push((
-                    substitution[&root].clone(),
-                    trait_name,
-                    assoc,
-                    instance_receiver,
-                )),
-                Ty::Var(_) => {}
-                fixed => self.projection_requirements.push((
-                    fixed,
-                    trait_name,
-                    assoc,
-                    instance_receiver,
-                    self.expr_spans.last().copied(),
-                )),
-            }
+            // The instance's is the receiver's associated type, whatever
+            // its use takes it for (`let s :: String = first(box)`).
+            let required = match self.resolve(var) {
+                Ty::Var(root) if substitution.contains_key(&root) => {
+                    let instance = substitution[&root].clone();
+                    instances.push((
+                        instance.clone(),
+                        trait_name.clone(),
+                        assoc.clone(),
+                        instance_receiver.clone(),
+                    ));
+                    instance
+                }
+                Ty::Var(_) => continue,
+                fixed => fixed,
+            };
+            self.projection_requirements.push((
+                required,
+                trait_name,
+                assoc,
+                instance_receiver,
+                self.expr_spans.last().copied(),
+            ));
         }
         self.assoc_projections.extend(instances);
 

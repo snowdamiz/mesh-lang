@@ -146,6 +146,59 @@ end
     );
 }
 
+/// What a generic function returns of an associated type is, at each call,
+/// that associated type of the receiver the call gives it: a call taken
+/// for another type was let through. A qualified call and a method call
+/// through a bound find the method's type through the interface.
+#[test]
+fn an_associated_type_returned_through_a_call_is_the_receivers() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"interface Container do
+  type Item
+  fn first(self) -> Self.Item
+  fn put(self, item :: Self.Item) -> Self
+end
+
+struct Box do
+  v :: Int
+end
+
+impl Container for Box do
+  type Item = Int
+  fn first(self) -> Int do
+    self.v
+  end
+  fn put(self, item :: Int) -> Box do
+    Box { v: item }
+  end
+end
+
+fn head<C>(c :: C) where C: Container do
+  c.first()
+end
+
+fn refill<C>(c :: C, item) where C: Container do
+  c.put(item)
+end
+
+fn qualified(b :: Box) -> Int do
+  Container.first(b)
+end
+
+fn main() do
+  let n = head(Box { v: 1 }) + 1
+  let m :: String = head(Box { v: 2 })
+  let b = refill(Box { v: 3 }, 4)
+  n
+end
+"#
+        ),
+        [at("type mismatch: expected `String`, found `Int`", "head")]
+    );
+}
+
 /// Only an iterator handle is an `Iter`.
 #[test]
 fn a_value_that_is_no_iterator_is_no_iter() {
