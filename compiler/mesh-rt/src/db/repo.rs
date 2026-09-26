@@ -775,14 +775,13 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
         let count_key = rust_str_to_mesh("count");
         let count_val = mesh_map_get(first_row, count_key as u64);
         if count_val == 0 {
-            // No "count" key found -- try first value by any key
-            return ok_result(std::ptr::null_mut::<u8>());
+            return err_result("count returned no count column");
         }
 
         // Parse the string value as an integer
         let count_str = mesh_str_ref(count_val as *mut u8);
         let count: i64 = count_str.parse().unwrap_or(0);
-        ok_result(count as *mut u8)
+        crate::io::ok_int(count).cast()
     }
 }
 
@@ -791,7 +790,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
 /// `Repo.exists(pool, query)` -> `Result<Bool, String>`
 ///
 /// Builds: `SELECT EXISTS(SELECT 1 FROM "table" WHERE ... LIMIT 1)`
-/// Returns true (1) or false (0) as the result value.
+/// Returns the Bool, boxed as a Result payload is.
 #[no_mangle]
 pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
@@ -805,27 +804,14 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
             return result;
         }
 
+        // The first row's "exists" column; a Bool payload is boxed.
         let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return ok_result(std::ptr::null_mut::<u8>()); // false
-        }
-
-        // Get the first row, extract the "exists" column
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        let exists_key = rust_str_to_mesh("exists");
-        let exists_val = mesh_map_get(first_row, exists_key as u64);
-        if exists_val == 0 {
-            return ok_result(std::ptr::null_mut::<u8>()); // false
-        }
-
-        let exists_str = mesh_str_ref(exists_val as *mut u8);
-        let exists_bool: i64 = if exists_str == "t" || exists_str == "true" || exists_str == "1" {
-            1
-        } else {
-            0
+        let exists = mesh_list_length(list) > 0 && {
+            let first_row = mesh_list_get(list, 0) as *mut u8;
+            let exists_val = mesh_map_get(first_row, rust_str_to_mesh("exists") as u64);
+            exists_val != 0 && matches!(mesh_str_ref(exists_val as *mut u8), "t" | "true" | "1")
         };
-        ok_result(exists_bool as *mut u8)
+        ok_result(crate::io::box_scalar(exists))
     }
 }
 
