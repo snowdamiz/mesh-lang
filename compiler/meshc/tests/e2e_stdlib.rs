@@ -807,28 +807,51 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
     }
 }
 
-/// Wait for a spawned Mesh HTTP server to emit its runtime listening log.
+/// Wait for a spawned Mesh HTTP or HTTPS server to emit its runtime
+/// listening log. Generous: a host that assesses each new process before it
+/// starts (macOS, under cargo) can hold the server for many seconds.
 fn wait_for_server_ready(guard: &mut ServerGuard) {
     let stderr = guard.child.stderr.take().expect("no stderr pipe");
     let stderr_reader = BufReader::new(stderr);
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let mut ready = false;
-        for line in stderr_reader.lines().map_while(Result::ok) {
-            if !ready && line.contains("HTTP server listening on") {
-                ready = true;
-                let _ = tx.send(true);
+        let mut said = String::new();
+        let mut lines = stderr_reader.lines().map_while(Result::ok);
+        for line in lines.by_ref() {
+            if line.contains("server listening on") {
+                let _ = tx.send(Ok(()));
+                // Keep reading so the server never blocks on a full pipe.
+                lines.for_each(drop);
+                return;
             }
+            said.push_str(&line);
+            said.push('\n');
         }
-        if !ready {
-            let _ = tx.send(false);
-        }
+        let _ = tx.send(Err(said));
     });
 
-    let ready = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap_or(false);
-    assert!(ready, "Server did not start within 10 seconds");
+    match rx.recv_timeout(std::time::Duration::from_secs(60)) {
+        Ok(Ok(())) => {}
+        Ok(Err(said)) => panic!("the server exited without listening:\n{said}"),
+        Err(_) => panic!("the server did not start within 60 seconds"),
+    }
+}
+
+/// A port nothing listens on now.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("no free port")
+        .port()
+}
+
+/// Build and start `source` with its fixed `port` replaced by a free one, and
+/// wait until it listens: a fixed port another server holds fails the bind.
+fn serve_on_free_port(source: &str, port: u16) -> (ServerGuard, u16) {
+    let free = free_port();
+    let mut guard = compile_and_start_server(&source.replace(&port.to_string(), &free.to_string()));
+    wait_for_server_ready(&mut guard);
+    (guard, free)
 }
 
 /// Start the server in `fixture` on a free port and GET each of `paths`.
@@ -836,36 +859,7 @@ fn wait_for_server_ready(guard: &mut ServerGuard) {
 /// The server binds the wildcard address, so a process already listening on
 /// 127.0.0.1 at the fixture's own port (18080) would answer instead.
 fn get_from_served_fixture(fixture: &str, paths: &[&str]) -> Vec<String> {
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|listener| listener.local_addr())
-        .expect("no free port")
-        .port();
-    let source = read_fixture(fixture).replace("18080", &port.to_string());
-    let mut guard = compile_and_start_server(&source);
-
-    // Wait for the server to be ready by reading stderr for the listening message.
-    // We need to do this in a separate thread to avoid blocking if the server
-    // produces no output. Use a timeout approach instead.
-    let stderr = guard.child.stderr.take().expect("no stderr pipe");
-    let stderr_reader = BufReader::new(stderr);
-
-    // Spawn a thread to read stderr and signal when server is ready.
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for line in stderr_reader.lines().map_while(Result::ok) {
-            if line.contains("HTTP server listening on") {
-                let _ = tx.send(true);
-                return;
-            }
-        }
-        let _ = tx.send(false);
-    });
-
-    // Wait up to 10 seconds for the server to start.
-    let ready = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap_or(false);
-    assert!(ready, "Server did not start within 10 seconds");
+    let (_guard, port) = serve_on_free_port(&read_fixture(fixture), 18080);
 
     // Make HTTP GET requests to the server using raw TcpStream.
     // Retry up to 5 times with 200ms between attempts for robustness.
@@ -896,7 +890,7 @@ fn get_from_served_fixture(fixture: &str, paths: &[&str]) -> Vec<String> {
             panic!("Failed to connect to server after 5 attempts");
         })
         .collect()
-    // ServerGuard Drop will kill the server process.
+    // ServerGuard Drop stops the server process.
 }
 
 #[test]
@@ -953,10 +947,9 @@ fn main() do
     |> HTTP.serve(18085)
 end
 "#;
-    let mut guard = compile_and_start_server(source);
-    wait_for_server_ready(&mut guard);
+    let (_guard, port) = serve_on_free_port(&source, 18085);
 
-    let mut stream = std::net::TcpStream::connect("127.0.0.1:18085").unwrap();
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .unwrap();
@@ -1004,12 +997,11 @@ end
 "#
     .replace("__STARTED__", started.to_str().unwrap())
     .replace("__STOPPED__", stopped.to_str().unwrap());
-    let mut guard = compile_and_start_server(&source);
-    wait_for_server_ready(&mut guard);
+    let (guard, port) = serve_on_free_port(&source, 18084);
 
-    let request = std::thread::spawn(|| {
+    let request = std::thread::spawn(move || {
         let mut stream =
-            std::net::TcpStream::connect("127.0.0.1:18084").expect("failed to connect");
+            std::net::TcpStream::connect(("127.0.0.1", port)).expect("failed to connect");
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(2)))
             .unwrap();
@@ -1055,27 +1047,10 @@ end
 #[test]
 fn e2e_http_crash_isolation() {
     let source = read_fixture("stdlib_http_crash_isolation.mpl");
-    let mut guard = compile_and_start_server(&source);
-
-    let stderr = guard.child.stderr.take().expect("no stderr pipe");
-    let stderr_reader = BufReader::new(stderr);
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for line in stderr_reader.lines().map_while(Result::ok) {
-            if line.contains("HTTP server listening on") {
-                let _ = tx.send(true);
-                return;
-            }
-        }
-        let _ = tx.send(false);
-    });
-    let ready = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap_or(false);
-    assert!(ready, "Server did not start within 10 seconds");
+    let (_guard, port) = serve_on_free_port(&source, 18081);
 
     // Step 1: Hit the /crash endpoint to trigger a panic in the handler actor.
-    let _ = std::net::TcpStream::connect("127.0.0.1:18081").map(|mut stream| {
+    let _ = std::net::TcpStream::connect(("127.0.0.1", port)).map(|mut stream| {
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(2)))
             .ok();
@@ -1095,7 +1070,7 @@ fn e2e_http_crash_isolation() {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        match std::net::TcpStream::connect("127.0.0.1:18081") {
+        match std::net::TcpStream::connect(("127.0.0.1", port)) {
             Ok(mut stream) => {
                 stream
                     .set_read_timeout(Some(std::time::Duration::from_secs(5)))
@@ -1680,29 +1655,11 @@ fn send_request(port: u16, request: &str) -> String {
 #[test]
 fn e2e_http_path_params() {
     let source = read_fixture("stdlib_http_path_params.mpl");
-    let mut guard = compile_and_start_server(&source);
-
-    // Wait for server to be ready.
-    let stderr = guard.child.stderr.take().expect("no stderr pipe");
-    let stderr_reader = BufReader::new(stderr);
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for line in stderr_reader.lines().map_while(Result::ok) {
-            if line.contains("HTTP server listening on") {
-                let _ = tx.send(true);
-                return;
-            }
-        }
-        let _ = tx.send(false);
-    });
-    let ready = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap_or(false);
-    assert!(ready, "Server did not start within 10 seconds");
+    let (_guard, port) = serve_on_free_port(&source, 18082);
 
     // Test A: Path parameter extraction (HTTP-01 + HTTP-02)
     let resp_a = send_request(
-        18082,
+        port,
         "GET /users/42 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1720,7 +1677,7 @@ fn e2e_http_path_params() {
 
     // Test B: Exact route priority (SC-4) -- /users/me beats /users/:id
     let resp_b = send_request(
-        18082,
+        port,
         "GET /users/me HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1742,7 +1699,7 @@ fn e2e_http_path_params() {
 
     // Test C: Method-specific routing (HTTP-03) -- POST /data
     let resp_c = send_request(
-        18082,
+        port,
         "POST /data HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1760,7 +1717,7 @@ fn e2e_http_path_params() {
 
     // Test D: Method filtering -- POST /users/42 should hit fallback (not the GET-only route)
     let resp_d = send_request(
-        18082,
+        port,
         "POST /users/42 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1778,7 +1735,7 @@ fn e2e_http_path_params() {
 
     // Test E: Fallback route (backward compat) -- GET /unknown/path
     let resp_e = send_request(
-        18082,
+        port,
         "GET /unknown/path HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1792,7 +1749,7 @@ fn e2e_http_path_params() {
         resp_e
     );
 
-    // ServerGuard Drop will kill the server process (path params).
+    // ServerGuard Drop stops the server process (path params).
 }
 
 // ── HTTP Middleware E2E Tests (Phase 52 Plan 02) ────────────────────────
@@ -1804,31 +1761,13 @@ fn e2e_http_path_params() {
 #[test]
 fn e2e_http_middleware() {
     let source = read_fixture("stdlib_http_middleware.mpl");
-    let mut guard = compile_and_start_server(&source);
-
-    // Wait for server to be ready.
-    let stderr = guard.child.stderr.take().expect("no stderr pipe");
-    let stderr_reader = BufReader::new(stderr);
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for line in stderr_reader.lines().map_while(Result::ok) {
-            if line.contains("HTTP server listening on") {
-                let _ = tx.send(true);
-                return;
-            }
-        }
-        let _ = tx.send(false);
-    });
-    let ready = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap_or(false);
-    assert!(ready, "Server did not start within 10 seconds");
+    let (_guard, port) = serve_on_free_port(&source, 18083);
 
     // Test A: Normal request passes through middleware chain.
     // logger passes through, auth_check allows (path doesn't start with /secret),
     // handler returns "hello-world".
     let resp_a = send_request(
-        18083,
+        port,
         "GET /hello HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1847,7 +1786,7 @@ fn e2e_http_middleware() {
     // Test B: Auth middleware short-circuits for /secret path.
     // logger passes through, auth_check sees /secret and returns 401 without calling next.
     let resp_b = send_request(
-        18083,
+        port,
         "GET /secret HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1867,7 +1806,7 @@ fn e2e_http_middleware() {
     // Middleware chain executes (logger, auth_check), auth_check passes through
     // (path doesn't start with /secret), synthetic 404 handler returns 404.
     let resp_c = send_request(
-        18083,
+        port,
         "GET /nonexistent HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -1876,7 +1815,7 @@ fn e2e_http_middleware() {
         resp_c
     );
 
-    // ServerGuard Drop will kill the server process (middleware).
+    // ServerGuard Drop stops the server process (middleware).
 }
 
 /// QUAL-02: Handler parameter type is inferred without explicit :: Request annotation
@@ -2152,11 +2091,10 @@ end
 /// Confirms a bare-function route handler serves live HTTP requests correctly.
 #[test]
 fn e2e_route_bare_handler_control() {
-    let mut guard = compile_and_start_server(route_bare_server_source());
-    wait_for_server_ready(&mut guard);
+    let (_guard, port) = serve_on_free_port(&route_bare_server_source(), 18124);
 
     let response = send_request(
-        18124,
+        port,
         "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
@@ -2179,11 +2117,10 @@ fn e2e_route_bare_handler_control() {
 /// to receive the closure's environment.
 #[test]
 fn e2e_route_closure_handler() {
-    let mut guard = compile_and_start_server(route_closure_server_source());
-    wait_for_server_ready(&mut guard);
+    let (_guard, port) = serve_on_free_port(&route_closure_server_source(), 18123);
 
     let response = send_request(
-        18123,
+        port,
         "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
     );
     assert!(
