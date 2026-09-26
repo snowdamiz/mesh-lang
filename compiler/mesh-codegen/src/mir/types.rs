@@ -472,6 +472,10 @@ mod tests {
         let reg = empty_registry();
         let name = mangle_type_name("Result", &[Ty::int(), Ty::string()], &reg);
         assert_eq!(name, "Result_Int_String");
+        // A function argument is named as the closure it resolves to.
+        let function = Ty::Fun(vec![Ty::int()], Box::new(Ty::string()));
+        let name = mangle_type_name("Box", &[function], &reg);
+        assert_eq!(name, "Box_Closure_Int_to_String");
     }
 
     #[test]

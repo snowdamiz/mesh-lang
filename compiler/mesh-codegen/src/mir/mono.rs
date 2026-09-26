@@ -264,11 +264,17 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
-            native_functions: vec![],
+            native_functions: vec![crate::mir::MirNativeFunction {
+                name: "native".to_string(),
+                symbol: "c_native".to_string(),
+                params: vec![],
+                return_type: MirType::Unit,
+            }],
         };
 
         monomorphize(&mut module);
 
         assert_eq!(module.functions.len(), 2);
+        assert_eq!(module.native_functions.len(), 1);
     }
 }

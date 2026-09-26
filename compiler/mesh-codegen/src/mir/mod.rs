@@ -938,3 +938,50 @@ pub struct MirVariantDef {
     /// Tag value (0, 1, 2, ...).
     pub tag: u8,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MirType;
+
+    /// Errors name MIR types as written here.
+    #[test]
+    fn mir_types_display_as_their_names() {
+        let int = || Box::new(MirType::Int);
+        let shown = [
+            MirType::Int,
+            MirType::Float,
+            MirType::Bool,
+            MirType::String,
+            MirType::Unit,
+            MirType::Tuple(vec![MirType::Int, MirType::String]),
+            MirType::Struct("Point".to_string()),
+            MirType::SumType("Option_Int".to_string()),
+            MirType::FnPtr(vec![MirType::Int, MirType::Bool], int()),
+            MirType::Closure(vec![MirType::Ptr], int()),
+            MirType::Ptr,
+            MirType::Never,
+            MirType::Pid(None),
+            MirType::Pid(Some(int())),
+        ]
+        .map(|ty| ty.to_string());
+        assert_eq!(
+            shown,
+            [
+                "Int",
+                "Float",
+                "Bool",
+                "String",
+                "Unit",
+                "(Int, String)",
+                "Point",
+                "Option_Int",
+                "fn(Int, Bool) -> Int",
+                "closure(Ptr) -> Int",
+                "Ptr",
+                "Never",
+                "Pid",
+                "Pid<Int>",
+            ]
+        );
+    }
+}
