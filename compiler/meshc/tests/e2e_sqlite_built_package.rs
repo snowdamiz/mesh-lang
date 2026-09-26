@@ -9,7 +9,9 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-const RUN_TIMEOUT: Duration = Duration::from_secs(10);
+/// The program runs in milliseconds, but a host that assesses each new
+/// process before it starts (macOS, under cargo) can hold it for seconds.
+const RUN_TIMEOUT: Duration = Duration::from_secs(60);
 const SQLITE_BUILT_PACKAGE_SOURCE: &str = r#"
 fn ensure_schema(db_path :: String) -> Int!String do
   let db = Sqlite.open(db_path)?

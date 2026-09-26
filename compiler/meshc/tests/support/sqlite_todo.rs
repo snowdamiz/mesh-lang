@@ -12,8 +12,11 @@ use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 
 pub const PHASE_TIMEOUT: Duration = Duration::from_secs(120);
-pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
-pub const BINARY_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+// A host that assesses each new process before it starts (macOS, under
+// cargo) can hold a program for many seconds before its first instruction,
+// so these bound a hang, not the program's speed.
+pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+pub const BINARY_EXIT_TIMEOUT: Duration = Duration::from_secs(60);
 pub const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 pub const DEFAULT_RATE_LIMIT_MAX_REQUESTS: u64 = 5;
 pub const MISSING_TODO_ID: &str = "999999";

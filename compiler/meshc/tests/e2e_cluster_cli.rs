@@ -92,8 +92,9 @@ fn cluster_commands_inspect_and_control_a_running_node() {
             .expect("the node starts"),
     );
 
-    // The node answers once it has bootstrapped.
-    let deadline = Instant::now() + Duration::from_secs(60);
+    // The node answers once it has bootstrapped. Generous: a host that
+    // assesses each new process holds the node and every `meshc` poll.
+    let deadline = Instant::now() + Duration::from_secs(180);
     let status = loop {
         let output = meshc(&["cluster", "status", &target, "--json"], &project);
         if output.status.success() {
