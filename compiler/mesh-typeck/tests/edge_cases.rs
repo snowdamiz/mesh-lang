@@ -944,6 +944,45 @@ end
     );
 }
 
+/// What goes wrong in a pipe is reported: its value, its function, a
+/// clustered route wrapper out of its place, and a slot past the function's
+/// arguments, with the function named as written (a qualified one was ``).
+#[test]
+fn errors_in_each_part_of_a_pipe_are_reported() {
+    assert_eq!(
+        errors(
+            r#"
+fn value_error() do
+  nope1 |> String.length
+end
+
+fn function_error() do
+  1 |> nope2
+end
+
+fn call_error() do
+  1 |> nope3(2)
+end
+
+fn clustered(h :: Int) do
+  h |> HTTP.clustered(1)
+end
+
+fn slot() do
+  "s" |3> String.length()
+end
+"#
+        ),
+        [
+            "undefined variable `nope1`",
+            "undefined variable `nope2`",
+            "undefined variable `nope3`",
+            "HTTP.clustered(...) can only appear in the route handler position of HTTP.route(...) or HTTP.on_*(...)",
+            "slot position 3 is out of range: `String.length` takes fewer than 2 arguments; use |> instead",
+        ]
+    );
+}
+
 // ── Fields ─────────────────────────────────────────────────────────────
 
 /// A field read from a value whose type is settled later in its function

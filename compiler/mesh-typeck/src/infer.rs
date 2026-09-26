@@ -10797,10 +10797,8 @@ fn infer_piped(
         if slot as usize > params.len() {
             let err = TypeError::SlotPipeOutOfRange {
                 slot,
-                fn_name: match &callee_expr {
-                    Expr::NameRef(name_ref) => name_ref.text().unwrap_or_default(),
-                    _ => String::new(),
-                },
+                // As written: `add`, or `String.length`, which was ``.
+                fn_name: callee_expr.syntax().text().to_string().trim().to_string(),
                 arity: params.len(),
                 span: pipe_range,
             };
