@@ -1554,3 +1554,26 @@ end
     );
     assert_eq!(output, "2 0 -1 [0] 40\n");
 }
+
+/// A resource's scope that ends in a receive whose every arm panics has
+/// no way out to release the resource at: nothing is appended after it.
+#[test]
+fn a_resource_scope_can_end_in_a_receive_that_never_finishes() {
+    let output = compile_and_run(
+        r##"actor runner() do
+  let key = Secret.random(1)
+  receive do
+    m -> panic("got #{m}")
+  after 20 -> panic("timed out")
+  end
+end
+
+fn main() do
+  let pid :: Pid<Int> = spawn(runner)
+  Timer.sleep(300)
+  println("main done")
+end
+"##,
+    );
+    assert_eq!(output, "main done\n");
+}
