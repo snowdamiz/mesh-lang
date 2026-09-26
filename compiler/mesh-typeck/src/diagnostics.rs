@@ -46,6 +46,15 @@ impl Default for DiagnosticOptions {
 }
 
 impl DiagnosticOptions {
+    /// The terminal report's settings. Spans are byte offsets into the
+    /// source (ariadne's default is chars, which moves every report after a
+    /// non-ASCII character).
+    pub fn report_config(&self) -> Config {
+        Config::default()
+            .with_color(self.color)
+            .with_index_type(ariadne::IndexType::Byte)
+    }
+
     /// `path` as diagnostics name it (see `display_paths`).
     pub fn display_path(&self, path: &std::path::Path) -> String {
         for (from, to) in &self.display_paths {
@@ -1570,19 +1579,11 @@ pub fn render_diagnostic(
         return line;
     }
 
-    // Spans are byte offsets into the source (ariadne's default is chars,
-    // which moves every report after a non-ASCII character).
-    let config = if options.color {
-        Config::default()
-    } else {
-        Config::default().with_color(false)
-    }
-    .with_index_type(ariadne::IndexType::Byte);
     let code = error_code(error);
 
     let fname = filename.to_string();
 
-    let report = describe(error, source, suggestions).report(&fname, code, config);
+    let report = describe(error, source, suggestions).report(&fname, code, options.report_config());
 
     let mut buf = Vec::new();
     let cache = ariadne::sources([(fname, source.to_string())]);

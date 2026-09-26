@@ -873,13 +873,7 @@ pub(crate) fn prepare_project_build(
                 });
                 eprintln!("{}", json_diag);
             } else {
-                use ariadne::{Config, Label, Report, ReportKind, Source};
-                let config = if diag_opts.color {
-                    Config::default()
-                } else {
-                    Config::default().with_color(false)
-                }
-                .with_index_type(ariadne::IndexType::Byte);
+                use ariadne::{Label, Report, ReportKind, Source};
                 let range = mesh_typeck::diagnostics::report_span(
                     source,
                     error.span.start as usize..error.span.end as usize,
@@ -887,7 +881,7 @@ pub(crate) fn prepare_project_build(
                 let span = (file_name.clone(), range);
                 let _ = Report::build(ReportKind::Error, span.clone())
                     .with_message("Parse error")
-                    .with_config(config)
+                    .with_config(diag_opts.report_config())
                     .with_label(Label::new(span).with_message(&error.message))
                     .finish()
                     .eprint((file_name.clone(), Source::from(source.as_str())));
@@ -1418,7 +1412,7 @@ fn emit_clustered_declaration_diagnostics(
             continue;
         }
 
-        use ariadne::{Config, Label, Report, ReportKind, Source};
+        use ariadne::{Label, Report, ReportKind, Source};
         // The source the decorator was parsed from.
         let (_, source) = project
             .graph
@@ -1427,18 +1421,12 @@ fn emit_clustered_declaration_diagnostics(
             .zip(&project.module_sources)
             .find(|(module, _)| module.path == issue.file)
             .expect("an `@cluster` decorator is in a module of the project");
-        let config = if diag_opts.color {
-            Config::default()
-        } else {
-            Config::default().with_color(false)
-        }
-        .with_index_type(ariadne::IndexType::Byte);
         let (line, col) = offset_to_line_col(source, span.start);
         eprintln!("error: {}", issue);
         eprintln!("  --> {}:{}:{}", file_name, line, col);
         let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, span.clone())
             .with_message("Invalid clustered declaration")
-            .with_config(config)
+            .with_config(diag_opts.report_config())
             .with_label(Label::new(span).with_message(&issue.reason))
             .finish()
             .eprint(Source::from(source.as_str()));
