@@ -42,11 +42,13 @@ pub struct MirModule {
     /// Name of main() function if present.
     pub entry_function: Option<String>,
     /// Service dispatch tables for codegen.
-    /// Maps service loop function name to (call_handlers, cast_handlers).
-    /// Each handler entry: (type_tag, handler_fn_name, num_args).
-    pub service_dispatch:
-        std::collections::HashMap<String, (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>)>,
+    pub service_dispatch: ServiceDispatch,
 }
+
+/// Maps each service loop function's name to its call and cast handlers:
+/// (type_tag, handler_fn_name, num_args), in tag order.
+pub type ServiceDispatch =
+    std::collections::HashMap<String, (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>)>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MirNativeFunction {

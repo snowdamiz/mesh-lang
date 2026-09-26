@@ -31,7 +31,8 @@ use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, reso
 use super::{
     sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
     MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
-    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape, UnaryOp,
+    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape,
+    ServiceDispatch, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -224,24 +225,6 @@ fn substitute_type_params(ty: &Ty, subst: &HashMap<String, &Ty>) -> Ty {
     ty.replace_cons(&mut |con| subst.get(&con.name).map(|ty| (*ty).clone()))
 }
 
-/// The dispatch tag of a service call or cast helper: the integer literal it
-/// passes as its second argument. A call helper's body may be wrapped in
-/// `Shaped` to carry the reply's shape.
-fn service_helper_tag(functions: &[MirFunction], helper: &str) -> u64 {
-    let body = functions.iter().find(|f| f.name == helper).map(|f| &f.body);
-    let call = match body {
-        Some(MirExpr::Shaped { value, .. }) => Some(value.as_ref()),
-        other => other,
-    };
-    match call {
-        Some(MirExpr::Call { args, .. }) => match args.get(1) {
-            Some(MirExpr::IntLit(tag, _)) => *tag as u64,
-            _ => 0,
-        },
-        _ => 0,
-    }
-}
-
 /// Whether a value of this representation is a word of plain bits, which a
 /// `Some` payload holds boxed: the runtime hands such an element back raw.
 fn is_scalar_word(ty: &MirType) -> bool {
@@ -418,6 +401,9 @@ struct Lowerer<'a> {
     discarded_callback_results: &'a FxHashSet<TextRange>,
     /// Fail-closed lowering errors gathered while rewriting clustered routes.
     lowering_errors: Vec<String>,
+    /// Each service loop's handlers, calls and casts: tag, function and
+    /// argument count.
+    service_dispatch: ServiceDispatch,
     /// While lowering a supervisor child's start: the `spawn` that ends it,
     /// which runs the spawned actor in place (`supervisor_child_entry`).
     supervised_spawn: Option<TextRange>,
@@ -736,6 +722,7 @@ impl<'a> Lowerer<'a> {
             discarded_callback_results: &typeck.discarded_callback_results,
             lowering_errors: Vec::new(),
             supervised_spawn: None,
+            service_dispatch: HashMap::new(),
         }
     }
 
@@ -14509,105 +14496,10 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        // ── Generate the service loop function ───────────────────────────
-        // __service_{name}_loop(state: i64) -> Unit
-        //
-        // This is the actor entry function that runs as a process.
-        // It does: receive message -> dispatch on type_tag -> call handler ->
-        //   for call: reply to caller with result, recurse with new_state
-        //   for cast: recurse with new_state
-        //
-        // The loop function uses MIR primitives: ActorReceive, then manual dispatch.
-        // Since MIR receive doesn't directly support type_tag dispatch, we generate
-        // the loop as a receive that gets the raw message, extracts type_tag, and
-        // uses if/else chains to dispatch.
-
+        // The service runs as the loop actor: code generation writes its body
+        // (receive, dispatch on the message's tag to a handler, reply to a
+        // call, loop with the new state) from the service's dispatch table.
         let loop_fn_name = format!("__service_{}_loop", name_lower);
-
-        // The loop body is:
-        //   let msg_ptr = receive(-1)    -- blocks for incoming message
-        //   let type_tag = load_u64(msg_ptr, 0)
-        //   let caller_pid = load_u64(msg_ptr, 8)
-        //   -- for call tags: extract args from msg_ptr+16, call handler, reply, recurse
-        //   -- for cast tags: extract args from msg_ptr+16, call handler, recurse
-        //
-        // We represent this as a Block of MIR expressions that the codegen will emit.
-        // Since we can't easily express "load bytes from pointer" in MIR, we use
-        // the Call node to call runtime helper functions that we'll add.
-        //
-        // Actually, the simplest approach: generate the loop function with a body
-        // that calls a synthetic dispatch function we also generate. The dispatch
-        // function is generated per-service and uses mesh_service_call/reply.
-        //
-        // SIMPLEST APPROACH: Don't generate an explicit loop function with raw pointer
-        // arithmetic. Instead, generate a function with ActorReceive that has a single
-        // wildcard arm. The receive extracts message data as an i64 (which is the
-        // first 8 bytes = type_tag). Then we use if/else dispatch on tag values.
-        //
-        // HOWEVER: the message format for service calls includes [type_tag][caller_pid][args].
-        // The ActorReceive codegen loads data starting at offset 16 (past the 16-byte header).
-        // So the received value will be the type_tag (first i64 of data after header).
-        //
-        // Wait - let me reconsider the message format. mesh_service_call builds:
-        //   [u64 type_tag][u64 caller_pid][payload_args]
-        // This entire blob is the data portion. The MessageBuffer wraps it with its own
-        // header [u64 type_tag_in_mb][u64 data_len]. So the full message in the mailbox is:
-        //   [u64 mb_type_tag][u64 data_len][u64 msg_tag][u64 caller_pid][payload_args]
-        // When ActorReceive skips the 16-byte header, it reads [u64 msg_tag] which is correct.
-        //
-        // For the loop function, we need more than just the type_tag. We need the caller_pid
-        // and the args. This requires raw pointer access at codegen level.
-        //
-        // PRAGMATIC APPROACH: Generate the loop as a thin wrapper that the CODEGEN handles
-        // specially. Add a new MirExpr::ServiceLoop variant that the codegen expands.
-        //
-        // EVEN SIMPLER: Generate the entire dispatch as function calls from MIR.
-        // The service loop receives a raw message pointer, and we generate MIR that:
-        //   1. Calls __service_msg_tag(ptr) -> i64 (extracts type_tag from data)
-        //   2. Calls __service_msg_caller(ptr) -> i64 (extracts caller_pid)
-        //   3. Calls __service_msg_arg(ptr, index) -> i64 (extracts arg N)
-        //   4. Dispatches on tag via if/else chain
-        //
-        // These helper functiuntime functions we can add.
-        //
-        // MOST PRAGMATIC: Since all values are i64, we generate the loop as an actor
-        // that uses raw receive and does all dispatch inline. The code generator
-        // for the service loop is custom in expr.rs -- we add a new MirExpr variant.
-        //
-        // FINAL DECISION: Add MirExpr::ServiceLoop to MIR. Keep it clean.
-
-        // Actually, we can use a simpler representation. The service loop receives
-        // a message as raw pointer, extracts tag/caller/args from known offsets.
-        // We'll generate this in codegen (expr.rs) since it requires pointer arithmetic.
-        // The MIR representation captures: loop function name, handler functions, tags.
-
-        // For now: represent the loop as a single function whose body is a
-        // Call to the loop dispatcher (generated in codegen). We'll use a
-        // special intrinsic pattern.
-
-        // CLEANEST APPROACH: Generate the loop function with a body that is an
-        // ActorReceive with a wildcard arm. The arm body is a Let-chain that:
-        //   1. Uses the received raw msg_ptr value (reinterpreted)
-        //   2. Dispatches on integer comparison
-        //
-        // Since we can't extract sub-fields from a pointer in MIR, let's use
-        // a different approach: The loop function is an actor body that calls
-        // a set of generated runtime-level dispatch functions.
-        //
-        // ACTUALLY THE SIMPLEST WAY: Generate the body of the loop as just
-        // an ActorReceive(-1) that returns Int, then dispatch on the value.
-        // The type_tag IS the received data (first i64 after header).
-        // But we also need caller_pid and args, which are at higher offsets.
-        //
-        // We need to access the raw message pointer. The current ActorReceive
-        // codegen loads the data into a typed value and discards the pointer.
-        // We need the raw pointer for service dispatch.
-        //
-        // TWO OPTIONS:
-        // A) Add a ServiceDispatch MIR node that codegen handles specially
-        // B) Generate multiple runtime helper calls
-        //
-        // Let's go with A. It's the cleanest.
 
         // Track methods for this service so field access can resolve them.
         let mut methods = Vec::new();
@@ -14818,127 +14710,30 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        // ── Generate the actual loop function (actor body) ───────────────
-        // This is the actor entry function that:
-        //   1. Receives a message (raw pointer)
-        //   2. Extracts type_tag (offset 0 in data after header)
-        //   3. Extracts caller_pid (offset 8)
-        //   4. Extracts args (offset 16+)
-        //   5. Dispatches to handler
-        //   6. For call: replies to caller, recurses with new state
-        //   7. For cast: recurses with new state
-        //
-        // We represent the loop body using ActorReceive + dispatch.
-        // However, since MIR ActorReceive only gives us a single typed value
-        // and we need raw pointer access, we'll use a special approach:
-        //
-        // Generate the loop as a regular function that calls mesh_actor_receive(-1)
-        // directly, then does pointer arithmetic for dispatch.
-        //
-        // The MIR body will be a Call to __service_{name}_dispatch(state, msg_ptr)
-        // which returns the new state, then tail-calls the loop.
+        // Each handler's tag, function and argument count, in tag order.
+        let call_handlers = call_infos
+            .iter()
+            .map(|info| {
+                let handler = format!("__service_{}_handle_call_{}", name_lower, info.snake_name);
+                (info.tag, handler, info.param_names.len())
+            })
+            .collect();
+        let cast_handlers = cast_infos
+            .iter()
+            .map(|info| {
+                let handler = format!("__service_{}_handle_cast_{}", name_lower, info.snake_name);
+                (info.tag, handler, info.param_names.len())
+            })
+            .collect();
+        self.service_dispatch
+            .insert(loop_fn_name.clone(), (call_handlers, cast_handlers));
 
-        // Generate dispatch function:
-        // __service_{name}_dispatch(state: i64, msg_ptr: ptr) -> i64 (new_state)
-        //
-        // This function extracts tag/caller/args from msg_ptr and dispatches.
-        // Since we can't do pointer arithmetic in MIR, this will be handled
-        // specially by codegen when it sees the function name pattern.
-        //
-        // ACTUALLY: Let me take a step back. The CLEANEST approach for the loop
-        // is to not try to express raw pointer ops in MIR at all. Instead:
-        //
-        // Generate the loop function as an actor body, and add a new MirExpr
-        // variant for service dispatch that codegen handles.
-
-        // First, let's add the service dispatch info so codegen can generate it.
-        // We'll store it as metadata and generate the loop body in codegen.
-
-        // Build handler dispatch info for codegen.
-        let mut call_dispatch_info = Vec::new();
-        for info in &call_infos {
-            let handler_fn = format!("__service_{}_handle_call_{}", name_lower, info.snake_name);
-            call_dispatch_info.push((info.tag, handler_fn, info.param_names.len()));
-        }
-
-        let mut cast_dispatch_info = Vec::new();
-        for info in &cast_infos {
-            let handler_fn = format!("__service_{}_handle_cast_{}", name_lower, info.snake_name);
-            cast_dispatch_info.push((info.tag, handler_fn, info.param_names.len()));
-        }
-
-        // The loop function body is: receive -> dispatch -> recurse.
-        // We represent this as a Block containing:
-        //   1. Call mesh_actor_receive(-1) -> msg_ptr
-        //   2. Service-specific dispatch on msg_ptr
-        //   3. Tail call to loop with new_state
-        //
-        // For (2), we generate inline if/else dispatch in MIR using the type_tag.
-        // Since we can't extract fields from a pointer in MIR, we'll generate the
-        // entire loop body at codegen level.
-        //
-        // DECISION: Use a MIR representation that captures everything codegen needs.
-        // The loop body is an opaque "ServiceDispatchLoop" that codegen expands.
-
-        // For cleanliness, represent the loop body as a MIR Block that contains
-        // only the dispatch metadata encoded as a string pattern.
-        // The codegen recognizes functions named "__service_*_loop" and generates
-        // the dispatch loop specially.
-        //
-        // We store dispatch metadata on the Lowerer to pass to codegen via MirModule.
-        // Actually, we can't easily extend MirModule. Instead, encode the dispatch
-        // info in the function body itself using a convention.
-        //
-        // SIMPLEST: The loop function body is MirExpr::Unit. Codegen recognizes
-        // functions named "__service_*_loop" and generates the appropriate code.
-        // But codegen needs to know the handlers/tags. We can pass this through
-        // function metadata.
-        //
-        // Let's encode the dispatch table as IntLit constants in a Block.
-        // Convention: Block([IntLit(num_call_handlers), IntLit(tag0), ..., IntLit(num_cast_handlers), IntLit(tag0), ...])
-        //
-        // Better: just use the function naming convention. Codegen can discover
-        // __service_{name}_handle_call_* and __service_{name}_handle_cast_* functions
-        // from the MIR module.
-        //
-        // BEST APPROACH: Encode the loop as a series of MirExpr nodes that
-        // codegen CAN handle. The loop body is conceptually:
-        //
-        //   let msg_ptr = receive(-1)  -- raw pointer
-        //   -- dispatch based on msg_ptr[0] (type_tag), msg_ptr[8] (caller_pid), msg_ptr[16+] (args)
-        //
-        // Since receive returns a pointer and codegen can access it, we CAN
-        // generate the loop as:
-        //   ActorReceive(-1) -> msg_ptr
-        //   Then use FieldAccess-like operations on msg_ptr
-        //
-        // BUT MIR doesn't have raw pointer field access.
-        //
-        // FINAL DECISION: The loop body uses ActorReceive to get msg data as Int
-        // (which gives us the type_tag -- the first i64 after the 16-byte header).
-        // We then use if/else dispatch on the tag. For each handler arm:
-        //   - Call handlers need caller_pid and args from the message
-        //   - We can't get those from MIR alone
-        //
-        // So we MUST handle the loop at codegen level. The function
-        // __service_{name}_loop will have a body of MirExpr::Unit, and codegen
-        // will detect this pattern and generate the appropriate assembly.
-        //
-        // To pass dispatch info to codegen, we'll extend MirModule with
-        // service_dispatch_info.
-
-        // PRAGMATIC FINAL: Use the MirExpr::Unit body with function naming convention,
-        // and encode dispatch metadata as comments in the function (using known_functions
-        // registry). The codegen will look up handlers by naming convention.
-
-        // The loop function receives a *const u8 (args buffer pointer) from the
-        // actor spawn mechanism. The first i64 in the args buffer is the initial state.
-        // Codegen will dereference the pointer to load the initial state.
+        // The loop receives its initial state as the actor's argument buffer.
         self.functions.push(MirFunction {
             name: loop_fn_name.clone(),
             params: vec![("__args_ptr".to_string(), MirType::Ptr)],
             return_type: MirType::Unit,
-            body: MirExpr::Unit, // Codegen generates the actual dispatch loop
+            body: MirExpr::Unit,
             is_closure_fn: false,
             captures: Vec::new(),
             has_tail_calls: false,
@@ -17165,58 +16960,6 @@ pub fn lower_module_to_mir<'a>(
             .join("\n"));
     }
 
-    // Build service dispatch tables from the generated functions.
-    let mut service_dispatch = HashMap::new();
-    for func in &lowerer.functions {
-        if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
-            // Extract service name from __service_{name}_loop
-            let service_name = func
-                .name
-                .strip_prefix("__service_")
-                .and_then(|s| s.strip_suffix("_loop"))
-                .unwrap_or("")
-                .to_string();
-
-            let mut call_handlers = Vec::new();
-            let mut cast_handlers = Vec::new();
-
-            for f in &lowerer.functions {
-                let call_prefix = format!("__service_{}_handle_call_", service_name);
-                let cast_prefix = format!("__service_{}_handle_cast_", service_name);
-
-                if f.name.starts_with(&call_prefix) {
-                    // params: (state, arg0, arg1, ...) -- num_args = params.len() - 1
-                    let num_args = if f.params.len() > 1 {
-                        f.params.len() - 1
-                    } else {
-                        0
-                    };
-                    // Find the tag from the matching call helper function.
-                    let method_name = f.name.strip_prefix(&call_prefix).unwrap_or("");
-                    let call_fn = format!("__service_{}_call_{}", service_name, method_name);
-                    let tag = service_helper_tag(&lowerer.functions, &call_fn);
-                    call_handlers.push((tag, f.name.clone(), num_args));
-                } else if f.name.starts_with(&cast_prefix) {
-                    let num_args = if f.params.len() > 1 {
-                        f.params.len() - 1
-                    } else {
-                        0
-                    };
-                    let method_name = f.name.strip_prefix(&cast_prefix).unwrap_or("");
-                    let cast_fn = format!("__service_{}_cast_{}", service_name, method_name);
-                    let tag = service_helper_tag(&lowerer.functions, &cast_fn);
-                    cast_handlers.push((tag, f.name.clone(), num_args));
-                }
-            }
-
-            // Sort by tag so dispatch is deterministic.
-            call_handlers.sort_by_key(|h| h.0);
-            cast_handlers.sort_by_key(|h| h.0);
-
-            service_dispatch.insert(func.name.clone(), (call_handlers, cast_handlers));
-        }
-    }
-
     wrap_builtin_values(&mut lowerer.functions);
 
     Ok(MirModule {
@@ -17225,7 +16968,7 @@ pub fn lower_module_to_mir<'a>(
         structs: lowerer.structs,
         sum_types: lowerer.sum_types,
         entry_function: lowerer.entry_function,
-        service_dispatch,
+        service_dispatch: lowerer.service_dispatch,
     })
 }
 
