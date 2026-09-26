@@ -33,3 +33,36 @@ fn native_declaration_rejects_implicit_or_private_abi_shapes() {
         );
     }
 }
+
+/// A native declaration is a plain function: no type parameters (whose
+/// types it then reported as `?12`), `where` clause or guard (a guard made
+/// it a function clause, which went unchecked), and a return type the ABI
+/// carries. Each is its one error.
+#[test]
+fn native_declarations_are_plain_functions() {
+    for (source, reason) in [
+        (
+            "@native(\"mesh_a\")\npub fn a<T>(x :: T) -> Int\n",
+            "generic native functions are unsupported",
+        ),
+        (
+            "@native(\"mesh_b\")\npub fn b(x :: Int) -> Int where Int: Eq\n",
+            "native function declarations cannot have a where clause",
+        ),
+        (
+            "@native(\"mesh_c\")\npub fn c(x :: Int) -> Int when x > 0\n",
+            "native function declarations cannot have a guard",
+        ),
+        (
+            "@native(\"mesh_d\")\npub fn d(x :: Int) -> List<Int>\n",
+            "return type `List<Int>` is not ABI-safe",
+        ),
+    ] {
+        let result = check(&mesh_parser::parse(source));
+        let errors: Vec<String> = result.errors.iter().map(|e| e.to_string()).collect();
+        assert!(
+            errors.len() == 1 && errors[0].contains(reason),
+            "{source:?}: {errors:?}"
+        );
+    }
+}

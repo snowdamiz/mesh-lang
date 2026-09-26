@@ -43,3 +43,35 @@ fn host_capabilities_are_bounded_binary_results() {
     let result = check(&parsed);
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// An exported function is a plain function too: no type parameters,
+/// `where` clause or guard (a guard made it a function clause, which went
+/// unchecked), and a declared return type.
+#[test]
+fn export_declarations_are_plain_functions() {
+    for (source, reason) in [
+        (
+            "@export(\"mesh_f\")\npub fn f<T>(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+            "generic exported functions are unsupported",
+        ),
+        (
+            "@export(\"mesh_g\")\npub fn g(request :: Bytes) -> Bytes!String where Bytes: Eq do\n  Ok(request)\nend\n",
+            "exported functions cannot have a where clause",
+        ),
+        (
+            "@export(\"mesh_h\")\npub fn h(request :: Bytes) -> Bytes!String when true do\n  Ok(request)\nend\n",
+            "exported functions cannot have a guard",
+        ),
+        (
+            "@export(\"mesh_i\")\npub fn i(request :: Bytes) do\n  Ok(request)\nend\n",
+            "exported functions require an explicit return type",
+        ),
+    ] {
+        let result = check(&mesh_parser::parse(source));
+        assert!(
+            result.errors.iter().any(|error| error.to_string().contains(reason)),
+            "{source:?}: {:?}",
+            result.errors
+        );
+    }
+}

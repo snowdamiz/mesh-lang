@@ -5095,18 +5095,19 @@ fn fn_env_key(ctx: &InferCtx, env: &TypeEnv, name: &str, arity: usize) -> String
 /// - A single FnDef with `= expr` body is treated as a 1-clause multi-clause function.
 /// - A single FnDef with `do/end` body remains a Single item (regular function).
 /// - Multiple consecutive FnDef nodes with the same name produce a MultiClause group.
+/// - A native or exported function is a Single item, whatever its form: its
+///   declaration is checked as one (a guard on it was not).
 fn group_multi_clause_fns(items: Vec<Item>) -> Vec<GroupedItem> {
+    let is_declaration =
+        |fn_def: &FnDef| fn_def.native_decl().is_some() || fn_def.export_decl().is_some();
     let mut result: Vec<GroupedItem> = Vec::new();
     let mut i = 0;
 
     while i < items.len() {
         match &items[i] {
-            Item::FnDef(fn_def) => {
+            Item::FnDef(fn_def) if !is_declaration(fn_def) => {
                 let name = fn_def.name().and_then(|n| n.text()).unwrap_or_default();
-                let arity = fn_def
-                    .param_list()
-                    .map(|pl| pl.params().count())
-                    .unwrap_or(0);
+                let arity = fn_arity(fn_def);
 
                 // Collect consecutive FnDef items with the same name and arity.
                 let mut clauses = vec![fn_def.clone()];
@@ -5114,11 +5115,10 @@ fn group_multi_clause_fns(items: Vec<Item>) -> Vec<GroupedItem> {
                 while j < items.len() {
                     if let Item::FnDef(next_fn) = &items[j] {
                         let next_name = next_fn.name().and_then(|n| n.text()).unwrap_or_default();
-                        let next_arity = next_fn
-                            .param_list()
-                            .map(|pl| pl.params().count())
-                            .unwrap_or(0);
-                        if next_name == name && next_arity == arity {
+                        if next_name == name
+                            && fn_arity(next_fn) == arity
+                            && !is_declaration(next_fn)
+                        {
                             clauses.push(next_fn.clone());
                             j += 1;
                             continue;
@@ -8032,10 +8032,12 @@ fn infer_fn_def(
         resolve_type_annotation(ctx, &ann, type_registry)
             .map(|ty| with_declared_type_params(&ty, &type_params))
     });
-    if is_native {
+    // A generic declaration is rejected already: its parameters have no
+    // ABI type, and were shown as `?12`.
+    if is_native && type_params.is_empty() {
         validate_native_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
-    if is_export {
+    if is_export && type_params.is_empty() {
         validate_export_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
 
