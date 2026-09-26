@@ -162,13 +162,51 @@ def run(extra):
             env={**env, "MESH_PROOF_COVERAGE_DIR": str(PROOF_COVERAGE)})
         failed = failed or proof.returncode
     LCOV.parent.mkdir(parents=True, exist_ok=True)
+    # Merges the profiles into PROFILES/mesh-lang.profdata, which the
+    # per-binary export below reads.
     subprocess.run(["cargo", "llvm-cov", "report", "--lcov", "--output-path", str(LCOV)],
                    cwd=ROOT, env=env, check=True)
+    LCOV.write_text(per_binary_lcov(env))
     with LCOV.open("a") as lcov:
         lcov.write(program_runtime_lcov(env))
         if proof_ran:
             lcov.write(proof_runtime_lcov(env))
     return failed
+
+
+def per_binary_lcov(env):
+    """The tests' lcov, each test binary exported on its own and the lines
+    summed. llvm-cov keeps one record per function name, and a `#[no_mangle]`
+    function has the same name in every binary: where two builds compiled it
+    differently (a crate's own unit tests, under cfg(test), and every other
+    binary that links the crate), one binary's calls were all it counted."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    profdata = PROFILES / "mesh-lang.profdata"
+    binaries = [path for directory in (PROFILES / "debug" / "deps", PROFILES / "debug")
+                for path in sorted(directory.iterdir())
+                if path.is_file() and not path.suffix and os.access(path, os.X_OK)]
+
+    def export(binary):
+        return subprocess.run(
+            [env.get("LLVM_COV", "llvm-cov"), "export", "-format=lcov",
+             f"-instr-profile={profdata}", str(binary)],
+            capture_output=True, text=True).stdout
+
+    hits = defaultdict(lambda: defaultdict(int))
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for exported in pool.map(export, binaries):
+            source = None
+            for line in exported.splitlines():
+                if line.startswith("SF:"):
+                    source = line[3:]
+                elif line.startswith("DA:"):
+                    number, count = line[3:].split(",")[:2]
+                    hits[source][int(number)] += int(count)
+    return "".join(
+        f"SF:{source}\n" + "".join(f"DA:{number},{count}\n" for number, count in sorted(lines.items()))
+        + "end_of_record\n"
+        for source, lines in sorted(hits.items()))
 
 
 def build_instrumented_runtime():
