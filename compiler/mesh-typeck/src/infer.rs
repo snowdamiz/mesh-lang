@@ -11662,70 +11662,54 @@ fn ast_pattern_to_abstract(
     match pat {
         Pattern::Wildcard(_) => AbsPat::Wildcard,
         Pattern::Ident(ident) => {
-            // Check if this identifier is a known constructor (nullary variant).
-            if let Some(name_tok) = ident.name() {
-                let name_text = name_tok.text().to_string();
-                if let Some(_scheme) = env.lookup(&name_text) {
-                    // Check if this resolves to a sum type constructor by looking
-                    // at the type registry for a variant with this name.
-                    if let Some((sum_info, variant)) = type_registry.lookup_variant(&name_text) {
-                        let arity = variant.fields.len();
-                        return AbsPat::Constructor {
-                            name: name_text,
-                            type_name: sum_info.name.clone(),
-                            args: vec![AbsPat::Wildcard; arity],
-                        };
-                    }
-                }
+            // The name of a variant in scope is that variant (a nullary
+            // one); any other name binds whatever it matches.
+            let name = ident
+                .name()
+                .map(|t| t.text().to_string())
+                .unwrap_or_default();
+            match type_registry
+                .lookup_variant(&name)
+                .filter(|_| env.lookup(&name).is_some())
+            {
+                Some((sum_info, variant)) => AbsPat::Constructor {
+                    type_name: sum_info.name.clone(),
+                    args: vec![AbsPat::Wildcard; variant.fields.len()],
+                    name,
+                },
+                None => AbsPat::Wildcard,
             }
-            // Regular variable binding -> wildcard for exhaustiveness.
-            AbsPat::Wildcard
         }
         Pattern::Literal(lit) => {
-            if let Some(token) = lit.token() {
-                let sign = if lit.is_negative() { "-" } else { "" };
-                match token.kind() {
-                    SyntaxKind::INT_LITERAL => AbsPat::Literal {
-                        value: format!("{sign}{}", token.text()),
-                        ty: AbsLitKind::Int,
-                    },
-                    SyntaxKind::FLOAT_LITERAL => AbsPat::Literal {
-                        value: format!("{sign}{}", token.text()),
-                        ty: AbsLitKind::Float,
-                    },
-                    SyntaxKind::TRUE_KW => AbsPat::Literal {
-                        value: "true".to_string(),
-                        ty: AbsLitKind::Bool,
-                    },
-                    SyntaxKind::FALSE_KW => AbsPat::Literal {
-                        value: "false".to_string(),
-                        ty: AbsLitKind::Bool,
-                    },
-                    SyntaxKind::STRING_START => {
-                        // Extract actual string content from the LITERAL_PAT node's children
-                        let mut content = String::new();
-                        for child in lit.syntax().children_with_tokens() {
-                            if child.kind() == SyntaxKind::STRING_CONTENT {
-                                if let Some(tok) = child.as_token() {
-                                    content.push_str(tok.text());
-                                }
-                            }
-                        }
-                        AbsPat::Literal {
-                            value: content,
-                            ty: AbsLitKind::String,
-                        }
-                    }
-                    // An atom is its name at run time; like a string, it
-                    // takes a catch-all arm to be exhaustive.
-                    SyntaxKind::ATOM_LITERAL => AbsPat::Literal {
-                        value: token.text().trim_start_matches(':').to_string(),
-                        ty: AbsLitKind::String,
-                    },
-                    _ => AbsPat::Wildcard,
+            let token = lit.token();
+            let text = token.as_ref().map_or("", |t| t.text());
+            let sign = if lit.is_negative() { "-" } else { "" };
+            let literal = |value: String, ty| AbsPat::Literal { value, ty };
+            match token.as_ref().map(|t| t.kind()) {
+                Some(SyntaxKind::INT_LITERAL) => literal(format!("{sign}{text}"), AbsLitKind::Int),
+                Some(SyntaxKind::FLOAT_LITERAL) => {
+                    literal(format!("{sign}{text}"), AbsLitKind::Float)
                 }
-            } else {
-                AbsPat::Wildcard
+                Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => {
+                    literal(text.to_string(), AbsLitKind::Bool)
+                }
+                Some(SyntaxKind::STRING_START) => {
+                    let content = lit
+                        .syntax()
+                        .children_with_tokens()
+                        .filter_map(|child| child.into_token())
+                        .filter(|t| t.kind() == SyntaxKind::STRING_CONTENT)
+                        .map(|t| t.text().to_string())
+                        .collect();
+                    literal(content, AbsLitKind::String)
+                }
+                // An atom is its name at run time; like a string, it
+                // takes a catch-all arm to be exhaustive.
+                Some(SyntaxKind::ATOM_LITERAL) => {
+                    literal(text.trim_start_matches(':').to_string(), AbsLitKind::String)
+                }
+                // `nil`, whose one value any pattern matches.
+                _ => AbsPat::Wildcard,
             }
         }
         Pattern::Tuple(tuple_pat) => {
@@ -11798,11 +11782,9 @@ fn ast_pattern_to_abstract(
         }
         Pattern::As(as_pat) => {
             // For exhaustiveness, an as-pattern is equivalent to its inner pattern.
-            if let Some(inner) = as_pat.pattern() {
+            as_pat.pattern().map_or(AbsPat::Wildcard, |inner| {
                 ast_pattern_to_abstract(ctx, &inner, env, type_registry)
-            } else {
-                AbsPat::Wildcard
-            }
+            })
         }
         Pattern::Cons(cons_pat) => {
             // `head :: tail` is the non-empty constructor of the list type.
@@ -13361,19 +13343,7 @@ fn infer_pattern(
             if let Some(token) = lit.token() {
                 check_numeric_literal(ctx, &token, lit.is_negative());
             }
-            let ty = if let Some(token) = lit.token() {
-                match token.kind() {
-                    SyntaxKind::INT_LITERAL => Ty::int(),
-                    SyntaxKind::FLOAT_LITERAL => Ty::float(),
-                    SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW => Ty::bool(),
-                    SyntaxKind::NIL_KW => Ty::Tuple(vec![]),
-                    SyntaxKind::STRING_START => Ty::string(),
-                    SyntaxKind::ATOM_LITERAL => Ty::Con(TyCon::new("Atom")),
-                    _ => ctx.fresh_var(),
-                }
-            } else {
-                ctx.fresh_var()
-            };
+            let ty = literal_pattern_type(lit);
             types.insert(pat.syntax().text_range(), ty.clone());
             Ok(ty)
         }
@@ -13609,20 +13579,26 @@ fn infer_rebuilt_pattern(
                 ty => Ok(ty),
             }
         }
-        Pattern::Literal(lit) => Ok(match lit.token().map(|t| t.kind()) {
-            Some(SyntaxKind::INT_LITERAL) => Ty::int(),
-            Some(SyntaxKind::FLOAT_LITERAL) => Ty::float(),
-            Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => Ty::bool(),
-            Some(SyntaxKind::STRING_START) => Ty::string(),
-            Some(SyntaxKind::ATOM_LITERAL) => Ty::Con(TyCon::new("Atom")),
-            _ => Ty::Tuple(vec![]),
-        }),
+        Pattern::Literal(lit) => Ok(literal_pattern_type(lit)),
         Pattern::Wildcard(_) => Ok(not_a_value(ctx, "`_` names no value".to_string())),
         _ => Ok(not_a_value(
             ctx,
             "only constructors, literals and the names a pattern binds can stand for the arm's value"
                 .to_string(),
         )),
+    }
+}
+
+/// The type of a literal pattern, which the parser makes only of a number,
+/// `true` or `false`, a string, an atom, or `nil`.
+fn literal_pattern_type(lit: &mesh_parser::ast::pat::LiteralPat) -> Ty {
+    match lit.token().map(|t| t.kind()) {
+        Some(SyntaxKind::INT_LITERAL) => Ty::int(),
+        Some(SyntaxKind::FLOAT_LITERAL) => Ty::float(),
+        Some(SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW) => Ty::bool(),
+        Some(SyntaxKind::STRING_START) => Ty::string(),
+        Some(SyntaxKind::ATOM_LITERAL) => Ty::Con(TyCon::new("Atom")),
+        _ => Ty::Tuple(vec![]),
     }
 }
 

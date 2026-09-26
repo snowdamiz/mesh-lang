@@ -1331,6 +1331,67 @@ end
 
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
+/// Float and string literals have endless values, so arms of them need a
+/// catch-all; `nil` has one value; a list pattern covers lists of its
+/// length only; a pattern of an unknown variant or struct is reported as
+/// that.
+#[test]
+fn literal_and_list_patterns_cover_what_they_name() {
+    assert_eq!(
+        errors(
+            r#"
+fn floats(x :: Float) -> Int do
+  case x do
+    1.5 -> 1
+    -2.5 -> 2
+  end
+end
+
+fn strings(s :: String) -> Int do
+  case s do
+    "a" -> 1
+    "b" -> 2
+  end
+end
+
+fn nils(n) -> Int do
+  case n do
+    nil -> 1
+  end
+end
+
+fn lists(xs :: List<Int>) -> Int do
+  case xs do
+    [1, 2] -> 1
+    [] -> 0
+  end
+end
+
+fn unknown_variant(o :: Option<Int>) -> Int do
+  case o do
+    Nope(n) -> n
+    _ -> 0
+  end
+end
+
+fn unknown_struct(o :: Int) -> Int do
+  case o do
+    Nope { x } -> x
+    _ -> 0
+  end
+end
+"#
+        ),
+        [
+            "non-exhaustive match on `Float`: missing patterns [_]",
+            "non-exhaustive match on `String`: missing patterns [_]",
+            "non-exhaustive match on `List<Int>`: missing patterns [_ :: _ :: _]",
+            "unknown variant `Nope`",
+            "unknown type `Nope`",
+        ]
+    );
+}
+
 /// `true | false` inside another pattern covers every Bool: the column's
 /// type was taken from its patterns without looking into or-patterns, so a
 /// Bool there counted as a type of endless values.
