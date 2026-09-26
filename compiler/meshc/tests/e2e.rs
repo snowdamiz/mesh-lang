@@ -8135,6 +8135,51 @@ end
 }
 
 #[test]
+fn e2e_generic_structs_and_services_are_used_from_other_modules() {
+    // A generic struct named through its module or imported by name gets
+    // fresh type arguments at each use, and a service another module
+    // defines is started and called through its name.
+    let geo = r##"pub struct Pair<A, B> do
+  first :: A
+  second :: B
+end
+
+service Counter do
+  fn init(start :: Int) -> Int do
+    start
+  end
+
+  call Get() :: Int do |count|
+    (count, count)
+  end
+
+  cast Add(n :: Int) do |count|
+    count + n
+  end
+end
+"##;
+    let main = r##"import Geo
+from Geo import Pair
+
+fn main() do
+  let p = Geo.Pair { first: 1, second: "a" }
+  let q = Pair { first: true, second: 2.5 }
+  println("#{p.first} #{p.second} #{q.first} #{q.second}")
+  let c = Counter.start(10)
+  Counter.add(c, 5)
+  println("#{Counter.get(c)}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("geo.mpl", geo), ("main.mpl", main)]);
+    assert_eq!(output, "1 a true 2.5\n15\n");
+    let err = compile_multifile_expect_error(&[
+        ("geo.mpl", geo),
+        ("main.mpl", "from Nope import thing\n\nfn main() do\n  thing()\nend\n"),
+    ]);
+    assert!(err.contains("E0031") && err.contains("Nope"), "{err}");
+}
+
+#[test]
 fn e2e_a_module_block_is_a_module() {
     // `module ... do ... end` blocks were skipped: never type-checked (a
     // body adding a string to an undefined name built) and never reachable
