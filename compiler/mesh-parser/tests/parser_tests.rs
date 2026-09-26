@@ -4130,3 +4130,40 @@ fn for_in_map_entry_binding_takes_two_names() {
         );
     }
 }
+
+/// Inputs at the edges of the grammar: each parses, or reports an error
+/// without the parser losing its footing.
+#[test]
+fn edge_inputs_parse_or_report_errors() {
+    for (source, ok) in [
+        // A generic list names something (`<>` is concatenation).
+        ("struct S< > do\nend\n", false),
+        ("fn f(x :: Map< >) do\n  x\nend\n", false),
+        ("impl Show< > for Int do\nend\n", false),
+        ("struct Pair<A, B,> do\nend\n", true),
+        // `clustered` that starts no clustered declaration.
+        ("clustered.run()\n", true),
+        // A negative literal parameter, in a clause and a closure.
+        ("fn f(-1) do\n  0\nend\n", true),
+        ("fn g() do\n  fn -1 -> 0 | n -> n end\nend\n", true),
+        // A negated name is no pattern.
+        ("fn f(-x) do\n  x\nend\n", false),
+        ("fn g() do\n  fn -x -> x end\nend\n", false),
+        // A case inside a call whose `)` comes before its `end`.
+        (
+            "fn f(x) do\n  g(case x do\n    1 ->\n      a\n  )\nend\n",
+            false,
+        ),
+        // A sum type without `do`, and a bound without `:`.
+        ("type Color Red | Green end\n", false),
+        ("fn f(x) where T Display do\n  x\nend\n", false),
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert_eq!(
+            parse.errors().is_empty(),
+            ok,
+            "{source:?}: {:?}",
+            parse.errors()
+        );
+    }
+}

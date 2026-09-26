@@ -555,16 +555,16 @@ impl<'src> Parser<'src> {
                         forward_parents.clear();
                         // A forward parent is always an Open event.
                         let mut next = Some(i);
-                        while let Some(current) = next {
-                            let Event::Open {
+                        while let Some((
+                            current,
+                            Event::Open {
                                 kind,
                                 forward_parent,
-                            } = self.events[current]
-                            else {
-                                break;
-                            };
-                            forward_parents.push((current, kind));
-                            next = forward_parent;
+                            },
+                        )) = next.map(|current| (current, &self.events[current]))
+                        {
+                            forward_parents.push((current, *kind));
+                            next = *forward_parent;
                         }
 
                         // Mark all forward parent Open events (except the first
@@ -641,15 +641,14 @@ fn emit_gap(
     token_pos: usize,
     last_end: &mut usize,
 ) {
-    if let Some(token) = tokens.get(token_pos) {
-        let start = token.span.start as usize;
-        if start > *last_end {
-            builder.token(
-                rowan::SyntaxKind(SyntaxKind::WHITESPACE as u16),
-                &source[*last_end..start],
-            );
-            *last_end = start;
-        }
+    // The tokens end in EOF, so every event has a token at its position.
+    let start = tokens[token_pos].span.start as usize;
+    if start > *last_end {
+        builder.token(
+            rowan::SyntaxKind(SyntaxKind::WHITESPACE as u16),
+            &source[*last_end..start],
+        );
+        *last_end = start;
     }
 }
 

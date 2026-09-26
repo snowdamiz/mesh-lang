@@ -222,17 +222,10 @@ impl BinaryExpr {
 ast_node!(UnaryExpr, UNARY_EXPR);
 
 impl UnaryExpr {
-    /// The operator token.
+    /// The operator token: the node's first, as the parser opens the node
+    /// at the operator (trivia before it goes to the enclosing node).
     pub fn op(&self) -> Option<SyntaxToken> {
-        self.syntax
-            .children_with_tokens()
-            .filter_map(|it| it.into_token())
-            .find(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::MINUS | SyntaxKind::BANG | SyntaxKind::NOT_KW
-                )
-            })
+        self.syntax.first_token()
     }
 
     /// The operand expression.

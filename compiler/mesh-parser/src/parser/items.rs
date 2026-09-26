@@ -835,19 +835,17 @@ fn parse_deriving_clause(p: &mut Parser) {
     p.close(dc, SyntaxKind::DERIVING_CLAUSE);
 }
 
-/// Parse a generic parameter list: `<A, B, C>`
+/// Parse a generic parameter list: `<A, B, C>`, at least one.
 fn parse_generic_param_list(p: &mut Parser) {
     let m = p.open();
     p.advance(); // <
 
-    if !p.at(SyntaxKind::GT) {
-        p.expect(SyntaxKind::IDENT);
-        while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::GT) {
-                break;
-            }
-            p.expect(SyntaxKind::IDENT);
+    p.expect(SyntaxKind::IDENT);
+    while p.eat(SyntaxKind::COMMA) {
+        if p.at(SyntaxKind::GT) {
+            break;
         }
+        p.expect(SyntaxKind::IDENT);
     }
 
     p.expect(SyntaxKind::GT);
@@ -925,14 +923,12 @@ pub(crate) fn parse_type(p: &mut Parser) {
     if p.at(SyntaxKind::LT) {
         let args = p.open();
         p.advance(); // <
-        if !p.at(SyntaxKind::GT) {
-            parse_type(p);
-            while p.eat(SyntaxKind::COMMA) {
-                if p.at(SyntaxKind::GT) {
-                    break;
-                }
-                parse_type(p);
+        parse_type(p);
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::GT) {
+                break;
             }
+            parse_type(p);
         }
         p.expect(SyntaxKind::GT);
         p.close(args, SyntaxKind::GENERIC_ARG_LIST);
@@ -1146,14 +1142,12 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
     if p.at(SyntaxKind::LT) {
         let args = p.open();
         p.advance(); // <
-        if !p.at(SyntaxKind::GT) {
-            parse_type(p);
-            while p.eat(SyntaxKind::COMMA) {
-                if p.at(SyntaxKind::GT) {
-                    break;
-                }
-                parse_type(p);
+        parse_type(p);
+        while p.eat(SyntaxKind::COMMA) {
+            if p.at(SyntaxKind::GT) {
+                break;
             }
+            parse_type(p);
         }
         p.expect(SyntaxKind::GT);
         p.close(args, SyntaxKind::GENERIC_ARG_LIST);

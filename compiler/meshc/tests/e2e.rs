@@ -143,6 +143,45 @@ fn e2e_guard_expressions() {
     assert_eq!(output, "big\nsmall\nnegative\nover 7\n");
 }
 
+/// A negative literal is a parameter pattern, in a function's clauses and a
+/// closure's.
+#[test]
+fn e2e_negative_literal_parameter_patterns() {
+    let output = compile_and_run(
+        r##"
+fn describe(-1) do
+  "minus one"
+end
+
+fn describe(n) do
+  "other #{n}"
+end
+
+fn halve(-2.5) do
+  "minus two and a half"
+end
+
+fn halve(x) do
+  "#{x / 2.0}"
+end
+
+fn main() do
+  println(describe(-1))
+  println(describe(3))
+  println(halve(-2.5))
+  println(halve(3.0))
+  let pick = fn -1 -> "neg" | n -> "n=#{n}" end
+  println(pick(-1))
+  println(pick(4))
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "minus one\nother 3\nminus two and a half\n1.5\nneg\nn=4\n"
+    );
+}
+
 /// A `let` outside a function makes no global: a function naming it failed
 /// to compile with "Undefined variable". It is error E0080.
 #[test]
