@@ -1707,6 +1707,70 @@ fn own_pid(raw: u64) -> crate::actor::process::ProcessId {
     crate::actor::process::ProcessId(pid.local_id())
 }
 
+/// A `DIST_SEND` frame for local message bytes `data`, which reference what
+/// `captured` holds: `[tag][u64 target][u64 data len][data][capture]`. Each
+/// pid in it goes as its local id, and the capture names its node.
+pub(crate) fn encode_dist_send(
+    target: crate::actor::process::ProcessId,
+    mut data: Vec<u8>,
+    mut captured: crate::actor::msg_shape::Captured,
+) -> Vec<u8> {
+    let mut nodes = Vec::new();
+    captured.map_pids(&mut data, |pid| {
+        let pid = crate::actor::process::ProcessId(pid);
+        nodes.push(pid_node_name(pid).unwrap_or_default());
+        pid.local_id()
+    });
+    let mut payload = vec![DIST_SEND];
+    payload.extend_from_slice(&target.as_u64().to_le_bytes());
+    payload.extend_from_slice(&(data.len() as u64).to_le_bytes());
+    payload.extend_from_slice(&data);
+    captured.encode(&mut payload, &nodes);
+    payload
+}
+
+/// The name of the node `pid` is on: this one, or a connected one. `None`
+/// for no process (0) and for a node this one no longer knows.
+fn pid_node_name(pid: crate::actor::process::ProcessId) -> Option<String> {
+    let state = node_state()?;
+    match pid.as_u64() {
+        0 => None,
+        _ if pid.is_local() => Some(state.name.clone()),
+        _ => state.node_id_map.read().get(&pid.node_id()).cloned(),
+    }
+}
+
+/// A `DIST_SEND` frame `encode_dist_send` made: the local process it is for,
+/// the message's bytes and what they reference, its pids as this node
+/// addresses them. A pid on a node this one is not connected to becomes 0.
+fn decode_dist_send(
+    msg: &[u8],
+) -> Option<(
+    crate::actor::process::ProcessId,
+    Vec<u8>,
+    crate::actor::msg_shape::Captured,
+)> {
+    use crate::actor::process::ProcessId;
+    let target = own_pid(u64::from_le_bytes(msg.get(1..9)?.try_into().ok()?));
+    let len = usize::try_from(u64::from_le_bytes(msg.get(9..17)?.try_into().ok()?)).ok()?;
+    let end = 17usize.checked_add(len)?;
+    let mut data = msg.get(17..end)?.to_vec();
+    let (mut captured, nodes) = crate::actor::msg_shape::Captured::decode(&msg[end..], len)?;
+    let state = node_state()?;
+    let mut nodes = nodes.into_iter();
+    captured.map_pids(&mut data, |local| {
+        let local = ProcessId(local).local_id();
+        match nodes.next().unwrap_or_default() {
+            node if node.is_empty() => 0,
+            node if node == state.name => local,
+            node => state.sessions.read().get(&node).map_or(0, |session| {
+                ProcessId::from_remote(session.node_id, session.remote_creation, local).as_u64()
+            }),
+        }
+    });
+    Some((target, data, captured))
+}
+
 /// The session to the node `pid` lives on, if it is connected.
 pub(crate) fn session_for_pid(pid: crate::actor::ProcessId) -> Option<Arc<NodeSession>> {
     let state = node_state()?;
@@ -2036,19 +2100,15 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                             }
                         }
                     }
-                    DIST_SEND => {
-                        // Wire format: [tag][u64 target_pid LE][raw message bytes]
-                        if msg.len() >= 9 {
-                            let target_pid =
-                                own_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
-                            let msg_data = &msg[9..];
-                            crate::actor::local_send(
-                                target_pid.as_u64(),
-                                msg_data.as_ptr(),
-                                msg_data.len() as u64,
-                            );
+                    DIST_SEND => match decode_dist_send(&msg) {
+                        Some((target, data, captured)) => {
+                            crate::actor::deliver_remote(target, data, captured);
                         }
-                    }
+                        None => eprintln!(
+                            "mesh transport: transition=message_malformed remote={}",
+                            session.remote_name
+                        ),
+                    },
                     DIST_PEER_LIST => {
                         handle_peer_list(&msg[1..]);
                     }

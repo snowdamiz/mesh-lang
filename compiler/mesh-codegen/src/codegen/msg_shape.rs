@@ -35,6 +35,10 @@ const JSON: u32 = 8;
 const QUEUE: u32 = 9;
 const SHARED: u32 = 10;
 const CLOSURE: u32 = 11;
+/// A `LEAF` that is a string `{len, bytes}`, possibly a literal.
+const STRING: u32 = 12;
+/// A word that holds a pid.
+const PID: u32 = 13;
 
 impl<'ctx> CodeGen<'ctx> {
     /// The shape of the value `expr` evaluates to: what lowering worked out
@@ -55,9 +59,9 @@ impl<'ctx> CodeGen<'ctx> {
             | MirType::Bool
             | MirType::Unit
             | MirType::Never
-            | MirType::Pid(_)
             | MirType::FnPtr(..) => MsgShape::Scalar,
-            MirType::String => MsgShape::Leaf,
+            MirType::Pid(_) => MsgShape::Pid,
+            MirType::String => MsgShape::String,
             MirType::Ptr => MsgShape::Shared,
             MirType::Closure(..) => MsgShape::Closure,
             MirType::Tuple(elems) => MsgShape::Tuple(
@@ -264,6 +268,8 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
     fn slot(&mut self, shape: &MsgShape) -> u32 {
         match shape {
             MsgShape::Scalar => self.plain(SCALAR),
+            MsgShape::Pid => self.plain(PID),
+            MsgShape::String => self.plain(STRING),
             MsgShape::Leaf => self.plain(LEAF),
             MsgShape::Json => self.plain(JSON),
             MsgShape::Shared => self.plain(SHARED),
@@ -325,11 +331,18 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
             return match shape {
                 // Generic payloads box scalars: `Some(1)` points at an i64.
                 MsgShape::Scalar => self.plain(LEAF),
+                MsgShape::Pid => {
+                    let pid = self.plain(PID);
+                    self.node(&[BOXED, pid])
+                }
                 other => self.slot(other),
             };
         }
         let BasicTypeEnum::StructType(struct_ty) = ty else {
-            return self.plain(SCALAR);
+            return self.plain(match shape {
+                MsgShape::Pid => PID,
+                _ => SCALAR,
+            });
         };
         match shape {
             MsgShape::Struct(name, fields) => self.by_value_struct(name, fields, struct_ty),

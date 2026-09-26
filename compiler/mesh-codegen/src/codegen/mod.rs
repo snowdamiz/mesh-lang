@@ -2650,11 +2650,11 @@ mod tests {
         let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
         codegen.compile(&mir).unwrap();
         let ir = codegen.get_llvm_ir();
-        // [len, root AGG 1 (0 -> 7), LEAF, SCALAR, env AGG 1 (8 -> 5)]: the
+        // [len, root AGG 1 (0 -> 7), STRING, SCALAR, env AGG 1 (8 -> 5)]: the
         // String at offset 8 is followed, the Int at offset 16 is not listed.
         assert!(
             ir.contains(
-                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 1, i32 0, i32 6, i32 1, \
+                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 12, i32 0, i32 6, i32 1, \
                  i32 8, i32 5]"
             ),
             "environment shape table, a String at offset 8: {}",
@@ -2792,6 +2792,37 @@ mod tests {
         );
     }
 
+    /// A pid is plain bits to a copy on this node, but one for another node
+    /// has to find it: a message holding one gets a table.
+    #[test]
+    fn test_actor_send_describes_the_pids_in_a_message() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Shaped {
+                value: Box::new(MirExpr::Var("request".to_string(), MirType::Ptr)),
+                shape: MsgShape::Tuple(vec![MsgShape::Pid, MsgShape::String]),
+            }),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("pid".to_string(), MirType::Pid(None)),
+                ("request".to_string(), MirType::Ptr),
+            ],
+            body,
+            MirType::Int,
+        );
+        // [len, AGG 1 (0 -> 7), PID, STRING, TUPLE 2 (5, 6)]
+        assert!(
+            ir.contains(
+                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 13, i32 12, i32 4, i32 2, \
+                 i32 5, i32 6]"
+            ),
+            "shape table for (Pid, String): {}",
+            ir
+        );
+    }
+
     #[test]
     fn test_actor_send_copies_string_messages() {
         let body = MirExpr::ActorSend {
@@ -2809,14 +2840,14 @@ mod tests {
         );
         // A String message is a pointer into the sender's heap; the shape
         // tells the runtime to copy it for the receiver. The table is
-        // [len, AGG, 1 field, offset 0, node 5, LEAF].
+        // [len, AGG, 1 field, offset 0, node 5, STRING].
         assert!(
             ir.contains("call i64 @mesh_actor_send_shaped"),
             "String messages should use the shaped send: {}",
             ir
         );
         assert!(
-            ir.contains("[6 x i32] [i32 6, i32 6, i32 1, i32 0, i32 5, i32 1]"),
+            ir.contains("[6 x i32] [i32 6, i32 6, i32 1, i32 0, i32 5, i32 12]"),
             "shape table for a String: {}",
             ir
         );

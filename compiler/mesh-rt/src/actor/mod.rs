@@ -505,7 +505,7 @@ pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
     if target_pid >> 48 == 0 {
         local_send(target_pid, msg_ptr, msg_size)
     } else {
-        dist_send(target_pid, msg_ptr, msg_size)
+        dist_send(target_pid, msg_ptr, msg_size, std::ptr::null())
     }
 }
 
@@ -515,7 +515,7 @@ pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size:
 /// scalar includes pointers into the sender's heap: the receiver would go on
 /// reading objects the sender is free to collect and reuse. `shape` is the
 /// compiler's description of where those references are (see `msg_shape`), so
-/// the receiver gets its own copy. Remote targets take the existing path.
+/// the receiver gets its own copy, on this node or another.
 #[no_mangle]
 pub extern "C" fn mesh_actor_send_shaped(
     target_pid: u64,
@@ -526,7 +526,7 @@ pub extern "C" fn mesh_actor_send_shaped(
     if target_pid >> 48 == 0 {
         local_send_with_scheduler(global_scheduler(), target_pid, msg_ptr, msg_size, shape)
     } else {
-        dist_send(target_pid, msg_ptr, msg_size)
+        dist_send(target_pid, msg_ptr, msg_size, shape)
     }
 }
 
@@ -625,20 +625,17 @@ fn local_send_with_scheduler(
     msg_size: u64,
     shape: *const u32,
 ) -> i64 {
-    let pid = ProcessId(target_pid);
+    let buffer = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    deliver_local(sched, ProcessId(target_pid), Message { buffer })
+}
 
-    // Deep-copy the message bytes.
-    let data = if msg_ptr.is_null() || msg_size == 0 {
-        Vec::new()
-    } else {
-        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
-        slice.to_vec()
-    };
-
+/// A message of bytes `data`, detached from the running actor's heap as
+/// `shape` describes.
+fn message_buffer(sched: &Scheduler, data: Vec<u8>, shape: *const u32) -> MessageBuffer {
     let type_tag = message_type_tag(&data);
     let mut buffer = MessageBuffer::new(data, type_tag);
     detach_from_sender(sched, &mut buffer, 0, shape);
-    deliver_local(sched, pid, Message { buffer })
+    buffer
 }
 
 /// Derive type_tag from first 8 bytes (or zero-pad).
@@ -679,20 +676,71 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
 /// the TLS stream. Returns a nonzero status when the node is unavailable
 /// or the write fails.
 #[cold]
-fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
-    let Some(session) = crate::dist::node::session_for_pid(ProcessId(target_pid)) else {
+fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64, shape: *const u32) -> i64 {
+    let target = ProcessId(target_pid);
+    let data = message_bytes(msg_ptr, msg_size);
+    match capture_for_node(target, &data, shape) {
+        Some(captured) => send_to_node(target, data, captured),
+        None => 6,
+    }
+}
+
+/// What a message for `target`, on another node, takes with it from the
+/// running actor's heap. `None`, said on stderr, when it holds code or a
+/// runtime object, which cannot leave this node.
+fn capture_for_node(
+    target: ProcessId,
+    data: &[u8],
+    shape: *const u32,
+) -> Option<msg_shape::Captured> {
+    // A message without a shape holds only plain bits.
+    if shape.is_null() {
+        return Some(msg_shape::Captured::default());
+    }
+    let captured = stack::get_current_pid()
+        .and_then(|pid| global_scheduler().get_process(pid))
+        .and_then(|sender| unsafe {
+            msg_shape::capture_for_node(&sender.lock().heap, data, shape)
+        });
+    if captured.is_none() {
+        eprintln!(
+            "mesh: a message for {target} holds code or a runtime object, which cannot leave this node; it was not sent"
+        );
+    }
+    captured
+}
+
+/// Send a message `capture_for_node` took to `target` on another node.
+fn send_to_node(target: ProcessId, data: Vec<u8>, captured: msg_shape::Captured) -> i64 {
+    let Some(session) = crate::dist::node::session_for_pid(target) else {
         return 4;
     };
+    send_application_frame(
+        &session,
+        crate::dist::node::encode_dist_send(target, data, captured),
+    )
+}
 
-    // Build wire message: [DIST_SEND][u64 target_pid LE][raw message bytes]
-    let mut payload = Vec::with_capacity(1 + 8 + msg_size as usize);
-    payload.push(crate::dist::node::DIST_SEND);
-    payload.extend_from_slice(&target_pid.to_le_bytes());
-    if !msg_ptr.is_null() && msg_size > 0 {
-        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
-        payload.extend_from_slice(slice);
+/// A copy of the `msg_size` bytes at `msg_ptr`.
+fn message_bytes(msg_ptr: *const u8, msg_size: u64) -> Vec<u8> {
+    if msg_ptr.is_null() || msg_size == 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) }.to_vec()
     }
-    send_application_frame(&session, payload)
+}
+
+/// Queue a message that came from another node for local process `target`,
+/// with the objects it references.
+pub(crate) fn deliver_remote(
+    target: ProcessId,
+    data: Vec<u8>,
+    captured: msg_shape::Captured,
+) -> i64 {
+    let type_tag = message_type_tag(&data);
+    let mut buffer = MessageBuffer::new(data, type_tag);
+    buffer.captured = captured;
+    deliver_local(global_scheduler(), target, Message { buffer })
 }
 
 /// Queue `payload` on a peer session: 0 once queued, 5 when the session
@@ -1042,33 +1090,27 @@ pub extern "C" fn mesh_timer_send_after_shaped(
     msg_size: i64,
     shape: *const u32,
 ) {
-    // Deep-copy message bytes before spawning thread
-    let data = if msg_ptr.is_null() || msg_size <= 0 {
-        Vec::new()
-    } else {
-        let slice = unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) };
-        slice.to_vec()
-    };
-
-    let pid = target_pid as u64;
+    let data = message_bytes(msg_ptr, msg_size.max(0) as u64);
+    let target = ProcessId(target_pid as u64);
     let delay = std::time::Duration::from_millis(if ms > 0 { ms as u64 } else { 0 });
 
-    // Remote targets and plain messages take the byte path, as before.
-    let prepared = (pid >> 48 == 0 && !shape.is_null()).then(|| {
-        let mut buffer = MessageBuffer::new(data.clone(), message_type_tag(&data));
-        detach_from_sender(global_scheduler(), &mut buffer, 0, shape);
-        SendOnTimer(buffer)
-    });
+    let prepared = if target.is_local() {
+        SendOnTimer::Local(message_buffer(global_scheduler(), data, shape))
+    } else {
+        match capture_for_node(target, &data, shape) {
+            Some(captured) => SendOnTimer::Remote(data, captured),
+            None => return,
+        }
+    };
 
     std::thread::spawn(move || {
         std::thread::sleep(delay);
         match prepared {
-            Some(SendOnTimer(buffer)) => {
-                deliver_local(global_scheduler(), ProcessId(pid), Message { buffer });
+            SendOnTimer::Local(buffer) => {
+                deliver_local(global_scheduler(), target, Message { buffer });
             }
-            // Reuse mesh_actor_send: construct message and deliver
-            None => {
-                mesh_actor_send(pid, data.as_ptr(), data.len() as u64);
+            SendOnTimer::Remote(data, captured) => {
+                send_to_node(target, data, captured);
             }
         }
     });
@@ -1076,7 +1118,10 @@ pub extern "C" fn mesh_timer_send_after_shaped(
 
 /// A detached message waiting on a timer thread. Its loans hold `Process`
 /// handles, which are only ever touched under their own locks.
-struct SendOnTimer(MessageBuffer);
+enum SendOnTimer {
+    Local(MessageBuffer),
+    Remote(Vec<u8>, msg_shape::Captured),
+}
 unsafe impl Send for SendOnTimer {}
 
 /// Deep-copy a message into the actor's heap and return a pointer to the

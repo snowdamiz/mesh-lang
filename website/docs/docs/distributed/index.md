@@ -110,6 +110,26 @@ end
 
 Once nodes are connected, you can spawn actors on remote nodes and communicate with them using the same `send` and `receive` primitives you use locally.
 
+A message crosses to another node whole: its strings, lists, maps, structs and other values are copied into the receiving actor, as they are between actors on one node. A pid in a message still names its process on the other node, so a request can carry `self()` for the reply:
+
+```mesh
+actor greeter() do
+  receive do
+    (reply_to, name) -> send(reply_to, "hello #{name}")
+  end
+  greeter()
+end
+
+actor asker() do
+  send(Global.whereis("greeter"), (self(), "remote"))
+  receive do
+    reply -> println(reply)
+  end
+end
+```
+
+Functions and runtime handles (database connections, pools and other opaque values) cannot leave their node: a `send` of a message that holds one returns `6` and sends nothing.
+
 ### Spawning on a Remote Node
 
 Use `Node.spawn` to start an actor on a specific remote node:

@@ -38,12 +38,24 @@
 //! | `QUEUE` | elem | pointer to `{buffer list, head, tail}` |
 //! | `SHARED` | | a reference that cannot be copied by type |
 //! | `CLOSURE` | | by-value `{fn, env}`; `env` points to an environment |
+//! | `STRING` | | a `LEAF` that is a string `{len, bytes}`, perhaps a literal |
+//! | `PID` | | a pid, which is plain bits on this node |
 //!
 //! A closure's type says nothing about what it captured, so an environment
 //! describes itself: its first word points at the shape table the compiler
 //! emitted for it (root: the environment by value), or is null when it holds
 //! no references. An environment that is not an object of the sender's heap,
 //! such as one the runtime made, is lent like any `SHARED` reference.
+//!
+//! ## Messages for another node
+//!
+//! [`capture_for_node`] copies what a message for another node references:
+//! nothing can be lent across a network. It takes a string wherever it lives
+//! (a literal in the program's constant data too, which another program
+//! cannot read) and notes where the message's pids are, which only mean
+//! something on the node that made them (see `dist::node`). A message that
+//! references code or a runtime object cannot leave its node at all.
+//! [`Captured::encode`] and [`Captured::decode`] carry the result.
 
 use rustc_hash::FxHashMap;
 
@@ -61,6 +73,8 @@ pub(crate) const JSON: u32 = 8;
 pub(crate) const QUEUE: u32 = 9;
 pub(crate) const SHARED: u32 = 10;
 pub(crate) const CLOSURE: u32 = 11;
+pub(crate) const STRING: u32 = 12;
+pub(crate) const PID: u32 = 13;
 
 // Nodes the runtime supplies itself, for the self-describing JSON tree. They
 // sit above any real table index.
@@ -70,6 +84,7 @@ const JSON_OBJECT_NODE: u32 = u32::MAX - 2;
 const LEAF_NODE: u32 = u32::MAX - 3;
 /// A closure environment, which names its own table.
 const ENV_NODE: u32 = u32::MAX - 4;
+const STRING_NODE: u32 = u32::MAX - 5;
 
 /// A shape table: `words[0]` is its length in words.
 #[derive(Clone, Copy)]
@@ -122,12 +137,108 @@ pub(crate) struct Captured {
     /// References that were left in place and must be kept alive by whoever
     /// owns them; see `scheduler::lend_words`.
     pub(crate) lend: Vec<usize>,
+    /// Where the message's pids are: in its own bytes (`None`) or in an
+    /// object, at a byte offset. Only a capture for another node notes them.
+    pub(crate) pids: Vec<(Option<u32>, usize)>,
 }
 
 impl Captured {
     #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.objects.is_empty() && self.lend.is_empty()
+    }
+
+    /// Replace each pid of the message whose own bytes are `data` with what
+    /// `f` makes of it.
+    pub(crate) fn map_pids(&mut self, data: &mut [u8], mut f: impl FnMut(u64) -> u64) {
+        for &(object, offset) in &self.pids {
+            let bytes = match object {
+                None => &mut *data,
+                Some(index) => &mut self.objects[index as usize].bytes,
+            };
+            if let Some(word) = bytes.get_mut(offset..offset + 8) {
+                let pid = f(u64::from_le_bytes(word.try_into().unwrap()));
+                word.copy_from_slice(&pid.to_le_bytes());
+            }
+        }
+    }
+
+    /// Append this capture of a message for another node, the node each of
+    /// its pids is on in `pid_nodes`: its relocations, then its objects with
+    /// theirs, then its pids, each count a `u32` and everything little-endian.
+    pub(crate) fn encode(&self, out: &mut Vec<u8>, pid_nodes: &[String]) {
+        fn relocs(out: &mut Vec<u8>, relocs: &[(usize, u32)]) {
+            out.extend_from_slice(&(relocs.len() as u32).to_le_bytes());
+            for &(offset, target) in relocs {
+                out.extend_from_slice(&(offset as u64).to_le_bytes());
+                out.extend_from_slice(&target.to_le_bytes());
+            }
+        }
+        relocs(out, &self.relocs);
+        out.extend_from_slice(&(self.objects.len() as u32).to_le_bytes());
+        for object in &self.objects {
+            out.extend_from_slice(&(object.bytes.len() as u64).to_le_bytes());
+            out.extend_from_slice(&object.bytes);
+            relocs(out, &object.relocs);
+        }
+        out.extend_from_slice(&(self.pids.len() as u32).to_le_bytes());
+        for (&(object, offset), node) in self.pids.iter().zip(pid_nodes) {
+            out.extend_from_slice(&object.map_or(0, |index| index + 1).to_le_bytes());
+            out.extend_from_slice(&(offset as u64).to_le_bytes());
+            out.extend_from_slice(&(node.len() as u16).to_le_bytes());
+            out.extend_from_slice(node.as_bytes());
+        }
+    }
+
+    /// A capture `encode` wrote, for a message of `data_len` bytes, with the
+    /// node of each pid. `None` unless every count, offset and index in it
+    /// stays inside what it describes: it comes from another process.
+    pub(crate) fn decode(bytes: &[u8], data_len: usize) -> Option<(Captured, Vec<String>)> {
+        let mut input = WireReader { bytes, pos: 0 };
+        let relocs = |input: &mut WireReader| -> Option<Vec<(usize, u32)>> {
+            (0..input.u32()?)
+                .map(|_| Some((input.u64()? as usize, input.u32()?)))
+                .collect()
+        };
+        let mut captured = Captured {
+            relocs: relocs(&mut input)?,
+            ..Captured::default()
+        };
+        for _ in 0..input.u32()? {
+            let len = input.u64()? as usize;
+            let bytes = input.take(len)?.to_vec();
+            captured.objects.push(OwnedObject {
+                bytes,
+                relocs: relocs(&mut input)?,
+            });
+        }
+        let mut nodes = Vec::new();
+        for _ in 0..input.u32()? {
+            let object = input.u32()?.checked_sub(1);
+            captured.pids.push((object, input.u64()? as usize));
+            let len = input.u16()? as usize;
+            nodes.push(std::str::from_utf8(input.take(len)?).ok()?.to_string());
+        }
+        let objects = &captured.objects;
+        let fits = |len: usize, &(offset, target): &(usize, u32)| {
+            offset.checked_add(8).is_some_and(|end| end <= len) && (target as usize) < objects.len()
+        };
+        let valid = input.pos == bytes.len()
+            && captured.relocs.iter().all(|reloc| fits(data_len, reloc))
+            && objects.iter().all(|object| {
+                object
+                    .relocs
+                    .iter()
+                    .all(|reloc| fits(object.bytes.len(), reloc))
+            })
+            && captured.pids.iter().all(|&(object, offset)| {
+                let len = match object {
+                    None => Some(data_len),
+                    Some(index) => objects.get(index as usize).map(|object| object.bytes.len()),
+                };
+                len.is_some_and(|len| offset.checked_add(8).is_some_and(|end| end <= len))
+            });
+        valid.then_some((captured, nodes))
     }
 
     /// Rebuild the captured objects in `heap` and point `data` at them.
@@ -171,6 +282,31 @@ pub(crate) unsafe fn capture(
     base: usize,
     shape: *const u32,
 ) -> Captured {
+    capture_as(heap, data, base, shape, false)
+}
+
+/// [`capture`] for a message to another node (see the module docs): `None`
+/// when it references something that cannot leave this one.
+///
+/// # Safety
+///
+/// As for [`capture`].
+pub(crate) unsafe fn capture_for_node(
+    heap: &ActorHeap,
+    data: &[u8],
+    shape: *const u32,
+) -> Option<Captured> {
+    let captured = capture_as(heap, data, 0, shape, true);
+    captured.lend.is_empty().then_some(captured)
+}
+
+unsafe fn capture_as(
+    heap: &ActorHeap,
+    data: &[u8],
+    base: usize,
+    shape: *const u32,
+    for_node: bool,
+) -> Captured {
     let Some(table) = Table::at(shape) else {
         return Captured::default();
     };
@@ -181,6 +317,7 @@ pub(crate) unsafe fn capture(
         out: Captured::default(),
         seen: FxHashMap::default(),
         pending: Vec::new(),
+        for_node,
     };
     capture.value(None, 1, base);
     // Pointer chains are walked from this stack, not by recursion: a
@@ -204,6 +341,34 @@ struct Capture<'a> {
     /// Captured objects whose insides still have to be walked, each with the
     /// table its node is in.
     pending: Vec<(u32, Table, u32)>,
+    /// For another node: nothing is lent, and pids are noted.
+    for_node: bool,
+}
+
+/// Reads the little-endian words of a capture from another process.
+struct WireReader<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> WireReader<'a> {
+    fn take(&mut self, len: usize) -> Option<&'a [u8]> {
+        let taken = self.bytes.get(self.pos..self.pos.checked_add(len)?)?;
+        self.pos += len;
+        Some(taken)
+    }
+
+    fn u16(&mut self) -> Option<u16> {
+        Some(u16::from_le_bytes(self.take(2)?.try_into().ok()?))
+    }
+
+    fn u32(&mut self) -> Option<u32> {
+        Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+
+    fn u64(&mut self) -> Option<u64> {
+        Some(u64::from_le_bytes(self.take(8)?.try_into().ok()?))
+    }
 }
 
 impl Capture<'_> {
@@ -217,6 +382,7 @@ impl Capture<'_> {
             JSON_ARRAY_NODE => LIST,
             JSON_OBJECT_NODE => MAP,
             LEAF_NODE => LEAF,
+            STRING_NODE => STRING,
             _ => self.word(node).unwrap_or(SCALAR),
         }
     }
@@ -225,7 +391,7 @@ impl Capture<'_> {
     fn operand(&self, node: u32, n: u32) -> u32 {
         match (node, n) {
             (JSON_ARRAY_NODE, _) | (JSON_OBJECT_NODE, 1) => JSON_NODE,
-            (JSON_OBJECT_NODE, _) => LEAF_NODE,
+            (JSON_OBJECT_NODE, _) => STRING_NODE,
             _ => self.word(node + 1 + n).unwrap_or(0),
         }
     }
@@ -261,6 +427,13 @@ impl Capture<'_> {
             }
             SUM => self.sum(container, node, offset),
             SCALAR => {}
+            PID => {
+                if self.for_node {
+                    self.out.pids.push((container, offset));
+                }
+            }
+            // Code means nothing in another program.
+            CLOSURE if self.for_node => self.out.lend.push(offset),
             CLOSURE => {
                 // `{fn, env}` by value. Code is not data; the environment is
                 // an object, unless the closure is a plain function (null).
@@ -329,8 +502,15 @@ impl Capture<'_> {
             return Some(index);
         }
         // Static literals, the global arena and other actors' heaps all fail
-        // this test and stay where they are.
-        let size = self.heap.live_allocation_size(address as *const u8)?;
+        // this test and stay where they are, unless the copy is for another
+        // node: a string says how long it is.
+        let size = match self.heap.live_allocation_size(address as *const u8) {
+            Some(size) => size,
+            None if self.for_node && self.kind(node) == STRING => {
+                8 + unsafe { (address as *const u64).read_unaligned() } as usize
+            }
+            None => return None,
+        };
         let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, size) }.to_vec();
         let index = self.out.objects.len() as u32;
         self.out.objects.push(OwnedObject {
@@ -338,7 +518,7 @@ impl Capture<'_> {
             relocs: Vec::new(),
         });
         self.seen.insert(address, index);
-        if self.kind(node) != LEAF {
+        if !matches!(self.kind(node), LEAF | STRING) {
             self.pending.push((index, self.table, node));
         }
         Some(index)
@@ -405,7 +585,7 @@ impl Capture<'_> {
             JSON => {
                 let tag = self.out.objects[object as usize].bytes.first().copied();
                 let inner = match tag {
-                    Some(JSON_TAG_STR) => LEAF_NODE,
+                    Some(JSON_TAG_STR) => STRING_NODE,
                     Some(JSON_TAG_ARRAY) => JSON_ARRAY_NODE,
                     Some(JSON_TAG_OBJECT) => JSON_OBJECT_NODE,
                     _ => return,
@@ -597,6 +777,116 @@ mod tests {
 
     fn word_at(address: usize, offset: usize) -> usize {
         unsafe { ((address + offset) as *const usize).read_unaligned() }
+    }
+
+    /// `{literal, owned, pid}`: strings in and outside the heap, and a pid.
+    fn literal_owned_and_pid(sender: &mut ActorHeap) -> (Vec<u8>, [u32; 11]) {
+        // A string literal: `{len, bytes}` in constant data, in no heap.
+        static LITERAL: [u64; 2] = [5, u64::from_le_bytes(*b"hello\0\0\0")];
+        let owned = string(sender, "owned");
+        let mut data = Vec::new();
+        for word in [LITERAL.as_ptr() as usize, owned, 7] {
+            data.extend_from_slice(&word.to_ne_bytes());
+        }
+        (data, [11, AGG, 3, 0, 9, 8, 9, 16, 10, STRING, PID])
+    }
+
+    #[test]
+    fn a_copy_for_another_node_takes_literals_too_and_notes_its_pids() {
+        let mut sender = ActorHeap::new();
+        let (data, shape) = literal_owned_and_pid(&mut sender);
+
+        let here = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+        assert_eq!(here.objects.len(), 1, "a literal stays where it is");
+        assert_eq!(here.lend, [word(&data, 0)]);
+        assert!(here.pids.is_empty());
+
+        let there = unsafe { capture_for_node(&sender, &data, shape.as_ptr()) }.unwrap();
+        assert!(there.lend.is_empty());
+        assert_eq!(there.pids, [(None, 16)]);
+        let receiver = Box::leak(Box::new(ActorHeap::new()));
+        let mut received = data.clone();
+        unsafe { there.materialize(receiver, received.as_mut_ptr()) };
+        assert_eq!(unsafe { text(word(&received, 0)) }, "hello");
+        assert_eq!(unsafe { text(word(&received, 8)) }, "owned");
+        assert!(receiver.is_live_allocation(word(&received, 0) as *const u8, 13));
+    }
+
+    #[test]
+    fn code_and_runtime_objects_cannot_leave_their_node() {
+        let sender = ActorHeap::new();
+        let closure = [0usize.to_ne_bytes(), 0usize.to_ne_bytes()].concat();
+        let shape = [6, AGG, 1, 0, 5, CLOSURE];
+        assert_eq!(
+            unsafe { capture_for_node(&sender, &closure, shape.as_ptr()) },
+            None,
+            "a named function is still code"
+        );
+        let handle = 0x1000usize.to_ne_bytes();
+        let shape = [2, SHARED];
+        assert_eq!(
+            unsafe { capture_for_node(&sender, &handle, shape.as_ptr()) },
+            None
+        );
+    }
+
+    #[test]
+    fn a_capture_round_trips_and_a_malformed_one_is_refused() {
+        let mut sender = ActorHeap::new();
+        let (data, shape) = literal_owned_and_pid(&mut sender);
+        let mut captured = unsafe { capture_for_node(&sender, &data, shape.as_ptr()) }.unwrap();
+        captured.objects[0].relocs.push((0, 1));
+        let nodes = ["a@127.0.0.1:1".to_string()];
+        let mut wire = Vec::new();
+        captured.encode(&mut wire, &nodes);
+        assert_eq!(
+            Captured::decode(&wire, data.len()),
+            Some((captured.clone(), nodes.to_vec()))
+        );
+
+        assert_eq!(Captured::decode(&wire[..wire.len() - 1], data.len()), None);
+        assert_eq!(
+            Captured::decode(&[wire.clone(), vec![0]].concat(), data.len()),
+            None
+        );
+        assert_eq!(
+            Captured::decode(&wire, 16),
+            None,
+            "a relocation or pid past the message"
+        );
+        let mut bad = captured.clone();
+        bad.objects[0].relocs = vec![(0, 9)];
+        let mut wire = Vec::new();
+        bad.encode(&mut wire, &nodes);
+        assert_eq!(Captured::decode(&wire, data.len()), None, "no object 9");
+        let mut bad = captured;
+        bad.pids = vec![(Some(0), 13)];
+        let mut wire = Vec::new();
+        bad.encode(&mut wire, &nodes);
+        assert_eq!(
+            Captured::decode(&wire, data.len()),
+            None,
+            "a pid past its object"
+        );
+    }
+
+    #[test]
+    fn map_pids_rewrites_each_where_it_sits() {
+        let mut data = 7u64.to_le_bytes().to_vec();
+        let mut captured = Captured {
+            objects: vec![OwnedObject {
+                bytes: [0u64, 9]
+                    .iter()
+                    .flat_map(|word| word.to_le_bytes())
+                    .collect(),
+                relocs: Vec::new(),
+            }],
+            pids: vec![(None, 0), (Some(0), 8)],
+            ..Captured::default()
+        };
+        captured.map_pids(&mut data, |pid| pid * 10);
+        assert_eq!(data, 70u64.to_le_bytes());
+        assert_eq!(captured.objects[0].bytes[8..], 90u64.to_le_bytes());
     }
 
     #[test]

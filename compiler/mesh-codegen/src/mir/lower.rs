@@ -1386,11 +1386,11 @@ impl<'a> Lowerer<'a> {
             )
         };
         match name {
-            "Int" | "Float" | "Bool" | "Unit" | "()" | "Pid" | "DateTime" | "SqliteConn"
-            | "PgConn" | "PoolHandle" => return MsgShape::Scalar,
-            "String" | "Atom" | "Bytes" | "U64" | "U128" | "I128" | "Range" => {
-                return MsgShape::Leaf
-            }
+            "Int" | "Float" | "Bool" | "Unit" | "()" | "DateTime" | "SqliteConn" | "PgConn"
+            | "PoolHandle" => return MsgShape::Scalar,
+            "Pid" => return MsgShape::Pid,
+            "String" | "Atom" => return MsgShape::String,
+            "Bytes" | "U64" | "U128" | "I128" | "Range" => return MsgShape::Leaf,
             "List" | "Set" => return MsgShape::List(arg(0)),
             "Map" => return MsgShape::Map(arg(0), arg(1)),
             "Queue" => return MsgShape::Queue(arg(0)),

@@ -125,9 +125,15 @@ pub enum MirType {
 /// give the receiving actor its own copy; see `mesh-rt`'s `msg_shape`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MsgShape {
-    /// No heap references: Int, Float, Bool, Pid, function pointers, handles.
+    /// No heap references: Int, Float, Bool, function pointers, handles.
     Scalar,
-    /// Pointer to an object with no references inside: String, Bytes, wide ints, Range.
+    /// A pid: plain bits to a copy on this node; a copy for another node
+    /// names the node the process is on.
+    Pid,
+    /// Pointer to a string `{len, bytes}`, String or Atom. A literal lives in
+    /// the program's constant data, where a copy for another node reads it.
+    String,
+    /// Pointer to another object with no references inside: Bytes, wide ints, Range.
     Leaf,
     /// List or Set of the element shape.
     List(Box<MsgShape>),

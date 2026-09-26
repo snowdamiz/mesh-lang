@@ -113,14 +113,22 @@ fn assert_lines(output: &str, expected: &[&str], other: &str) {
     }
 }
 
-/// The hub: an `echo` actor under a global name that answers each number
-/// with the next to whoever is registered as `spoke`. It ends once the spoke
-/// has come and gone.
+/// The hub: under global names, an `echo` actor that answers each number
+/// with the next to whoever is registered as `spoke`, and a `greeter` that
+/// answers a request at the pid it carries. It ends once the spoke has come
+/// and gone.
 const HUB: &str = r#"actor echo() do
   receive do
     n -> send(Global.whereis("spoke"), n + 1)
   end
   echo()
+end
+
+actor greeter() do
+  receive do
+    (reply_to, name, tags) -> send(reply_to, "hello #{name}, #{List.length(tags)} tags: #{tags}")
+  end
+  greeter()
 end
 
 fn await_nodes(count :: Int) do
@@ -134,6 +142,8 @@ fn main() do
   let started = Node.start("HUB", "COOKIE")
   let echo :: Pid<Int> = spawn(echo)
   println("register=#{Global.register("echo", echo)}")
+  let greeter :: Pid<(Pid<String>, String, List<String>)> = spawn(greeter)
+  Global.register("greeter", greeter)
   println("start=#{started}")
   println("ready")
   await_nodes(1)
@@ -179,4 +189,51 @@ end
     );
     assert_lines(&spoke, &["connect=0", "register=0", "reply=42"], &hub);
     assert!(spoke.contains("nodes=[hub@127.0.0.1:"), "{spoke}");
+}
+
+/// A message's strings, literals among them, and lists cross to the other
+/// node, sent at once or by a timer, and so does a pid in it, which the
+/// other node can answer at. Code cannot cross: a send of a closure fails.
+#[test]
+fn nodes_exchange_heap_values_and_answer_the_pids_they_carry() {
+    let spoke = r#"actor asker() do
+  receive do
+    _ -> send(Global.whereis("greeter"), (self(), "spoke", ["red", "green"]))
+  end
+  receive do
+    reply -> println("reply=#{reply}")
+  end
+  Timer.send_after(Global.whereis("greeter"), 10, (self(), "timer", ["blue"]))
+  receive do
+    reply -> println("reply=#{reply}")
+  end
+end
+
+fn await_gone(name :: String) do
+  if Global.whereis(name) != Process.whereis("none-such") do
+    Timer.sleep(10)
+    await_gone(name)
+  end
+end
+
+fn main() do
+  Node.start("SPOKE", "COOKIE")
+  Node.connect("HUB")
+  println("closure_send=#{send(Global.whereis("echo"), fn -> 1 end)}")
+  let asker :: Pid<String> = spawn(asker)
+  Global.register("spoke", asker)
+  send(asker, "go")
+  await_gone("spoke")
+end
+"#;
+    let (hub, spoke) = run_pair(HUB, spoke);
+    assert_lines(
+        &spoke,
+        &[
+            "closure_send=6",
+            "reply=hello spoke, 2 tags: [red, green]",
+            "reply=hello timer, 1 tags: [blue]",
+        ],
+        &hub,
+    );
 }
