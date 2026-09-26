@@ -8298,11 +8298,10 @@ fn validate_native_abi_types(
             });
         }
     }
-    if return_type.is_some_and(|ty| !is_native_abi_return(ty)) {
+    if let Some(ty) = return_type.filter(|ty| !is_native_abi_return(ty)) {
         ctx.errors.push(TypeError::NativeDeclarationInvalid {
             reason: format!(
-                "return type `{}` is not ABI-safe; use a native value, Result, or Option",
-                return_type.unwrap()
+                "return type `{ty}` is not ABI-safe; use a native value, Result, or Option"
             ),
             span,
         });
@@ -14711,8 +14710,6 @@ fn infer_try_expr(
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Extract where-clause constraints from a function definition.
-/// A function's `where` bounds as (type parameter variable, trait) pairs.
 /// A bare call of a trait method (`hello(dog)`) is that method called on its
 /// first argument: it dispatches by the argument's type, and a name two of
 /// the type's interfaces provide is ambiguous (E0027), as in `dog.hello()`.
@@ -15034,6 +15031,7 @@ fn check_type_param_bounds(
     inferred
 }
 
+/// A function's `where` bounds as (type parameter variable, trait) pairs.
 fn where_bounds(
     constraints: &[(String, String)],
     type_params: &FxHashMap<String, Ty>,
@@ -15099,6 +15097,7 @@ fn trait_method_type(
     Ty::Fun(params, Box::new(ret))
 }
 
+/// A function's `where` clause as (type parameter, trait) pairs.
 fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
     let mut constraints = Vec::new();
 
