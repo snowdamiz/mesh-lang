@@ -425,3 +425,22 @@ fn a_type_is_not_a_value_but_names_its_methods() {
         assert!(result.errors.is_empty(), "{body}: {:?}", result.errors);
     }
 }
+
+/// An interface's default method is compiled for each implementing type,
+/// so it needs its parameters' types as an impl's method does: `times`
+/// failed LLVM verification ("Call parameter type does not match").
+#[test]
+fn a_default_method_parameter_needs_a_type() {
+    let src = "interface Greeter do\n  fn name(self) -> String\n  fn greet(self, greeting :: String, times) -> String do\n    \"#{greeting} #{self.name()} x#{times}\"\n  end\nend\n\nfn main() do\n  nil\nend\n";
+    let result = check_source(src);
+    assert!(
+        result.errors.iter().any(|error| matches!(
+            error,
+            TypeError::UntypedMethodParam { method, param, .. } if method == "greet" && param == "times"
+        )),
+        "{:?}",
+        result.errors
+    );
+    let typed = check_source(&src.replace("times)", "times :: Int)"));
+    assert!(typed.errors.is_empty(), "{:?}", typed.errors);
+}

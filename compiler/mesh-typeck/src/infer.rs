@@ -7934,41 +7934,74 @@ fn register_impl_signature(
 /// A method is compiled once, for the type it is implemented for, so each
 /// of its parameters needs a type by the module's end: one nothing fixed was
 /// compiled as `()` (a `Box` argument read as `()`, an `Int` one failing in
-/// LLVM).
+/// LLVM). So is an interface's default method, once per implementing type.
 fn check_method_params_typed(
     ctx: &mut InferCtx,
     tree: &mesh_parser::ast::item::SourceFile,
     types: &FxHashMap<TextRange, Ty>,
 ) {
+    // Each method's name, range, and parameters as its recorded type lists
+    // them: an impl method's `self` and then its named parameters, a
+    // default method's parameters in order.
+    let mut methods = Vec::new();
     for item in tree.items() {
-        let Item::ImplDef(impl_) = item else {
+        match item {
+            Item::ImplDef(impl_) => {
+                for method in impl_.methods() {
+                    let params: Vec<_> = method
+                        .param_list()
+                        .iter()
+                        .flat_map(|list| list.params())
+                        .collect();
+                    let listed = params
+                        .iter()
+                        .filter(|param| param.is_self())
+                        .chain(
+                            params
+                                .iter()
+                                .filter(|param| !param.is_self() && param.name().is_some()),
+                        )
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    methods.push((
+                        method.name().and_then(|n| n.text()),
+                        method.syntax().text_range(),
+                        listed,
+                    ));
+                }
+            }
+            Item::InterfaceDef(iface) => {
+                for method in iface.methods().filter(|method| method.body().is_some()) {
+                    let params = method
+                        .param_list()
+                        .iter()
+                        .flat_map(|list| list.params())
+                        .collect();
+                    methods.push((
+                        method.name().and_then(|n| n.text()),
+                        method.syntax().text_range(),
+                        params,
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    for (method, range, params) in methods {
+        let Some(Ty::Fun(fn_params, _)) = types.get(&range).map(|ty| ctx.resolve(ty.clone()))
+        else {
             continue;
         };
-        for method in impl_.methods() {
-            let Some(Ty::Fun(fn_params, _)) = types
-                .get(&method.syntax().text_range())
-                .map(|ty| ctx.resolve(ty.clone()))
-            else {
+        for (param, ty) in params.iter().zip(&fn_params) {
+            let Some(name) = param.name().filter(|_| !param.is_self()) else {
                 continue;
             };
-            let params: Vec<_> = method
-                .param_list()
-                .iter()
-                .flat_map(|list| list.params())
-                .collect();
-            let has_self = params.iter().any(|param| param.is_self());
-            let named = params
-                .iter()
-                .filter(|param| !param.is_self())
-                .filter_map(|param| Some((param, param.name()?)));
-            for ((param, name), ty) in named.zip(fn_params.iter().skip(usize::from(has_self))) {
-                if ctx.resolve(ty.clone()).has_type_vars() {
-                    ctx.errors.push(TypeError::UntypedMethodParam {
-                        method: method.name().and_then(|n| n.text()).unwrap_or_default(),
-                        param: name.text().to_string(),
-                        span: param.syntax().text_range(),
-                    });
-                }
+            if ctx.resolve(ty.clone()).has_type_vars() {
+                ctx.errors.push(TypeError::UntypedMethodParam {
+                    method: method.clone().unwrap_or_default(),
+                    param: name.text().to_string(),
+                    span: param.syntax().text_range(),
+                });
             }
         }
     }

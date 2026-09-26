@@ -649,9 +649,10 @@ language features. Use:
 - There is no bracket indexing: an index expression is error E0078. Use
   module functions such as `List.get`, `Map.get`, `Tuple.nth`, and
   `Json.array_get`.
-- Methods are not generic: an `impl` method is compiled once, for the type
-  it implements, so each parameter needs a type, from an annotation in the
-  interface or the `impl`, or from how the body uses it. A parameter nothing
+- Methods are not generic: an `impl` method, or an interface's default
+  method, is compiled once for each type implementing the interface, so each
+  parameter needs a type, from an annotation in the interface or the `impl`,
+  or from how the body uses it. A parameter nothing
   fixes is error E0082. A top-level function with an unannotated parameter
   is generic and compiled for each argument type.
 - Wide integers use checked module functions instead of ordinary literal
