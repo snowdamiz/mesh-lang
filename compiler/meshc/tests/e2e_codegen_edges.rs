@@ -914,3 +914,63 @@ end
         stderr(&output)
     );
 }
+
+/// A closure captures what its loops and patterns use from outside and not
+/// what they bind: the variables of `for` loops over a range, a map, a set
+/// and an `Iterable`, a list's head and tail, and an `as` binding.
+#[test]
+fn closures_capture_around_what_their_loops_and_patterns_bind() {
+    let out = compile_and_run(
+        r##"struct Pair do
+  items :: List<Int>
+end
+
+impl Iterable for Pair do
+  type Item = Int
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+fn main() do
+  let base = 10
+  let limit = 3
+  let m = Map.put(Map.new(), "a", 1)
+  let s = Set.add(Set.new(), 5)
+  let p = Pair { items: [1, 2] }
+  let f = fn(k :: Int) do
+    let a = for i in 0..limit when i < k do
+      i + base
+    end
+    let b = for {key, v} in m when v > 0 do
+      v + base
+    end
+    let c = for e in s when e > 0 do
+      e + base
+    end
+    let d = for x in p when x > 0 do
+      x + base
+    end
+    List.length(a) + List.length(b) + List.length(c) + List.length(d)
+  end
+  println("${f(2)}")
+  let g = fn(xs :: List<Int>) do
+    case xs do
+      h :: t -> h + base + List.length(t)
+      [] -> base
+    end
+  end
+  println("${g([1, 2, 3])} ${g([])}")
+  let h = fn(o :: Option<Int>) do
+    case o do
+      Some(n) as whole -> "${whole} ${n + base}"
+      None -> "none"
+    end
+  end
+  println(h(Some(1)))
+end
+"##,
+    );
+    assert_eq!(out, "6\n13 10\nSome(1) 11\n");
+}
