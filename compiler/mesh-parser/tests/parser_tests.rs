@@ -2752,6 +2752,30 @@ fn schema_options_read_their_values() {
     );
 }
 
+/// A field may have a schema option's or a relationship's name: it was
+/// taken as the option, `table :: Int` as a table without its name.
+#[test]
+fn a_field_may_have_a_schema_options_name() {
+    let parse = parse(
+        "struct S do\n  table \"people\"\n  table :: Int\n  timestamps :: Bool\n  has_many :: Int\nend\n",
+    );
+    assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+    let def: StructDef = parse
+        .tree()
+        .items()
+        .find_map(|item| match item {
+            mesh_parser::ast::item::Item::StructDef(def) => Some(def),
+            _ => None,
+        })
+        .unwrap();
+    let fields: Vec<_> = def
+        .fields()
+        .filter_map(|field| field.name()?.text())
+        .collect();
+    assert_eq!(fields, ["table", "timestamps", "has_many"]);
+    assert_eq!(def.schema_options().len(), 1);
+}
+
 /// An as-pattern's sub-pattern is what it names, not the name.
 #[test]
 fn an_as_pattern_contains_its_inner_pattern() {

@@ -217,3 +217,21 @@ end
 "##;
     assert_eq!(compile_and_run(source), "piped=<0.0>\nslotted=<0.0>\n");
 }
+
+/// A field may have a schema option's name beside the option itself.
+#[test]
+fn fields_named_as_schema_options_run() {
+    let source = r##"
+struct Seat do
+  table "seating"
+  table :: Int
+  has_many :: String
+end deriving(Schema)
+
+fn main() do
+  let seat = Seat { table: 4, has_many: "chairs" }
+  println("#{Seat.__table__()} #{seat.table} #{seat.has_many}")
+end
+"##;
+    assert_eq!(compile_and_run(source), "seating 4 chairs\n");
+}

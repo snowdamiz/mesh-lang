@@ -638,32 +638,19 @@ fn parse_struct_def_tail(p: &mut Parser, m: MarkOpened) {
                 break;
             }
 
-            // Check for schema option declarations: table, primary_key, timestamps
-            // These must come before field declarations in struct bodies.
-            if p.at(SyntaxKind::IDENT) {
-                let text = p.current_text().to_string();
-                if text == "table" || text == "primary_key" || text == "timestamps" {
-                    parse_schema_option(p);
-                    if p.has_error() {
-                        break;
-                    }
-                    continue;
+            // A schema option (`table "people"`, `primary_key :uuid`,
+            // `timestamps true`), a relationship (`has_many :posts, Post`),
+            // or a field, which may have one of their names: `table :: Int`.
+            let parse_member: fn(&mut Parser) = if p.nth(1) == SyntaxKind::COLON_COLON {
+                parse_struct_field
+            } else {
+                match p.current_text() {
+                    "table" | "primary_key" | "timestamps" => parse_schema_option,
+                    "belongs_to" | "has_many" | "has_one" => parse_relationship_decl,
+                    _ => parse_struct_field,
                 }
-            }
-
-            // Check for relationship declarations: belongs_to, has_many, has_one
-            if p.at(SyntaxKind::IDENT) {
-                let text = p.current_text().to_string();
-                if text == "belongs_to" || text == "has_many" || text == "has_one" {
-                    parse_relationship_decl(p);
-                    if p.has_error() {
-                        break;
-                    }
-                    continue;
-                }
-            }
-
-            parse_struct_field(p);
+            };
+            parse_member(p);
 
             if p.has_error() {
                 break;

@@ -604,6 +604,41 @@ end
     );
 }
 
+/// A schema reads its options, and its fields may have their names.
+#[test]
+fn a_schema_reads_its_options_beside_fields_of_their_names() {
+    let parse = mesh_parser::parse(
+        r#"
+struct Seat do
+  table "seating"
+  primary_key :code
+  timestamps true
+  table :: Int
+  code :: String
+end deriving(Schema)
+
+fn main() do
+  let seat = Seat { table: 1, code: "a" }
+  seat.table + 1
+end
+"#,
+    );
+    let result = mesh_typeck::check(&parse);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let schema = result.type_registry.struct_defs["Seat"]
+        .schema
+        .as_ref()
+        .expect("a schema");
+    assert_eq!(
+        (
+            schema.table.as_str(),
+            schema.primary_key.as_str(),
+            schema.timestamps
+        ),
+        ("seating", "code", true)
+    );
+}
+
 /// What a sum type derives is checked: a trait no type derives, any trait
 /// for a type that holds a resource, and `Json` for variant fields, named
 /// or not, that JSON cannot hold.
