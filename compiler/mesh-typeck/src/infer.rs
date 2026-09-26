@@ -99,8 +99,8 @@ fn schema_info(struct_def: &StructDef, name: &str) -> SchemaInfo {
             Some("primary_key") => {
                 schema.primary_key = option.atom_value().unwrap_or(schema.primary_key)
             }
-            Some("timestamps") => schema.timestamps = option.bool_value().unwrap_or(false),
-            _ => {}
+            // `timestamps`, the one option left.
+            _ => schema.timestamps = option.bool_value().unwrap_or(false),
         }
     }
     schema
