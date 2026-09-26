@@ -15812,6 +15812,100 @@ const INLINE_BUILTINS: &[&str] = &[
 /// Math.sqrt`) refers to a wrapper function that calls it: many builtins
 /// are expanded inline where they are called and have no function of their
 /// own to point at ("Undefined variable 'mesh_math_sqrt'").
+/// An operand that never finishes (a `panic`, `return`, `break` or
+/// `continue`, or a call that never returns) ends what uses it: the rest
+/// never runs, and codegen would put it after the block's end. Such an
+/// expression becomes a block of its operands up to that one.
+fn stop_at_never(expr: &mut MirExpr) {
+    for child in expr.children_mut() {
+        stop_at_never(child);
+    }
+    let mut operands = eager_operands(expr);
+    let Some(last) = operands.iter().position(|op| *op.ty() == MirType::Never) else {
+        return;
+    };
+    let run = operands
+        .drain(..=last)
+        .map(|op| std::mem::replace(op, MirExpr::Unit))
+        .collect();
+    *expr = MirExpr::Block(run, MirType::Never);
+}
+
+/// The operands `expr` evaluates, in order, before anything else it does.
+fn eager_operands(expr: &mut MirExpr) -> Vec<&mut MirExpr> {
+    match expr {
+        MirExpr::BinOp {
+            op: BinOp::And | BinOp::Or,
+            lhs,
+            ..
+        } => vec![lhs],
+        MirExpr::BinOp { lhs, rhs, .. }
+        | MirExpr::ActorSend {
+            target: lhs,
+            message: rhs,
+            ..
+        }
+        | MirExpr::ForInRange {
+            start: lhs,
+            end: rhs,
+            ..
+        } => vec![lhs, rhs],
+        MirExpr::UnaryOp { operand, .. }
+        | MirExpr::FieldAccess {
+            object: operand, ..
+        }
+        | MirExpr::Let { value: operand, .. }
+        | MirExpr::If { cond: operand, .. }
+        | MirExpr::Match {
+            scrutinee: operand, ..
+        }
+        | MirExpr::Return(operand)
+        | MirExpr::ResourceMove { value: operand, .. }
+        | MirExpr::ResourceBorrow { value: operand, .. }
+        | MirExpr::ResourceDrop { value: operand, .. }
+        | MirExpr::ResourceDestroy { value: operand, .. }
+        | MirExpr::Shaped { value: operand, .. }
+        | MirExpr::ActorLink {
+            target: operand, ..
+        }
+        | MirExpr::ForInList {
+            collection: operand,
+            ..
+        }
+        | MirExpr::ForInMap {
+            collection: operand,
+            ..
+        }
+        | MirExpr::ForInSet {
+            collection: operand,
+            ..
+        }
+        | MirExpr::ForInIterator {
+            iterator: operand, ..
+        } => vec![operand],
+        MirExpr::Call { func, args, .. }
+        | MirExpr::ClosureCall {
+            closure: func,
+            args,
+            ..
+        }
+        | MirExpr::ActorSpawn { func, args, .. } => {
+            std::iter::once(&mut **func).chain(args).collect()
+        }
+        MirExpr::StructUpdate {
+            base, overrides, ..
+        } => std::iter::once(&mut **base)
+            .chain(overrides.iter_mut().map(|(_, value)| value))
+            .collect(),
+        MirExpr::StructLit { fields, .. } => fields.iter_mut().map(|(_, value)| value).collect(),
+        MirExpr::ListLit { elements: args, .. }
+        | MirExpr::ConstructVariant { fields: args, .. }
+        | MirExpr::MakeClosure { captures: args, .. }
+        | MirExpr::TailCall { args, .. } => args.iter_mut().collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn wrap_builtin_values(functions: &mut Vec<MirFunction>) {
     let defined: HashSet<String> = functions.iter().map(|f| f.name.clone()).collect();
     let mut wrappers: Vec<MirFunction> = Vec::new();
@@ -16381,6 +16475,9 @@ pub fn lower_module_to_mir<'a>(
     }
 
     wrap_builtin_values(&mut lowerer.functions);
+    for function in &mut lowerer.functions {
+        stop_at_never(&mut function.body);
+    }
 
     Ok(MirModule {
         functions: lowerer.functions,

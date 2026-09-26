@@ -48,10 +48,16 @@ impl<'ctx> CodeGen<'ctx> {
 
             MirExpr::UnaryOp { op, operand, ty } => self.codegen_unaryop(op, operand, ty),
 
-            MirExpr::Call { func, args, ty } => self.codegen_call(func, args, ty),
+            MirExpr::Call { func, args, ty } => {
+                let value = self.codegen_call(func, args, ty)?;
+                self.end_after_never(ty)?;
+                Ok(value)
+            }
 
             MirExpr::ClosureCall { closure, args, ty } => {
-                self.codegen_closure_call(closure, args, ty)
+                let value = self.codegen_closure_call(closure, args, ty)?;
+                self.end_after_never(ty)?;
+                Ok(value)
             }
 
             MirExpr::If {
@@ -1701,6 +1707,16 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         Ok(result)
+    }
+
+    /// A call of type Never does not return: its block ends there.
+    fn end_after_never(&self, ty: &MirType) -> Result<(), String> {
+        if *ty == MirType::Never && self.block_is_open() {
+            self.builder
+                .build_unreachable()
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     // ── Let binding ──────────────────────────────────────────────────

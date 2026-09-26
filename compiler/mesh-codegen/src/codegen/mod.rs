@@ -1216,6 +1216,14 @@ impl<'ctx> CodeGen<'ctx> {
             .into_owned()
     }
 
+    /// Whether the block being built can take more code: a `return`,
+    /// `break`, `continue` or panic ends it.
+    pub(crate) fn block_is_open(&self) -> bool {
+        self.builder
+            .get_insert_block()
+            .is_some_and(|bb| bb.get_terminator().is_none())
+    }
+
     /// Bind `name` to a new stack slot holding `value`. Returns what the
     /// name meant before, for `restore_locals`.
     pub(crate) fn bind_local(

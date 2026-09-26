@@ -1500,3 +1500,57 @@ end
     );
     assert_eq!(output, "invalid\nfalse true can't be blank\n");
 }
+
+/// A panic, a return or a call that never returns, used as an operand,
+/// ends what uses it. The build failed LLVM verification: the rest of the
+/// expression went after the block's terminator, and a `let` bound to a
+/// call that never returns handed its placeholder byte to `ret`.
+#[test]
+fn operands_that_never_finish_end_their_expression() {
+    let output = compile_and_run(
+        r##"fn boom(n :: Int) do
+  panic("boom #{n}")
+end
+
+fn pick(n :: Int) -> Int do
+  let x = if n > 0 do n else panic("negative") end
+  x + 1
+end
+
+fn bound(n :: Int) -> Int do
+  if n > 0 do
+    let y = boom(n)
+    y
+  else
+    n
+  end
+end
+
+fn added(n :: Int) -> Int do
+  if n > 0 do
+    n + panic("added")
+  else
+    n - 1
+  end
+end
+
+fn listed(n :: Int) -> List<Int> do
+  if n > 0 do
+    [n, boom(n)]
+  else
+    [n]
+  end
+end
+
+fn early(n :: Int) -> Int do
+  let z = return n * 10
+  z
+end
+
+fn main() do
+  println("#{pick(1)} #{bound(0)} #{added(0)} #{listed(0)} #{early(4)}")
+end
+"##,
+    );
+    assert_eq!(output, "2 0 -1 [0] 40\n");
+}
