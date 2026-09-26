@@ -4313,7 +4313,13 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     type_registry.propagate_resource_containment();
 
     // Validate that all type aliases reference known types (ALIAS-04).
-    validate_type_aliases(&type_registry, &alias_defs_for_validation, &mut ctx.errors);
+    validate_type_aliases(
+        &mut ctx,
+        &type_registry,
+        &alias_defs_for_validation,
+        &builtin_types,
+        import_ctx,
+    );
     check_annotation_types(
         &mut ctx,
         tree.syntax(),
@@ -6546,27 +6552,6 @@ fn check_annotation_types(
     builtin_types: &FxHashSet<String>,
     import_ctx: &ImportContext,
 ) {
-    let is_known = |name: &str, node: &mesh_parser::SyntaxNode| {
-        if name == "Self" || name.starts_with("Self.") || name == "Fun" {
-            return true;
-        }
-        if builtin_types.contains(name) || is_known_type(name, type_registry) {
-            return true;
-        }
-        if let Some((module, short)) = name.rsplit_once('.') {
-            return import_ctx.module_exports.contains_key(module)
-                && is_known_type(short, type_registry);
-        }
-        // The type parameters of the enclosing items.
-        node.ancestors().any(|item| {
-            item.children()
-                .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-                .flat_map(|list| list.children_with_tokens())
-                .any(|t| {
-                    t.kind() == SyntaxKind::IDENT && t.as_token().is_some_and(|t| t.text() == name)
-                })
-        })
-    };
     let annotations = root.descendants().filter(|n| {
         n.kind() == SyntaxKind::TYPE_ANNOTATION
             && !n
@@ -6600,7 +6585,7 @@ fn check_annotation_types(
             }
         }
         for (name, span) in names {
-            if !is_known(&name, &ann) {
+            if !names_a_type(&name, &ann, type_registry, builtin_types, import_ctx) {
                 ctx.unknown_types.insert(name.clone());
                 ctx.errors.push(TypeError::UnknownType { name, span });
             }
@@ -6608,46 +6593,73 @@ fn check_annotation_types(
     }
 }
 
-/// Validate all registered type aliases have resolvable target types.
+/// Whether `name`, written in a type at `node`, names a type: one the
+/// builtins or this module define, one an imported module exports, or a
+/// type parameter of an item around `node`.
+fn names_a_type(
+    name: &str,
+    node: &mesh_parser::SyntaxNode,
+    type_registry: &TypeRegistry,
+    builtin_types: &FxHashSet<String>,
+    import_ctx: &ImportContext,
+) -> bool {
+    if name == "Self" || name.starts_with("Self.") || name == "Fun" {
+        return true;
+    }
+    if builtin_types.contains(name) || is_known_type(name, type_registry) {
+        return true;
+    }
+    if let Some((module, short)) = name.rsplit_once('.') {
+        return import_ctx.module_exports.contains_key(module)
+            && is_known_type(short, type_registry);
+    }
+    // The type parameters of the enclosing items.
+    node.ancestors().any(|item| {
+        item.children()
+            .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+            .flat_map(|list| list.children_with_tokens())
+            .any(|t| {
+                t.kind() == SyntaxKind::IDENT && t.as_token().is_some_and(|t| t.text() == name)
+            })
+    })
+}
+
+/// Report each alias that could never be expanded, as it names itself, and
+/// each type an alias names that does not exist, as an annotation's are
+/// checked: every type in it, the builtins' and imported ones included.
 ///
 /// Called after all type pre-registrations are complete (structs, sum types,
 /// and type aliases all registered) so that forward references resolve correctly.
 fn validate_type_aliases(
+    ctx: &mut InferCtx,
     type_registry: &TypeRegistry,
     alias_defs: &[(TypeAliasDef, rowan::TextRange)],
-    errors: &mut Vec<crate::error::TypeError>,
+    builtin_types: &FxHashSet<String>,
+    import_ctx: &ImportContext,
 ) {
     for (alias_def, range) in alias_defs {
-        let alias_name = alias_def
-            .name()
-            .and_then(|n| n.text())
-            .unwrap_or_else(|| "<unnamed>".to_string());
+        let Some(alias_name) = alias_def.name().and_then(|n| n.text()) else {
+            continue;
+        };
         if alias_is_cyclic(&alias_name, type_registry) {
-            errors.push(crate::error::TypeError::CyclicAlias {
+            ctx.errors.push(TypeError::CyclicAlias {
                 alias_name,
                 span: *range,
             });
             continue;
         }
-
-        // Only validate simple (non-generic) aliases — generic aliases like
-        // `type Pair<A, B> = (A, B)` use type variables that aren't in the registry.
-        let generic_params = generic_param_names(alias_def.syntax());
-
-        // If the alias has generic parameters, the target may use those params as
-        // types (e.g. `type Pair<A, B> = (A, B)`) — skip validation for them.
-        if !generic_params.is_empty() {
-            continue;
-        }
-
-        if let Some(target_name) = alias_def.target_type_name() {
-            if !is_known_type(&target_name, type_registry) {
-                let alias_name = alias_def
-                    .name()
-                    .and_then(|n| n.text())
-                    .unwrap_or_else(|| "<unnamed>".to_string());
-                errors.push(crate::error::TypeError::UndefinedType {
-                    alias_name,
+        let mut named = Vec::new();
+        type_constructors(
+            &type_registry.type_aliases[&alias_name].aliased_type,
+            &mut named,
+        );
+        for target_name in named {
+            let node = alias_def.syntax();
+            if !names_a_type(&target_name, node, type_registry, builtin_types, import_ctx) {
+                // Reported here, not again at each use of the alias.
+                ctx.unknown_types.insert(target_name.clone());
+                ctx.errors.push(TypeError::UndefinedType {
+                    alias_name: alias_name.clone(),
                     target_name,
                     span: *range,
                 });

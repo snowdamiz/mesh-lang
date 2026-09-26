@@ -840,19 +840,6 @@ impl TypeAliasDef {
     pub fn name(&self) -> Option<Name> {
         child_node(&self.syntax)
     }
-
-    /// The target type name: the first IDENT token appearing after the `=` sign.
-    ///
-    /// For `type Url = String`, returns `Some("String")`.
-    /// For `type Pair<A, B> = (A, B)`, returns `None` (no bare IDENT after `=`).
-    pub fn target_type_name(&self) -> Option<String> {
-        self.syntax
-            .children_with_tokens()
-            .skip_while(|element| element.kind() != SyntaxKind::EQ)
-            .find(|element| element.as_node().is_some() || element.kind() == SyntaxKind::IDENT)?
-            .into_token()
-            .map(|token| token.text().to_string())
-    }
 }
 
 // ── Sum Type Definition ──────────────────────────────────────────────────

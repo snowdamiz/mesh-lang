@@ -1314,6 +1314,52 @@ end
     );
 }
 
+/// An alias's target is checked as an annotation's types are: each type in
+/// it, the builtins' and the imported ones included. Only its first name
+/// was, looked up among a few builtins: `type R = Request` and `type C =
+/// Channel<Int>` were "undefined", `type P = Geo.Point` named `Geo`, and
+/// `List<Nope>` passed.
+#[test]
+fn an_aliases_target_is_checked_as_an_annotations_types() {
+    assert_eq!(
+        errors(
+            r#"
+type R = Request
+type I = Iter<Int>
+type J = Json
+type C = Channel<Int>
+type Pair<A> = (A, A)
+type LN = List<Nope>
+
+fn size(l :: LN) -> Int do
+  List.length(l)
+end
+"#
+        ),
+        ["type alias `LN` references undefined type `Nope`"]
+    );
+    assert_eq!(
+        errors_importing(
+            "Geo",
+            "pub struct Point do\n  x :: Int\nend\n",
+            r#"
+import Geo
+
+type P = Geo.Point
+
+fn x_of(p :: P) -> Int do
+  p.x
+end
+
+fn main() do
+  x_of(Geo.Point { x: 1 })
+end
+"#
+        ),
+        Vec::<String>::new()
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
