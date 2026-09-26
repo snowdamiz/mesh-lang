@@ -3325,11 +3325,11 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                 ptr_t.clone(),
             )),
         );
-        // Query.where_in(Ptr, Atom, Ptr) -> Ptr  (field IN values_list)
+        // Query.where_in(Ptr, Atom, List<String>) -> Ptr  (field IN values_list)
         query_mod.insert(
             "where_in".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), ptr_t.clone()],
+                vec![ptr_t.clone(), atom_t.clone(), Ty::list(Ty::string())],
                 ptr_t.clone(),
             )),
         );

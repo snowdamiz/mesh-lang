@@ -4784,6 +4784,21 @@ end
 
 // ── Phase 106: Advanced WHERE operators e2e tests ────────────────────
 
+/// Query.where_in takes the values as a list, like where_not_in.
+#[test]
+fn e2e_query_builder_where_in() {
+    let output = compile_and_run(
+        r#"
+fn main() do
+  let q = Query.from("issues")
+    |> Query.where_in(:status, ["open", "triaged"])
+  println("ok")
+end
+"#,
+    );
+    assert_eq!(output, "ok\n");
+}
+
 /// Query.where_not_in compiles and produces valid query.
 #[test]
 fn e2e_query_builder_where_not_in() {
