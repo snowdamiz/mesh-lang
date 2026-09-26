@@ -5777,318 +5777,247 @@ fn register_import(
 ) {
     match item {
         Item::ImportDecl(import_decl) => {
-            // Resolve import: check user modules first, then stdlib.
-            if let Some(path) = import_decl.module_path() {
-                let segments = path.segments();
-                let full_name = segments.join(".");
-                let last_segment = segments.last().cloned().unwrap_or_default();
-
-                // Check user-defined modules via ImportContext
-                if let Some(mod_exports) = import_ctx.module_exports.get(&last_segment) {
-                    // Register the module namespace for qualified access
-                    ctx.qualified_modules
-                        .insert(last_segment.clone(), mod_exports.functions.clone());
-                    for (name, constraints) in &mod_exports.function_constraints {
-                        fn_constraints
-                            .insert(format!("{last_segment}.{name}"), constraints.clone());
-                    }
-                    ctx.qualified_module_origins
-                        .insert(last_segment.clone(), mod_exports.module_name.clone());
-                    ctx.qualified_module_private_names
-                        .insert(last_segment.clone(), mod_exports.private_names.clone());
-                    // Also register struct constructor types for qualified access
-                    for (name, struct_def) in &mod_exports.struct_defs {
-                        let tycon = TyCon::with_module(name, last_segment.as_str());
-                        let struct_ty = if struct_def.generic_params.is_empty() {
-                            Ty::App(Box::new(Ty::Con(tycon)), vec![])
-                        } else {
-                            let type_args: Vec<Ty> = struct_def
-                                .generic_params
-                                .iter()
-                                .map(|_| ctx.fresh_var())
-                                .collect();
-                            Ty::App(Box::new(Ty::Con(tycon)), type_args)
-                        };
-                        ctx.qualified_modules
-                            .entry(last_segment.clone())
-                            .or_default()
-                            .insert(name.clone(), Scheme::mono(struct_ty));
-                    }
-                    // Its variants, for `Geo.Dot` and `Geo.Line(n)`: constructors
-                    // are registered under their type's name (`Shape.Dot`).
-                    let variants = ctx.module_variants.entry(last_segment.clone()).or_default();
-                    for sum_type in mod_exports.sum_type_defs.values() {
-                        for variant in &sum_type.variants {
-                            variants.insert(variant.name.clone(), sum_type.name.clone());
-                        }
-                    }
-
-                    // Register service definitions for qualified access (ServiceName.method)
-                    for (service_name, service_info) in &mod_exports.service_defs {
-                        // Register each helper function type in the environment
-                        for (method_name, scheme) in &service_info.helpers {
-                            let qualified = format!("{}.{}", service_name, method_name);
-                            env.insert(qualified, scheme.clone());
-                            // Also add to qualified_modules for MIR lowering
-                            ctx.qualified_modules
-                                .entry(service_name.clone())
-                                .or_default()
-                                .insert(method_name.clone(), scheme.clone());
-                        }
-                        // Register the service name as a type constructor for field access
-                        env.insert(
-                            service_name.clone(),
-                            Scheme::mono(Ty::Con(TyCon::new(service_name))),
-                        );
-                        // Register method mappings for MIR lowering
-                        ctx.imported_service_methods
-                            .insert(service_name.clone(), service_info.methods.clone());
-                    }
-                } else if is_stdlib_module(&last_segment) {
-                    // Stdlib module -- already handled in infer_field_access.
-                    // No action needed (backward compat).
-                } else {
-                    // IMPORT-06: Module not found
+            let Some(path) = import_decl.module_path() else {
+                return;
+            };
+            let segments = path.segments();
+            let module = segments.last().cloned().unwrap_or_default();
+            let Some(mod_exports) = import_ctx.module_exports.get(&module) else {
+                // A standard module's functions are found where they are used.
+                if !is_stdlib_module(&module) {
                     ctx.errors.push(TypeError::ImportModuleNotFound {
-                        module_name: full_name,
+                        module_name: segments.join("."),
                         span: import_decl.syntax().text_range(),
                         suggestion: None,
                     });
                 }
+                return;
+            };
+            // The module's functions, structs and variants, for `Module.name`.
+            let mut functions = mod_exports.functions.clone();
+            for (name, def) in &mod_exports.struct_defs {
+                let struct_ty = imported_struct_ty(ctx, name, &module, def);
+                functions.insert(name.clone(), Scheme::mono(struct_ty));
+            }
+            ctx.qualified_modules.insert(module.clone(), functions);
+            for (name, constraints) in &mod_exports.function_constraints {
+                fn_constraints.insert(format!("{module}.{name}"), constraints.clone());
+            }
+            ctx.qualified_module_origins
+                .insert(module.clone(), mod_exports.module_name.clone());
+            ctx.qualified_module_private_names
+                .insert(module.clone(), mod_exports.private_names.clone());
+            // Constructors are registered under their type's name (`Shape.Dot`).
+            let variants = ctx.module_variants.entry(module).or_default();
+            for sum_type in mod_exports.sum_type_defs.values() {
+                for variant in &sum_type.variants {
+                    variants.insert(variant.name.clone(), sum_type.name.clone());
+                }
+            }
+            for (name, service) in &mod_exports.service_defs {
+                register_imported_service(ctx, env, name, service);
             }
         }
         Item::FromImportDecl(from_import) => {
-            if let Some(path) = from_import.module_path() {
-                let segments = path.segments();
-                let full_name = segments.join(".");
-                let last_segment = segments.last().cloned().unwrap_or_default();
-
-                // Check user-defined modules first
-                if let Some(mod_exports) = import_ctx.module_exports.get(&last_segment) {
-                    if let Some(import_list) = from_import.import_list() {
-                        for name_node in import_list.names() {
-                            if let Some(name) = name_node.text() {
-                                // Check functions
-                                if let Some(scheme) = mod_exports.functions.get(&name) {
-                                    env.insert(name.clone(), scheme.clone());
-                                    if let Some(constraints) =
-                                        mod_exports.function_constraints.get(&name)
-                                    {
-                                        fn_constraints.insert(name.clone(), constraints.clone());
-                                    }
-                                    ctx.imported_functions.push(name.clone());
-                                    ctx.imported_function_origins
-                                        .insert(name.clone(), mod_exports.module_name.clone());
-                                }
-                                // Check arity-overloaded function variants (name__N mangled keys)
-                                else if mod_exports.functions.keys().any(|k| {
-                                    k.starts_with(&format!("{}__", name))
-                                        && k[name.len() + 2..].chars().all(|c| c.is_ascii_digit())
-                                }) {
-                                    let prefix = format!("{}__", name);
-                                    for (key, scheme) in mod_exports.functions.iter() {
-                                        if key.starts_with(&prefix)
-                                            && key[prefix.len()..]
-                                                .chars()
-                                                .all(|c| c.is_ascii_digit())
-                                        {
-                                            env.insert(key.clone(), scheme.clone());
-                                            if let Some(constraints) =
-                                                mod_exports.function_constraints.get(key)
-                                            {
-                                                fn_constraints
-                                                    .insert(key.clone(), constraints.clone());
-                                            }
-                                            ctx.imported_functions.push(key.clone());
-                                            ctx.imported_function_origins.insert(
-                                                key.clone(),
-                                                mod_exports.module_name.clone(),
-                                            );
-                                        }
-                                    }
-                                }
-                                // Check struct constructors
-                                else if let Some(struct_def) = mod_exports.struct_defs.get(&name)
-                                {
-                                    let tycon = TyCon::with_module(&name, last_segment.as_str());
-                                    let struct_ty = if struct_def.generic_params.is_empty() {
-                                        Ty::App(Box::new(Ty::Con(tycon)), vec![])
-                                    } else {
-                                        let type_args: Vec<Ty> = struct_def
-                                            .generic_params
-                                            .iter()
-                                            .map(|_| ctx.fresh_var())
-                                            .collect();
-                                        Ty::App(Box::new(Ty::Con(tycon)), type_args)
-                                    };
-                                    env.insert(name.clone(), Scheme::mono(struct_ty));
-                                    // Also register the struct in type_registry
-                                    type_registry.register_struct(struct_def.clone());
-
-                                    // Re-register Schema metadata functions for cross-module access.
-                                    // When a struct has deriving(Schema), its __table__, __fields__, etc.
-                                    // are only in the defining module's env. Re-register them here so
-                                    // importing modules can call Organization.__table__() etc.
-                                    let has_schema = import_ctx.all_trait_impls.iter().any(|imp| {
-                                        imp.trait_name == "Schema" && imp.impl_type_name == name
-                                    });
-                                    if has_schema {
-                                        // __table__ :: () -> String
-                                        env.insert(
-                                            format!("{}.__table__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::string())),
-                                        );
-                                        // __fields__ :: () -> List<String>
-                                        env.insert(
-                                            format!("{}.__fields__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-                                        );
-                                        // __primary_key__ :: () -> String
-                                        env.insert(
-                                            format!("{}.__primary_key__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::string())),
-                                        );
-                                        // __relationships__ :: () -> List<String>
-                                        env.insert(
-                                            format!("{}.__relationships__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-                                        );
-                                        // __field_types__ :: () -> List<String>
-                                        env.insert(
-                                            format!("{}.__field_types__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-                                        );
-                                        // __relationship_meta__ :: () -> List<String>
-                                        env.insert(
-                                            format!("{}.__relationship_meta__", name),
-                                            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-                                        );
-                                        // Per-field column accessors: __{field}_col__ :: () -> String
-                                        for (field_name, _) in &struct_def.fields {
-                                            env.insert(
-                                                format!("{}.__{}_col__", name, field_name),
-                                                Scheme::mono(Ty::fun(vec![], Ty::string())),
-                                            );
-                                        }
-                                    }
-                                }
-                                // Check sum type names (importing sum type brings constructors)
-                                else if let Some(sum_def) = mod_exports.sum_type_defs.get(&name) {
-                                    type_registry.register_sum_type(sum_def.clone());
-                                    register_variant_constructors(
-                                        ctx,
-                                        env,
-                                        &sum_def.name,
-                                        &sum_def.generic_params,
-                                        &sum_def.variants,
-                                    );
-                                }
-                                // Check actor definitions (importing an actor brings its spawn function)
-                                else if let Some(scheme) = mod_exports.actor_defs.get(&name) {
-                                    env.insert(name.clone(), scheme.clone());
-                                    ctx.imported_functions.push(name.clone());
-                                    ctx.imported_function_origins
-                                        .insert(name.clone(), mod_exports.module_name.clone());
-                                }
-                                // Check service definitions (importing a service brings its helpers)
-                                else if let Some(service_info) =
-                                    mod_exports.service_defs.get(&name)
-                                {
-                                    // Register each helper function type in the environment
-                                    for (method_name, scheme) in &service_info.helpers {
-                                        let qualified = format!("{}.{}", name, method_name);
-                                        env.insert(qualified, scheme.clone());
-                                        ctx.qualified_modules
-                                            .entry(name.clone())
-                                            .or_default()
-                                            .insert(method_name.clone(), scheme.clone());
-                                    }
-                                    // Register the service name as a type constructor
-                                    env.insert(
-                                        name.clone(),
-                                        Scheme::mono(Ty::Con(TyCon::new(&name))),
-                                    );
-                                    // Register method mappings for MIR lowering
-                                    ctx.imported_service_methods
-                                        .insert(name.clone(), service_info.methods.clone());
-                                }
-                                // Check type aliases (ALIAS-03: importing a pub type alias
-                                // by name is valid; the alias is already pre-registered in
-                                // type_registry from the earlier import pre-registration pass,
-                                // so no additional action is needed here beyond accepting it).
-                                else if mod_exports.type_aliases.contains_key(&name) {
-                                    // Type alias already pre-registered in type_registry;
-                                    // silently accept the import name.
-                                }
-                                // A public interface is visible in every module
-                                // checked after its own; importing it by name is
-                                // allowed (and orders the modules).
-                                else if mod_exports.interfaces.contains(&name) {
-                                } else {
-                                    // Check if item exists but is private (VIS-03)
-                                    if mod_exports.private_names.contains(&name) {
-                                        ctx.errors.push(TypeError::PrivateItem {
-                                            module_name: full_name.clone(),
-                                            name: name.clone(),
-                                            span: name_node.syntax().text_range(),
-                                        });
-                                    } else {
-                                        // IMPORT-07: Name not found in module
-                                        let available: Vec<String> = mod_exports
-                                            .functions
-                                            .keys()
-                                            .chain(mod_exports.struct_defs.keys())
-                                            .chain(mod_exports.sum_type_defs.keys())
-                                            .chain(mod_exports.service_defs.keys())
-                                            .chain(mod_exports.actor_defs.keys())
-                                            .chain(mod_exports.type_aliases.keys())
-                                            .chain(mod_exports.interfaces.iter())
-                                            .cloned()
-                                            .collect();
-                                        ctx.errors.push(TypeError::ImportNameNotFound {
-                                            module_name: full_name.clone(),
-                                            name: name.clone(),
-                                            span: name_node.syntax().text_range(),
-                                            available,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Fall back to stdlib modules (backward compat)
-                    let modules = stdlib_modules(import_ctx.test_builtins);
-                    if let Some(first_segment) = segments.first() {
-                        if let Some(mod_fns) = modules.get(first_segment.as_str()) {
-                            if let Some(import_list) = from_import.import_list() {
-                                for name_node in import_list.names() {
-                                    if let Some(name) = name_node.text() {
-                                        if let Some(scheme) = mod_fns.get(&name) {
-                                            env.insert(name.clone(), scheme.clone());
-                                            let prefixed = format!(
-                                                "{}_{}",
-                                                first_segment.to_lowercase(),
-                                                name
-                                            );
-                                            env.insert(prefixed, scheme.clone());
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Not a user module, not a stdlib module -> error
-                            ctx.errors.push(TypeError::ImportModuleNotFound {
-                                module_name: full_name,
-                                span: from_import.syntax().text_range(),
-                                suggestion: None,
-                            });
-                        }
+            let Some(path) = from_import.module_path() else {
+                return;
+            };
+            let segments = path.segments();
+            let module = segments.last().cloned().unwrap_or_default();
+            let import_list = from_import.import_list();
+            let names = import_list
+                .iter()
+                .flat_map(|list| list.names())
+                .filter_map(|node| Some((node.text()?, node.syntax().text_range())));
+            if let Some(mod_exports) = import_ctx.module_exports.get(&module) {
+                for (name, span) in names {
+                    import_name(
+                        ctx,
+                        env,
+                        type_registry,
+                        fn_constraints,
+                        import_ctx,
+                        mod_exports,
+                        &segments.join("."),
+                        name,
+                        span,
+                    );
+                }
+            } else if let Some(functions) =
+                stdlib_modules(import_ctx.test_builtins).get(&segments[0])
+            {
+                // A standard module's function comes in under its own name
+                // and with the module's prefix (`length`, `string_length`).
+                for (name, _) in names {
+                    if let Some(scheme) = functions.get(&name) {
+                        let prefixed = format!("{}_{name}", segments[0].to_lowercase());
+                        env.insert(prefixed, scheme.clone());
+                        env.insert(name, scheme.clone());
                     }
                 }
+            } else {
+                ctx.errors.push(TypeError::ImportModuleNotFound {
+                    module_name: segments.join("."),
+                    span: from_import.syntax().text_range(),
+                    suggestion: None,
+                });
             }
         }
         _ => {}
+    }
+}
+
+/// Bring the definition `name` of a module (`module_path`) into scope, as
+/// `from module_path import name` at `span` does.
+#[allow(clippy::too_many_arguments)]
+fn import_name(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    type_registry: &mut TypeRegistry,
+    fn_constraints: &mut FxHashMap<String, FnConstraints>,
+    import_ctx: &ImportContext,
+    mod_exports: &crate::ModuleExports,
+    module_path: &str,
+    name: String,
+    span: TextRange,
+) {
+    // A function, or each arity of one defined at several (`name__2`).
+    let overloads: Vec<&String> = mod_exports
+        .functions
+        .keys()
+        .filter(|key| {
+            key.strip_prefix(name.as_str())
+                .and_then(|rest| rest.strip_prefix("__"))
+                .is_some_and(|arity| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))
+        })
+        .collect();
+    let functions: Vec<&String> = if mod_exports.functions.contains_key(&name) {
+        vec![&name]
+    } else {
+        overloads
+    };
+    if !functions.is_empty() {
+        for key in functions {
+            env.insert(key.clone(), mod_exports.functions[key].clone());
+            if let Some(constraints) = mod_exports.function_constraints.get(key) {
+                fn_constraints.insert(key.clone(), constraints.clone());
+            }
+            ctx.imported_functions.push(key.clone());
+            ctx.imported_function_origins
+                .insert(key.clone(), mod_exports.module_name.clone());
+        }
+    } else if let Some(def) = mod_exports.struct_defs.get(&name) {
+        let module = module_path.rsplit('.').next().unwrap_or(module_path);
+        let struct_ty = imported_struct_ty(ctx, &name, module, def);
+        env.insert(name.clone(), Scheme::mono(struct_ty));
+        type_registry.register_struct(def.clone());
+        // Its schema functions (`User.__table__()`) come with it.
+        if import_ctx
+            .all_trait_impls
+            .iter()
+            .any(|imp| imp.trait_name == "Schema" && imp.impl_type_name == name)
+        {
+            let fields = def.fields.iter().map(|(field, _)| field.as_str());
+            register_schema_functions(env, &name, fields);
+        }
+    } else if let Some(def) = mod_exports.sum_type_defs.get(&name) {
+        type_registry.register_sum_type(def.clone());
+        register_variant_constructors(ctx, env, &def.name, &def.generic_params, &def.variants);
+    } else if let Some(scheme) = mod_exports.actor_defs.get(&name) {
+        env.insert(name.clone(), scheme.clone());
+        ctx.imported_function_origins
+            .insert(name.clone(), mod_exports.module_name.clone());
+        ctx.imported_functions.push(name);
+    } else if let Some(service) = mod_exports.service_defs.get(&name) {
+        register_imported_service(ctx, env, &name, service);
+    } else if mod_exports.type_aliases.contains_key(&name) || mod_exports.interfaces.contains(&name)
+    {
+        // An alias is registered with the module's others; a public
+        // interface is visible in every module checked after its own, and
+        // importing it by name orders the modules.
+    } else if mod_exports.private_names.contains(&name) {
+        ctx.errors.push(TypeError::PrivateItem {
+            module_name: module_path.to_string(),
+            name,
+            span,
+        });
+    } else {
+        let available: Vec<String> = mod_exports
+            .functions
+            .keys()
+            .chain(mod_exports.struct_defs.keys())
+            .chain(mod_exports.sum_type_defs.keys())
+            .chain(mod_exports.service_defs.keys())
+            .chain(mod_exports.actor_defs.keys())
+            .chain(mod_exports.type_aliases.keys())
+            .chain(mod_exports.interfaces.iter())
+            .cloned()
+            .collect();
+        ctx.errors.push(TypeError::ImportNameNotFound {
+            module_name: module_path.to_string(),
+            name,
+            span,
+            available,
+        });
+    }
+}
+
+/// The type of the struct `name` a module `module` exports, with fresh
+/// arguments for its type parameters.
+fn imported_struct_ty(ctx: &mut InferCtx, name: &str, module: &str, def: &StructDefInfo) -> Ty {
+    let args = def.generic_params.iter().map(|_| ctx.fresh_var()).collect();
+    Ty::App(Box::new(Ty::Con(TyCon::with_module(name, module))), args)
+}
+
+/// Bring an imported service into scope: its helpers as `Name.helper`
+/// (and in its namespace, for lowering), its name for field access, and its
+/// methods for lowering.
+fn register_imported_service(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    name: &str,
+    service: &crate::ServiceExportInfo,
+) {
+    for (helper, scheme) in &service.helpers {
+        env.insert(format!("{name}.{helper}"), scheme.clone());
+        ctx.qualified_modules
+            .entry(name.to_string())
+            .or_default()
+            .insert(helper.clone(), scheme.clone());
+    }
+    env.insert(name.to_string(), Scheme::mono(Ty::Con(TyCon::new(name))));
+    ctx.imported_service_methods
+        .insert(name.to_string(), service.methods.clone());
+}
+
+/// The functions `deriving(Schema)` gives the struct `name`, called as
+/// `User.__table__()`: its table, fields, primary key and relationships,
+/// and a column name for each of its `fields`.
+fn register_schema_functions<'a>(
+    env: &mut TypeEnv,
+    name: &str,
+    fields: impl Iterator<Item = &'a str>,
+) {
+    let strings = Ty::list(Ty::string());
+    for (function, ty) in [
+        ("__table__", Ty::string()),
+        ("__fields__", strings.clone()),
+        ("__primary_key__", Ty::string()),
+        // Each "kind:name:target".
+        ("__relationships__", strings.clone()),
+        // Each "field_name:SQL_TYPE".
+        ("__field_types__", strings.clone()),
+        // Each "kind:name:target:fk:target_table:key".
+        ("__relationship_meta__", strings),
+    ] {
+        env.insert(
+            format!("{name}.{function}"),
+            Scheme::mono(Ty::fun(vec![], ty)),
+        );
+    }
+    for field in fields {
+        let column = Ty::fun(vec![], Ty::string());
+        env.insert(format!("{name}.__{field}_col__"), Scheme::mono(column));
     }
 }
 
@@ -6255,57 +6184,12 @@ fn register_struct_def(
     };
 
     // Schema metadata functions -- only via explicit deriving(Schema), structs only.
-    // Registers __table__, __fields__, __primary_key__, __relationships__ as static
-    // functions callable via StructName.__table__() syntax.
     if derive_list.iter().any(|t| t == "Schema") {
-        // __table__ :: () -> String
-        let table_fn_name = format!("{}.__table__", name);
-        env.insert(table_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
-
-        // __fields__ :: () -> List<String>
-        let fields_fn_name = format!("{}.__fields__", name);
-        env.insert(
-            fields_fn_name,
-            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-        );
-
-        // __primary_key__ :: () -> String
-        let pk_fn_name = format!("{}.__primary_key__", name);
-        env.insert(pk_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
-
-        // __relationships__ :: () -> List<String>
-        // Each relationship encoded as "kind:name:target" string.
-        let rels_fn_name = format!("{}.__relationships__", name);
-        env.insert(
-            rels_fn_name,
-            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-        );
-
-        // __field_types__ :: () -> List<String>
-        // Each entry is "field_name:SQL_TYPE".
-        let ft_fn_name = format!("{}.__field_types__", name);
-        env.insert(
-            ft_fn_name,
-            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-        );
-
-        // __relationship_meta__ :: () -> List<String>
-        // Each relationship encoded as "kind:name:target:fk:target_table:key" string.
-        let meta_fn_name = format!("{}.__relationship_meta__", name);
-        env.insert(
-            meta_fn_name,
-            Scheme::mono(Ty::fun(vec![], Ty::list(Ty::string()))),
-        );
-
-        // Per-field column accessor functions: __{field}_col__ :: () -> String
-        for field in struct_def.fields() {
-            let field_name = field
-                .name()
-                .and_then(|n| n.text())
-                .unwrap_or_else(|| "<unnamed>".to_string());
-            let col_fn_name = format!("{}.__{}_col__", name, field_name);
-            env.insert(col_fn_name, Scheme::mono(Ty::fun(vec![], Ty::string())));
-        }
+        let fields: Vec<String> = struct_def
+            .fields()
+            .filter_map(|field| field.name()?.text())
+            .collect();
+        register_schema_functions(env, &name, fields.iter().map(String::as_str));
 
         // Register Schema trait impl so it's exported via collect_exports
         // and available for cross-module import resolution.
