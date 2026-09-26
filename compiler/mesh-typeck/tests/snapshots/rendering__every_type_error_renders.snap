@@ -845,11 +845,11 @@ expression: rendered
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── only untyped `Pid`s reach this actor
+   │         ╰──── no typed `Pid` reaches this actor
    │
-   │ Help: give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`
+   │ Help: give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`, or use the messages in the actor as the type they are
 ───╯
-{"code":"E0079","severity":"error","message":"cannot tell what type of message `actor` receives","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only untyped `Pid`s reach this actor"}],"fix":"give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`"}
+{"code":"E0079","severity":"error","message":"cannot tell what type of message `actor` receives","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no typed `Pid` reaches this actor"}],"fix":"give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`, or use the messages in the actor as the type they are"}
 
 [E0080] Error: `let name` outside a function is not supported
    ╭─[ main.mpl:2:7 ]

@@ -1468,9 +1468,9 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         }
         TypeError::ActorMessageTypeUnknown { actor, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "only untyped `Pid`s reach this actor")
+            Description::error(range, "no typed `Pid` reaches this actor")
                 .with_help(format!(
-                    "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`"
+                    "give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn({actor})`, or use the messages in the actor as the type they are"
                 ))
         }
         TypeError::IndexingUnsupported { span } => {
