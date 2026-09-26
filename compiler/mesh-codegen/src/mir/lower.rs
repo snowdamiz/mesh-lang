@@ -330,10 +330,6 @@ struct Lowerer<'a> {
     /// Service module names (for field access resolution).
     /// Maps service name -> list of (method_name, generated_fn_name) pairs.
     service_modules: HashMap<String, Vec<(String, String)>>,
-    /// Current monomorphization depth (incremented per function body lowering).
-    mono_depth: u32,
-    /// Maximum allowed monomorphization depth before emitting a Panic node.
-    max_mono_depth: u32,
     /// Tracks which monomorphized trait functions have been generated for generic types.
     /// Prevents duplicate generation when the same generic struct is instantiated
     /// multiple times (e.g., Box<Int> used in multiple places).
@@ -675,8 +671,6 @@ impl<'a> Lowerer<'a> {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
-            mono_depth: 0,
-            max_mono_depth: 64,
             monomorphized_trait_fns: HashSet::new(),
             poly_closure_specs: HashMap::new(),
             user_modules: typeck
@@ -5193,17 +5187,7 @@ impl<'a> Lowerer<'a> {
         self.current_fn_return_type = Some(return_type.clone());
         self.current_fn_return_typeck = return_typeck;
 
-        self.mono_depth += 1;
-        let mut body = if self.mono_depth > self.max_mono_depth {
-            MirExpr::Panic {
-                message: format!(
-                    "monomorphization depth limit ({}) exceeded",
-                    self.max_mono_depth
-                ),
-                file: "<compiler>".to_string(),
-                line: 0,
-            }
-        } else if matched {
+        let mut body = if matched {
             self.lower_clause_match(clauses, &params, &param_srcs, &return_type, &emitted_name)
         } else if let Some(block) = fn_def.body() {
             self.lower_block(&block)
@@ -5212,7 +5196,6 @@ impl<'a> Lowerer<'a> {
         } else {
             MirExpr::Unit
         };
-        self.mono_depth -= 1;
 
         body = self.wrap_resource_scopes(body, owned_resource_params);
 
@@ -5333,24 +5316,13 @@ impl<'a> Lowerer<'a> {
         self.current_fn_return_typeck = return_typeck;
 
         // Monomorphization depth tracking.
-        self.mono_depth += 1;
-        let body = if self.mono_depth > self.max_mono_depth {
-            MirExpr::Panic {
-                message: format!(
-                    "monomorphization depth limit ({}) exceeded",
-                    self.max_mono_depth
-                ),
-                file: "<compiler>".to_string(),
-                line: 0,
-            }
-        } else if let Some(block) = method.body() {
+        let body = if let Some(block) = method.body() {
             self.lower_block(&block)
         } else if let Some(expr) = method.expr_body() {
             self.lower_expr(&expr)
         } else {
             MirExpr::Unit
         };
-        self.mono_depth -= 1;
         let mut body = self.wrap_resource_scopes(body, owned);
 
         // Restore previous function return type.
@@ -5471,20 +5443,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(MirType::Unit);
 
         // Lower the default body.
-        self.mono_depth += 1;
-        let body = if self.mono_depth > self.max_mono_depth {
-            MirExpr::Panic {
-                message: format!(
-                    "monomorphization depth limit ({}) exceeded",
-                    self.max_mono_depth
-                ),
-                file: "<compiler>".to_string(),
-                line: 0,
-            }
-        } else {
-            self.lower_block(&body_block)
-        };
-        self.mono_depth -= 1;
+        let body = self.lower_block(&body_block);
         let mut body = self.wrap_resource_scopes(body, owned);
 
         self.pop_scope();
@@ -19797,44 +19756,6 @@ end
             "Expected BinOp::Add for Int + Int, got: {:?}",
             main_fn.body
         );
-    }
-
-    #[test]
-    fn mono_depth_limit_prevents_overflow() {
-        // Verify the Lowerer has mono_depth and max_mono_depth fields,
-        // and that normal compilation does NOT produce Panic nodes
-        // (depth of typical programs is well under the limit).
-        let source = r#"
-fn foo(x :: Int) -> Int do x + 1 end
-fn bar(x :: Int) -> Int do foo(x) end
-fn main() do bar(42) end
-"#;
-        let mir = lower(source);
-
-        // No Panic nodes should appear in a normal program.
-
-        for func in &mir.functions {
-            assert!(
-                !contains(&func.body, |node| matches!(node, MirExpr::Panic { .. })),
-                "Normal program should not have Panic nodes, but found one in '{}': {:?}",
-                func.name,
-                func.body
-            );
-        }
-    }
-
-    #[test]
-    fn mono_depth_fields_initialized() {
-        // Directly verify the Lowerer struct fields are properly initialized.
-        let source = "let x = 1";
-        let parse = mesh_parser::parse(source);
-        let typeck = mesh_typeck::check(&parse);
-        // We can't access Lowerer directly (it's private), but we can verify
-        // that lowering a deeply nested call chain doesn't crash -- the depth
-        // counter prevents stack overflow.
-        let empty_pub_fns = HashSet::new();
-        let _mir = lower_to_mir(&parse, &typeck, "", &empty_pub_fns, &HashMap::new())
-            .expect("MIR lowering failed");
     }
 
     // ── End-to-end trait codegen integration tests (19-04) ────────────
