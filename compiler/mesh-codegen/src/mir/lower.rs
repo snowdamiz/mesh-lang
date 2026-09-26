@@ -16535,17 +16535,15 @@ pub fn lower_module_to_mir<'a>(
 
     // `Ordering` is a built-in sum type with no source definition to derive
     // from; it compares, orders and prints like a derived one.
-    if let Some(info) = typeck.type_registry.sum_type_defs.get("Ordering") {
-        let typed: Vec<(String, Vec<Ty>)> = info
-            .variants
-            .iter()
-            .map(|v| (v.name.clone(), vec![]))
-            .collect();
-        lowerer.generate_eq_sum_typed("Ordering", &typed);
-        lowerer.generate_ord_sum_typed("Ordering", "Ordering", &typed);
-        lowerer.generate_display_sum_typed("Ordering", "Ordering", &typed, false);
-        lowerer.generate_display_sum_typed("Ordering", "Ordering", &typed, true);
-    }
+    let typed: Vec<(String, Vec<Ty>)> = typeck.type_registry.sum_type_defs["Ordering"]
+        .variants
+        .iter()
+        .map(|v| (v.name.clone(), vec![]))
+        .collect();
+    lowerer.generate_eq_sum_typed("Ordering", &typed);
+    lowerer.generate_ord_sum_typed("Ordering", "Ordering", &typed);
+    lowerer.generate_display_sum_typed("Ordering", "Ordering", &typed, false);
+    lowerer.generate_display_sum_typed("Ordering", "Ordering", &typed, true);
 
     // Crypto V2 value/keypair structs are registry-backed builtins rather than
     // source declarations, so they need concrete MIR layouts here.
@@ -16559,21 +16557,19 @@ pub fn lower_module_to_mir<'a>(
         "MlKemKeyPair",
         "SigningKeyPair",
     ] {
-        if let Some(definition) = typeck.type_registry.struct_defs.get(name) {
-            lowerer.structs.push(MirStructDef {
-                name: name.to_string(),
-                fields: definition
-                    .fields
-                    .iter()
-                    .map(|(field, ty)| {
-                        (
-                            field.clone(),
-                            runtime_value_type(resolve_type(ty, &typeck.type_registry)),
-                        )
-                    })
-                    .collect(),
-            });
-        }
+        lowerer.structs.push(MirStructDef {
+            name: name.to_string(),
+            fields: typeck.type_registry.struct_defs[name]
+                .fields
+                .iter()
+                .map(|(field, ty)| {
+                    (
+                        field.clone(),
+                        runtime_value_type(resolve_type(ty, &typeck.type_registry)),
+                    )
+                })
+                .collect(),
+        });
     }
 
     // Pre-seed stdlib structs for builtin field access (Phase 137+).
@@ -16775,13 +16771,11 @@ pub fn lower_module_to_mir<'a>(
                         MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
                     );
                     // Per-field column accessors: __{field}_col__() -> String
-                    if let Some(info) = typeck.type_registry.struct_defs.get(name.as_str()) {
-                        for (field_name, _) in &info.fields {
-                            lowerer.known_functions.insert(
-                                format!("{}____{}_col__", name, field_name),
-                                MirType::FnPtr(vec![], Box::new(MirType::String)),
-                            );
-                        }
+                    for (field_name, _) in &typeck.type_registry.struct_defs[name].fields {
+                        lowerer.known_functions.insert(
+                            format!("{}____{}_col__", name, field_name),
+                            MirType::FnPtr(vec![], Box::new(MirType::String)),
+                        );
                     }
                 }
             }
