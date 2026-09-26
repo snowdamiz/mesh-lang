@@ -757,88 +757,37 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         mesh_rt::generate_identity_signing_material()?;
     let issued_at = unix_millis();
     let expires_at = issued_at.saturating_add(30 * 24 * 60 * 60 * 1_000);
-    let identity_envelopes = BTreeMap::from([
-        proof_identity_envelope(
-            "CONTROLLER1",
-            &project,
-            &format!("{project}/controller/controller1"),
-            "controller1@controller1:4370",
-            &["controller"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "CONTROLLER2",
-            &project,
-            &format!("{project}/controller/controller2"),
-            "controller2@controller2:4370",
-            &["controller"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "CONTROLLER3",
-            &project,
-            &format!("{project}/controller/controller3"),
-            "controller3@controller3:4370",
-            &["controller"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "GATEWAY1",
-            &project,
-            &format!("{project}/gateway/gateway1"),
-            "gateway1@gateway1:4370",
-            &["gateway"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "GATEWAY2",
-            &project,
-            &format!("{project}/gateway/gateway2"),
-            "gateway2@gateway2:4370",
-            &["gateway"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "WORKER1",
-            &project,
-            &format!("{project}/worker/worker1"),
-            "worker1@worker1:4370",
-            &["worker"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "WORKER2",
-            &project,
-            &format!("{project}/worker/worker2"),
-            "worker2@worker2:4370",
-            &["worker"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-        proof_identity_envelope(
-            "OPERATOR",
-            &project,
-            &format!("{project}/operator/proof"),
-            "*",
-            &["operator"],
-            issued_at,
-            expires_at,
-            &identity_signing_key_der_b64,
-        )?,
-    ]);
+    // Each node's signed identity, under its environment name.
+    let identity_envelopes = [
+        ("CONTROLLER1", "controller", "controller1"),
+        ("CONTROLLER2", "controller", "controller2"),
+        ("CONTROLLER3", "controller", "controller3"),
+        ("GATEWAY1", "gateway", "gateway1"),
+        ("GATEWAY2", "gateway", "gateway2"),
+        ("WORKER1", "worker", "worker1"),
+        ("WORKER2", "worker", "worker2"),
+        ("OPERATOR", "operator", "proof"),
+    ]
+    .into_iter()
+    .map(|(name, role, host)| {
+        let claim = mesh_rt::NodeIdentityClaim {
+            schema_version: mesh_rt::IDENTITY_SCHEMA_VERSION,
+            cluster_id: project.clone(),
+            stable_node_id: format!("{project}/{role}/{host}"),
+            // The operator connects from anywhere.
+            advertised_name: if role == "operator" {
+                "*".to_string()
+            } else {
+                format!("{host}@{host}:4370")
+            },
+            roles: vec![role.to_string()],
+            issued_at_unix_millis: issued_at,
+            expires_at_unix_millis: expires_at,
+        };
+        let envelope = mesh_rt::sign_identity_claim(&claim, &identity_signing_key_der_b64)?;
+        Ok((name.to_string(), envelope))
+    })
+    .collect::<Result<BTreeMap<_, _>, String>>()?;
     std::env::set_var("MESH_TLS_CA_DER_B64", &tls_ca_der_b64);
     std::env::set_var("MESH_TLS_CERT_DER_B64", &tls_cert_der_b64);
     std::env::set_var("MESH_TLS_KEY_DER_B64", &tls_key_der_b64);
@@ -974,32 +923,6 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
             .or_else(|| cleanup_result.err())
             .unwrap_or_else(|| "proof_required_assertion_failed".to_string()))
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn proof_identity_envelope(
-    name: &str,
-    cluster_id: &str,
-    stable_node_id: &str,
-    advertised_name: &str,
-    roles: &[&str],
-    issued_at_unix_millis: u64,
-    expires_at_unix_millis: u64,
-    signing_key_der_b64: &str,
-) -> Result<(String, String), String> {
-    let claim = mesh_rt::NodeIdentityClaim {
-        schema_version: mesh_rt::IDENTITY_SCHEMA_VERSION,
-        cluster_id: cluster_id.to_string(),
-        stable_node_id: stable_node_id.to_string(),
-        advertised_name: advertised_name.to_string(),
-        roles: roles.iter().map(|role| (*role).to_string()).collect(),
-        issued_at_unix_millis,
-        expires_at_unix_millis,
-    };
-    Ok((
-        name.to_string(),
-        mesh_rt::sign_identity_claim(&claim, signing_key_der_b64)?,
-    ))
 }
 
 fn run_proof(
