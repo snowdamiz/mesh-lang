@@ -1316,3 +1316,56 @@ end
         stderr(&output)
     );
 }
+
+/// A runtime iterator hands a for-in loop the element's collection slot,
+/// which for a struct or sum value is a pointer to the boxed value. The loop
+/// stored that pointer as the value itself: a struct read back garbage and a
+/// match on an `Option` found no arm.
+#[test]
+fn iterables_yield_structs_and_sum_values() {
+    let output = compile_and_run(
+        r#"struct Point do
+  x :: Int
+  y :: Int
+end
+
+struct Points do
+  items :: List<Point>
+end
+
+impl Iterable for Points do
+  type Item = Point
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+struct Maybes do
+  items :: List<Option<Int>>
+end
+
+impl Iterable for Maybes do
+  type Item = Option<Int>
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+fn main() do
+  let products = for p in Points { items: [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }] } do
+    p.x * p.y
+  end
+  let values = for m in Maybes { items: [Some(5), None] } do
+    case m do
+      Some(v) -> v
+      None -> 0
+    end
+  end
+  println("${products} ${values}")
+end
+"#,
+    );
+    assert_eq!(output, "[2, 12] [5, 0]\n");
+}

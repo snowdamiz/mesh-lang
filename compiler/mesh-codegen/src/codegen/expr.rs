@@ -5208,51 +5208,22 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(ptr_ty, value_ptr, "raw_value")
             .map_err(|e| e.to_string())?;
 
-        // Convert from raw pointer to typed element.
-        // For Int: ptr -> i64 via ptrtoint. For String/Ptr types: ptr -> ptr (no conversion).
-        // A boxed payload holds the value itself behind the pointer.
-        let typed_elem: BasicValueEnum<'ctx> = match elem_ty {
-            _ if boxed_payload
-                && !matches!(elem_ty, MirType::Ptr | MirType::String | MirType::Tuple(_)) =>
-            {
-                self.builder
-                    .build_load(
-                        self.llvm_type(elem_ty),
-                        raw_value.into_pointer_value(),
-                        "unboxed_elem",
-                    )
-                    .map_err(|e| e.to_string())?
-            }
-            MirType::Int | MirType::Pid(_) => {
-                let as_int = self
-                    .builder
-                    .build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int")
-                    .map_err(|e| e.to_string())?;
-                as_int.into()
-            }
-            MirType::Float => {
-                let as_int = self
-                    .builder
-                    .build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int_f")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_bit_cast(as_int, self.context.f64_type(), "as_float")
-                    .map_err(|e| e.to_string())?
-            }
-            MirType::Bool => {
-                let as_int = self
-                    .builder
-                    .build_ptr_to_int(raw_value.into_pointer_value(), i64_ty, "as_int_b")
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_int_truncate(as_int, self.context.bool_type(), "as_bool")
-                    .map_err(|e| e.to_string())?
-                    .into()
-            }
-            _ => {
-                // Ptr types (String, structs, collections): already a pointer.
-                raw_value
-            }
+        // A boxed payload holds the value itself behind the pointer. A runtime
+        // iterator hands over the element's collection slot, which holds a
+        // scalar's bits or a pointer to a boxed struct or sum value.
+        let raw_value = raw_value.into_pointer_value();
+        let typed_elem = if boxed_payload
+            && !matches!(elem_ty, MirType::Ptr | MirType::String | MirType::Tuple(_))
+        {
+            self.builder
+                .build_load(self.llvm_type(elem_ty), raw_value, "unboxed_elem")
+                .map_err(|e| e.to_string())?
+        } else {
+            let slot = self
+                .builder
+                .build_ptr_to_int(raw_value, i64_ty, "elem_slot")
+                .map_err(|e| e.to_string())?;
+            self.convert_from_list_element(slot, elem_ty)?
         };
 
         // Create alloca for loop variable.
