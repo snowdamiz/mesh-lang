@@ -11859,7 +11859,7 @@ fn check_arm_coverage(
             .iter()
             .map(|pat| format_abstract_pat(pat, type_registry))
             .collect();
-        let scrutinee_type = format!("{}", resolved_scrutinee);
+        let scrutinee_type = resolved_scrutinee.with_holes().to_string();
         if clauses {
             ctx.warnings.push(TypeError::NonExhaustiveClauses {
                 scrutinee_type,

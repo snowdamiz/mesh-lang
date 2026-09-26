@@ -1691,6 +1691,22 @@ fn a_catch_all_clause_comes_last() {
 
 // ── Exhaustiveness ─────────────────────────────────────────────────────
 
+/// A match on a value whose type is not settled names it with a hole: it
+/// was the checker's own variable, `?8`.
+#[test]
+fn a_match_on_an_unsettled_type_names_it_with_a_hole() {
+    let parse = mesh_parser::parse("fn pick(x) when true = 1\n");
+    let warnings: Vec<String> = mesh_typeck::check(&parse)
+        .warnings
+        .iter()
+        .map(|warning| warning.to_string())
+        .collect();
+    assert_eq!(
+        warnings,
+        ["clauses do not cover every `_`: missing patterns [_]"]
+    );
+}
+
 /// Float and string literals have endless values, so arms of them need a
 /// catch-all; `nil` has one value; a list pattern covers lists of its
 /// length only; a pattern of an unknown variant or struct is reported as
