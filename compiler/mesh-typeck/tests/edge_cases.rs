@@ -1102,6 +1102,48 @@ end
     );
 }
 
+/// A value that is no function cannot be called, directly or piped into,
+/// though its arguments are checked first; a call of what never returns
+/// (`panic(...)`) is anything. A field read from a value nothing gives a
+/// type has no struct to come from.
+#[test]
+fn calls_of_what_is_no_function_are_reported() {
+    assert_eq!(
+        errors(
+            r#"
+fn not_fn() do
+  let n = 5
+  n(1)
+end
+
+fn not_fn_arg_error() do
+  let n = 5
+  n(nope)
+end
+
+fn piped_not_fn() do
+  let n = 5
+  1 |> n
+end
+
+fn never_callee() do
+  panic("x")(1)
+end
+
+fn get_x(p) do
+  p.x
+end
+"#
+        ),
+        [
+            "`Int` is not a function",
+            "undefined variable `nope`",
+            "`Int` is not a function",
+            "cannot tell which type has the field `x`",
+        ]
+    );
+}
+
 /// What goes wrong in a pipe is reported: its value, its function, a
 /// clustered route wrapper out of its place, and a slot past the function's
 /// arguments, with the function named as written (a qualified one was ``).
