@@ -5595,7 +5595,7 @@ fn infer_multi_clause_fn(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
         } else {
             Ty::Tuple(vec![])
         };
@@ -7661,16 +7661,12 @@ fn infer_interface_def(
         );
         let returns = ctx.pop_fn_return_type();
         env.pop_scope();
-        let ret = match (body_ty, declared_ret) {
-            (Ok(body_ty), Some(declared)) => {
+        let ret = match declared_ret {
+            Some(declared) => {
                 let _ = ctx.unify(declared.clone(), body_ty, body_origin(Some(body.clone())));
                 declared
             }
-            (Ok(body_ty), None) => {
-                join_returns(ctx, body_ty, returns).unwrap_or_else(|_| Ty::Tuple(vec![]))
-            }
-            (Err(_), Some(declared)) => declared,
-            (Err(_), None) => Ty::Tuple(vec![]),
+            None => join_returns(ctx, body_ty, returns).unwrap_or_else(|_| Ty::Tuple(vec![])),
         };
         types.insert(
             method.syntax().text_range(),
@@ -8138,7 +8134,7 @@ fn infer_impl_def(
         // is inferred to produce.
         let mut return_type = return_type;
         if let Some(body) = method.body() {
-            match infer_block(
+            let body_ty = infer_block(
                 ctx,
                 env,
                 &body,
@@ -8146,15 +8142,13 @@ fn infer_impl_def(
                 type_registry,
                 &*trait_registry,
                 fn_constraints,
-            ) {
-                Ok(body_ty) => match return_type {
-                    Some(ref ret_ty) => {
-                        let origin = body_origin(Some(body.clone()));
-                        let _ = ctx.unify(ret_ty.clone(), body_ty, origin);
-                    }
-                    None => return_type = Some(ctx.resolve(body_ty)),
-                },
-                Err(_) => { /* error already recorded */ }
+            );
+            match return_type {
+                Some(ref ret_ty) => {
+                    let origin = body_origin(Some(body.clone()));
+                    let _ = ctx.unify(ret_ty.clone(), body_ty, origin);
+                }
+                None => return_type = Some(ctx.resolve(body_ty)),
             }
         }
 
@@ -8550,7 +8544,7 @@ fn infer_fn_def(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?
+        )
     } else {
         Ty::Tuple(vec![])
     };
@@ -8967,7 +8961,7 @@ fn infer_expr_here(
             fn_constraints,
             None,
         ),
-        Expr::Block(block) => infer_block(
+        Expr::Block(block) => Ok(infer_block(
             ctx,
             env,
             block,
@@ -8975,7 +8969,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
-        ),
+        )),
         Expr::TupleExpr(tuple) => infer_tuple(
             ctx,
             env,
@@ -10975,7 +10969,7 @@ fn infer_if(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?
+        )
     } else {
         Ty::Tuple(vec![])
     };
@@ -11000,7 +10994,7 @@ fn infer_if(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
         } else {
             Ty::Tuple(vec![])
         };
@@ -11085,7 +11079,7 @@ fn infer_while(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?;
+        );
     }
     ctx.exit_loop();
 
@@ -11328,7 +11322,7 @@ fn infer_for_in(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?
+        )
     } else {
         Ty::Tuple(vec![])
     };
@@ -11459,7 +11453,7 @@ fn infer_closure(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?
+        )
     } else {
         Ty::Tuple(vec![])
     };
@@ -11658,7 +11652,7 @@ fn infer_multi_clause_closure(
                 type_registry,
                 trait_registry,
                 fn_constraints,
-            )?
+            )
         } else {
             Ty::Tuple(vec![])
         };
@@ -11714,7 +11708,7 @@ fn infer_block(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
-) -> Result<Ty, TypeError> {
+) -> Ty {
     // The block's value is its last expression's; a `let` last gives unit.
     let mut last_ty = Ty::Tuple(vec![]);
     for child in block.syntax().children() {
@@ -11760,7 +11754,7 @@ fn infer_block(
                 .push(TypeError::AssertReceiveOutsideTest { span: keyword });
         }
     }
-    Ok(last_ty)
+    last_ty
 }
 
 /// Only `let` binds inside a function: a function, type, import or any
@@ -14143,7 +14137,7 @@ fn infer_actor_def(
             type_registry,
             trait_registry,
             fn_constraints,
-        )?
+        )
     } else {
         Ty::Tuple(vec![])
     };
@@ -14440,8 +14434,6 @@ fn infer_service_def(
 
         // Infer init body -- its return type is the initial state.
         let init_body_ty = if let Some(body) = init_fn.body() {
-            // An error in one handler is recorded; the service is still
-            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -14451,7 +14443,6 @@ fn infer_service_def(
                 trait_registry,
                 fn_constraints,
             )
-            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             Ty::Tuple(vec![])
         };
@@ -14512,8 +14503,6 @@ fn infer_service_def(
 
         // Infer call handler body -- should return (new_state, reply) tuple.
         let body_ty = if let Some(body) = handler.body() {
-            // An error in one handler is recorded; the service is still
-            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -14523,7 +14512,6 @@ fn infer_service_def(
                 trait_registry,
                 fn_constraints,
             )
-            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             Ty::Tuple(vec![state_ty.clone(), reply_ty.clone()])
         };
@@ -14574,8 +14562,6 @@ fn infer_service_def(
 
         // Infer cast handler body -- returns new_state.
         let body_ty = if let Some(body) = handler.body() {
-            // An error in one handler is recorded; the service is still
-            // registered, so its callers are checked against it.
             infer_block(
                 ctx,
                 env,
@@ -14585,7 +14571,6 @@ fn infer_service_def(
                 trait_registry,
                 fn_constraints,
             )
-            .unwrap_or_else(|_| ctx.fresh_var())
         } else {
             state_ty.clone()
         };
