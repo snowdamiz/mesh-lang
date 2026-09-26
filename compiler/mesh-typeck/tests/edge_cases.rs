@@ -497,6 +497,10 @@ interface Counted do
   fn missing(self) -> Int do
     self.nothing()
   end
+  fn shown(self) -> String do
+    let n = self.count()
+    n.to_string()
+  end
 end
 "#
         ),
@@ -1172,6 +1176,17 @@ type Kind do
   Small
 end deriving(Eq)
 
+struct Wrap<T> do
+  item :: T
+end deriving(Json)
+
+fn wrapped() -> Int do
+  case Wrap.from_json("{}") do
+    Ok(w) -> w.item + 1
+    Err(_) -> 0
+  end
+end
+
 fn rows() do
   Plain.from_row
 end
@@ -1351,6 +1366,63 @@ end
     );
 }
 
+/// A struct update's base must be a struct value, and each field it gives
+/// one of the struct's, once, of the field's type (a generic struct's
+/// field as the base's argument makes it).
+#[test]
+fn struct_updates_check_their_base_and_fields() {
+    assert_eq!(
+        errors(
+            r#"
+struct Point do
+  x :: Int
+end
+
+struct Box<T> do
+  item :: T
+end
+
+fn unknown(p :: Point) -> Point do
+  %{p | nope: 1}
+end
+
+fn not_struct(n :: Int) do
+  %{n | x: 1}
+end
+
+fn dup(p :: Point) -> Point do
+  %{p | x: 1, x: 2}
+end
+
+fn bad_value(p :: Point) -> Point do
+  %{p | x: "s"}
+end
+
+fn value_error(p :: Point) -> Point do
+  %{p | x: nope}
+end
+
+fn base_error() do
+  %{nope2 | x: 1}
+end
+
+fn generic(b :: Box<Int>) -> Box<Int> do
+  %{b | item: "s"}
+end
+"#
+        ),
+        [
+            "unknown field `nope` in struct `Point`",
+            "`Int` is not a struct",
+            "field `x` is given more than once",
+            "type mismatch: expected `Int`, found `String`",
+            "undefined variable `nope`",
+            "undefined variable `nope2`",
+            "type mismatch: expected `Int`, found `String`",
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the
@@ -1481,6 +1553,71 @@ end
 "#
         ),
         ["`N` is not a struct"]
+    );
+}
+
+/// An arm with no `->` stands for its pattern read back as a value, which
+/// only a pattern of constructors, literals and bound names is: `_`, a
+/// variant with its payload left out, or a tuple is not one.
+#[test]
+fn pass_through_arms_are_values_of_their_patterns() {
+    assert_eq!(
+        errors(
+            r#"
+fn wild(o :: Option<Int>) -> Option<Int> do
+  case o do
+    Some(n) -> Some(n + 1)
+    _
+  end
+end
+
+fn bare_ctor(o :: Option<Int>) -> Option<Int> do
+  case o do
+    None
+    Some
+  end
+end
+
+fn tuple(p :: (Int, Int)) -> (Int, Int) do
+  case p do
+    (a, b)
+  end
+end
+
+fn nested(r :: Result<Option<Int>, String>) -> Result<Option<Int>, String> do
+  case r do
+    Ok(Some(n))
+    Ok(None)
+    Err(e)
+  end
+end
+
+fn literal(n :: Int) -> Int do
+  case n do
+    1
+    _ -> 0
+  end
+end
+"#
+        ),
+        [
+            "this arm has no `->` and its pattern is not a value: `_` names no value",
+            "this arm has no `->` and its pattern is not a value: `Some` alone leaves its payload unnamed",
+            "this arm has no `->` and its pattern is not a value: only constructors, literals and the names a pattern binds can stand for the arm's value",
+        ]
+    );
+}
+
+/// A clause that matches anything, `_` included, must be a function's last:
+/// the clauses after it are unreachable.
+#[test]
+fn a_catch_all_clause_comes_last() {
+    assert_eq!(
+        errors("fn f(_) = 0\nfn f(1) = 1\n\nfn h(x) = x\nfn h(2) = 2\n"),
+        [
+            "catch-all clause must be the last clause of function `f/1`; clauses after a catch-all are unreachable",
+            "catch-all clause must be the last clause of function `h/1`; clauses after a catch-all are unreachable",
+        ]
     );
 }
 
@@ -1753,8 +1890,9 @@ end
     );
 }
 
-/// `import Module` brings in the module's functions, structs and services
-/// under its name, and a standard module needs no import at all.
+/// `import Module` brings in the module's functions, structs, variants and
+/// services under its name, and a standard module needs no import at all.
+/// A function the module lacks is named with those it has.
 #[test]
 fn import_brings_in_a_module_by_its_name() {
     assert_eq!(
@@ -1768,11 +1906,16 @@ import String
 fn main() do
   let pid = Counter.start(0)
   let n = Counter.get(pid)
+  let k = Store.Big
   Store.pad(1) + Store.pad(n, 2) + String.length("abc")
+end
+
+fn missing() do
+  Store.nope(1)
 end
 "#
         ),
-        Vec::<String>::new()
+        ["module `Store` has no function `nope`"]
     );
 }
 
