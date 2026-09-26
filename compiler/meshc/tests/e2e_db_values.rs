@@ -178,3 +178,63 @@ delete_where_returning:great
 delete_where_returning_bad:failed
 done
 "#;
+
+/// The PostgreSQL schema helpers against a database, in a schema of their
+/// own: an extension, a range-partitioned table, GIN indexes (one opclass
+/// schema-qualified), daily partitions ahead and an old one listed and
+/// dropped, and each helper's refusals.
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL or the documented local mesh_test PostgreSQL"]
+fn postgres_schema_helpers_create_list_and_drop() {
+    let (_temp, project, output) = build_fixture("postgres_schema", "postgres-schema");
+    assert!(
+        output.status.success(),
+        "meshc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("postgres-schema"))
+        .output()
+        .expect("failed to execute the schema fixture");
+    assert!(
+        run.status.success(),
+        "fixture failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), EXPECTED_SCHEMA_OUTPUT);
+}
+
+const EXPECTED_SCHEMA_OUTPUT: &str = r#"extension:ok
+extension_again:ok
+extension_empty:error:Pg.create_extension: extension name must not be empty
+extension_unknown:failed
+table:ok
+table_again:ok
+table_empty_name:error:Pg.create_range_partitioned_table: table name must not be empty
+table_no_partition_column:error:Pg.create_range_partitioned_table: partition column must not be empty
+table_bad_column:error:Pg.create_range_partitioned_table: invalid column definition `:date`
+table_blank_column:error:Pg.create_range_partitioned_table: invalid column definition ` `
+table_only_constraints:error:Pg.create_range_partitioned_table: at least one column is required
+table_partition_column_missing:error:Pg.create_range_partitioned_table: partition column `at` is missing from `t`
+gin_trgm:ok
+gin_qualified:ok
+gin_empty_table:error:Pg.create_gin_index: table name must not be empty
+gin_empty_index:error:Pg.create_gin_index: index name must not be empty
+gin_empty_column:error:Pg.create_gin_index: column name must not be empty
+gin_empty_opclass:error:Pg.create_gin_index: opclass must not be empty
+gin_empty_segment:error:Pg.create_gin_index: identifier `pg_catalog..ops` contains an empty segment
+ahead:ok
+ahead_none:ok
+ahead_negative:error:Pg.create_daily_partitions_ahead: days must be non-negative, got -1
+ahead_empty_parent:error:Pg.create_daily_partitions_ahead: parent table must not be empty
+ahead_missing_parent:failed
+before:events_20000101
+before_none:
+before_negative:error:Pg.list_daily_partitions_before: max_days must be non-negative, got -1
+drop:ok
+drop_empty:error:Pg.drop_partition: partition name must not be empty
+before_dropped:
+partitions:3
+done
+"#;

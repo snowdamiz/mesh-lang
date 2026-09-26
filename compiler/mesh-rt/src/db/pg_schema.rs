@@ -205,25 +205,14 @@ pub(crate) fn build_create_gin_index_sql(
     ))
 }
 
-pub(crate) fn build_create_daily_partition_sql(
-    parent_table: &str,
-    offset_days: i64,
-) -> Result<String, String> {
-    let parent_table = parent_table.trim();
-    if parent_table.is_empty() {
-        return Err("Pg.create_daily_partitions_ahead: parent table must not be empty".to_string());
-    }
-    if offset_days < 0 {
-        return Err(format!(
-            "Pg.create_daily_partitions_ahead: days must be non-negative, got {offset_days}"
-        ));
-    }
-
-    Ok(format!(
+/// The partition of `parent_table` (checked non-empty) for the day
+/// `offset_days` from today.
+pub(crate) fn build_create_daily_partition_sql(parent_table: &str, offset_days: i64) -> String {
+    format!(
         "DO $mesh$ DECLARE parent_name text := {parent}; part_date date := current_date + {offset}; part_name text := parent_name || '_' || to_char(part_date, 'YYYYMMDD'); BEGIN EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES FROM (%L) TO (%L)', part_name, parent_name, part_date, part_date + 1); END $mesh$;",
         parent = quote_literal(parent_table),
         offset = offset_days,
-    ))
+    )
 }
 
 pub(crate) fn build_list_daily_partitions_before_sql() -> &'static str {
@@ -314,7 +303,10 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
     days: i64,
 ) -> *mut u8 {
     unsafe {
-        let parent_table = (*parent_table).as_str();
+        let parent_table = (*parent_table).as_str().trim();
+        if parent_table.is_empty() {
+            return err_result("Pg.create_daily_partitions_ahead: parent table must not be empty");
+        }
         if days < 0 {
             return err_result(&format!(
                 "Pg.create_daily_partitions_ahead: days must be non-negative, got {days}"
@@ -322,10 +314,7 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
         }
 
         for offset in 0..days {
-            let sql = match build_create_daily_partition_sql(parent_table, offset) {
-                Ok(sql) => sql,
-                Err(message) => return err_result(&message),
-            };
+            let sql = build_create_daily_partition_sql(parent_table, offset);
             let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
             let exec_result = mesh_pool_execute(pool, sql_ptr, mesh_list_new());
             let result = &*(exec_result as *const MeshResult);
@@ -367,13 +356,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
         let mut partitions = mesh_list_new();
         for i in 0..len {
             let row = mesh_list_get(rows, i) as *mut u8;
-            let partition_name = mesh_map_get(row, partition_name_key);
-            if partition_name == 0 {
-                return err_result(
-                    "Pg.list_daily_partitions_before: query row missing partition_name",
-                );
-            }
-            partitions = mesh_list_append(partitions, partition_name);
+            partitions = mesh_list_append(partitions, mesh_map_get(row, partition_name_key));
         }
 
         alloc_result(0, partitions) as *mut u8
@@ -462,8 +445,7 @@ mod tests {
 
     #[test]
     fn migration_pg_schema_build_create_daily_partition_sql_uses_database_clock() {
-        let sql = build_create_daily_partition_sql("events", 3)
-            .expect("daily partition SQL should build");
+        let sql = build_create_daily_partition_sql("events", 3);
         assert!(sql.contains("part_date date := current_date + 3"));
         assert!(sql.contains("to_char(part_date, 'YYYYMMDD')"));
         assert!(sql.contains("PARTITION OF %I FOR VALUES FROM (%L) TO (%L)"));
