@@ -849,11 +849,12 @@ impl<'a> Lowerer<'a> {
         // Generic sum payloads use the base MIR definition's storage layout.
         // In particular, Result<T, E> stores T/E behind a pointer even when the
         // concrete semantic type is an unboxed integer handle such as PgConn.
-        let storage_variants = self
+        let storage_variants = &self
             .sum_types
             .iter()
             .find(|sum| sum.name == name)
-            .map(|sum| sum.variants.clone());
+            .expect("every sum type is registered before lowering")
+            .variants;
         let variants = definition
             .variants
             .iter()
@@ -869,16 +870,7 @@ impl<'a> Lowerer<'a> {
                         }
                     })
                     .collect::<Vec<_>>();
-                let field_types = storage_variants
-                    .as_ref()
-                    .and_then(|variants| variants.iter().find(|variant| variant.tag == tag as u8))
-                    .map(|variant| variant.fields.clone())
-                    .unwrap_or_else(|| {
-                        concrete_fields
-                            .iter()
-                            .map(|field_ty| resolve_type(field_ty, self.registry))
-                            .collect()
-                    });
+                let field_types = storage_variants[tag].fields.clone();
                 let resource_fields = concrete_fields
                     .iter()
                     .enumerate()
@@ -5920,54 +5912,6 @@ impl<'a> Lowerer<'a> {
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<unnamed>".to_string());
 
-        // Look up from type registry for accurate variant info. The derived
-        // methods see every field's own type; the layout stores a recursive
-        // payload (a variant holding its own type) as a pointer, as it stores
-        // a generic payload, and pattern access reads it back through the box.
-        let variants: Vec<MirVariantDef> =
-            if let Some(info) = self.registry.sum_type_defs.get(&name) {
-                info.variants
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let fields = v
-                            .fields
-                            .iter()
-                            .map(|f| {
-                                let ty = match f {
-                                    mesh_typeck::VariantFieldInfo::Positional(ty) => ty,
-                                    mesh_typeck::VariantFieldInfo::Named(_, ty) => ty,
-                                };
-                                resolve_type(ty, self.registry)
-                            })
-                            .collect();
-                        MirVariantDef {
-                            name: v.name.clone(),
-                            fields,
-                            tag: i as u8,
-                        }
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-        let storage_variants: Vec<MirVariantDef> = variants
-            .iter()
-            .map(|v| MirVariantDef {
-                name: v.name.clone(),
-                fields: v
-                    .fields
-                    .iter()
-                    .map(|field| match field {
-                        MirType::SumType(inner) if self.boxed_payload(&name, inner) => MirType::Ptr,
-                        MirType::Tuple(_) => MirType::Ptr,
-                        other => other.clone(),
-                    })
-                    .collect(),
-                tag: v.tag,
-            })
-            .collect();
-
         // Conditional MIR generation based on deriving clause.
         // No deriving clause = backward compat (generate all default trait functions).
         let has_deriving = sum_def.has_deriving_clause();
@@ -5980,27 +5924,22 @@ impl<'a> Lowerer<'a> {
 
         // The source field types: Eq and Display compare and print each
         // payload by its own type.
-        let typed_variants: Vec<(String, Vec<Ty>)> = self
-            .registry
-            .sum_type_defs
-            .get(&name)
-            .map(|info| {
-                info.variants
+        // (Its layout was registered with every other sum type's.)
+        let typed_variants: Vec<(String, Vec<Ty>)> = self.registry.sum_type_defs[&name]
+            .variants
+            .iter()
+            .map(|v| {
+                let fields = v
+                    .fields
                     .iter()
-                    .map(|v| {
-                        let fields = v
-                            .fields
-                            .iter()
-                            .map(|f| match f {
-                                mesh_typeck::VariantFieldInfo::Positional(ty)
-                                | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty.clone(),
-                            })
-                            .collect();
-                        (v.name.clone(), fields)
+                    .map(|f| match f {
+                        mesh_typeck::VariantFieldInfo::Positional(ty)
+                        | mesh_typeck::VariantFieldInfo::Named(_, ty) => ty.clone(),
                     })
-                    .collect()
+                    .collect();
+                (v.name.clone(), fields)
             })
-            .unwrap_or_default();
+            .collect();
 
         if (derive_all || derive_list.iter().any(|t| t == "Debug")) && granted(self, "Debug") {
             self.generate_display_sum_typed(&name, &name, &typed_variants, true);
@@ -6025,11 +5964,6 @@ impl<'a> Lowerer<'a> {
             self.generate_from_json_sum_typed(&name, &name, &typed_variants);
             self.generate_from_json_string_wrapper(&name);
         }
-
-        self.sum_types.push(MirSumTypeDef {
-            name,
-            variants: storage_variants,
-        });
     }
 
     // ── Debug inspect generation ────────────────────────────────────
