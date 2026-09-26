@@ -37,9 +37,8 @@ pub fn write_token(token: &str) -> Result<(), String> {
 fn write_token_to(path: &std::path::Path, token: &str) -> Result<(), String> {
     use std::io::Write;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create ~/.mesh/: {}", e))?;
-    }
+    let parent = path.parent().unwrap_or(std::path::Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create ~/.mesh/: {}", e))?;
     let mut registry = toml::Table::new();
     registry.insert("token".to_string(), token.into());
     let mut table = toml::Table::new();

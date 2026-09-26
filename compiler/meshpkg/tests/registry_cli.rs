@@ -548,6 +548,37 @@ fn login_and_publish_upload_the_package_with_the_token() {
     }
 }
 
+/// A project with no registry dependencies and a lockfile already has
+/// nothing to lock: install succeeds and leaves the lockfile as it is.
+#[test]
+fn install_without_registry_dependencies_keeps_the_lockfile() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let dir = project.path();
+    std::fs::write(
+        dir.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    let lock = "version = 1\npackages = []\n";
+    std::fs::write(dir.join("mesh.lock"), lock).unwrap();
+    let output = meshpkg(
+        &["install", "--registry", "http://127.0.0.1:9"],
+        dir,
+        home.path(),
+    );
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(
+        !text(&output).contains("Updated mesh.lock"),
+        "{}",
+        text(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("mesh.lock")).unwrap(),
+        lock
+    );
+}
+
 /// A native package publishes its bindings and its archives, each archive
 /// checked against the SHA-256 the manifest declares; a member that is
 /// missing, a directory, reached through a link, or does not match is

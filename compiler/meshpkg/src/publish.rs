@@ -603,6 +603,28 @@ sha256 = "{sha256}"
     }
 
     #[test]
+    fn publish_archive_members_include_declared_bindings_the_source_walk_skips() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let project_dir = tempdir.path();
+        write_project_file(
+            project_dir,
+            "mesh.toml",
+            "[package]\nname = \"native-package\"\nversion = \"0.1.0\"\n\n[native]\nabi = 1\nbindings = [\".bindings/native.mpl\"]\n",
+        );
+        write_project_file(
+            project_dir,
+            ".bindings/native.mpl",
+            "@native(\"mesh_native_value\")\npub fn value() -> Int\n",
+        );
+        // The walk skips hidden directories; the declared binding goes in anyway.
+        let members = archive_member_names(project_dir);
+        assert!(
+            members.contains(&".bindings/native.mpl".to_string()),
+            "{members:?}"
+        );
+    }
+
+    #[test]
     fn publish_archive_members_keep_root_main_when_override_and_root_entries_both_exist() {
         let tempdir = tempfile::tempdir().unwrap();
         let project_dir = tempdir.path();
