@@ -283,3 +283,86 @@ end
         ]
     );
 }
+
+// ── Exhaustiveness ─────────────────────────────────────────────────────
+
+/// `true | false` inside another pattern covers every Bool: the column's
+/// type was taken from its patterns without looking into or-patterns, so a
+/// Bool there counted as a type of endless values.
+#[test]
+fn an_or_pattern_of_both_bools_is_exhaustive_inside_another_pattern() {
+    assert_clean(
+        r#"
+fn pair(a :: Bool, b :: Int) -> Int do
+  case (a, b) do
+    (true | false, _) -> 1
+  end
+end
+
+fn maybe(o :: Option<Bool>) -> Int do
+  case o do
+    Some(true | false) -> 1
+    None -> 0
+  end
+end
+"#,
+    );
+}
+
+/// A missing case is named down to the constructors the arms leave out,
+/// in columns whose arms left no constructor to take the type from.
+#[test]
+fn missing_cases_are_named_in_columns_the_arms_leave_open() {
+    assert_eq!(
+        errors(
+            r#"
+fn with_list(o :: Option<Int>, xs :: List<Int>) -> Int do
+  case (o, xs) do
+    (None, []) -> 1
+    (Some(1), _) -> 2
+  end
+end
+
+fn with_option(o :: Option<Int>, p :: Option<Int>) -> Int do
+  case (o, p) do
+    (None, Some(_)) -> 1
+    (Some(1), _) -> 2
+  end
+end
+"#
+        ),
+        [
+            "non-exhaustive match on `(Option<Int>, List<Int>)`: missing patterns [(Some(_), _ :: _)]",
+            "non-exhaustive match on `(Option<Int>, Option<Int>)`: missing patterns [(Some(_), Some(_))]",
+        ]
+    );
+}
+
+/// Arms that do not fit the value's type are reported as such, and the
+/// check of which cases they cover takes them as they are.
+#[test]
+fn arms_of_the_wrong_type_are_errors_of_their_own() {
+    assert_eq!(
+        errors(
+            r#"
+fn unknown(o :: Option<Int>) -> Int do
+  case o do
+    Some(Nope.Thing) -> 1
+    None -> 0
+  end
+end
+
+fn literal(o :: Option<Int>) -> Int do
+  case o do
+    1 -> 1
+    None -> 0
+  end
+end
+"#
+        ),
+        [
+            "unknown variant `Nope.Thing`",
+            "type mismatch: expected `Option<Int>`, found `Int`",
+        ]
+    );
+}

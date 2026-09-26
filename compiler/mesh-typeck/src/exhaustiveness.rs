@@ -111,6 +111,39 @@ enum Constructor {
 }
 
 impl Constructor {
+    /// The constructor a pattern applies, and what it applies it to (a
+    /// literal is a constructor of no arguments, and `true` and `false` are
+    /// Bool's two); `None` for a wildcard or an or-pattern.
+    fn of(pat: &Pat) -> Option<(Constructor, &[Pat])> {
+        match pat {
+            Pat::Constructor { name, args, .. } => Some((
+                Constructor::Named {
+                    name: name.clone(),
+                    arity: args.len(),
+                },
+                args,
+            )),
+            Pat::Literal {
+                value,
+                ty: LitKind::Bool,
+            } => Some((
+                Constructor::Named {
+                    name: value.clone(),
+                    arity: 0,
+                },
+                &[],
+            )),
+            Pat::Literal { value, ty } => Some((
+                Constructor::Literal {
+                    value: value.clone(),
+                    ty: ty.clone(),
+                },
+                &[],
+            )),
+            Pat::Wildcard | Pat::Or { .. } => None,
+        }
+    }
+
     fn arity(&self) -> usize {
         match self {
             Constructor::Named { arity, .. } => *arity,
@@ -127,136 +160,138 @@ impl Constructor {
 }
 
 // ── Specialize & Default matrices ────────────────────────────────────
+//
+// Every row of a matrix is as wide as the row checked against it, which is
+// not empty where a matrix is specialized or defaulted.
 
-/// Specialize the matrix by a constructor.
-///
-/// For each row in the matrix:
-/// - If row[0] matches the same constructor: replace row[0] with its args, keep rest.
-/// - If row[0] is Wildcard: replace row[0] with N wildcards (N = ctor arity), keep rest.
-/// - If row[0] is a different constructor: drop the row.
-/// - If row[0] is Or: expand each alternative.
+/// Specialize the matrix by a constructor: each row headed by it, or by a
+/// wildcard, with the head replaced by its arguments (a wildcard's, by
+/// wildcards); an or-pattern head by each alternative.
 fn specialize_matrix(matrix: &PatternMatrix, ctor: &Constructor) -> PatternMatrix {
     let mut rows = Vec::new();
     for row in &matrix.rows {
-        specialize_row_into(&mut rows, row, ctor);
+        specialize_row_into(&mut rows, &row[0], &row[1..], ctor);
     }
     PatternMatrix { rows }
 }
 
-/// Specialize a single row by a constructor, appending results to `out`.
-fn specialize_row_into(out: &mut Vec<PatternRow>, row: &[Pat], ctor: &Constructor) {
-    if row.is_empty() {
-        return;
-    }
-
-    let head = &row[0];
-    let rest = &row[1..];
-
+/// Specialize the row `head` then `rest` by a constructor, appending the
+/// rows it gives to `out`.
+fn specialize_row_into(out: &mut Vec<PatternRow>, head: &Pat, rest: &[Pat], ctor: &Constructor) {
     match head {
-        Pat::Constructor { name, args, .. } => {
-            let head_key = name.clone();
-            if head_key == ctor.name_key() {
-                let mut new_row: Vec<Pat> = args.clone();
-                new_row.extend_from_slice(rest);
-                out.push(new_row);
-            }
-            // Different constructor: drop the row
-        }
-        Pat::Literal {
-            value,
-            ty: LitKind::Bool,
-        } => {
-            // Bool literals treated as named constructors "true"/"false"
-            if *value == ctor.name_key() {
-                out.push(rest.to_vec());
-            }
-        }
-        Pat::Literal { value, ty } => {
-            let head_key = format!("{:?}:{}", ty, value);
-            if head_key == ctor.name_key() {
-                out.push(rest.to_vec());
-            }
-        }
         Pat::Wildcard => {
-            // Wildcard matches any constructor: expand to N wildcards
-            let mut new_row: Vec<Pat> = vec![Pat::Wildcard; ctor.arity()];
+            let mut new_row = vec![Pat::Wildcard; ctor.arity()];
             new_row.extend_from_slice(rest);
             out.push(new_row);
         }
         Pat::Or { alternatives } => {
-            // Expand each alternative
             for alt in alternatives {
-                let mut expanded_row = vec![alt.clone()];
-                expanded_row.extend_from_slice(rest);
-                specialize_row_into(out, &expanded_row, ctor);
+                specialize_row_into(out, alt, rest, ctor);
+            }
+        }
+        _ => {
+            if let Some((_, args)) =
+                Constructor::of(head).filter(|(head, _)| head.name_key() == ctor.name_key())
+            {
+                let mut new_row = args.to_vec();
+                new_row.extend_from_slice(rest);
+                out.push(new_row);
             }
         }
     }
 }
 
-/// Compute the default matrix.
-///
-/// For each row in the matrix:
-/// - If row[0] is Wildcard: keep row[1..]
-/// - If row[0] is Or: expand each alternative, keep wildcards
-/// - Otherwise: drop the row
+/// The default matrix: the rows headed by a wildcard (or an or-pattern
+/// with one), without their head.
 fn default_matrix(matrix: &PatternMatrix) -> PatternMatrix {
     let mut rows = Vec::new();
     for row in &matrix.rows {
-        if row.is_empty() {
-            continue;
-        }
-        match &row[0] {
-            Pat::Wildcard => {
-                rows.push(row[1..].to_vec());
-            }
-            Pat::Or { alternatives } => {
-                for alt in alternatives {
-                    if matches!(alt, Pat::Wildcard) {
-                        rows.push(row[1..].to_vec());
-                        break;
-                    }
-                }
-            }
-            _ => {}
-        }
+        default_row_into(&mut rows, &row[0], &row[1..]);
     }
     PatternMatrix { rows }
 }
 
+/// The rows of the default matrix the row `head` then `rest` gives.
+fn default_row_into(out: &mut Vec<PatternRow>, head: &Pat, rest: &[Pat]) {
+    match head {
+        Pat::Wildcard => out.push(rest.to_vec()),
+        Pat::Or { alternatives } => {
+            for alt in alternatives {
+                default_row_into(out, alt, rest);
+            }
+        }
+        Pat::Constructor { .. } | Pat::Literal { .. } => {}
+    }
+}
+
 // ── Type info inference for nested columns ───────────────────────────
 
-/// Infer the `TypeInfo` for a column created by specialization,
-/// using the type registry for complete constructor sets.
+/// Infer the `TypeInfo` for a column created by specialization, from its
+/// patterns: the type a constructor there names (the registry has every
+/// sum type, struct and list; a tuple type is its patterns' arity), Bool
+/// for `true` and `false`, and otherwise a type of endless values.
 fn infer_type_info_for_column(
     matrix: &PatternMatrix,
     row: &[Pat],
     col: usize,
     registry: &TypeRegistry,
 ) -> TypeInfo {
-    // Check if any pattern in this column has a type_name we can look up
-    let type_name = find_type_name_in_column(matrix, row, col);
-
-    if let Some(ref tn) = type_name {
-        if let Some(info) = registry.lookup(tn) {
+    let rows = matrix.rows.iter().map(Vec::as_slice);
+    let column = column(rows.chain(std::iter::once(row)), col);
+    if let Some((type_name, name, arity)) = typed_constructor(&column) {
+        if let Some(info) = registry.lookup(type_name) {
             return info.clone();
         }
-        if tn == TUPLE {
-            // A tuple type has exactly one constructor; its arity is whatever
-            // the tuple patterns in this column carry.
-            if let Some(arity) = find_tuple_arity_in_column(matrix, row, col) {
-                return tuple_type_info(arity);
-            }
+        if name == TUPLE {
+            return tuple_type_info(arity);
         }
     }
-
-    // Check for bool literals
-    if check_column_for_bool(matrix, row, col) {
+    let is_bool = |pat: &&Pat| {
+        matches!(
+            pat,
+            Pat::Literal {
+                ty: LitKind::Bool,
+                ..
+            }
+        )
+    };
+    if column.iter().any(is_bool) {
         return TypeInfo::Bool;
     }
-
-    // Default: infinite type
     TypeInfo::Infinite
+}
+
+/// Column `col` of `rows`, with or-patterns taken apart into their
+/// alternatives.
+fn column<'a>(rows: impl Iterator<Item = &'a [Pat]>, col: usize) -> Vec<&'a Pat> {
+    fn alternatives_into<'a>(out: &mut Vec<&'a Pat>, pat: &'a Pat) {
+        match pat {
+            Pat::Or { alternatives } => {
+                for alt in alternatives {
+                    alternatives_into(out, alt);
+                }
+            }
+            _ => out.push(pat),
+        }
+    }
+    let mut pats = Vec::new();
+    for row in rows {
+        alternatives_into(&mut pats, &row[col]);
+    }
+    pats
+}
+
+/// The first constructor in `column` that names its type: that name, and
+/// the constructor's name and arity.
+fn typed_constructor<'a>(column: &[&'a Pat]) -> Option<(&'a str, &'a str, usize)> {
+    column.iter().find_map(|pat| match pat {
+        Pat::Constructor {
+            name,
+            type_name,
+            args,
+        } if !type_name.is_empty() => Some((type_name.as_str(), name.as_str(), args.len())),
+        _ => None,
+    })
 }
 
 /// Name shared by every tuple constructor and tuple type in abstract patterns.
@@ -293,329 +328,85 @@ pub fn tuple_type_info(arity: usize) -> TypeInfo {
     }
 }
 
-/// Find the arity of the first tuple pattern in a specific column.
-fn find_tuple_arity_in_column(matrix: &PatternMatrix, row: &[Pat], col: usize) -> Option<usize> {
-    matrix
-        .rows
-        .iter()
-        .map(|mrow| mrow.as_slice())
-        .chain(std::iter::once(row))
-        .filter_map(|r| r.get(col))
-        .find_map(tuple_arity)
-}
-
-/// The arity of a pattern if it is a tuple pattern (looking through or-patterns).
-fn tuple_arity(pat: &Pat) -> Option<usize> {
-    match pat {
-        Pat::Constructor { name, args, .. } if name == TUPLE => Some(args.len()),
-        Pat::Or { alternatives } => alternatives.iter().find_map(tuple_arity),
-        _ => None,
-    }
-}
-
-/// Find the type_name of constructor patterns in a specific column.
-fn find_type_name_in_column(matrix: &PatternMatrix, row: &[Pat], col: usize) -> Option<String> {
-    for mrow in &matrix.rows {
-        if col < mrow.len() {
-            if let Some(tn) = extract_type_name(&mrow[col]) {
-                return Some(tn);
-            }
-        }
-    }
-    if col < row.len() {
-        if let Some(tn) = extract_type_name(&row[col]) {
-            return Some(tn);
-        }
-    }
-    None
-}
-
-/// Check if a column contains bool literal patterns.
-fn check_column_for_bool(matrix: &PatternMatrix, row: &[Pat], col: usize) -> bool {
-    for mrow in &matrix.rows {
-        if col < mrow.len()
-            && matches!(
-                &mrow[col],
-                Pat::Literal {
-                    ty: LitKind::Bool,
-                    ..
-                }
-            )
-        {
-            return true;
-        }
-    }
-    if col < row.len()
-        && matches!(
-            &row[col],
-            Pat::Literal {
-                ty: LitKind::Bool,
-                ..
-            }
-        )
-    {
-        return true;
-    }
-    false
-}
-
-/// Extract the type_name from a pattern, if it is a constructor.
-fn extract_type_name(pat: &Pat) -> Option<String> {
-    match pat {
-        Pat::Constructor { type_name, .. } if !type_name.is_empty() => Some(type_name.clone()),
-        Pat::Or { alternatives } => {
-            for alt in alternatives {
-                if let Some(tn) = extract_type_name(alt) {
-                    return Some(tn);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
 // ── Collect head constructors ────────────────────────────────────────
 
-/// Collect all constructors that appear in the first column of the matrix.
+/// The constructors heading the matrix's rows, once each.
 fn collect_head_constructors(matrix: &PatternMatrix) -> Vec<Constructor> {
     let mut seen = FxHashSet::default();
-    let mut result = Vec::new();
-    for row in &matrix.rows {
-        if row.is_empty() {
-            continue;
-        }
-        collect_constructors_from_pat(&row[0], &mut seen, &mut result);
-    }
-    result
-}
-
-/// Recursively collect constructors from a pattern (handling Or).
-fn collect_constructors_from_pat(
-    pat: &Pat,
-    seen: &mut FxHashSet<String>,
-    result: &mut Vec<Constructor>,
-) {
-    match pat {
-        Pat::Constructor { name, args, .. } => {
-            let ctor = Constructor::Named {
-                name: name.clone(),
-                arity: args.len(),
-            };
-            if seen.insert(ctor.name_key()) {
-                result.push(ctor);
-            }
-        }
-        Pat::Literal {
-            value,
-            ty: LitKind::Bool,
-        } => {
-            let ctor = Constructor::Named {
-                name: value.clone(),
-                arity: 0,
-            };
-            if seen.insert(ctor.name_key()) {
-                result.push(ctor);
-            }
-        }
-        Pat::Literal { value, ty } => {
-            let ctor = Constructor::Literal {
-                value: value.clone(),
-                ty: ty.clone(),
-            };
-            if seen.insert(ctor.name_key()) {
-                result.push(ctor);
-            }
-        }
-        Pat::Or { alternatives } => {
-            for alt in alternatives {
-                collect_constructors_from_pat(alt, seen, result);
-            }
-        }
-        Pat::Wildcard => {}
-    }
-}
-
-// ── Registry building from patterns ──────────────────────────────────
-
-/// Recursively scan a pattern, registering constructor types in the registry.
-fn collect_types_from_pattern(pat: &Pat, registry: &mut TypeRegistry) {
-    match pat {
-        Pat::Constructor {
-            name,
-            type_name,
-            args,
-        } => {
-            if !type_name.is_empty() {
-                let entry =
-                    registry
-                        .types
-                        .entry(type_name.clone())
-                        .or_insert_with(|| TypeInfo::SumType {
-                            variants: Vec::new(),
-                        });
-                if let TypeInfo::SumType { variants } = entry {
-                    if !variants.iter().any(|v| v.name == *name) {
-                        variants.push(ConstructorSig {
-                            name: name.clone(),
-                            arity: args.len(),
-                        });
-                    }
-                }
-            }
-            for arg in args {
-                collect_types_from_pattern(arg, registry);
-            }
-        }
-        Pat::Or { alternatives } => {
-            for alt in alternatives {
-                collect_types_from_pattern(alt, registry);
-            }
-        }
-        Pat::Wildcard | Pat::Literal { .. } => {}
-    }
+    column(matrix.rows.iter().map(Vec::as_slice), 0)
+        .into_iter()
+        .filter_map(|head| Constructor::of(head).map(|(ctor, _)| ctor))
+        .filter(|ctor| seen.insert(ctor.name_key()))
+        .collect()
 }
 
 // ── Core algorithm ───────────────────────────────────────────────────
 
 /// Core usefulness predicate (Algorithm U).
 ///
-/// Returns `true` if `row` is useful with respect to `matrix` --
-/// i.e., there exists a value matched by `row` but not by any row
-/// in `matrix`.
-///
-/// Builds an internal type registry from the patterns for nested type
-/// resolution. For complete nested exhaustiveness, use the registry-based
-/// functions `check_exhaustiveness` and `check_redundancy` instead.
-pub fn is_useful(matrix: &PatternMatrix, row: &[Pat], type_info: &[TypeInfo]) -> bool {
-    let mut registry = TypeRegistry::new();
-    for mrow in &matrix.rows {
-        for pat in mrow {
-            collect_types_from_pattern(pat, &mut registry);
-        }
-    }
-    for pat in row {
-        collect_types_from_pattern(pat, &mut registry);
-    }
-    is_useful_inner(matrix, row, type_info, &registry)
-}
-
-/// Internal recursive implementation of `is_useful` with an explicit registry.
-fn is_useful_inner(
+/// Returns `true` if `row` is useful with respect to `matrix` -- i.e.,
+/// there exists a value matched by `row` but not by any row in `matrix`.
+/// `type_info` describes the columns, and `registry` gives the complete
+/// constructor sets of the types nested patterns name.
+fn is_useful(
     matrix: &PatternMatrix,
     row: &[Pat],
     type_info: &[TypeInfo],
     registry: &TypeRegistry,
 ) -> bool {
-    // Base case 1: empty matrix (0 rows) -- any pattern is useful
+    // Nothing matches yet: anything is useful.
     if matrix.rows.is_empty() {
         return true;
     }
-
-    // Base case 2: empty row (0 columns)
-    if row.is_empty() {
+    // Every column matched by some row: nothing is left.
+    let Some((head, rest)) = row.split_first() else {
         return false;
+    };
+    if let Some((ctor, args)) = Constructor::of(head) {
+        return is_useful_under(matrix, &ctor, args.to_vec(), rest, type_info, registry);
     }
-
-    let head = &row[0];
-    let col_type = type_info.first();
-
-    match head {
-        // Case 3a: Constructor -- specialize by it
-        Pat::Constructor { name, args, .. } => {
-            let ctor = Constructor::Named {
-                name: name.clone(),
-                arity: args.len(),
-            };
-            let spec_matrix = specialize_matrix(matrix, &ctor);
-            let mut spec_row: Vec<Pat> = args.clone();
-            spec_row.extend_from_slice(&row[1..]);
-
-            let inner_type_info = build_specialized_type_info(
-                &spec_matrix,
-                &spec_row,
-                ctor.arity(),
-                &type_info[1..],
-                registry,
-            );
-
-            is_useful_inner(&spec_matrix, &spec_row, &inner_type_info, registry)
-        }
-
-        // Case 3d: Bool literal -- treated as named constructor
-        Pat::Literal {
-            value,
-            ty: LitKind::Bool,
-        } => {
-            let ctor = Constructor::Named {
-                name: value.clone(),
-                arity: 0,
-            };
-            let spec_matrix = specialize_matrix(matrix, &ctor);
-            is_useful_inner(&spec_matrix, &row[1..], &type_info[1..], registry)
-        }
-
-        // Case 3d: Non-bool literal
-        Pat::Literal { value, ty } => {
-            let ctor = Constructor::Literal {
-                value: value.clone(),
-                ty: ty.clone(),
-            };
-            let spec_matrix = specialize_matrix(matrix, &ctor);
-            is_useful_inner(&spec_matrix, &row[1..], &type_info[1..], registry)
-        }
-
-        // Case 3c: Or-pattern -- useful if ANY alternative is useful
-        Pat::Or { alternatives } => alternatives.iter().any(|alt| {
+    if let Pat::Or { alternatives } = head {
+        return alternatives.iter().any(|alt| {
             let mut new_row = vec![alt.clone()];
-            new_row.extend_from_slice(&row[1..]);
-            is_useful_inner(matrix, &new_row, type_info, registry)
-        }),
-
-        // Case 3b: Wildcard
-        Pat::Wildcard => {
-            let all_constructors = all_constructors_for_type(col_type);
-
-            match all_constructors {
-                Some(ctors) => {
-                    // Finite type with known constructors from type_info.
-                    let head_ctors = collect_head_constructors(matrix);
-                    let head_keys: FxHashSet<String> =
-                        head_ctors.iter().map(|c| c.name_key()).collect();
-                    let all_keys: FxHashSet<String> = ctors.iter().map(|c| c.name_key()).collect();
-
-                    if all_keys.iter().all(|k| head_keys.contains(k)) {
-                        // Complete: all constructors covered in matrix.
-                        // Wildcard useful if ANY specialization reveals usefulness.
-                        ctors.iter().any(|c| {
-                            let spec_matrix = specialize_matrix(matrix, c);
-                            let mut spec_row = vec![Pat::Wildcard; c.arity()];
-                            spec_row.extend_from_slice(&row[1..]);
-
-                            let inner_type_info = build_specialized_type_info(
-                                &spec_matrix,
-                                &spec_row,
-                                c.arity(),
-                                &type_info[1..],
-                                registry,
-                            );
-
-                            is_useful_inner(&spec_matrix, &spec_row, &inner_type_info, registry)
-                        })
-                    } else {
-                        // Incomplete: use default matrix.
-                        let def = default_matrix(matrix);
-                        is_useful_inner(&def, &row[1..], &type_info[1..], registry)
-                    }
-                }
-                None => {
-                    // Infinite type: use default matrix.
-                    let def = default_matrix(matrix);
-                    is_useful_inner(&def, &row[1..], &type_info[1..], registry)
-                }
-            }
-        }
+            new_row.extend_from_slice(rest);
+            is_useful(matrix, &new_row, type_info, registry)
+        });
     }
+    // A wildcard. When the rows' heads name every constructor of the
+    // column's type, it is useful if it is under one of them; otherwise
+    // (or for a type of endless values) if it is against the rows headed by
+    // wildcards.
+    let complete = all_constructors_for_type(type_info.first()).filter(|ctors| {
+        let heads: FxHashSet<String> = collect_head_constructors(matrix)
+            .iter()
+            .map(Constructor::name_key)
+            .collect();
+        ctors.iter().all(|ctor| heads.contains(&ctor.name_key()))
+    });
+    match complete {
+        Some(ctors) => ctors.iter().any(|ctor| {
+            let args = vec![Pat::Wildcard; ctor.arity()];
+            is_useful_under(matrix, ctor, args, rest, type_info, registry)
+        }),
+        None => is_useful(&default_matrix(matrix), rest, &type_info[1..], registry),
+    }
+}
+
+/// Whether the row `ctor` applied to `args`, then `rest`, is useful: the
+/// arguments against the matrix specialized by `ctor`.
+fn is_useful_under(
+    matrix: &PatternMatrix,
+    ctor: &Constructor,
+    mut args: Vec<Pat>,
+    rest: &[Pat],
+    type_info: &[TypeInfo],
+    registry: &TypeRegistry,
+) -> bool {
+    let spec_matrix = specialize_matrix(matrix, ctor);
+    args.extend_from_slice(rest);
+    let inner_type_info =
+        build_specialized_type_info(&spec_matrix, &args, ctor.arity(), &type_info[1..], registry);
+    is_useful(&spec_matrix, &args, &inner_type_info, registry)
 }
 
 /// Get all constructors for a type from TypeInfo.
@@ -688,7 +479,7 @@ pub fn check_exhaustiveness(
     let wildcard_row = vec![Pat::Wildcard];
     let type_info = vec![scrutinee_type.clone()];
 
-    if is_useful_inner(&matrix, &wildcard_row, &type_info, registry) {
+    if is_useful(&matrix, &wildcard_row, &type_info, registry) {
         let witnesses = find_witnesses(arms, scrutinee_type, registry);
         Some(witnesses)
     } else {
@@ -725,7 +516,7 @@ pub fn check_redundancy(
         };
         let row = vec![arms[i].clone()];
 
-        if !is_useful_inner(&prior_matrix, &row, &type_info, registry) {
+        if !is_useful(&prior_matrix, &row, &type_info, registry) {
             redundant.push(i);
         }
     }
@@ -773,7 +564,7 @@ fn refine_row(
             for candidate in candidates {
                 let mut trial = row.clone();
                 trial[0] = candidate;
-                if is_useful_inner(matrix, &trial, type_info, registry) {
+                if is_useful(matrix, &trial, type_info, registry) {
                     return refine_row(matrix, trial, type_info, registry, depth - 1);
                 }
             }
@@ -828,25 +619,12 @@ fn refine_row(
 /// The type name to give a witness constructor for a column: the name the
 /// column's own constructor patterns carry, or the list type's for a list.
 fn column_type_name(matrix: &PatternMatrix, variants: &[ConstructorSig]) -> String {
-    matrix
-        .rows
-        .iter()
-        .filter_map(|row| match row.first() {
-            Some(Pat::Constructor { type_name, .. }) if !type_name.is_empty() => {
-                Some(type_name.clone())
-            }
-            _ => None,
-        })
-        .next()
-        .unwrap_or_else(|| {
-            let is_list =
-                variants.iter().any(|v| v.name == CONS) && variants.iter().any(|v| v.name == NIL);
-            if is_list {
-                LIST.to_string()
-            } else {
-                String::new()
-            }
-        })
+    let column = column(matrix.rows.iter().map(Vec::as_slice), 0);
+    match typed_constructor(&column) {
+        Some((type_name, ..)) => type_name.to_string(),
+        None if variants.iter().any(|v| v.name == CONS) => LIST.to_string(),
+        None => String::new(),
+    }
 }
 
 /// Find witness patterns for non-exhaustive match.
@@ -865,7 +643,7 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                 };
                 let type_info = vec![scrutinee_type.clone()];
 
-                if is_useful_inner(
+                if is_useful(
                     &matrix,
                     std::slice::from_ref(&ctor_pat),
                     &type_info,
@@ -893,7 +671,7 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                 };
                 let type_info = vec![scrutinee_type.clone()];
 
-                if is_useful_inner(
+                if is_useful(
                     &matrix,
                     std::slice::from_ref(&lit_pat),
                     &type_info,
@@ -913,6 +691,46 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `is_useful` with a registry of the sum types the patterns name, each
+    /// with the constructors they use.
+    fn is_useful_by_patterns(matrix: &PatternMatrix, row: &[Pat], type_info: &[TypeInfo]) -> bool {
+        fn collect(pat: &Pat, registry: &mut TypeRegistry) {
+            match pat {
+                Pat::Constructor {
+                    name,
+                    type_name,
+                    args,
+                } => {
+                    if !type_name.is_empty() {
+                        let entry = registry.types.entry(type_name.clone()).or_insert_with(|| {
+                            TypeInfo::SumType {
+                                variants: Vec::new(),
+                            }
+                        });
+                        if let TypeInfo::SumType { variants } = entry {
+                            if !variants.iter().any(|v| v.name == *name) {
+                                variants.push(ConstructorSig {
+                                    name: name.clone(),
+                                    arity: args.len(),
+                                });
+                            }
+                        }
+                    }
+                    args.iter().for_each(|arg| collect(arg, registry));
+                }
+                Pat::Or { alternatives } => {
+                    alternatives.iter().for_each(|alt| collect(alt, registry))
+                }
+                Pat::Wildcard | Pat::Literal { .. } => {}
+            }
+        }
+        let mut registry = TypeRegistry::new();
+        for pat in matrix.rows.iter().flatten().chain(row) {
+            collect(pat, &mut registry);
+        }
+        is_useful(matrix, row, type_info, &registry)
+    }
 
     // ── Helper constructors ──────────────────────────────────────────
 
@@ -1006,21 +824,21 @@ mod tests {
     fn test_is_useful_empty_matrix_returns_true() {
         // Any pattern is useful against an empty matrix
         let m = matrix(vec![]);
-        assert!(is_useful(&m, &[wildcard()], &[int_type()]));
+        assert!(is_useful_by_patterns(&m, &[wildcard()], &[int_type()]));
     }
 
     #[test]
     fn test_is_useful_empty_row_returns_false() {
         // No more columns to match -- row is not useful
         let m = matrix(vec![vec![]]);
-        assert!(!is_useful(&m, &[], &[]));
+        assert!(!is_useful_by_patterns(&m, &[], &[]));
     }
 
     #[test]
     fn test_is_useful_empty_matrix_empty_row_returns_true() {
         // 0 rows, 0 columns: pattern is useful (no existing coverage)
         let m = matrix(vec![]);
-        assert!(is_useful(&m, &[], &[]));
+        assert!(is_useful_by_patterns(&m, &[], &[]));
     }
 
     // ── Bool exhaustiveness ──────────────────────────────────────────
@@ -1263,7 +1081,7 @@ mod tests {
     fn test_is_useful_constructor_against_different_constructor() {
         // Matrix has Circle(_), testing Point -- should be useful
         let m = matrix(vec![vec![ctor("Circle", "Shape", vec![wildcard()])]]);
-        assert!(is_useful(
+        assert!(is_useful_by_patterns(
             &m,
             &[ctor("Point", "Shape", vec![])],
             &[shape_type()],
@@ -1274,7 +1092,7 @@ mod tests {
     fn test_is_useful_constructor_against_same_constructor() {
         // Matrix has Circle(_), testing Circle(_) -- NOT useful
         let m = matrix(vec![vec![ctor("Circle", "Shape", vec![wildcard()])]]);
-        assert!(!is_useful(
+        assert!(!is_useful_by_patterns(
             &m,
             &[ctor("Circle", "Shape", vec![wildcard()])],
             &[shape_type()],
@@ -1288,14 +1106,14 @@ mod tests {
             vec![ctor("Circle", "Shape", vec![wildcard()])],
             vec![ctor("Point", "Shape", vec![])],
         ]);
-        assert!(!is_useful(&m, &[wildcard()], &[shape_type()]));
+        assert!(!is_useful_by_patterns(&m, &[wildcard()], &[shape_type()]));
     }
 
     #[test]
     fn test_is_useful_wildcard_after_partial_constructors() {
         // Matrix has [Circle(_)], testing _ -- useful (Point not covered)
         let m = matrix(vec![vec![ctor("Circle", "Shape", vec![wildcard()])]]);
-        assert!(is_useful(&m, &[wildcard()], &[shape_type()]));
+        assert!(is_useful_by_patterns(&m, &[wildcard()], &[shape_type()]));
     }
 
     // ── is_useful with literals ──────────────────────────────────────
@@ -1304,14 +1122,14 @@ mod tests {
     fn test_is_useful_new_literal_value() {
         // Matrix has [1], testing 2 -- useful
         let m = matrix(vec![vec![lit_int(1)]]);
-        assert!(is_useful(&m, &[lit_int(2)], &[int_type()]));
+        assert!(is_useful_by_patterns(&m, &[lit_int(2)], &[int_type()]));
     }
 
     #[test]
     fn test_is_useful_duplicate_literal_value() {
         // Matrix has [1], testing 1 -- NOT useful
         let m = matrix(vec![vec![lit_int(1)]]);
-        assert!(!is_useful(&m, &[lit_int(1)], &[int_type()]));
+        assert!(!is_useful_by_patterns(&m, &[lit_int(1)], &[int_type()]));
     }
 
     // ── Multi-column patterns ────────────────────────────────────────
@@ -1324,7 +1142,7 @@ mod tests {
             vec![lit_bool(true), lit_bool(true)],
             vec![lit_bool(false), lit_bool(false)],
         ]);
-        assert!(is_useful(
+        assert!(is_useful_by_patterns(
             &m,
             &[lit_bool(true), lit_bool(false)],
             &[bool_type(), bool_type()],
@@ -1339,7 +1157,7 @@ mod tests {
             vec![lit_bool(true), wildcard()],
             vec![lit_bool(false), wildcard()],
         ]);
-        assert!(!is_useful(
+        assert!(!is_useful_by_patterns(
             &m,
             &[lit_bool(true), lit_bool(true)],
             &[bool_type(), bool_type()],
@@ -1497,7 +1315,7 @@ mod tests {
         ]);
         // For this test, is_useful builds registry from patterns.
         // Patterns mention Circle and Point for Shape, so registry is complete.
-        let result = is_useful(
+        let result = is_useful_by_patterns(
             &m,
             &[ctor("Some", "Option", vec![ctor("Point", "Shape", vec![])])],
             &[option_shape_type()],
