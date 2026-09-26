@@ -243,44 +243,43 @@ fn origin_span(origin: &ConstraintOrigin) -> Option<Range<usize>> {
 
 // ── Fix Suggestions ────────────────────────────────────────────────────
 
-/// Generate a fix suggestion based on expected and found types.
-fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<String> {
-    let exp_str = format!("{}", expected);
-    let found_str = format!("{}", found);
-
-    if exp_str.starts_with("Option<") {
-        let inner = &exp_str[7..exp_str.len() - 1];
-        if found_str == inner {
-            return Some("wrap in Some(...)".to_string());
+/// How to turn a value of type `found` into the `expected` one, both as a
+/// diagnostic shows them (`Ty::with_holes`).
+fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<&'static str> {
+    let first_arg_of = |name: &str| match expected {
+        Ty::App(con, args) if matches!(con.as_ref(), Ty::Con(c) if c.name == name) => {
+            args.first()
         }
+        _ => None,
+    };
+    if first_arg_of("Option").is_some_and(|inner| could_be(inner, found)) {
+        return Some("wrap in Some(...)");
     }
+    if first_arg_of("Result").is_some_and(|ok| could_be(ok, found)) {
+        return Some("wrap in Ok(...)");
+    }
+    match (expected.to_string().as_str(), found.to_string().as_str()) {
+        ("Int", "Float") => Some("convert it with `Float.to_int(...)`"),
+        ("Float", "Int") => Some("convert it with `Int.to_float(...)`"),
+        ("String", "Int" | "Float") => Some("use to_string()"),
+        ("Bool", _) => Some("expected a boolean expression"),
+        _ => None,
+    }
+}
 
-    if exp_str.starts_with("Result<") {
-        if let Some(comma_pos) = exp_str.find(',') {
-            let inner = &exp_str[7..comma_pos];
-            if found_str == inner.trim() {
-                return Some("wrap in Ok(...)".to_string());
-            }
+/// Whether `a` and `b`, as a diagnostic shows them, could be one type: the
+/// same where neither has a hole (`_`, a part inference did not settle).
+fn could_be(a: &Ty, b: &Ty) -> bool {
+    let hole = |ty: &Ty| matches!(ty, Ty::Con(c) if c.name == "_");
+    match (a, b) {
+        _ if hole(a) || hole(b) => true,
+        (Ty::App(..), Ty::App(..)) | (Ty::Fun(..), Ty::Fun(..)) | (Ty::Tuple(_), Ty::Tuple(_)) => {
+            a.parts().count() == b.parts().count()
+                && a.parts().zip(b.parts()).all(|(a, b)| could_be(a, b))
         }
+        // `Point` is `Point` with no type arguments.
+        _ => a.to_string() == b.to_string(),
     }
-
-    if exp_str == "Int" && found_str == "Float" {
-        return Some("convert it with `Float.to_int(...)`".to_string());
-    }
-    if exp_str == "Float" && found_str == "Int" {
-        return Some("convert it with `Int.to_float(...)`".to_string());
-    }
-    if exp_str == "String" && found_str == "Int" {
-        return Some("use to_string()".to_string());
-    }
-    if exp_str == "String" && found_str == "Float" {
-        return Some("use to_string()".to_string());
-    }
-    if exp_str == "Bool" && found_str != "Bool" {
-        return Some("expected a boolean expression".to_string());
-    }
-
-    None
 }
 
 /// Generate a fix suggestion for non-type-mismatch errors.
@@ -1635,6 +1634,61 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&render_json_diagnostic(&error, source, "m.mpl", None)).unwrap();
         assert_eq!(json["spans"][0]["end"], source.len(), "{json}");
+    }
+
+    /// A mismatch suggests how to turn the value found into the one
+    /// expected. `Ok(...)` was not suggested for a `Result` whose value type
+    /// has a comma in it (`Map<String, Int>`) or a part not settled yet.
+    #[test]
+    fn mismatches_suggest_the_conversion_they_need() {
+        let con = |name: &str| Ty::Con(crate::ty::TyCon::new(name));
+        let map = |k: Ty, v: Ty| Ty::map(k, v);
+        let cases = [
+            (Ty::option(Ty::int()), Ty::int(), Some("wrap in Some(...)")),
+            (Ty::option(Ty::int()), Ty::string(), None),
+            (
+                Ty::result(map(Ty::string(), Ty::int()), Ty::string()),
+                map(con("_"), con("_")),
+                Some("wrap in Ok(...)"),
+            ),
+            (
+                Ty::result(Ty::Tuple(vec![Ty::int()]), Ty::string()),
+                Ty::Tuple(vec![Ty::int(), Ty::int()]),
+                None,
+            ),
+            (
+                Ty::result(Ty::struct_ty("Point", vec![]), Ty::string()),
+                con("Point"),
+                Some("wrap in Ok(...)"),
+            ),
+            (Ty::int(), Ty::float(), Some("convert it with `Float.to_int(...)`")),
+            (Ty::float(), Ty::int(), Some("convert it with `Int.to_float(...)`")),
+            (Ty::string(), Ty::int(), Some("use to_string()")),
+            (Ty::string(), Ty::float(), Some("use to_string()")),
+            (Ty::bool(), Ty::int(), Some("expected a boolean expression")),
+            (Ty::string(), Ty::bool(), None),
+        ];
+        for (expected, found, suggestion) in cases {
+            assert_eq!(
+                fix_suggestion(&expected, &found),
+                suggestion,
+                "{expected} / {found}"
+            );
+        }
+    }
+
+    /// A span ariadne can underline: on character boundaries, inside the
+    /// source, and at least one character wide.
+    #[test]
+    fn report_spans_are_whole_characters_inside_the_source() {
+        let source = "é = 1\n";
+        // Inside the two bytes of `é`: the character.
+        assert_eq!(report_span(source, 1..1), 0..2);
+        assert_eq!(report_span(source, 1..4), 0..4);
+        // Empty: the character there, or the last one at the end.
+        assert_eq!(report_span(source, 3..3), 3..4);
+        assert_eq!(report_span(source, 7..9), 6..7);
+        assert_eq!(report_span("", 0..0), 0..0);
     }
 
     #[test]
