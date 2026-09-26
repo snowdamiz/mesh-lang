@@ -1328,7 +1328,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
             Description::error(range, "this pattern")
                 .with_help(
-                    "use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns",
+                    "use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns",
                 )
         }
         TypeError::DuplicateField { span, .. } => {

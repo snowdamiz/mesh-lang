@@ -1287,6 +1287,33 @@ end
     );
 }
 
+/// A `for` loop's pattern is checked as a `let`'s is, and its errors say
+/// so: each was an "invalid let destructuring pattern" of "let binders".
+#[test]
+fn a_for_loops_pattern_is_checked_as_a_lets() {
+    assert_eq!(
+        errors(
+            r#"
+fn repeated() do
+  for (a, a) in [(1, 2)] do
+    a
+  end
+end
+
+fn refutable() do
+  for (1, b) in [(1, 2)] do
+    b
+  end
+end
+"#
+        ),
+        [
+            "invalid destructuring pattern: the names a pattern binds must be unique; `a` is repeated",
+            "invalid destructuring pattern: a `let` or `for` pattern must match every value (use `case` to match some)",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

@@ -591,16 +591,16 @@ expression: rendered
 ───╯
 {"code":"E0055","severity":"error","message":"invalid exported function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this declaration"}],"fix":"use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`"}
 
-[E0054] Error: invalid let destructuring pattern: reason
+[E0054] Error: invalid destructuring pattern: reason
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── this pattern
    │
-   │ Help: use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns
+   │ Help: use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns
 ───╯
-{"code":"E0054","severity":"error","message":"invalid let destructuring pattern: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern"}],"fix":"use only lowercase binders, `_`, and tuple patterns; use `case` for refutable patterns"}
+{"code":"E0054","severity":"error","message":"invalid destructuring pattern: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern"}],"fix":"use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns"}
 
 [E0056] Error: this arm has no `->` and its pattern is not a value: reason
    ╭─[ main.mpl:2:7 ]

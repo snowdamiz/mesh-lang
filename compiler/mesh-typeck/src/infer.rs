@@ -7858,14 +7858,17 @@ fn validate_let_destructuring_element(
             let binder = name.trim_start_matches('_');
             if !binder.chars().next().is_some_and(char::is_lowercase) {
                 return Err(TypeError::InvalidLetPattern {
-                    reason: "let binders must start with a lowercase letter".to_string(),
+                    reason: "the names a pattern binds must start with a lowercase letter"
+                        .to_string(),
                     span: identifier.syntax().text_range(),
                 });
             }
 
             if !binders.insert(name.clone()) {
                 return Err(TypeError::InvalidLetPattern {
-                    reason: format!("let binders must be unique; `{name}` is repeated"),
+                    reason: format!(
+                        "the names a pattern binds must be unique; `{name}` is repeated"
+                    ),
                     span: identifier.syntax().text_range(),
                 });
             }
@@ -7873,7 +7876,8 @@ fn validate_let_destructuring_element(
             Ok(())
         }
         _ => Err(TypeError::InvalidLetPattern {
-            reason: "a `let` pattern must match every value (use `case` to match some)".to_string(),
+            reason: "a `let` or `for` pattern must match every value (use `case` to match some)"
+                .to_string(),
             span: pattern.syntax().text_range(),
         }),
     }

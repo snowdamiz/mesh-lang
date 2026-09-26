@@ -1106,7 +1106,7 @@ impl fmt::Display for TypeError {
                 write!(f, "invalid exported function declaration: {reason}")
             }
             TypeError::InvalidLetPattern { reason, .. } => {
-                write!(f, "invalid let destructuring pattern: {reason}")
+                write!(f, "invalid destructuring pattern: {reason}")
             }
             TypeError::UnboundedTypeParam {
                 param, trait_name, ..
