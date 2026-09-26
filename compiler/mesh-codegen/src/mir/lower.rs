@@ -1531,9 +1531,8 @@ impl<'a> Lowerer<'a> {
     /// At call sites like `HTTP.use(r, pass)` the typeck resolves the `pass`
     /// identifier to the instantiated concrete type (e.g. `Fn(Request, …)->Response`)
     /// even when the function definition's own parameter types were generalized away
-    /// as Ty::Var before the call site was processed.  We collect these usage types
-    /// so that `resolve_param_from_usage` can recover the correct MIR type for
-    /// parameters that would otherwise fall back to MirType::Unit.
+    /// as Ty::Var before the call site was processed. A generic function is
+    /// specialized at each of these types.
     fn build_fn_value_usage_types(
         &self,
         root: &mesh_parser::SyntaxNode,
@@ -1592,23 +1591,6 @@ impl<'a> Lowerer<'a> {
             types.extend(self.alias_use_types(&use_ref));
         }
         types
-    }
-
-    /// Try to recover a concrete MIR type for the parameter at position `param_idx`
-    /// of function `fn_name` by inspecting usage-site types collected in
-    /// `fn_value_usage_types`.  Returns `None` if no concrete type can be found.
-    fn resolve_param_from_usage(&self, fn_name: &str, param_idx: usize) -> Option<MirType> {
-        for usage_ty in self.fn_value_usage_types.get(fn_name)?.iter() {
-            if let Ty::Fun(usage_params, _) = usage_ty {
-                if let Some(specific_ty) = usage_params.get(param_idx) {
-                    let mir = resolve_type(specific_ty, self.registry);
-                    if mir != MirType::Unit {
-                        return Some(mir);
-                    }
-                }
-            }
-        }
-        None
     }
 
     /// Add the specializations generic functions need because other code
@@ -5112,41 +5094,24 @@ impl<'a> Lowerer<'a> {
         if let (true, Some(param_list)) = (matched, fn_def.param_list()) {
             for (param_idx, _) in param_list.params().enumerate() {
                 let param_name = format!("__param_{param_idx}");
-                let mut mir_ty = param_srcs
-                    .get(param_idx)
-                    .map(|ty| resolve_type(ty, self.registry))
-                    .unwrap_or(MirType::Unit);
-                if mir_ty == MirType::Unit
-                    && matches!(param_srcs.get(param_idx), Some(Ty::Var(_)) | None)
-                {
-                    if let Some(recovered) = self.resolve_param_from_usage(original_name, param_idx)
-                    {
-                        mir_ty = recovered;
-                    }
-                }
-                let mir_ty = runtime_value_type(mir_ty);
+                let mir_ty = runtime_value_type(
+                    param_srcs
+                        .get(param_idx)
+                        .map(|ty| resolve_type(ty, self.registry))
+                        .unwrap_or(MirType::Unit),
+                );
                 self.insert_var(param_name.clone(), mir_ty.clone());
                 params.push((param_name, mir_ty));
             }
         } else if let Some(param_list) = fn_def.param_list() {
             let param_ty_source = concrete_fn_ty.or(fn_ty_raw);
             if let Some(Ty::Fun(param_tys, _)) = param_ty_source {
-                for (param_idx, (param, param_ty)) in
-                    param_list.params().zip(param_tys.iter()).enumerate()
-                {
+                for (param, param_ty) in param_list.params().zip(param_tys.iter()) {
                     let param_name = param
                         .name()
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string());
-                    let mut mir_ty = resolve_type(param_ty, self.registry);
-                    if mir_ty == MirType::Unit && matches!(param_ty, Ty::Var(_)) {
-                        if let Some(recovered) =
-                            self.resolve_param_from_usage(original_name, param_idx)
-                        {
-                            mir_ty = recovered;
-                        }
-                    }
-                    let mir_ty = runtime_value_type(mir_ty);
+                    let mir_ty = runtime_value_type(resolve_type(param_ty, self.registry));
                     self.insert_var(param_name.clone(), mir_ty.clone());
                     if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
                         owned_resource_params.push((param_name.clone(), ty));
