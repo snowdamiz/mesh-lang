@@ -1500,6 +1500,37 @@ end
     );
 }
 
+/// A generic type names its derived methods as any type does, for a
+/// value of the type with any arguments: `Box.to_json(b)`, `Maybe.eq(a,
+/// b)` and `Box.from_json(s)`.
+#[test]
+fn a_generic_type_names_its_methods() {
+    assert_clean(
+        r#"
+struct Box<T> do
+  item :: T
+end deriving(Json, Eq)
+
+type Maybe<T> do
+  Just(T)
+  Nothing
+end deriving(Eq)
+
+fn encoded(b :: Box<Int>) -> String do
+  Box.to_json(b)
+end
+
+fn same(a :: Maybe<Int>, b :: Maybe<Int>) -> Bool do
+  Maybe.eq(a, b)
+end
+
+fn decoded(s :: String) do
+  Box.from_json(s)
+end
+"#,
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

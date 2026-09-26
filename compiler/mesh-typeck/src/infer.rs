@@ -6528,12 +6528,7 @@ fn check_impl_header(
     // Registered for the bare type, the impl was accepted but no value
     // (`Box<Int>`, `Option<Int>`) ever had its methods.
     let generic = matches!(ty.text(), "List" | "Map" | "Set")
-        || type_registry
-            .lookup_struct(ty.text())
-            .is_some_and(|info| !info.generic_params.is_empty())
-        || type_registry
-            .lookup_sum_type(ty.text())
-            .is_some_and(|info| !info.generic_params.is_empty());
+        || declared_param_count(type_registry, ty.text()).is_some_and(|count| count > 0);
     if generic {
         ctx.errors.push(TypeError::GenericImplTarget {
             name: ty.text().to_string(),
@@ -8731,24 +8726,8 @@ fn type_qualified_method(
     method: &str,
     span: TextRange,
 ) -> Result<Ty, TypeError> {
-    let generic_count = type_registry
-        .lookup_struct(type_name)
-        .map(|info| info.generic_params.len())
-        .or_else(|| {
-            type_registry
-                .lookup_sum_type(type_name)
-                .map(|info| info.generic_params.len())
-        })
-        .unwrap_or(0);
-    let con = Ty::Con(TyCon::new(type_name));
-    let ty = if generic_count == 0 {
-        con
-    } else {
-        Ty::App(
-            Box::new(con),
-            (0..generic_count).map(|_| ctx.fresh_var()).collect(),
-        )
-    };
+    let params = declared_param_count(type_registry, type_name).unwrap_or(0);
+    let ty = with_unknown_args(ctx, Ty::Con(TyCon::new(type_name)), params);
     let traits = trait_registry.find_method_traits(method, &ty);
     if traits.len() > 1 {
         let err = TypeError::AmbiguousMethod {
@@ -12032,23 +12011,8 @@ fn infer_field_access(
         // (`Box.from_json` gives `Box<_>`), and a struct's `from_row`.
         let named = Ty::Con(TyCon::new(&base_name));
         if field_name == "from_json" {
-            let params = type_registry
-                .lookup_struct(&base_name)
-                .map(|info| info.generic_params.len())
-                .or_else(|| {
-                    type_registry
-                        .lookup_sum_type(&base_name)
-                        .map(|info| info.generic_params.len())
-                });
-            if let Some(params) = params {
-                let decoded = if params == 0 {
-                    named.clone()
-                } else {
-                    Ty::App(
-                        Box::new(named.clone()),
-                        (0..params).map(|_| ctx.fresh_var()).collect(),
-                    )
-                };
+            if let Some(params) = declared_param_count(type_registry, &base_name) {
+                let decoded = with_unknown_args(ctx, named.clone(), params);
                 if trait_registry.has_impl("FromJson", &named)
                     || trait_registry.has_impl("FromJson", &decoded)
                 {
@@ -14931,20 +14895,33 @@ fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
     match name {
         "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" | "Channel" => Some(1),
         "Map" | "Result" => Some(2),
-        _ => type_registry
-            .lookup_struct(name)
-            .map(|def| def.generic_params.len())
-            .or_else(|| {
-                type_registry
-                    .lookup_sum_type(name)
-                    .map(|def| def.generic_params.len())
-            })
-            .or_else(|| {
-                type_registry
-                    .lookup_alias(name)
-                    .map(|alias| alias.generic_params.len())
-            }),
+        _ => declared_param_count(type_registry, name).or_else(|| {
+            type_registry
+                .lookup_alias(name)
+                .map(|alias| alias.generic_params.len())
+        }),
     }
+}
+
+/// How many type parameters the struct or sum type `name` declares.
+fn declared_param_count(type_registry: &TypeRegistry, name: &str) -> Option<usize> {
+    type_registry
+        .lookup_struct(name)
+        .map(|def| def.generic_params.len())
+        .or_else(|| {
+            type_registry
+                .lookup_sum_type(name)
+                .map(|def| def.generic_params.len())
+        })
+}
+
+/// The type constructor `con` applied to `count` arguments not known yet,
+/// or `con` itself when it takes none.
+fn with_unknown_args(ctx: &mut InferCtx, con: Ty, count: usize) -> Ty {
+    if count == 0 {
+        return con;
+    }
+    Ty::App(Box::new(con), (0..count).map(|_| ctx.fresh_var()).collect())
 }
 
 /// The first type in `ty` named with another number of type arguments than
