@@ -800,32 +800,35 @@ impl<'ctx> CodeGen<'ctx> {
         let lhs_val = self.codegen_expr(lhs)?;
         let rhs_val = self.codegen_expr(rhs)?;
 
-        let lhs_ty = lhs.ty();
-
         // Concat operator: list ++ or string ++
         if matches!(op, BinOp::Concat) {
-            if matches!(lhs_ty, MirType::Ptr) {
-                return self.codegen_list_concat(lhs_val, rhs_val);
-            }
-            return self.codegen_string_concat(lhs_val, rhs_val);
+            let (function, name) = match lhs.ty() {
+                MirType::Ptr => ("mesh_list_concat", "list_concat"),
+                _ => ("mesh_string_concat", "concat"),
+            };
+            return self.codegen_runtime_call(function, &[lhs_val.into(), rhs_val.into()], name);
         }
 
-        // String equality and ordering
-        if matches!(lhs_ty, MirType::String)
-            && matches!(
-                op,
-                BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq
-            )
-        {
-            return self.codegen_string_compare(op, lhs_val, rhs_val);
-        }
-
-        match lhs_ty {
+        // Anything else is arithmetic or a comparison.
+        match lhs.ty() {
             // A PID is its integer.
             MirType::Int | MirType::Pid(_) => self.codegen_int_binop(op, lhs_val, rhs_val),
             MirType::Float => self.codegen_float_binop(op, lhs_val, rhs_val),
-            MirType::Bool => self.codegen_bool_binop(op, lhs_val, rhs_val),
-            _ => Err(format!("Unsupported binop type: {:?}", lhs_ty)),
+            MirType::Bool => {
+                // false < true: the bits compare unsigned.
+                let predicate = int_predicate(op, false);
+                self.builder
+                    .build_int_compare(
+                        predicate,
+                        lhs_val.into_int_value(),
+                        rhs_val.into_int_value(),
+                        "bcmp",
+                    )
+                    .map(Into::into)
+                    .map_err(|e| e.to_string())
+            }
+            MirType::String => self.codegen_string_compare(op, lhs_val, rhs_val),
+            other => Err(format!("Unsupported binop type: {:?}", other)),
         }
     }
 
@@ -853,57 +856,16 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let l = lhs.into_int_value();
         let r = rhs.into_int_value();
-
-        let result: BasicValueEnum<'ctx> = match op {
-            BinOp::Add => self
+        let result = match op {
+            BinOp::Add => self.builder.build_int_add(l, r, "add"),
+            BinOp::Sub => self.builder.build_int_sub(l, r, "sub"),
+            BinOp::Mul => self.builder.build_int_mul(l, r, "mul"),
+            BinOp::Div | BinOp::Mod => return Ok(self.codegen_int_div(op, l, r)?.into()),
+            _ => self
                 .builder
-                .build_int_add(l, r, "add")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Sub => self
-                .builder
-                .build_int_sub(l, r, "sub")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Mul => self
-                .builder
-                .build_int_mul(l, r, "mul")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Div | BinOp::Mod => self.codegen_int_div(op, l, r)?.into(),
-            BinOp::Eq => self
-                .builder
-                .build_int_compare(IntPredicate::EQ, l, r, "eq")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::NotEq => self
-                .builder
-                .build_int_compare(IntPredicate::NE, l, r, "ne")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Lt => self
-                .builder
-                .build_int_compare(IntPredicate::SLT, l, r, "lt")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Gt => self
-                .builder
-                .build_int_compare(IntPredicate::SGT, l, r, "gt")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::LtEq => self
-                .builder
-                .build_int_compare(IntPredicate::SLE, l, r, "le")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::GtEq => self
-                .builder
-                .build_int_compare(IntPredicate::SGE, l, r, "ge")
-                .map_err(|e| e.to_string())?
-                .into(),
-            _ => return Err(format!("Unsupported int binop: {:?}", op)),
+                .build_int_compare(int_predicate(op, true), l, r, "cmp"),
         };
-        Ok(result)
+        result.map(Into::into).map_err(|e| e.to_string())
     }
 
     fn codegen_float_binop(
@@ -914,106 +876,29 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let l = lhs.into_float_value();
         let r = rhs.into_float_value();
-
-        let result: BasicValueEnum<'ctx> = match op {
-            BinOp::Add => self
-                .builder
-                .build_float_add(l, r, "fadd")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Sub => self
-                .builder
-                .build_float_sub(l, r, "fsub")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Mul => self
-                .builder
-                .build_float_mul(l, r, "fmul")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Div => self
-                .builder
-                .build_float_div(l, r, "fdiv")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Mod => self
-                .builder
-                .build_float_rem(l, r, "fmod")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Eq => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::OEQ, l, r, "feq")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::NotEq => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::UNE, l, r, "fne")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Lt => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::OLT, l, r, "flt")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::Gt => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::OGT, l, r, "fgt")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::LtEq => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::OLE, l, r, "fle")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::GtEq => self
-                .builder
-                .build_float_compare(inkwell::FloatPredicate::OGE, l, r, "fge")
-                .map_err(|e| e.to_string())?
-                .into(),
-            _ => return Err(format!("Unsupported float binop: {:?}", op)),
-        };
-        Ok(result)
-    }
-
-    fn codegen_bool_binop(
-        &mut self,
-        op: &BinOp,
-        lhs: BasicValueEnum<'ctx>,
-        rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let l = lhs.into_int_value();
-        let r = rhs.into_int_value();
-
-        let result: BasicValueEnum<'ctx> = match op {
-            BinOp::Eq => self
-                .builder
-                .build_int_compare(IntPredicate::EQ, l, r, "beq")
-                .map_err(|e| e.to_string())?
-                .into(),
-            BinOp::NotEq => self
-                .builder
-                .build_int_compare(IntPredicate::NE, l, r, "bne")
-                .map_err(|e| e.to_string())?
-                .into(),
-            // false < true: the bits compare unsigned.
-            BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+        let result: Result<BasicValueEnum<'ctx>, _> = match op {
+            BinOp::Add => self.builder.build_float_add(l, r, "fadd").map(Into::into),
+            BinOp::Sub => self.builder.build_float_sub(l, r, "fsub").map(Into::into),
+            BinOp::Mul => self.builder.build_float_mul(l, r, "fmul").map(Into::into),
+            BinOp::Div => self.builder.build_float_div(l, r, "fdiv").map(Into::into),
+            BinOp::Mod => self.builder.build_float_rem(l, r, "fmod").map(Into::into),
+            _ => {
+                use inkwell::FloatPredicate::*;
                 let predicate = match op {
-                    BinOp::Lt => IntPredicate::ULT,
-                    BinOp::Gt => IntPredicate::UGT,
-                    BinOp::LtEq => IntPredicate::ULE,
-                    _ => IntPredicate::UGE,
+                    BinOp::Eq => OEQ,
+                    BinOp::NotEq => UNE,
+                    BinOp::Lt => OLT,
+                    BinOp::Gt => OGT,
+                    BinOp::LtEq => OLE,
+                    _ => OGE,
                 };
                 self.builder
-                    .build_int_compare(predicate, l, r, "bcmp")
-                    .map_err(|e| e.to_string())?
-                    .into()
+                    .build_float_compare(predicate, l, r, "fcmp")
+                    .map(Into::into)
             }
-            _ => return Err(format!("Unsupported bool binop: {:?}", op)),
         };
-        Ok(result)
+        result.map_err(|e| e.to_string())
     }
-
     fn codegen_short_circuit_and(
         &mut self,
         lhs: &MirExpr,
@@ -1089,121 +974,38 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
-    fn codegen_string_concat(
-        &mut self,
-        lhs: BasicValueEnum<'ctx>,
-        rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let concat_fn = get_intrinsic(&self.module, "mesh_string_concat");
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-        // Coerce args to ptr if needed (e.g., Unit {} -> null ptr, i64 -> inttoptr)
-        let lhs_coerced: BasicMetadataValueEnum<'ctx> = match lhs {
-            BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0 => {
-                ptr_ty.const_null().into()
-            }
-            BasicValueEnum::IntValue(iv) => self
-                .builder
-                .build_int_to_ptr(iv, ptr_ty, "concat_arg_ptr")
-                .map_err(|e| e.to_string())?
-                .into(),
-            other => other.into(),
-        };
-        let rhs_coerced: BasicMetadataValueEnum<'ctx> = match rhs {
-            BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0 => {
-                ptr_ty.const_null().into()
-            }
-            BasicValueEnum::IntValue(iv) => self
-                .builder
-                .build_int_to_ptr(iv, ptr_ty, "concat_arg_ptr")
-                .map_err(|e| e.to_string())?
-                .into(),
-            other => other.into(),
-        };
-        let result = self
-            .builder
-            .build_call(concat_fn, &[lhs_coerced, rhs_coerced], "concat")
-            .map_err(|e| e.to_string())?;
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_string_concat returned void".to_string())
-    }
-
-    fn codegen_list_concat(
-        &mut self,
-        lhs: BasicValueEnum<'ctx>,
-        rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let concat_fn = get_intrinsic(&self.module, "mesh_list_concat");
-        let result = self
-            .builder
-            .build_call(concat_fn, &[lhs.into(), rhs.into()], "list_concat")
-            .map_err(|e| e.to_string())?;
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_concat returned void".to_string())
-    }
-
     fn codegen_string_compare(
         &mut self,
         op: &BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let ordering = match op {
-            BinOp::Lt => Some(IntPredicate::SLT),
-            BinOp::Gt => Some(IntPredicate::SGT),
-            BinOp::LtEq => Some(IntPredicate::SLE),
-            BinOp::GtEq => Some(IntPredicate::SGE),
-            _ => None,
-        };
-        if let Some(predicate) = ordering {
-            // mesh_string_compare gives -1, 0 or 1: compare that with zero.
-            let compare_fn = get_intrinsic(&self.module, "mesh_string_compare");
-            let order = self
-                .builder
-                .build_call(compare_fn, &[lhs.into(), rhs.into()], "str_cmp")
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or("mesh_string_compare returned void")?
+        let args = [lhs.into(), rhs.into()];
+        if matches!(op, BinOp::Eq | BinOp::NotEq) {
+            // mesh_string_eq gives 1 when equal, 0 when not.
+            let equal = self
+                .codegen_runtime_call("mesh_string_eq", &args, "str_eq")?
                 .into_int_value();
-            let zero = self.context.i64_type().const_zero();
+            let predicate = match op {
+                BinOp::Eq => IntPredicate::NE,
+                _ => IntPredicate::EQ,
+            };
+            let zero = equal.get_type().const_zero();
             return self
                 .builder
-                .build_int_compare(predicate, order, zero, "str_ord")
+                .build_int_compare(predicate, equal, zero, "str_eq_bool")
                 .map(Into::into)
                 .map_err(|e| e.to_string());
         }
-
-        let eq_fn = get_intrinsic(&self.module, "mesh_string_eq");
-        let result = self
-            .builder
-            .build_call(eq_fn, &[lhs.into(), rhs.into()], "str_eq")
-            .map_err(|e| e.to_string())?;
-        let i8_result = result
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_string_eq returned void")?
+        // mesh_string_compare gives -1, 0 or 1: compare that with zero.
+        let order = self
+            .codegen_runtime_call("mesh_string_compare", &args, "str_cmp")?
             .into_int_value();
-
-        let zero = self.context.i8_type().const_int(0, false);
-        let eq_result = self
-            .builder
-            .build_int_compare(IntPredicate::NE, i8_result, zero, "str_eq_bool")
-            .map_err(|e| e.to_string())?;
-
-        let final_result = match op {
-            BinOp::Eq => eq_result,
-            BinOp::NotEq => self
-                .builder
-                .build_not(eq_result, "str_neq")
-                .map_err(|e| e.to_string())?,
-            _ => return Err(format!("Unsupported string comparison: {:?}", op)),
-        };
-
-        Ok(final_result.into())
+        let zero = order.get_type().const_zero();
+        self.builder
+            .build_int_compare(int_predicate(op, true), order, zero, "str_ord")
+            .map(Into::into)
+            .map_err(|e| e.to_string())
     }
 
     // ── Unary operations ─────────────────────────────────────────────
@@ -6521,6 +6323,25 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(ptr_ty, result_alloca, "forin_result")
             .map_err(|e| e.to_string())?;
         Ok(final_result)
+    }
+}
+
+/// The predicate of the comparison `op` (`==`, `!=`, `<`, `>`, `<=` or `>=`)
+/// on signed or unsigned integers.
+fn int_predicate(op: &BinOp, signed: bool) -> IntPredicate {
+    use IntPredicate::*;
+    let (signed_predicate, unsigned_predicate) = match op {
+        BinOp::Eq => (EQ, EQ),
+        BinOp::NotEq => (NE, NE),
+        BinOp::Lt => (SLT, ULT),
+        BinOp::Gt => (SGT, UGT),
+        BinOp::LtEq => (SLE, ULE),
+        _ => (SGE, UGE),
+    };
+    if signed {
+        signed_predicate
+    } else {
+        unsigned_predicate
     }
 }
 
