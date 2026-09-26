@@ -211,6 +211,57 @@ end
     );
 }
 
+/// What a generic function's body makes of an associated type (`c.first()
+/// + 1` makes it an `Int`) each call requires of the receiver it gives.
+#[test]
+fn a_generic_bodys_use_of_an_associated_type_holds_at_each_call() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+
+struct Label do
+  text :: String
+end
+
+impl Container for Label do
+  type Item = String
+  fn first(self) -> String do
+    self.text
+  end
+end
+
+struct Box do
+  v :: Int
+end
+
+impl Container for Box do
+  type Item = Int
+  fn first(self) -> Int do
+    self.v
+  end
+end
+
+fn plus_one<C>(c :: C) -> Int where C: Container do
+  c.first() + 1
+end
+
+fn main() do
+  plus_one(Box { v: 1 })
+  plus_one(Label { text: "a" })
+end
+"#
+        ),
+        [at(
+            "type mismatch: expected `Int`, found `String`",
+            "plus_one"
+        )]
+    );
+}
+
 /// A generic type named with another number of type arguments than it
 /// takes is reported where it is named, and taken with the right number:
 /// it was an "arity mismatch" at each use of the value, as if a function
