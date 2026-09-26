@@ -194,16 +194,8 @@ impl TypeRegistry {
     pub fn is_resource_type(&self, ty: &Ty) -> bool {
         match ty {
             Ty::Con(con) => self.is_resource_name(&con.name),
-            Ty::App(constructor, arguments) => {
-                self.is_resource_type(constructor)
-                    || arguments
-                        .iter()
-                        .any(|argument| self.is_resource_type(argument))
-            }
-            Ty::Tuple(elements) => elements
-                .iter()
-                .any(|element| self.is_resource_type(element)),
-            Ty::Fun(_, _) | Ty::Var(_) | Ty::Never => false,
+            Ty::Fun(..) => false,
+            _ => ty.parts().any(|part| self.is_resource_type(part)),
         }
     }
 
@@ -6615,12 +6607,7 @@ fn register_struct_def(
 /// Whether a value of type `ty` holds a function, which cannot be compared,
 /// hashed or shown.
 fn holds_function(ty: &Ty) -> bool {
-    match ty {
-        Ty::Fun(..) => true,
-        Ty::App(con, args) => holds_function(con) || args.iter().any(holds_function),
-        Ty::Tuple(elems) => elems.iter().any(holds_function),
-        _ => false,
-    }
+    matches!(ty, Ty::Fun(..)) || ty.parts().any(holds_function)
 }
 
 /// The derives of type `name` once a function-valued field (`fn_field`:
@@ -6866,16 +6853,7 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
 fn type_constructors(ty: &Ty, out: &mut Vec<String>) {
     match ty {
         Ty::Con(tc) => out.push(tc.name.clone()),
-        Ty::App(con, args) => {
-            type_constructors(con, out);
-            args.iter().for_each(|arg| type_constructors(arg, out));
-        }
-        Ty::Fun(params, ret) => {
-            params.iter().for_each(|p| type_constructors(p, out));
-            type_constructors(ret, out);
-        }
-        Ty::Tuple(elems) => elems.iter().for_each(|e| type_constructors(e, out)),
-        _ => {}
+        _ => ty.parts().for_each(|part| type_constructors(part, out)),
     }
 }
 
@@ -15762,41 +15740,22 @@ fn trait_method_type(
     receiver: &Ty,
 ) -> Ty {
     fn subst(ctx: &mut InferCtx, trait_name: &str, ty: &Ty, receiver: &Ty) -> Ty {
-        match ty {
-            Ty::Con(tc) if tc.name == "Self" => receiver.clone(),
-            Ty::Con(tc) if tc.name.starts_with("Self.") => {
-                // Beside the type parameter, so that a `let` holding it keeps
-                // this variable, which specializations bind.
-                let var = ctx.fresh_var_beside(receiver);
-                ctx.assoc_projections.push((
-                    var.clone(),
-                    trait_name.to_string(),
-                    tc.name["Self.".len()..].to_string(),
-                    receiver.clone(),
-                ));
-                var
+        ty.replace_cons(&mut |tc| {
+            if tc.name == "Self" {
+                return Some(receiver.clone());
             }
-            Ty::App(con, args) => Ty::App(
-                Box::new(subst(ctx, trait_name, con, receiver)),
-                args.iter()
-                    .map(|arg| subst(ctx, trait_name, arg, receiver))
-                    .collect(),
-            ),
-            Ty::Fun(params, ret) => Ty::Fun(
-                params
-                    .iter()
-                    .map(|p| subst(ctx, trait_name, p, receiver))
-                    .collect(),
-                Box::new(subst(ctx, trait_name, ret, receiver)),
-            ),
-            Ty::Tuple(elems) => Ty::Tuple(
-                elems
-                    .iter()
-                    .map(|e| subst(ctx, trait_name, e, receiver))
-                    .collect(),
-            ),
-            other => other.clone(),
-        }
+            let assoc = tc.name.strip_prefix("Self.")?;
+            // Beside the type parameter, so that a `let` holding it keeps
+            // this variable, which specializations bind.
+            let var = ctx.fresh_var_beside(receiver);
+            ctx.assoc_projections.push((
+                var.clone(),
+                trait_name.to_string(),
+                assoc.to_string(),
+                receiver.clone(),
+            ));
+            Some(var)
+        })
     }
     let ret = match &sig.return_type {
         Some(ret) => subst(ctx, trait_name, ret, receiver),
@@ -15937,26 +15896,14 @@ fn infer_missing_type_args(ctx: &mut InferCtx, ty: Ty, type_registry: &TypeRegis
             let args = (0..arity).map(|_| ctx.fresh_var()).collect();
             Ty::App(Box::new(Ty::Con(tc)), args)
         }
+        // The constructor of `List<Int>` has its arguments.
         Ty::App(con, args) => Ty::App(
             con,
             args.into_iter()
                 .map(|arg| infer_missing_type_args(ctx, arg, type_registry))
                 .collect(),
         ),
-        Ty::Fun(params, ret) => Ty::Fun(
-            params
-                .into_iter()
-                .map(|param| infer_missing_type_args(ctx, param, type_registry))
-                .collect(),
-            Box::new(infer_missing_type_args(ctx, *ret, type_registry)),
-        ),
-        Ty::Tuple(elems) => Ty::Tuple(
-            elems
-                .into_iter()
-                .map(|elem| infer_missing_type_args(ctx, elem, type_registry))
-                .collect(),
-        ),
-        other => other,
+        other => other.map_parts(|part| infer_missing_type_args(ctx, part.clone(), type_registry)),
     }
 }
 
@@ -16148,65 +16095,24 @@ fn resolve_alias_within(ty: Ty, type_registry: &TypeRegistry, depth: usize) -> T
             }
             Ty::Con(unqualified(tc))
         }
-        Ty::Fun(params, ret) => {
-            let p: Vec<Ty> = params.into_iter().map(&again).collect();
-            Ty::Fun(p, Box::new(again(*ret)))
-        }
-        Ty::Tuple(elems) => Ty::Tuple(elems.into_iter().map(&again).collect()),
-        _ => ty,
+        other => other.map_parts(|part| again(part.clone())),
     }
 }
 
-/// Substitute named type parameters with concrete types.
 /// Replace the function's declared type parameters, which an annotation such
 /// as `List<T>` resolves to plain constructors named `T`, with the inference
 /// variables that stand for them in the body.
 fn with_declared_type_params(ty: &Ty, type_params: &FxHashMap<String, Ty>) -> Ty {
-    if type_params.is_empty() {
-        return ty.clone();
-    }
-    let names: Vec<String> = type_params.keys().cloned().collect();
-    let values: Vec<Ty> = names.iter().map(|name| type_params[name].clone()).collect();
-    substitute_type_params(ty, &names, &values)
+    ty.replace_cons(&mut |tc| type_params.get(&tc.name).cloned())
 }
 
+/// `ty` with each of the type parameters `param_names` that
+/// `param_values` gives a type for replaced by it.
 fn substitute_type_params(ty: &Ty, param_names: &[String], param_values: &[Ty]) -> Ty {
-    match ty {
-        Ty::Con(tc) => {
-            if let Some(idx) = param_names.iter().position(|p| *p == tc.name) {
-                if idx < param_values.len() {
-                    return param_values[idx].clone();
-                }
-            }
-            ty.clone()
-        }
-        Ty::App(con, args) => {
-            let new_con = substitute_type_params(con, param_names, param_values);
-            let new_args: Vec<Ty> = args
-                .iter()
-                .map(|a| substitute_type_params(a, param_names, param_values))
-                .collect();
-            Ty::App(Box::new(new_con), new_args)
-        }
-        Ty::Fun(params, ret) => {
-            let p: Vec<Ty> = params
-                .iter()
-                .map(|p| substitute_type_params(p, param_names, param_values))
-                .collect();
-            Ty::Fun(
-                p,
-                Box::new(substitute_type_params(ret, param_names, param_values)),
-            )
-        }
-        Ty::Tuple(elems) => {
-            let e: Vec<Ty> = elems
-                .iter()
-                .map(|e| substitute_type_params(e, param_names, param_values))
-                .collect();
-            Ty::Tuple(e)
-        }
-        _ => ty.clone(),
-    }
+    ty.replace_cons(&mut |tc| {
+        let index = param_names.iter().position(|name| *name == tc.name)?;
+        param_values.get(index).cloned()
+    })
 }
 
 /// Convert a type name string to a Ty.

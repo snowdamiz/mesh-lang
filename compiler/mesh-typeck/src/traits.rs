@@ -10,12 +10,9 @@ use crate::error::{ConstraintOrigin, TypeError};
 use crate::ty::{Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
-/// Check if a type contains `Self` (e.g., `Ty::Con("Self")` from a `Self.Item` projection).
-///
-/// Used during trait method signature comparison to skip the check when the trait's
-/// return type involves `Self.Item`, which is only resolved at impl level.
 /// Whether `ty` mentions `Self`, an associated type of it (`Self.Item`), or a
 /// type parameter of a generic interface (`T`): what only the impl decides.
+/// Signature comparison skips such a type.
 fn ty_contains_self(ty: &Ty) -> bool {
     match ty {
         Ty::Con(con) => {
@@ -23,10 +20,7 @@ fn ty_contains_self(ty: &Ty) -> bool {
                 || con.name.starts_with("Self.")
                 || (con.name.len() == 1 && con.name.as_bytes()[0].is_ascii_uppercase())
         }
-        Ty::App(base, args) => ty_contains_self(base) || args.iter().any(ty_contains_self),
-        Ty::Fun(params, ret) => params.iter().any(ty_contains_self) || ty_contains_self(ret),
-        Ty::Tuple(elems) => elems.iter().any(ty_contains_self),
-        _ => false,
+        _ => ty.parts().any(ty_contains_self),
     }
 }
 
@@ -773,7 +767,6 @@ impl TraitRegistry {
     }
 }
 
-/// Replace `Self` in an interface signature with the implementing type.
 /// Copy a query type into a private unification table.
 ///
 /// Inference variables in `ty` belong to the caller's table; resolving them
@@ -784,17 +777,17 @@ impl TraitRegistry {
 fn import_vars(ty: &Ty, ctx: &mut InferCtx, map: &mut FxHashMap<TyVar, Ty>) -> Ty {
     match ty {
         Ty::Var(var) => map.entry(*var).or_insert_with(|| ctx.fresh_var()).clone(),
-        Ty::Con(_) | Ty::Never => ty.clone(),
-        Ty::Fun(params, ret) => Ty::Fun(
-            params.iter().map(|p| import_vars(p, ctx, map)).collect(),
-            Box::new(import_vars(ret, ctx, map)),
-        ),
-        Ty::App(con, args) => Ty::App(
-            Box::new(import_vars(con, ctx, map)),
-            args.iter().map(|a| import_vars(a, ctx, map)).collect(),
-        ),
-        Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(|e| import_vars(e, ctx, map)).collect()),
+        _ => ty.map_parts(|part| import_vars(part, ctx, map)),
     }
+}
+
+/// Whether an impl's type constructor `name` stands for a type parameter:
+/// a single uppercase letter that is no declared type, or a name starting
+/// with `'` (the built-in impls name theirs so, and no declared type can
+/// collide with them).
+fn is_type_param(name: &str, nominal: &FxHashSet<String>) -> bool {
+    (name.len() == 1 && name.as_bytes()[0].is_ascii_uppercase() && !nominal.contains(name))
+        || name.starts_with('\'')
 }
 
 /// What a type is headed by, as far as unification can tell heads apart,
@@ -807,11 +800,7 @@ fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
     match ty {
         Ty::Con(c) => {
             let name = c.name.as_str();
-            let param = (name.len() == 1
-                && name.as_bytes()[0].is_ascii_uppercase()
-                && !nominal.contains(name))
-                || name.starts_with('\'');
-            if param {
+            if is_type_param(name, nominal) {
                 return None;
             }
             Some(match name {
@@ -829,21 +818,9 @@ fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
     }
 }
 
-/// Replace type parameters in a type with fresh inference variables.
-///
-/// A `Ty::Con` whose name is a single uppercase ASCII letter (A-Z) is
-/// treated as a type parameter and replaced with a fresh `Ty::Var`.
-/// A local map ensures the same parameter name maps to the same fresh
-/// variable within one freshening pass.
-///
-/// Concrete constructors (Int, Float, String, List, Option, etc.) are
-/// never freshened -- only single-uppercase-letter names are.
-/// A name starting with `'` is always a type parameter: the built-in impls
-/// name theirs so, and no declared type can collide with them.
-///
-/// Like `freshen_type_params`, but also treats the given explicit names
-/// as type parameters (enables multi-character type parameter names like
-/// "Item", "Output", etc.), and never treats a `nominal` name as one.
+/// `ty` with each type parameter (see `is_type_param`, and the explicit
+/// `type_param_names` such as "Item") replaced by a fresh inference
+/// variable, the same one for each use of a name.
 fn freshen_type_params_with_names(
     ty: &Ty,
     ctx: &mut InferCtx,
@@ -851,61 +828,14 @@ fn freshen_type_params_with_names(
     nominal: &FxHashSet<String>,
 ) -> Ty {
     let mut param_map: FxHashMap<String, Ty> = FxHashMap::default();
-    freshen_recursive(ty, ctx, &mut param_map, type_param_names, nominal)
-}
-
-fn freshen_recursive(
-    ty: &Ty,
-    ctx: &mut InferCtx,
-    param_map: &mut FxHashMap<String, Ty>,
-    type_param_names: &[String],
-    nominal: &FxHashSet<String>,
-) -> Ty {
-    match ty {
-        Ty::Con(c) => {
-            // A single uppercase ASCII letter is a type parameter unless it
-            // is a declared type, or the name is in the explicit
-            // type_param_names list.
-            if (c.name.len() == 1
-                && c.name.as_bytes()[0].is_ascii_uppercase()
-                && !nominal.contains(&c.name))
-                || c.name.starts_with('\'')
-                || type_param_names.iter().any(|n| n == &c.name)
-            {
-                param_map
-                    .entry(c.name.clone())
-                    .or_insert_with(|| ctx.fresh_var())
-                    .clone()
-            } else {
-                ty.clone()
-            }
-        }
-        Ty::App(con, args) => {
-            let con_fresh = freshen_recursive(con, ctx, param_map, type_param_names, nominal);
-            let args_fresh: Vec<Ty> = args
-                .iter()
-                .map(|a| freshen_recursive(a, ctx, param_map, type_param_names, nominal))
-                .collect();
-            Ty::App(Box::new(con_fresh), args_fresh)
-        }
-        Ty::Fun(params, ret) => {
-            let params_fresh: Vec<Ty> = params
-                .iter()
-                .map(|p| freshen_recursive(p, ctx, param_map, type_param_names, nominal))
-                .collect();
-            let ret_fresh = freshen_recursive(ret, ctx, param_map, type_param_names, nominal);
-            Ty::Fun(params_fresh, Box::new(ret_fresh))
-        }
-        Ty::Tuple(elems) => {
-            let elems_fresh: Vec<Ty> = elems
-                .iter()
-                .map(|e| freshen_recursive(e, ctx, param_map, type_param_names, nominal))
-                .collect();
-            Ty::Tuple(elems_fresh)
-        }
-        // Ty::Var and Ty::Never are returned as-is.
-        _ => ty.clone(),
-    }
+    ty.replace_cons(&mut |c| {
+        (is_type_param(&c.name, nominal) || type_param_names.contains(&c.name)).then(|| {
+            param_map
+                .entry(c.name.clone())
+                .or_insert_with(|| ctx.fresh_var())
+                .clone()
+        })
+    })
 }
 
 #[cfg(test)]

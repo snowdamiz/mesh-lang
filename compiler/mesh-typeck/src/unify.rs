@@ -65,15 +65,7 @@ pub enum SchemeRequirement {
 fn first_of(ty: &Ty, vars: &[TyVar]) -> Option<TyVar> {
     match ty {
         Ty::Var(var) => vars.contains(var).then_some(*var),
-        Ty::Con(_) | Ty::Never => None,
-        Ty::App(con, args) => {
-            first_of(con, vars).or_else(|| args.iter().find_map(|arg| first_of(arg, vars)))
-        }
-        Ty::Fun(params, ret) => params
-            .iter()
-            .find_map(|param| first_of(param, vars))
-            .or_else(|| first_of(ret, vars)),
-        Ty::Tuple(elems) => elems.iter().find_map(|elem| first_of(elem, vars)),
+        _ => ty.parts().find_map(|part| first_of(part, vars)),
     }
 }
 
@@ -357,16 +349,7 @@ impl InferCtx {
                     self.set_level(v, level);
                 }
             }
-            Ty::Fun(params, ret) => {
-                params.iter().for_each(|p| self.lower_levels(p, level));
-                self.lower_levels(&ret, level);
-            }
-            Ty::App(con, args) => {
-                self.lower_levels(&con, level);
-                args.iter().for_each(|a| self.lower_levels(a, level));
-            }
-            Ty::Tuple(elems) => elems.iter().for_each(|e| self.lower_levels(e, level)),
-            Ty::Con(_) | Ty::Never => {}
+            ty => ty.parts().for_each(|part| self.lower_levels(part, level)),
         }
     }
 
@@ -423,37 +406,6 @@ impl InferCtx {
                 Ty::Tuple(elems)
             }
             other => other,
-        }
-    }
-
-    // ── Occurs Check ────────────────────────────────────────────────────
-
-    /// Check if a type variable occurs anywhere within a type.
-    ///
-    /// This prevents infinite types like `a ~ (a) -> Int` which would
-    /// create the infinite type `(((((...) -> Int) -> Int) -> Int) -> Int)`.
-    pub fn occurs_in(&mut self, var: TyVar, ty: &Ty) -> bool {
-        match ty {
-            Ty::Var(v) => {
-                if *v == var {
-                    return true;
-                }
-                // Follow the union-find to see if this var is bound.
-                let probe = self.table.probe_value(*v);
-                match probe {
-                    Some(inner) => self.occurs_in(var, &inner),
-                    None => false,
-                }
-            }
-            Ty::Con(_) => false,
-            Ty::Fun(params, ret) => {
-                params.iter().any(|p| self.occurs_in(var, p)) || self.occurs_in(var, ret)
-            }
-            Ty::App(con, args) => {
-                self.occurs_in(var, con) || args.iter().any(|a| self.occurs_in(var, a))
-            }
-            Ty::Tuple(elems) => elems.iter().any(|e| self.occurs_in(var, e)),
-            Ty::Never => false,
         }
     }
 
@@ -553,8 +505,9 @@ impl InferCtx {
         Some(self.unify(tail, rest, origin.clone()))
     }
 
-    /// Bind `v` to `ty`, unless `v` occurs in it. `var_expected` says
-    /// whether `v` was the expected side of the unification.
+    /// Bind `v` to `ty`, both resolved, unless `v` occurs in it (`a ~ (a) ->
+    /// Int` is an infinite type). `var_expected` says whether `v` was the
+    /// expected side of the unification.
     fn bind_var(
         &mut self,
         v: TyVar,
@@ -562,7 +515,7 @@ impl InferCtx {
         origin: ConstraintOrigin,
         var_expected: bool,
     ) -> Result<(), TypeError> {
-        if !self.occurs_in(v, &ty) {
+        if first_of(&ty, &[v]).is_none() {
             let level = self.level_of(v);
             self.lower_levels(&ty, level);
             self.table
@@ -604,26 +557,7 @@ impl InferCtx {
                 .rigid_param_name(v)
                 .map(|name| Ty::Con(TyCon::new(name)))
                 .unwrap_or(Ty::Var(v)),
-            Ty::App(con, args) => Ty::App(
-                Box::new(self.with_param_names(*con)),
-                args.into_iter()
-                    .map(|arg| self.with_param_names(arg))
-                    .collect(),
-            ),
-            Ty::Fun(params, ret) => Ty::Fun(
-                params
-                    .into_iter()
-                    .map(|p| self.with_param_names(p))
-                    .collect(),
-                Box::new(self.with_param_names(*ret)),
-            ),
-            Ty::Tuple(elems) => Ty::Tuple(
-                elems
-                    .into_iter()
-                    .map(|e| self.with_param_names(e))
-                    .collect(),
-            ),
-            other => other,
+            other => other.map_parts(|part| self.with_param_names(part.clone())),
         }
     }
 
@@ -859,38 +793,17 @@ impl InferCtx {
     }
 
     /// Collect type variables that can be generalized (level > current_level).
-    fn collect_generalizable_vars(&mut self, ty: &Ty, out: &mut Vec<TyVar>) {
+    /// `ty` is resolved: its variables are unbound.
+    fn collect_generalizable_vars(&self, ty: &Ty, out: &mut Vec<TyVar>) {
         match ty {
             Ty::Var(v) => {
-                let probe = self.table.probe_value(*v);
-                match probe {
-                    Some(inner) => self.collect_generalizable_vars(&inner, out),
-                    None => {
-                        let level = self.var_levels.get(v.0 as usize).copied().unwrap_or(0);
-                        if level > self.current_level {
-                            out.push(*v);
-                        }
-                    }
+                if self.level_of(*v) > self.current_level {
+                    out.push(*v);
                 }
             }
-            Ty::Con(_) | Ty::Never => {}
-            Ty::Fun(params, ret) => {
-                for p in params {
-                    self.collect_generalizable_vars(p, out);
-                }
-                self.collect_generalizable_vars(ret, out);
-            }
-            Ty::App(con, args) => {
-                self.collect_generalizable_vars(con, out);
-                for a in args {
-                    self.collect_generalizable_vars(a, out);
-                }
-            }
-            Ty::Tuple(elems) => {
-                for e in elems {
-                    self.collect_generalizable_vars(e, out);
-                }
-            }
+            _ => ty
+                .parts()
+                .for_each(|part| self.collect_generalizable_vars(part, out)),
         }
     }
 
@@ -1019,30 +932,7 @@ impl InferCtx {
                     }
                 }
             }
-            Ty::Con(_) | Ty::Never => ty.clone(),
-            Ty::Fun(params, ret) => {
-                let params = params
-                    .iter()
-                    .map(|p| self.apply_substitution(p, subst))
-                    .collect();
-                let ret = Box::new(self.apply_substitution(ret, subst));
-                Ty::Fun(params, ret)
-            }
-            Ty::App(con, args) => {
-                let con = Box::new(self.apply_substitution(con, subst));
-                let args = args
-                    .iter()
-                    .map(|a| self.apply_substitution(a, subst))
-                    .collect();
-                Ty::App(con, args)
-            }
-            Ty::Tuple(elems) => {
-                let elems = elems
-                    .iter()
-                    .map(|e| self.apply_substitution(e, subst))
-                    .collect();
-                Ty::Tuple(elems)
-            }
+            _ => ty.map_parts(|part| self.apply_substitution(part, subst)),
         }
     }
 }

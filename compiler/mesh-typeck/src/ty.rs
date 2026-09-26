@@ -96,28 +96,34 @@ pub enum Ty {
 }
 
 impl Ty {
+    /// The types this one is built from, in order: a function's parameters
+    /// and then its result, an application's constructor and then its
+    /// arguments, a tuple's elements.
+    pub fn parts(&self) -> impl Iterator<Item = &Ty> {
+        let (first, middle, last): (Option<&Ty>, &[Ty], Option<&Ty>) = match self {
+            Ty::Fun(params, ret) => (None, params, Some(ret)),
+            Ty::App(con, args) => (Some(con), args, None),
+            Ty::Tuple(elems) => (None, elems, None),
+            Ty::Var(_) | Ty::Con(_) | Ty::Never => (None, &[], None),
+        };
+        first.into_iter().chain(middle).chain(last)
+    }
+
+    /// This type with each of its `parts` replaced by `f` of it.
+    pub fn map_parts(&self, mut f: impl FnMut(&Ty) -> Ty) -> Ty {
+        match self {
+            Ty::Fun(params, ret) => Ty::Fun(params.iter().map(&mut f).collect(), Box::new(f(ret))),
+            Ty::App(con, args) => Ty::App(Box::new(f(con)), args.iter().map(f).collect()),
+            Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(f).collect()),
+            Ty::Var(_) | Ty::Con(_) | Ty::Never => self.clone(),
+        }
+    }
+
     /// This type with each constructor `replace` gives a type for replaced.
     pub fn replace_cons(&self, replace: &mut dyn FnMut(&TyCon) -> Option<Ty>) -> Ty {
         match self {
             Ty::Con(con) => replace(con).unwrap_or_else(|| self.clone()),
-            Ty::App(con, args) => Ty::App(
-                Box::new(con.replace_cons(replace)),
-                args.iter().map(|arg| arg.replace_cons(replace)).collect(),
-            ),
-            Ty::Fun(params, ret) => Ty::Fun(
-                params
-                    .iter()
-                    .map(|param| param.replace_cons(replace))
-                    .collect(),
-                Box::new(ret.replace_cons(replace)),
-            ),
-            Ty::Tuple(elems) => Ty::Tuple(
-                elems
-                    .iter()
-                    .map(|elem| elem.replace_cons(replace))
-                    .collect(),
-            ),
-            Ty::Var(_) | Ty::Never => self.clone(),
+            _ => self.map_parts(|part| part.replace_cons(replace)),
         }
     }
 
@@ -126,16 +132,7 @@ impl Ty {
     pub fn with_holes(&self) -> Ty {
         match self {
             Ty::Var(_) => Ty::Con(TyCon::new("_")),
-            Ty::App(con, args) => Ty::App(
-                Box::new(con.with_holes()),
-                args.iter().map(Ty::with_holes).collect(),
-            ),
-            Ty::Fun(params, ret) => Ty::Fun(
-                params.iter().map(Ty::with_holes).collect(),
-                Box::new(ret.with_holes()),
-            ),
-            Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(Ty::with_holes).collect()),
-            other => other.clone(),
+            _ => self.map_parts(Ty::with_holes),
         }
     }
 
@@ -266,13 +263,7 @@ impl Ty {
 
     /// Whether any inference variable occurs in this type.
     pub fn has_type_vars(&self) -> bool {
-        match self {
-            Ty::Var(_) => true,
-            Ty::Con(_) | Ty::Never => false,
-            Ty::App(con, args) => con.has_type_vars() || args.iter().any(Ty::has_type_vars),
-            Ty::Fun(params, ret) => params.iter().any(Ty::has_type_vars) || ret.has_type_vars(),
-            Ty::Tuple(elems) => elems.iter().any(Ty::has_type_vars),
-        }
+        matches!(self, Ty::Var(_)) || self.parts().any(Ty::has_type_vars)
     }
 
     /// Create an `Option<T>` type.
@@ -387,11 +378,7 @@ impl Ty {
     /// Non-generic structs: `Ty::struct_ty("Point", vec![])` -> `Point`
     /// Generic structs: `Ty::struct_ty("Pair", vec![Ty::int(), Ty::string()])` -> `Pair<Int, String>`
     pub fn struct_ty(name: &str, args: Vec<Ty>) -> Ty {
-        if args.is_empty() {
-            Ty::App(Box::new(Ty::Con(TyCon::new(name))), vec![])
-        } else {
-            Ty::App(Box::new(Ty::Con(TyCon::new(name))), args)
-        }
+        Ty::App(Box::new(Ty::Con(TyCon::new(name))), args)
     }
 }
 
@@ -479,35 +466,16 @@ impl Scheme {
     /// normalization, TyVar IDs from the exporting module would index
     /// out of bounds in the importing module's unification table.
     pub fn normalize_from_ty(ty: Ty) -> Self {
-        let mut seen_vars: Vec<TyVar> = Vec::new();
-        collect_free_tyvars(&ty, &mut seen_vars);
-        if seen_vars.is_empty() {
-            return Scheme {
-                vars: Vec::new(),
-                ty,
-            };
-        }
+        let mut free = Vec::new();
+        collect_free_tyvars(&ty, &mut free);
         let mut mapping: HashMap<TyVar, TyVar> = HashMap::new();
-        let mut next_id: u32 = 0;
-        for var in &seen_vars {
-            if !mapping.contains_key(var) {
-                mapping.insert(*var, TyVar(next_id));
-                next_id += 1;
-            }
+        for var in free {
+            let next = TyVar(mapping.len() as u32);
+            mapping.entry(var).or_insert(next);
         }
-        let new_vars: Vec<TyVar> = seen_vars.iter().map(|v| mapping[v]).collect();
-        // Deduplicate vars while preserving order.
-        let mut deduped_vars: Vec<TyVar> = Vec::new();
-        let mut seen_set = std::collections::HashSet::new();
-        for v in &new_vars {
-            if seen_set.insert(*v) {
-                deduped_vars.push(*v);
-            }
-        }
-        let new_ty = remap_tyvars(&ty, &mapping);
         Scheme {
-            vars: deduped_vars,
-            ty: new_ty,
+            vars: (0..mapping.len() as u32).map(TyVar).collect(),
+            ty: remap_tyvars(&ty, &mapping),
         }
     }
 }
@@ -516,52 +484,15 @@ impl Scheme {
 fn collect_free_tyvars(ty: &Ty, out: &mut Vec<TyVar>) {
     match ty {
         Ty::Var(v) => out.push(*v),
-        Ty::Con(_) | Ty::Never => {}
-        Ty::Fun(params, ret) => {
-            for p in params {
-                collect_free_tyvars(p, out);
-            }
-            collect_free_tyvars(ret, out);
-        }
-        Ty::App(con, args) => {
-            collect_free_tyvars(con, out);
-            for a in args {
-                collect_free_tyvars(a, out);
-            }
-        }
-        Ty::Tuple(elems) => {
-            for e in elems {
-                collect_free_tyvars(e, out);
-            }
-        }
+        _ => ty.parts().for_each(|part| collect_free_tyvars(part, out)),
     }
 }
 
-/// Remap TyVar IDs in a type according to the given mapping.
+/// `ty` with its variables renamed by `mapping`, which holds each of them.
 fn remap_tyvars(ty: &Ty, mapping: &HashMap<TyVar, TyVar>) -> Ty {
     match ty {
-        Ty::Var(v) => {
-            if let Some(new_v) = mapping.get(v) {
-                Ty::Var(*new_v)
-            } else {
-                ty.clone()
-            }
-        }
-        Ty::Con(_) | Ty::Never => ty.clone(),
-        Ty::Fun(params, ret) => {
-            let params = params.iter().map(|p| remap_tyvars(p, mapping)).collect();
-            let ret = Box::new(remap_tyvars(ret, mapping));
-            Ty::Fun(params, ret)
-        }
-        Ty::App(con, args) => {
-            let con = Box::new(remap_tyvars(con, mapping));
-            let args = args.iter().map(|a| remap_tyvars(a, mapping)).collect();
-            Ty::App(con, args)
-        }
-        Ty::Tuple(elems) => {
-            let elems = elems.iter().map(|e| remap_tyvars(e, mapping)).collect();
-            Ty::Tuple(elems)
-        }
+        Ty::Var(v) => Ty::Var(mapping[v]),
+        _ => ty.map_parts(|part| remap_tyvars(part, mapping)),
     }
 }
 
