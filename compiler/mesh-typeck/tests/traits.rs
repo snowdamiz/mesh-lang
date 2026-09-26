@@ -465,3 +465,26 @@ fn operators_need_their_traits_of_known_types() {
         );
     }
 }
+
+/// A method two interfaces give one type is ambiguous called on a value,
+/// as it is called bare or through the type: the interface must be named.
+#[test]
+fn a_method_two_interfaces_provide_is_ambiguous_on_a_value() {
+    let src = "interface A do\n  fn hello(self) -> String\nend\n\ninterface B do\n  fn hello(self) -> String\nend\n\nstruct Cat do\n  n :: Int\nend\n\nimpl A for Cat do\n  fn hello(self) -> String do\n    \"a\"\n  end\nend\n\nimpl B for Cat do\n  fn hello(self) -> String do\n    \"b\"\n  end\nend\n\nfn main() do\n  Cat { n: 1 }.hello()\nend\n";
+    assert_has_error(
+        &check_source(src),
+        |error| matches!(error, TypeError::AmbiguousMethod { method_name, .. } if method_name == "hello"),
+        "AmbiguousMethod",
+    );
+}
+
+/// Failover is automatic: `Continuity.promote()` is refused, not an unknown
+/// function of the module.
+#[test]
+fn manual_continuity_promotion_is_refused() {
+    assert_has_error(
+        &check_source("fn main() do\n  Continuity.promote()\nend\n"),
+        |error| matches!(error, TypeError::ManualContinuityPromotionDisabled { .. }),
+        "ManualContinuityPromotionDisabled",
+    );
+}
