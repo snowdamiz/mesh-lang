@@ -5227,7 +5227,7 @@ impl<'a> Lowerer<'a> {
                 line: 0,
             }
         } else if matched {
-            self.lower_clause_match(clauses, &params, &param_srcs, &return_type)
+            self.lower_clause_match(clauses, &params, &param_srcs, &return_type, &emitted_name)
         } else if let Some(block) = fn_def.body() {
             self.lower_block(&block)
         } else if let Some(expr) = fn_def.expr_body() {
@@ -5525,12 +5525,18 @@ impl<'a> Lowerer<'a> {
     /// The body of a function written as clauses: one match of the
     /// parameters (`__param_N`) against each clause's parameter patterns and
     /// guard. Several parameters are matched as columns; no tuple is built.
+    /// A function written as clauses: a match of its arguments against each
+    /// clause's patterns. The resources a clause binds are its own, dropped
+    /// as it ends, as a function drops the resource parameters it owns; a
+    /// call no clause matches drops its resource arguments, then panics.
+    /// Both leaked the resource before.
     fn lower_clause_match(
         &mut self,
         clauses: &[&FnDef],
         params: &[(String, MirType)],
         param_srcs: &[Ty],
         return_type: &MirType,
+        fn_name: &str,
     ) -> MirExpr {
         let arity = params.len();
         let mut arms = Vec::new();
@@ -5547,12 +5553,55 @@ impl<'a> Lowerer<'a> {
                 _ => MirPattern::Tuple(patterns),
             };
             let guard = self.lower_clause_guard(clause);
-            let body = self.lower_clause_body(clause);
+            let mut body = self.lower_clause_body(clause);
+            for (name, ty) in self
+                .clause_resource_bindings(clause, param_srcs)
+                .into_iter()
+                .rev()
+            {
+                body = self.wrap_resource_scope(body, &name, &ty);
+            }
             self.pop_scope();
             arms.push(MirMatchArm {
                 pattern,
                 guard,
                 body,
+            });
+        }
+        // A borrowed parameter is the caller's to drop.
+        let borrowed: Vec<bool> = clauses
+            .first()
+            .and_then(|clause| clause.param_list())
+            .map(|list| {
+                list.params()
+                    .map(|param| param.ownership() == ParamOwnership::Borrow)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut no_match: Vec<MirExpr> = params
+            .iter()
+            .zip(param_srcs)
+            .enumerate()
+            .filter(|(index, _)| !borrowed.get(*index).copied().unwrap_or(false))
+            .filter_map(|(_, ((name, _), ty))| {
+                let destructor = self.resource_destructor(ty)?;
+                Some(Self::resource_drop(
+                    name,
+                    &resolve_type(ty, self.registry),
+                    destructor,
+                ))
+            })
+            .collect();
+        if !no_match.is_empty() {
+            no_match.push(MirExpr::Panic {
+                message: "non-exhaustive match".to_string(),
+                file: fn_name.to_string(),
+                line: 0,
+            });
+            arms.push(MirMatchArm {
+                pattern: MirPattern::Wildcard,
+                guard: None,
+                body: MirExpr::Block(no_match, MirType::Never),
             });
         }
 
@@ -5601,6 +5650,28 @@ impl<'a> Lowerer<'a> {
             }
         }
         MirPattern::Wildcard
+    }
+
+    /// The resources a clause's parameters own: a resource-typed name, or
+    /// the resources a pattern binds, unless the parameter is borrowed.
+    fn clause_resource_bindings(&self, clause: &FnDef, param_srcs: &[Ty]) -> Vec<(String, Ty)> {
+        let mut bindings = Vec::new();
+        for (param, ty) in clause
+            .param_list()
+            .iter()
+            .flat_map(|list| list.params())
+            .zip(param_srcs)
+            .filter(|(param, _)| param.ownership() != ParamOwnership::Borrow)
+        {
+            if let Some(pattern) = param.pattern() {
+                bindings.extend(self.resource_pattern_bindings(&pattern));
+            } else if let Some(name) = param.name() {
+                if self.registry.is_resource_type(ty) {
+                    bindings.push((name.text().to_string(), ty.clone()));
+                }
+            }
+        }
+        bindings
     }
 
     /// Lower a clause's guard expression to an optional MirExpr.
@@ -18626,6 +18697,36 @@ mod tests {
             "{chain:?}"
         );
         assert_eq!(drops_of(&chain, "s"), 1, "{chain:?}");
+    }
+
+    /// A function written as clauses owns the resources its clauses bind
+    /// as one with a plain body owns its parameters: a clause that keeps
+    /// one drops it as it ends, and a call no clause matches drops its
+    /// resource arguments before it panics. Both leaked the resource.
+    #[test]
+    fn clause_functions_drop_the_resources_they_are_given() {
+        let mir = lower(
+            "fn open(secret :: SecretBytes, n :: Int) when n > 0 do\n\
+               Secret.destroy(secret)\n\
+             end\n\
+             fn peek(secret :: SecretBytes, n :: Int) when n > 0 do\n\
+               nil\n\
+             end\n\
+             fn look(secret :: borrow SecretBytes, n :: Int) when n > 0 do\n\
+               nil\n\
+             end",
+        );
+        let open = function_body(&mir, "open");
+        // The clause's own `secret` as it ends (moved by then, so a no-op),
+        // and the argument itself when no clause matches, before the panic.
+        assert_eq!(drops_of(&open, "secret"), 1, "{open:?}");
+        assert_eq!(drops_of(&open, "__param_0"), 1, "{open:?}");
+        let peek = function_body(&mir, "peek");
+        assert_eq!(drops_of(&peek, "secret"), 1, "{peek:?}");
+        // A borrowed one is the caller's, matched or not.
+        let look = function_body(&mir, "look");
+        assert_eq!(drops_of(&look, "secret"), 0, "{look:?}");
+        assert_eq!(drops_of(&look, "__param_0"), 0, "{look:?}");
     }
 
     #[test]
