@@ -341,6 +341,9 @@ changeset operations, whose error is the changeset itself.
 | `Repo.update_changeset(pool, table, id, changeset)` | Update from a valid changeset |
 | `Repo.transaction(pool, fn)` | Run `fn(connection :: borrow PgConn)` and commit `Ok` or roll back `Err` |
 
+The `_where` writes refuse a query without conditions, so a forgotten filter
+cannot rewrite or empty a whole table.
+
 Expression writes make updates such as counters and server-side timestamps atomic:
 
 ```mesh
