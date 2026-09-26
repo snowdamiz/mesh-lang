@@ -404,6 +404,8 @@ struct Lowerer<'a> {
     /// Each service loop's handlers, calls and casts: tag, function and
     /// argument count.
     service_dispatch: ServiceDispatch,
+    /// Entry functions of the actors lowered so far; see `MirModule::actors`.
+    actors: Vec<String>,
     /// While lowering a supervisor child's start: the `spawn` that ends it,
     /// which runs the spawned actor in place (`supervisor_child_entry`).
     supervised_spawn: Option<TextRange>,
@@ -747,6 +749,7 @@ impl<'a> Lowerer<'a> {
             lowering_errors: Vec::new(),
             supervised_spawn: None,
             service_dispatch: HashMap::new(),
+            actors: Vec::new(),
         }
     }
 
@@ -13285,6 +13288,7 @@ impl<'a> Lowerer<'a> {
             .name()
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<anonymous_actor>".to_string());
+        self.actors.push(name.clone());
 
         let actor_ty = self
             .get_ty(actor_def.syntax().text_range())
@@ -16415,6 +16419,7 @@ pub fn lower_module_to_mir<'a>(
         sum_types: lowerer.sum_types,
         entry_function: lowerer.entry_function,
         service_dispatch: lowerer.service_dispatch,
+        actors: lowerer.actors,
     })
 }
 

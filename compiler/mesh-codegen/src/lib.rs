@@ -429,6 +429,7 @@ pub fn merge_mir_modules(
         sum_types: Vec::new(),
         entry_function: None,
         service_dispatch: std::collections::HashMap::new(),
+        actors: Vec::new(),
     };
 
     let mut seen_functions: HashSet<String> = HashSet::new();
@@ -469,6 +470,7 @@ pub fn merge_mir_modules(
                 .entry(key.clone())
                 .or_insert_with(|| value.clone());
         }
+        merged.actors.extend(module.actors.iter().cloned());
     };
 
     if let Some(entry) = modules.get(entry_module_idx) {
@@ -518,6 +520,7 @@ mod tests {
                     sum_types: Vec::new(),
                     entry_function: Some("mesh_main".to_string()),
                     service_dispatch: std::collections::HashMap::new(),
+                    actors: Vec::new(),
                     native_functions: Vec::new(),
                 },
                 MirModule {
@@ -534,6 +537,7 @@ mod tests {
                     sum_types: Vec::new(),
                     entry_function: Some("mesh_main".to_string()),
                     service_dispatch: std::collections::HashMap::new(),
+                    actors: Vec::new(),
                     native_functions: Vec::new(),
                 },
             ],

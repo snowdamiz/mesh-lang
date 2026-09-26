@@ -147,7 +147,7 @@ actor coordinator() do
 end
 ```
 
-`Node.spawn` accepts the actor's normal arguments and returns a PID that is valid across nodes. Remote arguments may currently be `Int`, `Float`, `Bool`, `String`, `Pid`, or `Unit`. The target executable must contain the referenced actor so its runtime entry is registered there. Call remote spawn from an actor: the caller waits cooperatively for the spawn reply. PID `0` reports a failed spawn, such as a missing connection, unsupported argument, or unknown actor entry: it shows as `<0.0>` and equals no process, so `pid == Process.whereis("none-such")` tells a failed spawn apart.
+`Node.spawn` accepts the actor's normal arguments and returns a PID that is valid across nodes. Remote arguments may currently be `Int`, `Float`, `Bool`, `String`, `Pid`, or `Unit`. The target program must define the actor under the same name, whether or not it spawns it itself: every actor a program defines can be spawned from another node. Call remote spawn from an actor: the caller waits cooperatively for the spawn reply. PID `0` reports a failed spawn, such as a missing connection, unsupported argument, or unknown actor entry: it shows as `<0.0>` and equals no process, so `pid == Process.whereis("none-such")` tells a failed spawn apart.
 
 The compiler checks a remote spawn as it checks `spawn`: the node name must be a `String`, the arguments must match the actor's parameters, and the result is the actor's `Pid<M>`, so sending it a message of another type is an error.
 

@@ -43,6 +43,9 @@ pub struct MirModule {
     pub entry_function: Option<String>,
     /// Service dispatch tables for codegen.
     pub service_dispatch: ServiceDispatch,
+    /// Every actor's entry function. Another node may spawn any of them by
+    /// name, so none is pruned as unreachable.
+    pub actors: Vec<String>,
 }
 
 /// Maps each service loop function's name to its call and cast handlers:

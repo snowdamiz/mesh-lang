@@ -1292,6 +1292,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         }
     }
@@ -1350,6 +1351,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         }
     }
@@ -1635,6 +1637,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -1660,6 +1663,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -1746,6 +1750,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -1809,6 +1814,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -1899,6 +1905,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -1968,6 +1975,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2048,6 +2056,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2108,6 +2117,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2330,6 +2340,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2374,6 +2385,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("mesh_main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2428,6 +2440,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2499,6 +2512,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2579,6 +2593,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2643,6 +2658,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2753,6 +2769,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -2891,6 +2908,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
         let context = Context::create();
@@ -2998,6 +3016,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -3084,6 +3103,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -3426,6 +3446,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -3500,6 +3521,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -3630,6 +3652,7 @@ mod tests {
             }],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 

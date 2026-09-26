@@ -58,6 +58,7 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
     for root in extra_roots {
         worklist.push(root.clone());
     }
+    worklist.extend(module.actors.iter().cloned());
 
     while let Some(name) = worklist.pop() {
         if reachable.contains(&name) {
@@ -138,6 +139,7 @@ mod library_tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
         };
         monomorphize_with_roots(&mut module, &["exported".to_string()]);
         assert_eq!(
@@ -148,6 +150,23 @@ mod library_tests {
                 .collect::<Vec<_>>(),
             ["exported"]
         );
+    }
+
+    /// Another node may spawn an actor by name that nothing here spawns.
+    #[test]
+    fn actors_are_kept_though_nothing_here_spawns_them() {
+        let mut module = MirModule {
+            functions: vec![function("main"), function("relay"), function("unused")],
+            native_functions: vec![],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: vec!["relay".to_string()],
+        };
+        monomorphize(&mut module);
+        let kept: Vec<_> = module.functions.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(kept, ["main", "relay"]);
     }
 }
 
@@ -223,6 +242,7 @@ mod tests {
             sum_types: vec![],
             entry_function: Some("main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![],
         };
 
@@ -264,6 +284,7 @@ mod tests {
             sum_types: vec![],
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
             native_functions: vec![crate::mir::MirNativeFunction {
                 name: "native".to_string(),
                 symbol: "c_native".to_string(),
