@@ -831,6 +831,38 @@ end
     );
 }
 
+/// `Type.from_json`, `Type.from_row` and the schema functions come from the
+/// type's `deriving`: without it the type has no such function.
+#[test]
+fn a_types_derived_functions_need_its_deriving() {
+    assert_eq!(
+        errors(
+            r#"
+struct Plain do
+  name :: String
+end deriving(Eq)
+
+fn rows() do
+  Plain.from_row
+end
+
+fn decoded() do
+  Plain.from_json("{}")
+end
+
+fn table() do
+  Plain.__table__()
+end
+"#
+        ),
+        [
+            "no method `from_row` on type `Plain`",
+            "no method `from_json` on type `Plain`",
+            "no method `__table__` on type `Plain`",
+        ]
+    );
+}
+
 // ── Patterns ───────────────────────────────────────────────────────────
 
 /// A variant pattern with too many or too few fields is reported at the

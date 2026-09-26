@@ -252,26 +252,8 @@ impl TypeRegistry {
 
     /// Look up a variant by its unqualified name (e.g. "Circle").
     /// Returns the parent sum type info and the variant info.
-    #[allow(dead_code)]
     fn lookup_variant(&self, variant_name: &str) -> Option<(&SumTypeDefInfo, &VariantInfo)> {
         for sum_type in self.sum_type_defs.values() {
-            for variant in &sum_type.variants {
-                if variant.name == variant_name {
-                    return Some((sum_type, variant));
-                }
-            }
-        }
-        None
-    }
-
-    /// Look up a variant by qualified name (e.g. "Shape" + "Circle").
-    /// Returns the parent sum type info and the variant info.
-    fn lookup_qualified_variant(
-        &self,
-        type_name: &str,
-        variant_name: &str,
-    ) -> Option<(&SumTypeDefInfo, &VariantInfo)> {
-        if let Some(sum_type) = self.sum_type_defs.get(type_name) {
             for variant in &sum_type.variants {
                 if variant.name == variant_name {
                     return Some((sum_type, variant));
@@ -12517,32 +12499,11 @@ fn infer_field_access(
                 return Ok(ctx.fresh_var());
             }
 
-            // Check if base is a user-defined service module (e.g. Counter.get_count).
-            // Service helper functions are registered in env as "ServiceName.method_name".
-            {
-                let qualified = format!("{}.{}", base_name, field_name);
-                if let Some(scheme) = env.lookup(&qualified) {
-                    // Only treat as service module if it's not also a sum type variant.
-                    if type_registry
-                        .lookup_qualified_variant(&base_name, &field_name)
-                        .is_none()
-                    {
-                        let ty = ctx.instantiate(scheme);
-                        return Ok(ty);
-                    }
-                }
-            }
-
-            // Check if base is a sum type name for variant construction.
-            // e.g. Shape.Circle -- Shape is a sum type, Circle is a variant.
-            if let Some((_sum_info, _variant_info)) =
-                type_registry.lookup_qualified_variant(&base_name, &field_name)
-            {
-                let qualified = format!("{}.{}", base_name, field_name);
-                if let Some(scheme) = env.lookup(&qualified) {
-                    let ty = ctx.instantiate(scheme);
-                    return Ok(ty);
-                }
+            // A service's helper (`Counter.get_count`), a variant
+            // (`Shape.Circle`) or a schema function (`User.__table__`): each
+            // is in the environment under its qualified name.
+            if let Some(scheme) = env.lookup(&format!("{base_name}.{field_name}")) {
+                return Ok(ctx.instantiate(scheme));
             }
 
             // Check if base is a struct type name with a static trait method.
@@ -12612,23 +12573,6 @@ fn infer_field_access(
                         let result_ty = Ty::result(struct_ty, Ty::string());
                         return Ok(Ty::fun(vec![map_ty], result_ty));
                     }
-                }
-            }
-
-            // Check if base is a struct type name with Schema metadata functions.
-            // e.g. User.__table__() -- User is a struct with deriving(Schema).
-            if field_name == "__table__"
-                || field_name == "__fields__"
-                || field_name == "__primary_key__"
-                || field_name == "__relationships__"
-                || field_name == "__field_types__"
-                || field_name == "__relationship_meta__"
-                || (field_name.starts_with("__") && field_name.ends_with("_col__"))
-            {
-                let qualified = format!("{}.{}", base_name, field_name);
-                if let Some(scheme) = env.lookup(&qualified) {
-                    let ty = ctx.instantiate(scheme);
-                    return Ok(ty);
                 }
             }
 
