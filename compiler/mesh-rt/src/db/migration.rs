@@ -198,11 +198,6 @@ fn parse_create_index_options(options: &str) -> Result<CreateIndexOptions, Strin
                 }
                 parsed.name = Some(value.trim().to_string());
             }
-            "where" => {
-                return Err(
-                    "Migration.create_index options: where clause must come last".to_string(),
-                );
-            }
             other => {
                 return Err(format!(
                     "Migration.create_index options: unsupported option `{other}`"
@@ -495,6 +490,36 @@ pub extern "C" fn mesh_migration_execute(pool: u64, sql: *const MeshString) -> *
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An index's options and columns are refused for what is wrong with
+    /// them, before any SQL is built.
+    #[test]
+    fn index_options_and_columns_are_refused_for_what_is_wrong() {
+        let columns = ["name".to_string()];
+        for (options, error) in [
+            ("fast", "invalid token `fast`"),
+            ("unique:maybe", "unique must be `true` or `false`, got `maybe`"),
+            ("name:", "name must not be empty"),
+            ("fast:yes", "unsupported option `fast`"),
+            ("where:  ", "where clause must not be empty"),
+        ] {
+            let refused = build_create_index_sql("t", &columns, options).unwrap_err();
+            assert!(refused.ends_with(error), "{options}: {refused}");
+        }
+        assert_eq!(
+            build_create_index_sql("t", &columns, "unique:false name:by_name where:x > 1"),
+            Ok("CREATE INDEX IF NOT EXISTS \"by_name\" ON \"t\" (\"name\") WHERE x > 1".to_string())
+        );
+        for (column, error) in [
+            (" ", "column name must not be empty"),
+            (":DESC", "column name must not be empty"),
+            ("name:UP", "`name:UP` only supports :ASC or :DESC order suffixes"),
+        ] {
+            let refused = build_create_index_sql("t", &[column.to_string()], "").unwrap_err();
+            assert!(refused.ends_with(error), "{column}: {refused}");
+        }
+        assert!(build_create_index_sql("t", &[], "").is_err());
+    }
 
     #[test]
     fn test_build_create_table_sql() {

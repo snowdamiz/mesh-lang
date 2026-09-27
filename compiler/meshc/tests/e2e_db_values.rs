@@ -102,6 +102,53 @@ fn postgres_repo_runs_every_repository_operation() {
     assert_eq!(String::from_utf8_lossy(&run.stdout), EXPECTED_REPO_OUTPUT);
 }
 
+/// Every Migration function against PostgreSQL, in a schema of its own:
+/// what it did to the table, and its failures.
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL or the documented local mesh_test PostgreSQL"]
+fn postgres_migrations_change_the_table_they_name() {
+    let (_temp, project, output) = build_fixture("postgres_migration", "postgres-migration");
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        artifacts::command_output_text(&output)
+    );
+    let run = Command::new(project.join("postgres-migration"))
+        .output()
+        .expect("failed to execute the Migration fixture");
+    assert!(run.status.success(), "{}", artifacts::command_output_text(&run));
+    assert_eq!(String::from_utf8_lossy(&run.stdout), EXPECTED_MIGRATION_OUTPUT);
+}
+
+const EXPECTED_MIGRATION_OUTPUT: &str = "create:ok
+create_again:ok
+add:ok
+add_again:ok
+add_plain:ok
+add_untyped:failed
+rename:ok
+rename_missing:failed
+drop_column:ok
+drop_column_again:ok
+columns:id,name,age,email
+index:ok
+index_unique:ok
+index_named:ok
+index_no_columns:failed
+index_bad_option:failed
+indexes:CREATE UNIQUE INDEX idx_people_email ON mesh_migration_e2e.people USING btree (email) \
+WHERE (email IS NOT NULL) | CREATE INDEX idx_people_name_age ON mesh_migration_e2e.people USING \
+btree (name, age DESC) | CREATE INDEX people_by_age ON mesh_migration_e2e.people USING btree (age)
+drop_index:ok
+drop_index_again:ok
+execute:ok
+execute_bad:failed
+comment:migrated
+drop:ok
+drop_again:ok
+done
+";
+
 const EXPECTED_REPO_OUTPUT: &str = r#"insert:Ada
 insert_expr:BOB
 insert_duplicate:failed
