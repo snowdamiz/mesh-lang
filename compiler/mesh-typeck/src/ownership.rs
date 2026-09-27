@@ -541,13 +541,22 @@ pub(crate) fn source_function_name(export_name: &str) -> String {
 /// function's modes and its type together.
 fn exported_signature(exports: &ModuleExports, export_name: &str) -> FunctionSignature {
     let modes = exports.function_ownership[export_name].clone();
-    let formal_types = match exports.functions.get(export_name).map(|scheme| &scheme.ty) {
-        Some(Ty::Fun(parameters, _)) => parameters.iter().cloned().map(Some).collect(),
-        _ => vec![None; modes.len()],
-    };
+    let formal_types = formal_parameters(exports.functions.get(export_name).map(|s| &s.ty))
+        .iter()
+        .cloned()
+        .map(Some)
+        .collect();
     FunctionSignature {
         modes,
         formal_types,
+    }
+}
+
+/// The parameter types of `ty` when it is a function's type, else none.
+fn formal_parameters(ty: Option<&Ty>) -> &[Ty] {
+    match ty {
+        Some(Ty::Fun(formals, _)) => formals,
+        _ => &[],
     }
 }
 
@@ -1568,10 +1577,7 @@ fn typed_params(
     node: &SyntaxNode,
     params: Option<ParamList>,
 ) -> Vec<(Param, Option<Ty>)> {
-    let formals = match types.get(&node.text_range()) {
-        Some(Ty::Fun(formals, _)) => formals.as_slice(),
-        _ => &[],
-    };
+    let formals = formal_parameters(types.get(&node.text_range()));
     params
         .iter()
         .flat_map(|list| list.params())
