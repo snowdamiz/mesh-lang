@@ -344,43 +344,19 @@ static LOCAL_AUTOSCALER_STARTED: std::sync::Once = std::sync::Once::new();
 pub(crate) fn start_local_scheduler_autoscaler(
     scheduler: &'static crate::actor::scheduler::Scheduler,
 ) {
-    let (scheduler_min, scheduler_max) = scheduler.worker_bounds();
-    if scheduler_min == scheduler_max {
+    let bounds = scheduler.worker_bounds();
+    if bounds.0 == bounds.1 {
         return;
     }
-    if super::autonomous::embedded_autonomous_config()
-        .is_some_and(|config| !config.features.local_scheduler_autoscaling)
-    {
+    let embedded = super::autonomous::embedded_autonomous_config();
+    if embedded.is_some_and(|config| !config.features.local_scheduler_autoscaling) {
         return;
     }
     LOCAL_AUTOSCALER_STARTED.call_once(|| {
-        let embedded = super::autonomous::embedded_autonomous_config()
+        let configured = embedded
             .map(|config| config.scheduler.clone())
             .unwrap_or_default();
-        let policy = LocalScalingPolicy {
-            min_workers: scheduler_min,
-            max_workers: scheduler_max,
-            target_runnable_per_worker: env_parse(
-                "MESH_SCHEDULER_TARGET_RUNNABLE",
-                embedded.target_runnable_per_worker,
-            ),
-            target_queue_wait: Duration::from_millis(env_parse(
-                "MESH_SCHEDULER_TARGET_QUEUE_WAIT_MS",
-                embedded.target_queue_wait_millis,
-            )),
-            scale_up_window: Duration::from_millis(env_parse(
-                "MESH_SCHEDULER_SCALE_UP_WINDOW_MS",
-                embedded.scale_up_window_millis,
-            )),
-            scale_down_window: Duration::from_millis(env_parse(
-                "MESH_SCHEDULER_SCALE_DOWN_WINDOW_MS",
-                embedded.scale_down_window_millis,
-            )),
-            cooldown: Duration::from_millis(env_parse(
-                "MESH_SCHEDULER_COOLDOWN_MS",
-                embedded.cooldown_millis,
-            )),
-        };
+        let policy = local_scaling_policy(bounds, &configured, &|name| std::env::var(name).ok());
         let Ok(mut autoscaler) = LocalSchedulerAutoscaler::new(policy) else {
             eprintln!("mesh scheduler: local autoscaling configuration invalid; keeping minimum");
             return;
@@ -389,23 +365,8 @@ pub(crate) fn start_local_scheduler_autoscaler(
             .name("mesh-local-scheduler-autoscaler".to_string())
             .spawn(move || {
                 while !scheduler.is_shutdown() {
-                    if crate::dist::operator::autoscaler_paused() {
-                        std::thread::park_timeout(Duration::from_millis(250));
-                        continue;
-                    }
-                    let runtime = crate::dist::telemetry::runtime_telemetry();
-                    runtime.refresh_routing_cache();
-                    let telemetry = runtime.routing_snapshot();
-                    let decision = autoscaler.evaluate(
-                        scheduler.active_workers(),
-                        scheduler.runnable_count(),
-                        telemetry.p95_queue_wait,
-                        Instant::now(),
-                    );
-                    if decision.changed {
-                        if let Err(error) = scheduler.resize(decision.desired_workers) {
-                            eprintln!("mesh scheduler: resize_failed reason={error}");
-                        }
+                    if !crate::dist::operator::autoscaler_paused() {
+                        local_autoscaler_step(scheduler, &mut autoscaler);
                     }
                     std::thread::park_timeout(Duration::from_millis(250));
                 }
@@ -414,12 +375,66 @@ pub(crate) fn start_local_scheduler_autoscaler(
     });
 }
 
-fn env_parse<T>(name: &str, default: T) -> T
+/// The local autoscaler's policy: the scheduler's worker bounds, and the
+/// deployment's targets unless the environment names others.
+fn local_scaling_policy(
+    (min_workers, max_workers): (usize, usize),
+    configured: &super::autonomous::RuntimeSchedulerConfig,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> LocalScalingPolicy {
+    let millis = |name: &str, default: u64| Duration::from_millis(env_parse(env, name, default));
+    LocalScalingPolicy {
+        min_workers,
+        max_workers,
+        target_runnable_per_worker: env_parse(
+            env,
+            "MESH_SCHEDULER_TARGET_RUNNABLE",
+            configured.target_runnable_per_worker,
+        ),
+        target_queue_wait: millis(
+            "MESH_SCHEDULER_TARGET_QUEUE_WAIT_MS",
+            configured.target_queue_wait_millis,
+        ),
+        scale_up_window: millis(
+            "MESH_SCHEDULER_SCALE_UP_WINDOW_MS",
+            configured.scale_up_window_millis,
+        ),
+        scale_down_window: millis(
+            "MESH_SCHEDULER_SCALE_DOWN_WINDOW_MS",
+            configured.scale_down_window_millis,
+        ),
+        cooldown: millis("MESH_SCHEDULER_COOLDOWN_MS", configured.cooldown_millis),
+    }
+}
+
+/// One look at the scheduler's pressure, resizing it when the autoscaler
+/// decides to.
+fn local_autoscaler_step(
+    scheduler: &crate::actor::scheduler::Scheduler,
+    autoscaler: &mut LocalSchedulerAutoscaler,
+) {
+    let runtime = crate::dist::telemetry::runtime_telemetry();
+    runtime.refresh_routing_cache();
+    let decision = autoscaler.evaluate(
+        scheduler.active_workers(),
+        scheduler.runnable_count(),
+        runtime.routing_snapshot().p95_queue_wait,
+        Instant::now(),
+    );
+    if decision.changed {
+        // The policy's worker bounds are the scheduler's, and a decision
+        // stays within them.
+        scheduler
+            .resize(decision.desired_workers)
+            .expect("a local scaling decision within the scheduler's bounds");
+    }
+}
+
+fn env_parse<T>(env: &dyn Fn(&str) -> Option<String>, name: &str, default: T) -> T
 where
     T: std::str::FromStr,
 {
-    std::env::var(name)
-        .ok()
+    env(name)
         .and_then(|raw| raw.parse().ok())
         .unwrap_or(default)
 }
@@ -4004,6 +4019,67 @@ mod tests {
         let scale_down = autoscaler.evaluate(4, 0, Duration::ZERO, start + Duration::from_secs(8));
         assert_eq!(scale_down.desired_workers, 3);
         assert!(scale_down.changed);
+    }
+
+    #[test]
+    fn the_local_policy_takes_the_environment_over_the_deployment() {
+        let configured = super::super::autonomous::RuntimeSchedulerConfig::default();
+        let deployment = local_scaling_policy((1, 4), &configured, &|_| None);
+        assert_eq!(
+            deployment,
+            LocalScalingPolicy {
+                min_workers: 1,
+                max_workers: 4,
+                target_runnable_per_worker: configured.target_runnable_per_worker,
+                target_queue_wait: Duration::from_millis(configured.target_queue_wait_millis),
+                scale_up_window: Duration::from_millis(configured.scale_up_window_millis),
+                scale_down_window: Duration::from_millis(configured.scale_down_window_millis),
+                cooldown: Duration::from_millis(configured.cooldown_millis),
+            }
+        );
+        let overridden = local_scaling_policy((2, 3), &configured, &|name| {
+            Some(
+                match name {
+                    "MESH_SCHEDULER_TARGET_RUNNABLE" => "2.5",
+                    "MESH_SCHEDULER_TARGET_QUEUE_WAIT_MS" => "7",
+                    "MESH_SCHEDULER_SCALE_UP_WINDOW_MS" => "11",
+                    "MESH_SCHEDULER_SCALE_DOWN_WINDOW_MS" => "13",
+                    // Unparseable: the deployment's value stands.
+                    _ => "soon",
+                }
+                .to_string(),
+            )
+        });
+        assert_eq!(overridden.target_runnable_per_worker, 2.5);
+        assert_eq!(overridden.target_queue_wait, Duration::from_millis(7));
+        assert_eq!(overridden.scale_up_window, Duration::from_millis(11));
+        assert_eq!(overridden.scale_down_window, Duration::from_millis(13));
+        assert_eq!(overridden.cooldown, deployment.cooldown);
+    }
+
+    #[test]
+    fn a_local_autoscaler_step_grows_a_pressed_scheduler() {
+        extern "C" fn idle(_: *const u8) {}
+        let scheduler = crate::actor::scheduler::Scheduler::new_elastic(1, 3).unwrap();
+        // Never started: the actors wait as runnable pressure.
+        for _ in 0..6 {
+            scheduler.spawn(idle as *const u8, std::ptr::null(), 0, 1);
+        }
+        let mut autoscaler = LocalSchedulerAutoscaler::new(LocalScalingPolicy {
+            min_workers: 1,
+            max_workers: 3,
+            target_runnable_per_worker: 1.0,
+            target_queue_wait: Duration::from_secs(60),
+            scale_up_window: Duration::from_nanos(1),
+            scale_down_window: Duration::from_secs(60),
+            cooldown: Duration::ZERO,
+        })
+        .unwrap();
+        // The first look starts the pressure window; a later one acts.
+        local_autoscaler_step(&scheduler, &mut autoscaler);
+        std::thread::sleep(Duration::from_millis(1));
+        local_autoscaler_step(&scheduler, &mut autoscaler);
+        assert_eq!(scheduler.active_workers(), 3);
     }
 
     #[test]
