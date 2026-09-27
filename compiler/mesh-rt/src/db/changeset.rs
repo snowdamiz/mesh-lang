@@ -73,7 +73,7 @@ fn coerce_value(val: &str, sql_type: &str) -> Result<String, ()> {
             .parse::<f64>()
             .map(|v| v.to_string())
             .map_err(|_| ()),
-        "BOOLEAN" => match val.to_lowercase().as_str() {
+        "BOOLEAN" => match val.trim().to_lowercase().as_str() {
             "true" | "t" | "1" | "yes" => Ok("true".to_string()),
             "false" | "f" | "0" | "no" => Ok("false".to_string()),
             _ => Err(()),
@@ -460,7 +460,7 @@ mod tests {
             ("bad_n", "4x"),
             ("f", "2.50"),
             ("bad_f", "pi"),
-            ("yes", "T"),
+            ("yes", " T "),
             ("no", "no"),
             ("maybe", "maybe"),
             ("s", " as is "),
