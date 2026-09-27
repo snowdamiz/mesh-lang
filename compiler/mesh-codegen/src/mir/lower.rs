@@ -15565,10 +15565,10 @@ impl TailCalls<'_> {
                 self.cleanups.push(cleanup);
                 let rewritten = self.rewrite(value);
                 self.cleanups.pop();
-                // A value that ends in the jump never reaches the scope's own
-                // drop and result: emitted after the jump, they would follow a
-                // terminator in its block.
-                if ends_in_tail_call(value) {
+                // A value that cannot finish (every way through it ends in the
+                // jump, or returns) never reaches the scope's own drop and
+                // result: emitted after it, they would follow a terminator.
+                if !Lowerer::can_fall_through(value) {
                     let value = std::mem::replace(value.as_mut(), MirExpr::Unit);
                     *expr = value;
                 }
@@ -15616,7 +15616,7 @@ impl TailCalls<'_> {
                 // the tail call itself: a `ret` after the jump would be a second
                 // terminator in the block.
                 let rewritten = self.rewrite(inner);
-                if ends_in_tail_call(inner) {
+                if !Lowerer::can_fall_through(inner) {
                     let tail_call = std::mem::replace(inner.as_mut(), MirExpr::Unit);
                     *expr = tail_call;
                 }
@@ -15679,16 +15679,6 @@ impl TailCalls<'_> {
             };
         }
         result
-    }
-}
-
-/// Whether `expr` ends in a tail call, which never returns.
-fn ends_in_tail_call(expr: &MirExpr) -> bool {
-    match expr {
-        MirExpr::TailCall { .. } => true,
-        MirExpr::Block(exprs, _) => exprs.last().is_some_and(ends_in_tail_call),
-        MirExpr::Let { body, .. } => ends_in_tail_call(body),
-        _ => false,
     }
 }
 

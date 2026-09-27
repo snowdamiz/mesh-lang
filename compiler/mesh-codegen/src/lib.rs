@@ -687,4 +687,39 @@ end
         }
         assert!(zeroed > 0, "no slot was emptied:\n{llvm}");
     }
+
+    /// A resource scope whose value cannot finish (every arm of the `case`
+    /// ends in the tail call) keeps no drop after it. The drop followed the
+    /// `case`'s unreachable merge block, which LLVM refused as a terminator
+    /// in the middle of a block.
+    #[test]
+    fn a_resource_scope_ending_in_tail_calls_has_nothing_after_them() {
+        let llvm = llvm_of(
+            r#"
+fn step(s :: SecretBytes, n :: Int) -> Result<(SecretBytes, Int), String> do
+  Ok((s, n))
+end
+
+fn steps(s :: consume SecretBytes, n :: Int) -> Int!String do
+  if n >= 3 do
+    Secret.destroy(s)
+    Ok(n)
+  else
+    case step(s, n) do
+      Err(e) -> Err(e)
+      Ok(values) -> do
+        let (s, m) = values
+        steps(s, m + 1)
+      end
+    end
+  end
+end
+
+fn main() do
+  nil
+end
+"#,
+        );
+        assert!(llvm.contains("define"), "{llvm}");
+    }
 }
