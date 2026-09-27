@@ -77,11 +77,16 @@ fn checkout(pool: &PgPool) -> Result<u64, String> {
             return Err("pool is closed".to_string());
         }
         if let Some(handle) = inner.idle.pop() {
+            inner.leased.insert(handle);
+            // Checked without the lock: a connection slow to answer holds up
+            // only this checkout, not every other checkout and checkin.
+            drop(inner);
             if health_check(handle) {
-                inner.leased.insert(handle);
                 return Ok(handle);
             }
             mesh_pg_close(handle);
+            inner = pool.inner.lock();
+            inner.leased.remove(&handle);
             inner.total_created -= 1;
             continue;
         }
@@ -537,6 +542,40 @@ mod tests {
         mesh_pool_close(handle);
     }
 
+    /// An idle connection slow to answer its health check holds up only
+    /// the checkout that took it.
+    #[test]
+    fn an_idle_connection_is_checked_without_holding_the_pool() {
+        let (asked, asked_signal) = mpsc::channel::<()>();
+        let (answer, answered) = mpsc::channel::<()>();
+        let answered = parking_lot::Mutex::new(answered);
+        let url = fake_server(move |_, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            assert_eq!(next_request(&mut socket), Some(b'Q'));
+            asked.send(()).unwrap();
+            answered.lock().recv().unwrap();
+            socket.write_all(SELECTED).unwrap();
+            while next_request(&mut socket).is_some() {}
+        });
+        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        let taker = thread::spawn(move || checkout(pool(handle)));
+        asked_signal.recv().unwrap();
+
+        let (closed, closed_signal) = mpsc::channel();
+        thread::spawn(move || {
+            mesh_pool_close(handle);
+            closed.send(()).unwrap();
+        });
+        let closed_promptly = closed_signal.recv_timeout(Duration::from_secs(2)).is_ok();
+        answer.send(()).unwrap();
+        let conn = taker.join().unwrap().unwrap();
+        // Back in a closed pool, it is closed.
+        mesh_pool_checkin(handle, conn);
+
+        assert!(closed_promptly, "closing waited for the health check");
+        assert_eq!(pool(handle).inner.lock().total_created, 0);
+    }
+
     /// A connection that opens after its pool closed is closed, not lent.
     #[test]
     fn a_connection_opened_after_its_pool_closed_is_not_lent() {
@@ -549,12 +588,12 @@ mod tests {
             serve(socket);
         });
         let handle = pool_of(&url, Vec::new(), &[], 1, 5000);
-        let checkout = thread::spawn(move || checkout(pool(handle)));
+        let taker = thread::spawn(move || checkout(pool(handle)));
         held_signal.recv().unwrap();
         mesh_pool_close(handle);
         release.send(()).unwrap();
 
-        assert_eq!(checkout.join().unwrap().unwrap_err(), "pool is closed");
+        assert_eq!(taker.join().unwrap().unwrap_err(), "pool is closed");
         assert_eq!(pool(handle).inner.lock().total_created, 0);
     }
 
