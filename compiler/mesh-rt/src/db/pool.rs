@@ -25,6 +25,7 @@ use super::pg::{
     mesh_pg_query_values, pg_simple_command, PgConn,
 };
 use crate::io::{alloc_result, box_scalar, err_result};
+use crate::string::text_of;
 use crate::string::{mesh_str, MeshString};
 
 // ── Data Structures ──────────────────────────────────────────────────────
@@ -55,11 +56,6 @@ struct PgPool {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-/// Extract a Rust &str from a raw MeshString pointer.
-unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
-    (*s).as_str()
-}
 
 /// Create a new PG connection from a URL string.
 /// Returns Ok(handle_u64) or Err(error_message).
@@ -107,7 +103,7 @@ pub extern "C" fn mesh_pool_open(
     timeout_ms: i64,
 ) -> *mut u8 {
     unsafe {
-        let url_str = mesh_str_to_rust(url);
+        let url_str = text_of(url);
 
         // Clamp parameters to reasonable values
         let min = (min_conns.max(0)) as usize;

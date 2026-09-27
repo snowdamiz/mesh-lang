@@ -17,25 +17,13 @@
 //! double-quoted per PostgreSQL convention.
 
 use super::quote_ident;
-use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::collections::list::list_strings;
+use crate::collections::list::mesh_list_new;
 use crate::db::pool::mesh_pool_execute;
 use crate::io::err_result;
 use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/// Extract a Vec<String> from a Mesh List<String> pointer.
-unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *const MeshString;
-        if !elem.is_null() {
-            result.push((*elem).as_str().to_string());
-        }
-    }
-    result
-}
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 
@@ -321,7 +309,7 @@ pub extern "C" fn mesh_migration_create_table(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let cols = list_to_strings(columns);
+        let cols = list_strings(columns);
         let sql = build_create_table_sql(table_name, &cols);
         let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
@@ -426,7 +414,7 @@ pub extern "C" fn mesh_migration_create_index(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let cols = list_to_strings(columns);
+        let cols = list_strings(columns);
         let opts = (*options).as_str();
         match build_create_index_sql(table_name, &cols, opts) {
             Ok(sql) => {
@@ -452,7 +440,7 @@ pub extern "C" fn mesh_migration_drop_index(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let cols = list_to_strings(columns);
+        let cols = list_strings(columns);
         let sql = build_drop_index_sql(table_name, &cols);
         let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();

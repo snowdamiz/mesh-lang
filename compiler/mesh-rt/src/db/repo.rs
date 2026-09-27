@@ -41,38 +41,9 @@ use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Extract a Rust &str from a raw MeshString pointer.
-unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
-    let ms = ptr as *const MeshString;
-    (*ms).as_str()
-}
-
 /// Create an Ok MeshResult wrapping a value pointer.
 fn ok_result(value: *mut u8) -> *mut u8 {
     alloc_result(0, value) as *mut u8
-}
-
-/// Extract a Vec<String> from a Mesh List<String> pointer.
-unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *const MeshString;
-        if !elem.is_null() {
-            result.push((*elem).as_str().to_string());
-        }
-    }
-    result
-}
-
-/// Build a Mesh List<String> from a Vec of Rust strings.
-unsafe fn strings_to_mesh_list(strings: &[String]) -> *mut u8 {
-    let mut list = mesh_list_new();
-    for s in strings {
-        let ms = mesh_str(s) as *mut u8;
-        list = mesh_list_append(list, ms as u64);
-    }
-    list
 }
 
 // ── Query slot access ────────────────────────────────────────────────
@@ -159,20 +130,20 @@ fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
 /// Returns `(sql_string, params_vec)` as pure Rust types.
 unsafe fn query_to_select_sql(query: *mut u8) -> (String, Vec<String>) {
     let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = mesh_str_ref(source_ptr);
-    let select_fields = list_to_strings(query_get(query, SLOT_SELECT));
-    let select_params = list_to_strings(query_get(query, SLOT_SELECT_PARAMS));
-    let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let order_fields = list_to_strings(query_get(query, SLOT_ORDER));
+    let source = text_of(source_ptr);
+    let select_fields = list_strings(query_get(query, SLOT_SELECT));
+    let select_params = list_strings(query_get(query, SLOT_SELECT_PARAMS));
+    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+    let order_fields = list_strings(query_get(query, SLOT_ORDER));
     let limit_val = query_get_int(query, SLOT_LIMIT);
     let offset_val = query_get_int(query, SLOT_OFFSET);
-    let join_clauses = list_to_strings(query_get(query, SLOT_JOIN));
-    let group_fields = list_to_strings(query_get(query, SLOT_GROUP));
-    let having_clauses = list_to_strings(query_get(query, SLOT_HAVING_CLAUSES));
-    let having_params = list_to_strings(query_get(query, SLOT_HAVING_PARAMS));
-    let fragment_parts = list_to_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-    let fragment_params = list_to_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
+    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
+    let group_fields = list_strings(query_get(query, SLOT_GROUP));
+    let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
+    let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
+    let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
+    let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
 
     build_select_sql_from_parts_with_select_params(
         source,
@@ -391,15 +362,15 @@ fn build_select_sql_from_parts_with_select_params(
 /// (reuses WHERE/JOIN/GROUP/HAVING/FRAGMENT logic but overrides SELECT)
 unsafe fn query_to_count_sql(query: *mut u8) -> (String, Vec<String>) {
     let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = mesh_str_ref(source_ptr);
-    let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let join_clauses = list_to_strings(query_get(query, SLOT_JOIN));
-    let group_fields = list_to_strings(query_get(query, SLOT_GROUP));
-    let having_clauses = list_to_strings(query_get(query, SLOT_HAVING_CLAUSES));
-    let having_params = list_to_strings(query_get(query, SLOT_HAVING_PARAMS));
-    let fragment_parts = list_to_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-    let fragment_params = list_to_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
+    let source = text_of(source_ptr);
+    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
+    let group_fields = list_strings(query_get(query, SLOT_GROUP));
+    let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
+    let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
+    let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
+    let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
 
     build_count_sql_from_parts(
         source,
@@ -511,10 +482,10 @@ fn build_count_sql_from_parts(
 /// Build SQL for exists queries: SELECT EXISTS(SELECT 1 FROM ... WHERE ... LIMIT 1)
 unsafe fn query_to_exists_sql(query: *mut u8) -> (String, Vec<String>) {
     let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = mesh_str_ref(source_ptr);
-    let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let join_clauses = list_to_strings(query_get(query, SLOT_JOIN));
+    let source = text_of(source_ptr);
+    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
 
     build_exists_sql_from_parts(source, &where_clauses, &where_params, &join_clauses)
 }
@@ -584,7 +555,7 @@ pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_select_sql(query);
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         mesh_pool_query(pool, sql_ptr, params_ptr)
     }
 }
@@ -600,19 +571,19 @@ pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         // Read the query but force limit to 1
         let source_ptr = query_get(query, SLOT_SOURCE);
-        let source = mesh_str_ref(source_ptr);
-        let select_fields = list_to_strings(query_get(query, SLOT_SELECT));
-        let select_params = list_to_strings(query_get(query, SLOT_SELECT_PARAMS));
-        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
-        let order_fields = list_to_strings(query_get(query, SLOT_ORDER));
+        let source = text_of(source_ptr);
+        let select_fields = list_strings(query_get(query, SLOT_SELECT));
+        let select_params = list_strings(query_get(query, SLOT_SELECT_PARAMS));
+        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let order_fields = list_strings(query_get(query, SLOT_ORDER));
         let offset_val = query_get_int(query, SLOT_OFFSET);
-        let join_clauses = list_to_strings(query_get(query, SLOT_JOIN));
-        let group_fields = list_to_strings(query_get(query, SLOT_GROUP));
-        let having_clauses = list_to_strings(query_get(query, SLOT_HAVING_CLAUSES));
-        let having_params = list_to_strings(query_get(query, SLOT_HAVING_PARAMS));
-        let fragment_parts = list_to_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-        let fragment_params = list_to_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
+        let join_clauses = list_strings(query_get(query, SLOT_JOIN));
+        let group_fields = list_strings(query_get(query, SLOT_GROUP));
+        let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
+        let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
+        let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
+        let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
 
         let (sql, params) = build_select_sql_from_parts_with_select_params(
             source,
@@ -632,7 +603,7 @@ pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
         );
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         // Check if query succeeded
@@ -672,7 +643,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
     let result = mesh_pool_query(
         pool,
         mesh_str(sql) as *const MeshString,
-        strings_to_mesh_list(&[quote_name(table)]),
+        string_list(&[quote_name(table)]),
     );
     let r = &*(result as *const MeshResult);
     if r.tag != 0 {
@@ -681,7 +652,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
     let key = if mesh_list_length(r.value) == 1 {
         let row = mesh_list_get(r.value, 0) as *mut u8;
         let name = mesh_map_get(row, mesh_str("attname") as u64);
-        mesh_str_ref(name as *mut u8).to_string()
+        text_of(name as *mut u8).to_string()
     } else {
         "id".to_string()
     };
@@ -697,7 +668,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
 #[no_mangle]
 pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let key = match primary_key(pool, table_str) {
             Ok(key) => key,
             Err(error) => return error,
@@ -742,8 +713,8 @@ pub extern "C" fn mesh_repo_get_by(
     value: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
-        let field_str = mesh_str_ref(field);
+        let table_str = text_of(table);
+        let field_str = text_of(field);
         let sql = format!(
             "SELECT * FROM {} WHERE {} = $1 LIMIT 1",
             quote_name(table_str),
@@ -781,7 +752,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_count_sql(query);
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -805,7 +776,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
         }
 
         // Parse the string value as an integer
-        let count_str = mesh_str_ref(count_val as *mut u8);
+        let count_str = text_of(count_val as *mut u8);
         let count: i64 = count_str.parse().unwrap_or(0);
         crate::io::ok_int(count).cast()
     }
@@ -822,7 +793,7 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_exists_sql(query);
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -835,7 +806,7 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
         let exists = mesh_list_length(list) > 0 && {
             let first_row = mesh_list_get(list, 0) as *mut u8;
             let exists_val = mesh_map_get(first_row, mesh_str("exists") as u64);
-            exists_val != 0 && matches!(mesh_str_ref(exists_val as *mut u8), "t" | "true" | "1")
+            exists_val != 0 && matches!(text_of(exists_val as *mut u8), "t" | "true" | "1")
         };
         ok_result(crate::io::box_scalar(exists))
     }
@@ -1030,7 +1001,7 @@ fn build_insert_expr_sql_pure(
 #[no_mangle]
 pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, values) = map_to_columns_and_values(fields);
 
         if columns.is_empty() {
@@ -1042,7 +1013,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         // Check if query succeeded
@@ -1073,7 +1044,7 @@ pub extern "C" fn mesh_repo_insert_expr(
     expr_fields: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, exprs) = map_to_columns_and_exprs(expr_fields);
 
         let (sql, params) = match build_insert_expr_sql_pure(table_str, &columns, &exprs) {
@@ -1082,7 +1053,7 @@ pub extern "C" fn mesh_repo_insert_expr(
         };
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -1117,7 +1088,7 @@ pub extern "C" fn mesh_repo_update(
     fields: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, mut values) = map_to_columns_and_values(fields);
 
         if columns.is_empty() {
@@ -1133,11 +1104,11 @@ pub extern "C" fn mesh_repo_update(
         let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
 
         // Params: SET values first, then id value for WHERE
-        let id_str = mesh_str_ref(id);
+        let id_str = text_of(id);
         values.push(id_str.to_string());
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -1165,7 +1136,7 @@ pub extern "C" fn mesh_repo_update(
 #[no_mangle]
 pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
 
         // Build DELETE SQL: WHERE <primary key> =, RETURNING *
         let wheres = match primary_key(pool, table_str) {
@@ -1330,12 +1301,12 @@ pub extern "C" fn mesh_repo_insert_changeset(
         }
 
         // 3. Build INSERT SQL with RETURNING *
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         changeset_write_result(result, changeset, "no row returned")
@@ -1369,7 +1340,7 @@ pub extern "C" fn mesh_repo_update_changeset(
         }
 
         // 3. Build UPDATE SQL with RETURNING *
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let wheres = match primary_key(pool, table_str) {
             Ok(key) => vec![format!("{key} =")],
             Err(error) => return changeset_write_result(error, changeset, "not found"),
@@ -1378,11 +1349,11 @@ pub extern "C" fn mesh_repo_update_changeset(
         let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
 
         // Params: SET values first, then id value for WHERE
-        let id_str = mesh_str_ref(id);
+        let id_str = text_of(id);
         values.push(id_str.to_string());
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         changeset_write_result(result, changeset, "not found")
@@ -1396,7 +1367,7 @@ unsafe fn changeset_write_result(result: *mut u8, changeset: *mut u8, missing: &
     let r = &*(result as *const MeshResult);
     let (field, message) = if r.tag != 0 {
         let (sqlstate, constraint, pg_table, column, _message) =
-            parse_pg_error_string(mesh_str_ref(r.value));
+            parse_pg_error_string(text_of(r.value));
         map_constraint_error(sqlstate, constraint, pg_table, column)
             .unwrap_or_else(|| ("_base".to_string(), "database error".to_string()))
     } else if mesh_list_length(r.value) == 0 {
@@ -1412,6 +1383,9 @@ unsafe fn changeset_write_result(result: *mut u8, changeset: *mut u8, missing: &
 
 // ── Preload Operations (Phase 100) ─────────────────────────────────
 
+use crate::collections::list::list_strings;
+use crate::collections::list::string_list;
+use crate::string::text_of;
 use std::collections::{HashMap, HashSet};
 
 /// Parsed relationship metadata from "kind:name:target:fk:target_table:key"
@@ -1507,7 +1481,7 @@ unsafe fn preload_direct(
         let row = mesh_list_get(rows, i) as *mut u8;
         let val = mesh_map_get(row, parent_key_mesh as u64);
         if val != 0 {
-            let s = mesh_str_ref(val as *mut u8).to_string();
+            let s = text_of(val as *mut u8).to_string();
             if seen.insert(s.clone()) {
                 id_set.push(s);
             }
@@ -1525,7 +1499,7 @@ unsafe fn preload_direct(
     let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &id_set);
 
     let sql_ptr = mesh_str(&sql) as *const MeshString;
-    let params_ptr = strings_to_mesh_list(&params);
+    let params_ptr = string_list(&params);
     let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
     let r = &*(result as *const MeshResult);
@@ -1542,7 +1516,7 @@ unsafe fn preload_direct(
         let row = mesh_list_get(result_rows, i) as *mut u8;
         let key_val = mesh_map_get(row, match_key_mesh as u64);
         if key_val != 0 {
-            let key_str = mesh_str_ref(key_val as *mut u8).to_string();
+            let key_str = text_of(key_val as *mut u8).to_string();
             grouped.entry(key_str).or_default().push(row);
         }
     }
@@ -1554,7 +1528,7 @@ unsafe fn preload_direct(
         let row = mesh_list_get(rows, i) as *mut u8;
         let parent_val = mesh_map_get(row, parent_key_mesh as u64);
         let parent_str = if parent_val != 0 {
-            mesh_str_ref(parent_val as *mut u8).to_string()
+            text_of(parent_val as *mut u8).to_string()
         } else {
             String::new()
         };
@@ -1772,14 +1746,14 @@ unsafe fn row_json(
 ) -> serde_json::Value {
     let mut object = serde_json::Map::new();
     for i in 0..mesh_map_size(row) {
-        let key = mesh_str_ref(mesh_map_entry_key(row, i) as *mut u8);
+        let key = text_of(mesh_map_entry_key(row, i) as *mut u8);
         let value = mesh_map_entry_value(row, i);
         let json = match associations.0.get(key) {
             Some(nested) => {
                 let many = rel_map.get(key).is_some_and(|meta| meta.kind == "has_many");
                 association_json(value, many, nested, rel_map)
             }
-            None => serde_json::Value::String(mesh_str_ref(value as *mut u8).to_string()),
+            None => serde_json::Value::String(text_of(value as *mut u8).to_string()),
         };
         object.insert(key.to_string(), json);
     }
@@ -1818,11 +1792,11 @@ pub extern "C" fn mesh_repo_preload(
         }
 
         // Parse relationship metadata into lookup map
-        let meta_strings = list_to_strings(rel_meta);
+        let meta_strings = list_strings(rel_meta);
         let rel_map = parse_relationship_meta(&meta_strings);
 
         // Parse association names
-        let assoc_names = list_to_strings(associations);
+        let assoc_names = list_strings(associations);
 
         // Sort by depth: direct associations (depth 0) first, then nested
         let mut sorted_assocs: Vec<(usize, String)> = assoc_names
@@ -2015,15 +1989,15 @@ pub extern "C" fn mesh_repo_update_where(
     query: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, mut values) = map_to_columns_and_values(fields);
 
         if columns.is_empty() {
             return err_result("update_where: no fields provided");
         }
 
-        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
 
         if where_clauses.is_empty() {
             return err_result("update_where: no WHERE conditions");
@@ -2045,7 +2019,7 @@ pub extern "C" fn mesh_repo_update_where(
         values.extend(where_param_values);
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -2075,10 +2049,10 @@ pub extern "C" fn mesh_repo_update_where_expr(
     query: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, exprs) = map_to_columns_and_exprs(expr_fields);
-        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
 
         let (sql, params) = match build_update_where_expr_sql_pure(
             table_str,
@@ -2092,7 +2066,7 @@ pub extern "C" fn mesh_repo_update_where_expr(
         };
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -2116,10 +2090,10 @@ pub extern "C" fn mesh_repo_update_where_expr(
 #[no_mangle]
 pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut u8) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
 
-        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
 
         if where_clauses.is_empty() {
             return err_result("delete_where: no WHERE conditions");
@@ -2131,7 +2105,7 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
         sql.push_str(&format!(" WHERE {}", where_sql));
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&where_param_values);
+        let params_ptr = string_list(&where_param_values);
         mesh_pool_execute(pool, sql_ptr, params_ptr)
     }
 }
@@ -2158,13 +2132,13 @@ pub extern "C" fn mesh_repo_insert_or_update(
     update_fields: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (columns, values) = map_to_columns_and_values(fields);
         if columns.is_empty() {
             return err_result("insert_or_update: no fields provided");
         }
-        let targets = list_to_strings(conflict_targets);
-        let updates = list_to_strings(update_fields);
+        let targets = list_strings(conflict_targets);
+        let updates = list_strings(update_fields);
         if targets.is_empty() {
             return err_result("insert_or_update: no conflict targets provided");
         }
@@ -2178,7 +2152,7 @@ pub extern "C" fn mesh_repo_insert_or_update(
         );
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&values);
+        let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -2209,9 +2183,9 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
     expr_fields: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
+        let table_str = text_of(table);
         let (insert_columns, insert_values) = map_to_columns_and_values(fields);
-        let targets = list_to_strings(conflict_targets);
+        let targets = list_strings(conflict_targets);
         let (update_columns, update_exprs) = map_to_columns_and_exprs(expr_fields);
 
         let (sql, params) = match build_insert_or_update_expr_sql_pure(
@@ -2227,7 +2201,7 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
         };
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&params);
+        let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         let r = &*(result as *const MeshResult);
@@ -2255,9 +2229,9 @@ pub extern "C" fn mesh_repo_delete_where_returning(
     query: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = mesh_str_ref(table);
-        let where_clauses = list_to_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_to_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let table_str = text_of(table);
+        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
+        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
 
         if where_clauses.is_empty() {
             return err_result("delete_where_returning: no WHERE conditions");
@@ -2269,7 +2243,7 @@ pub extern "C" fn mesh_repo_delete_where_returning(
         sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
 
         let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = strings_to_mesh_list(&where_param_values);
+        let params_ptr = string_list(&where_param_values);
         mesh_pool_query(pool, sql_ptr, params_ptr)
     }
 }

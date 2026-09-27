@@ -4,6 +4,8 @@
 //! represented by the neutral `Migration.*` surface.
 
 use super::quote_ident;
+use crate::collections::list::list_strings;
+use crate::collections::list::string_list;
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::collections::map::mesh_map_get;
 use crate::db::pool::{mesh_pool_execute, mesh_pool_query};
@@ -26,26 +28,6 @@ fn quote_qualified_ident(value: &str, helper_name: &str) -> Result<String, Strin
         parts.push(quote_ident(trimmed));
     }
     Ok(parts.join("."))
-}
-
-unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *const MeshString;
-        if !elem.is_null() {
-            result.push((*elem).as_str().to_string());
-        }
-    }
-    result
-}
-
-unsafe fn strings_to_mesh_list(values: &[String]) -> *mut u8 {
-    let mut list = mesh_list_new();
-    for value in values {
-        list = mesh_list_append(list, mesh_str(value) as u64);
-    }
-    list
 }
 
 fn ok_int_result(value: i64) -> *mut u8 {
@@ -246,7 +228,7 @@ pub extern "C" fn mesh_pg_create_range_partitioned_table(
     partition_column: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let cols = list_to_strings(columns);
+        let cols = list_strings(columns);
         match build_create_range_partitioned_table_sql(
             (*table).as_str(),
             &cols,
@@ -331,7 +313,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
         }
 
         let sql = build_list_daily_partitions_before_sql();
-        let params = strings_to_mesh_list(&[parent_table.to_string(), max_days.to_string()]);
+        let params = string_list(&[parent_table.to_string(), max_days.to_string()]);
         let sql_ptr = mesh_str(sql) as *const MeshString;
         let query_result = mesh_pool_query(pool, sql_ptr, params);
         let result = &*(query_result as *const MeshResult);

@@ -93,6 +93,11 @@ pub extern "C" fn mesh_string_new(data: *const u8, len: u64) -> *mut MeshString 
     }
 }
 
+/// The text of the Mesh string at `pointer`.
+pub(crate) unsafe fn text_of<'a, T>(pointer: *const T) -> &'a str {
+    (*pointer.cast::<MeshString>()).as_str()
+}
+
 /// A new Mesh string holding `text`.
 pub(crate) fn mesh_str(text: &str) -> *mut MeshString {
     mesh_string_new(text.as_ptr(), text.len() as u64)

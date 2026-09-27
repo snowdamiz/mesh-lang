@@ -26,6 +26,7 @@ use crate::db::pg::{
     DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
 };
 use crate::io::{alloc_result, box_scalar, err_result};
+use crate::string::text_of;
 use crate::string::{mesh_str, MeshString};
 
 // ponytail: fixed safety caps; make these connection options only if real workloads need more.
@@ -63,15 +64,6 @@ unsafe fn sqlite_transient() -> Option<unsafe extern "C" fn(*mut std::ffi::c_voi
     std::mem::transmute::<isize, Option<unsafe extern "C" fn(*mut std::ffi::c_void)>>(
         SQLITE_TRANSIENT_VALUE,
     )
-}
-
-/// Extract a Rust &str from a raw MeshString pointer.
-///
-/// # Safety
-///
-/// The pointer must reference a valid MeshString allocation.
-unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
-    (*s).as_str()
 }
 
 #[cfg(test)]
@@ -166,7 +158,7 @@ unsafe fn prepared(
     values: Values,
 ) -> Result<(*mut sqlite3, StmtGuard), String> {
     let db = (*(conn_handle as *const SqliteConn)).db;
-    let guard = prepare_statement(db, mesh_str_to_rust(sql))?;
+    let guard = prepare_statement(db, text_of(sql))?;
     let params = match values {
         Values::Text => text_values(params, MAX_SQLITE_VALUES, "SQLite")?,
         Values::Typed => db_values(params, MAX_SQLITE_VALUES, "SQLite")?,
@@ -351,7 +343,7 @@ unsafe fn column_text(
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
     unsafe {
-        let path_str = mesh_str_to_rust(path);
+        let path_str = text_of(path);
         let c_path = match CString::new(path_str) {
             Ok(c) => c,
             Err(_) => return err_result("path contains null byte"),

@@ -19,12 +19,14 @@
 //! |  6   |  48    | primary_key | *mut u8 (MeshString or null)  |
 //! |  7   |  56    | action      | i64: 0 = insert, 1 = update   |
 
-use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::collections::list::list_strings;
+use crate::collections::list::mesh_list_new;
 use crate::collections::map::{
     mesh_map_get, mesh_map_has_key, mesh_map_new_typed, mesh_map_put, mesh_map_size,
 };
 use crate::gc::mesh_gc_alloc_actor;
-use crate::string::{mesh_str, MeshString};
+use crate::string::mesh_str;
+use crate::string::text_of;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -62,25 +64,6 @@ unsafe fn cs_set_int(cs: *mut u8, slot: usize, val: i64) {
 }
 
 // ── String helpers ───────────────────────────────────────────────────
-
-/// Read a MeshString pointer as a Rust &str.
-unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
-    let ms = ptr as *const MeshString;
-    (*ms).as_str()
-}
-
-/// Extract a Vec<String> from a Mesh List<String> pointer.
-unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *const MeshString;
-        if !elem.is_null() {
-            result.push((*elem).as_str().to_string());
-        }
-    }
-    result
-}
 
 // ── Allocation ───────────────────────────────────────────────────────
 
@@ -140,7 +123,7 @@ pub extern "C" fn mesh_changeset_cast(data: *mut u8, params: *mut u8, allowed: *
         let cs = alloc_changeset();
         cs_set(cs, SLOT_DATA, data);
 
-        let allowed_names = list_to_strings(allowed);
+        let allowed_names = list_strings(allowed);
         let mut changes = mesh_map_new_typed(1);
 
         for field_name in &allowed_names {
@@ -174,7 +157,7 @@ pub extern "C" fn mesh_changeset_cast_with_types(
         cs_set(cs, SLOT_FIELD_TYPES, field_types);
 
         // Build field_type lookup from "field:SQL_TYPE" entries
-        let ft_entries = list_to_strings(field_types);
+        let ft_entries = list_strings(field_types);
         let type_map: std::collections::HashMap<String, String> = ft_entries
             .iter()
             .filter_map(|entry| {
@@ -187,7 +170,7 @@ pub extern "C" fn mesh_changeset_cast_with_types(
             })
             .collect();
 
-        let allowed_names = list_to_strings(allowed);
+        let allowed_names = list_strings(allowed);
         let mut changes = mesh_map_new_typed(1);
         let mut errors = mesh_map_new_typed(1);
 
@@ -196,7 +179,7 @@ pub extern "C" fn mesh_changeset_cast_with_types(
             let key_u64 = key_mesh as u64;
             if mesh_map_has_key(params, key_u64) != 0 {
                 let val = mesh_map_get(params, key_u64);
-                let val_str = mesh_str_ref(val as *mut u8);
+                let val_str = text_of(val as *mut u8);
 
                 if let Some(sql_type) = type_map.get(field_name) {
                     match coerce_value(val_str, sql_type) {
@@ -234,7 +217,7 @@ pub extern "C" fn mesh_changeset_cast_with_types(
 pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8) -> *mut u8 {
     unsafe {
         let new_cs = clone_changeset(cs);
-        let field_names = list_to_strings(fields);
+        let field_names = list_strings(fields);
         let changes = cs_get(new_cs, SLOT_CHANGES);
         let data = cs_get(new_cs, SLOT_DATA);
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
@@ -246,11 +229,11 @@ pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8)
             // Check if field has a non-empty value in changes or data
             let is_present = if mesh_map_has_key(changes, key_u64) != 0 {
                 let val = mesh_map_get(changes, key_u64);
-                let s = mesh_str_ref(val as *mut u8);
+                let s = text_of(val as *mut u8);
                 !s.is_empty()
             } else if mesh_map_has_key(data, key_u64) != 0 {
                 let val = mesh_map_get(data, key_u64);
-                let s = mesh_str_ref(val as *mut u8);
+                let s = text_of(val as *mut u8);
                 !s.is_empty()
             } else {
                 false
@@ -291,14 +274,14 @@ pub extern "C" fn mesh_changeset_validate_length(
         let changes = cs_get(new_cs, SLOT_CHANGES);
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
-        let field_str = mesh_str_ref(field);
+        let field_str = text_of(field);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
         if mesh_map_has_key(changes, key_u64) != 0 {
             let val = mesh_map_get(changes, key_u64);
-            let val_str = mesh_str_ref(val as *mut u8);
+            let val_str = text_of(val as *mut u8);
             let len = val_str.len() as i64;
 
             // Only add first error per field
@@ -340,15 +323,15 @@ pub extern "C" fn mesh_changeset_validate_format(
         let changes = cs_get(new_cs, SLOT_CHANGES);
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
-        let field_str = mesh_str_ref(field);
-        let pattern_str = mesh_str_ref(pattern);
+        let field_str = text_of(field);
+        let pattern_str = text_of(pattern);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
         if mesh_map_has_key(changes, key_u64) != 0 {
             let val = mesh_map_get(changes, key_u64);
-            let val_str = mesh_str_ref(val as *mut u8);
+            let val_str = text_of(val as *mut u8);
 
             if !val_str.contains(pattern_str) {
                 // Only add error if no error exists for this field yet
@@ -384,17 +367,17 @@ pub extern "C" fn mesh_changeset_validate_inclusion(
         let changes = cs_get(new_cs, SLOT_CHANGES);
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
-        let field_str = mesh_str_ref(field);
+        let field_str = text_of(field);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
         if mesh_map_has_key(changes, key_u64) != 0 {
             let val = mesh_map_get(changes, key_u64);
-            let val_str = mesh_str_ref(val as *mut u8);
+            let val_str = text_of(val as *mut u8);
 
             // Check if value is in the allowed list
-            let allowed = list_to_strings(allowed_values);
+            let allowed = list_strings(allowed_values);
             let is_valid = allowed.iter().any(|a| a == val_str);
 
             if !is_valid && mesh_map_has_key(errors, key_u64) == 0 {
@@ -431,14 +414,14 @@ pub extern "C" fn mesh_changeset_validate_number(
         let changes = cs_get(new_cs, SLOT_CHANGES);
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
-        let field_str = mesh_str_ref(field);
+        let field_str = text_of(field);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
         if mesh_map_has_key(changes, key_u64) != 0 {
             let val = mesh_map_get(changes, key_u64);
-            let val_str = mesh_str_ref(val as *mut u8);
+            let val_str = text_of(val as *mut u8);
 
             // Only add first error per field
             if mesh_map_has_key(errors, key_u64) == 0 {
@@ -511,7 +494,7 @@ pub extern "C" fn mesh_changeset_changes(cs: *mut u8) -> *mut u8 {
 pub extern "C" fn mesh_changeset_get_change(cs: *mut u8, field: *mut u8) -> *mut u8 {
     unsafe {
         let changes = cs_get(cs, SLOT_CHANGES);
-        let field_str = mesh_str_ref(field);
+        let field_str = text_of(field);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
@@ -530,7 +513,7 @@ pub extern "C" fn mesh_changeset_get_change(cs: *mut u8, field: *mut u8) -> *mut
 pub extern "C" fn mesh_changeset_get_error(cs: *mut u8, field: *mut u8) -> *mut u8 {
     unsafe {
         let errors = cs_get(cs, SLOT_ERRORS);
-        let field_str = mesh_str_ref(field);
+        let field_str = text_of(field);
         let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 

@@ -88,6 +88,23 @@ pub(crate) unsafe fn list_slots(list: *const u8) -> (usize, *const u64) {
     (list_len(list) as usize, list_data(list))
 }
 
+/// The strings a `List<String>` holds, copied out.
+pub(crate) unsafe fn list_strings(list: *const u8) -> Vec<String> {
+    let (len, slots) = list_slots(list);
+    (0..len)
+        .map(|index| crate::string::text_of(*slots.add(index) as *const u8).to_string())
+        .collect()
+}
+
+/// A `List<String>` of `values`.
+pub(crate) fn string_list<S: AsRef<str>>(values: &[S]) -> *mut u8 {
+    let slots: Vec<u64> = values
+        .iter()
+        .map(|value| crate::string::mesh_str(value.as_ref()) as u64)
+        .collect();
+    mesh_list_from_array(slots.as_ptr(), slots.len() as i64)
+}
+
 /// Get a mutable pointer to the data region of an OWNED list.
 unsafe fn list_data_mut(list: *mut u8) -> *mut u64 {
     debug_assert_ne!(list_cap(list), VIEW, "a view is never written");

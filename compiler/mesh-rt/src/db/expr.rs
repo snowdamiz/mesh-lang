@@ -7,7 +7,8 @@
 
 use super::{quote_ident, quote_name};
 use crate::collections::list::{mesh_list_get, mesh_list_length};
-use crate::string::{mesh_str, MeshString};
+use crate::string::mesh_str;
+use crate::string::text_of;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SqlExpr {
@@ -83,11 +84,6 @@ impl SqlExpr {
     }
 }
 
-unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
-    let ms = ptr as *const MeshString;
-    (*ms).as_str()
-}
-
 /// An `Expr` value: the expression as JSON in a Mesh string, which the GC
 /// frees with the last value holding it (a boxed `SqlExpr` was never freed).
 fn alloc_expr(expr: SqlExpr) -> *mut u8 {
@@ -96,7 +92,7 @@ fn alloc_expr(expr: SqlExpr) -> *mut u8 {
 }
 
 pub(crate) unsafe fn clone_expr(ptr: *mut u8) -> SqlExpr {
-    serde_json::from_str(mesh_str_ref(ptr)).expect("an Expr value holds an SqlExpr")
+    serde_json::from_str(text_of(ptr)).expect("an Expr value holds an SqlExpr")
 }
 
 fn render_function_name(name: &str) -> String {
@@ -217,12 +213,12 @@ fn call_expr(name: &str, args: Vec<SqlExpr>) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C" fn mesh_expr_column(field: *mut u8) -> *mut u8 {
-    unsafe { alloc_expr(SqlExpr::Column(mesh_str_ref(field).to_string())) }
+    unsafe { alloc_expr(SqlExpr::Column(text_of(field).to_string())) }
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_expr_value(value: *mut u8) -> *mut u8 {
-    unsafe { alloc_expr(SqlExpr::Value(mesh_str_ref(value).to_string())) }
+    unsafe { alloc_expr(SqlExpr::Value(text_of(value).to_string())) }
 }
 
 #[no_mangle]
@@ -234,7 +230,7 @@ pub extern "C" fn mesh_expr_null() -> *mut u8 {
 pub extern "C" fn mesh_expr_call(name: *mut u8, args: *mut u8) -> *mut u8 {
     unsafe {
         alloc_expr(SqlExpr::Call {
-            name: mesh_str_ref(name).to_string(),
+            name: text_of(name).to_string(),
             args: expr_list_to_vec(args),
         })
     }
@@ -242,7 +238,7 @@ pub extern "C" fn mesh_expr_call(name: *mut u8, args: *mut u8) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C" fn mesh_pg_cast(expr: *mut u8, sql_type: *mut u8) -> *mut u8 {
-    unsafe { cast_expr(expr, mesh_str_ref(sql_type).to_string()) }
+    unsafe { cast_expr(expr, text_of(sql_type).to_string()) }
 }
 
 #[no_mangle]
@@ -276,7 +272,7 @@ pub extern "C" fn mesh_pg_gen_salt(algorithm: *mut u8, rounds: i64) -> *mut u8 {
         call_expr(
             "gen_salt",
             vec![
-                SqlExpr::Value(mesh_str_ref(algorithm).to_string()),
+                SqlExpr::Value(text_of(algorithm).to_string()),
                 SqlExpr::Value(rounds.to_string()),
             ],
         )
@@ -295,7 +291,7 @@ pub extern "C" fn mesh_pg_to_tsvector(config: *mut u8, expr: *mut u8) -> *mut u8
             "to_tsvector",
             vec![
                 SqlExpr::Cast {
-                    expr: Box::new(SqlExpr::Value(mesh_str_ref(config).to_string())),
+                    expr: Box::new(SqlExpr::Value(text_of(config).to_string())),
                     sql_type: "regconfig".to_string(),
                 },
                 clone_expr(expr),
@@ -311,7 +307,7 @@ pub extern "C" fn mesh_pg_plainto_tsquery(config: *mut u8, expr: *mut u8) -> *mu
             "plainto_tsquery",
             vec![
                 SqlExpr::Cast {
-                    expr: Box::new(SqlExpr::Value(mesh_str_ref(config).to_string())),
+                    expr: Box::new(SqlExpr::Value(text_of(config).to_string())),
                     sql_type: "regconfig".to_string(),
                 },
                 clone_expr(expr),
@@ -413,7 +409,7 @@ pub extern "C" fn mesh_expr_coalesce(exprs: *mut u8) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C" fn mesh_expr_excluded(field: *mut u8) -> *mut u8 {
-    unsafe { alloc_expr(SqlExpr::Excluded(mesh_str_ref(field).to_string())) }
+    unsafe { alloc_expr(SqlExpr::Excluded(text_of(field).to_string())) }
 }
 
 #[no_mangle]
@@ -421,7 +417,7 @@ pub extern "C" fn mesh_expr_alias(expr: *mut u8, alias: *mut u8) -> *mut u8 {
     unsafe {
         alloc_expr(SqlExpr::Alias {
             expr: Box::new(clone_expr(expr)),
-            alias: mesh_str_ref(alias).to_string(),
+            alias: text_of(alias).to_string(),
         })
     }
 }

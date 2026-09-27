@@ -32,12 +32,14 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
+use crate::collections::list::list_strings;
 use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
+use crate::string::text_of;
 use crate::string::{mesh_str, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -1055,30 +1057,6 @@ fn prepare_typed_statement(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>
 
 // ── MeshString / MeshResult Helpers ────────────────────────────────────
 
-/// Extract a Rust &str from a raw MeshString pointer.
-///
-/// # Safety
-///
-/// The pointer must reference a valid MeshString allocation.
-unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
-    (*s).as_str()
-}
-
-/// Extract param strings from a Mesh List<String>.
-///
-/// Each element is a u64 that is actually a pointer to a MeshString. The
-/// list is read through `list_slots`: it may be a view of another's buffer.
-unsafe fn extract_params(params: *mut u8) -> Vec<String> {
-    let (len, data_ptr) = crate::collections::list::list_slots(params);
-    let mut result = Vec::with_capacity(len);
-    for i in 0..len {
-        let param_ptr = *data_ptr.add(i) as *const MeshString;
-        let param_str = mesh_str_to_rust(param_ptr);
-        result.push(param_str.to_string());
-    }
-    result
-}
-
 /// The values a `List<DbValue>` holds, at most `maximum` of them and each
 /// within the byte limit; `database` names the driver in the errors.
 pub(crate) unsafe fn db_values<'a>(
@@ -1162,7 +1140,7 @@ fn parse_command_tag(tag: &str) -> i64 {
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
 pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
-    match connect(unsafe { mesh_str_to_rust(url) }) {
+    match connect(unsafe { text_of(url) }) {
         // Result payloads with integer semantics are represented by pointers
         // to boxed integers, as SQLite's handles are.
         Ok(conn) => {
@@ -1341,8 +1319,8 @@ pub extern "C" fn mesh_pg_execute(
 ) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = mesh_str_to_rust(sql);
-        let param_strs = extract_params(params);
+        let sql_str = text_of(sql);
+        let param_strs = list_strings(params);
         let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
 
         // Build pipelined message: Parse + Bind + Execute + Sync
@@ -1414,8 +1392,8 @@ pub extern "C" fn mesh_pg_query(
 ) -> *mut u8 {
     unsafe {
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = mesh_str_to_rust(sql);
-        let param_strs = extract_params(params);
+        let sql_str = text_of(sql);
+        let param_strs = list_strings(params);
         let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
 
         // Build pipelined message: Parse + Bind + Describe(Portal) + Execute + Sync
@@ -1548,7 +1526,7 @@ pub extern "C" fn mesh_pg_execute_values(
             return err_result("invalid PostgreSQL execute_values arguments");
         }
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql = mesh_str_to_rust(sql);
+        let sql = text_of(sql);
         if let Err(error) = validate_typed_sql(sql) {
             return err_result(&error);
         }
@@ -1614,7 +1592,7 @@ pub extern "C" fn mesh_pg_query_values(
             return err_result("invalid PostgreSQL query_values arguments");
         }
         let conn = &mut *(conn_handle as *mut PgConn);
-        let sql = mesh_str_to_rust(sql);
+        let sql = text_of(sql);
         let params = match db_values(params, MAX_PG_VALUES, "PostgreSQL") {
             Ok(params) => params,
             Err(error) => return err_result(&error),

@@ -13,23 +13,10 @@
 //! PostgreSQL convention, and parameters use $N placeholders.
 
 use super::quote_name;
-use crate::collections::list::{mesh_list_get, mesh_list_length};
+use crate::collections::list::list_strings;
 use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/// Extract a Vec<String> from a Mesh List<String> pointer.
-unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *const MeshString;
-        if !elem.is_null() {
-            result.push((*elem).as_str().to_string());
-        }
-    }
-    result
-}
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 
@@ -350,9 +337,9 @@ pub extern "C" fn mesh_orm_build_select(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let cols = list_to_strings(columns);
-        let wheres = list_to_strings(where_clauses);
-        let orders = list_to_strings(order_by);
+        let cols = list_strings(columns);
+        let wheres = list_strings(where_clauses);
+        let orders = list_strings(order_by);
         let sql = build_select_sql(table_name, &cols, &wheres, &orders, limit, offset);
         mesh_str(&sql) as *mut u8
     }
@@ -374,8 +361,8 @@ pub extern "C" fn mesh_orm_build_insert(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let cols = list_to_strings(columns);
-        let ret = list_to_strings(returning);
+        let cols = list_strings(columns);
+        let ret = list_strings(returning);
         let sql = build_insert_sql(table_name, &cols, &ret);
         mesh_str(&sql) as *mut u8
     }
@@ -400,9 +387,9 @@ pub extern "C" fn mesh_orm_build_update(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let set_cols = list_to_strings(set_columns);
-        let wheres = list_to_strings(where_clauses);
-        let ret = list_to_strings(returning);
+        let set_cols = list_strings(set_columns);
+        let wheres = list_strings(where_clauses);
+        let ret = list_strings(returning);
         let sql = build_update_sql(table_name, &set_cols, &wheres, &ret);
         mesh_str(&sql) as *mut u8
     }
@@ -424,8 +411,8 @@ pub extern "C" fn mesh_orm_build_delete(
 ) -> *mut u8 {
     unsafe {
         let table_name = (*table).as_str();
-        let wheres = list_to_strings(where_clauses);
-        let ret = list_to_strings(returning);
+        let wheres = list_strings(where_clauses);
+        let ret = list_strings(returning);
         let sql = build_delete_sql(table_name, &wheres, &ret);
         mesh_str(&sql) as *mut u8
     }
