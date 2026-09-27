@@ -9740,9 +9740,9 @@ fn infer_call(
 /// Unify each associated type required from index `from` on with the
 /// receiver's, where the receiver is now known.
 fn settle_projections(ctx: &mut InferCtx, trait_registry: &TraitRegistry, from: usize) {
-    for (required, trait_name, assoc, receiver, span) in
-        ctx.projection_requirements[from..].to_vec()
-    {
+    // A copy: unifying needs `ctx` mutably.
+    let pending = ctx.projection_requirements[from..].to_vec();
+    for (required, trait_name, assoc, receiver, span) in pending {
         let receiver = ctx.resolve(receiver);
         if receiver.has_type_vars() {
             continue;
