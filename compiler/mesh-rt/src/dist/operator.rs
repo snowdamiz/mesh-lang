@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use hmac::{Hmac, Mac};
@@ -677,46 +677,6 @@ pub(crate) fn record_diagnostic(record: OperatorDiagnosticRecord) {
         }
     }
     diagnostics_buffer().record(record);
-}
-
-pub fn operator_recent_diagnostics(limit: Option<usize>) -> OperatorDiagnosticsSnapshot {
-    diagnostics_buffer().snapshot(limit)
-}
-
-pub fn operator_continuity_list(limit: Option<usize>) -> OperatorContinuityList {
-    continuity_list_from_registry(continuity_registry(), limit)
-}
-
-pub fn operator_continuity_status(
-    request_key: &str,
-) -> Result<ContinuityRecord, OperatorQueryError> {
-    if request_key.is_empty() {
-        return Err(OperatorQueryError::InvalidRequest {
-            query: OperatorQueryKind::ContinuityLookup,
-            reason: "request_key_missing".to_string(),
-        });
-    }
-
-    continuity_registry()
-        .record(request_key)
-        .ok_or_else(|| OperatorQueryError::LocalRejected {
-            query: OperatorQueryKind::ContinuityLookup,
-            reason: "request_key_not_found".to_string(),
-        })
-}
-
-pub fn operator_status() -> Result<OperatorStatusSnapshot, OperatorQueryError> {
-    let state = node_state().ok_or_else(|| OperatorQueryError::TargetUnavailable {
-        target: "<local>".to_string(),
-        query: OperatorQueryKind::Status,
-        reason: "node_not_started".to_string(),
-    })?;
-    let peer_nodes = peer_names(state);
-    Ok(status_snapshot_from_parts(
-        &state.name,
-        &peer_nodes,
-        continuity_registry().authority_status(),
-    ))
 }
 
 pub fn operator_runtime_snapshot() -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
@@ -1395,13 +1355,21 @@ fn append_operator_audit_entry(entry: &serde_json::Value) -> Result<(), String> 
         .map_err(|error| format!("operator_audit_sync_failed:{error}"))
 }
 
-fn execute_transient_query(
+/// Runs `query` on `target` over a transient authenticated connection and
+/// decodes its reply payload with `decode`, the query kind's own decoder.
+fn execute_transient_query<T>(
     target: &str,
     cookie: &str,
     query: OperatorQuery,
     timeout: Duration,
-) -> Result<OperatorReply, OperatorQueryError> {
+    decode: fn(&[u8]) -> Result<T, String>,
+) -> Result<T, OperatorQueryError> {
     let query_kind = query.kind();
+    let decode_error = |reason| OperatorQueryError::Decode {
+        target: target.to_string(),
+        query: query_kind,
+        reason,
+    };
     let payload = encode_query_frame(
         OPERATOR_QUERY_REQUEST_ID.fetch_add(1, Ordering::Relaxed),
         &query,
@@ -1418,26 +1386,18 @@ fn execute_transient_query(
                 reason,
             }
         })?;
-    let (_request_id, result) =
-        decode_query_reply_frame(&reply).map_err(|reason| OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: query_kind,
-            reason,
-        })?;
-    match result {
-        Ok(bytes) => decode_query_reply_payload(query_kind, &bytes).map_err(|reason| {
-            OperatorQueryError::Decode {
-                target: target.to_string(),
-                query: query_kind,
-                reason,
-            }
-        }),
-        Err(reason) => Err(OperatorQueryError::RemoteRejected {
-            target: target.to_string(),
-            query: query_kind,
-            reason,
-        }),
-    }
+    let (_request_id, result) = decode_query_reply_frame(&reply).map_err(decode_error)?;
+    let payload = result.map_err(|reason| OperatorQueryError::RemoteRejected {
+        target: target.to_string(),
+        query: query_kind,
+        reason,
+    })?;
+    decode(&payload).map_err(decode_error)
+}
+
+fn decode_json_reply<T: serde::de::DeserializeOwned>(payload: &[u8]) -> Result<T, String> {
+    serde_json::from_slice(payload)
+        .map_err(|error| format!("operator reply decode failed: {error}"))
 }
 
 pub fn query_operator_status_remote(
@@ -1445,14 +1405,13 @@ pub fn query_operator_status_remote(
     cookie: &str,
     timeout: Duration,
 ) -> Result<OperatorStatusSnapshot, OperatorQueryError> {
-    match execute_transient_query(target, cookie, OperatorQuery::Status, timeout)? {
-        OperatorReply::Status(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Status,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    execute_transient_query(
+        target,
+        cookie,
+        OperatorQuery::Status,
+        timeout,
+        decode_status_snapshot,
+    )
 }
 
 pub fn query_operator_runtime_remote(
@@ -1460,14 +1419,13 @@ pub fn query_operator_runtime_remote(
     cookie: &str,
     timeout: Duration,
 ) -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
-    match execute_transient_query(target, cookie, OperatorQuery::Runtime, timeout)? {
-        OperatorReply::Runtime(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Runtime,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    execute_transient_query(
+        target,
+        cookie,
+        OperatorQuery::Runtime,
+        timeout,
+        decode_json_reply,
+    )
 }
 
 pub fn query_operator_control_remote(
@@ -1476,14 +1434,13 @@ pub fn query_operator_control_remote(
     request: OperatorControlRequest,
     timeout: Duration,
 ) -> Result<OperatorControlOutcome, OperatorQueryError> {
-    match execute_transient_query(target, cookie, OperatorQuery::Control(request), timeout)? {
-        OperatorReply::Control(outcome) => Ok(outcome),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Control,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    execute_transient_query(
+        target,
+        cookie,
+        OperatorQuery::Control(request),
+        timeout,
+        decode_json_reply,
+    )
 }
 
 pub fn query_operator_continuity_status_remote(
@@ -1498,21 +1455,10 @@ pub fn query_operator_continuity_status_remote(
             reason: "request_key_missing".to_string(),
         });
     }
-    match execute_transient_query(
-        target,
-        cookie,
-        OperatorQuery::ContinuityLookup {
-            request_key: request_key.to_string(),
-        },
-        timeout,
-    )? {
-        OperatorReply::ContinuityRecord(record) => Ok(record),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::ContinuityLookup,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    let query = OperatorQuery::ContinuityLookup {
+        request_key: request_key.to_string(),
+    };
+    execute_transient_query(target, cookie, query, timeout, decode_record_payload)
 }
 
 pub fn query_operator_continuity_list_remote(
@@ -1521,19 +1467,8 @@ pub fn query_operator_continuity_list_remote(
     limit: Option<usize>,
     timeout: Duration,
 ) -> Result<OperatorContinuityList, OperatorQueryError> {
-    match execute_transient_query(
-        target,
-        cookie,
-        OperatorQuery::ContinuityList { limit },
-        timeout,
-    )? {
-        OperatorReply::ContinuityList(list) => Ok(list),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::ContinuityList,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    let query = OperatorQuery::ContinuityList { limit };
+    execute_transient_query(target, cookie, query, timeout, decode_continuity_list)
 }
 
 pub fn query_operator_diagnostics_remote(
@@ -1542,119 +1477,8 @@ pub fn query_operator_diagnostics_remote(
     limit: Option<usize>,
     timeout: Duration,
 ) -> Result<OperatorDiagnosticsSnapshot, OperatorQueryError> {
-    match execute_transient_query(
-        target,
-        cookie,
-        OperatorQuery::Diagnostics { limit },
-        timeout,
-    )? {
-        OperatorReply::Diagnostics(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Diagnostics,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_status(
-    target: &str,
-    timeout: Duration,
-) -> Result<OperatorStatusSnapshot, OperatorQueryError> {
-    match execute_query(target, OperatorQuery::Status, timeout)? {
-        OperatorReply::Status(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Status,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_runtime(
-    target: &str,
-    timeout: Duration,
-) -> Result<OperatorRuntimeSnapshot, OperatorQueryError> {
-    match execute_query(target, OperatorQuery::Runtime, timeout)? {
-        OperatorReply::Runtime(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Runtime,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_control(
-    target: &str,
-    request: OperatorControlRequest,
-    timeout: Duration,
-) -> Result<OperatorControlOutcome, OperatorQueryError> {
-    match execute_query(target, OperatorQuery::Control(request), timeout)? {
-        OperatorReply::Control(outcome) => Ok(outcome),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Control,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_continuity_status(
-    target: &str,
-    request_key: &str,
-    timeout: Duration,
-) -> Result<ContinuityRecord, OperatorQueryError> {
-    if request_key.is_empty() {
-        return Err(OperatorQueryError::InvalidRequest {
-            query: OperatorQueryKind::ContinuityLookup,
-            reason: "request_key_missing".to_string(),
-        });
-    }
-    match execute_query(
-        target,
-        OperatorQuery::ContinuityLookup {
-            request_key: request_key.to_string(),
-        },
-        timeout,
-    )? {
-        OperatorReply::ContinuityRecord(record) => Ok(record),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::ContinuityLookup,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_continuity_list(
-    target: &str,
-    limit: Option<usize>,
-    timeout: Duration,
-) -> Result<OperatorContinuityList, OperatorQueryError> {
-    match execute_query(target, OperatorQuery::ContinuityList { limit }, timeout)? {
-        OperatorReply::ContinuityList(list) => Ok(list),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::ContinuityList,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
-}
-
-pub fn query_operator_diagnostics(
-    target: &str,
-    limit: Option<usize>,
-    timeout: Duration,
-) -> Result<OperatorDiagnosticsSnapshot, OperatorQueryError> {
-    match execute_query(target, OperatorQuery::Diagnostics { limit }, timeout)? {
-        OperatorReply::Diagnostics(snapshot) => Ok(snapshot),
-        _ => Err(OperatorQueryError::Decode {
-            target: target.to_string(),
-            query: OperatorQueryKind::Diagnostics,
-            reason: "operator reply kind mismatch".to_string(),
-        }),
-    }
+    let query = OperatorQuery::Diagnostics { limit };
+    execute_transient_query(target, cookie, query, timeout, decode_diagnostics_snapshot)
 }
 
 pub(crate) fn handle_operator_query_message(session: &Arc<NodeSession>, msg: &[u8]) {
@@ -1703,112 +1527,6 @@ pub(crate) fn handle_operator_reply_message(session: &Arc<NodeSession>, msg: &[u
                 "mesh operator query: remote={} error=reply_malformed:{}",
                 session.remote_name, error
             );
-        }
-    }
-}
-
-fn execute_query(
-    target: &str,
-    query: OperatorQuery,
-    timeout: Duration,
-) -> Result<OperatorReply, OperatorQueryError> {
-    let query_kind = query.kind();
-    let state = node_state().ok_or_else(|| OperatorQueryError::TargetUnavailable {
-        target: target.to_string(),
-        query: query_kind,
-        reason: "node_not_started".to_string(),
-    })?;
-
-    if state.name == target {
-        return execute_local_query(
-            Some(&state.name),
-            &peer_names(state),
-            continuity_registry(),
-            diagnostics_buffer(),
-            query,
-            false,
-        )
-        .map_err(|reason| OperatorQueryError::LocalRejected {
-            query: query_kind,
-            reason,
-        });
-    }
-
-    let session = {
-        let sessions = state.sessions.read();
-        sessions.get(target).cloned()
-    }
-    .ok_or_else(|| OperatorQueryError::TargetUnavailable {
-        target: target.to_string(),
-        query: query_kind,
-        reason: "target_not_connected".to_string(),
-    })?;
-
-    let request_id = OPERATOR_QUERY_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-    let payload = encode_query_frame(request_id, &query).map_err(|reason| {
-        OperatorQueryError::InvalidRequest {
-            query: query_kind,
-            reason,
-        }
-    })?;
-    let (tx, rx) = mpsc::channel();
-    session
-        .pending_operator_queries
-        .lock()
-        .unwrap()
-        .insert(request_id, tx);
-
-    {
-        if let Err(error) = session.send(super::node::OutboundClass::Control, payload) {
-            session
-                .pending_operator_queries
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            return Err(OperatorQueryError::TargetUnavailable {
-                target: target.to_string(),
-                query: query_kind,
-                reason: format!("query_write_failed:{error}"),
-            });
-        }
-    }
-
-    match rx.recv_timeout(timeout) {
-        Ok(Ok(bytes)) => decode_query_reply_payload(query_kind, &bytes).map_err(|reason| {
-            OperatorQueryError::Decode {
-                target: target.to_string(),
-                query: query_kind,
-                reason,
-            }
-        }),
-        Ok(Err(reason)) => Err(OperatorQueryError::RemoteRejected {
-            target: target.to_string(),
-            query: query_kind,
-            reason,
-        }),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            session
-                .pending_operator_queries
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            Err(OperatorQueryError::Timeout {
-                target: target.to_string(),
-                query: query_kind,
-                timeout,
-            })
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            session
-                .pending_operator_queries
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            Err(OperatorQueryError::TargetUnavailable {
-                target: target.to_string(),
-                query: query_kind,
-                reason: "query_disconnected".to_string(),
-            })
         }
     }
 }
@@ -2085,30 +1803,6 @@ fn encode_query_reply_payload(reply: &OperatorReply) -> Result<Vec<u8>, String> 
             .map_err(|error| format!("operator runtime encode failed: {error}")),
         OperatorReply::Control(outcome) => serde_json::to_vec(outcome)
             .map_err(|error| format!("operator control outcome encode failed: {error}")),
-    }
-}
-
-fn decode_query_reply_payload(
-    kind: OperatorQueryKind,
-    payload: &[u8],
-) -> Result<OperatorReply, String> {
-    match kind {
-        OperatorQueryKind::Status => decode_status_snapshot(payload).map(OperatorReply::Status),
-        OperatorQueryKind::ContinuityLookup => {
-            decode_record_payload(payload).map(OperatorReply::ContinuityRecord)
-        }
-        OperatorQueryKind::ContinuityList => {
-            decode_continuity_list(payload).map(OperatorReply::ContinuityList)
-        }
-        OperatorQueryKind::Diagnostics => {
-            decode_diagnostics_snapshot(payload).map(OperatorReply::Diagnostics)
-        }
-        OperatorQueryKind::Runtime => serde_json::from_slice(payload)
-            .map(OperatorReply::Runtime)
-            .map_err(|error| format!("operator runtime decode failed: {error}")),
-        OperatorQueryKind::Control => serde_json::from_slice(payload)
-            .map(OperatorReply::Control)
-            .map_err(|error| format!("operator control outcome decode failed: {error}")),
     }
 }
 
@@ -2810,7 +2504,7 @@ mod tests {
         encode_string(&mut payload, "primary").expect("encode role");
         // Intentionally omit promotion_epoch and replication_health.
 
-        let err = decode_query_reply_payload(OperatorQueryKind::Status, &payload)
+        let err = decode_status_snapshot(&payload)
             .expect_err("truncated status payload should fail decode");
         assert!(
             err.contains("truncated"),
@@ -2861,7 +2555,7 @@ mod tests {
             ..OperatorDiagnosticRecord::default()
         });
 
-        let snapshot = operator_recent_diagnostics(None);
+        let snapshot = diagnostics_buffer().snapshot(None);
         let entries: Vec<_> = snapshot
             .entries
             .iter()
