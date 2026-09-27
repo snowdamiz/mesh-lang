@@ -78,6 +78,8 @@ way, when the server offers it, and `disable` never does. A server whose certifi
 private CA (a cloud provider's, or your own) needs that CA's PEM file:
 `?sslmode=verify-full&sslrootcert=/etc/ssl/db-ca.pem`. Any other `sslmode` is
 an error. The server may ask for SCRAM-SHA-256, md5 or a cleartext password.
+The server has 30 seconds to answer the connection's handshake; a statement
+then runs as long as it needs (a server-side `statement_timeout` bounds it).
 
 ### Direct PostgreSQL API
 
