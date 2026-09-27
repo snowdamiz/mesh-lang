@@ -348,18 +348,27 @@ pub extern "C" fn mesh_query_where_between(
 /// Add a WHERE OR clause: `(field1 = $N OR field2 = $M ...)`.
 ///
 /// `Query.where_or(q, [:status, :level], ["active", "error"])` -> new Query with WHERE (status = $N OR level = $M)
+///
+/// Each field takes the value at its place: lists of different lengths are
+/// a Mesh panic.
 #[no_mangle]
-pub extern "C" fn mesh_query_where_or(q: *mut u8, fields: *mut u8, values: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_query_where_or(
+    q: *mut u8,
+    fields: *mut u8,
+    values: *mut u8,
+) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_count = mesh_list_length(fields);
-        // Build OR clause encoding: "OR:field1,field2,...:N"
-        let mut field_names = Vec::new();
-        for i in 0..field_count {
-            let f = mesh_list_get(fields, i) as *mut u8;
-            field_names.push(text_of(f).to_string());
+        let field_names = list_strings(fields);
+        let val_count = mesh_list_length(values);
+        if field_names.len() as i64 != val_count {
+            crate::panic::raise(format_args!(
+                "Query.where_or: {} field(s) but {val_count} value(s)",
+                field_names.len()
+            ));
         }
-        let clause = format!("OR:{}:{}", field_names.join(","), field_count);
+        let new_q = clone_query(q);
+        // OR clause encoding: "OR:field1,field2,..."
+        let clause = format!("OR:{}", field_names.join(","));
         let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
@@ -369,7 +378,6 @@ pub extern "C" fn mesh_query_where_or(q: *mut u8, fields: *mut u8, values: *mut 
         );
         // Append values to where_params
         let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        let val_count = mesh_list_length(values);
         for i in 0..val_count {
             let elem = mesh_list_get(values, i);
             wp = mesh_list_append(wp, elem);
@@ -899,6 +907,23 @@ mod tests {
             )),
             "Mesh panic: Query.join_as: unknown join kind :full; the kinds are :inner, :left \
              and :right"
+        );
+    }
+
+    /// `where_or` pairs each field with a value: a value short left a
+    /// placeholder without one, a value over shifted every later clause's.
+    #[test]
+    fn where_or_needs_a_value_for_each_field() {
+        use crate::collections::list::string_list;
+        crate::gc::mesh_rt_init();
+        let q = mesh_query_from(text("t"));
+        assert_eq!(
+            panic_of(|| mesh_query_where_or(q, string_list(&["a", "b"]), string_list(&["1"]))),
+            "Mesh panic: Query.where_or: 2 field(s) but 1 value(s)"
+        );
+        assert_eq!(
+            panic_of(|| mesh_query_where_or(q, string_list(&["a"]), string_list(&["1", "2"]))),
+            "Mesh panic: Query.where_or: 1 field(s) but 2 value(s)"
         );
     }
 }

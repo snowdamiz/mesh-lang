@@ -1364,23 +1364,16 @@ fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usiz
             conditions.push(format!("{} IN ({sub_sql})", quote_name(field)));
             continue;
         }
-        // OR clause: "OR:field1,field2,...:N"
-        if clause.starts_with("OR:") {
-            let parts: Vec<&str> = clause.splitn(3, ':').collect();
-            if parts.len() == 3 {
-                let fields: Vec<&str> = parts[1].split(',').collect();
-                let count: usize = parts[2].parse().unwrap_or(0);
-                let mut or_parts = Vec::new();
-                for field in fields.iter().take(count) {
-                    or_parts.push(format!("{} = ${}", quote_name(field), param_idx));
-                    if wp_idx < where_params.len() {
-                        params.push(where_params[wp_idx].clone());
-                        wp_idx += 1;
-                    }
-                    param_idx += 1;
-                }
-                conditions.push(format!("({})", or_parts.join(" OR ")));
+        // OR clause: "OR:field1,field2,..." (`where_or` gave each its value)
+        if let Some(fields) = clause.strip_prefix("OR:") {
+            let mut or_parts = Vec::new();
+            for field in fields.split(',').filter(|field| !field.is_empty()) {
+                or_parts.push(format!("{} = ${}", quote_name(field), param_idx));
+                params.push(where_params[wp_idx].clone());
+                wp_idx += 1;
+                param_idx += 1;
             }
+            conditions.push(format!("({})", or_parts.join(" OR ")));
             continue;
         }
         if let Some(expr) = clause.strip_prefix("EXPR:") {
@@ -1935,7 +1928,7 @@ mod tests {
         let (sql, params) = build_select_sql_from_parts(
             "issues",
             &[],
-            &["OR:status,level:2".into()],
+            &["OR:status,level".into()],
             &["active".into(), "error".into()],
             &[],
             -1,
@@ -1985,7 +1978,7 @@ mod tests {
                 "project_id =".into(),
                 "status NOT_IN:2".into(),
                 "age BETWEEN".into(),
-                "OR:status,priority:2".into(),
+                "OR:status,priority".into(),
             ],
             &[
                 "abc".into(),

@@ -258,7 +258,7 @@ let query = Query.from(User.__table__())
 | `Query.where_between(query, field, low, high)` | Inclusive range predicate |
 | `Query.where_null(query, field)` | `IS NULL` |
 | `Query.where_not_null(query, field)` | `IS NOT NULL` |
-| `Query.where_or(query, fields, values)` | Group parallel equality predicates with `OR` |
+| `Query.where_or(query, fields, values)` | Group parallel equality predicates with `OR`, each field equal to the value at its place (lists of different lengths are a panic) |
 | `Query.where_expr(query, expression)` | Add a structured `Expr` predicate |
 | `Query.where_sub(query, field, subquery)` | Add `field IN (subquery)`, the subquery built as `Repo.all` would run it, every clause included |
 
