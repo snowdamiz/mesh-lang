@@ -7045,7 +7045,6 @@ const AUTOMATIC_RECOVERY_REJECTED_HANDLER_MISSING: &str =
 const STARTUP_REQUEST_KEY_PREFIX: &str = "startup::";
 const STARTUP_PAYLOAD_HASH_PREFIX: &str = "startup-payload::";
 const STARTUP_RUNTIME_NAME_MISSING: &str = "startup_runtime_name_missing";
-const STARTUP_REQUEST_KEY_MISSING: &str = "startup_request_key_missing";
 const STARTUP_DUPLICATE_REGISTRATION: &str = "startup_duplicate_registration";
 const STARTUP_HANDLER_MISSING: &str = "startup_handler_not_registered";
 const STARTUP_CONVERGENCE_TIMEOUT: &str = "startup_convergence_timeout";
@@ -7157,14 +7156,9 @@ fn startup_work_identity(runtime_name: &str) -> Result<StartupWorkIdentity, Stri
         return Err(STARTUP_RUNTIME_NAME_MISSING.to_string());
     }
 
-    let request_key = startup_request_key(runtime_name);
-    if request_key.is_empty() {
-        return Err(STARTUP_REQUEST_KEY_MISSING.to_string());
-    }
-
     Ok(StartupWorkIdentity {
         runtime_name: runtime_name.to_string(),
-        request_key,
+        request_key: startup_request_key(runtime_name),
         payload_hash: startup_payload_hash(runtime_name),
     })
 }
