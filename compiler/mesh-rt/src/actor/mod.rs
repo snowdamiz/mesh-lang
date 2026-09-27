@@ -1417,16 +1417,7 @@ pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_siz
     // can be resolved by the supervisor receive loop.
     let state = supervisor::register_supervisor_state(sup_pid, sup_state);
 
-    // Start all children.
-    match supervisor::start_children(&mut state.lock(), sched, sup_pid) {
-        Ok(()) => {}
-        Err(_e) => {
-            supervisor::remove_supervisor_state(sup_pid);
-            local_send(sup_pid.as_u64(), std::ptr::null(), 0);
-            return u64::MAX;
-        }
-    }
-
+    supervisor::start_children_from(&mut state.lock(), 0, sched, sup_pid);
     sup_pid.as_u64()
 }
 
@@ -1487,13 +1478,9 @@ pub extern "C-unwind" fn mesh_supervisor_start_child(
         running: false,
     };
 
-    match supervisor::start_single_child(&mut child_state, sched, sup_pid) {
-        Ok(pid) => {
-            state.children.push(child_state);
-            pid.as_u64()
-        }
-        Err(_) => u64::MAX,
-    }
+    let pid = supervisor::start_single_child(&mut child_state, sched, sup_pid);
+    state.children.push(child_state);
+    pid.as_u64()
 }
 
 /// Terminate a specific child under a supervisor.

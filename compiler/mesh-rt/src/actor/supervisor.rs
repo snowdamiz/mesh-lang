@@ -151,62 +151,23 @@ pub fn remove_supervisor_state(pid: ProcessId) {
 // Child lifecycle management
 // ---------------------------------------------------------------------------
 
-/// Start all children in order.
-///
-/// If any child fails to start, terminate already-started children in
-/// reverse order and return an error.
-pub fn start_children(
-    state: &mut SupervisorState,
-    scheduler: &Scheduler,
-    sup_pid: ProcessId,
-) -> Result<(), String> {
-    for i in 0..state.children.len() {
-        match start_single_child(&mut state.children[i], scheduler, sup_pid) {
-            Ok(_pid) => {}
-            Err(e) => {
-                // Terminate children that were already started (reverse order).
-                terminate_children_range(state, 0, i, scheduler, sup_pid);
-                return Err(format!(
-                    "child '{}' failed to start: {}",
-                    state.children[i].spec.id, e
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Start a single child process.
-///
-/// Spawns the child via the scheduler, links the supervisor to the child,
-/// and updates the child state.
+/// Start a single child process, linked to the supervisor as it is spawned,
+/// and record it in the child state.
 pub fn start_single_child(
     child: &mut ChildState,
     scheduler: &Scheduler,
     sup_pid: ProcessId,
-) -> Result<ProcessId, String> {
-    let child_pid = scheduler.spawn(
+) -> ProcessId {
+    let child_pid = scheduler.spawn_linked(
         child.spec.start_fn,
         child.spec.start_args_ptr,
         child.spec.start_args_size,
         1, // Normal priority
+        sup_pid,
     );
-
-    // Link the supervisor to the child.
-    let sup_proc = scheduler.get_process(sup_pid);
-    let child_proc = scheduler.get_process(child_pid);
-
-    if let (Some(sup_proc), Some(child_proc)) = (sup_proc, child_proc) {
-        link::link(&sup_proc, &child_proc, sup_pid, child_pid);
-    } else {
-        return Err("failed to look up processes for linking".to_string());
-    }
-
-    // Update child state.
     child.pid = Some(child_pid);
     child.running = true;
-
-    Ok(child_pid)
+    child_pid
 }
 
 /// Start children from index `from_idx` to end, in forward order.
@@ -215,21 +176,10 @@ pub fn start_children_from(
     from_idx: usize,
     scheduler: &Scheduler,
     sup_pid: ProcessId,
-) -> Result<(), String> {
-    for i in from_idx..state.children.len() {
-        match start_single_child(&mut state.children[i], scheduler, sup_pid) {
-            Ok(_pid) => {}
-            Err(e) => {
-                // Terminate children that were started in this batch.
-                terminate_children_range(state, from_idx, i, scheduler, sup_pid);
-                return Err(format!(
-                    "child '{}' failed to start: {}",
-                    state.children[i].spec.id, e
-                ));
-            }
-        }
+) {
+    for child in &mut state.children[from_idx..] {
+        start_single_child(child, scheduler, sup_pid);
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -481,8 +431,8 @@ pub fn handle_child_exit(
         ));
     }
 
-    // Apply the strategy.
-    apply_strategy(state, child_idx, scheduler, sup_pid)
+    apply_strategy(state, child_idx, scheduler, sup_pid);
+    Ok(())
 }
 
 /// Apply the configured restart strategy after a child exit.
@@ -491,25 +441,24 @@ pub fn apply_strategy(
     failed_child_idx: usize,
     scheduler: &Scheduler,
     sup_pid: ProcessId,
-) -> Result<(), String> {
+) {
     match state.strategy {
         Strategy::OneForOne | Strategy::SimpleOneForOne => {
             // Restart only the failed child.
-            start_single_child(&mut state.children[failed_child_idx], scheduler, sup_pid)?;
+            start_single_child(&mut state.children[failed_child_idx], scheduler, sup_pid);
         }
         Strategy::OneForAll => {
             // Terminate all children in reverse order, then start all in forward order.
             terminate_all_children(state, scheduler, sup_pid);
-            start_children(state, scheduler, sup_pid)?;
+            start_children_from(state, 0, scheduler, sup_pid);
         }
         Strategy::RestForOne => {
             // Terminate children from failed_child_idx to end in reverse order.
             terminate_children_from(state, failed_child_idx, scheduler, sup_pid);
             // Restart from failed_child_idx to end in forward order.
-            start_children_from(state, failed_child_idx, scheduler, sup_pid)?;
+            start_children_from(state, failed_child_idx, scheduler, sup_pid);
         }
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -572,10 +521,37 @@ mod tests {
         state.children = child_specs.into_iter().map(test_child_state).collect();
 
         // Start all children.
-        let result = start_children(&mut state, sched, sup_pid);
-        assert!(result.is_ok(), "start_children failed: {:?}", result.err());
+        start_children_from(&mut state, 0, sched, sup_pid);
 
         (state, sup_pid)
+    }
+
+    /// A child that ends at once still reaches its supervisor: it is linked
+    /// before it can run, not after, when it may already be gone.
+    #[test]
+    fn a_child_that_ends_at_once_still_signals_its_supervisor() {
+        const CHILDREN: usize = 200;
+        let sched = Scheduler::new(2);
+        sched.start();
+        let sup_pid = sched.create_main_process();
+        let sup = sched.get_process(sup_pid).unwrap();
+        sup.lock().trap_exit = true;
+        for i in 0..CHILDREN {
+            let spec = test_child_spec(
+                &format!("child{i}"),
+                RestartType::Permanent,
+                ShutdownType::BrutalKill,
+            );
+            start_single_child(&mut test_child_state(spec), &sched, sup_pid);
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while sup.lock().mailbox.len() < CHILDREN && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let signals = sup.lock().mailbox.len();
+        sched.signal_shutdown();
+        sched.wait();
+        assert_eq!(signals, CHILDREN, "exit signals the supervisor got");
     }
 
     // -----------------------------------------------------------------------
@@ -723,7 +699,7 @@ mod tests {
                 RestartType::Permanent,
                 ShutdownType::BrutalKill,
             ));
-            start_single_child(&mut child, &sched, sup_pid).unwrap();
+            start_single_child(&mut child, &sched, sup_pid);
             state.children.push(child);
         }
 
@@ -771,7 +747,7 @@ mod tests {
 
         let mut state = SupervisorState::new(Strategy::OneForOne, 2, 5);
         state.children = specs.into_iter().map(test_child_state).collect();
-        start_children(&mut state, &sched, sup_pid).unwrap();
+        start_children_from(&mut state, 0, &sched, sup_pid);
 
         // Trigger 2 restarts (should succeed).
         for i in 0..2 {
@@ -1076,8 +1052,7 @@ mod tests {
         ];
 
         // Start all children (should succeed).
-        let result = start_children(&mut state, &sched, sup_pid);
-        assert!(result.is_ok());
+        start_children_from(&mut state, 0, &sched, sup_pid);
 
         // Verify the sequential order was maintained.
         assert_eq!(state.children.len(), 3);
@@ -1138,7 +1113,7 @@ mod tests {
             RestartType::Permanent,
             ShutdownType::BrutalKill,
         ));
-        start_single_child(&mut child, &sched, sup_pid).unwrap();
+        start_single_child(&mut child, &sched, sup_pid);
         let child_pid = child.pid.unwrap();
         sched.get_process(child_pid).unwrap().lock().state = ProcessState::Waiting;
         crate::secret::insert_test_secret(child_pid);
