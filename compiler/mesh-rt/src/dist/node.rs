@@ -13786,6 +13786,18 @@ mod tests {
                 &startup_request_key(&format!("Startup.{outcome}")),
             );
         }
+        // A newer attempt that has yet to run names no node running it.
+        let idle = startup_request_key("Startup.idle");
+        log_startup_fenced(
+            "Startup.idle",
+            &idle,
+            "attempt-0",
+            &continuity_record(&idle, "idle-owner@h:1", "idle-replica@h:1"),
+        );
+        assert_eq!(
+            diagnosed("startup_fenced", &idle).map(|entry| entry.execution_node),
+            Some(None)
+        );
         trigger_startup_work_registrations(
             &["Startup.unhandled".to_string()],
             false,
@@ -13890,6 +13902,13 @@ mod tests {
             prepare(&record("prepared-short", &[&one], 3), 0),
             Err("continuity_replica_set_size_mismatch:required=2:recorded=1".to_string())
         );
+        // A record that names no replicas takes a set from the membership.
+        let mut unplaced = record("prepared-unplaced", &[&one], 1_000);
+        unplaced.replica_nodes.clear();
+        unplaced.replica_node.clear();
+        assert!(record_replica_set(&unplaced)
+            .unwrap_err()
+            .starts_with("replica_capacity_unavailable:required=999:"));
         assert!(prepare(
             &record(
                 "refused-by-replica-1-refused-by-replica-2",
