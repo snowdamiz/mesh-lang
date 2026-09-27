@@ -20,6 +20,47 @@ use crate::string::{mesh_str, MeshString};
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 
+/// `names` quoted and joined by commas.
+fn quoted_list(names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| quote_name(name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// ` WHERE ...` for "column op" entries ("name =", "age >", "deleted_at
+/// IS NULL", or a bare column for `=`), their placeholders numbered on
+/// from `param_idx`; nothing for no entries.
+fn where_sql(wheres: &[String], mut param_idx: usize) -> String {
+    if wheres.is_empty() {
+        return String::new();
+    }
+    let mut placeholder = || {
+        param_idx += 1;
+        format!("${}", param_idx - 1)
+    };
+    let conditions: Vec<String> = wheres
+        .iter()
+        .map(|w| match w.split_once(' ') {
+            Some((col, op)) => match op.trim() {
+                op @ ("IS NULL" | "IS NOT NULL") => format!("{} {op}", quote_name(col)),
+                op => format!("{} {op} {}", quote_name(col), placeholder()),
+            },
+            None => format!("{} = {}", quote_name(w), placeholder()),
+        })
+        .collect();
+    format!(" WHERE {}", conditions.join(" AND "))
+}
+
+/// ` RETURNING ...`, or nothing for no columns.
+fn returning_sql(returning: &[String]) -> String {
+    match returning.is_empty() {
+        true => String::new(),
+        false => format!(" RETURNING {}", quoted_list(returning)),
+    }
+}
+
 /// Build a SELECT SQL string from pure Rust types.
 fn build_select_sql(
     table: &str,
@@ -29,210 +70,79 @@ fn build_select_sql(
     limit: i64,
     offset: i64,
 ) -> String {
-    let mut sql = String::new();
+    let columns = match columns.is_empty() {
+        true => "*".to_string(),
+        false => quoted_list(columns),
+    };
+    let mut sql = format!(
+        "SELECT {columns} FROM {}{}",
+        quote_name(table),
+        where_sql(wheres, 1)
+    );
 
-    // SELECT clause
-    sql.push_str("SELECT ");
-    if columns.is_empty() {
-        sql.push('*');
-    } else {
-        let quoted: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
-        sql.push_str(&quoted.join(", "));
-    }
-
-    // FROM clause
-    sql.push_str(" FROM ");
-    sql.push_str(&quote_name(table));
-
-    // WHERE clause
-    let mut param_idx = 1;
-    if !wheres.is_empty() {
-        sql.push_str(" WHERE ");
-        let mut conditions = Vec::new();
-        for w in wheres {
-            // Format: "column op" e.g. "name =" or "age >" or "status IS NULL"
-            if let Some(space_pos) = w.find(' ') {
-                let col = &w[..space_pos];
-                let op = w[space_pos + 1..].trim();
-                if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_name(col), op));
-                } else {
-                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
-                    param_idx += 1;
-                }
-            } else {
-                // Just a column name, default to = operator
-                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
-                param_idx += 1;
-            }
-        }
-        sql.push_str(&conditions.join(" AND "));
-    }
-
-    // ORDER BY clause
+    // ORDER BY clause: "column direction", or a bare column (ASC)
     if !orders.is_empty() {
-        sql.push_str(" ORDER BY ");
         let order_parts: Vec<String> = orders
             .iter()
-            .map(|o| {
-                if let Some(space_pos) = o.rfind(' ') {
-                    let col = &o[..space_pos];
-                    let dir = &o[space_pos + 1..];
-                    format!("{} {}", quote_name(col), dir.to_uppercase())
-                } else {
-                    format!("{} ASC", quote_name(o))
-                }
+            .map(|o| match o.rsplit_once(' ') {
+                Some((col, dir)) => format!("{} {}", quote_name(col), dir.to_uppercase()),
+                None => format!("{} ASC", quote_name(o)),
             })
             .collect();
-        sql.push_str(&order_parts.join(", "));
+        sql.push_str(&format!(" ORDER BY {}", order_parts.join(", ")));
     }
-
-    // LIMIT
     if limit >= 0 {
         sql.push_str(&format!(" LIMIT {}", limit));
     }
-
-    // OFFSET
     if offset >= 0 {
         sql.push_str(&format!(" OFFSET {}", offset));
     }
-
     sql
 }
 
-/// Build an INSERT SQL string from pure Rust types.
-/// Public within crate for use by repo.rs write operations.
-pub(crate) fn build_insert_sql_pure(
-    table: &str,
-    columns: &[String],
-    returning: &[String],
-) -> String {
-    build_insert_sql(table, columns, returning)
+/// Build an INSERT SQL string from pure Rust types, one placeholder per
+/// column. Public within crate for use by repo.rs write operations.
+pub(crate) fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> String {
+    let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("${}", i)).collect();
+    format!(
+        "INSERT INTO {} ({}) VALUES ({}){}",
+        quote_name(table),
+        quoted_list(columns),
+        placeholders.join(", "),
+        returning_sql(returning)
+    )
 }
 
-fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> String {
-    let mut sql = String::new();
-
-    sql.push_str("INSERT INTO ");
-    sql.push_str(&quote_name(table));
-
-    // Column list
-    sql.push_str(" (");
-    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
-    sql.push_str(&quoted_cols.join(", "));
-    sql.push(')');
-
-    // VALUES clause with $N placeholders
-    sql.push_str(" VALUES (");
-    let params: Vec<String> = (1..=columns.len()).map(|i| format!("${}", i)).collect();
-    sql.push_str(&params.join(", "));
-    sql.push(')');
-
-    // RETURNING clause
-    if !returning.is_empty() {
-        sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
-        sql.push_str(&quoted_ret.join(", "));
-    }
-
-    sql
-}
-
-/// Build an UPDATE SQL string from pure Rust types.
+/// Build an UPDATE SQL string from pure Rust types; the WHERE placeholders
+/// follow the SET ones.
 fn build_update_sql(
     table: &str,
     set_columns: &[String],
     wheres: &[String],
     returning: &[String],
 ) -> String {
-    let mut sql = String::new();
-    let mut param_idx = 1;
-
-    sql.push_str("UPDATE ");
-    sql.push_str(&quote_name(table));
-
-    // SET clause
-    sql.push_str(" SET ");
     let set_parts: Vec<String> = set_columns
         .iter()
-        .map(|c| {
-            let part = format!("{} = ${}", quote_name(c), param_idx);
-            param_idx += 1;
-            part
-        })
+        .enumerate()
+        .map(|(i, c)| format!("{} = ${}", quote_name(c), i + 1))
         .collect();
-    sql.push_str(&set_parts.join(", "));
-
-    // WHERE clause (parameters continue from SET)
-    if !wheres.is_empty() {
-        sql.push_str(" WHERE ");
-        let mut conditions = Vec::new();
-        for w in wheres {
-            if let Some(space_pos) = w.find(' ') {
-                let col = &w[..space_pos];
-                let op = w[space_pos + 1..].trim();
-                if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_name(col), op));
-                } else {
-                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
-                    param_idx += 1;
-                }
-            } else {
-                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
-                param_idx += 1;
-            }
-        }
-        sql.push_str(&conditions.join(" AND "));
-    }
-
-    // RETURNING clause
-    if !returning.is_empty() {
-        sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
-        sql.push_str(&quoted_ret.join(", "));
-    }
-
-    sql
+    format!(
+        "UPDATE {} SET {}{}{}",
+        quote_name(table),
+        set_parts.join(", "),
+        where_sql(wheres, set_columns.len() + 1),
+        returning_sql(returning)
+    )
 }
 
 /// Build a DELETE SQL string from pure Rust types.
 fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> String {
-    let mut sql = String::new();
-    let mut param_idx = 1;
-
-    sql.push_str("DELETE FROM ");
-    sql.push_str(&quote_name(table));
-
-    // WHERE clause
-    if !wheres.is_empty() {
-        sql.push_str(" WHERE ");
-        let mut conditions = Vec::new();
-        for w in wheres {
-            if let Some(space_pos) = w.find(' ') {
-                let col = &w[..space_pos];
-                let op = w[space_pos + 1..].trim();
-                if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_name(col), op));
-                } else {
-                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
-                    param_idx += 1;
-                }
-            } else {
-                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
-                param_idx += 1;
-            }
-        }
-        sql.push_str(&conditions.join(" AND "));
-    }
-
-    // RETURNING clause
-    if !returning.is_empty() {
-        sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
-        sql.push_str(&quoted_ret.join(", "));
-    }
-
-    sql
+    format!(
+        "DELETE FROM {}{}{}",
+        quote_name(table),
+        where_sql(wheres, 1),
+        returning_sql(returning)
+    )
 }
 
 /// Build an INSERT ... ON CONFLICT ... DO UPDATE SET SQL string from pure Rust types.
@@ -244,52 +154,24 @@ fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> Str
 /// ON CONFLICT ("unique_col") DO UPDATE SET "col1" = EXCLUDED."col1", "col2" = EXCLUDED."col2"
 /// RETURNING *
 /// ```
-pub(crate) fn build_upsert_sql_pure(
+pub(crate) fn build_upsert_sql(
     table: &str,
     columns: &[String],
     conflict_targets: &[String],
     update_columns: &[String],
     returning: &[String],
 ) -> String {
-    let mut sql = String::new();
-
-    sql.push_str("INSERT INTO ");
-    sql.push_str(&quote_name(table));
-
-    // Column list
-    sql.push_str(" (");
-    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
-    sql.push_str(&quoted_cols.join(", "));
-    sql.push(')');
-
-    // VALUES clause with $N placeholders
-    sql.push_str(" VALUES (");
-    let params: Vec<String> = (1..=columns.len()).map(|i| format!("${}", i)).collect();
-    sql.push_str(&params.join(", "));
-    sql.push(')');
-
-    // ON CONFLICT clause
-    sql.push_str(" ON CONFLICT (");
-    let quoted_targets: Vec<String> = conflict_targets.iter().map(|c| quote_name(c)).collect();
-    sql.push_str(&quoted_targets.join(", "));
-    sql.push(')');
-
-    // DO UPDATE SET clause using EXCLUDED references
-    sql.push_str(" DO UPDATE SET ");
     let set_parts: Vec<String> = update_columns
         .iter()
         .map(|c| format!("{} = EXCLUDED.{}", quote_name(c), quote_name(c)))
         .collect();
-    sql.push_str(&set_parts.join(", "));
-
-    // RETURNING clause
-    if !returning.is_empty() {
-        sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
-        sql.push_str(&quoted_ret.join(", "));
-    }
-
-    sql
+    format!(
+        "{} ON CONFLICT ({}) DO UPDATE SET {}{}",
+        build_insert_sql(table, columns, &[]),
+        quoted_list(conflict_targets),
+        set_parts.join(", "),
+        returning_sql(returning)
+    )
 }
 
 // ── Extern C functions ───────────────────────────────────────────────
@@ -591,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_build_upsert_sql() {
-        let sql = build_upsert_sql_pure(
+        let sql = build_upsert_sql(
             "issues",
             &[
                 "project_id".into(),

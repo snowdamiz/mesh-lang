@@ -638,7 +638,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
 
         // Build INSERT SQL with RETURNING *
         let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
+        let sql = crate::db::orm::build_insert_sql(table_str, &columns, &returning);
 
         let result = run_query(pool, &sql, &values);
 
@@ -836,7 +836,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
             Err(refused) => return refused,
         };
         let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_insert_sql_pure(text_of(table), &columns, &returning);
+        let sql = crate::db::orm::build_insert_sql(text_of(table), &columns, &returning);
         let result = run_query(pool, &sql, &values);
         changeset_write_result(result, changeset, "no row returned")
     }
@@ -1475,9 +1475,8 @@ pub extern "C" fn mesh_repo_insert_or_update(
         }
 
         let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_upsert_sql_pure(
-            table_str, &columns, &targets, &updates, &returning,
-        );
+        let sql =
+            crate::db::orm::build_upsert_sql(table_str, &columns, &targets, &updates, &returning);
 
         let result = run_query(pool, &sql, &values);
 
@@ -2800,7 +2799,7 @@ mod tests {
 
     #[test]
     fn test_upsert_sql() {
-        let sql = crate::db::orm::build_upsert_sql_pure(
+        let sql = crate::db::orm::build_upsert_sql(
             "issues",
             &["project_id".into(), "fingerprint".into(), "title".into()],
             &["project_id".into(), "fingerprint".into()],
@@ -2815,7 +2814,7 @@ mod tests {
 
     #[test]
     fn test_upsert_sql_multi_update() {
-        let sql = crate::db::orm::build_upsert_sql_pure(
+        let sql = crate::db::orm::build_upsert_sql(
             "users",
             &["email".into(), "name".into(), "role".into()],
             &["email".into()],
