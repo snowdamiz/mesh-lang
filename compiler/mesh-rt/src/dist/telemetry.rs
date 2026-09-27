@@ -858,15 +858,6 @@ impl QueuePermit {
         drop(self);
         controller.telemetry.record_queue_wait(wait);
     }
-
-    pub fn promote(self) -> Result<AdmissionPermit, AdmissionRejection> {
-        let controller = Arc::clone(&self.controller);
-        let wait = self.enqueued_at.elapsed();
-        drop(self);
-        let permit = controller.reserve_application()?;
-        controller.telemetry.record_queue_wait(wait);
-        Ok(permit)
-    }
 }
 
 impl Drop for QueuePermit {
@@ -915,6 +906,30 @@ mod tests {
         );
 
         assert_eq!(pressure.dominant_signal, "queue_wait");
+    }
+
+    /// A version-two peer's load report carries no pressure of its own: it
+    /// is worked out before the report is checked, so memory pressure that
+    /// is not a number counts as full rather than poisoning the score.
+    #[test]
+    fn memory_pressure_that_is_not_a_number_counts_as_full() {
+        let pressure = PressureSnapshot::calculate(
+            0,
+            10,
+            Duration::ZERO,
+            Duration::from_millis(25),
+            0,
+            1,
+            f64::NAN,
+        );
+        assert_eq!((pressure.dominant_signal, pressure.score), ("memory", 1.0));
+    }
+
+    #[test]
+    fn lifecycle_states_round_trip_through_their_wire_byte() {
+        for byte in 0..8 {
+            assert_eq!(NodeLifecycleState::from_u8(byte).unwrap().as_u8(), byte);
+        }
     }
 
     #[test]
