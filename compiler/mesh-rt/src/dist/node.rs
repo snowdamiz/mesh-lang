@@ -188,6 +188,26 @@ fn operator_query_allowed() -> bool {
         .take(MAX_OPERATOR_QUERIES_PER_SECOND, Instant::now())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Set by a test to fail the threads it asks `spawn_named` for, as a
+    /// system out of threads would.
+    static FAIL_THREAD_SPAWNS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Starts `body` on a thread named `name`, for work whose caller copes
+/// when no thread can start.
+fn spawn_named(name: &str, body: impl FnOnce() + Send + 'static) -> io::Result<()> {
+    #[cfg(test)]
+    if FAIL_THREAD_SPAWNS.with(std::cell::Cell::get) {
+        return Err(io::Error::from(io::ErrorKind::WouldBlock));
+    }
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .spawn(body)
+        .map(drop)
+}
+
 struct IncomingHandshakeGuard;
 
 impl Drop for IncomingHandshakeGuard {
@@ -3212,19 +3232,16 @@ fn maybe_spawn_primary_owner_loss_recovery(disconnected_node: &str) {
         }
     }
     let recovery_node = disconnected_node.clone();
-    if let Err(error) = std::thread::Builder::new()
-        .name("mesh-continuity-owner-loss".to_string())
-        .spawn(move || {
-            let result = prepare_continuity_for_runtime_node(&recovery_node);
-            active_owner_loss_recoveries()
-                .lock()
-                .unwrap()
-                .remove(&recovery_node);
-            if let Err(reason) = result {
-                log_owner_loss_recovery_failure(&recovery_node, &reason);
-            }
-        })
-    {
+    if let Err(error) = spawn_named("mesh-continuity-owner-loss", move || {
+        let result = prepare_continuity_for_runtime_node(&recovery_node);
+        active_owner_loss_recoveries()
+            .lock()
+            .unwrap()
+            .remove(&recovery_node);
+        if let Err(reason) = result {
+            log_owner_loss_recovery_failure(&recovery_node, &reason);
+        }
+    }) {
         active_owner_loss_recoveries()
             .lock()
             .unwrap()
@@ -3371,60 +3388,54 @@ fn dispatch_recovered_http_record(
     let attempt_id = record.attempt_id.clone();
     let thread_request_key = request_key.clone();
     let thread_attempt_id = attempt_id.clone();
-    std::thread::Builder::new()
-        .name("mesh-continuity-http-recovery".to_string())
-        .spawn(move || {
-            let result = (|| -> Result<Vec<u8>, String> {
-                let entry = lookup_declared_handler(record.declared_handler_runtime_name())
-                    .ok_or_else(|| {
-                        format!(
-                            "continuity_recovery_handler_unavailable:{}",
-                            record.declared_handler_runtime_name()
-                        )
-                    })?;
-                if record.owner_node == node_state().map_or("", |state| state.name.as_str()) {
-                    execute_clustered_http_route_locally(
-                        entry.fn_ptr.0,
-                        &record.request_key,
-                        &record.attempt_id,
-                        record.request_payload(),
+    spawn_named("mesh-continuity-http-recovery", move || {
+        let result = (|| -> Result<Vec<u8>, String> {
+            let entry = lookup_declared_handler(record.declared_handler_runtime_name())
+                .ok_or_else(|| {
+                    format!(
+                        "continuity_recovery_handler_unavailable:{}",
+                        record.declared_handler_runtime_name()
                     )
-                } else {
-                    execute_clustered_http_route_remote(
-                        &record.owner_node,
-                        record.declared_handler_runtime_name(),
-                        &record.request_key,
-                        &record.attempt_id,
-                        record.request_payload(),
-                    )
-                }
-            })();
-            match result {
-                Ok(response) => {
-                    retain_and_broadcast_continuity_response(&thread_request_key, &response)
-                }
-                Err(reason)
-                    if !continuity_replacement_superseded(
-                        &thread_request_key,
-                        &thread_attempt_id,
-                    ) =>
-                {
-                    reject_clustered_http_route_attempt(
-                        &thread_request_key,
-                        &thread_attempt_id,
-                        &reason,
-                    );
-                    log_owner_loss_recovery_failure(&thread_request_key, &reason);
-                }
-                Err(_) => {}
+                })?;
+            if record.owner_node == node_state().map_or("", |state| state.name.as_str()) {
+                execute_clustered_http_route_locally(
+                    entry.fn_ptr.0,
+                    &record.request_key,
+                    &record.attempt_id,
+                    record.request_payload(),
+                )
+            } else {
+                execute_clustered_http_route_remote(
+                    &record.owner_node,
+                    record.declared_handler_runtime_name(),
+                    &record.request_key,
+                    &record.attempt_id,
+                    record.request_payload(),
+                )
             }
-        })
-        .map(|_| ())
-        .map_err(|error| {
-            let reason = format!("continuity_recovery_thread_failed:{error}");
-            reject_clustered_http_route_attempt(&request_key, &attempt_id, &reason);
-            reason
-        })
+        })();
+        match result {
+            Ok(response) => {
+                retain_and_broadcast_continuity_response(&thread_request_key, &response)
+            }
+            Err(reason)
+                if !continuity_replacement_superseded(&thread_request_key, &thread_attempt_id) =>
+            {
+                reject_clustered_http_route_attempt(
+                    &thread_request_key,
+                    &thread_attempt_id,
+                    &reason,
+                );
+                log_owner_loss_recovery_failure(&thread_request_key, &reason);
+            }
+            Err(_) => {}
+        }
+    })
+    .map_err(|error| {
+        let reason = format!("continuity_recovery_thread_failed:{error}");
+        reject_clustered_http_route_attempt(&request_key, &attempt_id, &reason);
+        reason
+    })
 }
 
 fn prepare_continuity_for_runtime_node(
@@ -3596,14 +3607,11 @@ fn prepare_continuity_for_runtime_node(
             next.replica_status = ReplicaStatus::Mirrored;
             next.acknowledged_replica_nodes = replica_nodes.clone();
         }
-        let committed = match registry.commit_drain_replacement(&previous_attempt_id, next) {
-            Ok(committed) => committed,
-            Err(_reason)
-                if continuity_replacement_superseded(&record.request_key, &previous_attempt_id) =>
-            {
-                continue
-            }
-            Err(reason) => return Err(reason),
+        // `next` is a valid record (new members, distinct, none its owner),
+        // so only a record that moved on meanwhile, to another attempt or
+        // to its end, refuses its replacement: it is theirs now.
+        let Ok(committed) = registry.commit_drain_replacement(&previous_attempt_id, next) else {
+            continue;
         };
         if owner_transfer {
             if !committed.request_payload().is_empty() {
@@ -5957,9 +5965,9 @@ pub(crate) fn execute_clustered_http_route(
 /// 2. Performs HMAC-SHA256 cookie handshake (acceptor side)
 /// 3. Registers authenticated session in NodeState
 /// 4. Spawns reader + heartbeat threads for the session
-fn accept_loop(listener: TcpListener, state: &'static NodeState) {
+fn accept_loop(incoming: impl Iterator<Item = io::Result<TcpStream>>, state: &'static NodeState) {
     // A node listens for as long as the process runs.
-    for tcp_stream in listener.incoming() {
+    for tcp_stream in incoming {
         let Ok(tcp_stream) = tcp_stream else {
             // A connection that went before it was taken, or no descriptor
             // to take it with for now.
@@ -5975,14 +5983,13 @@ fn accept_loop(listener: TcpListener, state: &'static NodeState) {
             eprintln!("mesh node: incoming connection rejected: handshake_limit_reached");
             continue;
         }
-        let spawn = std::thread::Builder::new()
-            .name("mesh-node-handshake".to_string())
-            .spawn(move || {
-                let _active = IncomingHandshakeGuard;
-                handle_accepted_connection(tcp_stream, state);
-            });
+        // The worker holds the slot, and a worker that never starts drops it.
+        let active = IncomingHandshakeGuard;
+        let spawn = spawn_named("mesh-node-handshake", move || {
+            let _active = active;
+            handle_accepted_connection(tcp_stream, state);
+        });
         if let Err(error) = spawn {
-            ACTIVE_INCOMING_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
             eprintln!("mesh node: handshake worker spawn failed: {error}");
         }
     }
@@ -6123,7 +6130,7 @@ fn start_named_node(name: &str, cookie: &str) -> i64 {
         Err(code) => return code,
     };
     let state = NODE_STATE.get_or_init(|| node);
-    std::thread::spawn(move || accept_loop(listener, state));
+    std::thread::spawn(move || accept_loop(listener.incoming(), state));
     start_discovery_from_env(state);
     0
 }
@@ -9195,6 +9202,34 @@ mod tests {
             failure(reader.read_next(&mut input, 1024)),
             io::ErrorKind::ConnectionReset
         );
+    }
+
+    /// Runs `body` with the threads it asks `spawn_named` for failing to
+    /// start.
+    fn failing_thread_spawns<T>(body: impl FnOnce() -> T) -> T {
+        FAIL_THREAD_SPAWNS.with(|fail| fail.set(true));
+        let result = body();
+        FAIL_THREAD_SPAWNS.with(|fail| fail.set(false));
+        result
+    }
+
+    /// A failed accept is waited out, and a connection whose handshake
+    /// worker cannot start is closed.
+    #[test]
+    fn the_accept_loop_outlasts_failed_accepts_and_workers() {
+        let state = test_node();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        let incoming = [
+            Err(io::Error::other("no descriptor to take it with")),
+            Ok(accepted),
+        ];
+        failing_thread_spawns(|| accept_loop(incoming.into_iter(), state));
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(client.read(&mut [0; 1]).unwrap(), 0);
     }
 
     /// A transport that takes nothing: a write reports no bytes written.
@@ -13361,6 +13396,60 @@ mod tests {
                 .map(|outcome| outcome.ownership_transfers),
             Ok(0)
         );
+        // Work completed while its new replica takes it, or while the other
+        // of a pair moves, is left as it ended.
+        merge_pending_record(
+            "drained-completed-meanwhile-key",
+            "drained-completed@h:1",
+            a,
+            handler,
+        );
+        assert_eq!(
+            drain_with(&peers, "drained-completed@h:1", at_once)
+                .map(|outcome| outcome.ownership_transfers),
+            Ok(0)
+        );
+        for pair in ["pair-a", "pair-b"] {
+            merge_pending_record(
+                &format!("drained-{pair}-completes-other-key"),
+                "drained-pair@h:1",
+                a,
+                handler,
+            );
+        }
+        assert_eq!(
+            drain_with(&peers, "drained-pair@h:1", at_once)
+                .map(|outcome| (outcome.ownership_transfers, outcome.records_examined)),
+            Ok((1, 2))
+        );
+        // A request whose recovery thread cannot start is rejected.
+        merge_pending_record(
+            "drained-http-unstarted-key",
+            "drained-unstarted@h:1",
+            a,
+            handler,
+        );
+        assert_eq!(
+            failing_thread_spawns(|| drain_with(&peers, "drained-unstarted@h:1", at_once)),
+            Err("continuity_recovery_thread_failed:operation would block".to_string())
+        );
+        assert_eq!(
+            record_phase("drained-http-unstarted-key"),
+            Some(crate::dist::continuity::ContinuityPhase::Rejected)
+        );
+        // A request its new owner finishes, though it fails it here, stays
+        // finished.
+        merge_pending_record(
+            "drained-http-overtaken-key",
+            "drained-overtaken@h:1",
+            a,
+            handler,
+        );
+        let finished = || {
+            record_phase("drained-http-overtaken-key")
+                == Some(crate::dist::continuity::ContinuityPhase::Completed)
+        };
+        drain_with(&peers, "drained-overtaken@h:1", finished).unwrap();
 
         merge_pending_record("drained-bare-key", "drained-bare@h:1", a, "");
         assert_eq!(
@@ -14100,6 +14189,12 @@ mod tests {
             .lock()
             .unwrap()
             .remove("held-owner@h:1"));
+        // A recovery whose thread cannot start leaves the next one free to.
+        failing_thread_spawns(|| maybe_spawn_primary_owner_loss_recovery("unstarted-owner@h:1"));
+        assert!(!active_owner_loss_recoveries()
+            .lock()
+            .unwrap()
+            .contains("unstarted-owner@h:1"));
 
         // A member that sorts first coordinates instead.
         let first = (0..)
