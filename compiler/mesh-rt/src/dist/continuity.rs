@@ -761,8 +761,10 @@ impl ContinuityRegistry {
                 {
                     let attempt_token = inner.next_attempt_token;
                     inner.next_attempt_token += 1;
-                    let next =
-                        transition_retry_rollover_record(&existing, &request, attempt_token)?;
+                    let next = refused_if_unplaced(
+                        transition_retry_rollover_record(&existing, &request, attempt_token)?,
+                        requires_replica_prepare,
+                    );
                     inner
                         .requests
                         .insert(request.request_key.clone(), next.clone());
@@ -797,7 +799,10 @@ impl ContinuityRegistry {
 
         let attempt_token = inner.next_attempt_token;
         inner.next_attempt_token += 1;
-        let record = continuity_submitted_record(&request, attempt_token);
+        let record = refused_if_unplaced(
+            continuity_submitted_record(&request, attempt_token),
+            requires_replica_prepare,
+        );
         inner
             .requests
             .insert(request.request_key.clone(), record.clone());
@@ -826,24 +831,21 @@ impl ContinuityRegistry {
     {
         log_submit(&record, required_replica_count);
 
-        if !requires_replica_prepare {
+        if record.phase == ContinuityPhase::Rejected {
+            log_rejection(&record, REPLICA_REQUIRED_UNAVAILABLE);
             broadcast_continuity_upsert(watermark, &record);
             return Ok(SubmitDecision {
-                outcome: SubmitOutcome::Created,
+                outcome: SubmitOutcome::Rejected,
                 record,
                 conflict_reason: String::new(),
             });
         }
 
-        if record.replica_node.is_empty() {
-            let rejected = self.reject_pre_admission_request(
-                &record.request_key,
-                &record.attempt_id,
-                REPLICA_REQUIRED_UNAVAILABLE,
-            )?;
+        if !requires_replica_prepare {
+            broadcast_continuity_upsert(watermark, &record);
             return Ok(SubmitDecision {
-                outcome: SubmitOutcome::Rejected,
-                record: rejected,
+                outcome: SubmitOutcome::Created,
+                record,
                 conflict_reason: String::new(),
             });
         }
@@ -1729,6 +1731,26 @@ fn transition_replica_ack_record(
         },
         ..record
     })
+}
+
+/// `record`, new to the registry: refused before admission as it is
+/// stored when it needs a replica prepared but names none, so no other
+/// change can come between its creation and its refusal.
+fn refused_if_unplaced(
+    record: ContinuityRecord,
+    requires_replica_prepare: bool,
+) -> ContinuityRecord {
+    if !requires_replica_prepare || !record.replica_node.is_empty() {
+        return record;
+    }
+    let attempt_id = record.attempt_id.clone();
+    transition_rejected_record(
+        record,
+        &attempt_id,
+        REPLICA_REQUIRED_UNAVAILABLE,
+        ReplicaStatus::PreAdmissionRejected,
+    )
+    .expect("a new record, pending on its own attempt, can be rejected")
 }
 
 fn transition_rejected_record(
