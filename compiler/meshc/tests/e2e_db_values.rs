@@ -201,11 +201,16 @@ count_bad:failed
 exists:true
 exists_not:false
 exists_bad:failed
+pgcrypto:0
+exprs:less=3 third=3 json={"a": 1} contains=t id=00000000-0000-0000-0000-000000000001 day=2026-01-02 found=t ranked=t salt=29 hash=$1$abcdefgh$IQtUouv7y7Q9dRWkQEPCc. value=fallback
+upsert_qualified:50
+upsert_labelled:failed
+select_star:A
 preload_posts:[{"author_id":"ada","comments":[{"body":"nice","id":"1","post_id":"1"},{"body":"great","id":"2","post_id":"1"}],"id":"1","title":"First","views":"11"},{"author_id":"ada","comments":[],"id":"2","title":"Second","views":"31"}],[{"author_id":"bob","comments":[{"body":"ok","id":"3","post_id":"3"}],"id":"3","title":"Third","views":"20"}],[]
 preload_profile:{"author_id":"ada","bio":"mathematician","id":"1"},null,null
 preload_unknown:failed
 preload_unknown_nested:failed
-preload_author:{"handle":"ada","name":"Ada","nickname":"","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"4"},{"handle":"ada","name":"Ada","nickname":"","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"4"},{"handle":"bob","name":"BOB","nickname":"b","profile":null,"score":"2"}
+preload_author:{"handle":"ada","name":"Ada","nickname":"A","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"50"},{"handle":"ada","name":"Ada","nickname":"A","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"50"},{"handle":"bob","name":"BOB","nickname":"b","profile":null,"score":"2"}
 preload_empty:
 insert_changeset:Fay
 insert_changeset_invalid:can't be blank

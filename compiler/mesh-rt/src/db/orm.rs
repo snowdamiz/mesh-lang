@@ -12,26 +12,11 @@
 //! and return MeshString pointers. SQL identifiers are double-quoted per
 //! PostgreSQL convention, and parameters use $N placeholders.
 
+use super::quote_name;
 use crate::collections::list::{mesh_list_get, mesh_list_length};
 use crate::string::{mesh_string_new, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/// Quote a SQL identifier with double quotes (PostgreSQL convention).
-/// Escapes embedded double quotes by doubling them.
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-/// Quote a SQL identifier, but pass `*` through unquoted.
-/// Used in RETURNING clauses where `*` means "all columns", not a column named `*`.
-fn quote_ident_or_star(name: &str) -> String {
-    if name == "*" {
-        "*".to_string()
-    } else {
-        quote_ident(name)
-    }
-}
 
 /// Extract a Vec<String> from a Mesh List<String> pointer.
 unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
@@ -69,13 +54,13 @@ fn build_select_sql(
     if columns.is_empty() {
         sql.push('*');
     } else {
-        let quoted: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+        let quoted: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
         sql.push_str(&quoted.join(", "));
     }
 
     // FROM clause
     sql.push_str(" FROM ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
 
     // WHERE clause
     let mut param_idx = 1;
@@ -88,14 +73,14 @@ fn build_select_sql(
                 let col = &w[..space_pos];
                 let op = w[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_ident(col), op));
+                    conditions.push(format!("{} {}", quote_name(col), op));
                 } else {
-                    conditions.push(format!("{} {} ${}", quote_ident(col), op, param_idx));
+                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
                     param_idx += 1;
                 }
             } else {
                 // Just a column name, default to = operator
-                conditions.push(format!("{} = ${}", quote_ident(w), param_idx));
+                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
                 param_idx += 1;
             }
         }
@@ -111,9 +96,9 @@ fn build_select_sql(
                 if let Some(space_pos) = o.rfind(' ') {
                     let col = &o[..space_pos];
                     let dir = &o[space_pos + 1..];
-                    format!("{} {}", quote_ident(col), dir.to_uppercase())
+                    format!("{} {}", quote_name(col), dir.to_uppercase())
                 } else {
-                    format!("{} ASC", quote_ident(o))
+                    format!("{} ASC", quote_name(o))
                 }
             })
             .collect();
@@ -147,11 +132,11 @@ fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> St
     let mut sql = String::new();
 
     sql.push_str("INSERT INTO ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
 
     // Column list
     sql.push_str(" (");
-    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
     sql.push_str(&quoted_cols.join(", "));
     sql.push(')');
 
@@ -164,7 +149,7 @@ fn build_insert_sql(table: &str, columns: &[String], returning: &[String]) -> St
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -192,14 +177,14 @@ fn build_update_sql(
     let mut param_idx = 1;
 
     sql.push_str("UPDATE ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
 
     // SET clause
     sql.push_str(" SET ");
     let set_parts: Vec<String> = set_columns
         .iter()
         .map(|c| {
-            let part = format!("{} = ${}", quote_ident(c), param_idx);
+            let part = format!("{} = ${}", quote_name(c), param_idx);
             param_idx += 1;
             part
         })
@@ -215,13 +200,13 @@ fn build_update_sql(
                 let col = &w[..space_pos];
                 let op = w[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_ident(col), op));
+                    conditions.push(format!("{} {}", quote_name(col), op));
                 } else {
-                    conditions.push(format!("{} {} ${}", quote_ident(col), op, param_idx));
+                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
                     param_idx += 1;
                 }
             } else {
-                conditions.push(format!("{} = ${}", quote_ident(w), param_idx));
+                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
                 param_idx += 1;
             }
         }
@@ -231,7 +216,7 @@ fn build_update_sql(
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -253,7 +238,7 @@ fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> Str
     let mut param_idx = 1;
 
     sql.push_str("DELETE FROM ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
 
     // WHERE clause
     if !wheres.is_empty() {
@@ -264,13 +249,13 @@ fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> Str
                 let col = &w[..space_pos];
                 let op = w[space_pos + 1..].trim();
                 if op == "IS NULL" || op == "IS NOT NULL" {
-                    conditions.push(format!("{} {}", quote_ident(col), op));
+                    conditions.push(format!("{} {}", quote_name(col), op));
                 } else {
-                    conditions.push(format!("{} {} ${}", quote_ident(col), op, param_idx));
+                    conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
                     param_idx += 1;
                 }
             } else {
-                conditions.push(format!("{} = ${}", quote_ident(w), param_idx));
+                conditions.push(format!("{} = ${}", quote_name(w), param_idx));
                 param_idx += 1;
             }
         }
@@ -280,7 +265,7 @@ fn build_delete_sql(table: &str, wheres: &[String], returning: &[String]) -> Str
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -306,11 +291,11 @@ pub(crate) fn build_upsert_sql_pure(
     let mut sql = String::new();
 
     sql.push_str("INSERT INTO ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
 
     // Column list
     sql.push_str(" (");
-    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+    let quoted_cols: Vec<String> = columns.iter().map(|c| quote_name(c)).collect();
     sql.push_str(&quoted_cols.join(", "));
     sql.push(')');
 
@@ -322,7 +307,7 @@ pub(crate) fn build_upsert_sql_pure(
 
     // ON CONFLICT clause
     sql.push_str(" ON CONFLICT (");
-    let quoted_targets: Vec<String> = conflict_targets.iter().map(|c| quote_ident(c)).collect();
+    let quoted_targets: Vec<String> = conflict_targets.iter().map(|c| quote_name(c)).collect();
     sql.push_str(&quoted_targets.join(", "));
     sql.push(')');
 
@@ -330,14 +315,14 @@ pub(crate) fn build_upsert_sql_pure(
     sql.push_str(" DO UPDATE SET ");
     let set_parts: Vec<String> = update_columns
         .iter()
-        .map(|c| format!("{} = EXCLUDED.{}", quote_ident(c), quote_ident(c)))
+        .map(|c| format!("{} = EXCLUDED.{}", quote_name(c), quote_name(c)))
         .collect();
     sql.push_str(&set_parts.join(", "));
 
     // RETURNING clause
     if !returning.is_empty() {
         sql.push_str(" RETURNING ");
-        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_ident_or_star(c)).collect();
+        let quoted_ret: Vec<String> = returning.iter().map(|c| quote_name(c)).collect();
         sql.push_str(&quoted_ret.join(", "));
     }
 
@@ -461,17 +446,17 @@ mod tests {
 
     #[test]
     fn test_quote_ident_simple() {
-        assert_eq!(quote_ident("users"), "\"users\"");
+        assert_eq!(quote_name("users"), "\"users\"");
     }
 
     #[test]
     fn test_quote_ident_reserved_word() {
-        assert_eq!(quote_ident("table"), "\"table\"");
+        assert_eq!(quote_name("table"), "\"table\"");
     }
 
     #[test]
     fn test_quote_ident_escaped_double_quote() {
-        assert_eq!(quote_ident("my\"col"), "\"my\"\"col\"");
+        assert_eq!(quote_name("my\"col"), "\"my\"\"col\"");
     }
 
     // ── build_select_sql tests ───────────────────────────────────────

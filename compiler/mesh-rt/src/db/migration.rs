@@ -16,18 +16,13 @@
 //! and execute the generated DDL via `mesh_pool_execute`. SQL identifiers are
 //! double-quoted per PostgreSQL convention.
 
+use super::quote_ident;
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::db::pool::mesh_pool_execute;
 use crate::io::alloc_result;
 use crate::string::{mesh_string_new, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/// Quote a SQL identifier with double quotes (PostgreSQL convention).
-/// Escapes embedded double quotes by doubling them.
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
 
 /// Extract a Vec<String> from a Mesh List<String> pointer.
 unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
@@ -498,7 +493,10 @@ mod tests {
         let columns = ["name".to_string()];
         for (options, error) in [
             ("fast", "invalid token `fast`"),
-            ("unique:maybe", "unique must be `true` or `false`, got `maybe`"),
+            (
+                "unique:maybe",
+                "unique must be `true` or `false`, got `maybe`",
+            ),
             ("name:", "name must not be empty"),
             ("fast:yes", "unsupported option `fast`"),
             ("where:  ", "where clause must not be empty"),
@@ -508,12 +506,18 @@ mod tests {
         }
         assert_eq!(
             build_create_index_sql("t", &columns, "unique:false name:by_name where:x > 1"),
-            Ok("CREATE INDEX IF NOT EXISTS \"by_name\" ON \"t\" (\"name\") WHERE x > 1".to_string())
+            Ok(
+                "CREATE INDEX IF NOT EXISTS \"by_name\" ON \"t\" (\"name\") WHERE x > 1"
+                    .to_string()
+            )
         );
         for (column, error) in [
             (" ", "column name must not be empty"),
             (":DESC", "column name must not be empty"),
-            ("name:UP", "`name:UP` only supports :ASC or :DESC order suffixes"),
+            (
+                "name:UP",
+                "`name:UP` only supports :ASC or :DESC order suffixes",
+            ),
         ] {
             let refused = build_create_index_sql("t", &[column.to_string()], "").unwrap_err();
             assert!(refused.ends_with(error), "{column}: {refused}");

@@ -45,6 +45,15 @@ fn show_rows(label :: String, result :: Result<List<Map<String, String>>, String
   end
 end
 
+fn show_fields(label :: String, result :: Result<List<Map<String, String>>, String>, fields :: List<String>) do
+  case result do
+    Ok(rows) -> println(label <> ":" <> String.join(List.map(fields,
+        fn(field) do field <> "=" <> Map.get(List.head(rows), field) end),
+      " "))
+    Err(error) -> println(label <> ":error:" <> error)
+  end
+end
+
 fn show_int(label :: String, result :: Result<Int, String>) do
   case result do
     Ok(n) -> println(label <> ":" <> String.from(n))
@@ -343,6 +352,65 @@ fn reads(pool :: PoolHandle) do
   failed("exists_bad", Repo.exists(pool, Query.from("nowhere")))
 end
 
+# Every expression helper, in one row of `ada`, and an upsert whose update
+# is qualified through each kind of expression.
+fn expressions(pool :: PoolHandle) do
+  show_int("pgcrypto", Pg.create_extension(pool, "pgcrypto"))
+  show_fields("exprs",
+    Repo.all(pool,
+      Query.from("writers")
+        |> Query.where_expr(Expr.neq(Expr.column("handle"), Expr.value("nobody")))
+        |> Query.where_expr(Expr.lt(Expr.column("score"), Expr.value("1000")))
+        |> Query.where_expr(Expr.lte(Expr.column("score"), Expr.value("100")))
+        |> Query.where_expr(Expr.gte(Expr.column("score"), Expr.value("0")))
+        |> Query.where_expr(Expr.eq(Expr.column("handle"), Expr.value("ada")))
+        |> Query.select_exprs([
+          Expr.label(Expr.sub(Expr.column("score"), Expr.value("1")), "less"),
+          Expr.label(Expr.div(Pg.int(Expr.value("9")), Expr.value("3")), "third"),
+          Expr.label(Pg.text(Pg.jsonb(Expr.value("{\"a\": 1}"))), "json"),
+          Expr.label(Pg.jsonb_contains(Pg.jsonb(Expr.value("{\"a\": 1, \"b\": 2}")),
+              Pg.jsonb(Expr.value("{\"a\": 1}"))),
+            "contains"),
+          Expr.label(Pg.uuid(Expr.value("00000000-0000-0000-0000-000000000001")), "id"),
+          Expr.label(Pg.cast(Pg.timestamptz(Expr.value("2026-01-02T03:04:05Z")), "date"), "day"),
+          Expr.label(Pg.tsvector_matches(Pg.to_tsvector("english", Expr.column("name")),
+              Pg.plainto_tsquery("english", Expr.value("ada"))),
+            "found"),
+          Expr.label(Expr.gt(Pg.ts_rank(Pg.to_tsvector("english", Expr.value("mesh language")),
+                Pg.plainto_tsquery("english", Expr.value("mesh"))),
+              Expr.value("0")),
+            "ranked"),
+          Expr.label(Expr.call("length", [Pg.gen_salt("bf", 4)]), "salt"),
+          Expr.label(Pg.crypt(Expr.value("pw"), Expr.value("$1$abcdefgh$")), "hash"),
+          Expr.label(Expr.coalesce([Expr.null(), Expr.value("fallback")]), "value")
+        ])),
+    ["less", "third", "json", "contains", "id", "day", "found", "ranked", "salt", "hash", "value"])
+  show("upsert_qualified",
+    Repo.insert_or_update_expr(pool,
+      "writers",
+      %{"handle" => "ada", "name" => "Ada", "score" => "50", "nickname" => "A"},
+      ["handle"],
+      %{
+        "nickname" => Expr.coalesce([Expr.column("nickname"), Expr.excluded("nickname")]),
+        "score" => Expr.case([Expr.gt(Expr.excluded("score"), Expr.column("score"))],
+          [Pg.cast(Expr.excluded("score"), "int")],
+          Expr.column("score"))
+      }),
+    "score")
+  failed("upsert_labelled",
+    Repo.insert_or_update_expr(pool,
+      "writers",
+      %{"handle" => "ada", "name" => "Ada"},
+      ["handle"],
+      %{"score" => Expr.label(Expr.column("score"), "s")}))
+  show_rows("select_star",
+    Repo.all(pool,
+      Query.from("writers")
+        |> Query.select(["writers.*"])
+        |> Query.where(:handle, "ada")),
+    "nickname")
+end
+
 fn preloads(pool :: PoolHandle) do
   let meta = List.concat(List.concat(Author.__relationship_meta__(), Post.__relationship_meta__()),
     Comment.__relationship_meta__())
@@ -467,6 +535,7 @@ fn run() -> Int!String do
   let _ = setup(pool)?
   writes(pool)
   reads(pool)
+  expressions(pool)
   preloads(pool)
   changesets(pool)
   transactions(pool)

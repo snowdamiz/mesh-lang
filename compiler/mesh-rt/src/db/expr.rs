@@ -5,6 +5,7 @@
 //! ordered parameter lists so Query/Repo can embed them into SELECT, WHERE,
 //! UPDATE, and ON CONFLICT clauses.
 
+use super::{quote_ident, quote_name};
 use crate::collections::list::{mesh_list_get, mesh_list_length};
 use crate::string::{mesh_string_new, MeshString};
 
@@ -98,23 +99,6 @@ pub(crate) unsafe fn clone_expr(ptr: *mut u8) -> SqlExpr {
     serde_json::from_str(mesh_str_ref(ptr)).expect("an Expr value holds an SqlExpr")
 }
 
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
-
-fn quote_compound_ident(name: &str) -> String {
-    name.split('.')
-        .map(|segment| {
-            if segment == "*" {
-                "*".to_string()
-            } else {
-                quote_ident(segment)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
 fn render_function_name(name: &str) -> String {
     name.split('.')
         .map(|segment| segment.replace('"', ""))
@@ -135,7 +119,7 @@ pub(crate) fn render_expr(
     next_idx: &mut usize,
 ) -> String {
     match expr {
-        SqlExpr::Column(name) => quote_compound_ident(name),
+        SqlExpr::Column(name) => quote_name(name),
         SqlExpr::Value(value) => {
             let idx = *next_idx;
             *next_idx += 1;

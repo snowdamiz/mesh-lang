@@ -3,15 +3,12 @@
 //! These helpers intentionally own PostgreSQL-only DDL that should not be
 //! represented by the neutral `Migration.*` surface.
 
+use super::quote_ident;
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::collections::map::mesh_map_get;
 use crate::db::pool::{mesh_pool_execute, mesh_pool_query};
 use crate::io::{alloc_result, MeshResult};
 use crate::string::{mesh_string_new, MeshString};
-
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
-}
 
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))

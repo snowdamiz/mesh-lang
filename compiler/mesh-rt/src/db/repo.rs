@@ -22,6 +22,7 @@
 //! - `mesh_repo_delete`: DELETE with RETURNING *, accepts id
 //! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
+use super::quote_name;
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::collections::map::{
     mesh_map_entry_key, mesh_map_entry_value, mesh_map_get, mesh_map_has_key, mesh_map_put,
@@ -62,11 +63,6 @@ fn err_result(msg: &str) -> *mut u8 {
 /// Create an Ok MeshResult wrapping a value pointer.
 fn ok_result(value: *mut u8) -> *mut u8 {
     alloc_result(0, value) as *mut u8
-}
-
-/// Quote a SQL identifier with double quotes (PostgreSQL convention).
-fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 /// Extract a Vec<String> from a Mesh List<String> pointer.
@@ -289,13 +285,13 @@ fn build_select_sql_from_parts_with_select_params(
                 }
                 continue;
             }
-            cols.push(quote_ident(field));
+            cols.push(quote_name(field));
         }
         sql.push_str(&cols.join(", "));
     }
 
     // FROM clause
-    sql.push_str(&format!(" FROM {}", quote_ident(source)));
+    sql.push_str(&format!(" FROM {}", quote_name(source)));
 
     // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
     for join in join_clauses {
@@ -304,10 +300,10 @@ fn build_select_sql_from_parts_with_select_params(
             if parts.len() == 4 {
                 sql.push_str(&format!(
                     " {} JOIN {} {} ON {}",
-                    parts[0],              // join type (INNER, LEFT)
-                    quote_ident(parts[1]), // table name
-                    parts[2],              // alias (unquoted)
-                    parts[3]               // on clause
+                    parts[0],             // join type (INNER, LEFT)
+                    quote_name(parts[1]), // table name
+                    parts[2],             // alias (unquoted)
+                    parts[3]              // on clause
                 ));
             }
         } else {
@@ -316,7 +312,7 @@ fn build_select_sql_from_parts_with_select_params(
                 sql.push_str(&format!(
                     " {} JOIN {} ON {}",
                     parts[0],
-                    quote_ident(parts[1]),
+                    quote_name(parts[1]),
                     parts[2]
                 ));
             }
@@ -340,7 +336,7 @@ fn build_select_sql_from_parts_with_select_params(
                 if let Some(raw) = f.strip_prefix("RAW:") {
                     raw.to_string() // emit verbatim
                 } else {
-                    quote_ident(f)
+                    quote_name(f)
                 }
             })
             .collect();
@@ -382,9 +378,9 @@ fn build_select_sql_from_parts_with_select_params(
                 } else if let Some(space_pos) = o.rfind(' ') {
                     let col = &o[..space_pos];
                     let dir = &o[space_pos + 1..];
-                    format!("{} {}", quote_ident(col), dir)
+                    format!("{} {}", quote_name(col), dir)
                 } else {
-                    format!("{} ASC", quote_ident(o))
+                    format!("{} ASC", quote_name(o))
                 }
             })
             .collect();
@@ -446,7 +442,7 @@ fn build_count_sql_from_parts(
     let mut params: Vec<String> = Vec::new();
     let mut param_idx = 1usize;
 
-    sql.push_str(&format!("SELECT COUNT(*) FROM {}", quote_ident(source)));
+    sql.push_str(&format!("SELECT COUNT(*) FROM {}", quote_name(source)));
 
     // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
     for join in join_clauses {
@@ -456,7 +452,7 @@ fn build_count_sql_from_parts(
                 sql.push_str(&format!(
                     " {} JOIN {} {} ON {}",
                     parts[0],
-                    quote_ident(parts[1]),
+                    quote_name(parts[1]),
                     parts[2],
                     parts[3]
                 ));
@@ -467,7 +463,7 @@ fn build_count_sql_from_parts(
                 sql.push_str(&format!(
                     " {} JOIN {} ON {}",
                     parts[0],
-                    quote_ident(parts[1]),
+                    quote_name(parts[1]),
                     parts[2]
                 ));
             }
@@ -491,7 +487,7 @@ fn build_count_sql_from_parts(
                 if let Some(raw) = f.strip_prefix("RAW:") {
                     raw.to_string()
                 } else {
-                    quote_ident(f)
+                    quote_name(f)
                 }
             })
             .collect();
@@ -546,7 +542,7 @@ fn build_exists_sql_from_parts(
     let mut params: Vec<String> = Vec::new();
     let param_idx = 1usize;
 
-    inner_sql.push_str(&format!("SELECT 1 FROM {}", quote_ident(source)));
+    inner_sql.push_str(&format!("SELECT 1 FROM {}", quote_name(source)));
 
     // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
     for join in join_clauses {
@@ -556,7 +552,7 @@ fn build_exists_sql_from_parts(
                 inner_sql.push_str(&format!(
                     " {} JOIN {} {} ON {}",
                     parts[0],
-                    quote_ident(parts[1]),
+                    quote_name(parts[1]),
                     parts[2],
                     parts[3]
                 ));
@@ -567,7 +563,7 @@ fn build_exists_sql_from_parts(
                 inner_sql.push_str(&format!(
                     " {} JOIN {} ON {}",
                     parts[0],
-                    quote_ident(parts[1]),
+                    quote_name(parts[1]),
                     parts[2]
                 ));
             }
@@ -689,7 +685,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
     let result = mesh_pool_query(
         pool,
         rust_str_to_mesh(sql) as *const MeshString,
-        strings_to_mesh_list(&[quote_ident(table)]),
+        strings_to_mesh_list(&[quote_name(table)]),
     );
     let r = &*(result as *const MeshResult);
     if r.tag != 0 {
@@ -721,8 +717,8 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
         };
         let sql = format!(
             "SELECT * FROM {} WHERE {} = $1 LIMIT 1",
-            quote_ident(table_str),
-            quote_ident(&key)
+            quote_name(table_str),
+            quote_name(&key)
         );
         let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
@@ -763,8 +759,8 @@ pub extern "C" fn mesh_repo_get_by(
         let field_str = mesh_str_ref(field);
         let sql = format!(
             "SELECT * FROM {} WHERE {} = $1 LIMIT 1",
-            quote_ident(table_str),
-            quote_ident(field_str)
+            quote_name(table_str),
+            quote_name(field_str)
         );
         let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
@@ -911,7 +907,7 @@ fn build_set_expr_parts(
         let (expr_sql, _consumed) = renumber_placeholders(&expr_sql_local, next_idx);
         next_idx += expr_params.len();
         params.extend(expr_params);
-        set_parts.push(format!("{} = {}", quote_ident(column), expr_sql));
+        set_parts.push(format!("{} = {}", quote_name(column), expr_sql));
     }
 
     (set_parts, params, next_idx)
@@ -931,7 +927,7 @@ fn build_update_where_expr_sql_pure(
         return Err("update_where_expr: no WHERE conditions");
     }
 
-    let mut sql = format!("UPDATE {} SET ", quote_ident(table));
+    let mut sql = format!("UPDATE {} SET ", quote_name(table));
     let (set_parts, mut params, next_idx) = build_set_expr_parts(columns, exprs, 1);
     sql.push_str(&set_parts.join(", "));
 
@@ -963,7 +959,7 @@ fn build_insert_or_update_expr_sql_pure(
 
     let quoted_columns = insert_columns
         .iter()
-        .map(|column| quote_ident(column))
+        .map(|column| quote_name(column))
         .collect::<Vec<_>>()
         .join(", ");
     let placeholders = (1..=insert_columns.len())
@@ -972,7 +968,7 @@ fn build_insert_or_update_expr_sql_pure(
         .join(", ");
     let quoted_targets = conflict_targets
         .iter()
-        .map(|target| quote_ident(target))
+        .map(|target| quote_name(target))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -985,7 +981,7 @@ fn build_insert_or_update_expr_sql_pure(
 
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {} RETURNING *",
-        quote_ident(table),
+        quote_name(table),
         quoted_columns,
         placeholders,
         quoted_targets,
@@ -1008,7 +1004,7 @@ fn build_insert_expr_sql_pure(
 
     let quoted_columns = columns
         .iter()
-        .map(|column| quote_ident(column))
+        .map(|column| quote_name(column))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -1026,7 +1022,7 @@ fn build_insert_expr_sql_pure(
 
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({}) RETURNING *",
-        quote_ident(table),
+        quote_name(table),
         quoted_columns,
         value_sql_parts.join(", ")
     );
@@ -1463,7 +1459,7 @@ fn parse_relationship_meta(meta_strings: &[String]) -> HashMap<String, RelMeta> 
 /// Build a simple SELECT query with an IN clause for preloading.
 /// Returns (sql, params) where params are the IN values.
 fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, Vec<String>) {
-    let mut sql = format!("SELECT * FROM {}", quote_ident(table));
+    let mut sql = format!("SELECT * FROM {}", quote_name(table));
     if ids.is_empty() {
         // Should not reach here (caller checks), but safety.
         return (sql, vec![]);
@@ -1471,7 +1467,7 @@ fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, V
     let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
     sql.push_str(&format!(
         " WHERE {} IN ({})",
-        quote_ident(where_col),
+        quote_name(where_col),
         placeholders.join(", ")
     ));
     (sql, ids.to_vec())
@@ -1913,7 +1909,7 @@ fn build_where_from_query_parts(
                 let count: usize = parts[2].parse().unwrap_or(0);
                 let mut or_parts = Vec::new();
                 for field in fields.iter().take(count) {
-                    or_parts.push(format!("{} = ${}", quote_ident(field), param_idx));
+                    or_parts.push(format!("{} = ${}", quote_name(field), param_idx));
                     if wp_idx < where_params.len() {
                         params.push(where_params[wp_idx].clone());
                         wp_idx += 1;
@@ -1952,14 +1948,14 @@ fn build_where_from_query_parts(
             let col = &clause[..space_pos];
             let op = clause[space_pos + 1..].trim();
             if op == "IS NULL" || op == "IS NOT NULL" {
-                conditions.push(format!("{} {}", quote_ident(col), op));
+                conditions.push(format!("{} {}", quote_name(col), op));
             } else if let Some(count) = op.strip_prefix("IN:") {
                 let count: usize = count.parse().unwrap_or(0);
                 let placeholders: Vec<String> =
                     (0..count).map(|i| format!("${}", param_idx + i)).collect();
                 conditions.push(format!(
                     "{} IN ({})",
-                    quote_ident(col),
+                    quote_name(col),
                     placeholders.join(", ")
                 ));
                 for _ in 0..count {
@@ -1975,7 +1971,7 @@ fn build_where_from_query_parts(
                     (0..count).map(|i| format!("${}", param_idx + i)).collect();
                 conditions.push(format!(
                     "{} NOT IN ({})",
-                    quote_ident(col),
+                    quote_name(col),
                     placeholders.join(", ")
                 ));
                 for _ in 0..count {
@@ -1988,7 +1984,7 @@ fn build_where_from_query_parts(
             } else if op == "BETWEEN" {
                 conditions.push(format!(
                     "{} BETWEEN ${} AND ${}",
-                    quote_ident(col),
+                    quote_name(col),
                     param_idx,
                     param_idx + 1
                 ));
@@ -2000,7 +1996,7 @@ fn build_where_from_query_parts(
                     param_idx += 1;
                 }
             } else {
-                conditions.push(format!("{} {} ${}", quote_ident(col), op, param_idx));
+                conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
                 if wp_idx < where_params.len() {
                     params.push(where_params[wp_idx].clone());
                     wp_idx += 1;
@@ -2008,7 +2004,7 @@ fn build_where_from_query_parts(
                 param_idx += 1;
             }
         } else {
-            conditions.push(format!("{} = ${}", quote_ident(clause), param_idx));
+            conditions.push(format!("{} = ${}", quote_name(clause), param_idx));
             if wp_idx < where_params.len() {
                 params.push(where_params[wp_idx].clone());
                 wp_idx += 1;
@@ -2046,11 +2042,11 @@ pub extern "C" fn mesh_repo_update_where(
             return err_result("update_where: no WHERE conditions");
         }
 
-        let mut sql = format!("UPDATE {} SET ", quote_ident(table_str));
+        let mut sql = format!("UPDATE {} SET ", quote_name(table_str));
         let set_parts: Vec<String> = columns
             .iter()
             .enumerate()
-            .map(|(i, c)| format!("{} = ${}", quote_ident(c), i + 1))
+            .map(|(i, c)| format!("{} = ${}", quote_name(c), i + 1))
             .collect();
         sql.push_str(&set_parts.join(", "));
 
@@ -2142,7 +2138,7 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
             return err_result("delete_where: no WHERE conditions");
         }
 
-        let mut sql = format!("DELETE FROM {}", quote_ident(table_str));
+        let mut sql = format!("DELETE FROM {}", quote_name(table_str));
         let (where_sql, where_param_values, _next_idx) =
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {}", where_sql));
@@ -2280,7 +2276,7 @@ pub extern "C" fn mesh_repo_delete_where_returning(
             return err_result("delete_where_returning: no WHERE conditions");
         }
 
-        let mut sql = format!("DELETE FROM {}", quote_ident(table_str));
+        let mut sql = format!("DELETE FROM {}", quote_name(table_str));
         let (where_sql, where_param_values, _next_idx) =
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));

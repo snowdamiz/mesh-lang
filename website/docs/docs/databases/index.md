@@ -256,7 +256,7 @@ let query = Query.from(User.__table__())
 
 | Function | Description |
 |----------|-------------|
-| `Query.select(query, fields)` | Select named columns |
+| `Query.select(query, fields)` | Select named columns; a name may be qualified, as `writers.handle` or `writers.*` |
 | `Query.select_expr(query, expression)` | Select one structured expression |
 | `Query.select_exprs(query, expressions)` | Select several structured expressions |
 | `Query.select_count(query)` | Select `count(*)` |
