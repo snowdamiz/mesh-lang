@@ -1583,10 +1583,19 @@ pub struct SnapshotResumeProof {
 /// directly so snapshot resume is captured in the same evidence bundle as
 /// horizontal scaling.
 pub fn prove_interrupted_snapshot_resume() -> Result<SnapshotResumeProof, String> {
+    prove_snapshot_resume(64, |_| {})
+}
+
+/// The proof over `records` records, with `interrupted` done to the
+/// receiver's store while its transfer is interrupted: the proof must
+/// fail when the snapshot comes in one chunk or loses a record.
+fn prove_snapshot_resume(
+    records: usize,
+    interrupted: impl Fn(&SqliteContinuityStore),
+) -> Result<SnapshotResumeProof, String> {
     let limits = ContinuityStoreLimits::default();
     let source = SqliteContinuityStore::open(Path::new(":memory:"), limits)?;
-    const RECORDS: usize = 64;
-    for index in 0..RECORDS {
+    for index in 0..records {
         let body = vec![(index % 251) as u8; 192];
         source.upsert(&StoredContinuityRecord {
             operation_key: format!("snapshot-proof-{index:04}"),
@@ -1628,15 +1637,16 @@ pub fn prove_interrupted_snapshot_resume() -> Result<SnapshotResumeProof, String
             for chunk in &chunks[..acknowledged_before_interruption] {
                 target.apply_snapshot_chunk(chunk)?;
             }
+            interrupted(&target);
         }
         let target = SqliteContinuityStore::open(&path, limits)?;
         for chunk in &chunks[acknowledged_before_interruption..] {
             target.apply_snapshot_chunk(chunk)?;
         }
-        let records = target.all_records()?.len();
-        if records != RECORDS {
+        let resumed = target.all_records()?.len();
+        if resumed != records {
             return Err(format!(
-                "continuity_snapshot_resume_record_mismatch:expected={RECORDS}:actual={records}"
+                "continuity_snapshot_resume_record_mismatch:expected={records}:actual={resumed}"
             ));
         }
         Ok(SnapshotResumeProof {
@@ -2258,6 +2268,17 @@ mod tests {
 
     #[test]
     fn release_snapshot_resume_proof_reopens_receiver_store() {
+        assert_eq!(
+            prove_snapshot_resume(1, |_| {}),
+            Err("continuity_snapshot_proof_not_chunked".to_string())
+        );
+        let lost = prove_snapshot_resume(64, |target| {
+            execute(target, "DELETE FROM continuity_records WHERE rowid = 1");
+        });
+        assert_eq!(
+            lost,
+            Err("continuity_snapshot_resume_record_mismatch:expected=64:actual=63".to_string())
+        );
         let proof = prove_interrupted_snapshot_resume().expect("snapshot resume proof");
 
         assert_eq!(proof.records, 64);
