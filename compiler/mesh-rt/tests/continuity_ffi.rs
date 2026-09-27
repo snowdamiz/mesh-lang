@@ -141,3 +141,41 @@ fn the_continuity_ffi_answers_through_mesh_results() {
         1
     );
 }
+
+const ROLE_CHILD_ENV: &str = "MESH_TEST_CONTINUITY_ROLE_CHILD";
+
+/// A mistyped continuity role must not quietly make a standby a primary:
+/// the registry's first use stops the process. The registry starts once
+/// per process, so a child process of this binary starts it.
+#[test]
+fn a_mistyped_continuity_role_stops_the_process() {
+    if std::env::var_os(ROLE_CHILD_ENV).is_some() {
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "the_registry_under_a_mistyped_role",
+            "--exact",
+            "--nocapture",
+        ])
+        .env(ROLE_CHILD_ENV, "1")
+        .env("MESH_CONTINUITY_ROLE", "standyb")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid MESH_CONTINUITY_ROLE `standyb`: expected primary or standby"),
+        "{stderr}"
+    );
+}
+
+/// The child process of the test above.
+#[test]
+fn the_registry_under_a_mistyped_role() {
+    if std::env::var_os(ROLE_CHILD_ENV).is_none() {
+        return;
+    }
+    mesh_continuity_authority_status();
+    unreachable!("the registry started under a mistyped role");
+}
