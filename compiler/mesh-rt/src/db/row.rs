@@ -12,14 +12,15 @@
 //! - `mesh_row_parse_bool`: Parse a string to Bool (0 or 1)
 
 use crate::collections::map::{mesh_map_get, mesh_map_has_key};
-use crate::io::alloc_result;
-use crate::string::{mesh_str, MeshString};
+use crate::io::{alloc_result, err_result};
+use crate::string::text_of;
+
+/// `Ok(payload)`, the payload unboxed as generated `from_row` code reads it.
+fn ok(payload: *mut u8) -> *mut u8 {
+    alloc_result(0, payload) as *mut u8
+}
 
 /// Extract a column value from a row map (Map<String, String>).
-///
-/// # Signature
-///
-/// `mesh_row_from_row_get(row: *mut u8, col_name: *mut u8) -> *mut u8 (MeshResult)`
 ///
 /// - `row` is a pointer to a MeshMap (string-keyed).
 /// - `col_name` is a `*const MeshString` cast to `*mut u8`.
@@ -30,46 +31,27 @@ pub extern "C" fn mesh_row_from_row_get(row: *mut u8, col_name: *mut u8) -> *mut
     unsafe {
         let key = col_name as u64;
         if mesh_map_has_key(row, key) != 0 {
-            let val = mesh_map_get(row, key);
-            alloc_result(0, val as *mut u8) as *mut u8
+            ok(mesh_map_get(row, key) as *mut u8)
         } else {
-            // Build descriptive error message
-            let name_str = (*(col_name as *const MeshString)).as_str();
-            let msg = format!("missing column: {}", name_str);
-            let err_mesh = mesh_str(&msg);
-            alloc_result(1, err_mesh as *mut u8) as *mut u8
+            err_result(&format!("missing column: {}", text_of(col_name)))
         }
     }
 }
 
 /// Parse a string value to an Int (i64).
 ///
-/// # Signature
-///
-/// `mesh_row_parse_int(s: *mut u8) -> *mut u8 (MeshResult)`
-///
 /// Trims the input string and parses as i64.
 /// Returns Ok(value_as_i64) or Err("cannot parse '{text}' as Int").
 #[no_mangle]
 pub extern "C" fn mesh_row_parse_int(s: *mut u8) -> *mut u8 {
-    unsafe {
-        let text = (*(s as *const MeshString)).as_str().trim();
-        match text.parse::<i64>() {
-            Ok(val) => alloc_result(0, val as *mut u8) as *mut u8,
-            Err(_) => {
-                let msg = format!("cannot parse '{}' as Int", text);
-                let err_mesh = mesh_str(&msg);
-                alloc_result(1, err_mesh as *mut u8) as *mut u8
-            }
-        }
+    let text = unsafe { text_of(s) }.trim();
+    match text.parse::<i64>() {
+        Ok(val) => ok(val as *mut u8),
+        Err(_) => err_result(&format!("cannot parse '{}' as Int", text)),
     }
 }
 
 /// Parse a string value to a Float (f64).
-///
-/// # Signature
-///
-/// `mesh_row_parse_float(s: *mut u8) -> *mut u8 (MeshResult)`
 ///
 /// Pre-normalizes PostgreSQL-specific representations:
 /// - "Infinity" -> "inf"
@@ -79,30 +61,20 @@ pub extern "C" fn mesh_row_parse_int(s: *mut u8) -> *mut u8 {
 /// Uses `f64::to_bits()` for float-to-u64 encoding, matching Mesh Float convention.
 #[no_mangle]
 pub extern "C" fn mesh_row_parse_float(s: *mut u8) -> *mut u8 {
-    unsafe {
-        let raw = (*(s as *const MeshString)).as_str().trim();
-        // Pre-normalize PostgreSQL-specific infinity representations
-        let text = match raw {
-            "Infinity" => "inf",
-            "-Infinity" => "-inf",
-            other => other,
-        };
-        match text.parse::<f64>() {
-            Ok(val) => alloc_result(0, f64::to_bits(val) as *mut u8) as *mut u8,
-            Err(_) => {
-                let msg = format!("cannot parse '{}' as Float", raw);
-                let err_mesh = mesh_str(&msg);
-                alloc_result(1, err_mesh as *mut u8) as *mut u8
-            }
-        }
+    let raw = unsafe { text_of(s) }.trim();
+    // Pre-normalize PostgreSQL-specific infinity representations
+    let text = match raw {
+        "Infinity" => "inf",
+        "-Infinity" => "-inf",
+        other => other,
+    };
+    match text.parse::<f64>() {
+        Ok(val) => ok(f64::to_bits(val) as *mut u8),
+        Err(_) => err_result(&format!("cannot parse '{}' as Float", raw)),
     }
 }
 
 /// Parse a string value to a Bool (0 or 1).
-///
-/// # Signature
-///
-/// `mesh_row_parse_bool(s: *mut u8) -> *mut u8 (MeshResult)`
 ///
 /// Accepts PostgreSQL text-format booleans and common variants:
 /// - true: "true", "t", "1", "yes"
@@ -111,20 +83,12 @@ pub extern "C" fn mesh_row_parse_float(s: *mut u8) -> *mut u8 {
 /// Returns Ok(1) for true, Ok(0) for false, or Err("cannot parse '{text}' as Bool").
 #[no_mangle]
 pub extern "C" fn mesh_row_parse_bool(s: *mut u8) -> *mut u8 {
-    unsafe {
-        let raw = (*(s as *const MeshString)).as_str().trim();
-        let lower = raw.to_lowercase();
-        match lower.as_str() {
-            "true" | "t" | "1" | "yes" => {
-                alloc_result(0, std::ptr::dangling_mut::<u8>()) as *mut u8
-            }
-            "false" | "f" | "0" | "no" => alloc_result(0, std::ptr::null_mut::<u8>()) as *mut u8,
-            _ => {
-                let msg = format!("cannot parse '{}' as Bool", raw);
-                let err_mesh = mesh_str(&msg);
-                alloc_result(1, err_mesh as *mut u8) as *mut u8
-            }
-        }
+    let raw = unsafe { text_of(s) }.trim();
+    match raw.to_lowercase().as_str() {
+        // A `u8` dangling pointer is the address 1: true.
+        "true" | "t" | "1" | "yes" => ok(std::ptr::dangling_mut::<u8>()),
+        "false" | "f" | "0" | "no" => ok(std::ptr::null_mut()),
+        _ => err_result(&format!("cannot parse '{}' as Bool", raw)),
     }
 }
 
@@ -133,6 +97,7 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
+    use crate::string::{mesh_str, MeshString};
 
     /// Helper: read the MeshResult tag from a result pointer.
     unsafe fn result_tag(r: *mut u8) -> u8 {
@@ -148,6 +113,25 @@ mod tests {
     unsafe fn result_value_str(r: *mut u8) -> &'static str {
         let val = (*(r as *const MeshResult)).value;
         (*(val as *const MeshString)).as_str()
+    }
+
+    #[test]
+    fn a_column_is_read_or_named_as_missing() {
+        mesh_rt_init();
+        let row = crate::collections::map::mesh_map_put(
+            crate::collections::map::mesh_map_new_typed(1),
+            mesh_str("name") as u64,
+            mesh_str("Ada") as u64,
+        );
+        unsafe {
+            let found = mesh_row_from_row_get(row, mesh_str("name") as *mut u8);
+            assert_eq!((result_tag(found), result_value_str(found)), (0, "Ada"));
+            let missing = mesh_row_from_row_get(row, mesh_str("age") as *mut u8);
+            assert_eq!(
+                (result_tag(missing), result_value_str(missing)),
+                (1, "missing column: age")
+            );
+        }
     }
 
     // ── parse_int tests ──────────────────────────────────────────────────
