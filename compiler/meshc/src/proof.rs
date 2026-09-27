@@ -2879,8 +2879,10 @@ mod tests {
     fn http_readiness_times_out_with_the_last_answer() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
+        // Every attempt gets the 503, however many a slow machine's
+        // stretched deadline allows.
         let server = thread::spawn(move || {
-            for stream in listener.incoming().take(2) {
+            for stream in listener.incoming() {
                 let mut stream = stream.unwrap();
                 let _ = stream.read(&mut [0; 1024]);
                 let _ = stream.write_all(
