@@ -483,7 +483,7 @@ Iter.from(list) |> Set.collect()
 Iter.from(strings) |> String.collect()
 ```
 
-`Iter.from` takes a list, a map (its `(key, value)` pairs), a set, or a range. `for...in` also takes user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`; take one element with `Iter.next(iter)` or `iter.next()`, also `-> Option<T>`.
+`Iter.from` takes a list, a map (its `(key, value)` pairs), a set, or a range. `for...in` also takes a pipeline, binding its element type, and user-defined `Iterable`/`Iterator` values. Search with `List.find(list, predicate)` or `Iter.find(iter, predicate)`, both `-> Option<T>`; take one element with `Iter.next(iter)` or `iter.next()`, also `-> Option<T>`.
 
 See [Iterators](/docs/iterators/) for details.
 

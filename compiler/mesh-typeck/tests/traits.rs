@@ -489,6 +489,39 @@ fn manual_continuity_promotion_is_refused() {
     );
 }
 
+/// A `for` over an `Iter<T>` binds `T`: it bound the type parameter of the
+/// iterator handle's impl, and `v + 1.0` was E0006.
+#[test]
+fn a_for_over_an_iterator_binds_its_element_type() {
+    for (iterable, body, expected) in [
+        ("Iter.from([1.0, 2.0])", "v + 1.0", Ty::list(Ty::float())),
+        (
+            "Iter.from([\"a\"]) |> Iter.map(fn s -> String.length(s) end)",
+            "v * 2",
+            Ty::list(Ty::int()),
+        ),
+        (
+            "Iter.from([1.5]) |> Iter.filter(fn x -> x > 1.0 end)",
+            "v / 2.0",
+            Ty::list(Ty::float()),
+        ),
+        (
+            "Iter.from([\"a\"]) |> Iter.enumerate()",
+            "v",
+            Ty::list(Ty::Tuple(vec![Ty::int(), Ty::string()])),
+        ),
+    ] {
+        let result = check_source(&format!(
+            "fn main() do\n  for v in {iterable} do\n    {body}\n  end\nend\n"
+        ));
+        assert_result_type(&result, Ty::fun(vec![], expected));
+    }
+    let result = check_source(
+        "struct Halves do\n  n :: Int\nend\n\nimpl Iterator for Halves do\n  type Item = Float\n  fn next(self) -> Float? do\n    None\n  end\nend\n\nfn main() do\n  for h in Halves { n: 1 } do\n    h + 0.5\n  end\nend\n",
+    );
+    assert_result_type(&result, Ty::fun(vec![], Ty::list(Ty::float())));
+}
+
 /// An impl's interface arguments are types in full: `From<(Int, Int)>` was
 /// read by its names alone as `From<Int, Int>`, a duplicate of `From<Int>`,
 /// and `From<List<Int>>` as `From<List>`, a duplicate of `From<List<String>>`.

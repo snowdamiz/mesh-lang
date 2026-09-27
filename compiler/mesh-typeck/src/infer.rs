@@ -10699,9 +10699,14 @@ fn infer_for_in(
                         env.pop_scope();
                         return Err(err);
                     };
-                    let item_ty = trait_registry
-                        .resolve_associated_type(trait_name, "Item", &resolved)
-                        .unwrap_or_else(Ty::int);
+                    // An `Iter<T>` yields `T`: the impls of the iterator
+                    // handles it unifies with name no element type.
+                    let item_ty = match resolved.args_of("Iter") {
+                        Some([elem]) => elem.clone(),
+                        _ => trait_registry
+                            .resolve_associated_type(trait_name, "Item", &resolved)
+                            .unwrap_or_else(Ty::int),
+                    };
                     bind(ctx, env, item_ty)?;
                 }
             }

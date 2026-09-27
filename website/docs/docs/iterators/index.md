@@ -137,6 +137,7 @@ A user-defined iterator is driven by `for...in` or by calling `next` directly; t
 | `List<T>` | `T` |
 | `Map<K, V>` | `{key, value}` destructuring, a `(key, value)` tuple pattern, or one name for the key |
 | `Set` | `Int` |
+| `Iter<T>`, a pipeline (`Iter.from(xs) \|> Iter.map(f)`) | `T` |
 | `Iterable` | its associated `Item` |
 | `Iterator` | its associated `Item` |
 
