@@ -5864,10 +5864,12 @@ fn execute_clustered_http_route_remote(
             .remove(&correlation_id);
         return Err(format!("clustered_http_reservation_write_failed:{error}"));
     }
+    // The reply handler and a disconnect (fail_pending_session_requests) send
+    // before they drop a sender, so each wait ends in a reply or its timeout.
     match crate::actor::cooperative_recv_timeout(&reservation_receiver, HTTP_RESERVATION_TIMEOUT) {
         Ok(Ok(())) => {}
         Ok(Err(reason)) => return Err(reason),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
+        Err(_) => {
             session
                 .pending_http_reservations
                 .lock()
@@ -5875,9 +5877,6 @@ fn execute_clustered_http_route_remote(
                 .remove(&correlation_id);
             crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
             return Err("clustered_http_reservation_timeout".to_string());
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            return Err("clustered_http_reservation_disconnected".to_string());
         }
     }
     let (sender, receiver) = crate::actor::cooperative_channel();
@@ -5896,9 +5895,8 @@ fn execute_clustered_http_route_remote(
             return Err(format!("clustered_http_route_query_write_failed:{error}"));
         }
     }
-    match crate::actor::cooperative_recv_timeout(&receiver, CLUSTERED_HTTP_ROUTE_TIMEOUT) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
+    crate::actor::cooperative_recv_timeout(&receiver, CLUSTERED_HTTP_ROUTE_TIMEOUT).unwrap_or_else(
+        |_| {
             session
                 .pending_http_routes
                 .lock()
@@ -5906,11 +5904,8 @@ fn execute_clustered_http_route_remote(
                 .remove(&correlation_id);
             crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
             Err("clustered_http_route_reply_timeout".to_string())
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            Err("clustered_http_route_reply_disconnected".to_string())
-        }
-    }
+        },
+    )
 }
 
 /// Runs a clustered HTTP request another node routed here, as its owner.
@@ -5969,10 +5964,11 @@ fn retryable_clustered_http_transport_failure(reason: &str) -> bool {
         // can move safe/idempotent work to another owner without ambiguity.
         || reason == "owner_reservation_rejected:Draining"
         || reason == "clustered_http_reservation_timeout"
-        || reason == "clustered_http_reservation_disconnected"
+        // The owner's session ended while the reservation or the query
+        // waited (fail_pending_session_requests).
+        || reason == "peer_session_disconnected"
         || reason.starts_with("clustered_http_route_query_write_failed:")
         || reason == "clustered_http_route_reply_timeout"
-        || reason == "clustered_http_route_reply_disconnected"
         || reason == "attempt_id_mismatch"
 }
 
@@ -11844,5 +11840,108 @@ mod tests {
             assert_eq!(caller.join().unwrap(), peer.pid(12).as_u64());
         }
         assert!(main_like.process.lock().links.contains(&peer.pid(12)));
+    }
+
+    /// Routes a request for `Owner.handle` to `owner` from a thread of its own.
+    fn route_to(owner: &'static str) -> std::thread::JoinHandle<Result<Vec<u8>, String>> {
+        std::thread::spawn(move || {
+            execute_clustered_http_route_remote(
+                owner,
+                "Owner.handle",
+                "routed-key",
+                "attempt-1",
+                b"GET /",
+            )
+        })
+    }
+
+    /// A request routed to its owner reserves capacity there, then runs
+    /// there and returns what the owner answers. When the owner's session
+    /// ends while it waits, the failure is one a replay-safe request may
+    /// retry elsewhere.
+    #[test]
+    fn a_routed_request_reserves_then_runs_on_its_owner_and_retries_when_it_goes() {
+        let name = "route-owner@127.0.0.1:1";
+        let owner = TestPeer::new(name);
+        let reserved = || {
+            let (correlation, bytes, runtime, key) =
+                decode_http_reserve(&owner.next_sent()).unwrap();
+            assert_eq!(
+                (bytes, runtime.as_str(), key.as_str()),
+                (5, "Owner.handle", "routed-key")
+            );
+            correlation
+        };
+
+        let call = route_to(name);
+        let correlation = reserved();
+        owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        let query = decode_http_route_v2_query_frame(&owner.next_sent()).unwrap();
+        assert_eq!(query.0, correlation);
+        owner.receive(encode_http_route_v2_reply_frame(correlation, Ok(b"200".to_vec())).unwrap());
+        assert_eq!(call.join().unwrap(), Ok(b"200".to_vec()));
+
+        let call = route_to(name);
+        let correlation = reserved();
+        let draining = "owner_reservation_rejected:Draining".to_string();
+        owner.receive(encode_http_reserve_reply(correlation, Err(draining.clone())).unwrap());
+        assert_eq!(call.join().unwrap(), Err(draining));
+
+        let call = route_to(name);
+        let correlation = reserved();
+        owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        assert_eq!(owner.next_sent()[0], DIST_HTTP_ROUTE_V2_QUERY);
+        drop(owner);
+        let reason = call.join().unwrap().unwrap_err();
+        assert_eq!(reason, "peer_session_disconnected");
+        assert!(retryable_clustered_http_transport_failure(&reason));
+
+        assert_eq!(
+            route_to(name).join().unwrap(),
+            Err(format!("clustered_http_route_session_unavailable:{name}"))
+        );
+    }
+
+    /// An owner that takes neither the reservation nor, later, the query
+    /// times the request out; one that cannot be written to fails it at
+    /// once. Each is a failure to retry.
+    #[test]
+    fn a_routed_request_times_out_or_fails_on_an_owner_that_does_not_take_it() {
+        let silent = "silent-route-owner@127.0.0.1:1";
+        let _silent_owner = TestPeer::new(silent);
+        let slow = "slow-route-owner@127.0.0.1:1";
+        let slow_owner = TestPeer::new(slow);
+        let unanswered = route_to(silent);
+        let accepted_only = route_to(slow);
+        let (correlation, ..) = decode_http_reserve(&slow_owner.next_sent()).unwrap();
+        slow_owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        for (call, reason) in [
+            (unanswered, "clustered_http_reservation_timeout"),
+            (accepted_only, "clustered_http_route_reply_timeout"),
+        ] {
+            let failure = call.join().unwrap().unwrap_err();
+            assert_eq!(failure, reason);
+            assert!(retryable_clustered_http_transport_failure(&failure));
+        }
+
+        let closed = "closed-route-owner@127.0.0.1:1";
+        let closed_owner = TestPeer::new(closed);
+        closed_owner.session.shutdown.store(true, Ordering::SeqCst);
+        assert_eq!(
+            route_to(closed).join().unwrap(),
+            Err("clustered_http_reservation_write_failed:peer_session_shutdown".to_string())
+        );
+        let closing = "closing-route-owner@127.0.0.1:1";
+        let closing_owner = TestPeer::new(closing);
+        let call = route_to(closing);
+        let (correlation, ..) = decode_http_reserve(&closing_owner.next_sent()).unwrap();
+        closing_owner.session.shutdown.store(true, Ordering::SeqCst);
+        closing_owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        let failure = call.join().unwrap().unwrap_err();
+        assert_eq!(
+            failure,
+            "clustered_http_route_query_write_failed:peer_session_shutdown"
+        );
+        assert!(retryable_clustered_http_transport_failure(&failure));
     }
 }
