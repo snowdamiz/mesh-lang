@@ -188,6 +188,19 @@ unsafe fn alloc_query() -> *mut u8 {
     q
 }
 
+/// A Mesh panic unless the raw SQL `sql` takes as many parameters as
+/// `params` holds: the builder numbers the values in order, and one over
+/// would go to a later clause's placeholder.
+unsafe fn check_parameters(builder: &str, sql: &str, params: *mut u8) {
+    let (_, takes) = crate::db::repo::renumber_placeholders(sql, 1);
+    let given = mesh_list_length(params);
+    if takes as i64 != given {
+        crate::panic::raise(format_args!(
+            "Query.{builder}: `{sql}` takes {takes} parameter(s) but was given {given}"
+        ));
+    }
+}
+
 /// Clone a Query: allocate a new one and copy all data from source.
 unsafe fn clone_query(src: *mut u8) -> *mut u8 {
     let dst = mesh_gc_alloc_actor(QUERY_SIZE as u64, 8);
@@ -688,12 +701,17 @@ pub extern "C" fn mesh_query_select_raw(q: *mut u8, expressions: *mut u8) -> *mu
 ///
 /// The clause is stored with a "RAW:" prefix. `?` placeholders in the clause are
 /// replaced with the next sequential `$N` by the SQL builder. Parameters are appended
-/// to the where_params list.
+/// to the where_params list; there must be as many as the placeholders take.
 #[no_mangle]
-pub extern "C" fn mesh_query_where_raw(q: *mut u8, clause: *mut u8, params: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_query_where_raw(
+    q: *mut u8,
+    clause: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
         let clause_str = text_of(clause);
+        check_parameters("where_raw", clause_str, params);
+        let new_q = clone_query(q);
         let raw_clause = format!("RAW:{}", clause_str);
         let raw_mesh = mesh_str(&raw_clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
@@ -841,9 +859,11 @@ pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *m
 /// Add a raw SQL fragment.
 ///
 /// `Query.fragment(q, "WHERE custom_fn($1)", params)` -> new Query with raw fragment
+/// (`params` as many as its placeholders take)
 #[no_mangle]
-pub extern "C" fn mesh_query_fragment(q: *mut u8, sql: *mut u8, params: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_query_fragment(q: *mut u8, sql: *mut u8, params: *mut u8) -> *mut u8 {
     unsafe {
+        check_parameters("fragment", text_of(sql), params);
         let new_q = clone_query(q);
         let fp = query_get(new_q, SLOT_FRAGMENT_PARTS);
         query_set(new_q, SLOT_FRAGMENT_PARTS, mesh_list_append(fp, sql as u64));
@@ -924,6 +944,28 @@ mod tests {
         assert_eq!(
             panic_of(|| mesh_query_where_or(q, string_list(&["a"]), string_list(&["1", "2"]))),
             "Mesh panic: Query.where_or: 1 field(s) but 2 value(s)"
+        );
+    }
+
+    /// Raw SQL takes as many values as its placeholders number: a value over
+    /// was handed to a later clause's placeholder.
+    #[test]
+    fn raw_sql_takes_a_value_for_each_placeholder() {
+        use crate::collections::list::string_list;
+        crate::gc::mesh_rt_init();
+        let q = mesh_query_from(text("t"));
+        assert_eq!(
+            panic_of(|| mesh_query_where_raw(
+                q,
+                text("a = ? AND b <> '?'"),
+                string_list(&["1", "2"])
+            )),
+            "Mesh panic: Query.where_raw: `a = ? AND b <> '?'` takes 1 parameter(s) but was \
+             given 2"
+        );
+        assert_eq!(
+            panic_of(|| mesh_query_fragment(q, text("LIMIT $2"), string_list(&["1"]))),
+            "Mesh panic: Query.fragment: `LIMIT $2` takes 2 parameter(s) but was given 1"
         );
     }
 }

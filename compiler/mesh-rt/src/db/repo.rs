@@ -66,7 +66,7 @@ unsafe fn first_row(result: *mut u8, none: &str) -> *mut u8 {
 /// Also replaces `?` with next sequential $N. Quoted text and identifiers
 /// (`'...'`, `"..."`) pass through whole: a `?` or `$1` in them is text.
 /// Returns (renumbered_sql, number_of_params_consumed).
-fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
+pub(crate) fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
     let mut result = String::with_capacity(sql.len());
     let mut max_placeholder = 0usize;
     let mut question_count = 0usize;
@@ -1346,60 +1346,58 @@ pub extern "C" fn mesh_repo_preload(
 /// The query's WHERE conditions (without the keyword), joined by AND.
 ///
 /// Returns `(where_sql, params, next_param_idx)`.
-/// `start_idx` is the first $N placeholder to use.
+/// `start_idx` is the first $N placeholder to use. Each clause the Query
+/// builders write carries exactly the values it binds (`where_or` and
+/// `where_raw` check theirs), in order.
 fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usize) {
-    let where_params = &query.where_params;
+    let mut values = query.where_params.iter();
     let mut subqueries = query.subqueries.iter();
     let mut conditions = Vec::new();
     let mut params = Vec::new();
     let mut param_idx = start_idx;
-    let mut wp_idx = 0;
+    // The next `count` values, bound: the placeholders numbering them.
+    let mut bind = |count: usize, params: &mut Vec<String>, param_idx: &mut usize| {
+        (0..count)
+            .map(|_| {
+                params.push(values.next().expect("a clause has its values").clone());
+                *param_idx += 1;
+                format!("${}", *param_idx - 1)
+            })
+            .collect::<Vec<_>>()
+    };
 
     for clause in &query.where_clauses {
-        if let Some(field) = clause.strip_prefix("SUB:") {
+        let condition = if let Some(field) = clause.strip_prefix("SUB:") {
             let sub = subqueries.next().expect("a where_sub clause has its query");
             let (sub_sql, sub_params) = select_sql(sub, None, param_idx);
             param_idx += sub_params.len();
             params.extend(sub_params);
-            conditions.push(format!("{} IN ({sub_sql})", quote_name(field)));
-            continue;
-        }
-        // OR clause: "OR:field1,field2,..." (`where_or` gave each its value)
-        if let Some(fields) = clause.strip_prefix("OR:") {
-            let mut or_parts = Vec::new();
-            for field in fields.split(',').filter(|field| !field.is_empty()) {
-                or_parts.push(format!("{} = ${}", quote_name(field), param_idx));
-                params.push(where_params[wp_idx].clone());
-                wp_idx += 1;
-                param_idx += 1;
-            }
-            conditions.push(match or_parts.is_empty() {
+            format!("{} IN ({sub_sql})", quote_name(field))
+        } else if let Some(fields) = clause.strip_prefix("OR:") {
+            // "OR:field1,field2,...": each field equal to its value.
+            let fields: Vec<&str> = fields.split(',').filter(|f| !f.is_empty()).collect();
+            let placeholders = bind(fields.len(), &mut params, &mut param_idx);
+            let or_parts: Vec<String> = fields
+                .iter()
+                .zip(placeholders)
+                .map(|(field, placeholder)| format!("{} = {placeholder}", quote_name(field)))
+                .collect();
+            match or_parts.is_empty() {
                 true => "FALSE".to_string(),
                 false => format!("({})", or_parts.join(" OR ")),
-            });
-            continue;
-        }
-        if let Some(expr) = clause.strip_prefix("EXPR:") {
-            conditions.push(render_expr(&parse_expr(expr), &mut params, &mut param_idx));
-            continue;
-        }
-        if let Some(raw_sql) = clause.strip_prefix("RAW:") {
-            let (renumbered, consumed) = renumber_placeholders(raw_sql, param_idx);
-            conditions.push(renumbered);
-            for _ in 0..consumed {
-                if wp_idx < where_params.len() {
-                    params.push(where_params[wp_idx].clone());
-                    wp_idx += 1;
-                }
-                param_idx += 1;
             }
-            continue;
-        }
-        if let Some(space_pos) = clause.find(' ') {
-            let col = &clause[..space_pos];
-            let op = clause[space_pos + 1..].trim();
+        } else if let Some(expr) = clause.strip_prefix("EXPR:") {
+            render_expr(&parse_expr(expr), &mut params, &mut param_idx)
+        } else if let Some(raw_sql) = clause.strip_prefix("RAW:") {
+            let (renumbered, consumed) = renumber_placeholders(raw_sql, param_idx);
+            bind(consumed, &mut params, &mut param_idx);
+            renumbered
+        } else {
+            // "field op": the field is an atom, so the first space ends it.
+            let (col, op) = clause.split_once(' ').expect("a clause names its field");
+            let col = quote_name(col);
             if op == "IS NULL" || op == "IS NOT NULL" {
-                conditions.push(format!("{} {}", quote_name(col), op));
+                format!("{col} {op}")
             } else if let Some((keyword, count, of_none)) = (op.strip_prefix("IN:"))
                 .map(|count| ("IN", count, "FALSE"))
                 .or_else(|| {
@@ -1408,54 +1406,20 @@ fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usiz
                 })
             {
                 // No value is in an empty list (`IN ()` is not SQL).
-                let count: usize = count.parse().unwrap_or(0);
-                let placeholders: Vec<String> =
-                    (0..count).map(|i| format!("${}", param_idx + i)).collect();
-                conditions.push(match count {
+                let count: usize = count.parse().expect("IN:<count>");
+                let placeholders = bind(count, &mut params, &mut param_idx);
+                match count {
                     0 => of_none.to_string(),
-                    _ => format!(
-                        "{} {keyword} ({})",
-                        quote_name(col),
-                        placeholders.join(", ")
-                    ),
-                });
-                for _ in 0..count {
-                    if wp_idx < where_params.len() {
-                        params.push(where_params[wp_idx].clone());
-                        wp_idx += 1;
-                    }
-                    param_idx += 1;
+                    _ => format!("{col} {keyword} ({})", placeholders.join(", ")),
                 }
             } else if op == "BETWEEN" {
-                conditions.push(format!(
-                    "{} BETWEEN ${} AND ${}",
-                    quote_name(col),
-                    param_idx,
-                    param_idx + 1
-                ));
-                for _ in 0..2 {
-                    if wp_idx < where_params.len() {
-                        params.push(where_params[wp_idx].clone());
-                        wp_idx += 1;
-                    }
-                    param_idx += 1;
-                }
+                let bounds = bind(2, &mut params, &mut param_idx);
+                format!("{col} BETWEEN {} AND {}", bounds[0], bounds[1])
             } else {
-                conditions.push(format!("{} {} ${}", quote_name(col), op, param_idx));
-                if wp_idx < where_params.len() {
-                    params.push(where_params[wp_idx].clone());
-                    wp_idx += 1;
-                }
-                param_idx += 1;
+                format!("{col} {op} {}", bind(1, &mut params, &mut param_idx)[0])
             }
-        } else {
-            conditions.push(format!("{} = ${}", quote_name(clause), param_idx));
-            if wp_idx < where_params.len() {
-                params.push(where_params[wp_idx].clone());
-                wp_idx += 1;
-            }
-            param_idx += 1;
-        }
+        };
+        conditions.push(condition);
     }
 
     (conditions.join(" AND "), params, param_idx)
@@ -2662,12 +2626,12 @@ mod tests {
     }
 
     #[test]
-    fn test_where_builder_default_eq() {
+    fn test_where_builder_between() {
         let (sql, params, next) =
-            build_where_from_query_parts(&["name".into()], &["Alice".into()], 1);
-        assert_eq!(sql, "\"name\" = $1");
-        assert_eq!(params, vec!["Alice"]);
-        assert_eq!(next, 2);
+            build_where_from_query_parts(&["age BETWEEN".into()], &["1".into(), "9".into()], 3);
+        assert_eq!(sql, "\"age\" BETWEEN $3 AND $4");
+        assert_eq!(params, vec!["1", "9"]);
+        assert_eq!(next, 5);
     }
 
     // ── Phase 107 Plan 01: JOIN alias support and comprehensive join tests ──
