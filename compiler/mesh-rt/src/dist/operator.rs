@@ -957,15 +957,12 @@ fn apply_operator_control(
         .map_err(|_| "operator_control_not_configured".to_string())?;
     let signature = decode_hex_signature(&request.signature)?;
     let payload = control_signature_payload(request)?;
-    let authorized = operator_control_signature_matches(&key, &payload, &signature);
-    if !authorized {
+    if !operator_control_signature_matches(&key, &payload, &signature) {
         return Err("operator_control_unauthorized".to_string());
     }
 
     refresh_operator_control_from_consensus();
     let mut state = operator_control_state().lock();
-    let mut drain_to_prepare = None;
-    let mut drain_to_cancel = None;
     if state
         .actor_sequences
         .get(&request.actor)
@@ -985,91 +982,40 @@ fn apply_operator_control(
             return Err("operator_internal_control_target_mismatch".to_string());
         }
         state.set_drain_intent(&runtime_node_id, draining);
-        state
-            .actor_sequences
-            .insert(request.actor.clone(), request.sequence);
-        state.control_sequence = state.control_sequence.saturating_add(1);
-        let outcome = OperatorControlOutcome {
-            schema_version: 1,
-            accepted: true,
-            control_sequence: state.control_sequence,
-            autoscaler_paused: state.autoscaler_paused,
-            desired_capacity_override: state.desired_capacity_override,
-            drain_intents: state.drain_intents.iter().cloned().collect(),
-            consensus: None,
-        };
+        let outcome = state.record_control(request, None);
         drop(state);
         super::telemetry::global_admission_controller().set_draining(draining);
         audit_operator_control(request, &outcome)?;
         return Ok(outcome);
     }
-    let (command_id, mutation) = match &request.action {
-        OperatorControlAction::PauseAutoscaler => (
-            format!(
-                "operator:{}:{}:{}",
-                request.cluster_id, request.actor, request.sequence
-            ),
-            super::scaling::ControlMutation::PauseAutoscaler { paused: true },
-        ),
-        OperatorControlAction::ResumeAutoscaler => (
-            format!(
-                "operator:{}:{}:{}",
-                request.cluster_id, request.actor, request.sequence
-            ),
-            super::scaling::ControlMutation::PauseAutoscaler { paused: false },
-        ),
+    let mutation = match &request.action {
+        OperatorControlAction::PauseAutoscaler => {
+            super::scaling::ControlMutation::PauseAutoscaler { paused: true }
+        }
+        OperatorControlAction::ResumeAutoscaler => {
+            super::scaling::ControlMutation::PauseAutoscaler { paused: false }
+        }
         OperatorControlAction::SetDesiredCapacity { worker_nodes } => {
-            if *worker_nodes == 0 {
-                return Err("operator_control_desired_capacity_invalid".to_string());
+            super::scaling::ControlMutation::ManualOverride {
+                worker_nodes: *worker_nodes,
             }
-            (
-                format!(
-                    "operator:{}:{}:{}",
-                    request.cluster_id, request.actor, request.sequence
-                ),
-                super::scaling::ControlMutation::ManualOverride {
-                    worker_nodes: *worker_nodes,
-                },
-            )
         }
-        OperatorControlAction::DrainNode { node_id } => {
-            if node_id.trim().is_empty() {
-                return Err("operator_control_drain_node_invalid".to_string());
+        OperatorControlAction::DrainNode { node_id }
+        | OperatorControlAction::CancelDrain { node_id } => {
+            super::scaling::ControlMutation::DrainIntent {
+                node_id: super::node::resolve_runtime_node_id(node_id)
+                    .unwrap_or_else(|_| node_id.clone()),
+                cancelled: matches!(request.action, OperatorControlAction::CancelDrain { .. }),
             }
-            let runtime_node_id =
-                super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.clone());
-            (
-                format!(
-                    "operator:{}:{}:{}",
-                    request.cluster_id, request.actor, request.sequence
-                ),
-                super::scaling::ControlMutation::DrainIntent {
-                    node_id: runtime_node_id,
-                    cancelled: false,
-                },
-            )
         }
-        OperatorControlAction::CancelDrain { node_id } => {
-            if node_id.trim().is_empty() {
-                return Err("operator_control_drain_node_invalid".to_string());
-            }
-            let runtime_node_id =
-                super::node::resolve_runtime_node_id(node_id).unwrap_or_else(|_| node_id.clone());
-            (
-                format!(
-                    "operator:{}:{}:{}",
-                    request.cluster_id, request.actor, request.sequence
-                ),
-                super::scaling::ControlMutation::DrainIntent {
-                    node_id: runtime_node_id,
-                    cancelled: true,
-                },
-            )
-        }
-        OperatorControlAction::CommitControlMutation {
-            command_id,
-            mutation,
-        } => (command_id.clone(), mutation.clone()),
+        OperatorControlAction::CommitControlMutation { mutation, .. } => mutation.clone(),
+    };
+    let command_id = match &request.action {
+        OperatorControlAction::CommitControlMutation { command_id, .. } => command_id.clone(),
+        _ => format!(
+            "operator:{}:{}:{}",
+            request.cluster_id, request.actor, request.sequence
+        ),
     };
     validate_control_mutation(&mutation)?;
     let response = super::consensus::commit_consensus_command(
@@ -1090,70 +1036,66 @@ fn apply_operator_control(
     // when the copy does.
     apply_committed_control_entries(&mut state);
     if state.last_consensus_log_index < response.log_index {
-        apply_committed_control_mutation(&mut state, &mutation)?;
+        apply_valid_control_mutation(&mut state, &mutation);
     }
+    let outcome = state.record_control(request, Some(response));
+    drop(state);
     if let super::scaling::ControlMutation::DrainIntent { node_id, cancelled } = &mutation {
         if *cancelled {
-            drain_to_cancel = Some(node_id.clone());
+            set_runtime_drain_intent(node_id, false);
         } else {
-            drain_to_prepare = Some(node_id.clone());
+            prepare_committed_drain(node_id);
         }
-    }
-    state
-        .actor_sequences
-        .insert(request.actor.clone(), request.sequence);
-    state.control_sequence = state.control_sequence.saturating_add(1);
-    let outcome = OperatorControlOutcome {
-        schema_version: 1,
-        accepted: true,
-        control_sequence: state.control_sequence,
-        autoscaler_paused: state.autoscaler_paused,
-        desired_capacity_override: state.desired_capacity_override,
-        drain_intents: state.drain_intents.iter().cloned().collect(),
-        consensus: Some(response),
-    };
-    drop(state);
-    if let Some(node_id) = drain_to_prepare.as_deref() {
-        prepare_committed_drain(node_id);
-    }
-    if let Some(node_id) = drain_to_cancel.as_deref() {
-        set_runtime_drain_intent(node_id, false);
     }
     audit_operator_control(request, &outcome)?;
     Ok(outcome)
 }
 
-fn apply_committed_control_mutation(
+impl OperatorControlState {
+    /// Accepts `request`: its actor's sequence advances and the outcome
+    /// reports the state it leaves.
+    fn record_control(
+        &mut self,
+        request: &OperatorControlRequest,
+        consensus: Option<super::consensus::ConsensusResponse>,
+    ) -> OperatorControlOutcome {
+        self.actor_sequences
+            .insert(request.actor.clone(), request.sequence);
+        self.control_sequence = self.control_sequence.saturating_add(1);
+        OperatorControlOutcome {
+            schema_version: 1,
+            accepted: true,
+            control_sequence: self.control_sequence,
+            autoscaler_paused: self.autoscaler_paused,
+            desired_capacity_override: self.desired_capacity_override,
+            drain_intents: self.drain_intents.iter().cloned().collect(),
+            consensus,
+        }
+    }
+}
+
+/// Applies a mutation `validate_control_mutation` accepted.
+fn apply_valid_control_mutation(
     state: &mut OperatorControlState,
     mutation: &super::scaling::ControlMutation,
-) -> Result<(), String> {
+) {
     match mutation {
         super::scaling::ControlMutation::DesiredCapacity(desired) => {
-            if desired.worker_nodes == 0 || desired.revision.0 == 0 {
-                return Err("operator_control_desired_capacity_invalid".to_string());
-            }
             state.desired_capacity_override = Some(desired.worker_nodes);
         }
         super::scaling::ControlMutation::ManualOverride { worker_nodes } => {
-            if *worker_nodes == 0 {
-                return Err("operator_control_desired_capacity_invalid".to_string());
-            }
             state.desired_capacity_override = Some(*worker_nodes);
         }
         super::scaling::ControlMutation::PauseAutoscaler { paused } => {
             state.autoscaler_paused = *paused;
         }
         super::scaling::ControlMutation::DrainIntent { node_id, cancelled } => {
-            if node_id.trim().is_empty() {
-                return Err("operator_control_drain_node_invalid".to_string());
-            }
             state.set_drain_intent(node_id, !*cancelled);
         }
         super::scaling::ControlMutation::DriverOperation(_)
         | super::scaling::ControlMutation::PolicyRevision { .. }
         | super::scaling::ControlMutation::MembershipIntent { .. } => {}
     }
-    Ok(())
 }
 
 fn validate_control_mutation(mutation: &super::scaling::ControlMutation) -> Result<(), String> {
@@ -1195,26 +1137,35 @@ fn refresh_operator_control_from_consensus() {
     apply_committed_control_entries(&mut operator_control_state().lock());
 }
 
-/// Applies the committed control entries `state` has not seen, in order.
+/// Applies the committed control entries `state` has not seen, in order;
+/// an entry that does not validate is skipped.
 fn apply_committed_control_entries(state: &mut OperatorControlState) {
     let Some(snapshot) = super::consensus::consensus_runtime_snapshot() else {
         return;
     };
-    for entry in &snapshot.entries {
-        if entry.index <= state.last_consensus_log_index {
+    apply_control_entries(state, &snapshot.entries);
+}
+
+fn apply_control_entries(
+    state: &mut OperatorControlState,
+    entries: &[super::scaling::ControlLogEntry],
+) {
+    for entry in entries {
+        if entry.index <= state.last_consensus_log_index
+            || validate_control_mutation(&entry.mutation).is_err()
+        {
             continue;
         }
-        if apply_committed_control_mutation(state, &entry.mutation).is_ok() {
-            if entry.actor_sequence > 0 {
-                state
-                    .actor_sequences
-                    .entry(entry.actor.clone())
-                    .and_modify(|sequence| *sequence = (*sequence).max(entry.actor_sequence))
-                    .or_insert(entry.actor_sequence);
-            }
-            state.last_consensus_log_index = entry.index;
-            state.control_sequence = state.control_sequence.saturating_add(1);
+        apply_valid_control_mutation(state, &entry.mutation);
+        if entry.actor_sequence > 0 {
+            state
+                .actor_sequences
+                .entry(entry.actor.clone())
+                .and_modify(|sequence| *sequence = (*sequence).max(entry.actor_sequence))
+                .or_insert(entry.actor_sequence);
         }
+        state.last_consensus_log_index = entry.index;
+        state.control_sequence = state.control_sequence.saturating_add(1);
     }
 }
 
@@ -2565,5 +2516,161 @@ mod tests {
         assert_eq!(snapshot.local_telemetry, Default::default());
         assert!(snapshot.local_peer_sessions.is_empty());
         assert!(snapshot.local_continuity_store.is_none());
+    }
+
+    fn desired(worker_nodes: u16, revision: u64, template: &str) -> ControlMutation {
+        ControlMutation::DesiredCapacity(crate::dist::scaling::DesiredCapacity {
+            revision: crate::dist::scaling::DesiredRevision(revision),
+            worker_nodes,
+            gateway_nodes: 0,
+            template_revision: template.to_string(),
+        })
+    }
+
+    use crate::dist::scaling::ControlMutation;
+
+    #[test]
+    fn control_mutations_are_refused_for_each_invalid_field() {
+        let policy = |revision, json: &str, sha: String| ControlMutation::PolicyRevision {
+            revision,
+            policy_json: json.to_string(),
+            policy_sha256: sha,
+        };
+        let membership = |generation, nodes: &[&str]| ControlMutation::MembershipIntent {
+            generation,
+            nodes: nodes.iter().map(|node| node.to_string()).collect(),
+        };
+        let cases = [
+            (
+                desired(0, 1, "v1"),
+                "operator_control_desired_capacity_invalid",
+            ),
+            (
+                desired(1, 0, "v1"),
+                "operator_control_desired_capacity_invalid",
+            ),
+            (
+                desired(1, 1, " "),
+                "operator_control_desired_capacity_invalid",
+            ),
+            (
+                ControlMutation::ManualOverride { worker_nodes: 0 },
+                "operator_control_desired_capacity_invalid",
+            ),
+            (
+                ControlMutation::DrainIntent {
+                    node_id: " ".to_string(),
+                    cancelled: false,
+                },
+                "operator_control_drain_node_invalid",
+            ),
+            (
+                policy(0, "{}", "0".repeat(64)),
+                "operator_control_policy_revision_invalid",
+            ),
+            (
+                policy(1, " ", "0".repeat(64)),
+                "operator_control_policy_revision_invalid",
+            ),
+            (
+                policy(1, "{}", "short".to_string()),
+                "operator_control_policy_revision_invalid",
+            ),
+            (
+                membership(0, &["a"]),
+                "operator_control_membership_intent_invalid",
+            ),
+            (
+                membership(1, &[]),
+                "operator_control_membership_intent_invalid",
+            ),
+            (
+                membership(1, &[" "]),
+                "operator_control_membership_intent_invalid",
+            ),
+        ];
+        for (mutation, expected) in cases {
+            assert_eq!(
+                validate_control_mutation(&mutation),
+                Err(expected.to_string()),
+                "{mutation:?}"
+            );
+        }
+        for valid in [
+            desired(1, 1, "v1"),
+            policy(1, "{}", "0".repeat(64)),
+            membership(1, &["a"]),
+            ControlMutation::PauseAutoscaler { paused: true },
+        ] {
+            assert_eq!(validate_control_mutation(&valid), Ok(()));
+        }
+    }
+
+    #[test]
+    fn committed_entries_apply_once_in_order_and_skip_invalid_ones() {
+        let entry = |index, actor_sequence, mutation| crate::dist::scaling::ControlLogEntry {
+            index,
+            term: crate::dist::scaling::ControlTerm(1),
+            actor: "operator-a".to_string(),
+            reason: "test".to_string(),
+            timestamp_unix_millis: 1,
+            actor_sequence,
+            mutation,
+        };
+        let mut state = OperatorControlState::default();
+        let entries = [
+            entry(1, 4, ControlMutation::PauseAutoscaler { paused: true }),
+            entry(2, 0, desired(3, 1, "v1")),
+            entry(3, 9, desired(0, 1, "v1")),
+            entry(
+                4,
+                2,
+                ControlMutation::DrainIntent {
+                    node_id: "entries-drained-node".to_string(),
+                    cancelled: false,
+                },
+            ),
+            entry(5, 0, ControlMutation::ManualOverride { worker_nodes: 5 }),
+            entry(
+                6,
+                0,
+                ControlMutation::MembershipIntent {
+                    generation: 1,
+                    nodes: vec!["a".to_string()],
+                },
+            ),
+        ];
+
+        apply_control_entries(&mut state, &entries);
+
+        assert!(state.autoscaler_paused);
+        assert_eq!(state.desired_capacity_override, Some(5));
+        assert!(state.drain_intents.contains("entries-drained-node"));
+        // The invalid entry neither applied nor advanced its actor.
+        assert_eq!(state.actor_sequences["operator-a"], 4);
+        assert_eq!(state.last_consensus_log_index, 6);
+        assert_eq!(state.control_sequence, 5);
+
+        // Entries already applied are not applied again.
+        state.autoscaler_paused = false;
+        apply_control_entries(&mut state, &entries);
+        assert!(!state.autoscaler_paused);
+        assert_eq!(state.control_sequence, 5);
+
+        let request = OperatorControlRequest {
+            schema_version: 1,
+            cluster_id: "mesh".to_string(),
+            actor: "operator-b".to_string(),
+            sequence: 11,
+            expires_at_unix_millis: 0,
+            reason: "record".to_string(),
+            action: OperatorControlAction::PauseAutoscaler,
+            signature: String::new(),
+        };
+        let outcome = state.record_control(&request, None);
+        assert_eq!(outcome.control_sequence, 6);
+        assert_eq!(outcome.desired_capacity_override, Some(5));
+        assert_eq!(outcome.drain_intents, ["entries-drained-node"]);
+        assert_eq!(state.actor_sequences["operator-b"], 11);
     }
 }
