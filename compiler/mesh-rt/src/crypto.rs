@@ -24,7 +24,7 @@ use self::provider::{
     MIN_ARGON2_OUTPUT_BYTES, MIN_ARGON2_SALT_BYTES,
 };
 use crate::actor::Process;
-use crate::bytes::{mesh_bytes_new, MeshBytes};
+use crate::bytes::{decode_hex, mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::secret::{
@@ -1928,22 +1928,9 @@ pub extern "C" fn mesh_hex_encode(s: *const MeshString) -> *mut MeshString {
 #[no_mangle]
 pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
     unsafe {
-        let text = (*s).as_str().to_lowercase();
-        if !text.len().is_multiple_of(2) {
-            let e = "invalid hex";
-            return err_result(e);
-        }
-        let mut decoded = Vec::with_capacity(text.len() / 2);
-        for chunk in text.as_bytes().chunks(2) {
-            let hex_str = std::str::from_utf8(chunk).unwrap();
-            match u8::from_str_radix(hex_str, 16) {
-                Ok(b) => decoded.push(b),
-                Err(_) => {
-                    let e = "invalid hex";
-                    return err_result(e);
-                }
-            }
-        }
+        let Some(decoded) = decode_hex((*s).as_str()) else {
+            return err_result("invalid hex");
+        };
         match std::str::from_utf8(&decoded) {
             Err(_) => {
                 let e = "invalid utf-8";
@@ -3115,5 +3102,24 @@ mod tests {
 
         assert_eq!(error.tag as u8, CryptoErrorTag::AuthenticationFailed as u8);
         destroy_owned(owner);
+    }
+
+    /// Only pairs of hex digits decode: a sign, a letter whose lowercase
+    /// form is longer, or a character split across two pairs is refused.
+    #[test]
+    fn hex_decode_refuses_anything_but_hex_digit_pairs() {
+        mesh_rt_init();
+        for text in ["+f", "-1", "0é0", "İİ", "é"] {
+            let result = mesh_hex_decode(mesh_str(text));
+            unsafe {
+                assert_eq!((*result).tag, 1, "{text:?} decoded");
+                assert_eq!(
+                    (*((*result).value as *const MeshString)).as_str(),
+                    "invalid hex"
+                );
+            }
+        }
+        let result = mesh_hex_decode(mesh_str("4A6f"));
+        unsafe { assert_eq!((*((*result).value as *const MeshString)).as_str(), "Jo") };
     }
 }
