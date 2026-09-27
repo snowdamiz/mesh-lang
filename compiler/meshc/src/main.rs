@@ -1387,19 +1387,15 @@ fn deps_command(dir: &Path) -> Result<(), String> {
         .iter()
         .filter(|(_, dep)| matches!(dep, mesh_pkg::manifest::Dependency::Git { .. }))
         .all(|(name, _)| dir.join(".mesh").join("deps").join(name).is_dir());
-    if git_checkouts_present && lock_path.exists() {
-        let manifest_modified = std::fs::metadata(&manifest_path)
-            .and_then(|m| m.modified())
-            .ok();
-        let lock_modified = std::fs::metadata(&lock_path)
-            .and_then(|m| m.modified())
-            .ok();
-        if let (Some(manifest_time), Some(lock_time)) = (manifest_modified, lock_modified) {
-            if manifest_time <= lock_time {
-                eprintln!("Dependencies up to date");
-                return Ok(());
-            }
-        }
+    // A time that cannot be read is no proof of freshness.
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    if git_checkouts_present
+        && modified(&manifest_path)
+            .zip(modified(&lock_path))
+            .is_some_and(|(manifest_time, lock_time)| manifest_time <= lock_time)
+    {
+        eprintln!("Dependencies up to date");
+        return Ok(());
     }
 
     let (resolved, lockfile) = mesh_pkg::resolve_dependencies(dir)?;
