@@ -3233,6 +3233,53 @@ mod tests {
         crate::db::pool::mesh_pool_close(pool);
     }
 
+    /// A changeset update that matches no row says so on `_base`; a preload
+    /// whose lookup fails returns the query's error; a nested path below a
+    /// singular association that found nothing leaves it null.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn misses_and_failures_come_back_as_they_are() {
+        let pool = test_pool(
+            "mesh_repo_unit_misses",
+            &[
+                "CREATE TABLE authors (id INT PRIMARY KEY, name TEXT)",
+                "CREATE TABLE posts (id INT PRIMARY KEY, author_id INT)",
+                "INSERT INTO posts VALUES (1, NULL)",
+            ],
+        );
+        let changes = string_list(&["name"]);
+        let params = mesh_map_put(
+            crate::collections::map::mesh_map_new_typed(1),
+            mesh_str("name") as u64,
+            mesh_str("Ada") as u64,
+        );
+        let cs = crate::db::changeset::mesh_changeset_cast(params, params, changes);
+        let missing = mesh_repo_update_changeset(pool, atom("authors"), atom("9"), cs);
+        let r = unsafe { &*(missing as *const MeshResult) };
+        assert_eq!(r.tag, 1);
+        let base = crate::db::changeset::mesh_changeset_get_error(r.value, atom("_base"));
+        assert_eq!(unsafe { text_of(base) }, "not found");
+
+        let posts = ok(mesh_repo_all(
+            pool,
+            crate::db::query::mesh_query_from(atom("posts")),
+        ));
+        let nowhere = string_list(&["has_many:notes:Note:post_id:no_such_table:id"]);
+        let failed = mesh_repo_preload(pool, posts, string_list(&["notes"]), nowhere);
+        let r = unsafe { &*(failed as *const MeshResult) };
+        assert_eq!(r.tag, 1);
+        assert!(unsafe { text_of(r.value) }.contains("no_such_table"));
+
+        let meta = string_list(&[
+            "belongs_to:author:Author:author_id:authors:id",
+            "has_many:posts:Post:author_id:posts:id",
+        ]);
+        let paths = string_list(&["author.posts"]);
+        let preloaded = ok(mesh_repo_preload(pool, posts, paths, meta));
+        assert_eq!(column_of(preloaded, "author"), ["null"]);
+        crate::db::pool::mesh_pool_close(pool);
+    }
+
     /// A nested path preloads the associations it passes through: asked
     /// for "posts.comments" alone, the rows came back with neither.
     #[test]
