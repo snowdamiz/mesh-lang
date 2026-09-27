@@ -259,6 +259,19 @@ fn test_diag_or_pattern_binding_mismatch() {
     );
 }
 
+/// A closure of two parameters where one taking a pair is expected, as
+/// `fn (k, v) -> ...` over `Map.to_list`, names the tuple pattern form.
+#[test]
+fn test_diag_closure_of_a_tuple_elements_names_the_tuple_pattern() {
+    let output = render_first_error(
+        "fn main() do\n  let pairs = [(1, 2)] |> List.map(fn (a, b) -> \"x\" end)\n  pairs\nend\n",
+    );
+    assert!(output.contains("E0003"), "{output}");
+    assert!(output.contains("fn ((a, b))"), "{output}");
+    let arity = render_first_error("fn main() do\n  List.map([1], fn a, b -> a end)\nend\n");
+    assert!(!arity.contains("tuple"), "{arity}");
+}
+
 /// `null`, a name other languages give the absent value, points at
 /// `Option`.
 #[test]

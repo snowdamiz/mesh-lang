@@ -873,6 +873,17 @@ expression: rendered
 ───╯
 {"code":"E0087","severity":"error","message":"a statement outside a function never runs","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing runs this"}],"fix":"a program runs `main` and what it calls: move this into `main` or the function that needs it"}
 
+[E0003] Error: a function of 2 parameters where one taking a 2-tuple is expected
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── takes 2 arguments, not a tuple
+   │
+   │ Help: `fn (a, b) -> ...` takes 2 arguments; to take the tuple apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`
+───╯
+{"code":"E0003","severity":"error","message":"a function of 2 parameters where one taking a 2-tuple is expected","file":"main.mpl","spans":[{"start":19,"end":24,"label":"takes 2 arguments, not a tuple"}],"fix":"`fn (a, b) -> ...` takes 2 arguments; to take the tuple apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`"}
+
 [E0081] Error: module `name` is not imported
    ╭─[ main.mpl:2:7 ]
    │

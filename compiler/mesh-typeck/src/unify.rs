@@ -580,10 +580,24 @@ impl InferCtx {
             // Function types -- unify params pairwise, then return types.
             (Ty::Fun(p1, r1), Ty::Fun(p2, r2)) => {
                 if p1.len() != p2.len() {
-                    let err = TypeError::ArityMismatch {
-                        expected: p1.len(),
-                        found: p2.len(),
-                        origin,
+                    // One side takes a tuple, the other its elements.
+                    let tuple_len = |params: &[Ty], ctx: &mut Self| match params {
+                        [only] => match ctx.resolve(only.clone()) {
+                            Ty::Tuple(elements) => Some(elements.len()),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let split = tuple_len(&p1, self)
+                        .filter(|n| *n == p2.len())
+                        .or_else(|| tuple_len(&p2, self).filter(|n| *n == p1.len()));
+                    let err = match split {
+                        Some(elements) => TypeError::TupleParameterSplit { elements, origin },
+                        None => TypeError::ArityMismatch {
+                            expected: p1.len(),
+                            found: p2.len(),
+                            origin,
+                        },
                     };
                     self.errors.push(err.clone());
                     Err(err)

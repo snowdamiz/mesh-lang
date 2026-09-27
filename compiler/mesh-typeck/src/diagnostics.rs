@@ -121,7 +121,7 @@ fn error_code(err: &TypeError) -> &'static str {
     match err {
         TypeError::Mismatch { .. } => "E0001",
         TypeError::InfiniteType { .. } => "E0002",
-        TypeError::ArityMismatch { .. } => "E0003",
+        TypeError::ArityMismatch { .. } | TypeError::TupleParameterSplit { .. } => "E0003",
         TypeError::UnboundVariable { .. } => "E0004",
         TypeError::NotAFunction { .. } => "E0005",
         TypeError::TraitNotSatisfied { .. } => "E0006",
@@ -694,6 +694,23 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             }
 
             builder
+        }
+
+        TypeError::TupleParameterSplit { elements, origin } => {
+            let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
+            let names: Vec<String> = (0..*elements)
+                .map(|i| ((b'a' + (i % 26) as u8) as char).to_string())
+                .collect();
+            Description::error(
+                clamp(span),
+                format!("takes {elements} arguments, not a tuple"),
+            )
+            .with_help(format!(
+                "`fn ({}) -> ...` takes {elements} arguments; to take the tuple apart, \
+                     put its pattern in parentheses: `fn (({})) -> ... end`",
+                names.join(", "),
+                names.join(", ")
+            ))
         }
 
         TypeError::UnboundVariable {

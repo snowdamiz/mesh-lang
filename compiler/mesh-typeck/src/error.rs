@@ -84,6 +84,13 @@ pub enum TypeError {
         found: usize,
         origin: ConstraintOrigin,
     },
+    /// A function of `elements` parameters where one taking an
+    /// `elements`-tuple is expected (or the reverse): a closure written
+    /// `fn (a, b) -> ...` for `Map.to_list` pairs.
+    TupleParameterSplit {
+        elements: usize,
+        origin: ConstraintOrigin,
+    },
     /// Slot pipe position N exceeds the function's total arity.
     ///
     /// Example: `x |5> func(a, b, c)` — func only takes 3 arguments.
@@ -535,6 +542,7 @@ impl TypeError {
             TypeError::Mismatch { origin, .. }
             | TypeError::InfiniteType { origin, .. }
             | TypeError::ArityMismatch { origin, .. }
+            | TypeError::TupleParameterSplit { origin, .. }
             | TypeError::TraitNotSatisfied { origin, .. }
             | TypeError::UnboundedTypeParam { origin, .. } => origin.span(),
             TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
@@ -658,6 +666,10 @@ impl fmt::Display for TypeError {
             TypeError::InfiniteType { var, ty, .. } => {
                 write!(f, "infinite type: `?{}` occurs in `{}`", var.0, ty)
             }
+            TypeError::TupleParameterSplit { elements, .. } => write!(
+                f,
+                "a function of {elements} parameters where one taking a {elements}-tuple is expected"
+            ),
             TypeError::ArityMismatch {
                 expected, found, ..
             } => {
