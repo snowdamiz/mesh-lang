@@ -89,13 +89,17 @@ an error. The server may ask for SCRAM-SHA-256, md5 or a cleartext password.
 | `Pg.query(connection, sql, params)` | `Result<List<Map<String, String>>, String>` | Borrow it to query rows as string maps |
 | `Pg.query_as(connection, sql, params, decoder)` | `Result<List<Result<T, String>>, String>` | Decode every returned row |
 | `Pg.begin(connection)` | `Result<Unit, String>` | Begin a transaction |
-| `Pg.commit(connection)` | `Result<Unit, String>` | Commit |
+| `Pg.commit(connection)` | `Result<Unit, String>` | Commit; an error if a failed statement aborted the transaction, which PostgreSQL then rolls back |
 | `Pg.rollback(connection)` | `Result<Unit, String>` | Roll back |
 | `Pg.transaction(connection, fn)` | `Result<Unit, String>` | Borrow it for a callback whose `PgConn` parameter is also declared `borrow` |
 
 `PgConn` is affine: assignments and ordinary function parameters move it,
 database operations borrow it, and `Pg.close` consumes it. It cannot cross an
 actor boundary. PostgreSQL placeholders are `$1`, `$2`, and so on.
+
+`Pg.transaction` commits when the callback returns `Ok` and rolls back when it
+returns `Err` or panics. A statement that failed inside it, even one whose
+error the callback ignored, makes the commit fail too.
 
 In `Pg.query` and `Pool.query` rows, a `NULL` column reads as `""`
 (`Pg.query_values` tells the two apart). The size limits under
