@@ -1662,6 +1662,61 @@ end
     );
 }
 
+/// An arithmetic interface's method takes another value of the type, as
+/// its operator does: `1.add("s")` and `Add.add(1, "s")` added a string
+/// to an integer, and an impl taking another type was accepted though no
+/// operator could use it.
+#[test]
+fn arithmetic_methods_take_a_value_of_their_type() {
+    let at = |message: &str, text: &str| (message.to_string(), text.to_string());
+    assert_eq!(
+        located_errors(
+            r#"struct Wide do
+  x :: Int
+end
+
+impl Add for Wide do
+  type Output = Wide
+  fn add(self, other :: Int) -> Wide do
+    Wide { x: self.x + other }
+  end
+end
+
+struct Vec2 do
+  x :: Int
+end
+
+impl Sub for Vec2 do
+  type Output = Vec2
+  fn sub(self, other :: Vec2) -> Vec2 do
+    Vec2 { x: self.x - other.x }
+  end
+end
+
+fn method_call() -> Int do
+  1.add("s")
+end
+
+fn qualified() -> Int do
+  Add.add(1, "s")
+end
+
+fn fine(v :: Vec2) -> Vec2 do
+  Sub.sub(v, v.sub(v)) - v
+end
+"#
+        ),
+        [
+            at(
+                "method `add` in impl `Add` has wrong signature: expected `(Self, Self) -> _`, found `(Self, Int) -> _`",
+                "fn add(self, other :: Int) -> Wide do\n    Wide { x: self.x + other }\n  end"
+            ),
+            at("type mismatch: expected `Int`, found `String`", "\"s\""),
+            at("type mismatch: expected `Int`, found `String`", "\"s\""),
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a

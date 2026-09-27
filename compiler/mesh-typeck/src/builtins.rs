@@ -2494,7 +2494,8 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
                 // The operator's result is the impl's `type Output`.
                 return_type: Some(Ty::Con(TyCon::new("Self.Output"))),
                 has_default_body: false,
-                param_types: None,
+                // The other operand, of the type, as the operator's is.
+                param_types: Some(vec![Ty::Con(TyCon::new("Self"))]),
             }],
             associated_types: vec![AssocTypeDef {
                 name: "Output".to_string(),
