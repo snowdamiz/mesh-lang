@@ -46,15 +46,10 @@ unsafe fn entries(map: *mut u8) -> (*const Entry, usize) {
 }
 
 /// The live entries of a map, in order, without allocating: for message
-/// capture and the wire format.
+/// capture.
 pub(crate) unsafe fn live_entries(map: *const u8) -> (u64, Vec<Entry>) {
     let table = table::state::<2>(map).0;
     (table::tag(table), table::live_entries::<2>(map))
-}
-
-/// A map of `entries` (keys unique) with key type tag `tag`.
-pub(crate) unsafe fn map_from_entries(tag: u64, entries: &[Entry]) -> *mut u8 {
-    table::table_from::<2>(entries, tag)
 }
 
 // ── Public API ────────────────────────────────────────────────────────

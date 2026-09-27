@@ -31,21 +31,6 @@ unsafe fn contains(set: *mut u8, element: u64, keys: &Keys) -> bool {
     table::find::<1>(table, n, element, keys).is_some()
 }
 
-/// The live elements of a set, in order, without allocating: for message
-/// capture and the wire format.
-pub(crate) unsafe fn live_elements(set: *const u8) -> Vec<u64> {
-    table::live_entries::<1>(set)
-        .into_iter()
-        .map(|[element]| element)
-        .collect()
-}
-
-/// A set of `elements` (unique).
-pub(crate) unsafe fn set_from_elements(elements: &[u64]) -> *mut u8 {
-    let entries: Vec<[u64; 1]> = elements.iter().map(|&element| [element]).collect();
-    table::table_from::<1>(&entries, 0)
-}
-
 unsafe fn add(set: *mut u8, element: u64, keys: &Keys) -> *mut u8 {
     if contains(set, element, keys) {
         set

@@ -1,8 +1,7 @@
 //! Distribution subsystem for Mesh.
 //!
-//! Provides PID bit-packing helpers, the Mesh Term Format (STF) binary
-//! serializer/deserializer, and the node identity/connection layer for
-//! inter-node message transport.
+//! The node identity/connection layer for inter-node message transport, and
+//! the cluster services built on it.
 
 pub mod autonomous;
 pub mod bootstrap;
@@ -23,7 +22,6 @@ pub mod readiness;
 pub mod routing;
 pub mod scaling;
 pub mod telemetry;
-pub mod wire;
 
 #[cfg(test)]
 mod autonomous_model_tests;
