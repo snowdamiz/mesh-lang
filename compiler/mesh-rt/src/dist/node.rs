@@ -6783,17 +6783,26 @@ fn startup_dispatch_window_ms(request_key: &str, required_replica_count: u64) ->
     configured_startup_dispatch_window_ms()
 }
 
+/// The identity of startup work registered under `runtime_name`, if that
+/// names any.
 fn startup_work_identity(runtime_name: &str) -> Result<StartupWorkIdentity, String> {
     let runtime_name = runtime_name.trim();
     if runtime_name.is_empty() {
         return Err(STARTUP_RUNTIME_NAME_MISSING.to_string());
     }
+    Ok(StartupWorkIdentity::registered(runtime_name))
+}
 
-    Ok(StartupWorkIdentity {
-        runtime_name: runtime_name.to_string(),
-        request_key: startup_request_key(runtime_name),
-        payload_hash: startup_payload_hash(runtime_name),
-    })
+impl StartupWorkIdentity {
+    /// The identity of the startup work registered as `runtime_name`: a
+    /// name registration already found to name some.
+    fn registered(runtime_name: &str) -> Self {
+        Self {
+            runtime_name: runtime_name.to_string(),
+            request_key: startup_request_key(runtime_name),
+            payload_hash: startup_payload_hash(runtime_name),
+        }
+    }
 }
 
 /// Watches the membership until it settles with a peer in it, or, with
@@ -7249,14 +7258,8 @@ fn wait_for_startup_terminal_state(identity: &StartupWorkIdentity, attempt_id: &
 
 extern "C" fn startup_work_entry(args: *const u8) {
     let words = unsafe { std::slice::from_raw_parts(args as *const u64, 1) };
-    let runtime_name = mesh_string_arg_to_owned(words[0]);
-    let identity = match startup_work_identity(&runtime_name) {
-        Ok(identity) => identity,
-        Err(reason) => {
-            log_startup_rejected_without_identity(&runtime_name, &reason);
-            return;
-        }
-    };
+    // The name of registered startup work (`trigger_startup_work_registrations`).
+    let identity = StartupWorkIdentity::registered(&mesh_string_arg_to_owned(words[0]));
 
     let desired_required_replica_count =
         match required_replica_count_for_runtime_name(&identity.runtime_name) {
@@ -7344,23 +7347,13 @@ fn trigger_startup_work_registrations<F, G>(
     F: FnMut(&str),
     G: FnMut(),
 {
-    if runtime_names.is_empty() {
-        return;
-    }
-
     if cluster_mode && !STARTUP_KEEPALIVE_SPAWNED.swap(true, Ordering::SeqCst) {
         spawn_keepalive();
         log_startup_keepalive(runtime_names.len());
     }
 
     for runtime_name in runtime_names {
-        let identity = match startup_work_identity(runtime_name) {
-            Ok(identity) => identity,
-            Err(reason) => {
-                log_startup_rejected_without_identity(runtime_name, &reason);
-                continue;
-            }
-        };
+        let identity = StartupWorkIdentity::registered(runtime_name);
 
         if lookup_declared_handler(&identity.runtime_name).is_none() {
             log_startup_rejected(&identity, None, None, None, STARTUP_HANDLER_MISSING);
@@ -13546,6 +13539,7 @@ mod tests {
         } else if key.ends_with(".fence") {
             let mut newer = registry.record(&key).unwrap();
             newer.attempt_id = "attempt-999".to_string();
+            newer.execution_node = "fencing-node@127.0.0.1:1".to_string();
             newer.record_version += 1;
             registry.merge_remote_record(1_000, newer).unwrap();
         } else {
@@ -13555,8 +13549,8 @@ mod tests {
 
     /// Startup work waits for the cluster to settle, submits itself, and
     /// waits for its attempt to end, saying how it ended: completed,
-    /// rejected, fenced by a newer attempt, or lost. Work with no handler,
-    /// or no name, is refused at once.
+    /// rejected, fenced by a newer attempt, or lost. Work with no handler is
+    /// refused at once, when it starts or when it is triggered.
     #[test]
     fn startup_work_runs_once_the_cluster_settles_and_says_how_it_ended() {
         let _exclusive = declared_handler_registry_test_lock();
@@ -13577,13 +13571,6 @@ mod tests {
             spawn_startup_work_actor(&name);
         }
         spawn_startup_work_actor("Startup.absent");
-        let words = [crate::string::mesh_str(" ") as u64];
-        crate::actor::global_scheduler().spawn(
-            startup_work_entry as *const u8,
-            words.as_ptr() as *const u8,
-            8,
-            1,
-        );
 
         for (outcome, transition) in [
             ("complete", "startup_completed"),
@@ -13596,21 +13583,22 @@ mod tests {
                 &startup_request_key(&format!("Startup.{outcome}")),
             );
         }
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while !crate::dist::operator::operator_recent_diagnostics(None)
-            .entries
-            .iter()
-            .any(|entry| {
-                entry.transition == "startup_rejected"
-                    && entry.reason.as_deref() == Some(STARTUP_RUNTIME_NAME_MISSING)
-            })
-        {
-            assert!(
-                Instant::now() < deadline,
-                "the unnamed work was not refused"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        trigger_startup_work_registrations(
+            &["Startup.unhandled".to_string()],
+            false,
+            crate::dist::continuity::ContinuityClusterRole::Primary,
+            0,
+            |_| panic!("work with no handler was started"),
+            || {},
+        );
+        assert_eq!(
+            diagnosed(
+                "startup_rejected",
+                &startup_request_key("Startup.unhandled")
+            )
+            .and_then(|entry| entry.reason),
+            Some(STARTUP_HANDLER_MISSING.to_string())
+        );
 
         let forgotten = "Startup.forget";
         mesh_register_declared_handler(
