@@ -2141,6 +2141,18 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ),
         ("mesh_string_trim", mesh_rt::mesh_string_trim as *const ()),
         (
+            "mesh_string_trim_start",
+            mesh_rt::mesh_string_trim_start as *const (),
+        ),
+        (
+            "mesh_string_trim_end",
+            mesh_rt::mesh_string_trim_end as *const (),
+        ),
+        (
+            "mesh_string_repeat",
+            mesh_rt::mesh_string_repeat as *const (),
+        ),
+        (
             "mesh_supervisor_count_children",
             mesh_rt::actor::mesh_supervisor_count_children as *const (),
         ),
