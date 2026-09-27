@@ -10,9 +10,12 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, MutexGuard};
+use ws_client::TestWsClient;
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[path = "support/ws_client.rs"]
+mod ws_client;
 
 fn meshc_build_guard() -> MutexGuard<'static, ()> {
     static BUILD_LOCK: Mutex<()> = Mutex::new(());
@@ -1030,60 +1033,7 @@ end
     }
 }
 
-/// A minimal WebSocket client over `stream`: the upgrade, then frames.
-struct TestWsClient<S: Read + Write> {
-    stream: S,
-}
-
 impl<S: Read + Write> TestWsClient<S> {
-    fn open(mut stream: S, path: &str) -> Self {
-        write!(
-            stream,
-            "GET {path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
-        )
-        .unwrap();
-        let mut head = Vec::new();
-        while !head.ends_with(b"\r\n\r\n") {
-            let mut byte = [0];
-            stream.read_exact(&mut byte).unwrap();
-            head.push(byte[0]);
-        }
-        let head = String::from_utf8_lossy(&head);
-        assert!(head.starts_with("HTTP/1.1 101"), "{head}");
-        Self { stream }
-    }
-
-    /// A masked frame, as a client sends.
-    fn send(&mut self, opcode: u8, payload: &[u8]) {
-        let mask = [0x12, 0x34, 0x56, 0x78];
-        let mut frame = vec![0x80 | opcode, 0x80 | payload.len() as u8];
-        frame.extend(mask);
-        frame.extend(
-            payload
-                .iter()
-                .enumerate()
-                .map(|(i, byte)| byte ^ mask[i % 4]),
-        );
-        self.stream.write_all(&frame).unwrap();
-    }
-
-    fn receive(&mut self) -> (u8, Vec<u8>) {
-        let mut head = [0; 2];
-        self.stream.read_exact(&mut head).unwrap();
-        let length = match head[1] & 0x7f {
-            126 => {
-                let mut length = [0; 2];
-                self.stream.read_exact(&mut length).unwrap();
-                u16::from_be_bytes(length) as usize
-            }
-            length => length as usize,
-        };
-        let mut payload = vec![0; length];
-        self.stream.read_exact(&mut payload).unwrap();
-        (head[0] & 0x0f, payload)
-    }
-
     /// Welcome, echo and close: what the server below does.
     fn converse(&mut self) {
         assert_eq!(self.receive(), (1, b"welcome /chat".to_vec()));

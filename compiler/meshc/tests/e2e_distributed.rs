@@ -1,15 +1,21 @@
 //! Two Mesh nodes on this machine, connected over the node protocol: what
-//! one sends to, spawns on and registers with the other.
+//! one sends to, spawns on, registers with, monitors and broadcasts to on
+//! the other.
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[path = "support/ws_client.rs"]
+mod ws_client;
 
 use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+use ws_client::TestWsClient;
 
 const COOKIE: &str = "a-development-cookie-0123456789";
 
@@ -45,25 +51,24 @@ fn build(dir: &Path, name: &str, source: &str, nodes: &[(&str, String)]) -> Path
     project.join(name)
 }
 
-/// Build both programs, start `hub` and wait for it to print `ready`, then
-/// run `spoke` to its end and `hub` to its own. Returns their outputs.
-fn run_pair(hub: &str, spoke: &str) -> (String, String) {
-    artifacts::ensure_mesh_rt_staticlib();
-    let dir = tempfile::tempdir().unwrap();
-    let nodes = [
+/// The two nodes' names, and the substitutions `build` makes with them.
+fn node_names() -> Vec<(&'static str, String)> {
+    vec![
         ("HUB", format!("hub@127.0.0.1:{}", free_port())),
         ("SPOKE", format!("spoke@127.0.0.1:{}", free_port())),
-    ];
-    let hub = build(dir.path(), "hub", hub, &nodes);
-    let spoke = build(dir.path(), "spoke", spoke, &nodes);
+    ]
+}
 
-    let mut hub = Command::new(hub)
+/// Start `binary` and wait until it prints `ready`. Returns it and the
+/// thread that collects its stdout.
+fn start_until_ready(binary: &Path) -> (Child, JoinHandle<String>) {
+    let mut child = Command::new(binary)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     let (lines, ready) = mpsc::channel();
-    let stdout = BufReader::new(hub.stdout.take().unwrap());
+    let stdout = BufReader::new(child.stdout.take().unwrap());
     let reader = std::thread::spawn(move || {
         let mut seen = String::new();
         for line in stdout.lines().map_while(Result::ok) {
@@ -76,16 +81,37 @@ fn run_pair(hub: &str, spoke: &str) -> (String, String) {
         seen
     });
     if ready.recv_timeout(artifacts::LAUNCH_ALLOWANCE).is_err() {
-        artifacts::stop_child(&mut hub);
-        panic!("hub never became ready:\n{}", reader.join().unwrap());
+        artifacts::stop_child(&mut child);
+        panic!(
+            "{} never became ready:\n{}",
+            binary.display(),
+            reader.join().unwrap()
+        );
     }
+    (child, reader)
+}
 
-    let spoke = Command::new(spoke)
+/// Run `binary` to its end.
+fn run_to_end(binary: &Path) -> Result<Output, artifacts::TimedOut> {
+    let child = Command::new(binary)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let spoke = artifacts::wait_with_timeout(spoke, Duration::from_secs(30));
+    artifacts::wait_with_timeout(child, Duration::from_secs(30))
+}
+
+/// Build both programs, start `hub` and wait for it to print `ready`, then
+/// run `spoke` to its end and `hub` to its own. Returns their outputs.
+fn run_pair(hub: &str, spoke: &str) -> (String, String) {
+    artifacts::ensure_mesh_rt_staticlib();
+    let dir = tempfile::tempdir().unwrap();
+    let nodes = node_names();
+    let hub = build(dir.path(), "hub", hub, &nodes);
+    let spoke = build(dir.path(), "spoke", spoke, &nodes);
+
+    let (hub, reader) = start_until_ready(&hub);
+    let spoke = run_to_end(&spoke);
     let hub_status = artifacts::wait_with_timeout(hub, Duration::from_secs(30));
     let hub_stdout = reader.join().unwrap();
     let spoke = spoke.unwrap_or_else(|timed_out| panic!("spoke {timed_out}\nhub:\n{hub_stdout}"));
@@ -359,4 +385,77 @@ end
     );
     assert!(!spoke.contains("outlived"), "{spoke}");
     assert_lines(&hub, &["mortal ends", "spoke node gone"], &spoke);
+}
+
+/// A WebSocket room is cluster-wide: a broadcast on one node reaches the
+/// members that joined it on another.
+#[test]
+fn a_room_broadcast_reaches_members_on_another_node() {
+    let hub = r#"fn on_connect(conn, path, headers) do
+  Ws.join(conn, "lobby")
+  Ws.send(conn, "joined")
+  1
+end
+
+fn on_message(conn, msg) do
+  println(msg)
+end
+
+fn on_close(conn, code, reason) do
+  println("closed")
+end
+
+fn main() do
+  Node.start("HUB", "COOKIE")
+  println("ready")
+  Ws.serve(on_connect, on_message, on_close, WSPORT)
+  # Ws.serve returns once it listens; the test stops this node.
+  Timer.sleep(600000)
+end
+"#;
+    let spoke = r#"fn main() do
+  Node.start("SPOKE", "COOKIE")
+  Node.connect("HUB")
+  println("broadcast=#{Ws.broadcast("lobby", "from spoke")}")
+  # The frame is queued for the session's writer, which the end of main
+  # would stop.
+  Timer.sleep(1000)
+end
+"#;
+    artifacts::ensure_mesh_rt_staticlib();
+    let dir = tempfile::tempdir().unwrap();
+    let ws_port = free_port();
+    let mut nodes = node_names();
+    nodes.push(("WSPORT", ws_port.to_string()));
+    let hub = build(dir.path(), "hub", hub, &nodes);
+    let spoke = build(dir.path(), "spoke", spoke, &nodes);
+
+    let (mut hub, reader) = start_until_ready(&hub);
+    // `ready` comes just before the server starts listening.
+    let deadline = Instant::now() + artifacts::LAUNCH_ALLOWANCE;
+    let tcp = loop {
+        match TcpStream::connect(("127.0.0.1", ws_port)) {
+            Ok(tcp) => break tcp,
+            Err(error) if Instant::now() > deadline => panic!("hub never listened: {error}"),
+            Err(_) => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+    tcp.set_read_timeout(Some(artifacts::LAUNCH_ALLOWANCE + Duration::from_secs(30)))
+        .unwrap();
+    let mut member = TestWsClient::open(tcp, "/");
+    assert_eq!(member.receive_answering_pings(), (1, b"joined".to_vec()));
+    // The member keeps answering the server's pings while the spoke starts.
+    let member = std::thread::spawn(move || member.receive_answering_pings());
+
+    let spoke = run_to_end(&spoke);
+    let received = member.join().unwrap();
+    artifacts::stop_child(&mut hub);
+    let hub_stdout = reader.join().unwrap();
+    let spoke = spoke.unwrap_or_else(|timed_out| panic!("spoke {timed_out}\nhub:\n{hub_stdout}"));
+    assert!(
+        String::from_utf8_lossy(&spoke.stdout).contains("broadcast=0"),
+        "{}",
+        artifacts::command_output_text(&spoke)
+    );
+    assert_eq!(received, (1, b"from spoke".to_vec()), "hub:\n{hub_stdout}");
 }
