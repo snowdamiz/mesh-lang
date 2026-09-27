@@ -7703,25 +7703,19 @@ fn maybe_automatic_promote_and_resume(disconnected_node: &str) {
     let state = started_node();
 
     let registry = crate::dist::continuity::continuity_registry();
-    let authority = registry.authority_status();
-    let snapshot = registry.snapshot();
-    let local_node = state.name.clone();
     let remaining_peer_count = state.sessions.read().len();
-
-    if let Err(reason) = automatic_promotion_reason(
-        &local_node,
-        disconnected_node,
-        remaining_peer_count,
-        authority,
-        &snapshot,
-    ) {
-        log_automatic_promotion_rejected(disconnected_node, reason, authority);
-        return;
-    }
-
-    let previous_epoch = authority.promotion_epoch;
-    let _promoted = match registry.promote_authority() {
-        Ok(promoted) => promoted,
+    let promotion = registry.promote_authority_if(|authority, snapshot| {
+        automatic_promotion_reason(
+            &state.name,
+            disconnected_node,
+            remaining_peer_count,
+            authority,
+            snapshot,
+        )
+        .map_err(str::to_string)
+    });
+    let (previous, promoted) = match promotion {
+        Ok(promotion) => promotion,
         Err(reason) => {
             log_automatic_promotion_rejected(
                 disconnected_node,
@@ -7731,8 +7725,11 @@ fn maybe_automatic_promote_and_resume(disconnected_node: &str) {
             return;
         }
     };
-    let promoted_epoch = registry.authority_status().promotion_epoch;
-    log_automatic_promotion(previous_epoch, promoted_epoch, disconnected_node);
+    log_automatic_promotion(
+        previous.promotion_epoch,
+        promoted.promotion_epoch,
+        disconnected_node,
+    );
 
     let promoted_snapshot = registry.snapshot();
     for (request_key, previous_attempt_id, payload_hash, runtime_name) in

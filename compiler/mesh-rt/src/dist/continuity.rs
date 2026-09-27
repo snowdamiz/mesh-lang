@@ -260,7 +260,7 @@ impl ReplicationHealth {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ContinuityAuthorityConfig {
     cluster_role: ContinuityClusterRole,
-    promotion_epoch: u64,
+    pub(crate) promotion_epoch: u64,
 }
 
 impl Default for ContinuityAuthorityConfig {
@@ -556,6 +556,23 @@ struct ContinuityInner {
     requests: FxHashMap<String, ContinuityRecord>,
 }
 
+impl ContinuityInner {
+    fn authority_status(&self) -> ContinuityAuthorityStatus {
+        ContinuityAuthorityStatus {
+            cluster_role: self.authority.cluster_role,
+            promotion_epoch: self.authority.promotion_epoch,
+            replication_health: authority_replication_health(self.requests.values()),
+        }
+    }
+
+    fn snapshot(&self) -> ContinuitySnapshot {
+        ContinuitySnapshot {
+            next_attempt_token: self.next_attempt_token,
+            records: self.requests.values().cloned().collect(),
+        }
+    }
+}
+
 pub struct ContinuityRegistry {
     inner: RwLock<ContinuityInner>,
 }
@@ -579,17 +596,24 @@ impl ContinuityRegistry {
     }
 
     pub fn authority_status(&self) -> ContinuityAuthorityStatus {
-        let inner = self.inner.read();
-        ContinuityAuthorityStatus {
-            cluster_role: inner.authority.cluster_role,
-            promotion_epoch: inner.authority.promotion_epoch,
-            replication_health: authority_replication_health(inner.requests.values()),
-        }
+        self.inner.read().authority_status()
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub(crate) fn promote_authority(&self) -> Result<ContinuityAuthorityConfig, String> {
+        self.promote_authority_if(|_, _| Ok(()))
+            .map(|(_, promoted)| promoted)
+    }
+
+    /// Promotes this standby to primary, when `allowed` accepts its
+    /// authority and records as the promotion finds them: under the same
+    /// lock, so nothing changes in between. The authority before and after.
+    pub(crate) fn promote_authority_if(
+        &self,
+        allowed: impl FnOnce(ContinuityAuthorityStatus, &ContinuitySnapshot) -> Result<(), String>,
+    ) -> Result<(ContinuityAuthorityConfig, ContinuityAuthorityConfig), String> {
         let mut inner = self.inner.write();
+        allowed(inner.authority_status(), &inner.snapshot())?;
         if inner.authority.cluster_role != ContinuityClusterRole::Standby {
             return Err(PROMOTION_REJECTED_NOT_STANDBY.to_string());
         }
@@ -609,7 +633,7 @@ impl ContinuityRegistry {
         for record in &records {
             broadcast_continuity_upsert(watermark, record);
         }
-        Ok(next)
+        Ok((previous, next))
     }
 
     pub fn next_attempt_token(&self) -> u64 {
@@ -617,11 +641,7 @@ impl ContinuityRegistry {
     }
 
     pub fn snapshot(&self) -> ContinuitySnapshot {
-        let inner = self.inner.read();
-        ContinuitySnapshot {
-            next_attempt_token: inner.next_attempt_token,
-            records: inner.requests.values().cloned().collect(),
-        }
+        self.inner.read().snapshot()
     }
 
     pub fn record(&self, request_key: &str) -> Option<ContinuityRecord> {
