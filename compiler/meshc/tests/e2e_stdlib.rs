@@ -1944,6 +1944,29 @@ fn send_request(port: u16, request: &str) -> String {
     panic!("Failed to connect to 127.0.0.1:{} after 5 attempts", port);
 }
 
+/// A handler reads everything a request carries: its method, path,
+/// headers (by name, whatever their case), query parameters, body as text
+/// and bytes, idempotency key and correlation ID; a name the request lacks
+/// reads as None.
+#[test]
+fn e2e_http_request_accessors() {
+    let (_guard, port) =
+        serve_on_free_port(&read_fixture("stdlib_http_request_accessors.mpl"), 18083);
+    let body = |request: &str| {
+        let response = send_request(port, request);
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        response.split("\r\n\r\n").nth(1).unwrap_or("").to_string()
+    };
+    assert_eq!(
+        body("POST /echo?page=3&x=y HTTP/1.1\r\nHost: localhost\r\nX-Agent: probe\r\nIdempotency-Key: once-1\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"),
+        "POST /echo agent=probe page=3 missing=none key=once-1 id=true body=hello bytes=5"
+    );
+    assert_eq!(
+        body("GET /plain HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"),
+        "GET /plain agent=none page=none missing=none key=none id=true body= bytes=0"
+    );
+}
+
 #[test]
 fn e2e_http_path_params() {
     let source = read_fixture("stdlib_http_path_params.mpl");

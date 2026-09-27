@@ -831,16 +831,16 @@ pub extern "C" fn mesh_http_request_body_bytes(req: *mut u8) -> *mut u8 {
 pub extern "C" fn mesh_http_request_header(req: *mut u8, name: *const MeshString) -> *mut u8 {
     unsafe {
         let request = &*(req as *const MeshHttpRequest);
-        let key_str = (*name).as_str();
-        // Look up in the headers map. Keys are MeshString pointers stored as u64.
-        let key_mesh = mesh_str(key_str);
-        let val = map::mesh_map_get(request.headers, key_mesh as u64);
-        if val == 0 {
-            // None
-            alloc_option(1, std::ptr::null_mut())
-        } else {
-            // Some -- val is the MeshString pointer stored as u64
-            alloc_option(0, val as *mut u8)
+        let name = (*name).as_str();
+        // A header's name is case-insensitive: `x-agent` finds `X-Agent`.
+        let (_, entries) = map::live_entries(request.headers);
+        match entries.iter().find(|[key, _]| {
+            (*(*key as *const MeshString))
+                .as_str()
+                .eq_ignore_ascii_case(name)
+        }) {
+            Some([_, value]) => alloc_option(0, *value as *mut u8),
+            None => alloc_option(1, std::ptr::null_mut()),
         }
     }
 }

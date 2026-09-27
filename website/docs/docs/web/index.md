@@ -182,7 +182,7 @@ The `Request` module provides accessors for reading request data:
 | `Request.path(request)` | `String` | Request path |
 | `Request.body(request)` | `String` | Request body |
 | `Request.body_bytes(request)` | `Bytes` | Byte-exact request body |
-| `Request.header(request, name)` | `Option<String>` | Header value by name |
+| `Request.header(request, name)` | `Option<String>` | Header value by name, whatever its case (`x-agent` finds `X-Agent`) |
 | `Request.query(request, name)` | `Option<String>` | Query parameter by name |
 | `Request.param(request, name)` | `Option<String>` | Path parameter by name |
 | `HTTP.request_id(request)` | `String` | Runtime-generated request correlation ID |
