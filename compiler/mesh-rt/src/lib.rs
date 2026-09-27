@@ -248,9 +248,8 @@ pub use dist::operator::{
     OperatorRuntimeSnapshot, OperatorStatusSnapshot, DEFAULT_OPERATOR_QUERY_TIMEOUT,
 };
 pub use dist::protocol::{
-    chunk_payload, classify_retry, negotiate_protocol, Capabilities, ChunkReassembler,
-    CircuitBreaker, CircuitState, MessageClass, NegotiatedProtocol, ProtocolEnvelope,
-    ProtocolHello, RetryBudget, RetryClass,
+    negotiate_protocol, Capabilities, CircuitBreaker, CircuitState, MessageClass,
+    NegotiatedProtocol, ProtocolEnvelope, ProtocolHello, RetryBudget,
 };
 pub use dist::readiness::{local_readiness_status, NodeReadinessStatus, ReadinessGate};
 pub use dist::routing::{

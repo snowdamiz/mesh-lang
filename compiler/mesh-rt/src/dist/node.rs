@@ -604,7 +604,7 @@ fn peer_circuit_allow(peer: &str, now: Instant) -> bool {
         .lock()
         .unwrap()
         .entry(peer.to_string())
-        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)).unwrap())
+        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)))
         .allow(now);
     if !allowed {
         crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_circuit_rejection();
@@ -623,7 +623,7 @@ pub(crate) fn record_peer_transport_failure(peer: &str, now: Instant) {
         .lock()
         .unwrap()
         .entry(peer.to_string())
-        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)).unwrap())
+        .or_insert_with(|| CircuitBreaker::new(3, Duration::from_secs(5)))
         .record_failure(now);
 }
 
@@ -653,7 +653,6 @@ fn record_peer_original_attempt(peer: &str, now: Instant) {
                 Duration::from_secs(10),
                 now,
             )
-            .expect("validated retry budget defaults")
         })
         .record_original(now);
 }
@@ -671,7 +670,6 @@ fn allow_peer_retry(peer: &str, now: Instant) -> bool {
                 Duration::from_secs(10),
                 now,
             )
-            .unwrap()
         })
         .try_retry(now);
     if allowed {

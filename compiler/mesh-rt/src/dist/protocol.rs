@@ -1,6 +1,5 @@
-//! Versioned peer protocol contracts, capability negotiation, chunking, and retry guards.
+//! Versioned peer protocol contracts, capability negotiation, and retry guards.
 
-use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
@@ -48,14 +47,6 @@ impl Capabilities {
 
     pub const fn intersection(self, other: Self) -> Self {
         Self(self.0 & other.0)
-    }
-}
-
-impl std::ops::BitOr for Capabilities {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
     }
 }
 
@@ -273,154 +264,6 @@ impl ProtocolEnvelope {
     }
 }
 
-pub fn chunk_payload(
-    class: MessageClass,
-    kind: u16,
-    correlation_id: u64,
-    payload: &[u8],
-    max_frame_bytes: u32,
-) -> Result<Vec<ProtocolEnvelope>, String> {
-    let chunk_bytes = (max_frame_bytes as usize)
-        .checked_sub(ProtocolEnvelope::HEADER_BYTES)
-        .filter(|value| *value > 0)
-        .ok_or_else(|| "protocol_frame_bound_too_small".to_string())?;
-    let chunk_count = payload.len().max(1).div_ceil(chunk_bytes);
-    let mut envelopes = Vec::with_capacity(chunk_count);
-    if payload.is_empty() {
-        envelopes.push(ProtocolEnvelope {
-            class,
-            kind,
-            correlation_id,
-            chunk_sequence: 0,
-            final_chunk: true,
-            payload: Vec::new(),
-        });
-        return Ok(envelopes);
-    }
-    for (sequence, chunk) in payload.chunks(chunk_bytes).enumerate() {
-        envelopes.push(ProtocolEnvelope {
-            class,
-            kind,
-            correlation_id,
-            chunk_sequence: sequence
-                .try_into()
-                .map_err(|_| "protocol_chunk_count_exceeded".to_string())?,
-            final_chunk: sequence + 1 == chunk_count,
-            payload: chunk.to_vec(),
-        });
-    }
-    Ok(envelopes)
-}
-
-#[derive(Debug)]
-struct PartialMessage {
-    next_sequence: u32,
-    bytes: Vec<u8>,
-    opened_at: Instant,
-}
-
-#[derive(Debug)]
-pub struct ChunkReassembler {
-    max_messages: usize,
-    max_message_bytes: usize,
-    timeout: Duration,
-    partial: BTreeMap<u64, PartialMessage>,
-}
-
-impl ChunkReassembler {
-    pub fn new(
-        max_messages: usize,
-        max_message_bytes: usize,
-        timeout: Duration,
-    ) -> Result<Self, String> {
-        if max_messages == 0 || max_message_bytes == 0 || timeout.is_zero() {
-            return Err("protocol_reassembler_limits_invalid".to_string());
-        }
-        Ok(Self {
-            max_messages,
-            max_message_bytes,
-            timeout,
-            partial: BTreeMap::new(),
-        })
-    }
-
-    pub fn push(
-        &mut self,
-        envelope: ProtocolEnvelope,
-        now: Instant,
-    ) -> Result<Option<Vec<u8>>, String> {
-        self.expire(now);
-        if envelope.chunk_sequence == 0 && envelope.final_chunk {
-            if envelope.payload.len() > self.max_message_bytes {
-                return Err("protocol_reassembled_message_too_large".to_string());
-            }
-            return Ok(Some(envelope.payload));
-        }
-        if envelope.chunk_sequence == 0 {
-            if !self.partial.contains_key(&envelope.correlation_id)
-                && self.partial.len() >= self.max_messages
-            {
-                return Err("protocol_reassembly_capacity_exhausted".to_string());
-            }
-            self.partial.insert(
-                envelope.correlation_id,
-                PartialMessage {
-                    next_sequence: 1,
-                    bytes: envelope.payload,
-                    opened_at: now,
-                },
-            );
-            return Ok(None);
-        }
-        let partial = self
-            .partial
-            .get_mut(&envelope.correlation_id)
-            .ok_or_else(|| "protocol_chunk_without_start".to_string())?;
-        if partial.next_sequence != envelope.chunk_sequence {
-            self.partial.remove(&envelope.correlation_id);
-            return Err("protocol_chunk_out_of_order".to_string());
-        }
-        if partial.bytes.len().saturating_add(envelope.payload.len()) > self.max_message_bytes {
-            self.partial.remove(&envelope.correlation_id);
-            return Err("protocol_reassembled_message_too_large".to_string());
-        }
-        partial.bytes.extend_from_slice(&envelope.payload);
-        partial.next_sequence = partial.next_sequence.saturating_add(1);
-        if envelope.final_chunk {
-            return Ok(self
-                .partial
-                .remove(&envelope.correlation_id)
-                .map(|message| message.bytes));
-        }
-        Ok(None)
-    }
-
-    pub fn expire(&mut self, now: Instant) {
-        self.partial
-            .retain(|_, message| now.saturating_duration_since(message.opened_at) <= self.timeout);
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RetryClass {
-    Never,
-    SafeBeforeAdmission,
-    SafeWithOperationKey,
-}
-
-pub fn classify_retry(error: &str, has_operation_key: bool) -> RetryClass {
-    if matches!(
-        error,
-        "queue_full" | "peer_unavailable" | "connection_reset"
-    ) {
-        RetryClass::SafeBeforeAdmission
-    } else if has_operation_key && matches!(error, "reply_timeout" | "owner_lost") {
-        RetryClass::SafeWithOperationKey
-    } else {
-        RetryClass::Never
-    }
-}
-
 /// Sliding-window retry budget. Original attempts earn a bounded percentage of
 /// retries, preventing recovery traffic from amplifying an outage.
 #[derive(Debug)]
@@ -434,23 +277,17 @@ pub struct RetryBudget {
 }
 
 impl RetryBudget {
-    pub fn new(
-        percent: u8,
-        minimum_retries: u32,
-        window: Duration,
-        now: Instant,
-    ) -> Result<Self, String> {
-        if percent > 100 || window.is_zero() {
-            return Err("retry_budget_limits_invalid".to_string());
-        }
-        Ok(Self {
+    /// A budget of `percent` (at most 100) of the originals in each
+    /// `window` (not zero), and at least `minimum_retries`.
+    pub fn new(percent: u8, minimum_retries: u32, window: Duration, now: Instant) -> Self {
+        Self {
             percent,
             minimum_retries,
             window,
             window_started: now,
             originals: 0,
             retries: 0,
-        })
+        }
     }
 
     pub fn record_original(&mut self, now: Instant) {
@@ -498,17 +335,16 @@ pub struct CircuitBreaker {
 }
 
 impl CircuitBreaker {
-    pub fn new(failure_threshold: u32, reset_after: Duration) -> Result<Self, String> {
-        if failure_threshold == 0 || reset_after.is_zero() {
-            return Err("circuit_breaker_limits_invalid".to_string());
-        }
-        Ok(Self {
+    /// A breaker that opens after `failure_threshold` (not zero) failures in
+    /// a row and lets a probe through `reset_after` (not zero) later.
+    pub fn new(failure_threshold: u32, reset_after: Duration) -> Self {
+        Self {
             failure_threshold,
             reset_after,
             failures: 0,
             opened_at: None,
             probe_inflight: false,
-        })
+        }
     }
 
     pub fn state(&self, now: Instant) -> CircuitState {
@@ -620,24 +456,106 @@ mod tests {
         );
     }
 
+    /// A peer's hello that is cut short, out of range or shares no version
+    /// with this node's is refused.
     #[test]
-    fn chunked_message_reassembles_with_bounds() {
-        let payload = vec![9; 4096];
-        let chunks = chunk_payload(MessageClass::Snapshot, 1, 8, &payload, 256).unwrap();
-        assert!(chunks.len() > 1);
-        let start = Instant::now();
-        let mut reassembler = ChunkReassembler::new(2, 8192, Duration::from_secs(1)).unwrap();
-        let mut result = None;
-        for chunk in chunks {
-            result = reassembler.push(chunk, start).unwrap().or(result);
+    fn hellos_out_of_range_are_refused() {
+        let current = ProtocolHello::current([1; 16]);
+        for (hello, reason) in [
+            (
+                ProtocolHello {
+                    minimum_version: 0,
+                    ..current.clone()
+                },
+                "protocol_version_range_invalid",
+            ),
+            (
+                ProtocolHello {
+                    max_frame_bytes: 1023,
+                    ..current.clone()
+                },
+                "protocol_frame_bound_invalid",
+            ),
+            (
+                ProtocolHello {
+                    identity_envelope: vec![0; MAX_IDENTITY_ENVELOPE_BYTES + 1],
+                    ..current.clone()
+                },
+                "protocol_identity_envelope_too_large",
+            ),
+        ] {
+            assert_eq!(hello.validate(), Err(reason.to_string()));
         }
-        assert_eq!(result, Some(payload));
+        let encoded = current.encode().unwrap();
+        assert_eq!(
+            ProtocolHello::decode(&encoded[..35]),
+            Err("protocol_hello_invalid".to_string())
+        );
+        let mut one_length_byte = encoded.clone();
+        one_length_byte.push(0);
+        assert_eq!(
+            ProtocolHello::decode(&one_length_byte),
+            Err("protocol_hello_invalid".to_string())
+        );
+        let newer = ProtocolHello {
+            minimum_version: PROTOCOL_V2 + 1,
+            maximum_version: PROTOCOL_V2 + 1,
+            ..current.clone()
+        };
+        assert_eq!(
+            negotiate_protocol(&current, &newer),
+            Err("protocol_no_common_version".to_string())
+        );
+    }
+
+    /// Every header field of an envelope is checked before its payload is
+    /// read: the frame bound, the payload length, the class and the
+    /// final-chunk flag.
+    #[test]
+    fn envelope_headers_out_of_range_are_refused() {
+        let envelope = ProtocolEnvelope {
+            class: MessageClass::Operator,
+            kind: 7,
+            correlation_id: 42,
+            chunk_sequence: 0,
+            final_chunk: true,
+            payload: b"payload".to_vec(),
+        };
+        let encoded = envelope.encode(1024).unwrap();
+        assert_eq!(
+            ProtocolEnvelope::decode(&encoded, 1024),
+            Ok(envelope.clone())
+        );
+        assert_eq!(
+            envelope.encode(ProtocolEnvelope::HEADER_BYTES as u32 + 6),
+            Err("protocol_frame_bound_exceeded".to_string())
+        );
+        assert_eq!(
+            ProtocolEnvelope::decode(&encoded, encoded.len() as u32 - 1),
+            Err("protocol_frame_bound_exceeded".to_string())
+        );
+        assert_eq!(
+            ProtocolEnvelope::decode(&encoded[..encoded.len() - 1], 1024),
+            Err("protocol_payload_length_invalid".to_string())
+        );
+        let mut unknown_class = encoded.clone();
+        unknown_class[4] = 9;
+        assert_eq!(
+            ProtocolEnvelope::decode(&unknown_class, 1024),
+            Err("protocol_message_class_invalid".to_string())
+        );
+        let mut bad_flag = encoded;
+        bad_flag[19] = 2;
+        assert_eq!(
+            ProtocolEnvelope::decode(&bad_flag, 1024),
+            Err("protocol_final_chunk_flag_invalid".to_string())
+        );
     }
 
     #[test]
     fn circuit_breaker_allows_one_probe_after_timeout() {
         let start = Instant::now();
-        let mut breaker = CircuitBreaker::new(2, Duration::from_secs(1)).unwrap();
+        let mut breaker = CircuitBreaker::new(2, Duration::from_secs(1));
         breaker.record_failure(start);
         breaker.record_failure(start);
         assert!(!breaker.allow(start));
@@ -650,7 +568,7 @@ mod tests {
     #[test]
     fn retry_budget_bounds_recovery_amplification() {
         let start = Instant::now();
-        let mut budget = RetryBudget::new(10, 1, Duration::from_secs(10), start).unwrap();
+        let mut budget = RetryBudget::new(10, 1, Duration::from_secs(10), start);
         for _ in 0..20 {
             budget.record_original(start);
         }
