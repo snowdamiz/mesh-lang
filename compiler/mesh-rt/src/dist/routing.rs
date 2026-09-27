@@ -768,15 +768,13 @@ fn select_owner_with_reservations(
     ))
 }
 
+/// The `required` replicas a record owned by `owner` gets besides it:
+/// ready members that are not draining, from other failure domains first.
 pub fn select_record_replicas(
     owner: &str,
-    total_replicas: usize,
+    required: usize,
     candidates: &[NodeLoadReport],
 ) -> Result<Vec<String>, String> {
-    if total_replicas == 0 {
-        return Err("invalid_total_replicas".to_string());
-    }
-    let required = total_replicas - 1;
     let owner_domain = candidates
         .iter()
         .find(|candidate| candidate.node_id == owner)
@@ -1034,7 +1032,7 @@ mod tests {
         ];
 
         assert_eq!(
-            select_record_replicas("owner", 3, &candidates).expect("replicas"),
+            select_record_replicas("owner", 2, &candidates).expect("replicas"),
             vec!["replica-a".to_string(), "replica-b".to_string()]
         );
     }
@@ -1065,7 +1063,7 @@ mod tests {
         for _ in 0..candidates.len() {
             for count in 0..=expected.len() {
                 assert_eq!(
-                    select_record_replicas("order-owner", count + 1, &candidates).unwrap(),
+                    select_record_replicas("order-owner", count, &candidates).unwrap(),
                     expected[..count]
                 );
             }
