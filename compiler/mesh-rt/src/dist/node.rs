@@ -12244,6 +12244,25 @@ mod tests {
         drop(connection);
         await_session_gone(target);
 
+        // With no session at all, the spawn connects first.
+        let accepted = node.accept();
+        let call = std::thread::spawn(move || call_node_spawn(target, 0));
+        let mut connection = accepted.join().unwrap().unwrap();
+        let request = connection.receive(DIST_SPAWN);
+        connection.send(frame(
+            DIST_SPAWN_REPLY,
+            &[&request[1..9], &[0], &22u64.to_le_bytes()],
+        ));
+        assert_ne!(call.join().unwrap(), 0);
+        drop(connection);
+        await_session_gone(target);
+        // The one retry the node's budget allows is spent: a dead session
+        // now fails the spawn.
+        let dead = TestPeer::new(target);
+        dead.session.shutdown.store(true, Ordering::SeqCst);
+        assert_eq!(call_node_spawn(target, 0), 0);
+        drop(dead);
+
         let gone = TestPeer::new("respawn-gone@127.0.0.1:1");
         gone.session.shutdown.store(true, Ordering::SeqCst);
         assert_eq!(call_node_spawn("respawn-gone@127.0.0.1:1", 0), 0);
