@@ -1621,10 +1621,22 @@ pub extern "C" fn mesh_process_monitor(
     let Some(me) = sched.get_process(my_pid) else {
         return 0;
     };
+    let message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    watch(sched, &me, my_pid, ProcessId(target_pid), message)
+}
+
+/// Have `message` queued for `me` (`my_pid`) when `target` ends, or at once
+/// when there is no such process, or no node to ask about one. Returns the
+/// monitor's reference.
+pub(crate) fn watch(
+    sched: &Scheduler,
+    me: &std::sync::Arc<parking_lot::Mutex<Process>>,
+    my_pid: ProcessId,
+    target: ProcessId,
+    mut message: MessageBuffer,
+) -> u64 {
     let monitor_ref = link::next_monitor_ref();
-    let target = ProcessId(target_pid);
-    let mut message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
-    message.addressed_to(&me);
+    message.addressed_to(me);
     // Recorded first: the target may end as soon as it knows of the monitor.
     me.lock()
         .monitors
@@ -1667,12 +1679,17 @@ pub extern "C" fn mesh_process_demonitor(monitor_ref: u64) -> u64 {
     let Some(my_pid) = stack::get_current_pid() else {
         return 1;
     };
-    let sched = global_scheduler();
+    u64::from(!unwatch(global_scheduler(), my_pid, monitor_ref))
+}
+
+/// Remove `my_pid`'s monitor `monitor_ref`, so its message is never sent:
+/// false when there is none, as once it has fired and queued its message.
+pub(crate) fn unwatch(sched: &Scheduler, my_pid: ProcessId, monitor_ref: u64) -> bool {
     let Some(monitor) = sched
         .get_process(my_pid)
         .and_then(|me| me.lock().monitors.remove(&monitor_ref))
     else {
-        return 1;
+        return false;
     };
     if monitor.target.is_local() {
         if let Some(target_arc) = sched.get_process(monitor.target) {
@@ -1686,7 +1703,7 @@ pub extern "C" fn mesh_process_demonitor(monitor_ref: u64) -> u64 {
             monitor_ref,
         );
     }
-    0
+    true
 }
 
 /// Monitor a node: when it disconnects, the calling actor is sent `msg`
