@@ -753,121 +753,59 @@ pub extern "C-unwind" fn mesh_actor_stop() -> ! {
 }
 
 /// Receive the first mailbox message matching `predicate`, leaving all other
-/// messages queued in their original order.
+/// messages queued in their original order. Null when none comes before the
+/// deadline, and, in an actor, when the program is ending and no other
+/// actor is left running to send one.
 pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const u8
 where
     F: Fn(&Message) -> bool,
 {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return std::ptr::null(),
-    };
-
     let sched = global_scheduler();
-
-    // Try to pop a message.
-    if let Some(proc_arc) = sched.get_process(my_pid) {
-        let proc = proc_arc.lock();
+    let (my_pid, me) = running_process();
+    let deadline = (timeout_ms > 0)
+        .then(|| std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64));
+    // `main` is not a coroutine: it polls its mailbox instead of yielding.
+    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
+    if let Some(deadline) = deadline.filter(|_| in_coroutine) {
+        wake_at(my_pid, deadline);
+    }
+    let mut wait = MainThreadWait::new();
+    loop {
+        let ending = in_coroutine && sched.is_shutdown() && !others_running(sched, my_pid);
+        let mut proc = me.lock();
         if let Some(msg) = proc.mailbox.remove_first(&predicate) {
-            // Deep-copy message data into the current actor's heap.
             drop(proc);
             return copy_msg_to_actor_heap(sched, my_pid, msg);
         }
-    }
-
-    // Non-blocking mode: return null immediately.
-    if timeout_ms == 0 {
-        return std::ptr::null();
-    }
-
-    // Check if we're in a coroutine context.
-    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
-
-    if !in_coroutine {
-        // Main thread path: spin-wait on the mailbox.
-        let deadline = if timeout_ms > 0 {
-            Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
+        let expired = deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline);
+        if timeout_ms == 0 || expired || ending {
+            proc.set_live_state(ProcessState::Ready);
+            return std::ptr::null();
+        }
+        if in_coroutine {
+            // Published under the lock senders take: a message sent from
+            // here on finds the actor Waiting and wakes it, as the deadline
+            // does.
+            proc.set_live_state(ProcessState::Waiting);
+            drop(proc);
+            stack::yield_current();
         } else {
-            None
-        };
-        let mut wait = MainThreadWait::new();
-        loop {
-            if let Some(proc_arc) = sched.get_process(my_pid) {
-                let proc = proc_arc.lock();
-                if let Some(msg) = proc.mailbox.remove_first(&predicate) {
-                    drop(proc);
-                    return copy_msg_to_actor_heap(sched, my_pid, msg);
-                }
-            }
-            if let Some(deadline) = deadline {
-                if std::time::Instant::now() >= deadline {
-                    return std::ptr::null();
-                }
-            }
+            drop(proc);
             wait.pause();
         }
     }
+}
 
-    // Coroutine path: blocking mode with yield.
-    let deadline = if timeout_ms > 0 {
-        Some(std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64))
-    } else {
-        None // infinite wait
-    };
-    if let Some(deadline) = deadline {
-        wake_at(my_pid, deadline);
-    }
-
-    loop {
-        // A sender may have queued a message since the previous probe. Check
-        // and publish Waiting under the same lock used by senders.
-        if let Some(proc_arc) = sched.get_process(my_pid) {
-            let mut proc = proc_arc.lock();
-            if let Some(msg) = proc.mailbox.remove_first(&predicate) {
-                drop(proc);
-                return copy_msg_to_actor_heap(sched, my_pid, msg);
-            }
-            if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                proc.set_live_state(ProcessState::Ready);
-                return std::ptr::null();
-            }
-            proc.set_live_state(ProcessState::Waiting);
-        }
-
-        // Yield to scheduler -- we will be resumed when a message arrives
-        // or the receive deadline fires.
-        stack::yield_current();
-
-        // Deliver queued replies before considering scheduler shutdown.
-        if let Some(proc_arc) = sched.get_process(my_pid) {
-            let proc = proc_arc.lock();
-            if let Some(msg) = proc.mailbox.remove_first(&predicate) {
-                drop(proc);
-                return copy_msg_to_actor_heap(sched, my_pid, msg);
-            }
-        }
-
-        // Check if the scheduler is shutting down. If so, check if there
-        // are other non-waiting actors. If this is the only remaining actor
-        // (e.g., a service loop with no more callers), return null to
-        // allow the actor's loop to complete.
-        if sched.is_shutdown() {
-            // Count non-waiting, non-exited processes.
-            let has_others = sched.process_table().read().iter().any(|(pid, p)| {
-                *pid != my_pid
-                    && !matches!(
-                        p.lock().state,
-                        ProcessState::Waiting | ProcessState::Exited(_)
-                    )
-            });
-            if !has_others {
-                if let Some(proc_arc) = sched.get_process(my_pid) {
-                    proc_arc.lock().set_live_state(ProcessState::Ready);
-                }
-                return std::ptr::null();
-            }
-        }
-    }
+/// Whether a process other than `me` is neither waiting nor gone: one that
+/// could still send `me` a message.
+fn others_running(sched: &Scheduler, me: ProcessId) -> bool {
+    sched.process_table().read().iter().any(|(pid, process)| {
+        *pid != me
+            && !matches!(
+                process.lock().state,
+                ProcessState::Waiting | ProcessState::Exited(_)
+            )
+    })
 }
 
 // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
@@ -2488,13 +2426,35 @@ mod tests {
     }
 
     #[test]
-    fn test_receive_returns_null_outside_actor() {
-        // mesh_actor_receive requires a current PID. Without one, returns null.
-        // Note: we can't easily test this through the extern "C" fn because
-        // it requires GLOBAL_SCHEDULER. Test the logic instead.
-        assert!(stack::get_current_pid().is_none());
-        // If we called mesh_actor_receive here, it would return null because
-        // there's no current PID set.
+    #[should_panic(expected = "compiled code runs in a process")]
+    fn a_receive_outside_any_process_is_a_bug_in_its_caller() {
+        mesh_rt_init_actor(1);
+        stack::clear_current_pid();
+        mesh_actor_receive(0);
+    }
+
+    /// `main` polls its mailbox: for a message already there, one that comes
+    /// while it waits, none by a deadline, and none for a receive that does
+    /// not wait at all.
+    #[test]
+    fn main_thread_receive_polls_its_mailbox() {
+        mesh_rt_init_actor(1);
+        let me = global_scheduler().create_main_process();
+        let send = move |word: u64| local_send(me.as_u64(), word.to_le_bytes().as_ptr(), 8);
+        let word = |message: *const u8| unsafe { (message.add(16) as *const u64).read() };
+        stack::set_current_pid(me);
+        send(7);
+        let queued = word(mesh_actor_receive(0));
+        let empty = mesh_actor_receive(0).is_null();
+        let timed_out = mesh_actor_receive(5).is_null();
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            send(9);
+        });
+        let waited = word(mesh_actor_receive(-1));
+        sender.join().unwrap();
+        stack::clear_current_pid();
+        assert_eq!((queued, empty, timed_out, waited), (7, true, true, 9));
     }
 
     #[test]
