@@ -5745,6 +5745,8 @@ fn infer_multi_clause_fn(
         type_registry,
         trait_registry,
     );
+    // Each clause joined its body's type in.
+    let mut result_ty = result_ty.expect("a function has a clause");
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }
@@ -5774,9 +5776,7 @@ fn infer_multi_clause_fn(
 
     // ── Step 5: Build function type and register ───────────────────────
 
-    let ret_ty = return_type_annotation
-        .or(result_ty)
-        .unwrap_or_else(|| Ty::Tuple(vec![]));
+    let ret_ty = return_type_annotation.unwrap_or(result_ty);
     let fn_ty = Ty::Fun(param_types, Box::new(ret_ty));
 
     ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
@@ -12131,24 +12131,21 @@ fn join_returns(
     body_ty: Ty,
     returns: Vec<EarlyReturn>,
 ) -> Result<Ty, TypeError> {
-    let mut joined = Some(body_ty);
+    let mut joined = body_ty;
     for early in returns {
         join_early_return(ctx, &mut joined, early)?;
     }
-    Ok(joined.unwrap())
+    Ok(joined)
 }
 
 /// Join an early return with the other results of its function, reporting
 /// a conflict where the return is.
 fn join_early_return(
     ctx: &mut InferCtx,
-    joined: &mut Option<Ty>,
+    joined: &mut Ty,
     early: EarlyReturn,
 ) -> Result<(), TypeError> {
-    let Some(prev) = joined.clone() else {
-        *joined = Some(early.ty);
-        return Ok(());
-    };
+    let prev = joined.clone();
     let errors = ctx.errors.len();
     let origin = ConstraintOrigin::Expr { span: early.span };
     match (
@@ -12157,7 +12154,7 @@ fn join_early_return(
     ) {
         (Ok(()), _) => {
             if matches!(ctx.resolve(prev), Ty::Never) {
-                *joined = Some(early.ty);
+                *joined = early.ty;
             }
             Ok(())
         }
