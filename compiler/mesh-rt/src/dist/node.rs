@@ -698,6 +698,17 @@ struct RemoteSessionEndpoint {
     direction: SessionDirection,
 }
 
+/// Named for tests that unwrap a registration.
+#[cfg(test)]
+impl std::fmt::Debug for NodeSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NodeSession")
+            .field("remote_name", &self.remote_name)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Represents a connection to a remote node.
 ///
 /// Holds the authenticated TLS stream, identity info, and shutdown flag.
@@ -4557,6 +4568,10 @@ fn preferred_session_direction(local_name: &str, remote_name: &str) -> SessionDi
 /// same underlying transport. If both sides connect simultaneously, the node
 /// whose name sorts earlier keeps the outgoing side while the later-sorting
 /// node keeps the incoming side.
+/// Registers a session to `remote_name` over `stream`, replacing a shut
+/// down one, or one the two nodes do not both keep (see
+/// `preferred_session_direction`). Otherwise the live session already
+/// registered stays, and is the error.
 fn register_session(
     state: &NodeState,
     remote_name: String,
@@ -4565,7 +4580,7 @@ fn register_session(
     stream: NodeStream,
     negotiated_protocol: NegotiatedProtocol,
     remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
-) -> Result<Arc<NodeSession>, String> {
+) -> Result<Arc<NodeSession>, Arc<NodeSession>> {
     let direction = SessionDirection::from_stream(&stream);
     let preferred_direction = preferred_session_direction(&state.name, &remote_name);
     let session = Arc::new(NodeSession::new(
@@ -4590,7 +4605,7 @@ fn register_session(
                     || (existing.direction != preferred_direction
                         && direction == preferred_direction);
                 if !replace_existing {
-                    return Err(format!("already_connected:{}", remote_name));
+                    return Err(existing);
                 }
                 let replaced = sessions
                     .remove(&remote_name)
@@ -6055,13 +6070,8 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
             crate::dist::global::send_global_sync(&session);
             crate::dist::continuity::spawn_continuity_sync(&session);
         }
-        Err(error) if error == format!("already_connected:{remote_name}") => {}
-        Err(error) => {
-            eprintln!(
-                "mesh node: session registration failed for {}: {}",
-                remote_name, error
-            );
-        }
+        // The node's session already registered serves.
+        Err(_kept) => {}
     }
 }
 
@@ -6356,19 +6366,8 @@ fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSes
             crate::dist::continuity::spawn_continuity_sync(&session);
             Ok(session)
         }
-        Err(error) if error == format!("already_connected:{}", remote_name) => {
-            let sessions = state.sessions.read();
-            sessions.get(&remote_name).cloned().ok_or_else(|| {
-                format!(
-                    "session registration raced but no live session remained for {}",
-                    remote_name
-                )
-            })
-        }
-        Err(error) => Err(format!(
-            "session registration failed for {}: {}",
-            remote_name, error
-        )),
+        // The node's session already registered serves.
+        Err(kept) => Ok(kept),
     }
 }
 
@@ -11838,7 +11837,7 @@ mod tests {
     fn register_test_session(
         name: &str,
         direction: SessionDirection,
-    ) -> Result<Arc<NodeSession>, String> {
+    ) -> Result<Arc<NodeSession>, Arc<NodeSession>> {
         let state = test_node();
         let (client, server) = tls_pair();
         let stream = match direction {
@@ -11874,10 +11873,10 @@ mod tests {
         let outgoing = register_test_session(later, SessionDirection::Outgoing).unwrap();
         assert!(incoming.shutdown.load(Ordering::SeqCst), "replaced");
         assert!(!state.node_id_map.read().contains_key(&incoming.node_id));
-        assert_eq!(
-            register_test_session(later, SessionDirection::Incoming).err(),
-            Some(format!("already_connected:{later}"))
-        );
+        assert!(Arc::ptr_eq(
+            &register_test_session(later, SessionDirection::Incoming).unwrap_err(),
+            &outgoing
+        ));
         cleanup_session_if_current(&incoming);
         assert!(
             state.sessions.read().contains_key(later),
