@@ -14,7 +14,7 @@ use crate::collections::list::{
 };
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
-use crate::string::{mesh_str, mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
 
 const BASE58: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -535,30 +535,28 @@ pub extern "C" fn mesh_bytes_to_utf8(bytes: *const MeshBytes) -> *mut MeshResult
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_to_base64(bytes: *const MeshBytes) -> *mut MeshString {
-    unsafe {
-        let encoded = general_purpose::STANDARD.encode((*bytes).as_slice());
-        mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-    }
+    mesh_str(&general_purpose::STANDARD.encode(unsafe { (*bytes).as_slice() }))
+}
+
+/// The bytes of standard base64 text, with or without its padding.
+pub(crate) fn decode_base64(text: &str) -> Option<Vec<u8>> {
+    general_purpose::STANDARD
+        .decode(text)
+        .or_else(|_| general_purpose::STANDARD_NO_PAD.decode(text))
+        .ok()
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_from_base64(text: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let decoded = general_purpose::STANDARD
-            .decode((*text).as_str())
-            .or_else(|_| general_purpose::STANDARD_NO_PAD.decode((*text).as_str()));
-        decoded
-            .map(|bytes| ok_bytes(&bytes))
-            .unwrap_or_else(|_| err_result("invalid base64"))
+    match decode_base64(unsafe { (*text).as_str() }) {
+        Some(decoded) => ok_bytes(&decoded),
+        None => err_result("invalid base64"),
     }
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_to_base58(bytes: *const MeshBytes) -> *mut MeshString {
-    unsafe {
-        let encoded = base58_encode((*bytes).as_slice());
-        mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-    }
+    mesh_str(&base58_encode(unsafe { (*bytes).as_slice() }))
 }
 
 #[no_mangle]
@@ -570,18 +568,20 @@ pub extern "C" fn mesh_bytes_from_base58(text: *const MeshString) -> *mut MeshRe
     }
 }
 
+/// Lowercase hex text of `bytes`.
+pub(crate) fn hex_string(bytes: &[u8]) -> *mut MeshString {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    mesh_str(&encoded)
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_bytes_to_hex(bytes: *const MeshBytes) -> *mut MeshString {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    unsafe {
-        let bytes = (*bytes).as_slice();
-        let mut encoded = Vec::with_capacity(bytes.len() * 2);
-        for byte in bytes {
-            encoded.push(HEX[(byte >> 4) as usize]);
-            encoded.push(HEX[(byte & 0x0f) as usize]);
-        }
-        mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-    }
+    hex_string(unsafe { (*bytes).as_slice() })
 }
 
 /// The bytes that pairs of hex digits of either case spell, or `None` for any
