@@ -36,6 +36,8 @@ fn run() -> Int!String do
   show("add_again", Migration.add_column(pool, "people", "email:TEXT:UNIQUE"))
   show("add_plain", Migration.add_column(pool, "people", "nickname:TEXT"))
   show("add_untyped", Migration.add_column(pool, "people", "untyped"))
+  show("add_sql", Migration.add_column(pool, "people", "score INT DEFAULT 0"))
+  show("add_sql_again", Migration.add_column(pool, "people", "score INT DEFAULT 0"))
   show("rename", Migration.rename_column(pool, "people", "nickname", "alias"))
   show("rename_missing", Migration.rename_column(pool, "people", "nickname", "alias"))
   show("drop_column", Migration.drop_column(pool, "people", "alias"))
