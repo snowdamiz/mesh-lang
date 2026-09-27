@@ -8,7 +8,6 @@ use std::ptr;
 use base64::{engine::general_purpose, Engine as _};
 use subtle::ConstantTimeEq;
 
-use crate::actor::heap::GC_HEADER_SIZE;
 use crate::collections::list::{
     mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
 };
@@ -137,43 +136,35 @@ fn allocate_builder(maximum: usize) -> *mut MeshBytesBuilder {
     }
 }
 
+/// Run `operation` on the builder at `pointer`, which must be a live,
+/// unfinished builder allocation of the calling actor's heap. The heap finds
+/// the allocation by address before anything is read through the pointer.
 fn with_live_builder<R>(
     pointer: *mut MeshBytesBuilder,
     operation: impl FnOnce(&mut MeshBytesBuilder) -> Result<R, BuilderError>,
 ) -> Result<R, BuilderError> {
-    if pointer.is_null() {
-        return Err(BuilderError::Invalid);
-    }
     let process = crate::actor::current_process().ok_or(BuilderError::Invalid)?;
     let process = process.lock();
-    let mut current = process.heap.all_objects_head();
-    while !current.is_null() {
-        let header = unsafe { &*current };
-        let next = header.next;
-        let data_pointer = unsafe { (current as *const u8).add(GC_HEADER_SIZE) };
-        if !header.is_free()
-            && data_pointer == pointer.cast::<u8>()
-            && header.size as usize >= MeshBytesBuilder::HEADER_SIZE
-        {
-            let builder = unsafe { &mut *pointer };
-            let maximum = usize::try_from(builder.maximum).map_err(|_| BuilderError::Invalid)?;
-            let length = usize::try_from(builder.len).map_err(|_| BuilderError::Invalid)?;
-            let allocation_size = MeshBytesBuilder::HEADER_SIZE
-                .checked_add(maximum)
-                .ok_or(BuilderError::Invalid)?;
-            if builder.magic != BYTES_BUILDER_MAGIC
-                || maximum > MAX_BYTES_BUILDER_BYTES
-                || length > maximum
-                || allocation_size > header.size as usize
-                || builder.finished != 0
-            {
-                return Err(BuilderError::Invalid);
-            }
-            return operation(builder);
-        }
-        current = next;
+    let allocation_size = process
+        .heap
+        .live_allocation_size(pointer.cast())
+        .filter(|size| *size >= MeshBytesBuilder::HEADER_SIZE)
+        .ok_or(BuilderError::Invalid)?;
+    let builder = unsafe { &mut *pointer };
+    let maximum = usize::try_from(builder.maximum).map_err(|_| BuilderError::Invalid)?;
+    let length = usize::try_from(builder.len).map_err(|_| BuilderError::Invalid)?;
+    let needed = MeshBytesBuilder::HEADER_SIZE
+        .checked_add(maximum)
+        .ok_or(BuilderError::Invalid)?;
+    if builder.magic != BYTES_BUILDER_MAGIC
+        || maximum > MAX_BYTES_BUILDER_BYTES
+        || length > maximum
+        || needed > allocation_size
+        || builder.finished != 0
+    {
+        return Err(BuilderError::Invalid);
     }
-    Err(BuilderError::Invalid)
+    operation(builder)
 }
 
 unsafe fn append_builder(builder: &mut MeshBytesBuilder, input: &[u8]) -> Result<(), BuilderError> {
@@ -947,6 +938,32 @@ mod tests {
         assert_eq!(accepted_bytes(mesh_bytes_write_u64_be(large))[3], 1);
         let written = mesh_bytes_write_uint_le(mesh_str("258"), 2);
         assert_eq!(accepted_bytes(written), [2, 1]);
+    }
+
+    /// A builder is looked up by its address: a write does not read every
+    /// object of the actor's heap, however many the actor holds.
+    #[test]
+    fn builder_writes_do_not_walk_the_actor_heap() {
+        mesh_rt_init();
+        let elapsed = crate::secret::as_test_actor(|_| {
+            let builder = accepted(mesh_bytes_builder_new(MAX_BYTES_BUILDER_BYTES as i64));
+            let process = crate::actor::current_process().expect("test actor");
+            for _ in 0..200_000 {
+                process.lock().heap.alloc(8, 8);
+            }
+            let start = Instant::now();
+            for _ in 0..10_000 {
+                accepted(mesh_bytes_builder_write_u8(builder, 7));
+            }
+            start.elapsed()
+        });
+        // Two billion header reads take the better part of a minute; ten
+        // thousand lookups take milliseconds, even on a loaded host.
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "a builder write took {:?}",
+            elapsed / 10_000
+        );
     }
 
     /// A builder takes writes up to its limit, finishes once, and refuses

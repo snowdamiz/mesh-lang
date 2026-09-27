@@ -1,6 +1,6 @@
 //! Actor-owned storage for opaque secret byte resources.
 
-use crate::actor::heap::{GcHeader, GC_HEADER_SIZE};
+use crate::actor::heap::GcHeader;
 use crate::actor::{Process, ProcessId, ProcessState};
 use crate::bytes::MeshBytes;
 use crate::crypto::provider::{CryptoProvider, SystemProvider};
@@ -417,34 +417,20 @@ fn allocate_handle(process: &mut Process, handle: ResourceHandle) -> *mut MeshSe
 }
 
 /// Resolve only an exact live allocation in the supplied actor heap before
-/// dereferencing the untrusted ABI pointer.
+/// dereferencing the untrusted ABI pointer. The heap finds it by address.
 fn validate_handle_pointer(
     process: &Process,
     pointer: *const MeshSecretHandle,
 ) -> Option<ResourceHandle> {
-    if pointer.is_null() {
-        return None;
-    }
-
-    let mut current = process.heap.all_objects_head();
-    while !current.is_null() {
-        let header = unsafe { &*current };
-        let next = header.next;
-        let data_pointer = unsafe { (current as *const u8).add(GC_HEADER_SIZE) };
-        let is_exact_handle = !header.is_free()
-            && header.size as usize == mem::size_of::<MeshSecretHandle>()
-            && data_pointer == pointer.cast::<u8>();
-        if is_exact_handle {
-            let handle = unsafe { &*pointer };
-            return Some(ResourceHandle {
-                slot: handle.slot,
-                generation: handle.generation,
-                kind: handle.kind,
-            });
+    let size = process.heap.live_allocation_size(pointer.cast())?;
+    (size == mem::size_of::<MeshSecretHandle>()).then(|| {
+        let handle = unsafe { &*pointer };
+        ResourceHandle {
+            slot: handle.slot,
+            generation: handle.generation,
+            kind: handle.kind,
         }
-        current = next;
-    }
-    None
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -2419,6 +2405,34 @@ mod tests {
             as *mut MeshSecretHandle;
         unsafe { wrong_size.write(MeshSecretHandle::from(handle)) };
         assert!(validate_handle_pointer(&process, wrong_size).is_none());
+    }
+
+    /// A handle is looked up by its address: validating it does not read
+    /// every object of the actor's heap, however many the actor holds.
+    #[test]
+    fn handle_validation_does_not_walk_the_actor_heap() {
+        let mut process = Process::new(ProcessId(113), Priority::Normal);
+        let handle = ResourceHandle {
+            slot: 1,
+            generation: 1,
+            kind: ResourceKind::SecretBytes as u32,
+        };
+        let pointer = allocate_handle(&mut process, handle);
+        for _ in 0..200_000 {
+            process.heap.alloc(8, 8);
+        }
+
+        let start = std::time::Instant::now();
+        for _ in 0..10_000 {
+            assert_eq!(validate_handle_pointer(&process, pointer), Some(handle));
+        }
+        // Two billion header reads take the better part of a minute; ten
+        // thousand lookups take milliseconds, even on a loaded host.
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "validating a handle took {:?} per call",
+            start.elapsed() / 10_000
+        );
     }
 
     #[test]
