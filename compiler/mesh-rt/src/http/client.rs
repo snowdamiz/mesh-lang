@@ -867,13 +867,14 @@ fn is_stop(result: *mut u8) -> bool {
 }
 
 fn call_stream_callback(callback_fn: usize, callback_env: usize, data: *mut u8) -> bool {
+    // Compiled Mesh functions use the C calling convention.
+    type BareFn = unsafe extern "C-unwind" fn(*mut u8) -> *mut u8;
+    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, *mut u8) -> *mut u8;
     let result = unsafe {
         if callback_env == 0 {
-            let callback: fn(*mut u8) -> *mut u8 = std::mem::transmute(callback_fn);
-            callback(data)
+            std::mem::transmute::<usize, BareFn>(callback_fn)(data)
         } else {
-            let callback: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(callback_fn);
-            callback(callback_env as *mut u8, data)
+            std::mem::transmute::<usize, ClosureFn>(callback_fn)(callback_env as *mut u8, data)
         }
     };
     is_stop(result)

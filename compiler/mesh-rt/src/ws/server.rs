@@ -752,11 +752,11 @@ fn call_on_connect(
 
         // Call the closure: if env is null, bare function; if non-null, closure
         let result = if handler.on_connect_env.is_null() {
-            let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_connect_fn);
             f(conn_ptr, path_mesh, headers_map)
         } else {
-            let f: fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_connect_fn);
             f(handler.on_connect_env, conn_ptr, path_mesh, headers_map)
         };
@@ -785,10 +785,11 @@ fn call_on_message(
         let msg_mesh = crate::string::mesh_string_new(data_ptr, data_len as u64) as *mut u8;
 
         if handler.on_message_env.is_null() {
-            let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(handler.on_message_fn);
+            let f: extern "C-unwind" fn(*mut u8, *mut u8) -> *mut u8 =
+                std::mem::transmute(handler.on_message_fn);
             f(conn_ptr, msg_mesh);
         } else {
-            let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_message_fn);
             f(handler.on_message_env, conn_ptr, msg_mesh);
         }
@@ -809,10 +810,11 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
             crate::string::mesh_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8;
 
         if handler.on_close_env.is_null() {
-            let f: fn(*mut u8, i64, *mut u8) -> *mut u8 = std::mem::transmute(handler.on_close_fn);
+            let f: extern "C-unwind" fn(*mut u8, i64, *mut u8) -> *mut u8 =
+                std::mem::transmute(handler.on_close_fn);
             f(conn_ptr, code_i64, reason_mesh);
         } else {
-            let f: fn(*mut u8, *mut u8, i64, *mut u8) -> *mut u8 =
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, i64, *mut u8) -> *mut u8 =
                 std::mem::transmute(handler.on_close_fn);
             f(handler.on_close_env, conn_ptr, code_i64, reason_mesh);
         }

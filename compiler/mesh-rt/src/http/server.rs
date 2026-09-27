@@ -1467,10 +1467,10 @@ fn build_mesh_closure(fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
 fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 {
     unsafe {
         if env_ptr.is_null() {
-            let f: fn(*mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            let f: extern "C-unwind" fn(*mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
             f(request)
         } else {
-            let f: fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            let f: extern "C-unwind" fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
             f(env_ptr, request)
         }
     }
@@ -1498,10 +1498,12 @@ fn call_middleware(
         let next_env_ptr = *(next_closure as *const *mut u8).add(1);
 
         if env_ptr.is_null() {
-            let f: fn(*mut u8, *mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
+                std::mem::transmute(fn_ptr);
             f(request, next_fn_ptr, next_env_ptr)
         } else {
-            let f: fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
+            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
+                std::mem::transmute(fn_ptr);
             f(env_ptr, request, next_fn_ptr, next_env_ptr)
         }
     }
