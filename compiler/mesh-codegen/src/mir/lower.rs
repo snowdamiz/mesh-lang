@@ -581,8 +581,7 @@ fn mir_type_to_sql_type(ty: &MirType) -> &'static str {
         MirType::Int => "BIGINT",
         MirType::Float => "DOUBLE PRECISION",
         MirType::Bool => "BOOLEAN",
-        MirType::String => "TEXT",
-        _ => "TEXT", // Default fallback for Ptr and other types
+        _ => "TEXT",
     }
 }
 
@@ -13002,7 +13001,6 @@ impl<'a> Lowerer<'a> {
         // Runtime layout: { u64 len, u64[len] elements }
         // Allocate via mesh_gc_alloc_actor, store length + elements, return pointer.
         let n = elements.len();
-        let _total_size = 8 + n * 8; // u64 len + n * u64 elements
 
         // Generate a synthetic __mesh_make_tuple(elem0, elem1, ...) call.
         // Codegen expands this inline: gc_alloc + store length + store elements.
