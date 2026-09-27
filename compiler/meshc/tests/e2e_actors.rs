@@ -417,8 +417,9 @@ end
 
 /// What a node that nobody else joins can do with the distribution
 /// primitives, as the documentation describes: start once, fail to reach
-/// an absent peer, keep a global registry, and report a remote spawn that
-/// cannot happen with PID 0.
+/// an absent peer, keep a global registry, report a remote spawn that
+/// cannot happen with PID 0, and monitor a node: not before this one has
+/// started, and one it is not connected to at once.
 #[test]
 fn node_primitives_on_a_lone_node() {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
@@ -430,6 +431,16 @@ fn node_primitives_on_a_lone_node() {
   receive do
     msg -> println("#{prefix}: #{msg}")
   end
+end
+
+actor node_watcher(label :: String) do
+  let status = Node.monitor("absent@127.0.0.1:1", "#{label}: absent node gone")
+  println("#{label}_monitor=#{status}")
+  let heard = receive do
+    text -> text
+  after 200 -> "#{label}: nothing"
+  end
+  println(heard)
 end
 
 actor coordinator(absent :: String) do
@@ -450,9 +461,15 @@ end
 
 fn main() do
   println("self_before=[#{Node.self()}]")
+  let early = spawn(node_watcher, "early")
+  Process.register("early", early)
+  await_gone("early")
   let name = "lone@127.0.0.1:PORT"
   let cookie = "a-development-cookie-0123456789"
   println("start=#{Node.start(name, cookie)}")
+  let late = spawn(node_watcher, "late")
+  Process.register("late", late)
+  await_gone("late")
   println("start_again=#{Node.start(name, cookie)}")
   println("self_is_name=#{Node.self() == name}")
   println("connect=#{Node.connect("absent@127.0.0.1:1")}")
@@ -474,7 +491,11 @@ end
     let output = compile_and_run_with_timeout(&source, 60);
     for expected in [
         "self_before=[]",
+        "early_monitor=1",
+        "early: nothing",
         "start=0",
+        "late_monitor=0",
+        "late: absent node gone",
         "start_again=-1",
         "self_is_name=true",
         "connect=-2",

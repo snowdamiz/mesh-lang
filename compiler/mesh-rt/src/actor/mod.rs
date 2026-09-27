@@ -718,10 +718,8 @@ pub(crate) fn deliver_remote(
 /// Queue `payload` on a peer session: 0 once queued, 5 when the session
 /// cannot take it.
 fn send_application_frame(session: &crate::dist::node::NodeSession, payload: Vec<u8>) -> i64 {
-    match session.send(crate::dist::node::OutboundClass::Application, payload) {
-        Ok(()) => 0,
-        Err(_) => 5,
-    }
+    let class = crate::dist::node::OutboundClass::Application;
+    session.send(class, payload).map_or(5, |()| 0)
 }
 
 /// Receive a message from the current actor's mailbox.
@@ -2660,7 +2658,8 @@ mod tests {
     }
 
     /// `trap_exit` makes an exit signal a message, whatever its reason but
-    /// a kill, which ends the process; a process that has ended takes none.
+    /// a kill, which ends the process; a process that has ended, or never
+    /// was, takes none.
     #[test]
     fn exit_signals_reach_a_trapping_process_as_messages() {
         let reasons = as_process(|me| {
@@ -2676,6 +2675,7 @@ mod tests {
             }
             mesh_actor_exit(me.as_u64(), 2);
             mesh_actor_exit(me.as_u64(), 1);
+            mesh_actor_exit(u64::MAX >> 24, 1);
             let state = process.lock().state.clone();
             let queued = process.lock().mailbox.len();
             (reasons, state, queued)

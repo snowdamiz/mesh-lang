@@ -272,7 +272,7 @@ This means you do not need to manually unregister names in crash or disconnect s
 
 ## Node Monitoring
 
-`Node.monitor(name, message)` sends the calling actor `message`, one of its own messages, once, when the node `name` disconnects; at once when it is not connected. It returns `0` on success and `1` before node startup or for a name that is not valid text. Like `Process.monitor`, it is only available inside an actor.
+`Node.monitor(name, message)` sends the calling actor `message`, one of its own messages, once, when the node `name` disconnects; at once when it is not connected. It returns `0` on success and `1` before node startup. Like `Process.monitor`, it is only available inside an actor.
 
 `Process.monitor(pid, message)` watches a process on another node as it does a local one: the message comes when the process ends, or when its node disconnects.
 
