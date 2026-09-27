@@ -4,6 +4,9 @@ use crate::actor::heap::{GcHeader, GC_HEADER_SIZE};
 use crate::actor::{Process, ProcessId, ProcessState};
 use crate::bytes::MeshBytes;
 use crate::crypto::provider::{CryptoProvider, SystemProvider};
+use crate::crypto::{
+    crypto_result, error_result, failure, provider_failure, resource_failure, CryptoFailure,
+};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use parking_lot::Mutex;
@@ -78,6 +81,7 @@ pub extern "C" fn mesh_secret_random(length: i64) -> *mut MeshResult {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
     };
 
+    // The actor is unlocked before its result is allocated.
     let result = {
         let mut process = process.lock();
         let handle = {
@@ -86,16 +90,7 @@ pub extern "C" fn mesh_secret_random(length: i64) -> *mut MeshResult {
         };
         handle.map(|handle| allocate_handle(&mut process, handle))
     };
-    match result {
-        Ok(handle) => alloc_result(0, handle.cast()),
-        Err(CreateSecretError::EntropyUnavailable) => {
-            crypto_error(CryptoErrorTag::EntropyUnavailable, 0, 0)
-        }
-        Err(CreateSecretError::ResourceLimitExceeded) => {
-            crypto_error(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
-        }
-        Err(CreateSecretError::OwnerExited) => crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0),
-    }
+    crypto_result(result)
 }
 
 /// Concatenate two actor-owned secrets without exposing either as ordinary bytes.
@@ -108,62 +103,42 @@ pub extern "C" fn mesh_secret_concat(
     let Some(process) = crate::actor::current_process() else {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
     };
-    let mut process = process.lock();
-    if matches!(process.state, ProcessState::Exited(_)) {
-        drop(process);
-        return crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0);
-    }
-    let (Some(first_handle), Some(second_handle)) = (
-        validate_handle_pointer(&process, first),
-        validate_handle_pointer(&process, second),
-    ) else {
-        destroy_resource_for_process(&process, first, Some(ResourceKind::SecretBytes));
-        destroy_resource_for_process(&process, second, Some(ResourceKind::SecretBytes));
-        drop(process);
-        return crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0);
+    // The actor is unlocked before its result is allocated.
+    let result = {
+        let mut process = process.lock();
+        concat_for_process(&mut process, first, second)
     };
+    crypto_result(result)
+}
 
-    let result =
-        match secret_table()
-            .lock()
-            .concat_secrets(process.pid, first_handle, second_handle)
-        {
-            Ok(handle) => Ok(allocate_handle(&mut process, handle)),
-            Err(error) => Err(error),
-        };
-    drop(process);
-
-    match result {
-        Ok(handle) => alloc_result(0, handle.cast()),
-        Err(ConcatSecretError::InvalidLength { maximum, actual }) => crypto_error(
-            CryptoErrorTag::InvalidLength,
-            i64::try_from(maximum).unwrap_or(i64::MAX),
-            i64::try_from(actual).unwrap_or(i64::MAX),
-        ),
-        Err(ConcatSecretError::Resource(ResourceError::ResourceLimitExceeded)) => {
-            crypto_error(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
-        }
-        Err(ConcatSecretError::Resource(ResourceError::WrongKind)) => {
-            crypto_error(CryptoErrorTag::InvalidKey, 0, 0)
-        }
-        Err(ConcatSecretError::Resource(_)) => crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0),
-    }
+fn concat_for_process(
+    process: &mut Process,
+    first: *mut MeshSecretHandle,
+    second: *mut MeshSecretHandle,
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
+    let owner = live_owner(process).map_err(resource_failure)?;
+    let (Some(first_handle), Some(second_handle)) = (
+        validate_handle_pointer(process, first),
+        validate_handle_pointer(process, second),
+    ) else {
+        destroy_resource_for_process(process, first, Some(ResourceKind::SecretBytes));
+        destroy_resource_for_process(process, second, Some(ResourceKind::SecretBytes));
+        return Err(resource_failure(ResourceError::StaleHandle));
+    };
+    let handle = secret_table()
+        .lock()
+        .concat_secrets(owner, first_handle, second_handle)?;
+    Ok(allocate_handle(process, handle))
 }
 
 fn secret_map_error_result(error: SecretMapError) -> *mut MeshResult {
     let tag = match error {
+        SecretMapError::Resource(error) => return error_result(resource_failure(error)),
         SecretMapError::InvalidCapacity | SecretMapError::CapacityExceeded => {
             CryptoErrorTag::ResourceLimitExceeded
         }
         SecretMapError::InvalidKey | SecretMapError::DuplicateKey => CryptoErrorTag::InvalidKey,
         SecretMapError::InvalidEncoding => CryptoErrorTag::InternalFailure,
-        SecretMapError::Resource(ResourceError::ResourceLimitExceeded) => {
-            CryptoErrorTag::ResourceLimitExceeded
-        }
-        SecretMapError::Resource(ResourceError::WrongKind) => CryptoErrorTag::InvalidKey,
-        SecretMapError::Resource(
-            ResourceError::StaleHandle | ResourceError::WrongOwner | ResourceError::OwnerExited,
-        ) => CryptoErrorTag::SecretDestroyed,
     };
     crypto_error(tag, 0, 0)
 }
@@ -636,19 +611,6 @@ impl<E: fmt::Debug> fmt::Debug for RetypeError<E> {
                 .finish(),
         }
     }
-}
-
-#[derive(Debug)]
-enum CreateSecretError {
-    EntropyUnavailable,
-    ResourceLimitExceeded,
-    OwnerExited,
-}
-
-#[derive(Debug)]
-enum ConcatSecretError {
-    InvalidLength { maximum: usize, actual: usize },
-    Resource(ResourceError),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1507,7 +1469,7 @@ impl ResourceTable {
         owner: ProcessId,
         first: ResourceHandle,
         second: ResourceHandle,
-    ) -> Result<ResourceHandle, ConcatSecretError> {
+    ) -> Result<ResourceHandle, CryptoFailure> {
         let first_length = self
             .validate(owner, first, ResourceKind::SecretBytes)
             .map(|bytes| bytes.len());
@@ -1525,28 +1487,29 @@ impl ResourceTable {
                     .unwrap_or(ResourceError::StaleHandle);
                 drop(self.destroy_kind(owner, first, ResourceKind::SecretBytes));
                 drop(self.destroy_kind(owner, second, ResourceKind::SecretBytes));
-                return Err(ConcatSecretError::Resource(error));
+                return Err(resource_failure(error));
             }
         };
         let total_length = first_length.saturating_add(second_length);
         let first_bytes = self
             .consume(owner, first, ResourceKind::SecretBytes)
-            .map_err(ConcatSecretError::Resource)?;
+            .map_err(resource_failure)?;
         let second_bytes = self
             .consume(owner, second, ResourceKind::SecretBytes)
-            .map_err(ConcatSecretError::Resource)?;
+            .map_err(resource_failure)?;
         if total_length > self.limits.max_secret_bytes {
-            return Err(ConcatSecretError::InvalidLength {
-                maximum: self.limits.max_secret_bytes,
-                actual: total_length,
-            });
+            return Err(failure(
+                CryptoErrorTag::InvalidLength,
+                self.limits.max_secret_bytes as i64,
+                total_length as i64,
+            ));
         }
 
         let mut combined = Zeroizing::new(vec![0; total_length].into_boxed_slice());
         combined[..first_length].copy_from_slice(&first_bytes);
         combined[first_length..].copy_from_slice(&second_bytes);
         self.insert(owner, ResourceKind::SecretBytes, combined)
-            .map_err(ConcatSecretError::Resource)
+            .map_err(resource_failure)
     }
 
     fn consume_and_retype<E>(
@@ -1663,17 +1626,15 @@ fn create_random_secret_entry(
     process: &Process,
     table: &mut ResourceTable,
     length: usize,
-) -> Result<ResourceHandle, CreateSecretError> {
-    if matches!(process.state, ProcessState::Exited(_)) {
-        return Err(CreateSecretError::OwnerExited);
-    }
+) -> Result<ResourceHandle, CryptoFailure> {
+    let owner = live_owner(process).map_err(resource_failure)?;
     let mut bytes = Zeroizing::new(vec![0u8; length].into_boxed_slice());
     SystemProvider
         .fill_random(&mut bytes)
-        .map_err(|_| CreateSecretError::EntropyUnavailable)?;
+        .map_err(provider_failure)?;
     table
-        .insert(process.pid, ResourceKind::SecretBytes, bytes)
-        .map_err(|_| CreateSecretError::ResourceLimitExceeded)
+        .insert(owner, ResourceKind::SecretBytes, bytes)
+        .map_err(resource_failure)
 }
 
 #[cfg(test)]
@@ -2689,13 +2650,10 @@ mod tests {
         let oversized_second = bounded
             .insert_secret(owner, vec![2; 4].into_boxed_slice())
             .expect("bounded second secret");
-        assert!(matches!(
+        assert_eq!(
             bounded.concat_secrets(owner, oversized_first, oversized_second),
-            Err(ConcatSecretError::InvalidLength {
-                maximum: 8,
-                actual: 9
-            })
-        ));
+            Err(failure(CryptoErrorTag::InvalidLength, 8, 9))
+        );
         assert!(!bounded.usage.contains_key(&owner));
     }
 
