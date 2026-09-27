@@ -32,7 +32,6 @@ use crate::db::changeset::{
     add_constraint_error_to_changeset, map_constraint_error, SLOT_CHANGES, SLOT_VALID,
 };
 use crate::db::expr::{clone_expr, serialize_expr, SqlExpr};
-use crate::db::pg::{invoke_transaction_callback, mesh_pg_begin, mesh_pg_commit, mesh_pg_rollback};
 use crate::db::pool::{
     mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
 };
@@ -996,18 +995,8 @@ pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *m
     }
 }
 
-/// Execute a callback inside a database transaction with automatic
-/// checkout/begin/commit-or-rollback/checkin lifecycle.
-///
-/// `Repo.transaction(pool, callback)` -> `Result<Ptr, String>`
-///
-/// Protocol:
-/// 1. Pool.checkout(pool) to get a connection handle
-/// 2. Pg.begin(conn) to start transaction
-/// 3. Call user callback with conn handle (via closure calling convention)
-/// 4. On Ok: Pg.commit(conn), Pool.checkin(pool, conn), return Ok(value)
-/// 5. On Err: Pg.rollback(conn), Pool.checkin(pool, conn), return Err(error)
-/// 6. On panic: Pg.rollback(conn), Pool.checkin(pool, conn), return Err("transaction panicked")
+/// `Repo.transaction(pool, callback)`: `Pg.transaction` on a connection
+/// checked out of `pool` for it, and checked back in after.
 #[no_mangle]
 pub extern "C" fn mesh_repo_transaction(
     pool: u64,
@@ -1015,58 +1004,15 @@ pub extern "C" fn mesh_repo_transaction(
     env_ptr: *const u8,
 ) -> *mut u8 {
     unsafe {
-        // 1. Checkout a connection from the pool
         let checkout_result = mesh_pool_checkout(pool);
         let r = &*(checkout_result as *const MeshResult);
         if r.tag != 0 {
-            return checkout_result; // propagate checkout error
+            return checkout_result;
         }
         let conn_handle = unbox_u64_payload(r.value);
-
-        // 2. BEGIN transaction
-        let begin_result = mesh_pg_begin(conn_handle);
-        let br = &*(begin_result as *const MeshResult);
-        if br.tag != 0 {
-            // BEGIN failed -- checkin and return error
-            mesh_pool_checkin(pool, conn_handle);
-            return begin_result;
-        }
-
-        // 3. Call the user callback with catch_unwind for panic safety
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
-        }));
-
-        match result {
-            Ok(result_ptr) => {
-                // Check if callback returned Ok or Err
-                let cr = &*(result_ptr as *const MeshResult);
-                if cr.tag == 0 {
-                    // Success -> COMMIT
-                    let commit_result = mesh_pg_commit(conn_handle);
-                    let cmr = &*(commit_result as *const MeshResult);
-                    if cmr.tag != 0 {
-                        // COMMIT failed -> ROLLBACK
-                        let _ = mesh_pg_rollback(conn_handle);
-                        mesh_pool_checkin(pool, conn_handle);
-                        return err_result("transaction: COMMIT failed");
-                    }
-                    mesh_pool_checkin(pool, conn_handle);
-                    result_ptr // return Ok(value) from callback
-                } else {
-                    // Error -> ROLLBACK
-                    let _ = mesh_pg_rollback(conn_handle);
-                    mesh_pool_checkin(pool, conn_handle);
-                    result_ptr // propagate the Err result from callback
-                }
-            }
-            Err(_) => {
-                // Panic -> ROLLBACK
-                let _ = mesh_pg_rollback(conn_handle);
-                mesh_pool_checkin(pool, conn_handle);
-                err_result("transaction aborted: panic in callback")
-            }
-        }
+        let result = crate::db::pg::mesh_pg_transaction(conn_handle, fn_ptr, env_ptr);
+        mesh_pool_checkin(pool, conn_handle);
+        result
     }
 }
 

@@ -234,7 +234,10 @@ update_changeset_duplicate:has already been taken
 update_changeset_invalid:can't be blank
 transaction:committed
 transaction_rollback:rolled back
+transaction_panic:transaction aborted: panic in callback
+transaction_commit:COMMIT:
 transaction_titles:1
+transaction_ledger:0
 delete:ok
 delete_none:failed
 delete_where:1
@@ -242,6 +245,7 @@ delete_where_bad:failed
 delete_where_returning_unfiltered:failed
 delete_where_returning:great
 delete_where_returning_bad:failed
+transaction_closed:pool is closed
 done
 "#;
 

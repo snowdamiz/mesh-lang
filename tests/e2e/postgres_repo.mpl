@@ -91,6 +91,9 @@ fn setup(pool :: PoolHandle) -> Int!String do
   let _ = Pool.execute(pool,
     "CREATE TABLE profiles (id SERIAL PRIMARY KEY, author_id TEXT NOT NULL, bio TEXT NOT NULL)",
     [])?
+  let _ = Pool.execute(pool,
+    "CREATE TABLE ledger (id INT PRIMARY KEY, owner TEXT REFERENCES writers(handle) DEFERRABLE INITIALLY DEFERRED)",
+    [])?
   Ok(0)
 end
 
@@ -556,6 +559,26 @@ fn add_then_fail(conn :: borrow PgConn) -> String!String do
   Err("rolled back")
 end
 
+fn add_then_panic(conn :: borrow PgConn) -> String!String do
+  let _ = Pg.execute(conn,
+    "INSERT INTO articles (author_id, title) VALUES ($1, $2)",
+    ["cy", "Panicked"])?
+  panic("callback gave up")
+end
+
+# The ledger's owner is checked when the transaction commits.
+fn add_orphan(conn :: borrow PgConn) -> String!String do
+  let _ = Pg.execute(conn, "INSERT INTO ledger (id, owner) VALUES (1, 'nobody')", [])?
+  Ok("inserted")
+end
+
+fn print_error_head(label :: String, result :: Result<String, String>) do
+  case result do
+    Ok(value) -> println(label <> ":unexpected-ok:" <> value)
+    Err(error) -> println(label <> ":" <> String.slice(error, 0, 7))
+  end
+end
+
 fn transactions(pool :: PoolHandle) do
   case Repo.transaction(pool, add_article) do
     Ok(message) -> println("transaction:" <> message)
@@ -565,10 +588,26 @@ fn transactions(pool :: PoolHandle) do
     Ok(_) -> println("transaction_rollback:unexpected-ok")
     Err(error) -> println("transaction_rollback:" <> error)
   end
+  case Repo.transaction(pool, add_then_panic) do
+    Ok(_) -> println("transaction_panic:unexpected-ok")
+    Err(error) -> println("transaction_panic:" <> error)
+  end
+  print_error_head("transaction_commit", Repo.transaction(pool, add_orphan))
   show_int("transaction_titles",
     Repo.count(pool,
       Query.from("articles")
-        |> Query.where_in(:title, ["Kept", "Dropped"])))
+        |> Query.where_in(:title, ["Kept", "Dropped", "Panicked"])))
+  show_int("transaction_ledger", Repo.count(pool, Query.from("ledger")))
+end
+
+fn closed_pool(url :: String) -> Int!String do
+  let pool = Pool.open(url, 1, 1, 5000)?
+  Pool.close(pool)
+  case Repo.transaction(pool, add_article) do
+    Ok(_) -> println("transaction_closed:unexpected-ok")
+    Err(error) -> println("transaction_closed:" <> error)
+  end
+  Ok(0)
 end
 
 fn run() -> Int!String do
@@ -585,7 +624,7 @@ fn run() -> Int!String do
   deletes(pool)
   let _ = Pool.execute(pool, "DROP SCHEMA mesh_repo_e2e CASCADE", [])?
   Pool.close(pool)
-  Ok(0)
+  closed_pool(url)
 end
 
 fn main() do
