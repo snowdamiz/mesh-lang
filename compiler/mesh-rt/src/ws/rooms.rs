@@ -566,5 +566,8 @@ mod tests {
         let room = format!("lobby{}", "x".repeat(usize::from(u16::MAX)));
         assert!(room_broadcast_payload(&room, "hello").is_none());
         assert!(room_broadcast_payload(&room[..usize::from(u16::MAX)], "hello").is_some());
+        // Whether or not another test started this process's node, the
+        // broadcast stops before its sessions.
+        broadcast_room_to_cluster(&room, "hello");
     }
 }
