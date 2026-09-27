@@ -3802,4 +3802,542 @@ mod tests {
 
         assert!(count() >= before.saturating_add(1));
     }
+
+    /// Enough of the Docker CLI for the driver, keeping each container as a
+    /// directory under the state directory. A file named for a fault in
+    /// that directory injects it.
+    const FAKE_DOCKER: &str = r#"
+state="$1"
+shift
+echo "$*" >> "$state/calls"
+command="$1"
+shift
+case "$command" in
+version)
+  [ -f "$state/sleep" ] && exec sleep 2
+  [ -f "$state/fail" ] && { echo "daemon refused token=abc123 because" >&2; exit 1; }
+  [ -f "$state/invalid-utf8" ] && { printf '\377'; exit 0; }
+  echo 27.0 ;;
+ps)
+  shift
+  filters=""
+  while [ "$#" -gt 1 ]; do filters="$filters $2"; shift 2; done
+  for dir in "$state"/containers/*; do
+    [ -d "$dir" ] || continue
+    id=${dir##*/}
+    keep=1
+    for filter in $filters; do
+      case "$filter" in
+        label=*) grep -qxF "${filter#label=}" "$dir/labels" || keep=0 ;;
+        id=*) case "$id" in "${filter#id=}"*) ;; *) keep=0 ;; esac ;;
+      esac
+    done
+    [ "$keep" = 1 ] && echo "$id"
+  done
+  exit 0 ;;
+inspect)
+  [ -f "$state/inspect" ] && { cat "$state/inspect"; exit 0; }
+  dir="$state/containers/$1"
+  labels=$(sed 's/^\([^=]*\)=\(.*\)$/"\1":"\2"/' "$dir/labels" | paste -sd, -)
+  health=""
+  [ -f "$dir/health" ] && health=",\"Health\":{\"Status\":\"$(cat "$dir/health")\"}"
+  printf '[{"Id":"%s","Config":{"Labels":{%s}},"State":{"Status":"%s"%s}}]\n' \
+    "$1" "$labels" "$(cat "$dir/status")" "$health" ;;
+create)
+  [ -f "$state/fail-create" ] && { echo "create refused password=hunter2" >&2; exit 1; }
+  count=$(cat "$state/count" 2>/dev/null || echo 0)
+  count=$((count + 1))
+  echo "$count" > "$state/count"
+  id="container$count"
+  dir="$state/containers/$id"
+  mkdir -p "$dir"
+  : > "$dir/labels"
+  while [ "$#" -gt 1 ]; do
+    case "$1" in
+      --label) echo "$2" >> "$dir/labels" ;;
+      --env) echo "$2" >> "$dir/env" ;;
+      --env-file) echo "$2" > "$dir/env-file-path"; cat "$2" > "$dir/env-file" 2>/dev/null ;;
+      --network) echo "$2" > "$dir/network" ;;
+    esac
+    shift 2
+  done
+  echo "$1" > "$dir/image"
+  echo created > "$dir/status"
+  echo "$id" ;;
+start) echo running > "$state/containers/$1/status" ;;
+rm) rm -rf "$state/containers/$2" ;;
+esac
+"#;
+
+    /// A Docker driver whose `docker` is the fake above, run through
+    /// `/bin/sh` as the execution prefix.
+    fn docker_driver(state: &Path, environment: Vec<String>) -> DockerCapacityDriver {
+        std::fs::create_dir_all(state.join("containers")).expect("fake docker state");
+        let script = state.join("docker.sh");
+        std::fs::write(&script, FAKE_DOCKER).expect("fake docker script");
+        DockerCapacityDriver::new(DockerDriverConfig {
+            binary: PathBuf::from("/bin/sh"),
+            execution_prefix: vec![script.display().to_string(), state.display().to_string()],
+            image: "image@sha256:abc".to_string(),
+            pool: "workers".to_string(),
+            network: Some("mesh-net".to_string()),
+            environment,
+            environment_file_mount: None,
+            operation_timeout: Duration::from_secs(10),
+        })
+    }
+
+    fn docker_calls(state: &Path) -> Vec<String> {
+        std::fs::read_to_string(state.join("calls"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// A managed container as the driver labels one, in `status`.
+    fn add_container(state: &Path, id: &str, operation: &DriverOperation, status: &str) {
+        let directory = state.join("containers").join(id);
+        std::fs::create_dir_all(&directory).expect("container directory");
+        std::fs::write(
+            directory.join("labels"),
+            format!(
+                "mesh.managed=true\nmesh.cluster={}\nmesh.pool=workers\nmesh.template={}\n\
+                 mesh.operation={}\nmesh.term={}\nmesh.revision={}\n",
+                operation.cluster_id,
+                operation.template_revision,
+                operation.operation_id,
+                operation.control_term.0,
+                operation.desired_revision.0,
+            ),
+        )
+        .expect("container labels");
+        std::fs::write(directory.join("status"), status).expect("container status");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_driver_validates_through_the_cli_and_redacts_its_errors() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(state.path(), Vec::new());
+        assert_eq!(driver.validate_configuration(), Ok(()));
+        assert_eq!(
+            docker_calls(state.path()),
+            ["version --format {{.Server.Version}}"]
+        );
+
+        std::fs::write(state.path().join("fail"), "").unwrap();
+        assert_eq!(
+            driver.validate_configuration(),
+            Err("docker_driver_api_error:daemon refused [redacted] because".to_string())
+        );
+        std::fs::remove_file(state.path().join("fail")).unwrap();
+        std::fs::write(state.path().join("invalid-utf8"), "").unwrap();
+        assert_eq!(
+            driver.validate_configuration(),
+            Err("docker_driver_output_invalid_utf8".to_string())
+        );
+        std::fs::remove_file(state.path().join("invalid-utf8")).unwrap();
+        std::fs::write(state.path().join("sleep"), "").unwrap();
+        let mut slow = docker_driver(state.path(), Vec::new());
+        slow.config.operation_timeout = Duration::from_millis(100);
+        assert_eq!(
+            slow.validate_configuration(),
+            Err("docker_driver_api_timeout".to_string())
+        );
+        slow.config.operation_timeout = Duration::ZERO;
+        assert_eq!(
+            slow.validate_configuration(),
+            Err("docker_driver_operation_timeout_invalid".to_string())
+        );
+        slow.config.pool = " ".to_string();
+        assert_eq!(
+            slow.validate_configuration(),
+            Err("docker_driver_template_invalid".to_string())
+        );
+        let mut missing = docker_driver(state.path(), Vec::new());
+        missing.config.binary = PathBuf::from("/nonexistent/docker");
+        assert!(missing
+            .validate_configuration()
+            .unwrap_err()
+            .starts_with("docker_driver_command_failed:"));
+        assert_eq!(
+            redact("TOKEN=a Password:b my-secret plain"),
+            "[redacted] [redacted] [redacted] plain"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_driver_creates_starts_and_remembers_a_labelled_container() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(
+            state.path(),
+            vec!["PORT=8080".to_string(), "MESH_ROLES=worker".to_string()],
+        );
+        let ensure = driver_operation("0123456789abcdef-ensure", None);
+
+        let created = driver.ensure_node(&ensure).expect("create container");
+
+        assert_eq!(created.node_id.as_deref(), Some("container1"));
+        assert_eq!(created.state, DriverOperationState::Succeeded);
+        let container = state.path().join("containers/container1");
+        let labels = std::fs::read_to_string(container.join("labels")).unwrap();
+        for label in [
+            "mesh.managed=true",
+            "mesh.cluster=cluster-a",
+            "mesh.pool=workers",
+            "mesh.template=template-v1",
+            "mesh.operation=0123456789abcdef-ensure",
+            "mesh.term=3",
+            "mesh.revision=7",
+        ] {
+            assert!(
+                labels.lines().any(|line| line == label),
+                "{label}: {labels}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(container.join("env")).unwrap(),
+            "MESH_STABLE_NODE_ID=cluster-a/capacity/0123456789abcdef-ensure\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(container.join("env-file")).unwrap(),
+            "PORT=8080\nMESH_ROLES=worker\n"
+        );
+        // The environment file only lives for the create call.
+        let env_file = std::fs::read_to_string(container.join("env-file-path")).unwrap();
+        assert!(!Path::new(env_file.trim()).exists());
+        assert_eq!(
+            std::fs::read_to_string(container.join("network")).unwrap(),
+            "mesh-net\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(container.join("status")).unwrap(),
+            "running\n"
+        );
+
+        // The operation is remembered: a retry calls Docker no more.
+        let calls = docker_calls(state.path()).len();
+        assert_eq!(driver.ensure_node(&ensure), Ok(created.clone()));
+        assert_eq!(
+            driver.get_operation(&ensure.operation_id),
+            Ok(Some(created.clone()))
+        );
+        assert_eq!(docker_calls(state.path()).len(), calls);
+
+        // A driver that lost that memory adopts the container instead.
+        let restarted = docker_driver(state.path(), Vec::new());
+        assert_eq!(restarted.ensure_node(&ensure), Ok(created.clone()));
+        let fresh = docker_driver(state.path(), Vec::new());
+        assert_eq!(
+            fresh.get_operation(&ensure.operation_id),
+            Ok(Some(created.clone()))
+        );
+        assert_eq!(fresh.get_operation("no-such-operation"), Ok(None));
+        let observed = fresh.observe_capacity("cluster-a").expect("observe");
+        assert_eq!(observed.nodes.len(), 1);
+        assert_eq!(observed.nodes[0].lifecycle, CapacityNodeLifecycle::Ready);
+        assert_eq!(observed.nodes[0].operation_id, ensure.operation_id);
+
+        // Another term's operation for the same id is not this one.
+        let mut stale = ensure.clone();
+        stale.control_term = ControlTerm(9);
+        assert_eq!(
+            docker_driver(state.path(), Vec::new()).ensure_node(&stale),
+            Err("docker_driver_adoption_identity_mismatch".to_string())
+        );
+        add_container(state.path(), "duplicate", &ensure, "running");
+        assert_eq!(
+            docker_driver(state.path(), Vec::new()).ensure_node(&ensure),
+            Err("docker_driver_duplicate_operation_containers".to_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_driver_refuses_bad_environments_and_cleans_up_failed_creates() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let ensure = driver_operation("create-failure", None);
+        let invalid = docker_driver(state.path(), vec!["NOT_AN_ASSIGNMENT".to_string()]);
+        assert_eq!(
+            invalid.ensure_node(&ensure),
+            Err("docker_driver_environment_invalid".to_string())
+        );
+
+        let host = state.path().join("env-host");
+        let mut mounted = docker_driver(state.path(), vec!["PORT=8080".to_string()]);
+        mounted.config.environment_file_mount = Some(DockerEnvironmentFileMount {
+            host_directory: host.clone(),
+            driver_directory: PathBuf::from("/driver-env"),
+        });
+        std::fs::write(state.path().join("fail-create"), "").unwrap();
+        assert_eq!(
+            mounted.ensure_node(&ensure),
+            Err("docker_driver_api_error:create refused [redacted]".to_string())
+        );
+        // The file was handed to Docker by its path inside the driver's
+        // mount, and removed once the create call returned.
+        let arguments = docker_calls(state.path()).pop().unwrap();
+        assert!(
+            arguments.contains("--env-file /driver-env/env-"),
+            "{arguments}"
+        );
+        assert_eq!(std::fs::read_dir(&host).unwrap().count(), 0);
+
+        let blocked = state.path().join("not-a-directory");
+        std::fs::write(&blocked, "").unwrap();
+        mounted.config.environment_file_mount = Some(DockerEnvironmentFileMount {
+            host_directory: blocked.join("env"),
+            driver_directory: PathBuf::from("/driver-env"),
+        });
+        assert!(mounted
+            .ensure_node(&ensure)
+            .unwrap_err()
+            .starts_with("docker_driver_env_directory_failed:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn autonomous_docker_workers_get_a_signed_identity() {
+        static SIGNING_KEY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = SIGNING_KEY_LOCK.lock().unwrap();
+        let key_env = super::super::identity_claim::CAPACITY_IDENTITY_SIGNING_KEY_ENV;
+        let state = tempfile::tempdir().expect("fake docker state");
+        let environment = vec![
+            "MESH_CLUSTER_MODE=Autonomous".to_string(),
+            "MESH_CLUSTER_PORT=4371".to_string(),
+            "MESH_ROLES=worker,gateway".to_string(),
+        ];
+        let driver = docker_driver(state.path(), environment.clone());
+        let ensure = driver_operation("signed-identity-operation", None);
+        std::env::remove_var(key_env);
+        assert_eq!(
+            driver.ensure_node(&ensure),
+            Err("capacity_identity_signing_key_missing".to_string())
+        );
+
+        let (signing_key, verify_key) =
+            super::super::identity_claim::generate_identity_signing_material().unwrap();
+        std::env::set_var(key_env, &signing_key);
+        let created = driver.ensure_node(&ensure);
+        let mut controller = docker_driver(
+            state.path(),
+            vec![
+                "MESH_CLUSTER_MODE=autonomous".to_string(),
+                "MESH_ROLES=controller-ish".to_string(),
+            ],
+        );
+        controller.config.pool = "controllers".to_string();
+        let refused = controller.ensure_node(&driver_operation("bad-roles", None));
+        std::env::remove_var(key_env);
+        created.expect("create signed worker");
+        assert_eq!(refused, Err("node_identity_roles_invalid".to_string()));
+
+        let env = std::fs::read_to_string(state.path().join("containers/container1/env")).unwrap();
+        let name = "mesh-workers-signed-ident";
+        let advertised = format!("{name}@{name}:4371");
+        assert!(env.contains("MESH_STABLE_NODE_ID=cluster-a/capacity/signed-identity-operation\n"));
+        assert!(
+            env.contains(&format!("MESH_NODE_NAME={advertised}\n")),
+            "{env}"
+        );
+        let envelope = env
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix(&format!(
+                    "{}=",
+                    super::super::identity_claim::IDENTITY_ENVELOPE_ENV
+                ))
+            })
+            .expect("identity envelope");
+        let claim = super::super::identity_claim::decode_and_verify_identity(
+            &super::super::identity_claim::decode_envelope_b64(envelope).unwrap(),
+            &verify_key,
+            "cluster-a",
+            &advertised,
+            unix_millis(),
+        )
+        .expect("verified claim");
+        assert_eq!(claim.roles, ["gateway", "worker"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_observation_maps_container_states_to_lifecycles() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(state.path(), Vec::new());
+        let cases = [
+            ("running", Some("healthy"), CapacityNodeLifecycle::Ready),
+            ("running", None, CapacityNodeLifecycle::Ready),
+            ("running", Some("unhealthy"), CapacityNodeLifecycle::Failed),
+            (
+                "running",
+                Some("starting"),
+                CapacityNodeLifecycle::Provisioning,
+            ),
+            ("created", None, CapacityNodeLifecycle::Provisioning),
+            ("removing", None, CapacityNodeLifecycle::Terminating),
+            ("exited", None, CapacityNodeLifecycle::Failed),
+            ("migrating", None, CapacityNodeLifecycle::Failed),
+        ];
+        for (index, (status, health, _)) in cases.iter().enumerate() {
+            let id = format!("node{index}");
+            add_container(
+                state.path(),
+                &id,
+                &driver_operation(&format!("operation{index}"), None),
+                status,
+            );
+            if let Some(health) = health {
+                std::fs::write(
+                    state.path().join("containers").join(&id).join("health"),
+                    health,
+                )
+                .unwrap();
+            }
+        }
+        // Another cluster's container is not observed.
+        let mut other = driver_operation("other-cluster", None);
+        other.cluster_id = "cluster-b".to_string();
+        add_container(state.path(), "other", &other, "running");
+
+        let observed = driver.observe_capacity("cluster-a").expect("observe");
+
+        let lifecycles: Vec<_> = observed.nodes.iter().map(|node| node.lifecycle).collect();
+        let expected: Vec<_> = cases.iter().map(|(_, _, lifecycle)| *lifecycle).collect();
+        assert_eq!(lifecycles, expected);
+        assert_eq!(observed.nodes[0].desired_revision, DesiredRevision(7));
+
+        // A Docker that answers for another scope is refused, not trusted.
+        std::fs::write(
+            state.path().join("inspect"),
+            r#"[{"Id":"x","Config":{"Labels":{"mesh.managed":"true","mesh.cluster":"cluster-b",
+               "mesh.pool":"workers","mesh.template":"t","mesh.operation":"o",
+               "mesh.term":"1","mesh.revision":"1"}},"State":{"Status":"running"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            driver.observe_capacity("cluster-a"),
+            Err("docker_driver_observation_scope_mismatch".to_string())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_inspection_refuses_what_it_cannot_trust() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(state.path(), Vec::new());
+        let labels = |extra: &str| {
+            format!(
+                r#"[{{"Config":{{"Labels":{{"mesh.managed":"true","mesh.cluster":"c",
+                   "mesh.pool":"workers","mesh.template":"t","mesh.operation":"o"{extra}}}}},
+                   "State":{{}}}}]"#
+            )
+        };
+        let cases = [
+            (
+                "not json".to_string(),
+                "docker_driver_inspect_decode_failed:",
+            ),
+            ("[]".to_string(), "docker_driver_inspect_empty"),
+            (
+                r#"[{"Config":{}}]"#.to_string(),
+                "docker_driver_labels_missing",
+            ),
+            (
+                r#"[{"Config":{"Labels":{"mesh.managed":"false"}}}]"#.to_string(),
+                "docker_driver_refuses_unmanaged_container",
+            ),
+            (
+                r#"[{"Config":{"Labels":{"mesh.managed":""}}}]"#.to_string(),
+                "docker_driver_label_missing:mesh.managed",
+            ),
+            (labels(""), "docker_driver_label_missing:mesh.term"),
+            (
+                labels(r#","mesh.term":"x","mesh.revision":"1""#),
+                "docker_driver_term_label_invalid",
+            ),
+            (
+                labels(r#","mesh.term":"1","mesh.revision":"x""#),
+                "docker_driver_revision_label_invalid",
+            ),
+        ];
+        for (document, expected) in cases {
+            std::fs::write(state.path().join("inspect"), document).unwrap();
+            let error = driver.inspect_container("any").unwrap_err();
+            assert!(error.starts_with(expected), "{expected}: {error}");
+        }
+        // Without an Id, the container is the one asked about; a missing
+        // state reads as failed.
+        std::fs::write(
+            state.path().join("inspect"),
+            labels(r#","mesh.term":"2","mesh.revision":"3""#),
+        )
+        .unwrap();
+        let observed = driver.inspect_container("asked-about").unwrap();
+        assert_eq!(observed.node_id, "asked-about");
+        assert_eq!(observed.lifecycle, CapacityNodeLifecycle::Failed);
+        assert_eq!(observed.control_term, ControlTerm(2));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_driver_drains_and_removes_only_its_own_containers() {
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(state.path(), Vec::new());
+        let node = driver_operation("terminate-target", None);
+        add_container(state.path(), "target", &node, "running");
+
+        let drain = driver_operation("drain-operation", Some("target"));
+        let drained = driver.begin_drain(&drain, "target").expect("drain");
+        assert_eq!(drained.state, DriverOperationState::Succeeded);
+        assert_eq!(driver.begin_drain(&drain, "other"), Ok(drained));
+
+        let mut foreign = driver_operation("terminate-foreign", Some("target"));
+        foreign.cluster_id = "cluster-b".to_string();
+        assert_eq!(
+            driver.terminate_node(&foreign, "target"),
+            Err("docker_driver_refuses_unmanaged_container".to_string())
+        );
+
+        let terminate = driver_operation("terminate-operation", Some("target"));
+        let terminated = driver.terminate_node(&terminate, "target").expect("remove");
+        assert_eq!(terminated.node_id.as_deref(), Some("target"));
+        assert!(!state.path().join("containers/target").exists());
+        assert!(docker_calls(state.path()).contains(&"rm -f target".to_string()));
+        assert_eq!(driver.terminate_node(&terminate, "target"), Ok(terminated));
+
+        // A container that is already gone is terminated.
+        let calls = docker_calls(state.path()).len();
+        let gone = driver_operation("terminate-gone", Some("gone"));
+        assert_eq!(
+            driver
+                .terminate_node(&gone, "gone")
+                .expect("already gone")
+                .state,
+            DriverOperationState::Succeeded
+        );
+        assert_eq!(
+            docker_calls(state.path())[calls..],
+            ["ps -aq --filter id=gone"]
+        );
+    }
+
+    #[test]
+    fn docker_driver_config_debug_redacts_environment_values() {
+        let config = DockerDriverConfig {
+            binary: PathBuf::from("docker"),
+            execution_prefix: Vec::new(),
+            image: "image".to_string(),
+            pool: "workers".to_string(),
+            network: None,
+            environment: vec!["DATABASE_URL=postgres://secret".to_string()],
+            environment_file_mount: None,
+            operation_timeout: Duration::from_secs(1),
+        };
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("postgres://secret"), "{rendered}");
+        assert!(rendered.contains("[redacted; 1]"), "{rendered}");
+    }
 }
