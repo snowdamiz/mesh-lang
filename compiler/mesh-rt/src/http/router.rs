@@ -24,6 +24,7 @@ pub struct MiddlewareEntry {
 }
 
 /// A single route entry mapping a URL pattern to a handler.
+#[derive(Clone)]
 pub struct RouteEntry {
     /// URL pattern (exact, wildcard ending with `/*`, or parameterized with `:name`).
     pub pattern: String,
@@ -152,52 +153,26 @@ impl MeshRouter {
         path: &str,
         method: &str,
     ) -> Option<(&RouteEntry, Vec<(String, String)>)> {
-        // First pass: exact routes only (no `:param` segments, no wildcards).
-        for entry in &self.routes {
-            if has_param_segments(&entry.pattern) || is_wildcard(&entry.pattern) {
-                continue;
-            }
-            if let Some(ref m) = entry.method {
-                if m != method {
-                    continue;
-                }
-            }
-            if matches_pattern(&entry.pattern, path) {
-                return Some((entry, Vec::new()));
-            }
-        }
-
-        // Second pass: parameterized routes (have `:param` segments).
-        for entry in &self.routes {
-            if !has_param_segments(&entry.pattern) {
-                continue;
-            }
-            if let Some(ref m) = entry.method {
-                if m != method {
-                    continue;
-                }
-            }
-            if let Some(params) = match_segments(&entry.pattern, path) {
-                return Some((entry, params));
-            }
-        }
-
-        // Third pass: wildcard routes (catch-all fallback).
-        for entry in &self.routes {
-            if !is_wildcard(&entry.pattern) {
-                continue;
-            }
-            if let Some(ref m) = entry.method {
-                if m != method {
-                    continue;
-                }
-            }
-            if matches_pattern(&entry.pattern, path) {
-                return Some((entry, Vec::new()));
-            }
-        }
-
-        None
+        let routes = || {
+            self.routes
+                .iter()
+                .filter(|entry| entry.method.as_deref().is_none_or(|m| m == method))
+        };
+        routes()
+            .filter(|entry| !has_param_segments(&entry.pattern) && !is_wildcard(&entry.pattern))
+            .find(|entry| entry.pattern == path)
+            .map(|entry| (entry, Vec::new()))
+            .or_else(|| {
+                routes()
+                    .filter(|entry| has_param_segments(&entry.pattern))
+                    .find_map(|entry| Some((entry, match_segments(&entry.pattern, path)?)))
+            })
+            .or_else(|| {
+                routes()
+                    .filter(|entry| is_wildcard(&entry.pattern))
+                    .find(|entry| matches_pattern(&entry.pattern, path))
+                    .map(|entry| (entry, Vec::new()))
+            })
     }
 }
 
@@ -218,17 +193,7 @@ fn route_with_method(
         let old = &*(router as *const MeshRouter);
         let pat_str = (*pattern).as_str().to_string();
 
-        let mut new_routes = Vec::with_capacity(old.routes.len() + 1);
-        for entry in &old.routes {
-            new_routes.push(RouteEntry {
-                pattern: entry.pattern.clone(),
-                method: entry.method.clone(),
-                handler_fn: entry.handler_fn,
-                handler_env: entry.handler_env,
-                declared_handler_runtime_name: entry.declared_handler_runtime_name.clone(),
-                replication_count: entry.replication_count,
-            });
-        }
+        let mut new_routes = old.routes.clone();
         new_routes.push(RouteEntry {
             pattern: pat_str,
             method: method.map(|m| m.to_string()),
@@ -325,28 +290,13 @@ pub extern "C" fn mesh_http_use_middleware(
     crate::actor::pin_closure_env(middleware_env);
     unsafe {
         let old = &*(router as *const MeshRouter);
-
-        // Copy all existing routes.
-        let mut new_routes = Vec::with_capacity(old.routes.len());
-        for entry in &old.routes {
-            new_routes.push(RouteEntry {
-                pattern: entry.pattern.clone(),
-                method: entry.method.clone(),
-                handler_fn: entry.handler_fn,
-                handler_env: entry.handler_env,
-                declared_handler_runtime_name: entry.declared_handler_runtime_name.clone(),
-                replication_count: entry.replication_count,
-            });
-        }
-
-        // Copy existing middleware and append the new one.
         let mut new_middlewares = old.middlewares.clone();
         new_middlewares.push(MiddlewareEntry {
             fn_ptr: middleware_fn,
             env_ptr: middleware_env,
         });
 
-        let new_router = Box::new(MeshRouter::new(new_routes, new_middlewares));
+        let new_router = Box::new(MeshRouter::new(old.routes.clone(), new_middlewares));
         Box::into_raw(new_router) as *mut u8
     }
 }
@@ -488,6 +438,60 @@ mod tests {
     fn test_router_no_match() {
         let router = MeshRouter::new(vec![plain_route("/only-this", None, 1)], Vec::new());
         assert!(router.match_route("/other", "GET").is_none());
+    }
+
+    /// A route's method and pattern both have to fit, in every tier: a
+    /// parameterized or wildcard route of another method or pattern is
+    /// passed over.
+    #[test]
+    fn every_tier_checks_method_and_pattern() {
+        let router = MeshRouter::new(
+            vec![
+                plain_route("/users/:id", Some("GET"), 1),
+                plain_route("/files/*", Some("GET"), 2),
+                plain_route("/users/:id/posts", None, 3),
+            ],
+            Vec::new(),
+        );
+        assert!(router.match_route("/users/7", "POST").is_none());
+        assert!(router.match_route("/files/a", "POST").is_none());
+        assert!(router.match_route("/other/a", "GET").is_none());
+        assert_eq!(
+            router
+                .match_route("/users/7/posts", "POST")
+                .unwrap()
+                .0
+                .handler_fn as usize,
+            3
+        );
+    }
+
+    /// Each method's registration makes a route of that method, and adding
+    /// middleware keeps the routes.
+    #[test]
+    fn routes_register_their_methods_and_survive_middleware() {
+        mesh_rt_init();
+        let pattern = mesh_string_new(b"/x".as_ptr(), 2);
+        let mut router = mesh_http_router();
+        for register in [
+            mesh_http_route_get,
+            mesh_http_route_post,
+            mesh_http_route_put,
+            mesh_http_route_delete,
+        ] {
+            router = register(router, pattern, 3usize as *mut u8, std::ptr::null_mut());
+        }
+        let router = mesh_http_use_middleware(router, 2usize as *mut u8, std::ptr::null_mut());
+        let router = unsafe { &*(router as *const MeshRouter) };
+        assert_eq!(
+            router
+                .routes
+                .iter()
+                .map(|route| route.method.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("GET"), Some("POST"), Some("PUT"), Some("DELETE")]
+        );
+        assert_eq!(router.middlewares.len(), 1);
     }
 
     #[test]
