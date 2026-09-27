@@ -2699,11 +2699,19 @@ impl CapacityReconciler {
                     .unwrap_or_default(),
             })
             .collect();
-        let selected = select_drain_candidate(
+        let selected = match select_drain_candidate(
             &candidates,
             self.draining.len() as u16,
             self.max_unavailable,
-        )?;
+        ) {
+            Ok(selected) => selected,
+            // Every worker is needed where it is; scale-down waits.
+            Err(reason) => {
+                outcome.constraints.push(reason);
+                outcome.drains = self.drain_progress();
+                return Ok(outcome);
+            }
+        };
         let selected_runtime_node_id = safety
             .iter()
             .find(|candidate| candidate.node_id == selected.node_id)
@@ -3704,6 +3712,69 @@ mod tests {
             CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
         recovered.restore_from_control_entries(&log.entries());
         assert!(recovered.drain_progress().is_empty());
+    }
+
+    /// Scale-down with no worker safe to drain is a state to wait in, not a
+    /// failed reconcile: the controller reported it as a failed tick.
+    #[test]
+    fn scale_down_without_a_safe_candidate_waits() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log =
+            Arc::new(DurableControlLog::open(&directory.path().join("control.log")).expect("log"));
+        let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log).expect("quorum");
+        let term = quorum.elect("a", &voters).expect("leader");
+        let driver = Arc::new(FakeCapacityDriver::new());
+        let desired_two = DesiredCapacity {
+            revision: DesiredRevision(1),
+            worker_nodes: 2,
+            gateway_nodes: 0,
+            template_revision: "v1".to_string(),
+        };
+        reconcile_scale_up(&*driver, "cluster", term, &desired_two, 0).expect("seed workers");
+        let committed = CommittedDesiredCapacity {
+            log_index: 1,
+            term,
+            desired: DesiredCapacity {
+                worker_nodes: 1,
+                revision: DesiredRevision(2),
+                ..desired_two
+            },
+        };
+        let only_copies: Vec<_> = driver
+            .observe_capacity("cluster")
+            .expect("nodes")
+            .nodes
+            .iter()
+            .map(|node| ReconcileNodeSafety {
+                node_id: node.node_id.clone(),
+                runtime_node_id: node.node_id.clone(),
+                transferable_load: 0,
+                active_ownership_transfers: 0,
+                active_work: 0,
+                required_replica_responsibilities: 0,
+                only_active_copy: true,
+                membership_generation_acknowledged: true,
+                controller_voter: false,
+                unique_capability: false,
+            })
+            .collect();
+        let mut reconciler = CapacityReconciler::new(driver, 1).expect("reconciler");
+
+        let waiting = reconciler
+            .reconcile(
+                &quorum,
+                "cluster",
+                "a",
+                &voters,
+                &committed,
+                "autoscaler",
+                &only_copies,
+            )
+            .expect("scale-down waits");
+
+        assert_eq!(waiting.constraints, ["drain_no_safe_candidate"]);
+        assert!(waiting.drains.is_empty());
     }
 
     /// A drain restored from the log after a leader change has no runtime
