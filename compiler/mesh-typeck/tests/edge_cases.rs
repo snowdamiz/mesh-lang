@@ -1850,6 +1850,52 @@ end
     );
 }
 
+/// A closure's annotated parameter is checked against what its call gives
+/// it, and a bare method call's other arguments are checked; literals of
+/// every radix, and the untyped `Tuple`'s accessors, are accepted.
+#[test]
+fn closure_parameters_and_bare_method_arguments_are_checked() {
+    assert_eq!(
+        errors(
+            r#"
+fn annotated_closure() do
+  List.map([1, 2], fn (x :: String) -> x end)
+end
+
+interface Show2 do
+  fn show2(self, n :: Int) -> String
+end
+
+struct Point do
+  x :: Int
+end
+
+impl Show2 for Point do
+  fn show2(self, n :: Int) -> String do
+    "p"
+  end
+end
+
+fn bare_arg_error(p :: Point) do
+  show2(p, nope)
+end
+
+fn radixes() -> Int do
+  0x1F + 0b101 + 0o17
+end
+
+fn untyped_tuple(t :: Tuple) -> Int do
+  Tuple.first(t)
+end
+"#
+        ),
+        [
+            "type mismatch: expected `String`, found `Int`",
+            "undefined variable `nope`",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
