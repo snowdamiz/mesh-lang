@@ -4453,15 +4453,7 @@ fn perform_handshake_with_identity(
     local_cookie: &str,
     local_creation: u8,
     is_initiator: bool,
-) -> Result<
-    (
-        String,
-        u8,
-        NegotiatedProtocol,
-        Option<super::identity_claim::NodeIdentityClaim>,
-    ),
-    String,
-> {
+) -> Result<Authenticated, String> {
     // Finish the TLS handshake first so every cookie proof below is bound to
     // this exact TLS session rather than to whoever relays the messages.
     let channel_binding = stream.channel_binding()?;
@@ -4526,15 +4518,7 @@ fn perform_handshake_negotiated(
     stream: &mut impl HandshakeTransport,
     state: &NodeState,
     is_initiator: bool,
-) -> Result<
-    (
-        String,
-        u8,
-        NegotiatedProtocol,
-        Option<super::identity_claim::NodeIdentityClaim>,
-    ),
-    String,
-> {
+) -> Result<Authenticated, String> {
     perform_handshake_with_identity(
         stream,
         &state.name,
@@ -5147,32 +5131,14 @@ pub(crate) fn execute_transient_operator_query(
     payload: &[u8],
     timeout: Duration,
 ) -> Result<Vec<u8>, String> {
-    let (_name_part, host, port) =
-        parse_node_name(target).map_err(|e| format!("invalid operator target: {}", e))?;
-
-    let tcp_stream = TcpStream::connect((host, port))
-        .map_err(|e| format!("TCP connect to {}:{} failed: {}", host, port, e))?;
-    tcp_stream
-        .set_read_timeout(Some(timeout))
-        .map_err(|e| format!("transient_operator_read_timeout_failed:{e}"))?;
-    tcp_stream
-        .set_write_timeout(Some(timeout))
-        .map_err(|e| format!("transient_operator_write_timeout_failed:{e}"))?;
-
-    let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
-    let client_conn = rustls::ClientConnection::new(operator_tls_client_config()?, server_name)
-        .map_err(|e| format!("TLS client connection failed: {}", e))?;
-    let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
-
-    let (_, _, negotiated, _) = perform_handshake_with_identity(
-        &mut tls_stream,
+    let (mut tls_stream, (_, _, negotiated, _)) = connect_authenticated(
+        target,
+        operator_tls_client_config()?,
         &transient_operator_client_name(),
         cookie,
         0,
-        true,
-    )
-    .map_err(|e| format!("handshake with {}:{} failed: {}", host, port, e))?;
-
+        timeout,
+    )?;
     write_msg(&mut tls_stream, payload)
         .map_err(|e| format!("transient_operator_query_write_failed:{e}"))?;
     read_dist_msg_bounded(&mut tls_stream, negotiated.max_frame_bytes)
@@ -6009,21 +5975,24 @@ fn accept_loop(listener: TcpListener, state: &'static NodeState) {
     }
 }
 
+/// Bounds a connection's reads and writes by `timeout` while it has not
+/// authenticated (`None` once it has: its session polls instead).
+fn set_handshake_timeouts(stream: &TcpStream, timeout: Option<Duration>) -> io::Result<()> {
+    stream.set_read_timeout(timeout)?;
+    stream.set_write_timeout(timeout)
+}
+
 fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
     if !auth_failures_below_limit() {
         eprintln!("mesh node: incoming connection rejected: authentication_rate_limited");
         return;
     }
-    if let Err(error) = tcp_stream.set_nonblocking(false) {
+    // The listener is non-blocking; the handshake blocks, within its timeout.
+    let setup = tcp_stream
+        .set_nonblocking(false)
+        .and_then(|()| set_handshake_timeouts(&tcp_stream, Some(NODE_HANDSHAKE_TIMEOUT)));
+    if let Err(error) = setup {
         eprintln!("mesh node: accepted stream setup failed: {error}");
-        return;
-    }
-    if let Err(error) = tcp_stream.set_read_timeout(Some(NODE_HANDSHAKE_TIMEOUT)) {
-        eprintln!("mesh node: accepted stream read timeout setup failed: {error}");
-        return;
-    }
-    if let Err(error) = tcp_stream.set_write_timeout(Some(NODE_HANDSHAKE_TIMEOUT)) {
-        eprintln!("mesh node: accepted stream write timeout setup failed: {error}");
         return;
     }
 
@@ -6067,12 +6036,8 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
         return;
     }
 
-    if let Err(error) = tls_stream.sock.set_read_timeout(None) {
-        eprintln!("mesh node: accepted stream read timeout reset failed: {error}");
-        return;
-    }
-    if let Err(error) = tls_stream.sock.set_write_timeout(None) {
-        eprintln!("mesh node: accepted stream write timeout reset failed: {error}");
+    if let Err(error) = set_handshake_timeouts(&tls_stream.sock, None) {
+        eprintln!("mesh node: accepted stream timeout reset failed: {error}");
         return;
     }
     let node_id = state.assign_node_id();
@@ -6347,41 +6312,61 @@ fn advertised_node_name(name_part: &str, host: &str, port: u16) -> String {
 // connect_to_remote_node -- establish an outgoing authenticated session
 // ---------------------------------------------------------------------------
 
-fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSession>, String> {
-    // Parse host:port from target. Port is REQUIRED for connect.
+/// What the cookie handshake says of the node at the other end: its name,
+/// creation, the protocol the two agreed, and its signed identity.
+type Authenticated = (
+    String,
+    u8,
+    NegotiatedProtocol,
+    Option<super::identity_claim::NodeIdentityClaim>,
+);
+
+/// A TLS connection to the node `target` names, authenticated through the
+/// cookie handshake as `local_name`: its reads and writes wait at most
+/// `timeout`, until the caller says otherwise.
+fn connect_authenticated(
+    target: &str,
+    client_config: Arc<ClientConfig>,
+    local_name: &str,
+    cookie: &str,
+    creation: u8,
+    timeout: Duration,
+) -> Result<
+    (
+        StreamOwned<rustls::ClientConnection, TcpStream>,
+        Authenticated,
+    ),
+    String,
+> {
     let (_name_part, host, port) =
         parse_node_name(target).map_err(|e| format!("invalid connect target: {}", e))?;
-
-    // Open TCP connection
     let tcp_stream = TcpStream::connect((host, port))
         .map_err(|e| format!("TCP connect to {}:{} failed: {}", host, port, e))?;
-    tcp_stream
-        .set_read_timeout(Some(NODE_HANDSHAKE_TIMEOUT))
-        .map_err(|error| format!("TCP read timeout setup failed: {error}"))?;
-    tcp_stream
-        .set_write_timeout(Some(NODE_HANDSHAKE_TIMEOUT))
-        .map_err(|error| format!("TCP write timeout setup failed: {error}"))?;
-
-    // Wrap in TLS client connection.
+    set_handshake_timeouts(&tcp_stream, Some(timeout))
+        .map_err(|error| format!("TCP timeout setup failed: {error}"))?;
     // Server name is "mesh-node" -- doesn't matter since we skip verification.
     let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
-    let client_conn =
-        rustls::ClientConnection::new(Arc::clone(&state.tls_client_config), server_name)
-            .map_err(|e| format!("TLS client connection failed: {}", e))?;
+    let client_conn = rustls::ClientConnection::new(client_config, server_name)
+        .map_err(|e| format!("TLS client connection failed: {}", e))?;
     let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
-
-    // Perform HMAC-SHA256 cookie handshake (initiator side)
-    let (remote_name, remote_creation, negotiated_protocol, remote_identity) =
-        perform_handshake_negotiated(&mut tls_stream, state, true)
+    let authenticated =
+        perform_handshake_with_identity(&mut tls_stream, local_name, cookie, creation, true)
             .map_err(|e| format!("handshake with {}:{} failed: {}", host, port, e))?;
-    tls_stream
-        .sock
-        .set_read_timeout(None)
-        .map_err(|error| format!("TCP read timeout reset failed: {error}"))?;
-    tls_stream
-        .sock
-        .set_write_timeout(None)
-        .map_err(|error| format!("TCP write timeout reset failed: {error}"))?;
+    Ok((tls_stream, authenticated))
+}
+
+fn connect_to_remote_node(state: &NodeState, target: &str) -> Result<Arc<NodeSession>, String> {
+    let (tls_stream, (remote_name, remote_creation, negotiated_protocol, remote_identity)) =
+        connect_authenticated(
+            target,
+            Arc::clone(&state.tls_client_config),
+            &state.name,
+            &state.cookie,
+            state.creation(),
+            NODE_HANDSHAKE_TIMEOUT,
+        )?;
+    set_handshake_timeouts(&tls_stream.sock, None)
+        .map_err(|error| format!("TCP timeout reset failed: {error}"))?;
 
     // Register the authenticated session
     let node_id = state.assign_node_id();
@@ -12399,5 +12384,124 @@ mod tests {
             "cut short"
         );
         assert!(peer.sent().is_empty());
+    }
+
+    /// Connects to the node at `target` as `name`, with `cookie`.
+    fn connect_as(
+        target: &str,
+        name: &str,
+        cookie: &str,
+    ) -> Result<
+        (
+            StreamOwned<rustls::ClientConnection, TcpStream>,
+            Authenticated,
+        ),
+        String,
+    > {
+        connect_authenticated(
+            target,
+            build_node_client_config(),
+            name,
+            cookie,
+            1,
+            Duration::from_secs(10),
+        )
+    }
+
+    /// Reads until the node closes `stream`.
+    fn await_closed(stream: &mut impl Read) {
+        while read_dist_msg(stream).is_ok() {}
+    }
+
+    /// The test node authenticates who connects to it: a peer that knows
+    /// the cookie gets a session, which sends it the node's global names and
+    /// ends when the peer goes, and a second connection from the same peer
+    /// is dropped; one that does not know the cookie is turned away.
+    #[test]
+    fn the_node_accepts_peers_that_know_its_cookie() {
+        let _member = TEST_PEERS.read_recursive();
+        let state = test_node();
+        // A name that sorts before the node's: the node prefers the
+        // transport such a peer opened.
+        let name = "0-accepted-peer@127.0.0.1:1";
+        let listener = start_one_shot_test_listener().unwrap();
+        let (mut stream, (remote, _, negotiated, _)) =
+            connect_as(&listener, name, TEST_NODE_COOKIE).unwrap();
+        assert_eq!(remote, state.name);
+        while decode_session_payload(read_dist_msg(&mut stream).unwrap(), &negotiated).unwrap()[0]
+            != DIST_GLOBAL_SYNC
+        {}
+        let session = state.sessions.read().get(name).cloned().unwrap();
+        assert_eq!(session.direction, SessionDirection::Incoming);
+
+        let listener = start_one_shot_test_listener().unwrap();
+        let (mut second, _) = connect_as(&listener, name, TEST_NODE_COOKIE).unwrap();
+        await_closed(&mut second);
+        assert!(Arc::ptr_eq(
+            state.sessions.read().get(name).unwrap(),
+            &session
+        ));
+        drop(stream);
+        await_session_gone(name);
+
+        let listener = start_one_shot_test_listener().unwrap();
+        assert!(connect_as(&listener, "stranger@127.0.0.1:1", "not-the-cookie").is_err());
+    }
+
+    /// A transient operator connection carries one operator query: one that
+    /// sends none, an empty frame, or another kind of message is closed
+    /// unanswered. A query to a node that cannot be reached, or does not
+    /// take the cookie, says why.
+    #[test]
+    fn a_transient_operator_connection_carries_one_query() {
+        test_node();
+        for payload in [None, Some(Vec::new()), Some(vec![DIST_SEND])] {
+            let listener = start_one_shot_test_listener().unwrap();
+            let (mut stream, _) = connect_as(
+                &listener,
+                &transient_operator_client_name(),
+                TEST_NODE_COOKIE,
+            )
+            .unwrap();
+            match payload {
+                Some(payload) => write_msg(&mut stream, &payload).unwrap(),
+                None => stream.sock.shutdown(std::net::Shutdown::Write).unwrap(),
+            }
+            await_closed(&mut stream);
+        }
+
+        let query = |target: &str, cookie: &str| {
+            execute_transient_operator_query(target, cookie, &[], Duration::from_secs(10))
+                .unwrap_err()
+        };
+        assert!(query("no-at-sign", TEST_NODE_COOKIE).starts_with("invalid connect target"));
+        assert!(query("absent@127.0.0.1:1", TEST_NODE_COOKIE).starts_with("TCP connect"));
+        let listener = start_one_shot_test_listener().unwrap();
+        assert!(query(&listener, "not-the-cookie").starts_with("handshake with"));
+    }
+
+    /// The node's listener takes at most `MAX_INCOMING_HANDSHAKES`
+    /// connections that have not authenticated; one more is closed at once.
+    #[test]
+    fn the_listener_turns_away_connections_beyond_the_handshake_limit() {
+        let state = test_node();
+        let await_active = |count: usize| {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while ACTIVE_INCOMING_HANDSHAKES.load(Ordering::Acquire) != count {
+                assert!(Instant::now() < deadline, "handshakes in progress stay");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let pending: Vec<TcpStream> = (0..MAX_INCOMING_HANDSHAKES)
+            .map(|_| TcpStream::connect(("127.0.0.1", state.port)).unwrap())
+            .collect();
+        await_active(MAX_INCOMING_HANDSHAKES);
+        let mut extra = TcpStream::connect(("127.0.0.1", state.port)).unwrap();
+        extra
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(extra.read(&mut [0; 1]).unwrap(), 0, "closed unread");
+        drop(pending);
+        await_active(0);
     }
 }
