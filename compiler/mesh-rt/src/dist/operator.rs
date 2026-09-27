@@ -837,9 +837,9 @@ pub(crate) fn runtime_snapshot_from_state(
     }
 }
 
-fn control_signature_payload(request: &OperatorControlRequest) -> Result<Vec<u8>, String> {
-    let action = serde_json::to_vec(&request.action)
-        .map_err(|error| format!("operator_control_action_encode_failed:{error}"))?;
+/// The signed bytes of `request`: each field, length-prefixed.
+fn control_signature_payload(request: &OperatorControlRequest) -> Vec<u8> {
+    let action = serde_json::to_vec(&request.action).expect("a control action encodes");
     let schema_version = request.schema_version.to_string();
     let sequence = request.sequence.to_string();
     let expires_at = request.expires_at_unix_millis.to_string();
@@ -853,14 +853,10 @@ fn control_signature_payload(request: &OperatorControlRequest) -> Result<Vec<u8>
         request.reason.as_bytes(),
         action.as_slice(),
     ] {
-        let length: u64 = component
-            .len()
-            .try_into()
-            .map_err(|_| "operator_control_component_too_large".to_string())?;
-        payload.extend_from_slice(&length.to_be_bytes());
+        payload.extend_from_slice(&(component.len() as u64).to_be_bytes());
         payload.extend_from_slice(component);
     }
-    Ok(payload)
+    payload
 }
 
 pub fn sign_operator_control_request(
@@ -870,9 +866,9 @@ pub fn sign_operator_control_request(
     let signing_key = operator_control_keys(operator_key)
         .next()
         .ok_or_else(|| "operator_control_key_missing".to_string())?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(signing_key.as_bytes())
-        .map_err(|_| "operator_control_key_invalid".to_string())?;
-    mac.update(&control_signature_payload(&request)?);
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(signing_key.as_bytes()).expect("HMAC takes any key");
+    mac.update(&control_signature_payload(&request));
     request.signature = mac
         .finalize()
         .into_bytes()
@@ -888,9 +884,8 @@ fn operator_control_keys(raw: &str) -> impl Iterator<Item = &str> {
 
 fn operator_control_signature_matches(raw_keys: &str, payload: &[u8], signature: &[u8]) -> bool {
     operator_control_keys(raw_keys).any(|candidate| {
-        let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(candidate.as_bytes()) else {
-            return false;
-        };
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(candidate.as_bytes()).expect("HMAC takes any key");
         mac.update(payload);
         mac.verify_slice(signature).is_ok()
     })
@@ -956,7 +951,7 @@ fn apply_operator_control(
     let key = std::env::var("MESH_OPERATOR_KEY")
         .map_err(|_| "operator_control_not_configured".to_string())?;
     let signature = decode_hex_signature(&request.signature)?;
-    let payload = control_signature_payload(request)?;
+    let payload = control_signature_payload(request);
     if !operator_control_signature_matches(&key, &payload, &signature) {
         return Err("operator_control_unauthorized".to_string());
     }
@@ -1459,25 +1454,14 @@ pub(crate) fn handle_operator_query_message(session: &Arc<NodeSession>, msg: &[u
     }
 }
 
-pub(crate) fn handle_operator_reply_message(session: &Arc<NodeSession>, msg: &[u8]) {
-    match decode_query_reply_frame(msg) {
-        Ok((request_id, result)) => {
-            if let Some(sender) = session
-                .pending_operator_queries
-                .lock()
-                .unwrap()
-                .remove(&request_id)
-            {
-                let _ = sender.send(result);
-            }
-        }
-        Err(error) => {
-            eprintln!(
-                "mesh operator query: remote={} error=reply_malformed:{}",
-                session.remote_name, error
-            );
-        }
-    }
+/// No query of this node waits on a peer session for its reply: operator
+/// queries use transient connections, which read their own. A reply frame
+/// on a session is unsolicited and dropped.
+pub(crate) fn handle_operator_reply_message(session: &Arc<NodeSession>, _msg: &[u8]) {
+    eprintln!(
+        "mesh operator query: remote={} error=unsolicited_reply",
+        session.remote_name
+    );
 }
 
 fn peer_names(state: &super::node::NodeState) -> Vec<String> {
@@ -2154,7 +2138,7 @@ mod tests {
         );
         let signed = sign_operator_control_request(request, old).expect("signed request");
         let signature = decode_hex_signature(&signed.signature).expect("signature");
-        let payload = control_signature_payload(&signed).expect("payload");
+        let payload = control_signature_payload(&signed);
 
         assert!(operator_control_signature_matches(
             &format!("{new},{old}"),
