@@ -4240,234 +4240,123 @@ fn verify_response(
 // Handshake message builders and parsers
 // ---------------------------------------------------------------------------
 
-/// Send NAME message: `[tag=1][u16 name_len][name_bytes][u8 creation]`.
-fn send_name(stream: &mut impl Write, name: &str, creation: u8) -> Result<(), String> {
-    send_named_message(stream, HANDSHAKE_NAME, "send_name", name, creation)
-}
-
-fn send_named_message(
+/// Sends a handshake message that names its sender: `[tag][u16 name_len]
+/// [name][u8 creation][extra][protocol hello]`. NAME carries no extra bytes,
+/// CHALLENGE its 32-byte challenge.
+fn send_named(
     stream: &mut impl Write,
     tag: u8,
-    label: &str,
     name: &str,
     creation: u8,
+    extra: &[u8],
 ) -> Result<(), String> {
-    let name_bytes = name.as_bytes();
     let hello = local_protocol_hello_with_identity(name)?.encode()?;
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + hello.len());
-    payload.push(tag);
-    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(name_bytes);
+    let mut payload = vec![tag];
+    payload.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    payload.extend_from_slice(name.as_bytes());
     payload.push(creation);
+    payload.extend_from_slice(extra);
     payload.extend_from_slice(&hello);
-    write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
+    send_handshake(stream, &payload)
 }
 
-fn decode_named_message(
-    msg: &[u8],
-    expected_tag: u8,
-    label: &str,
-) -> Result<(String, u8, ProtocolHello), String> {
-    if msg.is_empty() || msg[0] != expected_tag {
+fn send_handshake(stream: &mut impl Write, payload: &[u8]) -> Result<(), String> {
+    write_msg(stream, payload)
+        .map_err(|error| format!("handshake message {} not sent: {error}", payload[0]))
+}
+
+/// The next handshake message, which must be a `tag` one of at least
+/// `min_len` bytes.
+fn recv_handshake(stream: &mut impl Read, tag: u8, min_len: usize) -> Result<Vec<u8>, String> {
+    let msg = read_msg(stream)
+        .map_err(|error| format!("handshake message {tag} not received: {error}"))?;
+    if msg.first() != Some(&tag) {
         return Err(format!(
-            "expected {label} tag ({expected_tag}), got {}",
+            "expected handshake message {tag}, got {}",
             msg.first().copied().unwrap_or(0)
         ));
     }
-    if msg.len() < 4 {
-        return Err(format!("{label} message too short"));
+    if msg.len() < min_len {
+        return Err(format!("handshake message {tag} too short"));
     }
+    Ok(msg)
+}
+
+/// A message `send_named` sent: its sender's name and creation, the `EXTRA`
+/// bytes it carries, and the sender's protocol hello (a protocol-one peer's,
+/// which sends none, when there is none).
+fn recv_named<const EXTRA: usize>(
+    stream: &mut impl Read,
+    tag: u8,
+) -> Result<(String, u8, [u8; EXTRA], ProtocolHello), String> {
+    let msg = recv_handshake(stream, tag, 4)?;
     let name_len = u16::from_le_bytes([msg[1], msg[2]]) as usize;
-    if msg.len() < 3 + name_len + 1 {
-        return Err(format!("{label} message truncated"));
-    }
+    let rest = msg
+        .get(3 + name_len + 1..)
+        .filter(|rest| rest.len() >= EXTRA)
+        .ok_or_else(|| format!("handshake message {tag} truncated"))?;
     let name = std::str::from_utf8(&msg[3..3 + name_len])
         .map_err(|_| "invalid UTF-8 in node name".to_string())?
         .to_string();
-    let creation = msg[3 + name_len];
-    let hello_start = 3 + name_len + 1;
-    let hello = if msg.len() == hello_start {
-        protocol_one_hello()
-    } else {
-        ProtocolHello::decode(&msg[hello_start..])?
+    let hello = match &rest[EXTRA..] {
+        [] => protocol_one_hello(),
+        hello => ProtocolHello::decode(hello)?,
     };
-    Ok((name, creation, hello))
-}
-
-/// Receive and parse NAME message. Returns (name, creation).
-fn recv_name(stream: &mut impl Read) -> Result<(String, u8, ProtocolHello), String> {
-    let msg = read_msg(stream).map_err(|e| format!("recv_name failed: {e}"))?;
-    decode_named_message(&msg, HANDSHAKE_NAME, "HANDSHAKE_NAME")
-}
-
-/// Send CHALLENGE message: `[tag=2][u16 name_len][name_bytes][u8 creation][32 bytes challenge]`.
-fn send_challenge(
-    stream: &mut impl Write,
-    name: &str,
-    creation: u8,
-    challenge: &[u8; 32],
-) -> Result<(), String> {
-    send_challenge_message(
-        stream,
-        HANDSHAKE_CHALLENGE,
-        "send_challenge",
+    Ok((
         name,
-        creation,
-        challenge,
-    )
+        msg[3 + name_len],
+        rest[..EXTRA].try_into().unwrap(),
+        hello,
+    ))
 }
 
-fn send_challenge_message(
-    stream: &mut impl Write,
-    tag: u8,
-    label: &str,
-    name: &str,
-    creation: u8,
-    challenge: &[u8; 32],
-) -> Result<(), String> {
-    let name_bytes = name.as_bytes();
-    let hello = local_protocol_hello_with_identity(name)?.encode()?;
-    let mut payload = Vec::with_capacity(1 + 2 + name_bytes.len() + 1 + 32 + hello.len());
-    payload.push(tag);
-    payload.extend_from_slice(&(name_bytes.len() as u16).to_le_bytes());
-    payload.extend_from_slice(name_bytes);
-    payload.push(creation);
-    payload.extend_from_slice(challenge);
-    payload.extend_from_slice(&hello);
-    write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
-}
-
-fn decode_challenge_message(
-    msg: &[u8],
-    expected_tag: u8,
-    label: &str,
-) -> Result<(String, u8, [u8; 32], ProtocolHello), String> {
-    if msg.is_empty() || msg[0] != expected_tag {
-        return Err(format!(
-            "expected {label} tag ({expected_tag}), got {}",
-            msg.first().copied().unwrap_or(0)
-        ));
-    }
-    if msg.len() < 4 {
-        return Err(format!("{label} message too short"));
-    }
-    let name_len = u16::from_le_bytes([msg[1], msg[2]]) as usize;
-    if msg.len() < 3 + name_len + 1 + 32 {
-        return Err(format!("{label} message truncated"));
-    }
-    let name = std::str::from_utf8(&msg[3..3 + name_len])
-        .map_err(|_| "invalid UTF-8 in node name".to_string())?
-        .to_string();
-    let creation = msg[3 + name_len];
-    let mut challenge = [0u8; 32];
-    challenge.copy_from_slice(&msg[3 + name_len + 1..3 + name_len + 1 + 32]);
-    let hello_start = 3 + name_len + 1 + 32;
-    let hello = if msg.len() == hello_start {
-        protocol_one_hello()
-    } else {
-        ProtocolHello::decode(&msg[hello_start..])?
-    };
-    Ok((name, creation, challenge, hello))
-}
-
-/// Receive and parse CHALLENGE message. Returns (name, creation, challenge).
-fn recv_challenge(stream: &mut impl Read) -> Result<(String, u8, [u8; 32], ProtocolHello), String> {
-    let msg = read_msg(stream).map_err(|e| format!("recv_challenge failed: {e}"))?;
-    decode_challenge_message(&msg, HANDSHAKE_CHALLENGE, "HANDSHAKE_CHALLENGE")
-}
-
-/// Send CHALLENGE_REPLY message: `[tag=3][32 bytes response][32 bytes own_challenge]`.
+/// Sends REPLY: `[tag=3][32 bytes response][32 bytes own challenge]`.
 fn send_challenge_reply(
     stream: &mut impl Write,
     response: &[u8; 32],
     own_challenge: &[u8; 32],
 ) -> Result<(), String> {
-    send_reply_message(
+    send_handshake(
         stream,
-        HANDSHAKE_REPLY,
-        "send_challenge_reply",
-        response,
-        own_challenge,
+        &[&[HANDSHAKE_REPLY][..], response, own_challenge].concat(),
     )
 }
 
-fn send_reply_message(
-    stream: &mut impl Write,
-    tag: u8,
-    label: &str,
-    response: &[u8; 32],
-    own_challenge: &[u8; 32],
-) -> Result<(), String> {
-    let mut payload = Vec::with_capacity(1 + 32 + 32);
-    payload.push(tag);
-    payload.extend_from_slice(response);
-    payload.extend_from_slice(own_challenge);
-    write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
-}
-
-fn decode_reply_message(
-    msg: &[u8],
-    expected_tag: u8,
-    label: &str,
-) -> Result<([u8; 32], [u8; 32]), String> {
-    if msg.is_empty() || msg[0] != expected_tag {
-        return Err(format!(
-            "expected {label} tag ({expected_tag}), got {}",
-            msg.first().copied().unwrap_or(0)
-        ));
-    }
-    if msg.len() < 1 + 32 + 32 {
-        return Err(format!("{label} message too short"));
-    }
-    let mut response = [0u8; 32];
-    response.copy_from_slice(&msg[1..33]);
-    let mut their_challenge = [0u8; 32];
-    their_challenge.copy_from_slice(&msg[33..65]);
-    Ok((response, their_challenge))
-}
-
-/// Receive and parse CHALLENGE_REPLY message. Returns (response, their_challenge).
+/// Receives REPLY: the peer's response and its own challenge.
 fn recv_challenge_reply(stream: &mut impl Read) -> Result<([u8; 32], [u8; 32]), String> {
-    let msg = read_msg(stream).map_err(|e| format!("recv_challenge_reply failed: {e}"))?;
-    decode_reply_message(&msg, HANDSHAKE_REPLY, "HANDSHAKE_REPLY")
+    let msg = recv_handshake(stream, HANDSHAKE_REPLY, 1 + 32 + 32)?;
+    Ok((
+        msg[1..33].try_into().unwrap(),
+        msg[33..65].try_into().unwrap(),
+    ))
 }
 
-/// Send CHALLENGE_ACK message: `[tag=4][32 bytes response]`.
+/// Sends ACK: `[tag=4][32 bytes response]`.
 fn send_challenge_ack(stream: &mut impl Write, response: &[u8; 32]) -> Result<(), String> {
-    send_ack_message(stream, HANDSHAKE_ACK, "send_challenge_ack", response)
+    send_handshake(stream, &[&[HANDSHAKE_ACK][..], response].concat())
 }
 
-fn send_ack_message(
-    stream: &mut impl Write,
-    tag: u8,
-    label: &str,
-    response: &[u8; 32],
-) -> Result<(), String> {
-    let mut payload = Vec::with_capacity(1 + 32);
-    payload.push(tag);
-    payload.extend_from_slice(response);
-    write_msg(stream, &payload).map_err(|e| format!("{label} failed: {e}"))
-}
-
-fn decode_ack_message(msg: &[u8], expected_tag: u8, label: &str) -> Result<[u8; 32], String> {
-    if msg.is_empty() || msg[0] != expected_tag {
-        return Err(format!(
-            "expected {label} tag ({expected_tag}), got {}",
-            msg.first().copied().unwrap_or(0)
-        ));
-    }
-    if msg.len() < 1 + 32 {
-        return Err(format!("{label} message too short"));
-    }
-    let mut response = [0u8; 32];
-    response.copy_from_slice(&msg[1..33]);
-    Ok(response)
-}
-
-/// Receive and parse CHALLENGE_ACK message. Returns the response.
+/// Receives ACK: the peer's response.
 fn recv_challenge_ack(stream: &mut impl Read) -> Result<[u8; 32], String> {
-    let msg = read_msg(stream).map_err(|e| format!("recv_challenge_ack failed: {e}"))?;
-    decode_ack_message(&msg, HANDSHAKE_ACK, "HANDSHAKE_ACK")
+    let msg = recv_handshake(stream, HANDSHAKE_ACK, 1 + 32)?;
+    Ok(msg[1..33].try_into().unwrap())
+}
+
+/// Checks the peer's `response` to `challenge`, over this TLS session.
+fn authenticate_peer(
+    cookie: &str,
+    challenge: &[u8; 32],
+    channel_binding: &ChannelBinding,
+    response: &[u8; 32],
+    remote_name: &str,
+) -> Result<(), String> {
+    if verify_response(cookie, challenge, channel_binding, response) {
+        Ok(())
+    } else {
+        Err(format!(
+            "cookie mismatch: authentication failed from {remote_name}"
+        ))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4572,39 +4461,29 @@ fn perform_handshake_with_identity(
     // this exact TLS session rather than to whoever relays the messages.
     let channel_binding = stream.channel_binding()?;
 
-    if is_initiator {
-        // Step 1: Send our name
-        send_name(stream, local_name, local_creation)?;
-
-        // Step 2: Receive their name + challenge
-        let (remote_name, remote_creation, their_challenge, remote_hello) = recv_challenge(stream)?;
+    let (remote_name, remote_creation, remote_hello) = if is_initiator {
+        // Our name, then their name and challenge.
+        send_named(stream, HANDSHAKE_NAME, local_name, local_creation, &[])?;
+        let (remote_name, remote_creation, their_challenge, remote_hello) =
+            recv_named::<32>(stream, HANDSHAKE_CHALLENGE)?;
         validate_advertised_node_name(&remote_name)?;
-
-        // Step 3: Compute response + generate our own challenge
-        let our_response = compute_response(local_cookie, &their_challenge, &channel_binding);
+        // Our response and challenge, then their response.
         let our_challenge = generate_challenge();
+        let our_response = compute_response(local_cookie, &their_challenge, &channel_binding);
         send_challenge_reply(stream, &our_response, &our_challenge)?;
-
-        // Step 4: Receive and verify their response to our challenge
         let their_response = recv_challenge_ack(stream)?;
-        if !verify_response(
+        authenticate_peer(
             local_cookie,
             &our_challenge,
             &channel_binding,
             &their_response,
-        ) {
-            return Err(format!(
-                "cookie mismatch: authentication failed from {}",
-                remote_name
-            ));
-        }
-
-        let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
-        let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
-        Ok((remote_name, remote_creation, negotiated, identity))
+            &remote_name,
+        )?;
+        (remote_name, remote_creation, remote_hello)
     } else {
-        // Step 1: Receive their name
-        let (remote_name, remote_creation, remote_hello) = recv_name(stream)?;
+        // Their name, then ours and our challenge.
+        let (remote_name, remote_creation, [], remote_hello) =
+            recv_named::<0>(stream, HANDSHAKE_NAME)?;
         validate_advertised_node_name(&remote_name)?;
 
         // Duplicate-session resolution now happens in register_session after the
@@ -4612,34 +4491,30 @@ fn perform_handshake_with_identity(
         // mid-handshake here; stale-session takeover and simultaneous connect both
         // rely on the later registration step being able to replace the old entry.
 
-        // Step 2: Generate our challenge and send it
         let our_challenge = generate_challenge();
-        send_challenge(stream, local_name, local_creation, &our_challenge)?;
-
-        // Step 3: Receive their response + their challenge
+        send_named(
+            stream,
+            HANDSHAKE_CHALLENGE,
+            local_name,
+            local_creation,
+            &our_challenge,
+        )?;
+        // Their response and challenge, then our response.
         let (their_response, their_challenge) = recv_challenge_reply(stream)?;
-
-        // Verify their response to our challenge
-        if !verify_response(
+        authenticate_peer(
             local_cookie,
             &our_challenge,
             &channel_binding,
             &their_response,
-        ) {
-            return Err(format!(
-                "cookie mismatch: authentication failed from {}",
-                remote_name
-            ));
-        }
-
-        // Step 4: Compute our response to their challenge and send ACK
+            &remote_name,
+        )?;
         let our_response = compute_response(local_cookie, &their_challenge, &channel_binding);
         send_challenge_ack(stream, &our_response)?;
-
-        let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
-        let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
-        Ok((remote_name, remote_creation, negotiated, identity))
-    }
+        (remote_name, remote_creation, remote_hello)
+    };
+    let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
+    let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
+    Ok((remote_name, remote_creation, negotiated, identity))
 }
 
 fn perform_handshake_negotiated(
@@ -12015,5 +11890,72 @@ mod tests {
                 .unwrap(),
             Some(largest)
         );
+    }
+
+    /// A handshake message is refused when it is not the one expected, is
+    /// cut short, names its sender in bytes that are not text, or carries a
+    /// protocol hello that does not decode; a stream that ends refuses too.
+    #[test]
+    fn handshake_messages_refuse_what_is_not_the_expected_message() {
+        let framed = |payload: &[u8]| {
+            let mut bytes = Vec::new();
+            write_msg(&mut bytes, payload).unwrap();
+            std::io::Cursor::new(bytes)
+        };
+        let mut sent = Vec::new();
+        send_named(&mut sent, HANDSHAKE_CHALLENGE, "peer@host:1", 3, &[9; 32]).unwrap();
+        let challenge = sent[4..].to_vec();
+        let (name, creation, extra, _) =
+            recv_named::<32>(&mut framed(&challenge), HANDSHAKE_CHALLENGE).unwrap();
+        assert_eq!(
+            (name.as_str(), creation, extra),
+            ("peer@host:1", 3, [9; 32])
+        );
+
+        let refused =
+            |bytes: &[u8]| recv_named::<32>(&mut framed(bytes), HANDSHAKE_CHALLENGE).unwrap_err();
+        assert_eq!(
+            refused(&[HANDSHAKE_NAME]),
+            format!("expected handshake message {HANDSHAKE_CHALLENGE}, got {HANDSHAKE_NAME}")
+        );
+        assert_eq!(
+            refused(&challenge[..3]),
+            format!("handshake message {HANDSHAKE_CHALLENGE} too short")
+        );
+        assert_eq!(
+            refused(&challenge[..20]),
+            format!("handshake message {HANDSHAKE_CHALLENGE} truncated")
+        );
+        let mut not_text = challenge.clone();
+        not_text[3] = 0xFF;
+        assert_eq!(refused(&not_text), "invalid UTF-8 in node name");
+        assert!(refused(&[&challenge[..], &[0xFF; 3]].concat()).contains("protocol"));
+        assert!(
+            recv_named::<32>(&mut std::io::Cursor::new(Vec::new()), HANDSHAKE_CHALLENGE)
+                .unwrap_err()
+                .contains("not received")
+        );
+
+        assert_eq!(
+            recv_challenge_reply(&mut framed(&[HANDSHAKE_REPLY; 64])).unwrap_err(),
+            format!("handshake message {HANDSHAKE_REPLY} too short")
+        );
+        assert_eq!(
+            recv_challenge_ack(&mut framed(&[HANDSHAKE_REPLY; 33])).unwrap_err(),
+            format!("expected handshake message {HANDSHAKE_ACK}, got {HANDSHAKE_REPLY}")
+        );
+
+        struct Closed;
+        impl Write for Closed {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        assert!(send_challenge_ack(&mut Closed, &[0; 32])
+            .unwrap_err()
+            .contains("not sent"));
     }
 }
