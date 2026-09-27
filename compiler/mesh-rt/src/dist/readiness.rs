@@ -38,10 +38,17 @@ fn autonomous_requested() -> bool {
     super::node::autonomous_mode_requested()
 }
 
+/// A node's settings: the process environment, or what a test gives.
+type Settings<'a> = &'a dyn Fn(&str) -> Option<String>;
+
 /// The roles `MESH_ROLES` gives this node (default `gateway,worker`), in
 /// any case.
 pub(crate) fn local_roles() -> NodeRoles {
-    let roles = std::env::var("MESH_ROLES").unwrap_or_else(|_| "gateway,worker".to_string());
+    roles_from(&super::node::process_env)
+}
+
+fn roles_from(env: Settings) -> NodeRoles {
+    let roles = env("MESH_ROLES").unwrap_or_else(|| "gateway,worker".to_string());
     NodeRoles::new(
         roles
             .split(',')
@@ -55,9 +62,8 @@ pub(crate) fn local_roles() -> NodeRoles {
     )
 }
 
-fn transport_stability_window() -> std::time::Duration {
-    let discovery_interval_millis = std::env::var("MESH_DISCOVERY_INTERVAL_MS")
-        .ok()
+fn transport_stability_window(env: Settings) -> std::time::Duration {
+    let discovery_interval_millis = env("MESH_DISCOVERY_INTERVAL_MS")
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(5_000)
         .clamp(100, 30_000);
@@ -69,6 +75,11 @@ fn transport_stability_window() -> std::time::Duration {
 }
 
 pub fn local_readiness_status() -> NodeReadinessStatus {
+    readiness_status(&super::node::process_env)
+}
+
+/// This node's readiness under the settings `env` gives.
+pub(crate) fn readiness_status(env: Settings) -> NodeReadinessStatus {
     if !autonomous_requested() {
         return NodeReadinessStatus {
             ready: true,
@@ -78,9 +89,9 @@ pub fn local_readiness_status() -> NodeReadinessStatus {
     }
 
     let state = super::node::node_state();
-    let roles = local_roles();
+    let roles = roles_from(env);
     let default_minimum_peers = if roles.contains(NodeRoles::CONTROLLER)
-        && std::env::var("MESH_CONTROLLER_VOTERS").is_ok_and(|value| {
+        && env("MESH_CONTROLLER_VOTERS").is_some_and(|value| {
             value
                 .split(',')
                 .filter(|item| !item.trim().is_empty())
@@ -91,17 +102,15 @@ pub fn local_readiness_status() -> NodeReadinessStatus {
     } else {
         1
     };
-    let minimum_peers = std::env::var("MESH_MIN_HEALTHY_PEERS")
-        .ok()
+    let minimum_peers = env("MESH_MIN_HEALTHY_PEERS")
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(default_minimum_peers);
-    let stable_identity = std::env::var("MESH_CLUSTER_ID")
-        .is_ok_and(|value| !value.trim().is_empty())
-        && std::env::var("MESH_STABLE_NODE_ID").is_ok_and(|value| !value.trim().is_empty())
-        && std::env::var("MESH_TLS_CA_DER_B64").is_ok()
-        && std::env::var("MESH_TLS_CERT_DER_B64").is_ok()
-        && std::env::var("MESH_TLS_KEY_DER_B64").is_ok();
-    let stability_window = transport_stability_window();
+    let stable_identity = env("MESH_CLUSTER_ID").is_some_and(|value| !value.trim().is_empty())
+        && env("MESH_STABLE_NODE_ID").is_some_and(|value| !value.trim().is_empty())
+        && env("MESH_TLS_CA_DER_B64").is_some()
+        && env("MESH_TLS_CERT_DER_B64").is_some()
+        && env("MESH_TLS_KEY_DER_B64").is_some();
+    let stability_window = transport_stability_window(env);
     let (peer_count, protocol_ready) = state.map_or((0, false), |state| {
         let sessions = state.sessions.read();
         let compatible = sessions.values().all(|session| {
@@ -136,8 +145,8 @@ pub fn local_readiness_status() -> NodeReadinessStatus {
     let synchronized = (peer_count == 0 && minimum_peers == 0)
         || INITIAL_STATE_SYNCHRONIZED.load(Ordering::Acquire);
     let scheduler_ready = crate::actor::GLOBAL_SCHEDULER.get().is_some();
-    let application_ready = !std::env::var("MESH_APPLICATION_READY")
-        .is_ok_and(|value| value.trim().eq_ignore_ascii_case("false") || value.trim() == "0");
+    let application_ready = !env("MESH_APPLICATION_READY")
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("false") || value.trim() == "0");
 
     let gates = vec![
         gate(
@@ -285,6 +294,9 @@ mod tests {
             roles.contains(NodeRoles::WORKER),
             std::env::var("MESH_ROLES").map_or(true, |roles| roles.contains("worker"))
         );
-        assert!(transport_stability_window() >= std::time::Duration::from_millis(450));
+        assert!(
+            transport_stability_window(&super::super::node::process_env)
+                >= std::time::Duration::from_millis(450)
+        );
     }
 }
