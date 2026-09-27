@@ -11241,6 +11241,173 @@ mod tests {
         );
     }
 
+    /// A store that serves one snapshot chunk and then its log, as told:
+    /// no chunk or no log is a store that fails there, and `on_log` runs
+    /// as the log is read.
+    struct ScriptedStore {
+        chunk: Option<crate::dist::continuity_store::SnapshotChunk>,
+        log: Option<Vec<crate::dist::continuity_store::ContinuityLogEntry>>,
+        on_log: Box<dyn Fn() + Send + Sync>,
+    }
+
+    impl crate::dist::continuity_store::ContinuityStore for ScriptedStore {
+        fn snapshot_chunks(
+            &self,
+            _chunk_bytes: usize,
+        ) -> Result<Vec<crate::dist::continuity_store::SnapshotChunk>, String> {
+            let chunk = self.chunk.clone().ok_or("the snapshot failed")?;
+            Ok(vec![chunk])
+        }
+
+        fn log_entries_after(
+            &self,
+            high_water_mark: u64,
+            limit: u32,
+        ) -> Result<Vec<crate::dist::continuity_store::ContinuityLogEntry>, String> {
+            (self.on_log)();
+            let log = self.log.as_ref().ok_or("the log failed")?;
+            Ok(log
+                .iter()
+                .filter(|entry| entry.sequence > high_water_mark)
+                .take(limit as usize)
+                .cloned()
+                .collect())
+        }
+
+        fn get(
+            &self,
+            _: &str,
+        ) -> Result<Option<crate::dist::continuity_store::StoredContinuityRecord>, String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn upsert(
+            &self,
+            _: &crate::dist::continuity_store::StoredContinuityRecord,
+        ) -> Result<(), String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn compact(
+            &self,
+            _: u64,
+        ) -> Result<crate::dist::continuity_store::CompactionOutcome, String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn apply_snapshot_chunk(
+            &self,
+            _: &crate::dist::continuity_store::SnapshotChunk,
+        ) -> Result<(), String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn high_water_mark(&self) -> Result<u64, String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn apply_log_entry(
+            &self,
+            _: &crate::dist::continuity_store::ContinuityLogEntry,
+        ) -> Result<(), String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn acknowledge_replica_safe_point(&self, _: &str, _: u64) -> Result<(), String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+        fn compact_log_to_replica_safe_point(&self) -> Result<u64, String> {
+            unreachable!("a sync only reads the snapshot and the log")
+        }
+    }
+
+    /// A new peer gets this node's continuity as its protocol takes it: a
+    /// protocol-one peer one sync frame and no store; one that takes
+    /// chunked snapshots each record, then the store's snapshot and the log
+    /// written since, page by page, as far as the session and the store
+    /// let it.
+    #[test]
+    fn a_new_peer_gets_the_continuity_its_protocol_takes() {
+        use crate::dist::continuity::{send_continuity_sync, send_durable_store_sync};
+        use crate::dist::continuity_store::tests::{record, store};
+        use crate::dist::continuity_store::{ContinuityStore, StoredContinuityPhase};
+        let old = TestPeer::new("sync-old-peer@127.0.0.1:1");
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(
+                1,
+                continuity_record("synced-key", "sync-owner@h:1", "sync-replica@h:1"),
+            )
+            .unwrap();
+        send_continuity_sync(&old.session);
+        assert!(old
+            .sent()
+            .iter()
+            .any(|frame| frame[0] == DIST_CONTINUITY_SYNC));
+        let empty = store();
+        send_durable_store_sync(&old.session, Some(&empty));
+        assert!(old.sent().is_empty());
+
+        let gone = TestPeer::authenticated("sync-gone-peer@127.0.0.1:1", &["worker"]);
+        gone.session.shutdown.store(true, Ordering::SeqCst);
+        send_continuity_sync(&gone.session);
+
+        let written = store();
+        for index in 0..300 {
+            written
+                .upsert(&record(
+                    &format!("logged-{index}"),
+                    1,
+                    StoredContinuityPhase::Started,
+                ))
+                .unwrap();
+        }
+        let chunk = empty.snapshot_chunks(1024).unwrap().remove(0);
+        let log = written.log_entries_after(0, 1_000).unwrap();
+        let sync = |name: &str, serves_chunk: bool, serves_log: bool, stop: bool| {
+            let peer = TestPeer::authenticated(name, &["worker"]);
+            let session = Arc::clone(&peer.session);
+            let scripted = ScriptedStore {
+                chunk: serves_chunk.then(|| chunk.clone()),
+                log: serves_log.then(|| log.clone()),
+                on_log: Box::new(move || {
+                    if stop {
+                        session.shutdown.store(true, Ordering::SeqCst);
+                    }
+                }),
+            };
+            let done = AtomicBool::new(false);
+            let mut frames = Vec::new();
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    send_durable_store_sync(&peer.session, Some(&scripted));
+                    done.store(true, Ordering::Release);
+                });
+                loop {
+                    let finished = done.load(Ordering::Acquire);
+                    frames.extend(peer.sent().into_iter().map(|frame| frame[0]));
+                    if finished {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            });
+            frames
+        };
+        let (snapshot, entry) = (
+            DIST_CONTINUITY_STORE_SNAPSHOT,
+            DIST_CONTINUITY_STORE_LOG_ENTRY,
+        );
+        assert_eq!(
+            sync("sync-no-snapshot@127.0.0.1:1", false, true, false),
+            Vec::<u8>::new()
+        );
+        assert_eq!(
+            sync("sync-no-log@127.0.0.1:1", true, false, false),
+            [snapshot]
+        );
+        assert_eq!(
+            sync("sync-stopped@127.0.0.1:1", true, true, true),
+            [snapshot]
+        );
+        let whole = sync("sync-whole@127.0.0.1:1", true, true, false);
+        assert_eq!(whole.len(), 301);
+        assert!(whole[1..].iter().all(|tag| *tag == entry));
+    }
+
     /// Continuity prepares and their acks are framed whole: a frame cut
     /// short, padded, or with a status or reason no sender writes is
     /// refused.

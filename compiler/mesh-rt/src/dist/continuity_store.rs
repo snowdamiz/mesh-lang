@@ -1891,10 +1891,14 @@ impl SystemTimeMillis {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn record(key: &str, version: u64, phase: StoredContinuityPhase) -> StoredContinuityRecord {
+    pub(crate) fn record(
+        key: &str,
+        version: u64,
+        phase: StoredContinuityPhase,
+    ) -> StoredContinuityRecord {
         let terminal = (!phase.is_active()).then_some(10);
         StoredContinuityRecord {
             operation_key: key.to_string(),
@@ -1918,7 +1922,7 @@ mod tests {
         }
     }
 
-    fn store() -> SqliteContinuityStore {
+    pub(crate) fn store() -> SqliteContinuityStore {
         SqliteContinuityStore::open(Path::new(":memory:"), ContinuityStoreLimits::default())
             .expect("in-memory store")
     }
@@ -2341,7 +2345,7 @@ mod tests {
     }
 
     /// Runs `sql` on the store's own connection, to age or damage its data.
-    fn execute(store: &SqliteContinuityStore, sql: &str) {
+    pub(crate) fn execute(store: &SqliteContinuityStore, sql: &str) {
         execute_batch(store.connection.lock().unwrap().raw, sql).expect(sql);
     }
 

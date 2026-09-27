@@ -2333,10 +2333,11 @@ pub(crate) fn spawn_continuity_sync(session: &Arc<super::node::NodeSession>) {
         .expect("failed to spawn continuity sync thread");
 }
 
-fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
+pub(crate) fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
+    let store = configured_continuity_store().map(|store| store.as_ref() as &dyn ContinuityStore);
     let snapshot = continuity_registry().snapshot();
     if snapshot.records.is_empty() && snapshot.next_attempt_token == 0 {
-        send_durable_store_sync(session);
+        send_durable_store_sync(session, store);
         return;
     }
 
@@ -2356,7 +2357,7 @@ fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
                 return;
             }
         }
-        send_durable_store_sync(session);
+        send_durable_store_sync(session, store);
     } else {
         let payload = encode_sync_payload(&snapshot).expect("a registry snapshot encodes");
         let _ = session.send_waiting(super::node::OutboundClass::Snapshot, payload);
@@ -2408,7 +2409,12 @@ fn decode_tagged_json<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, S
         .map_err(|error| format!("continuity_sync_decode_failed:{error}"))
 }
 
-fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
+/// Sends a peer that takes chunked snapshots `store`'s snapshot, then the
+/// log written since, stopping where the store or the session fails.
+pub(crate) fn send_durable_store_sync(
+    session: &Arc<super::node::NodeSession>,
+    store: Option<&dyn ContinuityStore>,
+) {
     if !session
         .negotiated_protocol
         .capabilities
@@ -2416,7 +2422,7 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
     {
         return;
     }
-    let Some(store) = configured_continuity_store() else {
+    let Some(store) = store else {
         return;
     };
     let configured = super::continuity_store::runtime_snapshot_chunk_bytes();
