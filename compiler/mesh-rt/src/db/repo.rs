@@ -117,12 +117,17 @@ fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
 
 // ── Comprehensive SQL Builder ────────────────────────────────────────
 
-/// The query's SELECT, as `Repo.all` runs it, with its parameter values;
-/// `bare_select` stands in for an empty select list (`*`).
-fn select_sql(query: &QueryParts, bare_select: Option<&str>) -> (String, Vec<String>) {
+/// The query's SELECT, as `Repo.all` runs it, with its parameter values,
+/// numbered from `$start_idx`; `bare_select` stands in for an empty select
+/// list (`*`).
+fn select_sql(
+    query: &QueryParts,
+    bare_select: Option<&str>,
+    start_idx: usize,
+) -> (String, Vec<String>) {
     let mut sql = String::new();
     let mut params: Vec<String> = Vec::new();
-    let mut param_idx = 1usize;
+    let mut param_idx = start_idx;
 
     // SELECT clause
     sql.push_str("SELECT ");
@@ -178,8 +183,7 @@ fn select_sql(query: &QueryParts, bare_select: Option<&str>) -> (String, Vec<Str
 
     // WHERE clause
     if !query.where_clauses.is_empty() {
-        let (where_sql, where_param_values, next_param_idx) =
-            build_where_from_query_parts(&query.where_clauses, &query.where_params, param_idx);
+        let (where_sql, where_param_values, next_param_idx) = where_sql(query, param_idx);
         sql.push_str(&format!(" WHERE {}", where_sql));
         params.extend(where_param_values);
         param_idx = next_param_idx;
@@ -282,7 +286,7 @@ fn run_query(pool: u64, sql: &str, params: &[String]) -> *mut u8 {
 /// clause types, and executes via Pool.query.
 #[no_mangle]
 pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
-    let (sql, params) = select_sql(unsafe { &query_parts(query) }, None);
+    let (sql, params) = select_sql(unsafe { &query_parts(query) }, None, 1);
     run_query(pool, &sql, &params)
 }
 
@@ -296,7 +300,7 @@ pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let mut parts = query_parts(query);
         parts.limit = 1;
-        let (sql, params) = select_sql(&parts, None);
+        let (sql, params) = select_sql(&parts, None, 1);
         first_row(run_query(pool, &sql, &params), "not found")
     }
 }
@@ -399,7 +403,7 @@ pub extern "C" fn mesh_repo_get_by(
 #[no_mangle]
 pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
-        let (select, params) = select_sql(&query_parts(query), Some("1"));
+        let (select, params) = select_sql(&query_parts(query), Some("1"), 1);
         let sql = counted_sql(&select);
         match single_value(pool, &sql, &params, "count") {
             Ok(count) => crate::io::ok_int(count.parse().unwrap_or(0)).cast(),
@@ -435,7 +439,7 @@ unsafe fn single_value(
 #[no_mangle]
 pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
-        let (select, params) = select_sql(&query_parts(query), Some("1"));
+        let (select, params) = select_sql(&query_parts(query), Some("1"), 1);
         let sql = exists_sql(&select);
         match single_value(pool, &sql, &params, "exists") {
             // A Bool payload is boxed.
@@ -506,13 +510,12 @@ fn build_update_where_expr_sql_pure(
     table: &str,
     columns: &[String],
     exprs: &[SqlExpr],
-    where_clauses: &[String],
-    where_params: &[String],
+    query: &QueryParts,
 ) -> Result<(String, Vec<String>), &'static str> {
     if columns.is_empty() {
         return Err("update_where_expr: no fields provided");
     }
-    if where_clauses.is_empty() {
+    if query.where_clauses.is_empty() {
         return Err("update_where_expr: no WHERE conditions");
     }
 
@@ -520,9 +523,8 @@ fn build_update_where_expr_sql_pure(
     let (set_parts, mut params, next_idx) = build_set_expr_parts(columns, exprs, 1);
     sql.push_str(&set_parts.join(", "));
 
-    let (where_sql, where_param_values, _next_idx) =
-        build_where_from_query_parts(where_clauses, where_params, next_idx);
-    sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
+    let (conditions, where_param_values, _next_idx) = where_sql(query, next_idx);
+    sql.push_str(&format!(" WHERE {} RETURNING *", conditions));
     params.extend(where_param_values);
 
     Ok((sql, params))
@@ -1341,21 +1343,27 @@ pub extern "C" fn mesh_repo_preload(
 
 // ── Shared WHERE clause builder ──────────────────────────────────────
 
-/// Build a WHERE clause from decomposed where_clauses and where_params.
+/// The query's WHERE conditions (without the keyword), joined by AND.
 ///
 /// Returns `(where_sql, params, next_param_idx)`.
 /// `start_idx` is the first $N placeholder to use.
-fn build_where_from_query_parts(
-    where_clauses: &[String],
-    where_params: &[String],
-    start_idx: usize,
-) -> (String, Vec<String>, usize) {
+fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usize) {
+    let where_params = &query.where_params;
+    let mut subqueries = query.subqueries.iter();
     let mut conditions = Vec::new();
     let mut params = Vec::new();
     let mut param_idx = start_idx;
     let mut wp_idx = 0;
 
-    for clause in where_clauses {
+    for clause in &query.where_clauses {
+        if let Some(field) = clause.strip_prefix("SUB:") {
+            let sub = subqueries.next().expect("a where_sub clause has its query");
+            let (sub_sql, sub_params) = select_sql(sub, None, param_idx);
+            param_idx += sub_params.len();
+            params.extend(sub_params);
+            conditions.push(format!("{} IN ({sub_sql})", quote_name(field)));
+            continue;
+        }
         // OR clause: "OR:field1,field2,...:N"
         if clause.starts_with("OR:") {
             let parts: Vec<&str> = clause.splitn(3, ':').collect();
@@ -1482,13 +1490,9 @@ pub extern "C" fn mesh_repo_update_where(
             return err_result("update_where: no fields provided");
         }
 
-        let QueryParts {
-            where_clauses,
-            where_params,
-            ..
-        } = query_parts(query);
+        let query = query_parts(query);
 
-        if where_clauses.is_empty() {
+        if query.where_clauses.is_empty() {
             return err_result("update_where: no WHERE conditions");
         }
 
@@ -1501,9 +1505,8 @@ pub extern "C" fn mesh_repo_update_where(
         sql.push_str(&set_parts.join(", "));
 
         let start_idx = columns.len() + 1;
-        let (where_sql, where_param_values, _next_idx) =
-            build_where_from_query_parts(&where_clauses, &where_params, start_idx);
-        sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
+        let (conditions, where_param_values, _next_idx) = where_sql(&query, start_idx);
+        sql.push_str(&format!(" WHERE {} RETURNING *", conditions));
 
         values.extend(where_param_values);
 
@@ -1526,22 +1529,13 @@ pub extern "C" fn mesh_repo_update_where_expr(
     unsafe {
         let table_str = text_of(table);
         let (columns, exprs) = map_to_columns_and_exprs(expr_fields);
-        let QueryParts {
-            where_clauses,
-            where_params,
-            ..
-        } = query_parts(query);
+        let query = query_parts(query);
 
-        let (sql, params) = match build_update_where_expr_sql_pure(
-            table_str,
-            &columns,
-            &exprs,
-            &where_clauses,
-            &where_params,
-        ) {
-            Ok(built) => built,
-            Err(msg) => return err_result(msg),
-        };
+        let (sql, params) =
+            match build_update_where_expr_sql_pure(table_str, &columns, &exprs, &query) {
+                Ok(built) => built,
+                Err(msg) => return err_result(msg),
+            };
 
         let result = run_query(pool, &sql, &params);
 
@@ -1556,20 +1550,15 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
     unsafe {
         let table_str = text_of(table);
 
-        let QueryParts {
-            where_clauses,
-            where_params,
-            ..
-        } = query_parts(query);
+        let query = query_parts(query);
 
-        if where_clauses.is_empty() {
+        if query.where_clauses.is_empty() {
             return err_result("delete_where: no WHERE conditions");
         }
 
         let mut sql = format!("DELETE FROM {}", quote_name(table_str));
-        let (where_sql, where_param_values, _next_idx) =
-            build_where_from_query_parts(&where_clauses, &where_params, 1);
-        sql.push_str(&format!(" WHERE {}", where_sql));
+        let (conditions, where_param_values, _next_idx) = where_sql(&query, 1);
+        sql.push_str(&format!(" WHERE {}", conditions));
 
         mesh_pool_execute(pool, mesh_str(&sql), string_list(&where_param_values))
     }
@@ -1667,20 +1656,15 @@ pub extern "C" fn mesh_repo_delete_where_returning(
 ) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
-        let QueryParts {
-            where_clauses,
-            where_params,
-            ..
-        } = query_parts(query);
+        let query = query_parts(query);
 
-        if where_clauses.is_empty() {
+        if query.where_clauses.is_empty() {
             return err_result("delete_where_returning: no WHERE conditions");
         }
 
         let mut sql = format!("DELETE FROM {}", quote_name(table_str));
-        let (where_sql, where_param_values, _next_idx) =
-            build_where_from_query_parts(&where_clauses, &where_params, 1);
-        sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
+        let (conditions, where_param_values, _next_idx) = where_sql(&query, 1);
+        sql.push_str(&format!(" WHERE {} RETURNING *", conditions));
 
         run_query(pool, &sql, &where_param_values)
     }
@@ -1728,8 +1712,6 @@ mod tests {
         let parts = QueryParts {
             source: source.to_string(),
             select: select_fields.to_vec(),
-            where_clauses: where_clauses.to_vec(),
-            where_params: where_params.to_vec(),
             order: order_fields.to_vec(),
             limit: limit_val,
             offset: offset_val,
@@ -1739,8 +1721,37 @@ mod tests {
             having_params: having_params.to_vec(),
             fragments: fragment_parts.to_vec(),
             fragment_params: fragment_params.to_vec(),
+            ..filtered(where_clauses, where_params)
         };
-        select_sql(&parts, None)
+        select_sql(&parts, None, 1)
+    }
+
+    /// A query with only these WHERE clauses and parameters.
+    fn filtered(where_clauses: &[String], where_params: &[String]) -> QueryParts {
+        QueryParts {
+            source: String::new(),
+            select: vec![],
+            where_clauses: where_clauses.to_vec(),
+            where_params: where_params.to_vec(),
+            order: vec![],
+            limit: -1,
+            offset: -1,
+            joins: vec![],
+            group: vec![],
+            having: vec![],
+            having_params: vec![],
+            fragments: vec![],
+            fragment_params: vec![],
+            subqueries: vec![],
+        }
+    }
+
+    fn build_where_from_query_parts(
+        where_clauses: &[String],
+        where_params: &[String],
+        start_idx: usize,
+    ) -> (String, Vec<String>, usize) {
+        where_sql(&filtered(where_clauses, where_params), start_idx)
     }
 
     /// A query's entry for `expr` (in its SELECT or WHERE list).
@@ -2943,6 +2954,61 @@ mod tests {
         );
     }
 
+    /// `Repo.all`'s SQL and parameters for the Query `q`.
+    fn all_sql(q: *mut u8) -> (String, Vec<String>) {
+        select_sql(unsafe { &query_parts(q) }, None, 1)
+    }
+
+    fn atom(name: &str) -> *mut u8 {
+        mesh_str(name) as *mut u8
+    }
+
+    /// A subquery is the whole query `Repo.all` would run, whatever its
+    /// clauses, numbered where it falls in the outer one.
+    #[test]
+    fn a_subquery_keeps_every_clause_it_has() {
+        use crate::db::query::*;
+        crate::gc::mesh_rt_init();
+        let expr = crate::db::expr::mesh_expr_gt(
+            crate::db::expr::mesh_expr_column(atom("views")),
+            crate::db::expr::mesh_expr_value(atom("10")),
+        );
+        let sub = mesh_query_from(atom("articles"));
+        let sub = mesh_query_select(sub, string_list(&["author_id"]));
+        let sub = mesh_query_where_in(sub, atom("status"), string_list(&["live", "pinned"]));
+        let sub = mesh_query_where_not_in(sub, atom("kind"), string_list(&["draft"]));
+        let sub = mesh_query_where_between(sub, atom("year"), atom("2020"), atom("2026"));
+        let sub = mesh_query_where_or(sub, string_list(&["a", "b"]), string_list(&["1", "2"]));
+        let sub = mesh_query_where_expr(sub, expr);
+        let sub = mesh_query_join(
+            sub,
+            atom("inner"),
+            atom("writers"),
+            atom("writers.handle = articles.author_id"),
+        );
+        let sub = mesh_query_limit(sub, 5);
+        let inner = mesh_query_where(mesh_query_from(atom("bans")), atom("active"), atom("t"));
+        let inner = mesh_query_select(inner, string_list(&["handle"]));
+        let sub = mesh_query_where_sub(sub, atom("author_id"), inner);
+
+        let outer = mesh_query_where(mesh_query_from(atom("writers")), atom("name"), atom("Ada"));
+        let outer = mesh_query_where_sub(outer, atom("handle"), sub);
+        let outer = mesh_query_where_op(outer, atom("score"), atom("gt"), atom("3"));
+        let (sql, params) = all_sql(outer);
+        assert_eq!(
+            sql,
+            "SELECT * FROM \"writers\" WHERE \"name\" = $1 AND \"handle\" IN (SELECT \"author_id\" \
+             FROM \"articles\" INNER JOIN \"writers\" ON writers.handle = articles.author_id \
+             WHERE \"status\" IN ($2, $3) AND \"kind\" NOT IN ($4) AND \"year\" BETWEEN $5 AND $6 \
+             AND (\"a\" = $7 OR \"b\" = $8) AND (\"views\" > $9) AND \"author_id\" IN (SELECT \
+             \"handle\" FROM \"bans\" WHERE \"active\" = $10) LIMIT 5) AND \"score\" > $11"
+        );
+        assert_eq!(
+            params,
+            ["Ada", "live", "pinned", "draft", "2020", "2026", "1", "2", "10", "t", "3"]
+        );
+    }
+
     #[test]
     fn test_subquery_where_clause() {
         let (sql, params) = build_select_sql_from_parts(
@@ -3039,8 +3105,7 @@ mod tests {
                     args: vec![],
                 },
             ],
-            &["RAW:id = ?::uuid".into()],
-            &["issue-123".into()],
+            &filtered(&["RAW:id = ?::uuid".into()], &["issue-123".into()]),
         )
         .expect("update_where_expr SQL should build");
 

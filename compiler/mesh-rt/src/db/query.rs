@@ -5,7 +5,7 @@
 //! `mesh_gc_alloc_actor`, copies the previous state, and modifies the
 //! relevant slots. The Query object is never mutated in place.
 //!
-//! ## Query object layout (13 slots, 104 bytes)
+//! ## Query object layout (14 slots, 112 bytes)
 //!
 //! | Slot | Offset | Name            | Type                   |
 //! |------|--------|-----------------|------------------------|
@@ -22,6 +22,7 @@
 //! | 10   |  80    | having_params   | *mut u8 (List<String>) |
 //! | 11   |  88    | fragment_parts  | *mut u8 (List<String>) |
 //! | 12   |  96    | fragment_params | *mut u8 (List<String>) |
+//! | 13   | 104    | subqueries      | *mut u8 (List<Query>)  |
 
 use crate::collections::list::{
     list_strings, mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
@@ -32,8 +33,8 @@ use crate::string::text_of;
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const QUERY_SLOTS: usize = 13;
-const QUERY_SIZE: usize = QUERY_SLOTS * 8; // 104 bytes
+const QUERY_SLOTS: usize = 14;
+const QUERY_SIZE: usize = QUERY_SLOTS * 8; // 112 bytes
 
 // Slot indices
 const SLOT_SOURCE: usize = 0;
@@ -49,6 +50,7 @@ const SLOT_HAVING_CLAUSES: usize = 9;
 const SLOT_HAVING_PARAMS: usize = 10;
 const SLOT_FRAGMENT_PARTS: usize = 11;
 const SLOT_FRAGMENT_PARAMS: usize = 12;
+const SLOT_SUBQUERIES: usize = 13;
 
 // ── Slot access helpers ──────────────────────────────────────────────
 
@@ -86,6 +88,8 @@ pub(crate) struct QueryParts {
     pub(crate) having_params: Vec<String>,
     pub(crate) fragments: Vec<String>,
     pub(crate) fragment_params: Vec<String>,
+    /// The queries of its `where_sub` clauses, in clause order.
+    pub(crate) subqueries: Vec<QueryParts>,
 }
 
 /// The clauses of the Query `q`.
@@ -105,6 +109,12 @@ pub(crate) unsafe fn query_parts(q: *mut u8) -> QueryParts {
         having_params: strings(SLOT_HAVING_PARAMS),
         fragments: strings(SLOT_FRAGMENT_PARTS),
         fragment_params: strings(SLOT_FRAGMENT_PARAMS),
+        subqueries: {
+            let subs = query_get(q, SLOT_SUBQUERIES);
+            (0..mesh_list_length(subs))
+                .map(|i| query_parts(mesh_list_get(subs, i) as *mut u8))
+                .collect()
+        },
     }
 }
 
@@ -160,6 +170,7 @@ unsafe fn alloc_query() -> *mut u8 {
     query_set(q, SLOT_HAVING_PARAMS, mesh_list_new());
     query_set(q, SLOT_FRAGMENT_PARTS, mesh_list_new());
     query_set(q, SLOT_FRAGMENT_PARAMS, mesh_list_new());
+    query_set(q, SLOT_SUBQUERIES, mesh_list_new());
     // Integer slots: -1 means "not set"
     query_set_int(q, SLOT_LIMIT, -1);
     query_set_int(q, SLOT_OFFSET, -1);
@@ -780,99 +791,28 @@ pub extern "C" fn mesh_query_select_max(q: *mut u8, field: *mut u8) -> *mut u8 {
 ///
 /// `Query.where_sub(q, :field, sub_query)` -> new Query with WHERE field IN (SELECT ...)
 ///
-/// The sub_query is another Query that gets serialized to a SELECT SQL string.
-/// Its parameters are appended to the outer query's where_params.
+/// The clause names the field; the sub_query itself goes on the Query's
+/// subquery list, and the SQL builder renders it whole (every clause it has)
+/// with its parameters numbered where it falls.
 #[no_mangle]
 pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
-        let field_str = text_of(field);
-
-        // Build subquery SQL from the sub_query's slots
-        let sub_source_ptr = query_get(sub_query, SLOT_SOURCE);
-        let sub_source = text_of(sub_source_ptr);
-        let sub_select = list_to_sub_strings(query_get(sub_query, SLOT_SELECT));
-        let sub_where_clauses = list_to_sub_strings(query_get(sub_query, SLOT_WHERE_CLAUSES));
-        // Build the subquery SELECT SQL
-        let mut sub_sql = String::from("SELECT ");
-        if sub_select.is_empty() {
-            sub_sql.push('*');
-        } else {
-            let cols: Vec<String> = sub_select
-                .iter()
-                .map(|f| {
-                    if let Some(raw) = f.strip_prefix("RAW:") {
-                        raw.to_string()
-                    } else {
-                        format!("\"{}\"", f.replace('"', "\"\""))
-                    }
-                })
-                .collect();
-            sub_sql.push_str(&cols.join(", "));
-        }
-        sub_sql.push_str(&format!(" FROM \"{}\"", sub_source.replace('"', "\"\"")));
-
-        // WHERE conditions: use ? placeholders (will be renumbered by outer query's SQL builder)
-        if !sub_where_clauses.is_empty() {
-            sub_sql.push_str(" WHERE ");
-            let mut conditions = Vec::new();
-            for clause in &sub_where_clauses {
-                if let Some(raw) = clause.strip_prefix("RAW:") {
-                    // Pass raw clauses through as-is
-                    conditions.push(raw.to_string());
-                } else if let Some(space_pos) = clause.find(' ') {
-                    let col = &clause[..space_pos];
-                    let op = clause[space_pos + 1..].trim();
-                    if op == "IS NULL" || op == "IS NOT NULL" {
-                        conditions.push(format!("\"{}\" {}", col.replace('"', "\"\""), op));
-                    } else {
-                        conditions.push(format!("\"{}\" {} ?", col.replace('"', "\"\""), op));
-                    }
-                } else {
-                    conditions.push(format!("\"{}\" = ?", clause.replace('"', "\"\"")));
-                }
-            }
-            sub_sql.push_str(&conditions.join(" AND "));
-        }
-
-        // Store as RAW: clause in where_clauses
-        let raw_clause = format!(
-            "RAW:\"{}\" IN ({})",
-            field_str.replace('"', "\"\""),
-            sub_sql
-        );
-        let clause_mesh = mesh_str(&raw_clause) as *mut u8;
+        let clause = mesh_str(&format!("SUB:{}", text_of(field)));
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
             SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
+            mesh_list_append(wc, clause as u64),
         );
-
-        // Append subquery's where_params to outer query's where_params
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        let sub_param_count = mesh_list_length(query_get(sub_query, SLOT_WHERE_PARAMS));
-        for i in 0..sub_param_count {
-            let elem = mesh_list_get(query_get(sub_query, SLOT_WHERE_PARAMS), i);
-            wp = mesh_list_append(wp, elem);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-
+        let subs = query_get(new_q, SLOT_SUBQUERIES);
+        query_set(
+            new_q,
+            SLOT_SUBQUERIES,
+            mesh_list_append(subs, sub_query as u64),
+        );
         new_q
     }
-}
-
-/// Helper: read a list of MeshStrings into a Vec<String>.
-unsafe fn list_to_sub_strings(list_ptr: *mut u8) -> Vec<String> {
-    let len = mesh_list_length(list_ptr);
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let elem = mesh_list_get(list_ptr, i) as *mut u8;
-        if !elem.is_null() {
-            result.push(text_of(elem).to_string());
-        }
-    }
-    result
 }
 
 /// Add a raw SQL fragment.

@@ -338,6 +338,20 @@ fn reads(pool :: PoolHandle) do
             |> Query.where_op(:views, :gt, "15"))
         |> Query.order_by(:handle, :asc)),
     "handle")
+  # A subquery runs whole: its IN list, OR group, expression and join.
+  show_rows("where_sub_whole",
+    Repo.all(pool,
+      writers
+        |> Query.where_op(:score, :gt, "0")
+        |> Query.where_sub(:handle,
+          Query.from("articles")
+            |> Query.join(:inner, "writers", "writers.handle = articles.author_id")
+            |> Query.select(["articles.author_id"])
+            |> Query.where_in(:title, ["First", "Third", "Nope"])
+            |> Query.where_or([:author_id, :title], ["ada", "Third"])
+            |> Query.where_expr(Expr.gt(Expr.column("views"), Expr.value("5"))))
+        |> Query.order_by(:handle, :asc)),
+    "handle")
   show_rows("fragment",
     Repo.all(pool,
       writers

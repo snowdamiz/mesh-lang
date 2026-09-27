@@ -260,7 +260,7 @@ let query = Query.from(User.__table__())
 | `Query.where_not_null(query, field)` | `IS NOT NULL` |
 | `Query.where_or(query, fields, values)` | Group parallel equality predicates with `OR` |
 | `Query.where_expr(query, expression)` | Add a structured `Expr` predicate |
-| `Query.where_sub(query, field, subquery)` | Add `field IN (subquery)` |
+| `Query.where_sub(query, field, subquery)` | Add `field IN (subquery)`, the subquery built as `Repo.all` would run it, every clause included |
 
 ### Selection and Shape
 

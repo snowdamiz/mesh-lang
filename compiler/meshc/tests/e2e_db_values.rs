@@ -193,6 +193,7 @@ group_having:ada
 group_by_raw:ada,bob
 aggregates:3
 where_sub:ada,bob
+where_sub_whole:ada,bob
 fragment:cy
 all_bad:failed
 one:Cy
