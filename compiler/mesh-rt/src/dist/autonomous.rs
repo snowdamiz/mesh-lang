@@ -245,6 +245,11 @@ impl RuntimeAutonomousConfig {
         {
             return Err("autonomous_runtime_horizontal_prerequisite_missing".to_string());
         }
+        // Scaling down drains a node: with no disruption budget the
+        // reconciler cannot start, and the controller would never run.
+        if self.features.horizontal_autoscaling && self.policy.max_unavailable == 0 {
+            return Err("autonomous_runtime_disruption_budget_zero".to_string());
+        }
         self.policy.validate()?;
         self.scheduler.validate()?;
         self.routing.validate()?;
@@ -1099,9 +1104,8 @@ mod tests {
         assert!(!managed_runtime_matches(&observed, "worker1@worker1:4370"));
     }
 
-    #[test]
-    fn embedded_runtime_config_round_trips() {
-        let config = RuntimeAutonomousConfig {
+    fn config() -> RuntimeAutonomousConfig {
+        RuntimeAutonomousConfig {
             schema_version: AUTONOMOUS_CONFIG_SCHEMA_VERSION,
             enabled: true,
             features: RuntimeFeatureGates::default(),
@@ -1134,11 +1138,30 @@ mod tests {
                 network: Some("app-private".to_string()),
                 environment: vec!["PORT=8080".to_string()],
             },
-        };
+        }
+    }
+
+    #[test]
+    fn embedded_runtime_config_round_trips() {
+        let config = config();
         let encoded = serde_json::to_vec(&config).unwrap();
         let decoded: RuntimeAutonomousConfig = serde_json::from_slice(&encoded).unwrap();
         decoded.validate().unwrap();
         assert_eq!(decoded, config);
+    }
+
+    /// The reconciler refuses a zero disruption budget, so a controller
+    /// started with one stopped at once and never scaled.
+    #[test]
+    fn horizontal_autoscaling_refuses_a_zero_disruption_budget() {
+        let mut config = config();
+        config.policy.max_unavailable = 0;
+        assert_eq!(
+            config.validate(),
+            Err("autonomous_runtime_disruption_budget_zero".to_string())
+        );
+        config.features.horizontal_autoscaling = false;
+        assert_eq!(config.validate(), Ok(()));
     }
 
     #[test]
