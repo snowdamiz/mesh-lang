@@ -16061,11 +16061,8 @@ pub fn imported_specializations(
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
 ) -> HashMap<String, Vec<Ty>> {
-    let Some(source_file) = SourceFile::cast(parse.syntax()) else {
-        return HashMap::new();
-    };
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
-    lowerer.prepare_specializations(&source_file);
+    lowerer.prepare_specializations(&parse.tree());
     lowerer.imported_specializations
 }
 
@@ -16099,11 +16096,7 @@ pub fn lower_module_to_mir<'a>(
         return Err(format!("unsafe resource closure rejected: {reason}"));
     }
 
-    let tree = parse.syntax();
-    let source_file = match SourceFile::cast(tree.clone()) {
-        Some(sf) => sf,
-        None => return Err("Failed to cast root node to SourceFile".to_string()),
-    };
+    let source_file = parse.tree();
 
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
     for &(other_parse, other) in other_modules {
