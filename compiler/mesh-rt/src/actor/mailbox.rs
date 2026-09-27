@@ -62,7 +62,6 @@ pub enum MailboxPushError {
 struct MailboxState {
     queue: VecDeque<Message>,
     bytes: usize,
-    rejected: u64,
 }
 
 /// A thread-safe FIFO mailbox for an actor.
@@ -87,7 +86,6 @@ impl Mailbox {
             state: Mutex::new(MailboxState {
                 queue: VecDeque::new(),
                 bytes: 0,
-                rejected: 0,
             }),
             max_items,
             max_bytes,
@@ -130,7 +128,6 @@ impl Mailbox {
         let depth = {
             let mut state = self.state.lock();
             if message_bytes > self.max_bytes {
-                state.rejected = state.rejected.saturating_add(1);
                 return Err(MailboxPushError::MessageTooLarge);
             }
             let max_items = self.max_items.saturating_add(if control { 1 } else { 0 });
@@ -139,12 +136,8 @@ impl Mailbox {
                 .saturating_add(if control { message_bytes } else { 0 });
             if state.queue.len() >= max_items
                 || state.bytes.saturating_add(message_bytes) > max_bytes
+                || !reserve_global(message_bytes, global_max_items, global_max_bytes)
             {
-                state.rejected = state.rejected.saturating_add(1);
-                return Err(MailboxPushError::Full);
-            }
-            if !reserve_global(message_bytes, global_max_items, global_max_bytes) {
-                state.rejected = state.rejected.saturating_add(1);
                 return Err(MailboxPushError::Full);
             }
             state.bytes += message_bytes;
