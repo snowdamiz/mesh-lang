@@ -438,7 +438,6 @@ pub(crate) fn check(
         errors: Vec::new(),
     };
 
-    checker.check_resource_parameter_patterns(parse);
     checker.check_resource_patterns(parse);
     for binding in &top_level_bindings {
         checker.check_top_level_binding(binding);
@@ -574,38 +573,12 @@ fn register_pg_signature(
 }
 
 impl Checker<'_> {
-    fn check_resource_parameter_patterns(&mut self, parse: &Parse) {
-        for parameter in parse.syntax().descendants().filter_map(Param::cast) {
-            let Some(pattern) = parameter.pattern() else {
-                continue;
-            };
-            if !self.pattern_is_resource(&pattern) {
-                continue;
-            }
-
-            // ponytail: synthesize branch-local drop scopes before permitting implicit resource discards.
-            self.errors.push(TypeError::ResourceViolation {
-                reason: "resource-bearing parameter patterns are unsupported".to_string(),
-                span: pattern.syntax().text_range(),
-            });
-        }
-    }
-
     fn check_resource_patterns(&mut self, parse: &Parse) {
         for pattern in parse.syntax().descendants().filter_map(Pattern::cast) {
             let reason = match &pattern {
-                Pattern::Wildcard(_) => {
-                    let belongs_to_rejected_parameter = pattern
-                        .syntax()
-                        .ancestors()
-                        .find_map(Param::cast)
-                        .and_then(|parameter| parameter.pattern())
-                        .is_some_and(|parameter_pattern| {
-                            self.pattern_is_resource(&parameter_pattern)
-                        });
-                    (!belongs_to_rejected_parameter && self.pattern_is_resource(&pattern))
-                        .then_some("resource value cannot be discarded with `_` in a pattern")
-                }
+                Pattern::Wildcard(_) => self
+                    .pattern_is_resource(&pattern)
+                    .then_some("resource value cannot be discarded with `_` in a pattern"),
                 // `Ok(key) as whole` would give one resource two owners.
                 Pattern::As(as_pattern) => as_pattern
                     .pattern()
@@ -697,13 +670,20 @@ impl Checker<'_> {
                 continue;
             };
             self.check_resource_holder(&ty, parameter.syntax().text_range());
+            let borrowed = parameter.ownership() == ParamOwnership::Borrow;
             if let Some(name) = parameter.name() {
-                self.insert_binding(
-                    name.text().to_string(),
-                    ty,
-                    parameter.ownership() == ParamOwnership::Borrow,
-                );
+                self.insert_binding(name.text().to_string(), ty, borrowed);
+            } else if let Some(pattern) = parameter.pattern() {
+                self.bind_pattern(&pattern);
+                for name in pattern.binders() {
+                    if let Some(binding) = self.lookup_mut(name.text()) {
+                        binding.borrowed = borrowed;
+                    }
+                }
             }
+        }
+        if let Some(guard) = function.guard().and_then(|guard| guard.expr()) {
+            self.check_guard(&guard);
         }
 
         if let Some(body) = function.body() {

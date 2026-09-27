@@ -16967,6 +16967,14 @@ mod tests {
         let keep = function_body(&mir, "keep");
         assert_eq!(drops_of(&keep, "secret"), 2, "{keep:?}");
         assert_eq!(drops_of(&keep, "whole"), 1, "{keep:?}");
+
+        // So is what a parameter pattern binds.
+        let mir = lower(
+            "fn peek(secret :: borrow SecretBytes) -> Int = 1\n\
+             fn keep((secret, n)) -> Int = peek(secret) + n",
+        );
+        let keep = function_body(&mir, "keep");
+        assert_eq!(drops_of(&keep, "secret"), 1, "{keep:?}");
     }
 
     fn function_body(mir: &MirModule, name: &str) -> MirExpr {

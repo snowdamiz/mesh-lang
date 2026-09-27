@@ -703,13 +703,33 @@ fn an_as_pattern_cannot_bind_a_resource_twice() {
     );
 }
 
+/// A parameter pattern owns what it binds, like a `case` arm.
 #[test]
-fn rejects_resource_bearing_parameter_patterns() {
-    let result = check_source("fn consume((secret, _)) = Secret.destroy(secret)");
+fn resource_parameter_patterns_bind_like_arms() {
+    let accepted = check_source(
+        "fn peek(secret :: borrow SecretBytes) -> Int = 1\n\
+         fn consume((secret, n)) = Secret.destroy(secret)\n\
+         fn keep((secret, n)) -> Int = peek(secret) + n\n\
+         fn pick(Ok(secret)) = Secret.destroy(secret)\n\
+         fn pick(Err(reason)) = println(reason)\n\
+         fn lent((secret, n) :: borrow (SecretBytes, Int)) -> Int = peek(secret) + n",
+    );
+    assert!(accepted.errors.is_empty(), "{:?}", accepted.errors);
 
+    let rejected = check_source(
+        "fn spent(secret :: consume SecretBytes) -> Bool do\n  Secret.destroy(secret)\n  true\nend\n\
+         fn guarded((secret, n)) when spent(secret) = nil\n\
+         fn guarded((secret, n)) = Secret.destroy(secret)\n\
+         fn lent((secret, n) :: borrow (SecretBytes, Int)) = Secret.destroy(secret)\n\
+         fn discard((_, n) :: (SecretBytes, Int)) -> Int = n",
+    );
     assert_eq!(
-        resource_violations(&result),
-        ["resource-bearing parameter patterns are unsupported"]
+        resource_violations(&rejected),
+        [
+            "resource value cannot be discarded with `_` in a pattern",
+            "a guard cannot move resource `secret`",
+            "borrowed resource `secret` cannot be moved",
+        ]
     );
 }
 
