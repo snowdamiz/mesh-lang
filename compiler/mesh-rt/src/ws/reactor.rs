@@ -1144,7 +1144,7 @@ impl Entry {
 
         if matches!(self.phase, Phase::ServerReply { .. }) {
             if let Err(reason) = self.finish_server_reply() {
-                self.fail(&reason);
+                self.protocol_failure(&reason);
             }
         }
         if network_written && self.stream.wants_read() {
@@ -1560,6 +1560,140 @@ pub(crate) fn reactor_threads_started() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ws::close::parse_close_payload;
+    use crate::ws::frame::{read_frame, write_frame, write_masked_frame};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// What a connection's handler and sink were told, in order.
+    #[derive(Debug, PartialEq)]
+    enum Seen {
+        Opened(String),
+        Text(Vec<u8>),
+        Binary(Vec<u8>),
+        Close(u16, String),
+        Terminated(String),
+        Failed(String),
+    }
+
+    /// A handler and sink that report to a channel; the server's opened
+    /// connection is kept for the test to send on.
+    struct Recorder {
+        seen: Mutex<mpsc::Sender<Seen>>,
+        connection: Mutex<Option<ReactorConnection>>,
+    }
+
+    impl Recorder {
+        fn new() -> (Arc<Self>, mpsc::Receiver<Seen>) {
+            let (sender, receiver) = mpsc::channel();
+            let recorder = Arc::new(Self {
+                seen: Mutex::new(sender),
+                connection: Mutex::new(None),
+            });
+            (recorder, receiver)
+        }
+
+        fn saw(&self, seen: Seen) {
+            let _ = self.seen.lock().send(seen);
+        }
+    }
+
+    impl ReactorEventSink for Recorder {
+        fn opened(&self) {
+            self.saw(Seen::Opened(String::new()));
+        }
+
+        fn event(&self, event: ReactorEvent) -> Result<(), SinkError> {
+            self.saw(match event {
+                ReactorEvent::Text(data, _) => Seen::Text(data),
+                ReactorEvent::Binary(data, _) => Seen::Binary(data),
+                ReactorEvent::Close(code, reason) => Seen::Close(code, reason),
+            });
+            Ok(())
+        }
+
+        fn terminated(&self, reason: &str) {
+            self.saw(Seen::Terminated(reason.to_string()));
+        }
+    }
+
+    impl ServerHandshakeHandler for Arc<Recorder> {
+        fn opened(
+            &self,
+            connection: ReactorConnection,
+            path: String,
+            _headers: Vec<(String, String)>,
+        ) -> Arc<dyn ReactorEventSink> {
+            *self.connection.lock() = Some(connection);
+            self.saw(Seen::Opened(path));
+            Arc::clone(self) as Arc<dyn ReactorEventSink>
+        }
+
+        fn failed(&self, reason: &str) {
+            self.saw(Seen::Failed(reason.to_string()));
+        }
+    }
+
+    /// A server connection on the reactor under `config`, and the raw
+    /// client connected to it.
+    fn server(config: ReactorConfig) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client.set_read_timeout(Some(TIMEOUT)).unwrap();
+        let (tcp, _) = listener.accept().unwrap();
+        let (recorder, seen) = Recorder::new();
+        register_server(
+            ReactorTransport::plain(tcp),
+            Arc::new(Arc::clone(&recorder)),
+            config,
+        )
+        .unwrap();
+        (client, recorder, seen)
+    }
+
+    const UPGRADE: &[u8] = b"GET /feed HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n\
+        Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+        Sec-WebSocket-Version: 13\r\n\r\n";
+
+    /// Send the upgrade request with `then` in the same write, and read the
+    /// server's 101 answer.
+    fn upgrade(client: &mut TcpStream, then: &[u8]) {
+        client.write_all(&[UPGRADE, then].concat()).unwrap();
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            client.read_exact(&mut byte).unwrap();
+            head.push(byte[0]);
+        }
+        assert!(head.starts_with(b"HTTP/1.1 101"), "{head:?}");
+    }
+
+    fn next(seen: &mpsc::Receiver<Seen>) -> Seen {
+        seen.recv_timeout(TIMEOUT).unwrap()
+    }
+
+    /// The close frame the peer reads next: its code.
+    fn close_code(client: &mut TcpStream) -> u16 {
+        let frame = read_frame(client).unwrap();
+        assert_eq!(frame.opcode, WsOpcode::Close);
+        parse_close_payload(&frame.payload).0
+    }
+
+    /// A bad frame that arrived with the upgrade request closes the opened
+    /// connection with a protocol error, as one arriving later does.
+    #[test]
+    fn a_bad_frame_sent_with_the_upgrade_closes_with_a_protocol_error() {
+        let (mut client, _recorder, seen) = server(ReactorConfig::server(1024));
+        let mut unmasked = Vec::new();
+        write_frame(&mut unmasked, WsOpcode::Text, b"hi", true).unwrap();
+        upgrade(&mut client, &unmasked);
+        assert_eq!(next(&seen), Seen::Opened("/feed".to_string()));
+        assert_eq!(close_code(&mut client), WsCloseCode::PROTOCOL_ERROR);
+        write_masked_frame(&mut client, WsOpcode::Close, &[], true, [1, 2, 3, 4]).unwrap();
+        assert_eq!(next(&seen), Seen::Close(1005, String::new()));
+    }
 
     #[test]
     fn graceful_close_retains_only_the_protocol_encoded_reason() {
