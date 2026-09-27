@@ -6312,6 +6312,28 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
     }
 }
 
+/// The cookie of the node `test_node` starts.
+#[cfg(test)]
+pub(crate) const TEST_NODE_COOKIE: &str = "mesh-runtime-test-node-cookie";
+
+/// This process's node, which every test that needs one shares: started
+/// once, on an ephemeral port. (A process has one node, so no test starts
+/// another.)
+#[cfg(test)]
+pub(crate) fn test_node() -> &'static NodeState {
+    static START: std::sync::Once = std::sync::Once::new();
+    START.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        crate::actor::mesh_rt_init_actor(2);
+        assert_eq!(
+            start_named_node("test-node@127.0.0.1:0", TEST_NODE_COOKIE),
+            0,
+            "the test node starts"
+        );
+    });
+    node_state().expect("the test node is started")
+}
+
 /// Start a fresh one-shot listener for tests that share process-global node state.
 #[cfg(test)]
 pub(crate) fn start_one_shot_test_listener() -> Result<String, String> {
@@ -8971,40 +8993,20 @@ mod tests {
         assert!(validate_cluster_cookie_strength("short-development-cookie", false).is_ok());
     }
 
+    /// A node started on port 0 listens on a port of the system's choosing
+    /// and advertises it; a process starts one node only.
     #[test]
     fn test_mesh_node_start_binds_listener() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        let state = test_node();
+        assert!(state.port > 0, "port should be assigned");
+        assert_eq!(state.name, format!("test-node@127.0.0.1:{}", state.port));
+        assert_eq!(state.cookie, TEST_NODE_COOKIE);
+        assert_eq!(state.creation(), 1);
+        assert!(TcpStream::connect(("127.0.0.1", state.port)).is_ok());
+        assert_eq!(start_named_node("again@127.0.0.1:0", TEST_NODE_COOKIE), -1);
 
-        // Use port 0 to get an OS-assigned port (avoids conflicts)
-        let name = b"test@127.0.0.1:0";
-        let cookie = b"secret";
-        let result = mesh_node_start(
-            name.as_ptr(),
-            name.len() as u64,
-            cookie.as_ptr(),
-            cookie.len() as u64,
-        );
-
-        // Either success (0) or already initialized (-1) if another test ran first.
-        // Both are acceptable in a test environment with shared process state.
-        assert!(result == 0 || result == -1, "unexpected result: {}", result);
-
-        // node_state should return Some after initialization
-        if result == 0 {
-            let state = node_state().expect("node_state should be initialized");
-            assert!(state.port > 0, "port should be assigned");
-            assert_eq!(state.cookie, "secret");
-            assert_eq!(state.creation(), 1);
-
-            // assign_node_id should start at 1 and increment
-            let id1 = state.assign_node_id();
-            let id2 = state.assign_node_id();
-            assert_eq!(id1, 1);
-            assert_eq!(id2, 2);
-
-            // Signal shutdown to clean up the listener thread
-            state.listener_shutdown.store(true, Ordering::Relaxed);
-        }
+        let first = state.assign_node_id();
+        assert!(first >= 1 && state.assign_node_id() > first);
     }
 
     #[test]

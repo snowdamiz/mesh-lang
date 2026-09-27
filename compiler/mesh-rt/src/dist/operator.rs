@@ -2102,8 +2102,6 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-    static OPERATOR_QUERY_TEST_INIT: std::sync::Once = std::sync::Once::new();
-    const OPERATOR_QUERY_TEST_COOKIE: &str = "mesh-operator-query-test-cookie";
 
     fn fresh_registry() -> ContinuityRegistry {
         ContinuityRegistry::new()
@@ -2150,30 +2148,8 @@ mod tests {
         ));
     }
 
-    fn unused_loopback_port() -> u16 {
-        std::net::TcpListener::bind(("127.0.0.1", 0))
-            .expect("bind ephemeral operator-query test port")
-            .local_addr()
-            .expect("operator-query test local_addr")
-            .port()
-    }
-
     fn ensure_operator_query_test_node() -> String {
-        OPERATOR_QUERY_TEST_INIT.call_once(|| {
-            let port = unused_loopback_port();
-            let target = format!("operator-query-test@127.0.0.1:{port}");
-            let start_code = crate::dist::node::mesh_node_start(
-                target.as_ptr(),
-                target.len() as u64,
-                OPERATOR_QUERY_TEST_COOKIE.as_ptr(),
-                OPERATOR_QUERY_TEST_COOKIE.len() as u64,
-            );
-            assert!(
-                start_code == 0 || start_code == -1,
-                "mesh_node_start should succeed or reuse the process test node"
-            );
-            std::thread::sleep(Duration::from_millis(150));
-        });
+        crate::dist::node::test_node();
         crate::dist::node::start_one_shot_test_listener()
             .expect("start a fresh operator query listener")
     }
