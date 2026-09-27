@@ -10,6 +10,8 @@
 //! - Path parameters: `/users/:id` matches `/users/42` and captures `id=42`
 //! - Method-specific routing: `HTTP.on_get(r, "/path", handler)` matches only GET
 
+use std::sync::OnceLock;
+
 use crate::string::MeshString;
 
 /// A single middleware entry holding the middleware function pointer.
@@ -41,6 +43,20 @@ pub struct RouteEntry {
 pub struct MeshRouter {
     pub routes: Vec<RouteEntry>,
     pub middlewares: Vec<MiddlewareEntry>,
+    /// Each route's steps through the middleware, then those of a request
+    /// no route matched: made at the first request through middleware.
+    chains: OnceLock<Vec<Box<[ChainStep]>>>,
+}
+
+/// A step of a request's way through its router's middleware: which
+/// middleware, or the handler after them, of which route (none: a request
+/// no route matched, answered 404). A router keeps its steps, a route's
+/// side by side, so a middleware's `next` is the step after its own, and
+/// a request allocates none.
+pub struct ChainStep {
+    pub router: *const MeshRouter,
+    pub route: Option<usize>,
+    pub index: usize,
 }
 
 /// Check if a pattern has any parameterized segments (`:name`).
@@ -92,6 +108,36 @@ fn is_wildcard(pattern: &str) -> bool {
 }
 
 impl MeshRouter {
+    fn new(routes: Vec<RouteEntry>, middlewares: Vec<MiddlewareEntry>) -> Self {
+        Self {
+            routes,
+            middlewares,
+            chains: OnceLock::new(),
+        }
+    }
+
+    /// The first step of `route`'s way through the middleware (the route's
+    /// index; none for a request no route matched). A router is boxed and
+    /// kept for the program's life, so its steps may point at it.
+    pub fn first_step(&self, route: Option<usize>) -> *const ChainStep {
+        let chains = self.chains.get_or_init(|| {
+            (0..self.routes.len())
+                .map(Some)
+                .chain([None])
+                .map(|route| {
+                    (0..=self.middlewares.len())
+                        .map(|index| ChainStep {
+                            router: self,
+                            route,
+                            index,
+                        })
+                        .collect()
+                })
+                .collect()
+        });
+        chains[route.unwrap_or(self.routes.len())].as_ptr()
+    }
+
     /// Find the first route matching the given path and HTTP method.
     ///
     /// Returns (matched route entry, params) or None.
@@ -194,12 +240,7 @@ fn route_with_method(
             replication_count: clustered_metadata.map(|metadata| metadata.replication_count),
         });
 
-        let new_middlewares = old.middlewares.clone();
-
-        let new_router = Box::new(MeshRouter {
-            routes: new_routes,
-            middlewares: new_middlewares,
-        });
+        let new_router = Box::new(MeshRouter::new(new_routes, old.middlewares.clone()));
         Box::into_raw(new_router) as *mut u8
     }
 }
@@ -209,10 +250,7 @@ fn route_with_method(
 /// Create an empty router. Returns a pointer to a heap-allocated MeshRouter.
 #[no_mangle]
 pub extern "C" fn mesh_http_router() -> *mut u8 {
-    let router = Box::new(MeshRouter {
-        routes: Vec::new(),
-        middlewares: Vec::new(),
-    });
+    let router = Box::new(MeshRouter::new(Vec::new(), Vec::new()));
     Box::into_raw(router) as *mut u8
 }
 
@@ -308,10 +346,7 @@ pub extern "C" fn mesh_http_use_middleware(
             env_ptr: middleware_env,
         });
 
-        let new_router = Box::new(MeshRouter {
-            routes: new_routes,
-            middlewares: new_middlewares,
-        });
+        let new_router = Box::new(MeshRouter::new(new_routes, new_middlewares));
         Box::into_raw(new_router) as *mut u8
     }
 }
@@ -393,13 +428,13 @@ mod tests {
 
     #[test]
     fn test_exact_beats_param() {
-        let router = MeshRouter {
-            routes: vec![
+        let router = MeshRouter::new(
+            vec![
                 plain_route("/users/:id", None, 1),
                 plain_route("/users/me", None, 2),
             ],
-            middlewares: vec![],
-        };
+            Vec::new(),
+        );
         let (entry, params) = router.match_route("/users/me", "GET").unwrap();
         assert_eq!(entry.handler_fn as usize, 2);
         assert!(params.is_empty());
@@ -412,13 +447,13 @@ mod tests {
 
     #[test]
     fn test_method_filtering() {
-        let router = MeshRouter {
-            routes: vec![
+        let router = MeshRouter::new(
+            vec![
                 plain_route("/users", Some("GET"), 1),
                 plain_route("/users", Some("POST"), 2),
             ],
-            middlewares: vec![],
-        };
+            Vec::new(),
+        );
         let (entry, _) = router.match_route("/users", "GET").unwrap();
         assert_eq!(entry.handler_fn as usize, 1);
 
@@ -430,10 +465,7 @@ mod tests {
 
     #[test]
     fn test_method_agnostic_route() {
-        let router = MeshRouter {
-            routes: vec![plain_route("/health", None, 1)],
-            middlewares: vec![],
-        };
+        let router = MeshRouter::new(vec![plain_route("/health", None, 1)], Vec::new());
         assert!(router.match_route("/health", "GET").is_some());
         assert!(router.match_route("/health", "POST").is_some());
         assert!(router.match_route("/health", "DELETE").is_some());
@@ -441,10 +473,10 @@ mod tests {
 
     #[test]
     fn test_router_match_order() {
-        let router = MeshRouter {
-            routes: vec![plain_route("/exact", None, 1), plain_route("/*", None, 2)],
-            middlewares: vec![],
-        };
+        let router = MeshRouter::new(
+            vec![plain_route("/exact", None, 1), plain_route("/*", None, 2)],
+            Vec::new(),
+        );
         let (entry, _) = router.match_route("/exact", "GET").unwrap();
         assert_eq!(entry.handler_fn as usize, 1);
 
@@ -454,10 +486,7 @@ mod tests {
 
     #[test]
     fn test_router_no_match() {
-        let router = MeshRouter {
-            routes: vec![plain_route("/only-this", None, 1)],
-            middlewares: vec![],
-        };
+        let router = MeshRouter::new(vec![plain_route("/only-this", None, 1)], Vec::new());
         assert!(router.match_route("/other", "GET").is_none());
     }
 
