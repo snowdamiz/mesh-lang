@@ -10630,6 +10630,13 @@ mod tests {
             vec![DIST_HTTP_ROUTE_V2_REPLY, 1],
             vec![DIST_HTTP_RESERVE_REPLY, 1],
             vec![DIST_ROOM_BROADCAST, 1],
+            // Peer lists naming one peer, cut short in its name's length
+            // and in its name.
+            frame(DIST_PEER_LIST, &[&1u16.to_le_bytes(), &[5]]),
+            frame(
+                DIST_PEER_LIST,
+                &[&1u16.to_le_bytes(), &5u16.to_le_bytes(), b"ab"],
+            ),
         ] {
             peer.receive(msg);
         }
@@ -14264,5 +14271,225 @@ mod tests {
                 .owner_node,
             busy.session.remote_name
         );
+    }
+
+    /// A fixed window lets its limit through each second and refuses the
+    /// rest until the next second starts.
+    #[test]
+    fn a_fixed_window_takes_its_limit_each_second() {
+        let start = Instant::now();
+        let mut window = FixedWindowCounter::new(start);
+        assert!(window.take(2, start) && window.take(2, start));
+        assert!(!window.take(2, start) && !window.below(2, start));
+        assert!(window.take(2, start + Duration::from_secs(1)));
+    }
+
+    /// Registrations without a name or a function change nothing, and no
+    /// handler has route metadata for a missing function. A handler kept
+    /// in no copies at all has no replica count; startup work is started
+    /// once, and only when some is registered.
+    #[test]
+    fn registrations_short_of_a_name_or_function_change_nothing() {
+        let _exclusive = startup_work_test_lock();
+        clear_startup_work_test_state();
+        let null = std::ptr::null::<u8>();
+        let function = registrations_short_of_a_name_or_function_change_nothing as *const u8;
+        mesh_register_function(null, 0, function, null, 0);
+        mesh_register_function(b"f".as_ptr(), 1, null, null, 0);
+        mesh_register_declared_handler(null, 0, b"e".as_ptr(), 1, 1, function);
+        mesh_register_declared_handler(b"r".as_ptr(), 1, null, 0, 1, function);
+        mesh_register_declared_handler(b"r".as_ptr(), 1, b"e".as_ptr(), 1, 1, null);
+        assert!(lookup_registered_function("f").is_none());
+        assert!(declared_handler_registry().read().is_empty());
+        assert!(lookup_declared_handler_route_metadata(std::ptr::null_mut()).is_none());
+
+        mesh_register_declared_handler(
+            b"Uncopied.work".as_ptr(),
+            13,
+            b"e".as_ptr(),
+            1,
+            0,
+            function,
+        );
+        assert_eq!(
+            required_replica_count_for_runtime_name("Uncopied.work"),
+            Err("invalid_replication_count".to_string())
+        );
+
+        mesh_register_startup_work(null, 0);
+        assert!(startup_work_registry().read().is_empty());
+        mesh_trigger_startup_work();
+        assert!(!STARTUP_WORK_TRIGGERED.load(Ordering::SeqCst));
+        STARTUP_WORK_TRIGGERED.store(true, Ordering::SeqCst);
+        mesh_register_startup_work(b"Uncopied.work".as_ptr(), 13);
+        // Started already: nothing more starts.
+        mesh_trigger_startup_work();
+        assert!(!STARTUP_KEEPALIVE_SPAWNED.load(Ordering::SeqCst));
+        clear_startup_work_test_state();
+    }
+
+    /// Under protocol two a heartbeat goes as heartbeat traffic whichever
+    /// lane sends it, and a frame whose envelope names another kind than
+    /// its payload, or carries part of a chunked message, is refused.
+    #[test]
+    fn protocol_two_frames_say_what_they_carry() {
+        let negotiated = protocol_two();
+        let heartbeat =
+            encode_session_payload(OutboundClass::Control, vec![HEARTBEAT_PING, 1], &negotiated)
+                .unwrap();
+        assert_eq!(
+            ProtocolEnvelope::decode(&heartbeat, negotiated.max_frame_bytes)
+                .unwrap()
+                .class,
+            MessageClass::Heartbeat
+        );
+        let envelope = |kind: u8, final_chunk: bool, chunk_sequence: u32| {
+            ProtocolEnvelope {
+                class: MessageClass::Control,
+                kind: u16::from(kind),
+                correlation_id: 0,
+                chunk_sequence,
+                final_chunk,
+                payload: vec![DIST_SEND, 1],
+            }
+            .encode(negotiated.max_frame_bytes)
+            .unwrap()
+        };
+        let refused = |frame| decode_session_payload(frame, &negotiated).unwrap_err();
+        assert_eq!(
+            refused(envelope(DIST_EXIT, true, 0)),
+            "protocol_envelope_kind_mismatch"
+        );
+        for (final_chunk, chunk_sequence) in [(false, 0), (true, 1)] {
+            assert_eq!(
+                refused(envelope(DIST_SEND, final_chunk, chunk_sequence)),
+                "protocol_unexpected_unreassembled_chunk"
+            );
+        }
+    }
+
+    /// A session whose socket will not take its read timeout (one shut
+    /// down already, which macOS refuses) still starts, and says so.
+    #[test]
+    fn a_session_starts_even_when_its_socket_refuses_its_timeout() {
+        let (client, _server) = tls_pair();
+        client.sock.shutdown(std::net::Shutdown::Both).unwrap();
+        let session = NodeSession::new(
+            RemoteSessionEndpoint {
+                remote_name: "timeoutless-peer@127.0.0.1:1".to_string(),
+                remote_creation: 1,
+                node_id: 0,
+                direction: SessionDirection::Outgoing,
+            },
+            NodeStream::ClientTls(client),
+            true,
+            protocol_one(),
+            None,
+        );
+        assert!(!session.shutdown.load(Ordering::Acquire));
+    }
+
+    /// Once the writer that takes a session's lanes is gone, a send says the
+    /// lanes are disconnected, and a waiting send gives up at once on a
+    /// failure that waiting cannot mend.
+    #[test]
+    fn a_send_fails_once_nothing_takes_the_session_s_frames() {
+        let peer = TestPeer::new("laneless-peer@127.0.0.1:1");
+        drop(peer.session.outbound_receivers.lock().unwrap().take());
+        assert_eq!(
+            peer.session
+                .send(OutboundClass::Application, vec![DIST_SEND]),
+            Err("peer_outbound_queue_disconnected".to_string())
+        );
+        assert_eq!(
+            peer.session
+                .send_waiting(OutboundClass::Snapshot, vec![DIST_SEND]),
+            Err("peer_outbound_queue_disconnected".to_string())
+        );
+    }
+
+    /// A monitor's end for a process on a node this one has no session to
+    /// goes nowhere.
+    #[test]
+    fn a_monitor_end_for_an_unconnected_node_goes_nowhere() {
+        test_node();
+        send_dist_monitor_exit_by_pid(
+            ProcessId::next(),
+            ProcessId::from_remote(u16::MAX, 1, 5),
+            1,
+            &crate::actor::ExitReason::Normal,
+        );
+    }
+
+    /// A standby takes no record whose owner is marked lost, as only a
+    /// primary recovers one: not from a peer's upsert, nor from its sync.
+    #[test]
+    fn a_standby_refuses_a_record_whose_owner_is_lost() {
+        use crate::dist::continuity::{ContinuitySnapshot, ReplicaStatus};
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        registry.make_standby_for_test();
+        let peer = TestPeer::within(&exclusive, "lost-record-peer@127.0.0.1:1");
+        let mut record = continuity_record("standby-lost", &peer.session.remote_name, &state.name);
+        record.replica_status = ReplicaStatus::OwnerLost;
+        peer.receive(crate::dist::continuity::encode_upsert_payload(1, &record).unwrap());
+        record.request_key = "standby-lost-synced".to_string();
+        peer.receive(
+            crate::dist::continuity::encode_sync_payload(&ContinuitySnapshot {
+                next_attempt_token: 1,
+                records: vec![record],
+            })
+            .unwrap(),
+        );
+        assert!(registry.record("standby-lost").is_none());
+        assert!(registry.record("standby-lost-synced").is_none());
+        registry.clear_for_test();
+    }
+
+    /// A kept response goes to the record's nodes; one that cannot be kept
+    /// (with no key) still goes on, and one too large for a frame goes to
+    /// no one.
+    #[test]
+    fn a_kept_response_goes_to_the_nodes_of_its_record() {
+        let state = test_node();
+        let peer = TestPeer::new("response-peer@127.0.0.1:1");
+        let record = continuity_record("responded", &state.name, &peer.session.remote_name);
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, record)
+            .unwrap();
+        retain_and_broadcast_continuity_response("responded", b"200 kept");
+        assert_eq!(
+            decode_continuity_response_frame(&peer.next_sent()),
+            Ok(("responded".to_string(), b"200 kept".to_vec()))
+        );
+        retain_and_broadcast_continuity_response("", b"200 unkeyed");
+        retain_and_broadcast_continuity_response("responded", &vec![1; MAX_DIST_MSG as usize]);
+        assert!(peer.sent().is_empty());
+    }
+
+    /// A load report too large to encode (a handler named past the bound)
+    /// is not sent; a peer otherwise hears this node's load.
+    #[test]
+    fn a_load_report_goes_to_a_peer_unless_it_cannot_be_encoded() {
+        extern "C" fn unrun(_args: *const u8) {}
+        let exclusive = declared_handler_registry_test_lock();
+        clear_declared_handler_registry_for_test();
+        let peer = TestPeer::within(&exclusive, "report-peer@127.0.0.1:1");
+        send_load_report(&peer.session);
+        assert_eq!(peer.next_sent()[0], DIST_LOAD_REPORT);
+        let long = "L".repeat(600);
+        mesh_register_declared_handler(
+            long.as_ptr(),
+            long.len() as u64,
+            long.as_ptr(),
+            long.len() as u64,
+            1,
+            unrun as *const u8,
+        );
+        send_load_report(&peer.session);
+        assert!(peer.sent().is_empty());
+        clear_declared_handler_registry_for_test();
     }
 }
