@@ -63,6 +63,7 @@ test('public docs cover the current Mesh surface', () => {
   assert.doesNotMatch(reference, /dispatches only its first arm/)
   assert.match(concurrency, /\(new_state, reply\)/)
   assert.doesNotMatch(concurrency, /\(reply, new_state\)/)
+  assert.match(web, /Ws\.serve_tls\(on_connect, on_message, on_close, port, "cert\.pem", "key\.pem"\)/)
   assert.doesNotMatch(`${testing}\n${docs}`, /String\.downcase|IO\.puts/)
   assert.match(testing, /assert_raises[\s\S]+assert\(false\)/)
   assert.doesNotMatch(landing, /Pg\.query\(pool|Env\.get\("DATABASE_URL"\)|Ws\.broadcast\(conn/)
