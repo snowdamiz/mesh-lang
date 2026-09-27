@@ -13,6 +13,21 @@ fn compile_and_run(source: &str) -> String {
 
 /// Helper: compile a Mesh source file and run the resulting binary with environment variables set.
 fn compile_and_run_with_env(source: &str, env_vars: &[(&str, &str)]) -> String {
+    let run_output = compile_and_run_output(source, env_vars);
+    assert!(
+        run_output.status.success(),
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        run_output.status.code(),
+        String::from_utf8_lossy(&run_output.stdout),
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+
+    String::from_utf8_lossy(&run_output.stdout).to_string()
+}
+
+/// Helper: compile a Mesh source file and run the resulting binary, whatever
+/// its exit status, returning its output.
+fn compile_and_run_output(source: &str, env_vars: &[(&str, &str)]) -> std::process::Output {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
@@ -38,19 +53,8 @@ fn compile_and_run_with_env(source: &str, env_vars: &[(&str, &str)]) -> String {
     for (key, val) in env_vars {
         cmd.env(key, val);
     }
-    let run_output = cmd
-        .output()
-        .unwrap_or_else(|e| panic!("failed to run binary: {}", e));
-
-    assert!(
-        run_output.status.success(),
-        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
-        run_output.status.code(),
-        String::from_utf8_lossy(&run_output.stdout),
-        String::from_utf8_lossy(&run_output.stderr)
-    );
-
-    String::from_utf8_lossy(&run_output.stdout).to_string()
+    cmd.output()
+        .unwrap_or_else(|e| panic!("failed to run binary: {}", e))
 }
 
 /// Helper: compile a Mesh source file, return the compilation error.
@@ -6706,6 +6710,31 @@ fn e2e_deterministic_random() {
     let source = read_fixture("deterministic_random.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "1\ntrue\ntrue\ntrue\ntrue true\n");
+}
+
+/// MESH-TEST-002: Random draws from any range of Ints, the whole range
+/// included; an empty range is the program's error, a Mesh panic, not an
+/// abort of the process.
+#[test]
+fn e2e_random_range_limits() {
+    let source = r#"
+fn main() do
+  let lowest = -9223372036854775807 - 1
+  let (_, value) = Random.next_int(Random.seed(7), lowest, 9223372036854775807)
+  println("drawn ${value >= lowest}")
+  let (_, empty) = Random.next_int(Random.seed(7), 5, 1)
+  println("${empty}")
+end
+"#;
+    let output = compile_and_run_output(source, &[]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(101), "{stderr}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "drawn true\n");
+    assert!(
+        stderr.contains("Random.next_int: invalid range 5..1"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("cannot unwind"), "{stderr}");
 }
 
 /// MESH-PROC-001: applications can poll and trigger the same graceful-shutdown flag.
