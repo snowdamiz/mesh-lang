@@ -127,10 +127,10 @@ fn allocate(len: usize) -> *mut MeshBytes {
     }
 }
 
+/// A builder of at most `maximum` bytes, which is at most
+/// `MAX_BYTES_BUILDER_BYTES`.
 fn allocate_builder(maximum: usize) -> *mut MeshBytesBuilder {
-    let Some(total) = MeshBytesBuilder::HEADER_SIZE.checked_add(maximum) else {
-        return ptr::null_mut();
-    };
+    let total = MeshBytesBuilder::HEADER_SIZE + maximum;
     unsafe {
         let builder = mesh_gc_alloc_actor(total as u64, 8) as *mut MeshBytesBuilder;
         builder.write(MeshBytesBuilder {
@@ -335,12 +335,7 @@ pub extern "C" fn mesh_bytes_builder_new(maximum: i64) -> *mut MeshResult {
     if maximum > MAX_BYTES_BUILDER_BYTES {
         return binary_error(BinaryErrorTag::InvalidLimit);
     }
-    let builder = allocate_builder(maximum);
-    if builder.is_null() {
-        binary_error(BinaryErrorTag::InvalidLimit)
-    } else {
-        alloc_result(0, builder.cast())
-    }
+    alloc_result(0, allocate_builder(maximum).cast())
 }
 
 #[no_mangle]
@@ -503,13 +498,14 @@ pub extern "C" fn mesh_bytes_concat(
     right: *const MeshBytes,
 ) -> *mut MeshResult {
     unsafe {
-        let Some(len) = (*left).len.checked_add((*right).len) else {
-            return error("byte length overflow");
-        };
-        if len > (isize::MAX as usize - MeshBytes::HEADER_SIZE) as u64 {
+        let value = (*left)
+            .len
+            .checked_add((*right).len)
+            .and_then(|len| usize::try_from(len).ok())
+            .map_or(ptr::null_mut(), allocate);
+        if value.is_null() {
             return error("byte length overflow");
         }
-        let value = allocate(len as usize);
         ptr::copy_nonoverlapping(
             (*left).data_ptr(),
             (*value).data_ptr_mut(),
@@ -787,6 +783,115 @@ pub extern "C" fn mesh_bytes_write_uint_le(
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    fn refused(result: *mut MeshResult) -> String {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 1, "expected an error");
+        unsafe { (*(result.value as *const MeshString)).as_str().to_string() }
+    }
+
+    fn refused_as(result: *mut MeshResult) -> u8 {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 1, "expected an error");
+        unsafe { (*(result.value as *const MeshBinaryError)).tag }
+    }
+
+    fn text(value: &str) -> *const MeshString {
+        mesh_string_new(value.as_ptr(), value.len() as u64)
+    }
+
+    /// Each constructor and writer refuses input it cannot represent, with
+    /// what is wrong with it, before it allocates or writes anything.
+    #[test]
+    fn invalid_input_is_refused_for_what_is_wrong_with_it() {
+        mesh_rt_init();
+        let one = [1u8];
+        assert!(
+            mesh_bytes_new(ptr::null(), 3).is_null(),
+            "no data for three bytes"
+        );
+        assert!(mesh_bytes_new(one.as_ptr(), u64::MAX).is_null());
+        assert!(mesh_bytes_new(one.as_ptr(), isize::MAX as u64).is_null());
+        assert_eq!(
+            refused(mesh_bytes_repeat(256, 1)),
+            "byte value out of range"
+        );
+        assert_eq!(refused(mesh_bytes_repeat(1, -1)), "byte count out of range");
+        assert_eq!(
+            refused(mesh_bytes_repeat(1, i64::MAX)),
+            "byte length overflow"
+        );
+        let mut list = crate::collections::list::mesh_list_new();
+        list = crate::collections::list::mesh_list_append(list, 300);
+        assert_eq!(
+            refused(mesh_bytes_from_list(list)),
+            "byte value out of range"
+        );
+        assert_eq!(
+            refused(mesh_bytes_from_list(ptr::null_mut())),
+            "invalid byte list"
+        );
+        assert_eq!(refused(mesh_bytes_from_hex(text("abc"))), "invalid hex");
+        assert_eq!(refused(mesh_bytes_from_hex(text("zz"))), "invalid hex");
+        assert_eq!(refused(mesh_bytes_from_hex(text("0z"))), "invalid hex");
+        assert_eq!(
+            refused(mesh_bytes_write_uint_le(text("1"), 3)),
+            "invalid unsigned integer width"
+        );
+        assert_eq!(
+            refused(mesh_bytes_write_uint_le(text("-1"), 4)),
+            "invalid unsigned integer"
+        );
+        assert_eq!(
+            refused(mesh_bytes_write_u16_be(-1)),
+            "unsigned integer does not fit width"
+        );
+        let huge = MeshBytes { len: u64::MAX };
+        assert_eq!(
+            refused(mesh_bytes_concat(&huge, &huge)),
+            "byte length overflow"
+        );
+        let large = MeshBytes {
+            len: isize::MAX as u64,
+        };
+        assert_eq!(
+            refused(mesh_bytes_concat(&large, &large)),
+            "byte length overflow"
+        );
+
+        assert_eq!(
+            refused_as(mesh_bytes_builder_new(-1)),
+            BinaryErrorTag::InvalidLimit as u8
+        );
+        assert_eq!(
+            refused_as(mesh_bytes_builder_new(MAX_BYTES_BUILDER_BYTES as i64 + 1)),
+            BinaryErrorTag::InvalidLimit as u8
+        );
+        let builder = ptr::null_mut();
+        assert_eq!(
+            refused_as(mesh_bytes_builder_write_u16_be(builder, 1 << 16)),
+            BinaryErrorTag::InvalidValue as u8
+        );
+        assert_eq!(
+            refused_as(mesh_bytes_builder_write_u32_be(builder, 1 << 32)),
+            BinaryErrorTag::InvalidValue as u8
+        );
+        assert_eq!(
+            refused_as(mesh_bytes_builder_write_bytes(builder, ptr::null())),
+            BinaryErrorTag::InvalidValue as u8
+        );
+        assert_eq!(
+            refused_as(mesh_bytes_builder_finish(builder)),
+            BinaryErrorTag::InvalidLength as u8
+        );
+        let empty = mesh_bytes_to_list(ptr::null());
+        assert_eq!(crate::collections::list::mesh_list_length(empty), 0);
+        let mut destination = [0u8; 4];
+        assert_eq!(
+            mesh_bytes_copy_to(ptr::null(), 0, destination.as_mut_ptr(), 1),
+            -1
+        );
+    }
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use std::hint::black_box;
     use std::time::Instant;
