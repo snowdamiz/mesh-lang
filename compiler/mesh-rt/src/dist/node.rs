@@ -7404,15 +7404,13 @@ fn automatic_recovery_arg_payload(
     ])
 }
 
+/// The text of a string argument a runtime actor was spawned with: one
+/// the runtime itself made with `mesh_str`, so never null.
 fn mesh_string_arg_to_owned(raw: u64) -> String {
-    if raw == 0 {
-        String::new()
-    } else {
-        unsafe {
-            (*(raw as *const crate::string::MeshString))
-                .as_str()
-                .to_string()
-        }
+    unsafe {
+        (*(raw as *const crate::string::MeshString))
+            .as_str()
+            .to_string()
     }
 }
 
