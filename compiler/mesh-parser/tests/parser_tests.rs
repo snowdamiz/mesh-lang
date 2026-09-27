@@ -4302,3 +4302,38 @@ fn edge_inputs_parse_or_report_errors() {
         );
     }
 }
+
+/// `if x = 5 do` and `while x = 5 do`, a comparison written as a binding,
+/// say `==` compares; any other missing `do` says only that it is missing.
+#[test]
+fn a_binding_where_a_condition_compares_names_the_comparison() {
+    for (source, compare) in [
+        ("fn f(x) do\n  if x = 5 do\n    1\n  end\nend\n", true),
+        ("fn f(x) do\n  while x = 5 do\n    1\n  end\nend\n", true),
+        ("fn f(x) do\n  if x > 5 then\n    1\n  end\nend\n", false),
+    ] {
+        let parse = mesh_parser::parse(source);
+        let first = parse
+            .errors()
+            .first()
+            .expect("a parse error")
+            .message
+            .clone();
+        assert!(first.starts_with("expected `do`"), "{source:?}: {first}");
+        assert_eq!(first.contains("`==`"), compare, "{source:?}: {first}");
+    }
+}
+
+/// `x = 5` as a statement, an assignment to a bound name, says names are
+/// bound once.
+#[test]
+fn an_assignment_statement_says_names_are_bound_once() {
+    let parse = mesh_parser::parse("fn f() do\n  let x = 1\n  x = 2\n  x\nend\n");
+    let first = parse
+        .errors()
+        .first()
+        .expect("a parse error")
+        .message
+        .clone();
+    assert!(first.contains("cannot be assigned again"), "{first}");
+}

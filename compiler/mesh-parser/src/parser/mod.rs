@@ -697,7 +697,12 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
 pub(crate) fn expect_statement_end(p: &mut Parser) {
     // `at_line_end` also sees the newlines that are insignificant inside
     // delimiters, such as the statements of a closure passed as an argument.
-    if !p.at_line_end() && !matches!(p.current(), SyntaxKind::SEMICOLON | SyntaxKind::ELSE_KW) {
+    if p.at(SyntaxKind::EQ) {
+        // `x = 5` after `let x = ...`: a name is bound once.
+        p.error("expected a newline or `;` after the statement: a variable cannot be assigned again; bind a new name with `let`");
+    } else if !p.at_line_end()
+        && !matches!(p.current(), SyntaxKind::SEMICOLON | SyntaxKind::ELSE_KW)
+    {
         p.error("expected a newline or `;` after the statement");
     }
 }

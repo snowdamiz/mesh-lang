@@ -922,6 +922,16 @@ fn expr_before_do(p: &mut Parser) {
     p.suppress_trailing_closure = old;
 }
 
+/// Expect the `do` after an `if` or `while` condition. A `=` there is a
+/// comparison written as a binding (`if x = 5 do`), and the error says so.
+fn expect_do_after_condition(p: &mut Parser) {
+    if p.at(SyntaxKind::EQ) {
+        p.error("expected `do`: `=` binds a name only in `let`; compare with `==`");
+    } else {
+        p.expect(SyntaxKind::DO_KW);
+    }
+}
+
 // ── If/Else Expression ────────────────────────────────────────────────
 
 /// Parse an if expression: `if cond do body [else [if ...] body] end`
@@ -933,7 +943,7 @@ fn parse_if_expr(p: &mut Parser) -> MarkClosed {
 
     // Expect `do`.
     let do_span = p.current_span();
-    p.expect(SyntaxKind::DO_KW);
+    expect_do_after_condition(p);
 
     // Parse then-body.
     parse_block_body(p);
@@ -1662,7 +1672,7 @@ fn parse_while_expr(p: &mut Parser) -> MarkClosed {
 
     // Expect `do`.
     let do_span = p.current_span();
-    p.expect(SyntaxKind::DO_KW);
+    expect_do_after_condition(p);
 
     // Parse body.
     parse_block_body(p);
