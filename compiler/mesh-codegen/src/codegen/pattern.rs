@@ -19,7 +19,6 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
-use super::intrinsics::get_intrinsic;
 use super::types::variant_struct_type;
 use super::{CodeGen, SavedLocal};
 use crate::mir::{MirLiteral, MirMatchArm, MirType};
@@ -274,15 +273,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let pattern_str = self.codegen_string_lit(s)?;
 
                 // Call mesh_string_eq(scrutinee, pattern)
-                let eq_fn = get_intrinsic(&self.module, "mesh_string_eq");
-                let result = self
-                    .builder
-                    .build_call(eq_fn, &[test_val.into(), pattern_str.into()], "str_eq")
-                    .map_err(|e| e.to_string())?;
-                let i8_result = result
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_string_eq returned void")?
+                let i8_result = self
+                    .codegen_runtime_call(
+                        "mesh_string_eq",
+                        &[test_val.into(), pattern_str.into()],
+                        "str_eq",
+                    )?
                     .into_int_value();
 
                 // Convert i8 result to i1 for branch condition
@@ -345,15 +341,8 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = list_val.into_pointer_value();
 
         // Call mesh_list_length(list) to check if non-empty.
-        let length_fn = get_intrinsic(&self.module, "mesh_list_length");
-        let length_result = self
-            .builder
-            .build_call(length_fn, &[list_ptr.into()], "list_len")
-            .map_err(|e| e.to_string())?;
-        let length_val = length_result
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_list_length returned void")?
+        let length_val = self
+            .codegen_runtime_call("mesh_list_length", &[list_ptr.into()], "list_len")?
             .into_int_value();
 
         // Compare length > 0.
@@ -423,15 +412,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let tuple_ptr = self
                     .navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?
                     .into_pointer_value();
-                let nth_fn = get_intrinsic(&self.module, "mesh_tuple_nth");
                 let index = self.context.i64_type().const_int(*index as u64, false);
                 let element = self
-                    .builder
-                    .build_call(nth_fn, &[tuple_ptr.into(), index.into()], "tuple_field")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_tuple_nth returned void")?
+                    .codegen_runtime_call(
+                        "mesh_tuple_nth",
+                        &[tuple_ptr.into(), index.into()],
+                        "tuple_field",
+                    )?
                     .into_int_value();
 
                 self.materialize_tuple_element_ptr(element, element_ty)
@@ -508,15 +495,8 @@ impl<'ctx> CodeGen<'ctx> {
                     self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
                 let list_ptr = parent_val.into_pointer_value();
 
-                let head_fn = get_intrinsic(&self.module, "mesh_list_head");
-                let head_result = self
-                    .builder
-                    .build_call(head_fn, &[list_ptr.into()], "list_head")
-                    .map_err(|e| e.to_string())?;
-                let head_i64 = head_result
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_head returned void")?
+                let head_i64 = self
+                    .codegen_runtime_call("mesh_list_head", &[list_ptr.into()], "list_head")?
                     .into_int_value();
 
                 // Convert u64 -> the element type.
@@ -539,15 +519,8 @@ impl<'ctx> CodeGen<'ctx> {
                     self.navigate_access_path(scrutinee_alloca, scrutinee_ty, parent)?;
                 let list_ptr = parent_val.into_pointer_value();
 
-                let tail_fn = get_intrinsic(&self.module, "mesh_list_tail");
-                let tail_result = self
-                    .builder
-                    .build_call(tail_fn, &[list_ptr.into()], "list_tail")
-                    .map_err(|e| e.to_string())?;
-                let tail_ptr = tail_result
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_list_tail returned void")?
+                let tail_ptr = self
+                    .codegen_runtime_call("mesh_list_tail", &[list_ptr.into()], "list_tail")?
                     .into_pointer_value();
 
                 // Store in an alloca so we can return a pointer.

@@ -498,16 +498,14 @@ impl<'ctx> CodeGen<'ctx> {
             {
                 let tuple = value.into_pointer_value();
                 self.codegen_unless_null(tuple, "resource_tuple", |this| {
-                    let nth = get_intrinsic(&this.module, "mesh_tuple_nth");
                     for field in fields {
                         let index = this.context.i64_type().const_int(field.index as u64, false);
                         let raw = this
-                            .builder
-                            .build_call(nth, &[tuple.into(), index.into()], "resource_tuple_field")
-                            .map_err(|error| error.to_string())?
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("mesh_tuple_nth returned void")?
+                            .codegen_runtime_call(
+                                "mesh_tuple_nth",
+                                &[tuple.into(), index.into()],
+                                "resource_tuple_field",
+                            )?
                             .into_int_value();
                         let field_value = if matches!(field.ty, MirType::Tuple(_)) {
                             this.builder
@@ -2400,13 +2398,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             None => "mesh_actor_spawn",
         };
-        let pid_val = self
-            .builder
-            .build_call(get_intrinsic(&self.module, spawn_fn), &spawn_args, "pid")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_actor_spawn returned void")?;
+        let pid_val = self.codegen_runtime_call(spawn_fn, &spawn_args, "pid")?;
 
         // If terminate callback exists, call mesh_actor_set_terminate(pid, callback_fn_ptr)
         if let Some(cb_expr) = terminate_callback {
@@ -2435,29 +2427,16 @@ impl<'ctx> CodeGen<'ctx> {
         // A message that references heap values points into this actor's heap.
         // The shape table tells the runtime where, so the receiver gets a copy.
         // Call mesh_actor_send[_shaped](target_pid, msg_ptr, msg_size[, shape])
-        let call = if let Some(shape_table) = shape_table {
-            self.builder.build_call(
-                get_intrinsic(&self.module, "mesh_actor_send_shaped"),
-                &[
-                    target_val.into(),
-                    msg_ptr.into(),
-                    msg_size.into(),
-                    shape_table.into(),
-                ],
-                "send_status",
-            )
-        } else {
-            self.builder.build_call(
-                get_intrinsic(&self.module, "mesh_actor_send"),
-                &[target_val.into(), msg_ptr.into(), msg_size.into()],
-                "send_status",
-            )
-        }
-        .map_err(|e| e.to_string())?;
-
-        call.try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_actor_send returned void".to_string())
+        let mut send_args: Vec<BasicMetadataValueEnum<'ctx>> =
+            vec![target_val.into(), msg_ptr.into(), msg_size.into()];
+        let send_fn = match shape_table {
+            Some(shape_table) => {
+                send_args.push(shape_table.into());
+                "mesh_actor_send_shaped"
+            }
+            None => "mesh_actor_send",
+        };
+        self.codegen_runtime_call(send_fn, &send_args, "send_status")
     }
 
     /// `value`, what `message` evaluated to, as the runtime takes a message: a
@@ -2642,25 +2621,16 @@ impl<'ctx> CodeGen<'ctx> {
         let (name_ptr, name_len) = self.codegen_unpack_string(name_val)?;
         let (cookie_ptr, cookie_len) = self.codegen_unpack_string(cookie_val)?;
 
-        let start_fn = get_intrinsic(&self.module, "mesh_node_start");
-        let result = self
-            .builder
-            .build_call(
-                start_fn,
-                &[
-                    name_ptr.into(),
-                    name_len.into(),
-                    cookie_ptr.into(),
-                    cookie_len.into(),
-                ],
-                "node_start",
-            )
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_node_start returned void".to_string())
+        self.codegen_runtime_call(
+            "mesh_node_start",
+            &[
+                name_ptr.into(),
+                name_len.into(),
+                cookie_ptr.into(),
+                cookie_len.into(),
+            ],
+            "node_start",
+        )
     }
 
     /// Codegen for Node functions taking a single string arg (connect, monitor).
@@ -2674,16 +2644,11 @@ impl<'ctx> CodeGen<'ctx> {
         let str_val = self.codegen_expr(&args[0])?;
         let (data_ptr, data_len) = self.codegen_unpack_string(str_val)?;
 
-        let func = get_intrinsic(&self.module, intrinsic_name);
-        let result = self
-            .builder
-            .build_call(func, &[data_ptr.into(), data_len.into()], "node_call")
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| format!("{} returned void", intrinsic_name))
+        self.codegen_runtime_call(
+            intrinsic_name,
+            &[data_ptr.into(), data_len.into()],
+            "node_call",
+        )
     }
 
     /// Codegen for Global.register(name, pid).
@@ -2701,20 +2666,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Second argument is pid (i64)
         let pid_val = self.codegen_expr(&args[1])?;
 
-        let func = get_intrinsic(&self.module, "mesh_global_register");
-        let result = self
-            .builder
-            .build_call(
-                func,
-                &[name_ptr.into(), name_len.into(), pid_val.into()],
-                "global_register",
-            )
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_global_register returned void".to_string())
+        self.codegen_runtime_call(
+            "mesh_global_register",
+            &[name_ptr.into(), name_len.into(), pid_val.into()],
+            "global_register",
+        )
     }
 
     /// Runtime `REMOTE_SPAWN_ARG_*` tag for a remotely transferable value type.
@@ -2832,30 +2788,21 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len,
         //                      args_ptr, args_size, arg_tags_ptr, arg_count, link_flag)
-        let spawn_fn = get_intrinsic(&self.module, "mesh_node_spawn");
-        let result = self
-            .builder
-            .build_call(
-                spawn_fn,
-                &[
-                    node_ptr.into(),
-                    node_len.into(),
-                    fn_name_global.as_pointer_value().into(),
-                    fn_name_len.into(),
-                    args_ptr.into(),
-                    args_size.into(),
-                    arg_tags_ptr.into(),
-                    arg_count.into(),
-                    link_val.into(),
-                ],
-                "remote_pid",
-            )
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_node_spawn returned void".to_string())
+        self.codegen_runtime_call(
+            "mesh_node_spawn",
+            &[
+                node_ptr.into(),
+                node_len.into(),
+                fn_name_global.as_pointer_value().into(),
+                fn_name_len.into(),
+                args_ptr.into(),
+                args_size.into(),
+                arg_tags_ptr.into(),
+                arg_count.into(),
+                link_val.into(),
+            ],
+            "remote_pid",
+        )
     }
 
     fn codegen_actor_receive(
@@ -2876,14 +2823,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Call mesh_actor_receive(timeout_ms) -> ptr (null when timeout fires)
-        let receive_fn = get_intrinsic(&self.module, "mesh_actor_receive");
         let msg_ptr = self
-            .builder
-            .build_call(receive_fn, &[timeout_val.into()], "msg_ptr")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_actor_receive returned void")?
+            .codegen_runtime_call("mesh_actor_receive", &[timeout_val.into()], "msg_ptr")?
             .into_pointer_value();
 
         // When timeout_body is present, we need null-check branching:
@@ -3210,17 +3151,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
-        // Call mesh_actor_self() -> i64
-        let self_fn = get_intrinsic(&self.module, "mesh_actor_self");
-        let result = self
-            .builder
-            .build_call(self_fn, &[], "self_pid")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_actor_self returned void")?;
-
-        Ok(result)
+        self.codegen_runtime_call("mesh_actor_self", &[], "self_pid")
     }
 
     fn codegen_actor_link(&mut self, target: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
@@ -3760,20 +3691,11 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
-        let sup_start_fn = get_intrinsic(&self.module, "mesh_supervisor_start");
-        let pid_val = self
-            .builder
-            .build_call(
-                sup_start_fn,
-                &[config_alloca.into(), config_size_val.into()],
-                "sup_pid",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_supervisor_start returned void")?;
-
-        Ok(pid_val)
+        self.codegen_runtime_call(
+            "mesh_supervisor_start",
+            &[config_alloca.into(), config_size_val.into()],
+            "sup_pid",
+        )
     }
 
     // ── Panic ────────────────────────────────────────────────────────
@@ -3906,15 +3828,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
 
         // Call mesh_actor_receive(-1) -> ptr (blocks until message arrives).
-        let receive_fn = get_intrinsic(&self.module, "mesh_actor_receive");
         let timeout = i64_ty.const_int(u64::MAX, true); // -1
         let msg_ptr = self
-            .builder
-            .build_call(receive_fn, &[timeout.into()], "msg_ptr")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_actor_receive returned void")?
+            .codegen_runtime_call("mesh_actor_receive", &[timeout.into()], "msg_ptr")?
             .into_pointer_value();
 
         // Check for null (shutdown signal). If null, exit the loop.
@@ -4229,11 +4145,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_service_call_shaped(pid, tag, payload_ptr, payload_size, shape) -> ptr
         let shape_table = self.service_args_shape(&args[2..]);
-        let service_call_fn = get_intrinsic(&self.module, "mesh_service_call_shaped");
         let result_ptr = self
-            .builder
-            .build_call(
-                service_call_fn,
+            .codegen_runtime_call(
+                "mesh_service_call_shaped",
                 &[
                     pid_val.into(),
                     tag_val.into(),
@@ -4242,11 +4156,7 @@ impl<'ctx> CodeGen<'ctx> {
                     shape_table.into(),
                 ],
                 "call_result",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_service_call returned void")?
+            )?
             .into_pointer_value();
 
         // The reply is a raw message pointer. The data after the 16-byte header
@@ -4398,16 +4308,11 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         let count_val = i64_type.const_int(count as u64, false);
 
-        let from_array_fn = get_intrinsic(&self.module, "mesh_list_from_array");
-        let result = self
-            .builder
-            .build_call(from_array_fn, &[array_ptr.into(), count_val.into()], "list")
-            .map_err(|e| e.to_string())?;
-
-        result
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| "mesh_list_from_array returned void".to_string())
+        self.codegen_runtime_call(
+            "mesh_list_from_array",
+            &[array_ptr.into(), count_val.into()],
+            "list",
+        )
     }
 
     /// Convert a value to i64 for uniform list element storage.
