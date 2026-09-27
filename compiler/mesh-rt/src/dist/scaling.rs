@@ -1854,7 +1854,6 @@ pub enum DrainPhase {
     Preparing,
     Draining,
     Terminating,
-    Removed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2674,14 +2673,9 @@ impl CapacityReconciler {
             return Ok(outcome);
         }
 
-        if self.draining.len() >= self.max_unavailable as usize {
-            outcome
-                .constraints
-                .push("drain_disruption_budget_exhausted".to_string());
-            outcome.drains = self.drain_progress();
-            return Ok(outcome);
-        }
-
+        // Every drain in progress returned above (a terminated one's node
+        // is gone and it was finished), so none is: one node drains at a
+        // time, and the budget allows at least one.
         let candidates: Vec<_> = safety
             .iter()
             .filter(|candidate| active.iter().any(|node| node.node_id == candidate.node_id))
