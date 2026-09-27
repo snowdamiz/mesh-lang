@@ -16,14 +16,11 @@
 //! and execute the generated DDL via `mesh_pool_execute`. SQL identifiers are
 //! double-quoted per PostgreSQL convention.
 
-use super::{quote_ident, quote_name};
+use super::{execute_ddl, quote_ident, quote_name};
 use crate::collections::list::list_strings;
 use crate::collections::list::mesh_list_new;
 use crate::db::pool::mesh_pool_execute;
-use crate::io::err_result;
-use crate::string::{mesh_str, MeshString};
-
-// ── Helpers ──────────────────────────────────────────────────────────
+use crate::string::{text_of, MeshString};
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 
@@ -295,18 +292,13 @@ pub(crate) fn build_drop_index_sql(table: &str, columns: &[String]) -> Result<St
 }
 
 // ── Extern C wrappers ───────────────────────────────────────────────
+//
+// Each takes a pool handle and Mesh strings or `List<String>`s, and
+// returns `Pool.execute`'s `Result<Int, String>` for its DDL, or the error
+// that kept the DDL from being built.
 
-/// Create a table with the given column definitions.
-///
-/// # Signature
-///
-/// `mesh_migration_create_table(pool: u64, table: ptr, columns: ptr) -> ptr`
-///
-/// - `pool`: Pool handle (i64/u64)
-/// - `table`: MeshString table name
-/// - `columns`: List<String> of colon-separated column definitions
-///
-/// Returns: Result<Int, String> (from Pool.execute)
+/// Create a table with the given column definitions (a `List<String>` of
+/// colon-separated definitions).
 #[no_mangle]
 pub extern "C" fn mesh_migration_create_table(
     pool: u64,
@@ -314,36 +306,18 @@ pub extern "C" fn mesh_migration_create_table(
     columns: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let cols = list_strings(columns);
-        let sql = build_create_table_sql(table_name, &cols);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
+        let sql = build_create_table_sql(text_of(table), &list_strings(columns));
+        execute_ddl(pool, Ok(sql))
     }
 }
 
 /// Drop a table.
-///
-/// # Signature
-///
-/// `mesh_migration_drop_table(pool: u64, table: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_drop_table(pool: u64, table: *const MeshString) -> *mut u8 {
-    unsafe {
-        let table_name = (*table).as_str();
-        let sql = build_drop_table_sql(table_name);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
-    }
+    unsafe { execute_ddl(pool, Ok(build_drop_table_sql(text_of(table)))) }
 }
 
 /// Add a column to an existing table.
-///
-/// # Signature
-///
-/// `mesh_migration_add_column(pool: u64, table: ptr, column_def: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_add_column(
     pool: u64,
@@ -351,20 +325,12 @@ pub extern "C" fn mesh_migration_add_column(
     column_def: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let col_def = (*column_def).as_str();
-        let sql = build_add_column_sql(table_name, col_def);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
+        let sql = build_add_column_sql(text_of(table), text_of(column_def));
+        execute_ddl(pool, Ok(sql))
     }
 }
 
 /// Drop a column from an existing table.
-///
-/// # Signature
-///
-/// `mesh_migration_drop_column(pool: u64, table: ptr, column: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_drop_column(
     pool: u64,
@@ -372,20 +338,12 @@ pub extern "C" fn mesh_migration_drop_column(
     column: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let col_name = (*column).as_str();
-        let sql = build_drop_column_sql(table_name, col_name);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
+        let sql = build_drop_column_sql(text_of(table), text_of(column));
+        execute_ddl(pool, Ok(sql))
     }
 }
 
 /// Rename a column in an existing table.
-///
-/// # Signature
-///
-/// `mesh_migration_rename_column(pool: u64, table: ptr, old_name: ptr, new_name: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_rename_column(
     pool: u64,
@@ -394,21 +352,12 @@ pub extern "C" fn mesh_migration_rename_column(
     new_name: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let old = (*old_name).as_str();
-        let new = (*new_name).as_str();
-        let sql = build_rename_column_sql(table_name, old, new);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
+        let sql = build_rename_column_sql(text_of(table), text_of(old_name), text_of(new_name));
+        execute_ddl(pool, Ok(sql))
     }
 }
 
 /// Create an index on the given columns.
-///
-/// # Signature
-///
-/// `mesh_migration_create_index(pool: u64, table: ptr, columns: ptr, options: ptr) -> ptr`
 ///
 /// Options: `"unique:true"` for unique index, `"where:condition"` for partial.
 #[no_mangle]
@@ -419,25 +368,12 @@ pub extern "C" fn mesh_migration_create_index(
     options: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let cols = list_strings(columns);
-        let opts = (*options).as_str();
-        match build_create_index_sql(table_name, &cols, opts) {
-            Ok(sql) => {
-                let sql_ptr = mesh_str(&sql) as *const MeshString;
-                let empty_params = mesh_list_new();
-                mesh_pool_execute(pool, sql_ptr, empty_params)
-            }
-            Err(message) => err_result(&message),
-        }
+        let sql = build_create_index_sql(text_of(table), &list_strings(columns), text_of(options));
+        execute_ddl(pool, sql)
     }
 }
 
 /// Drop an index (derived name: idx_{table}_{col1}_{col2}).
-///
-/// # Signature
-///
-/// `mesh_migration_drop_index(pool: u64, table: ptr, columns: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_drop_index(
     pool: u64,
@@ -445,24 +381,17 @@ pub extern "C" fn mesh_migration_drop_index(
     columns: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_name = (*table).as_str();
-        let cols = list_strings(columns);
-        match build_drop_index_sql(table_name, &cols) {
-            Ok(sql) => mesh_pool_execute(pool, mesh_str(&sql), mesh_list_new()),
-            Err(message) => err_result(&message),
-        }
+        execute_ddl(
+            pool,
+            build_drop_index_sql(text_of(table), &list_strings(columns)),
+        )
     }
 }
 
 /// Execute raw SQL (escape hatch for operations not covered by the DSL).
-///
-/// # Signature
-///
-/// `mesh_migration_execute(pool: u64, sql: ptr) -> ptr`
 #[no_mangle]
 pub extern "C" fn mesh_migration_execute(pool: u64, sql: *const MeshString) -> *mut u8 {
-    let empty_params = mesh_list_new();
-    mesh_pool_execute(pool, sql, empty_params)
+    mesh_pool_execute(pool, sql, mesh_list_new())
 }
 
 // ── Unit tests ───────────────────────────────────────────────────────
