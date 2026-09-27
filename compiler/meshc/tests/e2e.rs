@@ -2654,6 +2654,37 @@ end
     assert_eq!(output, "42 99\n5 3\n");
 }
 
+/// A public function keeps its bare name, which the runtime's functions
+/// share: `pub fn mesh_string_length` became the function `String.length`
+/// calls, and the program printed garbage. The build now refuses it.
+#[test]
+fn e2e_public_function_named_like_a_runtime_function_is_refused() {
+    let error = compile_multifile_expect_error(&[
+        (
+            "text.mpl",
+            r#"
+pub fn mesh_string_length(n :: Int) -> Int do
+  n + 1
+end
+"#,
+        ),
+        (
+            "main.mpl",
+            r#"
+from Text import mesh_string_length
+
+fn main() do
+  println("${mesh_string_length(4)} ${String.length("abc")}")
+end
+"#,
+        ),
+    ]);
+    assert!(
+        error.contains("`mesh_string_length` is already the name of a runtime or native function"),
+        "{error}"
+    );
+}
+
 /// Two modules with closures. Without module-prefixed closure names,
 /// both modules generate `__closure_1` and collide during MIR merge.
 #[test]

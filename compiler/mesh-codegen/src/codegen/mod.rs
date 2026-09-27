@@ -295,7 +295,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Step 3: Forward-declare all functions.
         self.declare_native_functions(&mir.native_functions)?;
-        self.declare_functions(&mir.functions);
+        self.declare_functions(&mir.functions)?;
 
         // Step 4: Compile function bodies.
         for func in &mir.functions {
@@ -570,8 +570,18 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Function declaration and compilation ─────────────────────────
 
-    fn declare_functions(&mut self, functions: &[MirFunction]) {
+    /// Declare every MIR function. A public function keeps its bare name
+    /// (so does any function of a single-file program), which a runtime
+    /// function may already have: LLVM would rename the program's, and a
+    /// call of the runtime's would run it instead.
+    fn declare_functions(&mut self, functions: &[MirFunction]) -> Result<(), String> {
         for func in functions {
+            if self.module.get_function(&func.name).is_some() {
+                return Err(format!(
+                    "`{}` is already the name of a runtime or native function; rename the function",
+                    func.name
+                ));
+            }
             let fn_type = if func.is_closure_fn {
                 // Closure functions: (env_ptr, params...) -> ret
                 // The first param in MIR is __env, skip it for user params
@@ -603,6 +613,7 @@ impl<'ctx> CodeGen<'ctx> {
             let fn_val = self.module.add_function(&func.name, fn_type, None);
             self.functions.insert(func.name.clone(), fn_val);
         }
+        Ok(())
     }
 
     fn declare_native_functions(&mut self, functions: &[MirNativeFunction]) -> Result<(), String> {
