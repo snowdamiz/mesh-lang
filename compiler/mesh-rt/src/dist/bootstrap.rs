@@ -57,12 +57,17 @@ struct BootstrapPlan {
 
 impl BootstrapInputs {
     pub(crate) fn from_env() -> Result<Self, String> {
+        Self::from_lookup(|name| env::var(name))
+    }
+
+    fn from_lookup(lookup: impl Fn(&str) -> Result<String, env::VarError>) -> Result<Self, String> {
+        let read = |name: &'static str| utf8_env(name, lookup(name));
         Ok(Self {
-            cluster_port: read_utf8_env(CLUSTER_PORT_ENV)?,
-            cookie: read_utf8_env(CLUSTER_COOKIE_ENV)?,
-            discovery_seed: read_utf8_env(DISCOVERY_SEED_ENV)?,
-            node_name: read_utf8_env(NODE_NAME_ENV)?,
-            node_host: read_utf8_env(NODE_HOST_ENV)?,
+            cluster_port: read(CLUSTER_PORT_ENV)?,
+            cookie: read(CLUSTER_COOKIE_ENV)?,
+            discovery_seed: read(DISCOVERY_SEED_ENV)?,
+            node_name: read(NODE_NAME_ENV)?,
+            node_host: read(NODE_HOST_ENV)?,
         })
     }
 }
@@ -146,8 +151,8 @@ fn resolve_bootstrap(inputs: BootstrapInputs) -> Result<BootstrapPlan, String> {
     })
 }
 
-fn read_utf8_env(name: &str) -> Result<Option<String>, String> {
-    match env::var(name) {
+fn utf8_env(name: &str, value: Result<String, env::VarError>) -> Result<Option<String>, String> {
+    match value {
         Ok(value) => Ok(Some(value)),
         Err(env::VarError::NotPresent) => Ok(None),
         Err(env::VarError::NotUnicode(_)) => Err(format!("{name} must be valid UTF-8")),
@@ -213,9 +218,6 @@ fn validate_explicit_node_name(node_name: &str, cluster_port: u16) -> Result<(),
     if raw_name.is_empty() {
         return Err(invalid_node_name("node name cannot be blank"));
     }
-    if raw_name.contains('@') {
-        return Err(invalid_node_name("node name cannot contain @"));
-    }
 
     validate_explicit_node_host_port(raw_host_port, cluster_port)
 }
@@ -233,9 +235,6 @@ fn validate_explicit_node_host_port(host_port: &str, cluster_port: u16) -> Resul
         if raw_host.is_empty() {
             return Err(invalid_node_name("host cannot be blank"));
         }
-        if raw_host.contains('@') || raw_host.contains(' ') {
-            return Err(invalid_node_name("host is invalid"));
-        }
         validate_cluster_port_match(raw_port.trim(), cluster_port)
     } else if trimmed_host_port.contains('[') || trimmed_host_port.contains(']') {
         Err(invalid_node_name("host is invalid"))
@@ -249,9 +248,6 @@ fn validate_explicit_node_host_port(host_port: &str, cluster_port: u16) -> Resul
         let raw_port = parts[1].trim();
         if raw_host.is_empty() {
             return Err(invalid_node_name("host cannot be blank"));
-        }
-        if raw_host.contains('@') || raw_host.contains(' ') {
-            return Err(invalid_node_name("host is invalid"));
         }
         validate_cluster_port_match(raw_port, cluster_port)
     }
@@ -272,18 +268,22 @@ fn compose_hostname_node_name(
     explicit_node_host: &str,
     cluster_port: u16,
 ) -> Result<String, String> {
-    let hostname = system_hostname()?;
+    let hostname = validated_hostname(hostname::get())?;
     let trimmed_host = explicit_node_host.trim();
     let advertised_host = if trimmed_host.is_empty() {
         &hostname
     } else {
         trimmed_host
     };
-    compose_node_name(&hostname, advertised_host, cluster_port)
+    Ok(format!(
+        "{hostname}@{}:{cluster_port}",
+        normalized_host(advertised_host)?
+    ))
 }
 
-fn system_hostname() -> Result<String, String> {
-    let raw = hostname::get().map_err(|err| {
+/// The system host name `lookup` read, checked for use in a node name.
+fn validated_hostname(lookup: std::io::Result<std::ffi::OsString>) -> Result<String, String> {
+    let raw = lookup.map_err(|err| {
         invalid_cluster_identity(&format!("failed to read system hostname: {err}"))
     })?;
     let name = raw
@@ -302,30 +302,8 @@ fn system_hostname() -> Result<String, String> {
     Ok(name)
 }
 
-fn compose_node_name(
-    node_basename: &str,
-    advertised_host: &str,
-    cluster_port: u16,
-) -> Result<String, String> {
-    let trimmed_basename = node_basename.trim();
-    if trimmed_basename.is_empty() {
-        return Err(invalid_cluster_identity("node basename cannot be blank"));
-    }
-    if trimmed_basename.contains('@') {
-        return Err(invalid_cluster_identity("node basename cannot contain @"));
-    }
-
-    let normalized_host = normalized_host(advertised_host)?;
-    Ok(format!(
-        "{trimmed_basename}@{normalized_host}:{cluster_port}"
-    ))
-}
-
-fn normalized_host(advertised_host: &str) -> Result<String, String> {
-    let trimmed = advertised_host.trim();
-    if trimmed.is_empty() {
-        return Err(invalid_cluster_identity("advertised host cannot be blank"));
-    }
+/// `trimmed` is a validated host name or a trimmed, non-blank `MESH_NODE_HOST`.
+fn normalized_host(trimmed: &str) -> Result<String, String> {
     if trimmed.contains('@') {
         return Err(invalid_cluster_identity("advertised host cannot contain @"));
     }
@@ -486,5 +464,137 @@ mod tests {
             err,
             "MESH_CLUSTER_COOKIE is required when discovery or identity env is set"
         );
+    }
+
+    #[test]
+    fn inputs_are_read_by_name_and_must_be_utf8() {
+        let inputs = BootstrapInputs::from_lookup(|name| match name {
+            CLUSTER_PORT_ENV => Ok("4371".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        });
+        assert_eq!(
+            inputs,
+            Ok(BootstrapInputs {
+                cluster_port: Some("4371".to_string()),
+                ..BootstrapInputs::default()
+            })
+        );
+        let inputs = BootstrapInputs::from_lookup(|name| match name {
+            NODE_HOST_ENV => Err(env::VarError::NotUnicode(Default::default())),
+            _ => Err(env::VarError::NotPresent),
+        });
+        assert_eq!(
+            inputs,
+            Err("MESH_NODE_HOST must be valid UTF-8".to_string())
+        );
+    }
+
+    #[test]
+    fn standalone_mode_is_labelled() {
+        assert_eq!(BootstrapMode::Standalone.as_str(), "standalone");
+    }
+
+    #[test]
+    fn start_failures_name_the_node_and_the_cause() {
+        for (code, cause) in [
+            (-1, "node already started"),
+            (-3, "invalid node name or cookie"),
+            (7, "unexpected start code=7"),
+        ] {
+            let inputs = BootstrapInputs {
+                cookie: Some("shared-cookie".to_string()),
+                discovery_seed: Some("mesh-cluster".to_string()),
+                node_name: Some("node@127.0.0.1:4370".to_string()),
+                ..BootstrapInputs::default()
+            };
+            assert_eq!(
+                bootstrap_with_inputs(inputs, |_, _| code),
+                Err(format!(
+                    "mesh bootstrap start failed node=node@127.0.0.1:4370: {cause}"
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_node_names_are_checked_part_by_part() {
+        for (name, reason) in [
+            ("a node@127.0.0.1:4370", "value cannot contain spaces"),
+            ("@127.0.0.1:4370", "node name cannot be blank"),
+            ("node@", "host cannot be blank"),
+            ("node@[::1]", "IPv6 host must use [addr]:port"),
+            ("node@[]:4370", "host cannot be blank"),
+            ("node@host]:4370", "host is invalid"),
+            ("node@host:1:4370", "expected name@host:port"),
+            ("node@:4370", "host cannot be blank"),
+            ("node@[::1]:port", "port must be a positive integer"),
+        ] {
+            assert_eq!(
+                validate_explicit_node_name(name, 4370),
+                Err(invalid_node_name(reason)),
+                "{name}"
+            );
+        }
+        assert_eq!(validate_explicit_node_name("node@[::1]:4370", 4370), Ok(()));
+    }
+
+    #[test]
+    fn host_names_that_cannot_name_a_node_are_refused() {
+        use std::ffi::OsString;
+
+        assert_eq!(
+            validated_hostname(Err(std::io::Error::other("no host name"))),
+            Err(invalid_cluster_identity(
+                "failed to read system hostname: no host name"
+            ))
+        );
+        for (raw, reason) in [
+            ("  ", "system hostname is blank"),
+            ("a box", "system hostname contains invalid characters"),
+            ("a@box", "system hostname contains invalid characters"),
+        ] {
+            assert_eq!(
+                validated_hostname(Ok(OsString::from(raw))),
+                Err(invalid_cluster_identity(reason)),
+                "{raw}"
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            assert_eq!(
+                validated_hostname(Ok(OsString::from_vec(vec![0xff]))),
+                Err(invalid_cluster_identity(
+                    "system hostname is not valid UTF-8"
+                ))
+            );
+        }
+        assert_eq!(
+            validated_hostname(Ok(OsString::from(" box "))),
+            Ok("box".to_string())
+        );
+    }
+
+    #[test]
+    fn advertised_hosts_are_bracketed_only_when_well_formed() {
+        assert_eq!(normalized_host("[fd00::1]"), Ok("[fd00::1]".to_string()));
+        assert_eq!(normalized_host("fd00::1"), Ok("[fd00::1]".to_string()));
+        for (host, reason) in [
+            ("node@host", "advertised host cannot contain @"),
+            (
+                "[fd00::1",
+                "advertised host has an opening '[' without a closing ']'",
+            ),
+            (
+                "fd00::1]",
+                "advertised host has a closing ']' without an opening '['",
+            ),
+        ] {
+            assert_eq!(
+                normalized_host(host),
+                Err(invalid_cluster_identity(reason)),
+                "{host}"
+            );
+        }
     }
 }
