@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -1268,15 +1268,20 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
 fn connect(url: &str) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
-    let addr_str = format!("{}:{}", pg_url.host, pg_url.port);
-    let addr: SocketAddr = addr_str
+    let addrs = format!("{}:{}", pg_url.host, pg_url.port)
         .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed: {}", e))?
-        .next()
-        .ok_or_else(|| "could not resolve host".to_string())?;
-
-    let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
-        .map_err(|e| format!("connection failed: {}", e))?;
+        .map_err(|e| format!("DNS resolution failed: {}", e))?;
+    // Each address in turn, as libpq tries them: `localhost` can name ::1
+    // first for a server that listens on 127.0.0.1 alone.
+    let mut failure = "could not resolve host".to_string();
+    let stream = addrs
+        .filter_map(|addr| {
+            TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+                .map_err(|e| failure = format!("connection failed: {}", e))
+                .ok()
+        })
+        .next();
+    let stream = stream.ok_or(failure)?;
     // Set before TLS wrapping (StreamOwned inherits them).
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
@@ -1988,6 +1993,22 @@ mod tests {
                 Err(error) => assert!(error.contains(expected), "{case}: {error}"),
             }
         }
+    }
+
+    /// `localhost` can name ::1 first (it does on macOS) for a server that
+    /// listens on 127.0.0.1 alone, which libpq reaches all the same.
+    #[test]
+    fn connect_tries_every_address_the_host_resolves_to() {
+        let (url, peer) = wire_peer("sslmode=disable", |mut socket| {
+            read_startup(&mut socket);
+            socket
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+        });
+        let conn = connect(&url.replace("127.0.0.1", "localhost"));
+        // Before the join: a peer never reached waits on.
+        assert_eq!(conn.map(|conn| conn.txn_status), Ok(b'I'));
+        peer.join().unwrap();
     }
 
     #[test]
