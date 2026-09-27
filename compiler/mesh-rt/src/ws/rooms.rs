@@ -22,7 +22,9 @@
 
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
+use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::sync::OnceLock;
 
 use super::server::WsConnection;
@@ -71,20 +73,8 @@ impl RoomRegistry {
     pub fn leave(&self, conn: usize, room: &str) {
         let mut rooms = self.rooms.write();
         let mut conn_rooms = self.conn_rooms.write();
-
-        if let Some(members) = rooms.get_mut(room) {
-            members.remove(&conn);
-            if members.is_empty() {
-                rooms.remove(room);
-            }
-        }
-
-        if let Some(room_set) = conn_rooms.get_mut(&conn) {
-            room_set.remove(room);
-            if room_set.is_empty() {
-                conn_rooms.remove(&conn);
-            }
-        }
+        remove_member(&mut rooms, room, &conn);
+        remove_member(&mut conn_rooms, &conn, room);
     }
 
     /// Remove a connection from all rooms. Called on disconnect.
@@ -97,15 +87,8 @@ impl RoomRegistry {
         let mut rooms = self.rooms.write();
         let mut conn_rooms = self.conn_rooms.write();
 
-        if let Some(room_names) = conn_rooms.remove(&conn) {
-            for room_name in room_names {
-                if let Some(members) = rooms.get_mut(&room_name) {
-                    members.remove(&conn);
-                    if members.is_empty() {
-                        rooms.remove(&room_name);
-                    }
-                }
-            }
+        for room_name in conn_rooms.remove(&conn).unwrap_or_default() {
+            remove_member(&mut rooms, &room_name, &conn);
         }
     }
 
@@ -130,6 +113,22 @@ impl RoomRegistry {
     }
 }
 
+/// Take `member` out of `key`'s set in `index`, and the set once empty.
+fn remove_member<K, Q, M, N>(index: &mut FxHashMap<K, HashSet<M>>, key: &Q, member: &N)
+where
+    K: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    M: Borrow<N> + Hash + Eq,
+    N: Hash + Eq + ?Sized,
+{
+    if let Some(members) = index.get_mut(key) {
+        members.remove(member);
+        if members.is_empty() {
+            index.remove(key);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Global instance
 // ---------------------------------------------------------------------------
@@ -148,21 +147,24 @@ pub fn global_room_registry() -> &'static RoomRegistry {
 
 /// Broadcast a text frame to local room members only.
 ///
-/// Extracts the local delivery logic from `mesh_ws_broadcast` into a reusable
-/// helper. Called by the reader loop when receiving `DIST_ROOM_BROADCAST` from
-/// a remote node (local-only delivery, no re-forwarding to prevent storms).
+/// Called by the reader loop when receiving `DIST_ROOM_BROADCAST` from a
+/// remote node (local-only delivery, no re-forwarding to prevent storms).
 ///
 /// Returns the number of write failures (0 = all succeeded).
 pub(crate) fn local_room_broadcast(room: &str, msg: &str) -> i64 {
-    let payload = msg.as_bytes();
+    deliver_locally(room, msg, 0)
+}
 
+/// Send a text frame to this node's members of `room`, but `except` (a
+/// connection handle, 0 for none): the number of write failures.
+fn deliver_locally(room: &str, msg: &str, except: usize) -> i64 {
     let mut failures = 0i64;
     global_room_registry().for_each_member(room, |conn_usize| {
         let conn = unsafe { &*(conn_usize as *const WsConnection) };
-        if conn.io.is_closed() {
+        if conn_usize == except || conn.io.is_closed() {
             return;
         }
-        if conn.io.send(WsOpcode::Text, payload).is_err() {
+        if conn.io.send(WsOpcode::Text, msg.as_bytes()).is_err() {
             // The caller cannot retry a specific room member. Disconnect it so
             // the peer can reconnect and recover instead of silently missing data.
             conn.io.cancel("WebSocket room broadcast failed");
@@ -222,13 +224,14 @@ pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
 
 /// Subscribe a WebSocket connection to a named room.
 ///
-/// `conn` is a pointer to a `WsConnection`. `room_name` is a pointer to a
-/// `MeshString` containing the room name.
+/// `conn` is a connection handle (a pointer to a `WsConnection`). Mesh code
+/// may pass any Int, 0 among them, which is refused: a broadcast would
+/// follow it.
 ///
-/// Returns 0 on success, -1 on null arguments.
+/// Returns 0 on success, -1 for a null handle.
 #[no_mangle]
 pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i64 {
-    if conn.is_null() || room_name.is_null() {
+    if conn.is_null() {
         return -1;
     }
     // Extract room name as owned String to prevent GC dangling reference (Pitfall 4)
@@ -237,93 +240,42 @@ pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i
     0
 }
 
-/// Unsubscribe a WebSocket connection from a named room.
-///
-/// `conn` is a pointer to a `WsConnection`. `room_name` is a pointer to a
-/// `MeshString` containing the room name.
-///
-/// Returns 0 on success, -1 on null arguments.
+/// Unsubscribe a WebSocket connection from a named room. Returns 0.
 #[no_mangle]
 pub extern "C" fn mesh_ws_leave(conn: *mut u8, room_name: *const MeshString) -> i64 {
-    if conn.is_null() || room_name.is_null() {
-        return -1;
-    }
     let room = unsafe { (*room_name).as_str() };
     global_room_registry().leave(conn as usize, room);
     0
 }
 
-/// Broadcast a text frame to all connections in a named room, cluster-wide.
+/// Broadcast a text frame to all connections in a named room, cluster-wide:
+/// this node's members first, then every connected cluster node's, via
+/// `DIST_ROOM_BROADCAST`.
 ///
-/// `room_name` and `msg` are pointers to `MeshString` values. Performs local
-/// delivery first (snapshot members, write frames), then forwards the message
-/// to all connected cluster nodes via `DIST_ROOM_BROADCAST`.
-///
-/// Returns the number of local write failures (0 = all succeeded), or -1 on
-/// null arguments.
+/// Returns the number of local write failures (0 = all succeeded).
 #[no_mangle]
 pub extern "C" fn mesh_ws_broadcast(room_name: *const MeshString, msg: *const MeshString) -> i64 {
-    if room_name.is_null() || msg.is_null() {
-        return -1;
-    }
-    let room = unsafe { (*room_name).as_str() };
-    let text = unsafe { (*msg).as_str() };
-
-    // Step 1: Local delivery to this node's room members
-    let failures = local_room_broadcast(room, text);
-
-    // Step 2: Forward to all connected cluster nodes
-    broadcast_room_to_cluster(room, text);
-
-    failures
+    mesh_ws_broadcast_except(room_name, msg, std::ptr::null_mut())
 }
 
 /// Broadcast a text frame to all connections in a room except one, cluster-wide.
 ///
 /// Same as `mesh_ws_broadcast` but skips the connection at `except_conn` for
-/// local delivery. The excluded connection only applies on this node (it is a
-/// local pointer); remote nodes deliver to ALL their local members, which is
+/// local delivery (null for none). The excluded connection is a local
+/// pointer: remote nodes deliver to ALL their local members, which is
 /// correct since the excluded connection is never on those nodes.
 ///
-/// `except_conn` can be null (treated as no exclusion).
-///
-/// Returns the number of local write failures (0 = all succeeded), or -1 on
-/// null room_name or msg.
+/// Returns the number of local write failures (0 = all succeeded).
 #[no_mangle]
 pub extern "C" fn mesh_ws_broadcast_except(
     room_name: *const MeshString,
     msg: *const MeshString,
     except_conn: *mut u8,
 ) -> i64 {
-    if room_name.is_null() || msg.is_null() {
-        return -1;
-    }
     let room = unsafe { (*room_name).as_str() };
     let text = unsafe { (*msg).as_str() };
-    let payload = text.as_bytes();
-    let except = except_conn as usize;
-
-    // Step 1: Local delivery with exclusion (except_conn only meaningful locally)
-    let mut failures = 0i64;
-    global_room_registry().for_each_member(room, |conn_usize| {
-        if conn_usize == except {
-            return; // skip excluded connection
-        }
-        let conn = unsafe { &*(conn_usize as *const WsConnection) };
-        if conn.io.is_closed() {
-            return;
-        }
-        if conn.io.send(WsOpcode::Text, payload).is_err() {
-            conn.io.cancel("WebSocket room broadcast failed");
-            failures += 1;
-        }
-    });
-
-    // Step 2: Forward full message to all connected cluster nodes
-    // Remote nodes deliver to ALL their local members (no exclusion needed --
-    // the excluded connection is local to this node by definition).
+    let failures = deliver_locally(room, text, except_conn as usize);
     broadcast_room_to_cluster(room, text);
-
     failures
 }
 
@@ -493,15 +445,62 @@ mod tests {
         assert_eq!(members.len(), num_threads);
     }
 
+    /// A connection on the shared reactor, its peer at the other end.
+    fn connection() -> (Box<WsConnection>, std::net::TcpStream) {
+        use crate::ws::reactor::{
+            register_client, ReactorConfig, ReactorEvent, ReactorEventSink, ReactorTransport,
+            SinkFull,
+        };
+        struct Ignore;
+        impl ReactorEventSink for Ignore {
+            fn event(&self, _event: ReactorEvent) -> Result<(), SinkFull> {
+                Ok(())
+            }
+            fn terminated(&self, _reason: &str) {}
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (tcp, _) = listener.accept().unwrap();
+        let io = register_client(
+            ReactorTransport::plain(tcp),
+            Vec::new(),
+            String::new(),
+            std::sync::Arc::new(Ignore),
+            ReactorConfig::client(1024, std::time::Duration::from_secs(30)),
+        )
+        .unwrap();
+        (Box::new(WsConnection { io }), peer)
+    }
+
+    /// Ws.join refuses a null handle; Ws.leave takes a connection out.
+    /// Broadcasts skip the excluded connection and closed ones, which are
+    /// no failures.
     #[test]
-    fn test_null_args_return_negative_one() {
-        assert_eq!(mesh_ws_join(std::ptr::null_mut(), std::ptr::null()), -1);
-        assert_eq!(mesh_ws_leave(std::ptr::null_mut(), std::ptr::null()), -1);
-        assert_eq!(mesh_ws_broadcast(std::ptr::null(), std::ptr::null()), -1);
-        assert_eq!(
-            mesh_ws_broadcast_except(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()),
-            -1
-        );
+    fn broadcasts_skip_the_excluded_and_the_closed() {
+        crate::gc::mesh_rt_init();
+        let room = crate::string::mesh_str("rooms-broadcast-skips");
+        let (open, _open_peer) = connection();
+        let (closed, _closed_peer) = connection();
+        closed.io.cancel("closed");
+        let open = Box::into_raw(open) as *mut u8;
+        let closed = Box::into_raw(closed) as *mut u8;
+        assert_eq!(mesh_ws_join(std::ptr::null_mut(), room), -1);
+        assert_eq!(mesh_ws_join(open, room), 0);
+        assert_eq!(mesh_ws_join(closed, room), 0);
+
+        let text = crate::string::mesh_str("hello");
+        assert_eq!(mesh_ws_broadcast_except(room, text, open), 0);
+        assert_eq!(mesh_ws_broadcast(room, text), 0);
+
+        assert_eq!(mesh_ws_leave(open, room), 0);
+        assert_eq!(mesh_ws_leave(closed, room), 0);
+        assert!(global_room_registry()
+            .members("rooms-broadcast-skips")
+            .is_empty());
+        unsafe {
+            drop(Box::from_raw(open as *mut WsConnection));
+            drop(Box::from_raw(closed as *mut WsConnection));
+        }
     }
 
     // -----------------------------------------------------------------------
