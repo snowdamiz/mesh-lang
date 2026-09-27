@@ -400,50 +400,44 @@ impl SqliteContinuityStore {
 
     pub fn stats(&self) -> Result<ContinuityStoreStats, String> {
         let connection = self.connection.lock().unwrap();
-        let count = |sql: &str| Self::query_u64(&connection, sql, None);
-        let records = count("SELECT COUNT(*) FROM continuity_records")?;
-        let active_records = count(
-            "SELECT COUNT(*) FROM continuity_records
-             WHERE phase IN ('reserved', 'replicating', 'admitted', 'started')",
-        )?;
-        let terminal_records = Self::terminal_records(&connection)?;
-        let tombstones = count("SELECT COUNT(*) FROM continuity_tombstones")?;
-        let log_entries = count("SELECT COUNT(*) FROM continuity_log")?;
-        let high_water_mark = Self::high_water(&connection)?;
-        let replica_safe_point = Self::replica_safe_point(&connection)?;
-        // Log sequences start at 1: with no safe point nothing is eligible.
-        let compaction_lag = Self::query_u64(
+        // One statement, one row. Log sequences start at 1: with no replica
+        // safe point, no entry is eligible for compaction.
+        let mut row = Self::prepare(
             &connection,
-            "SELECT COUNT(*) FROM continuity_log WHERE sequence <= ?1",
-            Some(replica_safe_point.unwrap_or(0)),
+            "SELECT
+               (SELECT COUNT(*) FROM continuity_records),
+               (SELECT COUNT(*) FROM continuity_records
+                  WHERE phase IN ('reserved', 'replicating', 'admitted', 'started')),
+               (SELECT COALESCE(MAX(terminal_record_count), 0) FROM continuity_store_counters),
+               (SELECT COUNT(*) FROM continuity_tombstones),
+               (SELECT COUNT(*) FROM continuity_log),
+               (SELECT COALESCE(MAX(sequence), 0) FROM continuity_log),
+               (SELECT MIN(high_water_mark) FROM continuity_replica_safe_points),
+               (SELECT COUNT(*) FROM continuity_log WHERE sequence <=
+                  (SELECT COALESCE(MIN(high_water_mark), 0) FROM continuity_replica_safe_points))",
         )?;
-        let replication_lag =
-            replica_safe_point.map(|safe_point| high_water_mark.saturating_sub(safe_point));
-        drop(connection);
+        row.step()?;
+        let count = |column| unsigned_integer(row.integer(column));
+        let high_water_mark = count(5)?;
+        let replica_safe_point = row.optional_integer(6).map(unsigned_integer).transpose()?;
         Ok(ContinuityStoreStats {
-            records,
-            active_records,
-            terminal_records,
-            tombstones,
-            log_entries,
+            records: count(0)?,
+            active_records: count(1)?,
+            terminal_records: count(2)?,
+            tombstones: count(3)?,
+            log_entries: count(4)?,
             high_water_mark,
             disk_bytes: self.disk_bytes(),
             replica_safe_point,
-            compaction_lag,
-            replication_lag,
+            compaction_lag: count(7)?,
+            replication_lag: replica_safe_point
+                .map(|safe_point| high_water_mark.saturating_sub(safe_point)),
         })
     }
 
     /// The one integer an aggregate query returns: it always has a row.
-    fn query_u64(
-        connection: &Connection,
-        sql: &str,
-        parameter: Option<u64>,
-    ) -> Result<u64, String> {
+    fn query_u64(connection: &Connection, sql: &str) -> Result<u64, String> {
         let mut statement = Self::prepare(connection, sql)?;
-        if let Some(parameter) = parameter {
-            statement.bind_i64(1, sqlite_integer(parameter)?)?;
-        }
         statement.step()?;
         unsigned_integer(statement.integer(0))
     }
@@ -452,7 +446,6 @@ impl SqliteContinuityStore {
         Self::query_u64(
             connection,
             "SELECT COALESCE(MAX(sequence), 0) FROM continuity_log",
-            None,
         )
     }
 
@@ -460,7 +453,6 @@ impl SqliteContinuityStore {
         Self::query_u64(
             connection,
             "SELECT COALESCE(MAX(terminal_record_count), 0) FROM continuity_store_counters",
-            None,
         )
     }
 
@@ -470,7 +462,6 @@ impl SqliteContinuityStore {
         let replicas = Self::query_u64(
             connection,
             "SELECT COUNT(*) FROM continuity_replica_safe_points",
-            None,
         )?;
         if replicas == 0 {
             return Ok(None);
@@ -478,7 +469,6 @@ impl SqliteContinuityStore {
         Self::query_u64(
             connection,
             "SELECT MIN(high_water_mark) FROM continuity_replica_safe_points",
-            None,
         )
         .map(Some)
     }
