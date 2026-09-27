@@ -602,32 +602,24 @@ fn dispatch(
     request: &MeshRequestData,
     url: &str,
 ) -> Result<ureq::http::Response<ureq::Body>, UreqError> {
+    let with_body = |builder: RequestBuilder<ureq::typestate::WithBody>| {
+        let mut builder = apply_headers(configure(builder, request), request);
+        if request.is_json {
+            builder = builder.header("Content-Type", "application/json");
+        }
+        builder.send(request.body.as_deref().unwrap_or_default())
+    };
+    let without_body = |builder: RequestBuilder<ureq::typestate::WithoutBody>| {
+        apply_headers(configure(builder, request), request).call()
+    };
     match request.method.as_str() {
-        "post" => {
-            let mut builder = apply_headers(configure(agent.post(url), request), request);
-            if request.is_json {
-                builder = builder.header("Content-Type", "application/json");
-            }
-            builder.send(request.body.as_deref().unwrap_or_default())
-        }
-        "put" => {
-            let mut builder = apply_headers(configure(agent.put(url), request), request);
-            if request.is_json {
-                builder = builder.header("Content-Type", "application/json");
-            }
-            builder.send(request.body.as_deref().unwrap_or_default())
-        }
-        "patch" => {
-            let mut builder = apply_headers(configure(agent.patch(url), request), request);
-            if request.is_json {
-                builder = builder.header("Content-Type", "application/json");
-            }
-            builder.send(request.body.as_deref().unwrap_or_default())
-        }
-        "get" => apply_headers(configure(agent.get(url), request), request).call(),
-        "head" => apply_headers(configure(agent.head(url), request), request).call(),
-        "delete" => apply_headers(configure(agent.delete(url), request), request).call(),
-        "options" => apply_headers(configure(agent.options(url), request), request).call(),
+        "post" => with_body(agent.post(url)),
+        "put" => with_body(agent.put(url)),
+        "patch" => with_body(agent.patch(url)),
+        "get" => without_body(agent.get(url)),
+        "head" => without_body(agent.head(url)),
+        "delete" => without_body(agent.delete(url)),
+        "options" => without_body(agent.options(url)),
         _ => unreachable!("request method was validated"),
     }
 }
@@ -1138,6 +1130,109 @@ mod tests {
         state.bytes.fetch_add(chunk.len, Ordering::Relaxed);
         std::thread::sleep(Duration::from_millis(20));
         std::ptr::null_mut()
+    }
+
+    /// Each failure is named by what failed, for callers that match on the
+    /// prefix, and counted where it has a metric.
+    #[test]
+    fn errors_are_named_by_what_failed() {
+        use std::io::{Error as IoError, ErrorKind};
+        use ureq::Timeout;
+        let cases: Vec<(UreqError, &str)> = vec![
+            (UreqError::Timeout(Timeout::Resolve), "TIMEOUT_RESOLVE: "),
+            (UreqError::Timeout(Timeout::Connect), "TIMEOUT_CONNECT: "),
+            (UreqError::Timeout(Timeout::SendRequest), "TIMEOUT_SEND: "),
+            (UreqError::Timeout(Timeout::SendBody), "TIMEOUT_SEND: "),
+            (
+                UreqError::Timeout(Timeout::RecvResponse),
+                "TIMEOUT_FIRST_BYTE: ",
+            ),
+            (UreqError::Timeout(Timeout::RecvBody), "TIMEOUT_BODY: "),
+            (UreqError::Timeout(Timeout::Global), "TIMEOUT_TOTAL: "),
+            (UreqError::HostNotFound, "DNS_FAILURE: "),
+            (UreqError::ConnectionFailed, "CONNECT_FAILURE: "),
+            (
+                UreqError::ConnectProxyFailed("proxy".into()),
+                "CONNECT_FAILURE: ",
+            ),
+            (UreqError::Tls("handshake"), "TLS_ERROR: "),
+            (UreqError::TlsRequired, "TLS_ERROR: "),
+            (
+                UreqError::BodyExceedsLimit(4),
+                "RESPONSE_TOO_LARGE: limit is 4 bytes",
+            ),
+            (UreqError::BadUri("::".into()), "INVALID_REQUEST: "),
+            (
+                UreqError::Io(IoError::from(ErrorKind::ConnectionReset)),
+                "CONNECT_FAILURE: ",
+            ),
+            (
+                UreqError::Io(IoError::other("invalid peer certificate")),
+                "TLS_ERROR: ",
+            ),
+            (UreqError::TooManyRedirects, "HTTP_ERROR: "),
+        ];
+        let before = [
+            metrics().dns_failures.load(Ordering::Relaxed),
+            metrics().connect_failures.load(Ordering::Relaxed),
+            metrics().tls_failures.load(Ordering::Relaxed),
+            metrics().timeouts.load(Ordering::Relaxed),
+        ];
+        for (error, prefix) in &cases {
+            record_error(error);
+            let message = format_error(error);
+            assert!(message.starts_with(prefix), "{message} for {error:?}");
+        }
+        let after = [
+            metrics().dns_failures.load(Ordering::Relaxed),
+            metrics().connect_failures.load(Ordering::Relaxed),
+            metrics().tls_failures.load(Ordering::Relaxed),
+            metrics().timeouts.load(Ordering::Relaxed),
+        ];
+        // Other tests count too, so at least these.
+        for (index, least) in [1, 3, 3, 7].into_iter().enumerate() {
+            assert!(
+                after[index] - before[index] >= least,
+                "{before:?} -> {after:?}"
+            );
+        }
+    }
+
+    /// Every method reaches the server as itself, with its body when it
+    /// takes one and a JSON content type when the body is JSON.
+    #[test]
+    fn every_method_is_sent_as_itself() {
+        for method in ["get", "head", "delete", "options", "post", "put", "patch"] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = vec![0u8; 4096];
+                let read = stream.read(&mut request).unwrap();
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                    .unwrap();
+                String::from_utf8_lossy(&request[..read]).into_owned()
+            });
+            let with_body = matches!(method, "post" | "put" | "patch");
+            let mut request = MeshRequestData::new(method, &format!("http://127.0.0.1:{port}/"));
+            if with_body {
+                request.body = Some(b"{}".to_vec());
+                request.is_json = true;
+            }
+            execute_request(&Agent::new_with_defaults(), request, None).unwrap();
+            let seen = server.join().unwrap();
+            assert!(
+                seen.starts_with(&format!("{} / ", method.to_uppercase())),
+                "{seen}"
+            );
+            assert_eq!(
+                seen.to_lowercase()
+                    .contains("content-type: application/json"),
+                with_body,
+                "{seen}"
+            );
+        }
     }
 
     #[test]
