@@ -295,6 +295,9 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
     let mut terminals = 0_u64;
     let mut reads = 0_u64;
     let mut retries = 0_u64;
+    // Retries that appended to the log, and records not read back.
+    let mut retry_appends = 0_u64;
+    let mut missed_reads = 0_u64;
     let mut churn = 0_u64;
     let mut snapshots = 0_u64;
     let mut last_sample_second = u64::MAX;
@@ -339,14 +342,10 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         terminals += 1;
         let high_water_before_retry = store.high_water_mark()?;
         store.upsert(&terminal)?;
-        let retry_appended_nothing = store.high_water_mark()? == high_water_before_retry;
-        ensure(
-            retry_appended_nothing,
-            "continuity_soak_duplicate_retry_appended_log",
-        )?;
+        retry_appends += u64::from(store.high_water_mark()? != high_water_before_retry);
         retries += 1;
-        let both_read = store.get(&active_key)?.is_some() && store.get(&terminal_key)?.is_some();
-        ensure(both_read, "continuity_soak_read_after_write_missing")?;
+        missed_reads += u64::from(store.get(&active_key)?.is_none())
+            + u64::from(store.get(&terminal_key)?.is_none());
         reads += 2;
         churn += u64::from(ordinal > 0);
         store.compact(now)?;
@@ -418,6 +417,11 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         writes > 0 && reads > 0 && retries > 0
     });
     assertions.insert("node_churn_exercised".to_string(), churn > 0);
+    assertions.insert(
+        "duplicate_retries_appended_nothing".to_string(),
+        retry_appends == 0,
+    );
+    assertions.insert("every_write_read_back".to_string(), missed_reads == 0);
     assertions.insert(
         "active_records_never_evicted_for_capacity".to_string(),
         final_stats.active_records == 0,
