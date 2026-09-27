@@ -10,7 +10,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use parking_lot::Mutex;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use rustls_pki_types::ServerName;
-use url::Url;
+use url::{Host, Url};
 
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
@@ -349,10 +349,15 @@ fn connect_until(
     if parsed.fragment().is_some() {
         return Err("WebSocket URL fragments are not sent to servers".to_string());
     }
-    let host = parsed
-        .host_str()
+    // An IPv6 host without the URL's brackets, as resolution and TLS take it.
+    let host = match parsed
+        .host()
         .ok_or_else(|| "WebSocket URL is missing a host".to_string())?
-        .to_string();
+    {
+        Host::Domain(name) => name.to_string(),
+        Host::Ipv4(address) => address.to_string(),
+        Host::Ipv6(address) => address.to_string(),
+    };
     let port = parsed
         .port_or_known_default()
         .ok_or_else(|| "WebSocket URL is missing a port".to_string())?;
@@ -787,6 +792,45 @@ mod tests {
     fn ipv6_host_header_keeps_required_brackets() {
         assert_eq!(host_header("::1", 80, false), "[::1]");
         assert_eq!(host_header("::1", 8080, false), "[::1]:8080");
+    }
+
+    /// A URL names an IPv6 host in brackets; resolution, TLS and the Host
+    /// header take the address, the header bracketing it again.
+    #[test]
+    fn an_ipv6_literal_url_connects() {
+        let Ok(listener) = TcpListener::bind("[::1]:0") else {
+            return; // no IPv6 loopback on this host
+        };
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(
+                request.contains(&format!("\r\nHost: [::1]:{port}\r\n")),
+                "{request}"
+            );
+            let key = request
+                .lines()
+                .find_map(|line| line.strip_prefix("Sec-WebSocket-Key: "))
+                .unwrap()
+                .to_string();
+            write_handshake_response(&mut stream, &key).unwrap();
+            stream
+        });
+
+        let connection = connect(
+            &format!("ws://[::1]:{port}/feed"),
+            WsClientOptions::default(),
+        )
+        .unwrap();
+        let _peer = server.join().unwrap();
+        connection.io.cancel("test complete");
     }
 
     #[test]
