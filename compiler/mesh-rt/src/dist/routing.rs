@@ -1054,4 +1054,196 @@ mod tests {
             candidates.rotate_left(1);
         }
     }
+
+    /// A report out of bounds is refused, whether encoded, applied or
+    /// decoded, and so is an encoding that overstates its handlers or a
+    /// string, or runs on; a report from an older control term is stale.
+    #[test]
+    fn a_load_report_out_of_bounds_is_refused() {
+        let spoilt: [(fn(&mut NodeLoadReport), &str); 8] = [
+            (|r| r.node_id.clear(), "load_report_node_id_missing"),
+            (
+                |r| r.boot_id = "b".repeat(MAX_BOOT_ID_BYTES + 1),
+                "load_report_boot_id_too_long",
+            ),
+            (|r| r.capacity_units = 0, "load_report_capacity_zero"),
+            (
+                |r| r.memory_pressure = f64::NAN,
+                "load_report_memory_pressure_invalid",
+            ),
+            (
+                |r| r.decision_pressure_ewma = -1.0,
+                "load_report_pressure_ewma_invalid",
+            ),
+            (
+                |r| r.handlers = (0..=MAX_HANDLER_COUNT).map(|i| i.to_string()).collect(),
+                "load_report_handler_count_exceeded",
+            ),
+            (
+                |r| r.handlers = [String::new()].into(),
+                "load_report_handler_invalid",
+            ),
+            (
+                |r| r.failure_domain = "d".repeat(MAX_FAILURE_DOMAIN_BYTES + 1),
+                "load_report_failure_domain_too_long",
+            ),
+        ];
+        let registry = LoadReportRegistry::default();
+        for (spoil, reason) in spoilt {
+            let mut report = report("bounded", 0, NodeLifecycleState::Ready);
+            spoil(&mut report);
+            assert_eq!(report.encode(), Err(reason.to_string()));
+            assert_eq!(
+                registry.apply(report, Instant::now()),
+                Err(reason.to_string())
+            );
+        }
+
+        let mut handled = report("bounded", 0, NodeLifecycleState::Ready);
+        handled.handlers.insert("Todos.list".to_string());
+        let encoded = handled.encode().unwrap();
+        assert_eq!(NodeLoadReport::decode(&encoded), Ok(handled));
+        let decode = |change: &dyn Fn(&mut Vec<u8>)| {
+            let mut encoded = report("bounded", 0, NodeLifecycleState::Ready)
+                .encode()
+                .unwrap();
+            change(&mut encoded);
+            NodeLoadReport::decode(&encoded)
+        };
+        assert_eq!(
+            decode(&|encoded| encoded.push(0)),
+            Err("load_report_trailing_bytes".to_string())
+        );
+        // The handler count comes last but for the pressure average.
+        assert_eq!(
+            decode(&|encoded| {
+                let count = encoded.len() - 8 - 2;
+                encoded[count..count + 2]
+                    .copy_from_slice(&(MAX_HANDLER_COUNT as u16 + 1).to_le_bytes());
+            }),
+            Err("load_report_handler_count_exceeded".to_string())
+        );
+        // The node id's length follows the protocol version.
+        assert_eq!(
+            decode(&|encoded| {
+                encoded[2..4].copy_from_slice(&(MAX_NODE_ID_BYTES as u16 + 1).to_le_bytes())
+            }),
+            Err("load_report_string_bound_exceeded".to_string())
+        );
+
+        let now = Instant::now();
+        let mut newer = report("bounded", 0, NodeLifecycleState::Ready);
+        newer.control_term = 2;
+        registry.apply(newer, now).unwrap();
+        let mut older = report("bounded", 0, NodeLifecycleState::Ready);
+        older.sequence = 2;
+        assert_eq!(
+            registry.apply(older, now),
+            Err("load_report_stale_control_term".to_string())
+        );
+    }
+
+    /// Each reason a member cannot own a request keeps it out and is
+    /// reported; a pinned owner that can own it is chosen outright, one
+    /// that cannot is passed over, and with no member eligible, or none
+    /// at all, there is no owner.
+    #[test]
+    fn routing_says_why_each_member_cannot_own_a_request() {
+        use IneligibilityReason::*;
+        let registry = load_report_registry();
+        let policy = RoutingPolicy::default();
+        let now = Instant::now();
+        let apply = |node: &str, at: Instant, change: fn(&mut NodeLoadReport)| {
+            let mut report = report(node, 0, NodeLifecycleState::Ready);
+            change(&mut report);
+            registry.apply(report, at).unwrap();
+        };
+        let long_ago = now.checked_sub(policy.load_report_ttl * 2).unwrap();
+        apply("why-stale", long_ago, |_| {});
+        apply("why-gateway", now, |r| {
+            r.roles = NodeRoles::new(false, true, false)
+        });
+        apply("why-draining", now, |_| {});
+        crate::dist::operator::set_runtime_drain_intent("why-draining", true);
+        apply("why-circuit", now, |_| {});
+        for _ in 0..3 {
+            crate::dist::node::record_peer_transport_failure("why-circuit", now);
+        }
+        apply("why-warming", now, |r| {
+            r.state = NodeLifecycleState::Warming
+        });
+        apply("why-other-handler", now, |r| {
+            r.handlers = ["Other.handle".to_string()].into()
+        });
+        apply("why-busy", now, |r| {
+            r.inflight = RoutingPolicy::default().max_inflight
+        });
+        apply("why-queued", now, |r| {
+            r.queued_items = RoutingPolicy::default().max_queued_items
+        });
+        apply("why-heavy", now, |r| {
+            r.queued_bytes = RoutingPolicy::default().max_queued_bytes
+        });
+        apply("why-eligible", now, |_| {});
+        let rejected = [
+            ("why-missing", MissingReport),
+            ("why-stale", StaleReport),
+            ("why-gateway", MissingWorkerRole),
+            ("why-draining", DrainIntent),
+            ("why-circuit", CircuitOpen),
+            ("why-warming", NotReady),
+            ("why-other-handler", HandlerUnavailable),
+            ("why-busy", InflightLimit),
+            ("why-queued", QueueItemLimit),
+            ("why-heavy", QueueByteLimit),
+        ];
+        let mut members: Vec<String> = rejected.iter().map(|(node, _)| node.to_string()).collect();
+        let route = |members: &[String], pinned: Option<&str>| {
+            select_owner(
+                "why",
+                "Todos.list",
+                "why-eligible",
+                members,
+                pinned,
+                &policy,
+                now,
+            )
+        };
+
+        assert!(route(&members, None)
+            .unwrap_err()
+            .starts_with("routing_no_eligible_nodes:handler=Todos.list:"));
+        members.push("why-eligible".to_string());
+        let decision = route(&members, None).unwrap();
+        assert_eq!(decision.selected_node, "why-eligible");
+        assert_eq!(decision.sampled_nodes, ["why-eligible", "why-eligible"]);
+        assert_eq!(
+            decision.rejections,
+            rejected.map(|(node, reason)| (node.to_string(), reason))
+        );
+        // Here, where the request came in, it costs nothing to reach.
+        assert_eq!(decision.effective_score, 0.0);
+        let pinned = route(&members, Some("why-eligible")).unwrap();
+        assert_eq!(pinned.sampled_nodes, ["why-eligible"]);
+        assert_eq!(
+            route(&members, Some("why-busy")).unwrap().sampled_nodes,
+            ["why-eligible", "why-eligible"]
+        );
+        assert_eq!(
+            route(&[], None),
+            Err("routing_membership_empty".to_string())
+        );
+        assert!(select_owner_and_reserve_with_registry(
+            "why",
+            "Todos.list",
+            "why-eligible",
+            &[],
+            None,
+            &policy,
+            now,
+            Arc::default(),
+        )
+        .is_err());
+        crate::dist::operator::set_runtime_drain_intent("why-draining", false);
+    }
 }
