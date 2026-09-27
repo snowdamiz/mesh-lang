@@ -13165,7 +13165,8 @@ mod tests {
     /// error when its key says `failing`; after completing the record when
     /// it says `overtaken`; with `attempt_id_mismatch` after rejecting it
     /// when it says `mismatched`) and each spawn given a pid (but for a
-    /// function whose name says `Unspawnable`).
+    /// function whose name says `Unspawnable`, and completing the pending
+    /// work whose key says `overtaken` first when the request does).
     fn serve_as_nodes(peers: &[&TestPeer], done: &AtomicBool) {
         let registry = crate::dist::continuity::continuity_registry();
         while !done.load(Ordering::Acquire) {
@@ -13213,9 +13214,24 @@ mod tests {
                             peer.receive(encode_continuity_prepare_ack(id, &result));
                         }
                         DIST_SPAWN => {
-                            let refused = message
-                                .windows(b"Unspawnable".len())
-                                .any(|name| name == b"Unspawnable");
+                            let says =
+                                |word: &[u8]| message.windows(word.len()).any(|part| part == word);
+                            if says(b"overtaken") {
+                                for record in registry.snapshot().records.into_iter().filter(
+                                    |record| {
+                                        record.request_key.contains("overtaken")
+                                            && record.phase
+                                                == crate::dist::continuity::ContinuityPhase::Submitted
+                                    },
+                                ) {
+                                    let _ = registry.mark_completed(
+                                        &record.request_key,
+                                        &record.attempt_id,
+                                        "someone@h:1",
+                                    );
+                                }
+                            }
+                            let refused = says(b"Unspawnable");
                             peer.receive(frame(
                                 DIST_SPAWN_REPLY,
                                 &[&message[1..9], &[u8::from(refused)], &1u64.to_le_bytes()],
@@ -13918,6 +13934,27 @@ mod tests {
                 &startup_request_key(&format!("Startup.{outcome}")),
             );
         }
+        // Work whose key another payload already holds conflicts.
+        let conflicted = "Startup.conflicted";
+        let key = startup_request_key(conflicted);
+        let mut elsewhere = continuity_record(&key, "conflicting-owner@h:1", "");
+        elsewhere.replica_nodes.clear();
+        elsewhere.replication_count = 1;
+        elsewhere.payload_hash = "sha256:elsewhere".to_string();
+        registry.merge_remote_record(1, elsewhere).unwrap();
+        mesh_register_declared_handler(
+            conflicted.as_ptr(),
+            conflicted.len() as u64,
+            conflicted.as_ptr(),
+            conflicted.len() as u64,
+            1,
+            startup_outcome_handler as *const u8,
+        );
+        spawn_startup_work_actor(conflicted);
+        assert_eq!(
+            await_diagnostic("startup_rejected", &key).reason,
+            Some("conflict".to_string())
+        );
         // A newer attempt that has yet to run names no node running it.
         let idle = startup_request_key("Startup.idle");
         log_startup_fenced(
@@ -15355,6 +15392,48 @@ mod tests {
             decision.record.phase,
             crate::dist::continuity::ContinuityPhase::Rejected
         );
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
+    }
+
+    /// Declared work its owner finishes while refusing to start it here is
+    /// not this node's to reject: the submission fails and the work stays
+    /// finished.
+    #[test]
+    fn declared_work_finished_while_its_owner_refuses_it_stays_finished() {
+        let exclusive = declared_handler_registry_test_lock();
+        test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let peer = TestPeer::within(&exclusive, "overtaking-owner@127.0.0.1:1");
+        let handler = "Overtaken.work";
+        let executable = "Unspawnable__overtaken";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            executable.as_ptr(),
+            executable.len() as u64,
+            1,
+            drained_work_handler as *const u8,
+        );
+        let key = key_owned_by(&peer.session.remote_name, "declared-overtaken-spawn");
+        let done = AtomicBool::new(false);
+        let submitted = std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
+            scope.spawn(|| serve_as_nodes(&[&peer], &done));
+            let submitted = submit_declared_work(handler, &key, "sha256:overtaken", 0);
+            done.store(true, Ordering::Release);
+            submitted
+        });
+        assert_eq!(
+            submitted.err(),
+            Some("transition_rejected:already_completed".to_string())
+        );
+        assert_eq!(
+            record_phase(&key),
+            Some(crate::dist::continuity::ContinuityPhase::Completed)
+        );
+        drop(peer);
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
     }
