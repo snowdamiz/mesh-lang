@@ -57,15 +57,11 @@ pub(crate) fn ty_head(ty: &Ty) -> Option<(&str, &[Ty])> {
 }
 
 /// The element types of `ty` when it is the collection `name`: `[T]` for a
-/// `List<T>` or `Set<T>`, `[K, V]` for a `Map<K, V>`. A bare `List` or
-/// `Map` (as an annotation or an untyped builtin gives it) holds `Int`s.
+/// `List<T>` or `Set<T>`, `[K, V]` for a `Map<K, V>`. The checker gives a
+/// collection its element types, a bare annotation's included.
 fn collection_elems(ty: &Ty, name: &str) -> Option<Vec<Ty>> {
-    let (head, args) = ty_head(ty).filter(|(head, _)| *head == name)?;
-    Some(if args.is_empty() {
-        vec![Ty::int(); if head == "Map" { 2 } else { 1 }]
-    } else {
-        args.to_vec()
-    })
+    let (_, args) = ty_head(ty).filter(|(head, _)| *head == name)?;
+    Some(args.to_vec())
 }
 
 /// The element type of a `List<T>`.
