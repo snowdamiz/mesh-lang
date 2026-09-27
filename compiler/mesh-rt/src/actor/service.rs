@@ -20,7 +20,6 @@
 
 use super::heap::MessageBuffer;
 use super::process::{Message, ProcessId};
-use super::GLOBAL_SCHEDULER;
 
 /// Header tag of a service's reply.
 pub(crate) const SERVICE_REPLY_TAG: u64 = u64::MAX - 6;
@@ -170,6 +169,8 @@ pub extern "C" fn mesh_service_reply_shaped(
 }
 
 /// Fire-and-forget service message whose arguments reference heap values.
+/// A cast to a service that has stopped, or whose mailbox is full, is
+/// dropped.
 #[no_mangle]
 pub extern "C" fn mesh_service_cast_shaped(
     target_pid: u64,
@@ -177,29 +178,11 @@ pub extern "C" fn mesh_service_cast_shaped(
     size: u64,
     shape: *const u32,
 ) {
-    let bytes = unsafe { std::slice::from_raw_parts(data, size as usize) }.to_vec();
+    let sched = super::global_scheduler();
+    let bytes = super::message_bytes(data, size);
     let mut buffer = MessageBuffer::new(bytes, super::PROGRAM_MESSAGE_TAG);
-    if let Some(sched) = GLOBAL_SCHEDULER.get() {
-        super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
-    }
-    send_owned(target_pid, buffer);
-}
-
-fn send_owned(target_pid: u64, mut buffer: MessageBuffer) {
-    if let Some(sched) = GLOBAL_SCHEDULER.get() {
-        if let Some(target) = sched.get_process(ProcessId(target_pid)) {
-            buffer.addressed_to(&target);
-            let mut proc = target.lock();
-            proc.mailbox.push(Message { buffer });
-            if matches!(proc.state, super::process::ProcessState::Waiting)
-                && proc.set_live_state(super::process::ProcessState::Ready)
-            {
-                let worker = proc.worker;
-                drop(proc);
-                sched.wake_worker(worker, ProcessId(target_pid));
-            }
-        }
-    }
+    super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
+    super::deliver_local(sched, ProcessId(target_pid), Message { buffer });
 }
 
 // ---------------------------------------------------------------------------
