@@ -5498,6 +5498,13 @@ mod tests {
             .mark_completed(&most, &admitted.attempt_id, &most)
             .unwrap();
         assert!(encode_record(&completed).is_ok());
+        // Alike but for their status, the higher-ranked status wins.
+        let steady = mirrored("edge-rank");
+        let lost = ContinuityRecord {
+            replica_status: ReplicaStatus::OwnerLost,
+            ..steady.clone()
+        };
+        assert_eq!(preferred_record(steady, lost.clone()), lost);
         // Every status has its rank.
         let ranked: Vec<_> = [
             ReplicaStatus::Unassigned,
