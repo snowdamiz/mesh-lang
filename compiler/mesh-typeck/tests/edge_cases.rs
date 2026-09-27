@@ -3174,6 +3174,16 @@ fn a_failed_method_call_keeps_an_earlier_field_error() {
     );
 }
 
+/// A `case` over a type with no variants needs no arm: no value reaches
+/// it. It was "missing patterns [_]".
+#[test]
+fn a_case_over_a_type_without_variants_needs_no_arm() {
+    assert_eq!(
+        errors("type Empty do\nend\n\nfn f(x :: Empty) do\n  case x do\n  end\nend\n"),
+        Vec::<String>::new()
+    );
+}
+
 /// Each call in a chain of method calls infers its receiver once: every
 /// call inferred it three times, and a chain of twelve calls took seconds.
 #[test]

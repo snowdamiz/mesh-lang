@@ -472,6 +472,10 @@ pub fn check_exhaustiveness(
     scrutinee_type: &TypeInfo,
     registry: &TypeRegistry,
 ) -> Option<Vec<Pat>> {
+    // A type without variants has no values, so no arm is missing.
+    if matches!(scrutinee_type, TypeInfo::SumType { variants } if variants.is_empty()) {
+        return None;
+    }
     let matrix = PatternMatrix {
         rows: arms.iter().map(|arm| vec![arm.clone()]).collect(),
     };
@@ -653,11 +657,8 @@ fn find_witnesses(arms: &[Pat], scrutinee_type: &TypeInfo, registry: &TypeRegist
                     missing.push(refined.into_iter().next().unwrap_or(Pat::Wildcard));
                 }
             }
-            if missing.is_empty() {
-                vec![Pat::Wildcard]
-            } else {
-                missing
-            }
+            // A sum type that is not covered has a variant that is not.
+            missing
         }
         TypeInfo::Bool => {
             let mut missing = Vec::new();
