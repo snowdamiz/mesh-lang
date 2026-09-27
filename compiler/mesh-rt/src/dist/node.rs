@@ -200,12 +200,22 @@ fn local_protocol_hello() -> ProtocolHello {
     ProtocolHello::current(*PROTOCOL_BOOT_ID.get_or_init(rand::random))
 }
 
-fn local_protocol_hello_with_identity(local_name: &str) -> Result<ProtocolHello, String> {
+/// A setting of the process environment, where a node reads its identity.
+fn process_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
+/// This node's protocol hello, carrying the signed identity its settings
+/// (`env`) give it, which must name it as it is.
+fn local_protocol_hello_with_identity(
+    local_name: &str,
+    env: impl Fn(&str) -> Option<String>,
+) -> Result<ProtocolHello, String> {
     let mut hello = local_protocol_hello();
     let autonomous = autonomous_mode_requested();
-    let envelope = std::env::var(super::identity_claim::IDENTITY_ENVELOPE_ENV).ok();
-    let verify_keys = std::env::var(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV).ok();
-    let cluster_id = std::env::var("MESH_CLUSTER_ID").ok();
+    let envelope = env(super::identity_claim::IDENTITY_ENVELOPE_ENV);
+    let verify_keys = env(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV);
+    let cluster_id = env("MESH_CLUSTER_ID");
     match (envelope, verify_keys, cluster_id) {
         (Some(envelope), Some(verify_keys), Some(cluster_id)) => {
             hello.identity_envelope = super::identity_claim::decode_envelope_b64(&envelope)?;
@@ -217,11 +227,10 @@ fn local_protocol_hello_with_identity(local_name: &str) -> Result<ProtocolHello,
                 super::identity_claim::unix_millis(),
             )?;
             if claim.stable_node_id
-                != std::env::var("MESH_STABLE_NODE_ID")
-                    .unwrap_or_else(|_| claim.stable_node_id.clone())
+                != env("MESH_STABLE_NODE_ID").unwrap_or_else(|| claim.stable_node_id.clone())
                 || claim.roles
                     != super::identity_claim::canonical_roles(
-                        &std::env::var("MESH_ROLES")
+                        &env("MESH_ROLES")
                             .unwrap_or_default()
                             .split(',')
                             .map(str::to_string)
@@ -4248,7 +4257,7 @@ fn send_named(
     creation: u8,
     extra: &[u8],
 ) -> Result<(), String> {
-    let hello = local_protocol_hello_with_identity(name)?.encode()?;
+    let hello = local_protocol_hello_with_identity(name, process_env)?.encode()?;
     let mut payload = vec![tag];
     payload.extend_from_slice(&(name.len() as u16).to_le_bytes());
     payload.extend_from_slice(name.as_bytes());
@@ -4388,6 +4397,7 @@ fn validate_advertised_node_name(name: &str) -> Result<(), String> {
 fn validate_remote_node_identity(
     remote_name: &str,
     remote_hello: &ProtocolHello,
+    env: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<super::identity_claim::NodeIdentityClaim>, String> {
     if remote_hello.identity_envelope.is_empty() {
         return if autonomous_mode_requested() {
@@ -4396,10 +4406,10 @@ fn validate_remote_node_identity(
             Ok(None)
         };
     }
-    let cluster_id = std::env::var("MESH_CLUSTER_ID")
-        .map_err(|_| "node_identity_cluster_missing".to_string())?;
-    let verify_keys = std::env::var(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV)
-        .map_err(|_| "node_identity_verify_keys_missing".to_string())?;
+    let cluster_id =
+        env("MESH_CLUSTER_ID").ok_or_else(|| "node_identity_cluster_missing".to_string())?;
+    let verify_keys = env(super::identity_claim::IDENTITY_VERIFY_KEYS_ENV)
+        .ok_or_else(|| "node_identity_verify_keys_missing".to_string())?;
     let claim = super::identity_claim::decode_and_verify_identity(
         &remote_hello.identity_envelope,
         &verify_keys,
@@ -4407,37 +4417,49 @@ fn validate_remote_node_identity(
         remote_name,
         super::identity_claim::unix_millis(),
     )?;
-    let voters = std::env::var("MESH_CONTROLLER_VOTERS").unwrap_or_default();
-    let configured_voter = voters
-        .split(',')
-        .filter_map(|entry| entry.trim().split_once('|'));
-    let authenticated_name = if is_transient_operator_client(remote_name)
-        && claim.roles.iter().any(|role| role == "controller")
-    {
+    authorize_node_identity(
+        remote_name,
+        &claim,
+        &env("MESH_CONTROLLER_VOTERS").unwrap_or_default(),
+    )?;
+    Ok(Some(claim))
+}
+
+/// Whether a verified identity may take the channel it came in on, given
+/// the controller voters (`stable_id|name`, comma separated): a controller
+/// only under the voter name bound to its stable id (as its advertised
+/// name when it comes in as a transient operator client), no other role
+/// under a voter's name, and an operator only as a transient operator
+/// client, which nothing but an operator or a controller may be.
+fn authorize_node_identity(
+    remote_name: &str,
+    claim: &super::identity_claim::NodeIdentityClaim,
+    voters: &str,
+) -> Result<(), String> {
+    let has_role = |wanted: &str| claim.roles.iter().any(|role| role == wanted);
+    let (controller, operator) = (has_role("controller"), has_role("operator"));
+    let transient_operator = is_transient_operator_client(remote_name);
+    let authenticated_name = if transient_operator && controller {
         claim.advertised_name.as_str()
     } else {
         remote_name
     };
-    let voter_binding_matches = configured_voter
-        .clone()
-        .any(|(stable_id, name)| stable_id == claim.stable_node_id && name == authenticated_name);
-    let name_is_voter = configured_voter
-        .clone()
-        .any(|(_, name)| name == authenticated_name);
-    if claim.roles.iter().any(|role| role == "controller") {
-        if !voter_binding_matches {
+    let mut voters = voters
+        .split(',')
+        .filter_map(|entry| entry.trim().split_once('|'));
+    if controller {
+        if !voters.any(|(stable_id, name)| {
+            stable_id == claim.stable_node_id && name == authenticated_name
+        }) {
             return Err("controller_identity_not_bound_to_voter".to_string());
         }
-    } else if name_is_voter {
+    } else if voters.any(|(_, name)| name == authenticated_name) {
         return Err("non_controller_claimed_voter_name".to_string());
     }
-    let operator = claim.roles.iter().any(|role| role == "operator");
-    let controller = claim.roles.iter().any(|role| role == "controller");
-    let transient_operator = is_transient_operator_client(remote_name);
     if (operator && !transient_operator) || (transient_operator && !operator && !controller) {
         return Err("operator_identity_channel_mismatch".to_string());
     }
-    Ok(Some(claim))
+    Ok(())
 }
 
 fn perform_handshake_with_identity(
@@ -4503,7 +4525,7 @@ fn perform_handshake_with_identity(
         (remote_name, remote_creation, remote_hello)
     };
     let negotiated = negotiate_protocol(&local_protocol_hello(), &remote_hello)?;
-    let identity = validate_remote_node_identity(&remote_name, &remote_hello)?;
+    let identity = validate_remote_node_identity(&remote_name, &remote_hello, process_env)?;
     Ok((remote_name, remote_creation, negotiated, identity))
 }
 
@@ -13986,5 +14008,213 @@ mod tests {
         rejected.phase = ContinuityPhase::Rejected;
         rejected.result = ContinuityResult::Rejected;
         assert!(!observable(&rejected));
+    }
+
+    /// A verified identity takes only the channel its roles allow: a
+    /// controller only under the voter name bound to its stable id (by its
+    /// advertised name when it comes in as a transient operator client), no
+    /// other role under a voter's name, and an operator only as a transient
+    /// operator client, which a worker cannot be.
+    #[test]
+    fn an_identity_takes_only_the_channel_its_roles_allow() {
+        let claim = |stable: &str, advertised: &str, role: &str| {
+            super::super::identity_claim::NodeIdentityClaim {
+                schema_version: 1,
+                cluster_id: "cluster".to_string(),
+                stable_node_id: stable.to_string(),
+                advertised_name: advertised.to_string(),
+                roles: vec![role.to_string()],
+                issued_at_unix_millis: 0,
+                expires_at_unix_millis: u64::MAX,
+            }
+        };
+        let client = format!("{TRANSIENT_OPERATOR_CLIENT_NAME_PART}@127.0.0.1:1");
+        let authorize = |remote: &str, stable: &str, advertised: &str, role: &str| {
+            authorize_node_identity(
+                remote,
+                &claim(stable, advertised, role),
+                "ctl-1|ctl@h:1, ctl-2|ctl-2@h:1",
+            )
+            .err()
+        };
+        let refused = |reason: &str| Some(reason.to_string());
+        assert_eq!(authorize("ctl@h:1", "ctl-1", "ctl@h:1", "controller"), None);
+        assert_eq!(authorize(&client, "ctl-1", "ctl@h:1", "controller"), None);
+        assert_eq!(
+            authorize("ctl@h:1", "ctl-2", "ctl@h:1", "controller"),
+            refused("controller_identity_not_bound_to_voter")
+        );
+        assert_eq!(
+            authorize("ctl@h:1", "w-1", "ctl@h:1", "worker"),
+            refused("non_controller_claimed_voter_name")
+        );
+        assert_eq!(authorize("w@h:1", "w-1", "w@h:1", "worker"), None);
+        assert_eq!(authorize(&client, "o-1", "*", "operator"), None);
+        assert_eq!(
+            authorize("w@h:1", "o-1", "*", "operator"),
+            refused("operator_identity_channel_mismatch")
+        );
+        assert_eq!(
+            authorize(&client, "w-1", "*", "worker"),
+            refused("operator_identity_channel_mismatch")
+        );
+    }
+
+    /// A node's hello carries the signed identity its settings give it,
+    /// which must name this node, with the stable id and roles it runs
+    /// with; part of those settings, or none in autonomous mode, is
+    /// refused. A peer's identity is verified against the cluster and its
+    /// keys, and a peer without one is taken only outside autonomous mode.
+    #[test]
+    fn a_node_s_identity_is_signed_carried_and_verified() {
+        use super::super::identity_claim::{
+            self as identity, NodeIdentityClaim, IDENTITY_ENVELOPE_ENV, IDENTITY_VERIFY_KEYS_ENV,
+        };
+        fn settings(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+            let pairs: std::collections::HashMap<String, String> = pairs
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect();
+            move |name| pairs.get(name).cloned()
+        }
+        let (signing_key, verify_key) = identity::generate_identity_signing_material().unwrap();
+        let now = identity::unix_millis();
+        let claim = NodeIdentityClaim {
+            schema_version: identity::IDENTITY_SCHEMA_VERSION,
+            cluster_id: "cluster".to_string(),
+            stable_node_id: "cluster/worker-1".to_string(),
+            advertised_name: "worker@h:1".to_string(),
+            roles: vec!["worker".to_string()],
+            issued_at_unix_millis: now,
+            expires_at_unix_millis: now + 60_000,
+        };
+        let envelope = identity::sign_identity_claim(&claim, &signing_key).unwrap();
+        let signed = identity::decode_envelope_b64(&envelope).unwrap();
+        let verifying = [
+            (IDENTITY_VERIFY_KEYS_ENV, verify_key.as_str()),
+            ("MESH_CLUSTER_ID", "cluster"),
+        ];
+        let hello = |name: &str, envelope: &str, extra: &[(&str, &str)]| {
+            let pairs = [&verifying[..], &[(IDENTITY_ENVELOPE_ENV, envelope)], extra].concat();
+            local_protocol_hello_with_identity(name, settings(&pairs))
+                .map(|hello| hello.identity_envelope)
+        };
+        fn refused<T>(reason: &str) -> Result<T, String> {
+            Err(reason.to_string())
+        }
+
+        assert_eq!(
+            hello("worker@h:1", &envelope, &[("MESH_ROLES", "worker")]),
+            Ok(signed.clone())
+        );
+        assert_eq!(
+            hello(
+                "worker@h:1",
+                &envelope,
+                &[
+                    ("MESH_ROLES", "Worker"),
+                    ("MESH_STABLE_NODE_ID", "cluster/worker-1")
+                ]
+            ),
+            Ok(signed.clone())
+        );
+        for (name, envelope, roles, stable_id, reason) in [
+            (
+                "worker@h:1",
+                envelope.as_str(),
+                "gateway",
+                "cluster/worker-1",
+                "local_node_identity_claim_mismatch",
+            ),
+            (
+                "worker@h:1",
+                envelope.as_str(),
+                "worker",
+                "cluster/other",
+                "local_node_identity_claim_mismatch",
+            ),
+            (
+                "worker@h:1",
+                envelope.as_str(),
+                "janitor",
+                "cluster/worker-1",
+                "node_identity_roles_invalid",
+            ),
+            (
+                "other@h:1",
+                envelope.as_str(),
+                "worker",
+                "cluster/worker-1",
+                "node_identity_claim_scope_invalid",
+            ),
+            (
+                "worker@h:1",
+                "not base64",
+                "worker",
+                "cluster/worker-1",
+                "node_identity_envelope_invalid",
+            ),
+        ] {
+            assert_eq!(
+                hello(
+                    name,
+                    envelope,
+                    &[("MESH_ROLES", roles), ("MESH_STABLE_NODE_ID", stable_id)]
+                ),
+                refused(reason)
+            );
+        }
+        let bare = |pairs: &[(&str, &str)]| {
+            local_protocol_hello_with_identity("worker@h:1", settings(pairs))
+                .map(|hello| hello.identity_envelope)
+        };
+        assert_eq!(bare(&[]), Ok(Vec::new()));
+        assert_eq!(
+            bare(&verifying),
+            refused("node_identity_configuration_incomplete")
+        );
+        assert_eq!(
+            in_autonomous_mode(|| bare(&[])),
+            refused("autonomous_mode_requires_signed_node_identity")
+        );
+
+        let peer = |envelope: &[u8], pairs: &[(&str, &str)]| {
+            let mut hello = local_protocol_hello();
+            hello.identity_envelope = envelope.to_vec();
+            validate_remote_node_identity("worker@h:1", &hello, settings(pairs))
+        };
+        assert_eq!(peer(&[], &[]), Ok(None));
+        assert_eq!(
+            in_autonomous_mode(|| peer(&[], &[])),
+            refused("autonomous_peer_missing_signed_identity")
+        );
+        assert_eq!(peer(&signed, &verifying), Ok(Some(claim)));
+        assert_eq!(peer(&signed, &[]), refused("node_identity_cluster_missing"));
+        assert_eq!(
+            peer(&signed, &verifying[1..]),
+            refused("node_identity_verify_keys_missing")
+        );
+        let (_, stranger) = identity::generate_identity_signing_material().unwrap();
+        assert_eq!(
+            peer(
+                &signed,
+                &[
+                    (IDENTITY_VERIFY_KEYS_ENV, &stranger),
+                    ("MESH_CLUSTER_ID", "cluster")
+                ]
+            ),
+            refused("node_identity_signature_invalid")
+        );
+        assert_eq!(
+            peer(
+                &signed,
+                &[
+                    &verifying[..],
+                    &[("MESH_CONTROLLER_VOTERS", "cluster/ctl|worker@h:1")]
+                ]
+                .concat()
+            ),
+            refused("non_controller_claimed_voter_name")
+        );
     }
 }
