@@ -1100,7 +1100,6 @@ impl Checker<'_> {
                     {
                         Some(ParamOwnership::Move | ParamOwnership::Consume) => Usage::Move,
                         Some(ParamOwnership::Borrow) => Usage::Read,
-                        None if allowed_resource_constructor && is_resource => Usage::Move,
                         None if is_resource => Usage::Move,
                         None => Usage::Read,
                     }
