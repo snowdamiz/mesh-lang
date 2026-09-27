@@ -50,8 +50,9 @@ use crate::string::MeshString;
 // Reserved type tags for WebSocket mailbox messages
 // ---------------------------------------------------------------------------
 
-/// Reserved type tag for WebSocket text frames.
-pub const WS_TEXT_TAG: u64 = u64::MAX - 1;
+/// Reserved type tag for WebSocket text frames. `u64::MAX - 1` is a job's
+/// result, which a handler awaiting a job selects by.
+pub const WS_TEXT_TAG: u64 = u64::MAX - 5;
 
 /// Reserved type tag for WebSocket binary frames.
 pub const WS_BINARY_TAG: u64 = u64::MAX - 2;

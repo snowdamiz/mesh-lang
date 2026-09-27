@@ -495,9 +495,8 @@ pub(crate) fn capture_register_roots() -> [usize; 0] {
 /// - `msg_ptr`: pointer to the raw message bytes
 /// - `msg_size`: size of the message in bytes
 ///
-/// The `type_tag` for the message is currently derived from the first 8 bytes
-/// of the message data (if available), or 0 for empty messages. Future phases
-/// will use compiler-generated type tags.
+/// The message is tagged `PROGRAM_MESSAGE_TAG`, so its contents never make it
+/// pass for one of the runtime's own messages.
 #[no_mangle]
 pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
     // Locality check: upper 16 bits == 0 means local PID.
@@ -632,19 +631,15 @@ fn local_send_with_scheduler(
 /// A message of bytes `data`, detached from the running actor's heap as
 /// `shape` describes.
 fn message_buffer(sched: &Scheduler, data: Vec<u8>, shape: *const u32) -> MessageBuffer {
-    let type_tag = message_type_tag(&data);
-    let mut buffer = MessageBuffer::new(data, type_tag);
+    let mut buffer = MessageBuffer::new(data, PROGRAM_MESSAGE_TAG);
     detach_from_sender(sched, &mut buffer, 0, shape);
     buffer
 }
 
-/// Derive type_tag from first 8 bytes (or zero-pad).
-fn message_type_tag(data: &[u8]) -> u64 {
-    let mut tag_bytes = [0u8; 8];
-    let copy_len = data.len().min(8);
-    tag_bytes[..copy_len].copy_from_slice(&data[..copy_len]);
-    u64::from_le_bytes(tag_bytes)
-}
+/// Header tag of a message a program sent. The runtime's own messages (exit
+/// signals, job results, WebSocket frames) have tags of their own, near
+/// `u64::MAX`, which those waiting for them select by.
+pub(crate) const PROGRAM_MESSAGE_TAG: u64 = 0;
 
 /// Queue a prepared message for a local actor and wake it. Returns the
 /// observable send status.
@@ -737,8 +732,7 @@ pub(crate) fn deliver_remote(
     data: Vec<u8>,
     captured: msg_shape::Captured,
 ) -> i64 {
-    let type_tag = message_type_tag(&data);
-    let mut buffer = MessageBuffer::new(data, type_tag);
+    let mut buffer = MessageBuffer::new(data, PROGRAM_MESSAGE_TAG);
     buffer.captured = captured;
     deliver_local(global_scheduler(), target, Message { buffer })
 }
@@ -2352,6 +2346,43 @@ mod tests {
             .heap_borrows
             .iter()
             .all(|loan| loan.owner.is_none()));
+    }
+
+    /// A message's header tag says what the runtime sent it as (an exit
+    /// signal, a job result, a WebSocket frame); a program's own message
+    /// never passes for one of those, whatever its first word holds.
+    #[test]
+    fn a_program_message_is_never_tagged_as_a_runtime_message() {
+        let sched = Scheduler::new(1);
+        let target = create_test_process(&sched);
+        for first_word in [link::EXIT_SIGNAL_TAG, job::JOB_RESULT_TAG, 7] {
+            let data = first_word.to_le_bytes();
+            let status = local_send_with_scheduler(
+                &sched,
+                target.as_u64(),
+                data.as_ptr(),
+                8,
+                std::ptr::null(),
+            );
+            assert_eq!(status, 0);
+            let message = sched.get_process(target).unwrap().lock().mailbox.pop();
+            assert_eq!(message.unwrap().buffer.type_tag, PROGRAM_MESSAGE_TAG);
+        }
+    }
+
+    #[test]
+    fn runtime_message_tags_are_distinct() {
+        let tags = [
+            PROGRAM_MESSAGE_TAG,
+            link::EXIT_SIGNAL_TAG,
+            job::JOB_RESULT_TAG,
+            crate::ws::WS_TEXT_TAG,
+            crate::ws::WS_BINARY_TAG,
+            crate::ws::WS_DISCONNECT_TAG,
+            crate::ws::WS_CONNECT_TAG,
+        ];
+        let distinct: std::collections::HashSet<u64> = tags.into_iter().collect();
+        assert_eq!(distinct.len(), tags.len());
     }
 
     #[test]
