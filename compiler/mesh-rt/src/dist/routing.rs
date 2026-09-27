@@ -292,11 +292,6 @@ impl LoadReportRegistry {
             .filter(|observed| now.saturating_duration_since(observed.received_at) <= ttl)
             .map(|observed| observed.report.clone())
     }
-
-    #[cfg(test)]
-    fn clear(&self) {
-        self.reports.write().unwrap().clear();
-    }
 }
 
 static LOAD_REPORTS: OnceLock<LoadReportRegistry> = OnceLock::new();
@@ -924,13 +919,9 @@ mod tests {
         );
     }
 
-    static ROUTING_TEST_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     fn routing_never_selects_draining_node() {
-        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let registry = load_report_registry();
-        registry.clear();
         let now = Instant::now();
         registry
             .apply(report("ready", 1, NodeLifecycleState::Ready), now)
@@ -955,9 +946,7 @@ mod tests {
 
     #[test]
     fn routing_favors_lower_normalized_pressure() {
-        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let registry = load_report_registry();
-        registry.clear();
         let now = Instant::now();
         registry
             .apply(report("cool", 1, NodeLifecycleState::Ready), now)
@@ -982,9 +971,7 @@ mod tests {
 
     #[test]
     fn ingress_reservation_moves_the_next_choice_to_an_unreserved_peer() {
-        let _guard = ROUTING_TEST_LOCK.lock().unwrap();
         let reports = load_report_registry();
-        reports.clear();
         let now = Instant::now();
         reports
             .apply(report("worker-a", 0, NodeLifecycleState::Ready), now)
