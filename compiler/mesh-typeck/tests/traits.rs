@@ -488,3 +488,34 @@ fn manual_continuity_promotion_is_refused() {
         "ManualContinuityPromotionDisabled",
     );
 }
+
+/// An impl's interface arguments are types in full: `From<(Int, Int)>` was
+/// read by its names alone as `From<Int, Int>`, a duplicate of `From<Int>`,
+/// and `From<List<Int>>` as `From<List>`, a duplicate of `From<List<String>>`.
+#[test]
+fn impl_interface_arguments_are_read_in_full() {
+    let src = "struct Bag do\n  n :: Int\nend\n\n\
+        impl From<(Int, Int)> for Bag do\n  fn from(p :: (Int, Int)) -> Bag do\n    let (a, b) = p\n    Bag { n: a + b }\n  end\nend\n\n\
+        impl From<Int> for Bag do\n  fn from(n :: Int) -> Bag do\n    Bag { n: n }\n  end\nend\n\n\
+        impl From<List<Int>> for Bag do\n  fn from(xs :: List<Int>) -> Bag do\n    Bag { n: List.length(xs) }\n  end\nend\n\n\
+        impl From<List<String>> for Bag do\n  fn from(xs :: List<String>) -> Bag do\n    Bag { n: 0 - List.length(xs) }\n  end\nend\n\n\
+        fn main() do\n  let t :: Bag = (4, 5).into()\n  Bag.from((4, 5)).n + Bag.from([1, 2]).n + t.n\nend\n";
+    let result = check_source(src);
+    assert_result_type(&result, Ty::fun(vec![], Ty::int()));
+    let bag = Ty::Con(mesh_typeck::ty::TyCon::new("Bag"));
+    for arg in [
+        Ty::Tuple(vec![Ty::int(), Ty::int()]),
+        Ty::int(),
+        Ty::list(Ty::int()),
+        Ty::list(Ty::string()),
+    ] {
+        let found = result
+            .trait_registry
+            .find_impl_with_type_args("From", std::slice::from_ref(&arg), &bag)
+            .map(|imp| imp.trait_type_args.clone());
+        assert_eq!(found, Some(vec![arg]));
+    }
+    assert!(!result
+        .trait_registry
+        .has_impl_with_type_args("From", &[Ty::list(Ty::float())], &bag));
+}

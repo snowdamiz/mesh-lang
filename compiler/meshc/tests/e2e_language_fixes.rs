@@ -2900,6 +2900,72 @@ end
     );
 }
 
+/// A `From` impl is chosen and named by its whole argument type: only the
+/// names in it were read, so `From<(Int, Int)>` was `From<Int, Int>`,
+/// `From<List<Int>>` was `From<List>`, and `Bag.from((4, 5))` called the
+/// `List` impl. The same goes for `.into()` and a `?` converting its error.
+#[test]
+fn from_is_chosen_by_its_whole_argument_type() {
+    let source = r##"
+struct Bag do
+  n :: Int
+end
+
+impl From<(Int, Int)> for Bag do
+  fn from(p :: (Int, Int)) -> Bag do
+    let (a, b) = p
+    Bag { n: a + b }
+  end
+end
+
+impl From<List<Int>> for Bag do
+  fn from(xs :: List<Int>) -> Bag do
+    Bag { n: List.length(xs) }
+  end
+end
+
+impl From<List<String>> for Bag do
+  fn from(xs :: List<String>) -> Bag do
+    Bag { n: 100 + List.length(xs) }
+  end
+end
+
+impl From<Fun(Int) -> Int> for Bag do
+  fn from(f :: Fun(Int) -> Int) -> Bag do
+    Bag { n: f(20) }
+  end
+end
+
+fn check(n :: Int) -> Result<Int, (Int, Int)> do
+  if n > 0 do
+    Ok(n)
+  else
+    Err((n, 7))
+  end
+end
+
+fn doubled(n :: Int) -> Result<Int, Bag> do
+  let v = check(n)?
+  Ok(v * 2)
+end
+
+fn main() do
+  let a = Bag.from((4, 5))
+  let b = Bag.from([1, 2])
+  let c = Bag.from(["x"])
+  let d = Bag.from(fn x -> x + 1 end)
+  let e :: Bag = (1, 2).into()
+  let f :: Bag = [7, 8, 9].into()
+  println("#{a.n} #{b.n} #{c.n} #{d.n} #{e.n} #{f.n}")
+  case doubled(-3) do
+    Ok(v) -> println("ok #{v}")
+    Err(bag) -> println("err #{bag.n}")
+  end
+end
+"##;
+    assert_eq!(run(source), "9 2 101 21 3 3\nerr 4\n");
+}
+
 #[test]
 fn into_and_try_into_go_to_the_from_impl_the_context_asks_for() {
     let source = r##"

@@ -7217,6 +7217,39 @@ fn with_self(ty: &Ty, impl_type: &Ty) -> Ty {
     ty.replace_cons(&mut |con| (con.name == "Self").then(|| impl_type.clone()))
 }
 
+/// The type arguments an impl gives its interface, as written: `<Int>` in
+/// `impl From<Int> for Meters`.
+fn written_trait_args(impl_: &AstImplDef) -> Option<mesh_parser::SyntaxNode> {
+    impl_
+        .syntax()
+        .children()
+        .find(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
+}
+
+/// The type arguments an impl gives its interface, each read in full:
+/// `(Int, Int)` in `impl From<(Int, Int)> for Bag`, `List<Int>` in
+/// `impl From<List<Int>> for Bag`. (Only their names were read, as
+/// `From<Int, Int>` and `From<List>`, and a conversion went to the wrong
+/// impl.)
+fn impl_trait_type_args(
+    ctx: &mut InferCtx,
+    impl_: &AstImplDef,
+    type_registry: &TypeRegistry,
+) -> Vec<Ty> {
+    let Some(written) = written_trait_args(impl_) else {
+        return Vec::new();
+    };
+    // Read as the arguments of a type applied to them.
+    let mut tokens = vec![(SyntaxKind::IDENT, "_".to_string())];
+    collect_annotation_tokens(&written, &mut tokens);
+    let Ty::App(_, args) = parse_type_tokens(&tokens, &mut 0) else {
+        return Vec::new();
+    };
+    args.into_iter()
+        .map(|arg| resolve_alias(ctx, arg, type_registry))
+        .collect()
+}
+
 /// An impl's registry entry from its signatures alone. A method without a
 /// return annotation has no return type here; `infer_impl_def` fills it in
 /// from the body.
@@ -7230,20 +7263,7 @@ fn impl_signature(
         .map(|t| t.text().to_string())
         .unwrap_or_else(|| "<unknown>".to_string());
 
-    // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
-    // GENERIC_ARG_LIST is a direct child of IMPL_DEF, appearing after the trait PATH.
-    let trait_type_args: Vec<Ty> = impl_
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
-        .flat_map(|gal| {
-            gal.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| name_to_type(t.text()))
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let trait_type_args = impl_trait_type_args(ctx, impl_, type_registry);
 
     let impl_type_name = impl_
         .type_name()
@@ -7491,6 +7511,16 @@ fn infer_impl_def(
         associated_types: assoc_types,
         ..
     } = impl_signature(ctx, impl_, type_registry);
+
+    // Where they are written, the interface applied to its arguments
+    // (`From<(Int, Int)>`): lowering names the impl's functions by them.
+    if let Some(written) = written_trait_args(impl_) {
+        let applied = Ty::App(
+            Box::new(Ty::Con(TyCon::new(&trait_name))),
+            trait_type_args.clone(),
+        );
+        types.insert(written.text_range(), applied);
+    }
 
     for method in impl_.methods() {
         let method_name = method
