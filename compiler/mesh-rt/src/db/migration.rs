@@ -16,7 +16,7 @@
 //! and execute the generated DDL via `mesh_pool_execute`. SQL identifiers are
 //! double-quoted per PostgreSQL convention.
 
-use super::quote_ident;
+use super::{quote_ident, quote_name};
 use crate::collections::list::list_strings;
 use crate::collections::list::mesh_list_new;
 use crate::db::pool::mesh_pool_execute;
@@ -52,14 +52,14 @@ pub(crate) fn build_create_table_sql(table: &str, columns: &[String]) -> String 
     let col_defs: Vec<String> = columns.iter().map(|c| column_def_sql(c)).collect();
     format!(
         "CREATE TABLE IF NOT EXISTS {} ({})",
-        quote_ident(table),
+        quote_name(table),
         col_defs.join(", ")
     )
 }
 
 /// Build DROP TABLE SQL.
 pub(crate) fn build_drop_table_sql(table: &str) -> String {
-    format!("DROP TABLE IF EXISTS {}", quote_ident(table))
+    format!("DROP TABLE IF EXISTS {}", quote_name(table))
 }
 
 /// Build ADD COLUMN SQL from table name and column definition.
@@ -68,7 +68,7 @@ pub(crate) fn build_drop_table_sql(table: &str) -> String {
 pub(crate) fn build_add_column_sql(table: &str, column_def: &str) -> String {
     format!(
         "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {}",
-        quote_ident(table),
+        quote_name(table),
         column_def_sql(column_def)
     )
 }
@@ -77,7 +77,7 @@ pub(crate) fn build_add_column_sql(table: &str, column_def: &str) -> String {
 pub(crate) fn build_drop_column_sql(table: &str, column: &str) -> String {
     format!(
         "ALTER TABLE {} DROP COLUMN IF EXISTS {}",
-        quote_ident(table),
+        quote_name(table),
         quote_ident(column)
     )
 }
@@ -86,7 +86,7 @@ pub(crate) fn build_drop_column_sql(table: &str, column: &str) -> String {
 pub(crate) fn build_rename_column_sql(table: &str, old_name: &str, new_name: &str) -> String {
     format!(
         "ALTER TABLE {} RENAME COLUMN {} TO {}",
-        quote_ident(table),
+        quote_name(table),
         quote_ident(old_name),
         quote_ident(new_name)
     )
@@ -174,6 +174,15 @@ fn parse_create_index_options(options: &str) -> Result<CreateIndexOptions, Strin
     Ok(parsed)
 }
 
+/// A table name's schema (if it is qualified: `audit.events`) and its
+/// name in that schema.
+fn schema_and_table(table: &str) -> (Option<&str>, &str) {
+    match table.rsplit_once('.') {
+        Some((schema, name)) => (Some(schema), name),
+        None => (None, table),
+    }
+}
+
 /// One index column, `name` or `name:ASC`/`name:DESC`; `helper` names the
 /// Migration function for the error.
 fn parse_index_column(column: &str, helper: &str) -> Result<IndexColumnSpec, String> {
@@ -231,7 +240,8 @@ fn index_columns(
         return Err(format!("{helper} columns: at least one column is required"));
     }
     let names: Vec<&str> = parsed.iter().map(|column| column.name.as_str()).collect();
-    let derived = format!("idx_{table}_{}", names.join("_"));
+    let (_, bare_table) = schema_and_table(table);
+    let derived = format!("idx_{bare_table}_{}", names.join("_"));
     Ok((parsed, derived))
 }
 
@@ -252,7 +262,7 @@ pub(crate) fn build_create_index_sql(
     sql.push_str("INDEX IF NOT EXISTS ");
     sql.push_str(&quote_ident(&index_name));
     sql.push_str(" ON ");
-    sql.push_str(&quote_ident(table));
+    sql.push_str(&quote_name(table));
     sql.push_str(" (");
     let rendered_columns: Vec<String> = parsed_columns
         .iter()
@@ -276,7 +286,12 @@ pub(crate) fn build_create_index_sql(
 /// (its derived name).
 pub(crate) fn build_drop_index_sql(table: &str, columns: &[String]) -> Result<String, String> {
     let (_, index_name) = index_columns(table, columns, "Migration.drop_index")?;
-    Ok(format!("DROP INDEX IF EXISTS {}", quote_ident(&index_name)))
+    // The index lives in its table's schema.
+    let index = match schema_and_table(table) {
+        (Some(schema), _) => format!("{}.{}", quote_name(schema), quote_ident(&index_name)),
+        (None, _) => quote_ident(&index_name),
+    };
+    Ok(format!("DROP INDEX IF EXISTS {index}"))
 }
 
 // ── Extern C wrappers ───────────────────────────────────────────────
@@ -544,6 +559,44 @@ mod tests {
         assert_eq!(
             sql,
             "ALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"bio\" TEXT"
+        );
+    }
+
+    /// A table name may be schema-qualified, as `Repo` and `Query` read it:
+    /// Migration made a table literally named "audit.events" in the current
+    /// schema, which they then could not find. An index lives in its
+    /// table's schema, and is named for the table alone.
+    #[test]
+    fn a_qualified_table_is_its_schema_and_name() {
+        let table = "audit.events";
+        let events = "\"audit\".\"events\"";
+        assert_eq!(
+            build_create_table_sql(table, &["id:INT".into()]),
+            format!("CREATE TABLE IF NOT EXISTS {events} (\"id\" INT)")
+        );
+        assert_eq!(
+            build_drop_table_sql(table),
+            format!("DROP TABLE IF EXISTS {events}")
+        );
+        assert_eq!(
+            build_add_column_sql(table, "at:DATE"),
+            format!("ALTER TABLE {events} ADD COLUMN IF NOT EXISTS \"at\" DATE")
+        );
+        assert_eq!(
+            build_drop_column_sql(table, "at"),
+            format!("ALTER TABLE {events} DROP COLUMN IF EXISTS \"at\"")
+        );
+        assert_eq!(
+            build_rename_column_sql(table, "a", "b"),
+            format!("ALTER TABLE {events} RENAME COLUMN \"a\" TO \"b\"")
+        );
+        assert_eq!(
+            build_create_index_sql(table, &["at".into()], "").unwrap(),
+            format!("CREATE INDEX IF NOT EXISTS \"idx_events_at\" ON {events} (\"at\")")
+        );
+        assert_eq!(
+            build_drop_index_sql(table, &["at".into()]).unwrap(),
+            "DROP INDEX IF EXISTS \"audit\".\"idx_events_at\""
         );
     }
 

@@ -438,7 +438,7 @@ The `Migration` module executes common PostgreSQL DDL through a pool:
 | `Migration.drop_index(pool, table, columns)` | Drop the index `create_index` made on the same columns (by its derived name) |
 | `Migration.execute(pool, sql)` | Execute raw DDL |
 
-Column definitions use `name:TYPE` or `name:TYPE:CONSTRAINTS`, for example `id:UUID:PRIMARY KEY`. Index columns may end in `:ASC` or `:DESC`. Index options accept `unique:true`, `name:index_name`, and a final `where:predicate`.
+A table name may be schema-qualified (`audit.events`), as `Query` and `Repo` read it; an index lives in its table's schema, and its derived name is `idx_<table>_<columns>` with the table's own name. Column definitions use `name:TYPE` or `name:TYPE:CONSTRAINTS`, for example `id:UUID:PRIMARY KEY`; one without a colon is SQL as written (a table constraint, say). Index columns may end in `:ASC` or `:DESC`. Index options accept `unique:true`, `name:index_name`, and a final `where:predicate`.
 
 Use `meshc migrate generate <name>` to create a timestamped file exporting `up(pool)` and `down(pool)`. `meshc migrate up`, `meshc migrate down`, and `meshc migrate status` read `DATABASE_URL` and track applied versions in PostgreSQL. Migration names may contain lowercase ASCII letters, digits, and underscores.
 
@@ -454,7 +454,7 @@ Typed expression helpers keep vendor-specific choices visible:
 | `Pg.to_tsvector`, `Pg.plainto_tsquery`, `Pg.ts_rank`, `Pg.tsvector_matches` | Full-text search |
 | `Pg.jsonb_contains` | JSONB containment |
 
-PostgreSQL schema helpers operate on a pool:
+PostgreSQL schema helpers operate on a pool, in its current schema (a table name here is one identifier):
 
 | Function | Description |
 |----------|-------------|
