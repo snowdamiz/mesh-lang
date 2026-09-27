@@ -12952,6 +12952,17 @@ mod tests {
             .unwrap();
     }
 
+    /// Raises the flag that stops a test's helper threads once dropped: as
+    /// the scope's body ends, or as it panics, so a failing test fails
+    /// rather than waiting on threads nothing stops.
+    struct StopOnDrop<'a>(&'a AtomicBool);
+
+    impl Drop for StopOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+
     /// Plays `peers` as live nodes until `done`: each replica prepare is
     /// acknowledged (refused for a record whose key says `unprepared`, and
     /// for one that says `superseded` after completing it), each
@@ -13031,6 +13042,7 @@ mod tests {
     ) -> Result<DrainContinuityOutcome, String> {
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(peers, &done));
             let outcome = prepare_continuity_for_runtime_node(node);
             let deadline = Instant::now() + Duration::from_secs(20);
@@ -13258,6 +13270,7 @@ mod tests {
         // A drain named by a member's name finds the member first.
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(&peers, &done));
             assert!(prepare_continuity_for_drain(c).is_ok());
             done.store(true, Ordering::Release);
@@ -13704,6 +13717,7 @@ mod tests {
         let prepare = |record: &ContinuityRecord, refusals: usize| {
             let done = AtomicBool::new(false);
             std::thread::scope(|scope| {
+                let _stop = StopOnDrop(&done);
                 scope.spawn(|| answer_prepares(&[&first, &second], refusals, &done));
                 let prepared = prepare_continuity_replica(record);
                 done.store(true, Ordering::Release);
@@ -13744,6 +13758,7 @@ mod tests {
             .unwrap();
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| answer_prepares(&[&first, &second], 2, &done));
             assert_eq!(prepare_continuity_replica(&repaired), Ok(vec![one.clone()]));
             await_record("refused-by-replica-2", |record| {
@@ -14027,6 +14042,7 @@ mod tests {
         );
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(&[&owner], &done));
             let routed = run(&remote, "sha256:remote").unwrap();
             assert!(routed.routed_remotely && !routed.replayed);
@@ -14113,6 +14129,7 @@ mod tests {
         let done = AtomicBool::new(false);
         let peers = [&owner, &lone_owner, &failing_owner, &spare];
         let (turned_away, alone, failed) = std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(&peers, &done));
             scope.spawn(|| {
                 while !done.load(Ordering::Acquire) {
@@ -14732,6 +14749,7 @@ mod tests {
         register(&refused, "Unspawnable__startup", 1);
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
+            let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(&[&peer], &done));
             spawn_startup_work_actor(&held);
             spawn_startup_work_actor(&refused);
