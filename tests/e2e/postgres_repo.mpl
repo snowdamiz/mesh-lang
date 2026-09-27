@@ -301,6 +301,16 @@ fn reads(pool :: PoolHandle) do
         ])
         |> Query.order_by(:handle, :asc)),
     "shown")
+  # A CASE with no branch is its else, a COALESCE of nothing NULL.
+  show_rows("empty_exprs",
+    Repo.all(pool,
+      writers
+        |> Query.select_exprs([
+          Expr.label(Expr.case([], [], Expr.value("plain")), "shown"),
+          Expr.label(Expr.coalesce([]), "none")
+        ])
+        |> Query.where(:handle, "ada")),
+    "shown")
   show_rows("select_raw",
     Repo.all(pool,
       writers
