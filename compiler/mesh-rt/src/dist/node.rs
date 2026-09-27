@@ -3701,7 +3701,8 @@ pub(crate) fn select_continuity_replica_set(
         ));
     }
     let now = Instant::now();
-    let state = node_state().ok_or_else(|| "continuity_node_not_started".to_string())?;
+    // Past one member, this node has started and has peers.
+    let state = started_node();
     let reports: Vec<_> = membership
         .iter()
         .filter(|node| {
@@ -7775,12 +7776,11 @@ fn prepare_declared_handler_submission(
         .ok_or_else(|| format!("declared_handler_not_registered:{runtime_name}"))?;
     let placement = declared_work_placement(request_key, runtime_name)?;
     let authority = crate::dist::continuity::continuity_registry().authority_status();
+    // Too few members for its copies leaves the work no replicas, which
+    // its submission refuses if it needs them.
     let replica_nodes =
-        match select_continuity_replica_set(&placement.owner_node, entry.replication_count) {
-            Ok(replica_nodes) => replica_nodes,
-            Err(reason) if reason.starts_with("replica_capacity_unavailable:") => Vec::new(),
-            Err(reason) => return Err(reason),
-        };
+        select_continuity_replica_set(&placement.owner_node, entry.replication_count)
+            .unwrap_or_default();
     let replica_node = replica_nodes.first().cloned().unwrap_or_default();
     let request = crate::dist::continuity::SubmitRequest {
         request_key: request_key.to_string(),
