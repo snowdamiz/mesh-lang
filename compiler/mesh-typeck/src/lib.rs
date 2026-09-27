@@ -278,6 +278,9 @@ pub struct TypeckResult {
     /// These names are directly callable without qualification.
     /// Used by the MIR lowerer to skip trait dispatch for imported functions.
     pub imported_functions: Vec<String>,
+    /// Names imported from a standard module, each with the module's
+    /// prefix (`sqrt` -> `math_sqrt`).
+    pub stdlib_imports: FxHashMap<String, String>,
     /// Service method mappings imported from other modules.
     /// Maps service_name -> Vec<(method_name, generated_fn_name)>.
     /// Used by the MIR lowerer to populate service_modules for cross-module calls.

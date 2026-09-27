@@ -301,6 +301,9 @@ struct Lowerer<'a> {
     /// These are directly callable without qualification and must not go through
     /// trait dispatch.
     imported_functions: HashSet<String>,
+    /// Names imported from a standard module and the prefixed name each
+    /// stands for (`sqrt` -> `math_sqrt`), which the runtime mapping knows.
+    stdlib_imports: &'a FxHashMap<String, String>,
     /// Module name for name-mangling private functions (Phase 41).
     /// Empty string means single-file mode (no prefix applied).
     module_name: String,
@@ -694,6 +697,7 @@ impl<'a> Lowerer<'a> {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
             imported_functions: typeck.imported_functions.iter().cloned().collect(),
+            stdlib_imports: &typeck.stdlib_imports,
             module_name: module_name.to_string(),
             pub_functions: pub_fns.clone(),
             user_fn_defs: HashSet::new(),
@@ -7895,7 +7899,7 @@ impl<'a> Lowerer<'a> {
         let mapped_name = if self.imported_functions.contains(&name) {
             name.clone()
         } else {
-            map_builtin_name(&name)
+            map_builtin_name(self.stdlib_imports.get(&name).unwrap_or(&name))
         };
         let ty = resolved_ty;
 
@@ -14697,33 +14701,6 @@ fn map_builtin_name(name: &str) -> String {
         "test_set_push_token" => "mesh_test_set_push_token".to_string(),
         "test_pass_count" => "mesh_test_pass_count".to_string(),
         "test_fail_count" => "mesh_test_fail_count".to_string(),
-        // Bare name for compile (from Regex import compile)
-        "compile" => "mesh_regex_compile".to_string(),
-        // Names that have already been resolved via from-import and lowered
-        // with the module prefix (e.g., user wrote `length` after `from String import length`,
-        // but it was registered with both names so it may arrive as bare name here).
-        "length" => "mesh_string_length".to_string(),
-        "trim" => "mesh_string_trim".to_string(),
-        "contains" => "mesh_string_contains".to_string(),
-        "starts_with" => "mesh_string_starts_with".to_string(),
-        "ends_with" => "mesh_string_ends_with".to_string(),
-        "to_upper" => "mesh_string_to_upper".to_string(),
-        "to_lower" => "mesh_string_to_lower".to_string(),
-        "replace" => "mesh_string_replace".to_string(),
-        "slice" => "mesh_string_slice".to_string(),
-        "split" => "mesh_string_split".to_string(),
-        "join" => "mesh_string_join".to_string(),
-        "read_line" => "mesh_io_read_line".to_string(),
-        "eprintln" => "mesh_io_eprintln".to_string(),
-        // File bare names (from File import read, etc.)
-        "read" => "mesh_file_read".to_string(),
-        "read_bytes" => "mesh_file_read_bytes".to_string(),
-        "write_bytes" => "mesh_file_write_bytes".to_string(),
-        "size" => "mesh_file_size".to_string(),
-        "write" => "mesh_file_write".to_string(),
-        "append" => "mesh_file_append".to_string(),
-        "exists" => "mesh_file_exists".to_string(),
-        "delete" => "mesh_file_delete".to_string(),
         // ── Collection functions (Phase 8 Plan 02) ───────────────────
         // List operations
         "list_new" => "mesh_list_new".to_string(),
@@ -14797,21 +14774,13 @@ fn map_builtin_name(name: &str) -> String {
         "queue_peek" => "mesh_queue_peek".to_string(),
         "queue_size" => "mesh_queue_size".to_string(),
         "queue_is_empty" => "mesh_queue_is_empty".to_string(),
-        // Bare names for prelude functions (map, filter, reduce, head, tail)
-        // These are ambiguous -- default to list operations.
+        // The prelude's bare list functions. A name imported from a standard
+        // module arrives with its module's prefix (see `stdlib_imports`).
         "map" => "mesh_list_map".to_string(),
         "filter" => "mesh_list_filter".to_string(),
         "reduce" => "mesh_list_reduce".to_string(),
         "head" => "mesh_list_head".to_string(),
         "tail" => "mesh_list_tail".to_string(),
-        "zip" => "mesh_list_zip".to_string(),
-        "flat_map" => "mesh_list_flat_map".to_string(),
-        "flatten" => "mesh_list_flatten".to_string(),
-        "enumerate" => "mesh_list_enumerate".to_string(),
-        "last" => "mesh_list_last".to_string(),
-        "nth" => "mesh_list_nth".to_string(),
-        "merge" => "mesh_map_merge".to_string(),
-        "difference" => "mesh_set_difference".to_string(),
         // ── JSON functions (Phase 8 Plan 04) ─────────────────────────
         "json_parse" => "mesh_json_parse".to_string(),
         "json_encode" => "mesh_json_encode".to_string(),
@@ -14836,14 +14805,6 @@ fn map_builtin_name(name: &str) -> String {
         "json_get" => "mesh_json_get".to_string(),
         "json_get_nested" => "mesh_json_get_nested".to_string(),
         "json_is_string" => "mesh_json_is_string".to_string(),
-        // JSON bare names for from/import usage
-        "parse" => "mesh_json_parse".to_string(),
-        "encode" => "mesh_json_encode".to_string(),
-        "encode_string" => "mesh_json_encode_string".to_string(),
-        "encode_int" => "mesh_json_encode_int".to_string(),
-        "encode_bool" => "mesh_json_encode_bool".to_string(),
-        "encode_map" => "mesh_json_encode_map".to_string(),
-        "encode_list" => "mesh_json_encode_list".to_string(),
         // ── HTTP functions (Phase 8 Plan 05) ──────────────────────────
         "http_router" => "mesh_http_router".to_string(),
         "http_route" => "mesh_http_route".to_string(),

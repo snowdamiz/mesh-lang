@@ -587,6 +587,31 @@ fn e2e_deriving_json_collections() {
     assert_eq!(lines[2], "2");
 }
 
+/// A function imported by name from any standard module runs as the
+/// qualified call does. Only a hand-kept list of names (String, IO, File
+/// and a few List ones) did: `from Math import sqrt` type-checked and then
+/// failed in code generation with "Undefined variable 'sqrt'".
+#[test]
+fn e2e_stdlib_functions_import_by_name() {
+    let output = compile_and_run(
+        r##"
+from Math import sqrt
+from Int import to_float
+from Bytes import from_utf8
+from Env import get
+from Process import demonitor
+from Json import encode
+from File import exists
+
+fn main() do
+  println("#{sqrt(to_float(9))} #{Bytes.length(from_utf8("abc"))} #{get("MESH_NO_SUCH_VAR", "fallback")}")
+  println("#{demonitor(12345)} #{exists("/no/such/file/at/all")}")
+end
+"##,
+    );
+    assert_eq!(output, "3.0 3 fallback\n1 false\n");
+}
+
 /// `String.repeat`, called through its module and imported by name, and
 /// the one-sided trims.
 #[test]

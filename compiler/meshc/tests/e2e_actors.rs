@@ -491,6 +491,41 @@ end
     }
 }
 
+/// `monitor` imported from `Process` is `Process.monitor`: typed by the
+/// actor that calls it, and delivering its message. (`monitor` was a
+/// reserved word, and once it was not, an import of it crashed the checker.)
+#[test]
+fn an_imported_monitor_is_process_monitor() {
+    let source = r##"from Process import monitor
+
+actor child() do
+  receive do
+    n -> println("child got #{n}")
+  end
+end
+
+actor watcher() do
+  let pid :: Pid<Int> = spawn(child)
+  monitor(pid, "child ended")
+  send(pid, 1)
+  receive do
+    text -> println("watcher got [#{text}]")
+  end
+end
+
+fn main() do
+  let w :: Pid<String> = spawn(watcher)
+  Timer.sleep(1000)
+end
+"##;
+    let output = compile_and_run(source, &[], 60);
+    assert_eq!(
+        output.lines().collect::<Vec<_>>(),
+        ["child got 1", "watcher got [child ended]"],
+        "{output}"
+    );
+}
+
 /// A monitor delivers the message it was set up with, one of the watching
 /// actor's own messages: when the process ends, at once when it already has,
 /// and never once removed.

@@ -4664,6 +4664,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         default_method_bodies,
         qualified_modules: qualified_modules_for_codegen,
         imported_functions: ctx.imported_functions,
+        stdlib_imports: ctx.stdlib_imports,
         imported_service_methods: ctx.imported_service_methods,
         local_service_exports: ctx.local_service_exports,
         overloaded_call_targets: ctx.overloaded_call_targets,
@@ -5794,6 +5795,7 @@ fn register_import(
                     match functions.get(&name) {
                         Some(scheme) => {
                             let prefixed = format!("{}_{name}", module.to_lowercase());
+                            ctx.stdlib_imports.insert(name.clone(), prefixed.clone());
                             env.insert(prefixed, scheme.clone());
                             env.insert(name, scheme.clone());
                         }
@@ -8849,9 +8851,41 @@ fn type_qualified_method(
     }
 }
 
+/// `Process.monitor`'s type, or `Node.monitor`'s (`module`): a monitor's
+/// message goes to the actor that sets it up, so it is of that actor's
+/// message type, and there must be one.
+fn monitor_type(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    module: &str,
+    span: TextRange,
+) -> Result<Ty, TypeError> {
+    let Some(message) = env.lookup(ACTOR_MSG_TYPE_KEY).map(|s| ctx.instantiate(s)) else {
+        let err = TypeError::MonitorOutsideActor { span };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    };
+    let target = if module == "Process" {
+        Ty::untyped_pid()
+    } else {
+        Ty::string()
+    };
+    Ok(Ty::fun(vec![target, message], Ty::int()))
+}
+
 /// Infer the type of a name reference (variable lookup).
 fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Result<Ty, TypeError> {
     let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
+    // `monitor` imported from `Process` or `Node` is typed as
+    // `Process.monitor` or `Node.monitor` is.
+    let monitor_module = match ctx.stdlib_imports.get(&name).map(String::as_str) {
+        Some("process_monitor") => Some("Process"),
+        Some("node_monitor") => Some("Node"),
+        _ => None,
+    };
+    if let (Some(module), false) = (monitor_module, env.is_local(&name)) {
+        return monitor_type(ctx, env, module, name_ref.syntax().text_range());
+    }
 
     match env.lookup(&name) {
         Some(scheme) => Ok(ctx.instantiate(scheme)),
@@ -12052,25 +12086,11 @@ fn infer_field_access(
             return Ok(ctx.instantiate(&scheme));
         }
 
-        // A monitor's message goes to the actor that sets it up: it is of
-        // that actor's message type, and there must be one.
         if field_name == "monitor"
             && matches!(base_name.as_str(), "Process" | "Node")
             && env.lookup(&base_name).is_none()
         {
-            let Some(message) = env.lookup(ACTOR_MSG_TYPE_KEY).map(|s| ctx.instantiate(s)) else {
-                let err = TypeError::MonitorOutsideActor {
-                    span: fa.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
-            };
-            let target = if base_name == "Process" {
-                Ty::untyped_pid()
-            } else {
-                Ty::string()
-            };
-            return Ok(Ty::fun(vec![target, message], Ty::int()));
+            return monitor_type(ctx, env, &base_name, fa.syntax().text_range());
         }
 
         // A standard module's function (`String.length`).

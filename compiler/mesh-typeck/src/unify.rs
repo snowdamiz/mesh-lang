@@ -173,6 +173,10 @@ pub struct InferCtx {
     /// of its receiver: (required type, trait, associated type name, the
     /// instance's receiver, where the function was used).
     pub projection_requirements: Vec<(Ty, String, String, Ty, Option<TextRange>)>,
+    /// Names `from Module import name` brought in from a standard module,
+    /// each with the module's prefix (`sqrt` -> `math_sqrt`): the name the
+    /// call means, which lowering and `monitor`'s typing go by.
+    pub stdlib_imports: FxHashMap<String, String>,
     /// The module's types that derive Json, known before any is checked, so
     /// `deriving(Json)` accepts fields of types declared later or recursively.
     pub json_types: rustc_hash::FxHashSet<String>,
