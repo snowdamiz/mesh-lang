@@ -16,7 +16,7 @@
 //! PgConn/SqliteConn handles.
 
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
 
@@ -69,7 +69,9 @@ fn health_check(handle: u64) -> bool {
 /// else the first of either within the checkout timeout.
 fn checkout(pool: &PgPool) -> Result<u64, String> {
     let mut inner = pool.inner.lock();
-    let timeout = Duration::from_millis(inner.checkout_timeout_ms);
+    // One deadline for the whole checkout: a wakeup that finds nothing to
+    // take waits only what is left of it.
+    let deadline = Instant::now() + Duration::from_millis(inner.checkout_timeout_ms);
     loop {
         if inner.closed {
             return Err("pool is closed".to_string());
@@ -110,7 +112,7 @@ fn checkout(pool: &PgPool) -> Result<u64, String> {
                 }
             }
         }
-        if pool.available.wait_for(&mut inner, timeout).timed_out() {
+        if pool.available.wait_until(&mut inner, deadline).timed_out() {
             return Err("pool checkout timeout".to_string());
         }
     }
@@ -511,6 +513,27 @@ mod tests {
         assert!(refused.starts_with("pool connect: "), "{refused}");
         let second = second.join().unwrap().expect("the freed slot was taken");
         mesh_pool_checkin(handle, second);
+        mesh_pool_close(handle);
+    }
+
+    /// A checkout waits its timeout in all, however often it wakes to find
+    /// nothing to take.
+    #[test]
+    fn a_checkout_waits_no_longer_than_its_timeout_however_often_it_wakes() {
+        let url = fake_server(|_, socket| serve(socket));
+        let handle = pool_of(&url, Vec::new(), &[], 1, 1000);
+        let held = checkout(pool(handle)).unwrap();
+        let waiter = thread::spawn(move || {
+            let started = Instant::now();
+            (checkout(pool(handle)), started.elapsed())
+        });
+        thread::sleep(Duration::from_millis(700));
+        pool(handle).available.notify_one();
+
+        let (result, waited) = waiter.join().unwrap();
+        assert_eq!(result.unwrap_err(), "pool checkout timeout");
+        assert!(waited < Duration::from_millis(1500), "waited {waited:?}");
+        mesh_pool_checkin(handle, held);
         mesh_pool_close(handle);
     }
 
