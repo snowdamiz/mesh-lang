@@ -728,7 +728,9 @@ pub fn operator_runtime_snapshot() -> Result<OperatorRuntimeSnapshot, OperatorQu
     Ok(runtime_snapshot_from_state(state))
 }
 
-fn runtime_snapshot_from_state(state: &super::node::NodeState) -> OperatorRuntimeSnapshot {
+pub(crate) fn runtime_snapshot_from_state(
+    state: &super::node::NodeState,
+) -> OperatorRuntimeSnapshot {
     refresh_operator_control_from_consensus();
     let now = std::time::Instant::now();
     let routing_policy = super::routing::runtime_routing_policy();
