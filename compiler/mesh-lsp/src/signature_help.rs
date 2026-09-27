@@ -136,10 +136,8 @@ fn build_signature_info(
 ) -> SignatureInformation {
     let param_names = find_fn_def_param_names(root, callee_name);
     // The variables named across the whole signature, so one keeps its name.
-    let (params, ret) = match Ty::Fun(params.to_vec(), Box::new(ret.clone())).with_named_vars() {
-        Ty::Fun(params, ret) => (params, *ret),
-        _ => unreachable!("naming variables keeps a function type"),
-    };
+    let named = Ty::with_named_vars_across(params.iter().chain([ret]));
+    let (params, ret) = named.split_at(params.len());
     let param_labels: Vec<String> = params
         .iter()
         .enumerate()
@@ -153,7 +151,7 @@ fn build_signature_info(
             }
         })
         .collect();
-    let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret);
+    let label = format!("{}({}) -> {}", callee_name, param_labels.join(", "), ret[0]);
     let param_infos = param_labels
         .into_iter()
         .map(|label| ParameterInformation {
@@ -243,6 +241,14 @@ mod tests {
         let help = sig_help_after(source, "apply(fn(y) -> y + 1 end, ").unwrap();
         assert!(label(&help).starts_with("apply(f: "), "{}", label(&help));
         assert_eq!(help.active_parameter, Some(1));
+    }
+
+    #[test]
+    fn signature_help_names_a_variable_once_across_the_signature() {
+        // The call has no arguments yet to fix its variables.
+        let source = "fn first(x, y) do\n  x\nend\n\nfn main() do\n  first(";
+        let help = sig_help_after(source, "  first(").unwrap();
+        assert_eq!(label(&help), "first(x: a, y: b) -> a");
     }
 
     #[test]

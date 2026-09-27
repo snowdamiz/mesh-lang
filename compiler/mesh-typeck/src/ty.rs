@@ -153,25 +153,17 @@ impl Ty {
     /// first appear, as a reader writes a generic type: `(a) -> a`, not
     /// `(?9) -> ?9`.
     pub fn with_named_vars(&self) -> Ty {
-        fn name(ty: &Ty, seen: &mut Vec<TyVar>) -> Ty {
-            match ty {
-                Ty::Var(var) => {
-                    let index = seen.iter().position(|v| v == var).unwrap_or_else(|| {
-                        seen.push(*var);
-                        seen.len() - 1
-                    });
-                    let letter = (b'a' + (index % 26) as u8) as char;
-                    let suffix = if index < 26 {
-                        String::new()
-                    } else {
-                        (index / 26).to_string()
-                    };
-                    Ty::Con(TyCon::new(format!("{letter}{suffix}")))
-                }
-                _ => ty.map_parts(|part| name(part, seen)),
-            }
-        }
-        name(self, &mut Vec::new())
+        name_vars(self, &mut Vec::new())
+    }
+
+    /// The types with their variables named as `with_named_vars` names one
+    /// type's, across all of them: a variable keeps its name in each.
+    pub fn with_named_vars_across<'a>(types: impl IntoIterator<Item = &'a Ty>) -> Vec<Ty> {
+        let mut seen = Vec::new();
+        types
+            .into_iter()
+            .map(|ty| name_vars(ty, &mut seen))
+            .collect()
     }
 
     pub fn with_holes(&self) -> Ty {
@@ -538,6 +530,27 @@ fn remap_tyvars(ty: &Ty, mapping: &HashMap<TyVar, TyVar>) -> Ty {
     match ty {
         Ty::Var(v) => Ty::Var(mapping[v]),
         _ => ty.map_parts(|part| remap_tyvars(part, mapping)),
+    }
+}
+
+/// `ty` with each variable named by its place in `seen`, which it joins
+/// when first met: `a` to `z`, then `a1` to `z1`, and so on.
+fn name_vars(ty: &Ty, seen: &mut Vec<TyVar>) -> Ty {
+    match ty {
+        Ty::Var(var) => {
+            let index = seen.iter().position(|v| v == var).unwrap_or_else(|| {
+                seen.push(*var);
+                seen.len() - 1
+            });
+            let letter = (b'a' + (index % 26) as u8) as char;
+            let suffix = if index < 26 {
+                String::new()
+            } else {
+                (index / 26).to_string()
+            };
+            Ty::Con(TyCon::new(format!("{letter}{suffix}")))
+        }
+        _ => ty.map_parts(|part| name_vars(part, seen)),
     }
 }
 
