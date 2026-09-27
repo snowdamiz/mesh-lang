@@ -1189,6 +1189,11 @@ fn encode_session_payload(
     negotiated: &NegotiatedProtocol,
 ) -> Result<Vec<u8>, String> {
     if negotiated.version < PROTOCOL_V2 {
+        // A protocol-one peer ends the session over a larger frame
+        // (`PersistentFrameReader`), so it never goes.
+        if payload.len() > MAX_DIST_MSG as usize {
+            return Err("protocol_frame_bound_exceeded".to_string());
+        }
         return Ok(payload);
     }
     let kind = payload
@@ -12029,6 +12034,34 @@ mod tests {
         assert_eq!(
             block_on(execute_mesh_consensus_rpc(name, Vec::new(), false, wait)),
             Err("consensus_rpc_write_failed:peer_session_shutdown".to_string())
+        );
+    }
+
+    /// A frame larger than a protocol-one peer reads is refused before it
+    /// is queued: sent, it would make the peer end the session.
+    #[test]
+    fn a_session_refuses_a_frame_its_peer_would_end_the_session_over() {
+        let peer = TestPeer::new("oversize-peer@127.0.0.1:1");
+        let mut largest = vec![DIST_SEND];
+        largest.resize(MAX_DIST_MSG as usize, 0);
+        let mut oversized = largest.clone();
+        oversized.push(0);
+        assert_eq!(
+            peer.session.send(OutboundClass::Application, oversized),
+            Err("protocol_frame_bound_exceeded".to_string())
+        );
+        assert_eq!(
+            peer.session
+                .send(OutboundClass::Application, largest.clone()),
+            Ok(())
+        );
+        let mut framed = (largest.len() as u32).to_le_bytes().to_vec();
+        framed.extend_from_slice(&peer.sent()[0]);
+        assert_eq!(
+            PersistentFrameReader::default()
+                .read_next(&mut std::io::Cursor::new(framed), MAX_DIST_MSG)
+                .unwrap(),
+            Some(largest)
         );
     }
 }
