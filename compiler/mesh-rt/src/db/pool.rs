@@ -427,6 +427,10 @@ mod tests {
     /// client goes.
     fn serve(mut socket: TcpStream) {
         socket.write_all(AUTHENTICATED).unwrap();
+        serve_queries(socket);
+    }
+
+    fn serve_queries(mut socket: TcpStream) {
         while let Some(tag) = next_request(&mut socket) {
             if tag == b'Q' {
                 socket.write_all(SELECTED).unwrap();
@@ -576,6 +580,25 @@ mod tests {
         assert_eq!(pool(handle).inner.lock().total_created, 0);
     }
 
+    /// An idle connection whose server went away is closed at checkout and
+    /// a new one opened in its place.
+    #[test]
+    fn an_idle_connection_that_died_is_replaced() {
+        let url = fake_server(|index, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            if index > 0 {
+                serve_queries(socket);
+            }
+        });
+        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+
+        let conn = checkout(pool(handle)).unwrap();
+
+        assert_eq!(pool(handle).inner.lock().total_created, 1);
+        mesh_pool_checkin(handle, conn);
+        mesh_pool_close(handle);
+    }
+
     /// A connection that opens after its pool closed is closed, not lent.
     #[test]
     fn a_connection_opened_after_its_pool_closed_is_not_lent() {
@@ -621,8 +644,9 @@ mod tests {
     }
 
     /// A pool opens connections as they are asked for, up to its maximum;
-    /// past it a checkout waits its timeout out; a connection that died
-    /// while idle is replaced; a closed pool lends nothing.
+    /// past it a checkout waits its timeout out; a connection that broke
+    /// while lent is closed at checkin and replaced; a closed pool lends
+    /// nothing.
     #[test]
     #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
     fn a_pool_grows_waits_and_replaces_a_dead_connection() {
@@ -639,7 +663,7 @@ mod tests {
             "pool checkout timeout"
         );
 
-        // The connection ends its own session, and goes back idle, dead.
+        // The connection ends its own session, and comes back broken.
         let terminate = mk_str(b"SELECT pg_terminate_backend(pg_backend_pid())");
         let _ = crate::db::pg::mesh_pg_execute(first, terminate, mesh_list_new());
         mesh_pool_checkin(pool, first);
