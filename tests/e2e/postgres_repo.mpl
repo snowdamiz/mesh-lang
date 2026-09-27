@@ -350,6 +350,29 @@ fn reads(pool :: PoolHandle) do
       writers
         |> Query.where(:handle, "zed")))
   failed("exists_bad", Repo.exists(pool, Query.from("nowhere")))
+  # A count or existence check covers the whole query: its joins, and its
+  # groups, which count as the rows they are.
+  let per_author = Query.from("articles")
+    |> Query.group_by(:author_id)
+  show_int("count_groups", Repo.count(pool, per_author))
+  show_int("count_having",
+    Repo.count(pool,
+      per_author
+        |> Query.having("count(*) >", "1")))
+  show_int("count_join",
+    Repo.count(pool,
+      Query.from("articles")
+        |> Query.join(:inner, "writers", "writers.handle = articles.author_id")
+        |> Query.where_raw("writers.name = ?", ["Ada"])))
+  show_bool("exists_having",
+    Repo.exists(pool,
+      per_author
+        |> Query.having("count(*) >", "5")))
+  show_bool("exists_join_as",
+    Repo.exists(pool,
+      Query.from("articles")
+        |> Query.join_as(:inner, "writers", "w", "w.handle = articles.author_id")
+        |> Query.where_raw("w.name = ?", ["BOB"])))
 end
 
 # Every expression helper, in one row of `ada`, and an upsert whose update

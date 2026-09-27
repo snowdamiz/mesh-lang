@@ -208,6 +208,11 @@ count_bad:failed
 exists:true
 exists_not:false
 exists_bad:failed
+count_groups:2
+count_having:1
+count_join:2
+exists_having:false
+exists_join_as:true
 pgcrypto:0
 exprs:less=3 third=3 json={"a": 1} contains=t id=00000000-0000-0000-0000-000000000001 day=2026-01-02 found=t ranked=t salt=29 hash=$1$abcdefgh$IQtUouv7y7Q9dRWkQEPCc. value=fallback
 upsert_qualified:50

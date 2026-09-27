@@ -129,9 +129,18 @@ fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
 ///
 /// Returns `(sql_string, params_vec)` as pure Rust types.
 unsafe fn query_to_select_sql(query: *mut u8) -> (String, Vec<String>) {
+    select_sql(query, None)
+}
+
+/// The query's SELECT, as `Repo.all` runs it; `bare_select` stands in for
+/// an empty select list (`*`).
+unsafe fn select_sql(query: *mut u8, bare_select: Option<&str>) -> (String, Vec<String>) {
     let source_ptr = query_get(query, SLOT_SOURCE);
     let source = text_of(source_ptr);
-    let select_fields = list_strings(query_get(query, SLOT_SELECT));
+    let mut select_fields = list_strings(query_get(query, SLOT_SELECT));
+    if select_fields.is_empty() {
+        select_fields.extend(bare_select.map(|select| format!("RAW:{select}")));
+    }
     let select_params = list_strings(query_get(query, SLOT_SELECT_PARAMS));
     let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
     let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
@@ -358,188 +367,26 @@ fn build_select_sql_from_parts_with_select_params(
     (sql, params)
 }
 
-/// Build SQL for count queries: SELECT COUNT(*) FROM ... WHERE ...
-/// (reuses WHERE/JOIN/GROUP/HAVING/FRAGMENT logic but overrides SELECT)
+/// How many rows the query returns: its SELECT (selecting `1` when it
+/// names no columns, so a GROUP BY stands) counted as a subquery. A bare
+/// `COUNT(*)` with a GROUP BY counted one group.
 unsafe fn query_to_count_sql(query: *mut u8) -> (String, Vec<String>) {
-    let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = text_of(source_ptr);
-    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
-    let group_fields = list_strings(query_get(query, SLOT_GROUP));
-    let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
-    let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
-    let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-    let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
-
-    build_count_sql_from_parts(
-        source,
-        &where_clauses,
-        &where_params,
-        &join_clauses,
-        &group_fields,
-        &having_clauses,
-        &having_params,
-        &fragment_parts,
-        &fragment_params,
-    )
+    let (select, params) = select_sql(query, Some("1"));
+    (counted_sql(&select), params)
 }
 
-fn build_count_sql_from_parts(
-    source: &str,
-    where_clauses: &[String],
-    where_params: &[String],
-    join_clauses: &[String],
-    group_fields: &[String],
-    having_clauses: &[String],
-    having_params: &[String],
-    fragment_parts: &[String],
-    fragment_params: &[String],
-) -> (String, Vec<String>) {
-    let mut sql = String::new();
-    let mut params: Vec<String> = Vec::new();
-    let mut param_idx = 1usize;
-
-    sql.push_str(&format!("SELECT COUNT(*) FROM {}", quote_name(source)));
-
-    // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
-    for join in join_clauses {
-        if let Some(rest) = join.strip_prefix("ALIAS:") {
-            let parts: Vec<&str> = rest.splitn(4, ':').collect();
-            if parts.len() == 4 {
-                sql.push_str(&format!(
-                    " {} JOIN {} {} ON {}",
-                    parts[0],
-                    quote_name(parts[1]),
-                    parts[2],
-                    parts[3]
-                ));
-            }
-        } else {
-            let parts: Vec<&str> = join.splitn(3, ':').collect();
-            if parts.len() == 3 {
-                sql.push_str(&format!(
-                    " {} JOIN {} ON {}",
-                    parts[0],
-                    quote_name(parts[1]),
-                    parts[2]
-                ));
-            }
-        }
-    }
-
-    // WHERE clause
-    if !where_clauses.is_empty() {
-        let (where_sql, where_param_values, next_param_idx) =
-            build_where_from_query_parts(where_clauses, where_params, param_idx);
-        sql.push_str(&format!(" WHERE {}", where_sql));
-        params.extend(where_param_values);
-        param_idx = next_param_idx;
-    }
-
-    // GROUP BY clause
-    if !group_fields.is_empty() {
-        let cols: Vec<String> = group_fields
-            .iter()
-            .map(|f| {
-                if let Some(raw) = f.strip_prefix("RAW:") {
-                    raw.to_string()
-                } else {
-                    quote_name(f)
-                }
-            })
-            .collect();
-        sql.push_str(&format!(" GROUP BY {}", cols.join(", ")));
-    }
-
-    // HAVING clause
-    if !having_clauses.is_empty() {
-        sql.push_str(" HAVING ");
-        let mut having_parts_sql = Vec::new();
-        for clause in having_clauses {
-            having_parts_sql.push(format!("{} ${}", clause, param_idx));
-            param_idx += 1;
-        }
-        sql.push_str(&having_parts_sql.join(" AND "));
-        for p in having_params {
-            params.push(p.clone());
-        }
-    }
-
-    // Fragment injection (raw SQL appended, with $N renumbering)
-    for frag in fragment_parts {
-        let (renumbered, consumed) = renumber_placeholders(frag, param_idx);
-        sql.push_str(&format!(" {}", renumbered));
-        param_idx += consumed;
-    }
-    for p in fragment_params {
-        params.push(p.clone());
-    }
-
-    (sql, params)
+fn counted_sql(select: &str) -> String {
+    format!("SELECT COUNT(*) AS count FROM ({select}) AS counted")
 }
 
-/// Build SQL for exists queries: SELECT EXISTS(SELECT 1 FROM ... WHERE ... LIMIT 1)
+/// Whether the query returns a row, grouping and fragments included.
 unsafe fn query_to_exists_sql(query: *mut u8) -> (String, Vec<String>) {
-    let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = text_of(source_ptr);
-    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
-
-    build_exists_sql_from_parts(source, &where_clauses, &where_params, &join_clauses)
+    let (select, params) = select_sql(query, Some("1"));
+    (exists_sql(&select), params)
 }
 
-fn build_exists_sql_from_parts(
-    source: &str,
-    where_clauses: &[String],
-    where_params: &[String],
-    join_clauses: &[String],
-) -> (String, Vec<String>) {
-    let mut inner_sql = String::new();
-    let mut params: Vec<String> = Vec::new();
-    let param_idx = 1usize;
-
-    inner_sql.push_str(&format!("SELECT 1 FROM {}", quote_name(source)));
-
-    // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
-    for join in join_clauses {
-        if let Some(rest) = join.strip_prefix("ALIAS:") {
-            let parts: Vec<&str> = rest.splitn(4, ':').collect();
-            if parts.len() == 4 {
-                inner_sql.push_str(&format!(
-                    " {} JOIN {} {} ON {}",
-                    parts[0],
-                    quote_name(parts[1]),
-                    parts[2],
-                    parts[3]
-                ));
-            }
-        } else {
-            let parts: Vec<&str> = join.splitn(3, ':').collect();
-            if parts.len() == 3 {
-                inner_sql.push_str(&format!(
-                    " {} JOIN {} ON {}",
-                    parts[0],
-                    quote_name(parts[1]),
-                    parts[2]
-                ));
-            }
-        }
-    }
-
-    // WHERE clause
-    if !where_clauses.is_empty() {
-        let (where_sql, where_param_values, _next_param_idx) =
-            build_where_from_query_parts(where_clauses, where_params, param_idx);
-        inner_sql.push_str(&format!(" WHERE {}", where_sql));
-        params.extend(where_param_values);
-    }
-
-    inner_sql.push_str(" LIMIT 1");
-
-    let sql = format!("SELECT EXISTS({})", inner_sql);
-    (sql, params)
+fn exists_sql(select: &str) -> String {
+    format!("SELECT EXISTS({select}) AS exists")
 }
 
 // ── Extern C functions ───────────────────────────────────────────────
@@ -751,35 +598,29 @@ pub extern "C" fn mesh_repo_get_by(
 pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_count_sql(query);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
-
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
+        match single_value(pool, &sql, &params, "count") {
+            Ok(count) => crate::io::ok_int(count.parse().unwrap_or(0)).cast(),
+            Err(error) => error,
         }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("count returned no rows");
-        }
-
-        // Get the first row (a Map<String,String>)
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        // Get the "count" column value
-        let count_key = mesh_str("count") as *mut u8;
-        let count_val = mesh_map_get(first_row, count_key as u64);
-        if count_val == 0 {
-            return err_result("count returned no count column");
-        }
-
-        // Parse the string value as an integer
-        let count_str = text_of(count_val as *mut u8);
-        let count: i64 = count_str.parse().unwrap_or(0);
-        crate::io::ok_int(count).cast()
     }
+}
+
+/// The text of `column` in the one row `sql` returns (a COUNT or EXISTS).
+unsafe fn single_value(
+    pool: u64,
+    sql: &str,
+    params: &[String],
+    column: &str,
+) -> Result<&'static str, *mut u8> {
+    let result = mesh_pool_query(pool, mesh_str(sql), string_list(params));
+    let r = &*(result as *const MeshResult);
+    if r.tag != 0 {
+        return Err(result);
+    }
+    let row = mesh_list_get(r.value, 0) as *mut u8;
+    Ok(text_of(
+        mesh_map_get(row, mesh_str(column) as u64) as *const u8
+    ))
 }
 
 /// Check if any rows match the query.
@@ -792,23 +633,11 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
 pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_exists_sql(query);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
-
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
+        match single_value(pool, &sql, &params, "exists") {
+            // A Bool payload is boxed.
+            Ok(exists) => ok_result(crate::io::box_scalar(exists == "t")),
+            Err(error) => error,
         }
-
-        // The first row's "exists" column; a Bool payload is boxed.
-        let list = r.value;
-        let exists = mesh_list_length(list) > 0 && {
-            let first_row = mesh_list_get(list, 0) as *mut u8;
-            let exists_val = mesh_map_get(first_row, mesh_str("exists") as u64);
-            exists_val != 0 && matches!(text_of(exists_val as *mut u8), "t" | "true" | "1")
-        };
-        ok_result(crate::io::box_scalar(exists))
     }
 }
 
@@ -2809,32 +2638,35 @@ mod tests {
         assert_eq!(params, vec!["abc", r#"{"env":"prod"}"#]);
     }
 
+    /// A count and an existence check run the query as `Repo.all` would,
+    /// selecting `1` when it names no columns so a GROUP BY still stands.
     #[test]
-    fn test_count_sql() {
-        let (sql, params) = build_count_sql_from_parts(
-            "users",
-            &["active =".into()],
-            &["true".into()],
+    fn counts_and_existence_wrap_the_whole_query() {
+        let (select, params) = build_select_sql_from_parts_with_select_params(
+            "articles",
+            &["RAW:1".into()],
             &[],
+            &["views >".into()],
+            &["10".into()],
             &[],
+            -1,
+            -1,
             &[],
-            &[],
+            &["author_id".into()],
+            &["count(*) >".into()],
+            &["1".into()],
             &[],
             &[],
         );
-        assert_eq!(sql, "SELECT COUNT(*) FROM \"users\" WHERE \"active\" = $1");
-        assert_eq!(params, vec!["true"]);
-    }
-
-    #[test]
-    fn test_exists_sql() {
-        let (sql, params) =
-            build_exists_sql_from_parts("users", &["name =".into()], &["Alice".into()], &[]);
         assert_eq!(
-            sql,
-            "SELECT EXISTS(SELECT 1 FROM \"users\" WHERE \"name\" = $1 LIMIT 1)"
+            counted_sql(&select),
+            "SELECT COUNT(*) AS count FROM (SELECT 1 FROM \"articles\" WHERE \"views\" > $1 GROUP BY \"author_id\" HAVING count(*) > $2) AS counted"
         );
-        assert_eq!(params, vec!["Alice"]);
+        assert_eq!(
+            exists_sql(&select),
+            "SELECT EXISTS(SELECT 1 FROM \"articles\" WHERE \"views\" > $1 GROUP BY \"author_id\" HAVING count(*) > $2) AS exists"
+        );
+        assert_eq!(params, vec!["10", "1"]);
     }
 
     // ── PG error string parsing tests ─────────────────────────────────
@@ -3099,41 +2931,6 @@ mod tests {
             "SELECT * FROM \"users\" WHERE \"org_id\" = $1 AND role IN ($2, $3) AND \"active\" = $4"
         );
         assert_eq!(params, vec!["org1", "admin", "editor", "true"]);
-    }
-
-    #[test]
-    fn test_count_with_raw_where() {
-        let (sql, params) = build_count_sql_from_parts(
-            "sessions",
-            &["RAW:expires_at > now()".into()],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-        );
-        assert_eq!(
-            sql,
-            "SELECT COUNT(*) FROM \"sessions\" WHERE expires_at > now()"
-        );
-        assert!(params.is_empty());
-    }
-
-    #[test]
-    fn test_exists_with_raw_where() {
-        let (sql, params) = build_exists_sql_from_parts(
-            "sessions",
-            &["RAW:expires_at > now()".into(), "user_id =".into()],
-            &["42".into()],
-            &[],
-        );
-        assert_eq!(
-            sql,
-            "SELECT EXISTS(SELECT 1 FROM \"sessions\" WHERE expires_at > now() AND \"user_id\" = $1 LIMIT 1)"
-        );
-        assert_eq!(params, vec!["42"]);
     }
 
     // ── build_where_from_query_parts tests (Phase 103) ──────────────────
