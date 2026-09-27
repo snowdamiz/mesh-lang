@@ -10,14 +10,31 @@ fn result(value: Result<i64, &'static str>) -> *mut MeshResult {
     }
 }
 
-fn round_quotient(
-    quotient: i128,
-    remainder: i128,
-    denominator: i128,
-    mode: &str,
-) -> Result<i128, &'static str> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rounding {
+    TowardZero,
+    Floor,
+    Ceil,
+    HalfAwayFromZero,
+    HalfEven,
+}
+
+impl Rounding {
+    fn parse(mode: &str) -> Result<Self, &'static str> {
+        match mode {
+            "toward_zero" => Ok(Self::TowardZero),
+            "floor" => Ok(Self::Floor),
+            "ceil" => Ok(Self::Ceil),
+            "half_away_from_zero" => Ok(Self::HalfAwayFromZero),
+            "half_even" => Ok(Self::HalfEven),
+            _ => Err("invalid rounding mode"),
+        }
+    }
+}
+
+fn round_quotient(quotient: i128, remainder: i128, denominator: i128, mode: Rounding) -> i128 {
     if remainder == 0 {
-        return Ok(quotient);
+        return quotient;
     }
 
     let away_from_zero = if (remainder > 0) == (denominator > 0) {
@@ -26,30 +43,33 @@ fn round_quotient(
         -1
     };
     match mode {
-        "toward_zero" => Ok(quotient),
-        "floor" => Ok(if away_from_zero < 0 {
-            quotient - 1
-        } else {
-            quotient
-        }),
-        "ceil" => Ok(if away_from_zero > 0 {
-            quotient + 1
-        } else {
-            quotient
-        }),
-        "half_away_from_zero" | "half_even" => {
+        Rounding::TowardZero => quotient,
+        Rounding::Floor => {
+            if away_from_zero < 0 {
+                quotient - 1
+            } else {
+                quotient
+            }
+        }
+        Rounding::Ceil => {
+            if away_from_zero > 0 {
+                quotient + 1
+            } else {
+                quotient
+            }
+        }
+        Rounding::HalfAwayFromZero | Rounding::HalfEven => {
             let doubled_remainder = remainder.abs() * 2;
             let denominator = denominator.abs();
             let round_away = doubled_remainder > denominator
                 || (doubled_remainder == denominator
-                    && (mode == "half_away_from_zero" || quotient % 2 != 0));
-            Ok(if round_away {
+                    && (mode == Rounding::HalfAwayFromZero || quotient % 2 != 0));
+            if round_away {
                 quotient + away_from_zero
             } else {
                 quotient
-            })
+            }
         }
-        _ => Err("invalid rounding mode"),
     }
 }
 
@@ -59,6 +79,7 @@ fn checked_mul_div(
     denominator: i64,
     mode: &str,
 ) -> Result<i64, &'static str> {
+    let mode = Rounding::parse(mode)?;
     if denominator == 0 {
         return Err("division by zero");
     }
@@ -66,7 +87,7 @@ fn checked_mul_div(
     let denominator = i128::from(denominator);
     let quotient = product / denominator;
     let remainder = product % denominator;
-    i64::try_from(round_quotient(quotient, remainder, denominator, mode)?)
+    i64::try_from(round_quotient(quotient, remainder, denominator, mode))
         .map_err(|_| "integer overflow")
 }
 
@@ -76,6 +97,7 @@ fn checked_rescale(
     to_scale: i64,
     mode: &str,
 ) -> Result<i64, &'static str> {
+    let mode = Rounding::parse(mode)?;
     if from_scale < 0 || to_scale < 0 {
         return Err("scale must be nonnegative");
     }
@@ -90,7 +112,7 @@ fn checked_rescale(
             .ok_or("integer overflow")?
     } else {
         let raw = i128::from(raw);
-        round_quotient(raw / factor, raw % factor, factor, mode)?
+        round_quotient(raw / factor, raw % factor, factor, mode)
     };
     i64::try_from(value).map_err(|_| "integer overflow")
 }
@@ -156,6 +178,24 @@ mod tests {
         assert_eq!(
             checked_mul_div(i64::MAX, i64::MAX, i64::MAX, "toward_zero"),
             Ok(i64::MAX)
+        );
+    }
+
+    /// An unknown rounding mode is refused whether or not the result
+    /// needed rounding.
+    #[test]
+    fn an_unknown_rounding_mode_is_refused_even_for_exact_results() {
+        assert_eq!(
+            checked_mul_div(4, 1, 2, "nearest"),
+            Err("invalid rounding mode")
+        );
+        assert_eq!(
+            checked_rescale(100, 2, 4, "nearest"),
+            Err("invalid rounding mode")
+        );
+        assert_eq!(
+            checked_rescale(100, 2, 1, "nearest"),
+            Err("invalid rounding mode")
         );
     }
 

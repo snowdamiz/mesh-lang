@@ -348,7 +348,7 @@ Normal `Int` operators are convenient for ordinary arithmetic. Use `Checked` at 
 | `Checked.mul_div(a, b, denominator, rounding)` | `Result<Int, String>` | Multiply through a wide intermediate, divide, and round |
 | `Checked.rescale(raw, from_scale, to_scale, rounding)` | `Result<Int, String>` | Convert a fixed-point integer between decimal scales |
 
-Rounding is explicit: `:toward_zero`, `:floor`, `:ceil`, `:half_away_from_zero`, or `:half_even`.
+Rounding is explicit: `:toward_zero`, `:floor`, `:ceil`, `:half_away_from_zero`, or `:half_even`. Any other atom returns `Err("invalid rounding mode")`, even when the result needs no rounding.
 
 ```mesh
 case Checked.mul_div(1_005, 1, 100, :half_even) do
