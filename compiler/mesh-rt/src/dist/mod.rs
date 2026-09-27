@@ -27,3 +27,5 @@ pub mod wire;
 
 #[cfg(test)]
 mod autonomous_model_tests;
+#[cfg(test)]
+mod consensus_testing;
