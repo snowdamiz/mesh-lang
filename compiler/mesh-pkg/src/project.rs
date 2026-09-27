@@ -33,18 +33,6 @@ pub fn to_pascal_case(s: &str) -> String {
         .collect()
 }
 
-/// Convert a relative file path to a PascalCase module name.
-///
-/// Returns `None` for `main.mpl` in the project root (the entry point), and
-/// for a path with a name that is not UTF-8.
-///
-/// # Convention
-///
-/// - `math/vector.mpl` -> `Some("Math.Vector")`
-/// - `utils.mpl` -> `Some("Utils")`
-/// - `math/linear_algebra.mpl` -> `Some("Math.LinearAlgebra")`
-/// - `a/b/c/d.mpl` -> `Some("A.B.C.D")`
-/// - `main.mpl` -> `None`
 /// The module a project file is: `Main` for the default entrypoint, else
 /// its path's module name, which a path not in UTF-8 lacks.
 fn project_module_name(relative_path: &Path) -> Result<String, String> {
@@ -59,6 +47,18 @@ fn project_module_name(relative_path: &Path) -> Result<String, String> {
     })
 }
 
+/// Convert a relative file path to a PascalCase module name.
+///
+/// Returns `None` for `main.mpl` in the project root (the entry point), and
+/// for a path with a name that is not UTF-8.
+///
+/// # Convention
+///
+/// - `math/vector.mpl` -> `Some("Math.Vector")`
+/// - `utils.mpl` -> `Some("Utils")`
+/// - `math/linear_algebra.mpl` -> `Some("Math.LinearAlgebra")`
+/// - `a/b/c/d.mpl` -> `Some("A.B.C.D")`
+/// - `main.mpl` -> `None`
 pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
     let stem = relative_path.file_stem()?.to_str()?;
     // A directory whose name is not UTF-8 names no module.
