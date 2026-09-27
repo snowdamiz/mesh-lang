@@ -23,6 +23,16 @@ pub mod routing;
 pub mod scaling;
 pub mod telemetry;
 
+/// The longest prefix of `text` at most `max_bytes` long that ends at a
+/// character.
+pub(crate) fn char_prefix(text: &str, max_bytes: usize) -> &str {
+    let mut end = text.len().min(max_bytes);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 #[cfg(test)]
 mod autonomous_model_tests;
 #[cfg(test)]

@@ -5353,13 +5353,7 @@ fn decode_http_reserve(frame: &[u8]) -> Result<(u64, u32, String, String), Strin
 fn encode_http_reserve_reply(correlation_id: u64, result: Result<(), String>) -> Vec<u8> {
     let (accepted, reason) = match &result {
         Ok(()) => (1u8, ""),
-        Err(reason) => {
-            let mut end = reason.len().min(usize::from(u16::MAX));
-            while !reason.is_char_boundary(end) {
-                end -= 1;
-            }
-            (0u8, &reason[..end])
-        }
+        Err(reason) => (0u8, super::char_prefix(reason, usize::from(u16::MAX))),
     };
     let mut frame = Vec::with_capacity(12 + reason.len());
     frame.push(DIST_HTTP_RESERVE_REPLY);
