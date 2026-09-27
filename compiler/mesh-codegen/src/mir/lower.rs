@@ -802,6 +802,10 @@ impl<'a> Lowerer<'a> {
         }
         // A resource type is a tuple or a named type.
         let (name, arguments) = ty_head(ty)?;
+        // A pid names an actor, which owns the messages its type names.
+        if name == "Pid" {
+            return None;
+        }
         if name == "PgConn" {
             return Some(MirResourceDestructor::PgConnection);
         }
@@ -17364,6 +17368,19 @@ mod tests {
             "resource scope wrappers and constructors must preserve the concrete Result type: {:?}",
             nested.body
         );
+    }
+
+    /// The checker counts a pid of resource messages as a resource, but the
+    /// actor it names owns those messages: nothing drops the pid.
+    #[test]
+    fn pids_of_resource_messages_are_not_dropped() {
+        let mir = lower(
+            "resource struct Vault do\n  key :: SecretBytes\nend\n\n\
+             fn keep(p :: Pid<SecretBytes>, v :: Pid<Vault>) -> Int do\n  1\nend",
+        );
+        let keep = function_body(&mir, "keep");
+        assert_eq!(drops_of(&keep, "p"), 0, "{keep:?}");
+        assert_eq!(drops_of(&keep, "v"), 0, "{keep:?}");
     }
 
     #[test]

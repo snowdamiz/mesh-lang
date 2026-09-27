@@ -1854,3 +1854,31 @@ end
     );
     assert_eq!(output, "10 1 n1 (1, n1)\n");
 }
+
+/// A pid whose messages are resources is not a resource of its own to
+/// destroy: the actor it names owns what it receives. Lowering gave such a
+/// pid (an actor receiving secrets, a job returning one) the destructor of
+/// an opaque resource handle, and code generation crashed on the pid's
+/// integer where it expected a pointer.
+#[test]
+fn pids_of_actors_that_receive_resources_are_plain_values() {
+    let output = compile_and_run(
+        r##"actor sink() do
+  receive do
+    s -> Secret.destroy(s)
+  end
+end
+
+fn keep(p :: Pid<SecretBytes>) -> Pid<SecretBytes> do
+  p
+end
+
+fn main() do
+  let p = keep(spawn(sink))
+  let job = Job.async(fn () -> Secret.random(8) end)
+  println("spawned")
+end
+"##,
+    );
+    assert_eq!(output, "spawned\n");
+}
