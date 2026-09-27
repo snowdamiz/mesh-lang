@@ -4618,7 +4618,14 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         .collect();
 
     type_registry.propagate_resource_containment();
-    let ownership = crate::ownership::check(parse, &resolved_types, &type_registry, import_ctx);
+    let ownership = crate::ownership::check(
+        parse,
+        &resolved_types,
+        &type_registry,
+        import_ctx,
+        &ctx.overloaded_fn_names,
+        &ctx.overloaded_call_targets,
+    );
     ctx.errors.extend(ownership.errors);
     // A call whose callee failed is inferred again as a method call, which
     // reports the same error a second time; each error is reported once.

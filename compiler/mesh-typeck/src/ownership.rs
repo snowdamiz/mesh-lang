@@ -41,6 +41,9 @@ enum Usage {
 struct Checker<'a> {
     types: &'a FxHashMap<TextRange, Ty>,
     registry: &'a TypeRegistry,
+    /// The arity (`name__N`) the type checker chose for each call to a
+    /// name defined at several.
+    call_targets: &'a FxHashMap<TextRange, String>,
     scopes: Vec<FxHashMap<String, Binding>>,
     signatures: FxHashMap<String, FunctionSignature>,
     errors: Vec<TypeError>,
@@ -56,6 +59,8 @@ pub(crate) fn check(
     types: &FxHashMap<TextRange, Ty>,
     registry: &TypeRegistry,
     import_ctx: &ImportContext,
+    overloaded_fn_names: &FxHashSet<String>,
+    call_targets: &FxHashMap<TextRange, String>,
 ) -> OwnershipCheck {
     let functions: Vec<FnDef> = parse
         .syntax()
@@ -85,10 +90,22 @@ pub(crate) fn check(
         .collect();
     let mut signatures = FxHashMap::default();
     let mut ambiguous_bare_signatures = FxHashSet::default();
-    for function in &functions {
-        let Some(name) = function.name().and_then(|name| name.text()) else {
+    for function in functions
+        .iter()
+        .filter(|function| !is_later_clause(function))
+    {
+        let Some(mut name) = function.name().and_then(|name| name.text()) else {
             continue;
         };
+        // Each arity of a top-level name defined at several is its own
+        // function, `name__N`, as the type checker and lowering name it.
+        let top_level = function
+            .syntax()
+            .parent()
+            .is_some_and(|parent| parent.kind() == SyntaxKind::SOURCE_FILE);
+        if top_level && overloaded_fn_names.contains(&name) {
+            name = format!("{name}__{}", fn_arity(function));
+        }
         let signature = signature_of(types, function.syntax(), function.param_list());
         // A method is also called through its type or its interface
         // (`Session.close(s)`, `Closer.close(s)`); two impls defining it
@@ -433,6 +450,7 @@ pub(crate) fn check(
     let mut checker = Checker {
         types,
         registry,
+        call_targets,
         scopes: vec![FxHashMap::default()],
         signatures,
         errors: Vec::new(),
@@ -489,28 +507,23 @@ fn register_imported_signatures(
             // `import Module`: each function as `Module.name`, and by its
             // bare symbol, which cross-module lowering links it by.
             for export_name in exports.function_ownership.keys() {
-                let source_name = source_function_name(export_name);
                 let signature = exported_signature(exports, export_name);
-                signatures.insert(format!("{namespace}.{source_name}"), signature.clone());
-                signatures.entry(source_name).or_insert(signature);
+                signatures.insert(format!("{namespace}.{export_name}"), signature.clone());
+                signatures.entry(export_name.clone()).or_insert(signature);
             }
             continue;
         };
+        // An overloaded name brings each of its arities (`name__N`).
         for imported in names {
-            let mut matches = exports
+            for export_name in exports
                 .function_ownership
                 .keys()
-                .filter(|exported| source_function_name(exported) == imported);
-            let Some(export_name) = matches.next() else {
-                continue;
-            };
-            // ponytail: overloaded resource-call metadata needs an arity key;
-            // fail closed until an exported resource API actually overloads.
-            if matches.next().is_some() {
-                continue;
+                .filter(|exported| source_function_name(exported) == imported)
+            {
+                signatures
+                    .entry(export_name.clone())
+                    .or_insert_with(|| exported_signature(exports, export_name));
             }
-            let signature = exported_signature(exports, export_name);
-            signatures.entry(imported).or_insert(signature);
         }
     }
 }
@@ -929,7 +942,15 @@ impl Checker<'_> {
 
     fn check_call(&mut self, call: &CallExpr) {
         let callee = call.callee();
-        let callee_name = callee.as_ref().and_then(direct_callee_name);
+        let callee_name = callee.as_ref().and_then(direct_callee_name).map(|name| {
+            match self.call_targets.get(&call.syntax().text_range()) {
+                Some(arity) => match name.rsplit_once('.') {
+                    Some((module, _)) => format!("{module}.{arity}"),
+                    None => arity.clone(),
+                },
+                None => name,
+            }
+        });
         let transaction_api = match callee_name.as_deref() {
             Some("Pg.transaction" | "pg_transaction") => Some("Pg.transaction"),
             Some("Repo.transaction" | "repo_transaction") => Some("Repo.transaction"),
@@ -1481,6 +1502,26 @@ impl Checker<'_> {
                 .unwrap_or_default(),
         }
     }
+}
+
+/// Whether `function` continues the clauses of the function defined right
+/// before it: one with the same name and arity.
+fn is_later_clause(function: &FnDef) -> bool {
+    function
+        .syntax()
+        .prev_sibling()
+        .and_then(FnDef::cast)
+        .is_some_and(|previous| {
+            previous.name().and_then(|name| name.text())
+                == function.name().and_then(|name| name.text())
+                && fn_arity(&previous) == fn_arity(function)
+        })
+}
+
+fn fn_arity(function: &FnDef) -> usize {
+    function
+        .param_list()
+        .map_or(0, |list| list.params().count())
 }
 
 fn direct_callee_name(expr: &Expr) -> Option<String> {

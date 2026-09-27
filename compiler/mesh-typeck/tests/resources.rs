@@ -703,6 +703,32 @@ fn an_as_pattern_cannot_bind_a_resource_twice() {
     );
 }
 
+/// The clauses of one function, and each arity of a name defined at
+/// several, take resources like any function. The clauses were registered
+/// as a name defined twice, and the arities as one name, so every resource
+/// argument was refused as if the call were indirect.
+#[test]
+fn clause_groups_and_arities_take_resources() {
+    let result = check_source(
+        "fn spend(Ok(secret)) -> Int do\n  Secret.destroy(secret)\n  1\nend\n\
+         fn spend(Err(reason)) = 0\n\
+         fn keep(secret :: SecretBytes) -> Int = 1\n\
+         fn keep(secret :: borrow SecretBytes, n :: Int) -> Int = n\n\
+         fn use_all(secret :: SecretBytes) -> Int do\n  let a = spend(Secret.random(1))\n  let b = keep(secret, 2)\n  a + b + keep(secret)\nend",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+
+    let moved = check_source(
+        "fn keep(secret :: SecretBytes) -> Int = 1\n\
+         fn keep(secret :: borrow SecretBytes, n :: Int) -> Int = n\n\
+         fn twice(secret :: SecretBytes) -> Int = keep(secret) + keep(secret, 2)",
+    );
+    assert_eq!(
+        resource_violations(&moved),
+        ["resource `secret` was used after it moved"]
+    );
+}
+
 /// A parameter pattern owns what it binds, like a `case` arm.
 #[test]
 fn resource_parameter_patterns_bind_like_arms() {
