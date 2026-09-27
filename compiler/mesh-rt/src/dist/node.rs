@@ -267,6 +267,13 @@ pub fn node_state() -> Option<&'static NodeState> {
     NODE_STATE.get()
 }
 
+/// This node's state, for code that runs only on a started node: the code
+/// of a session, or of a peer's message, as only a started node has
+/// sessions, and a node once started never stops.
+fn started_node() -> &'static NodeState {
+    node_state().expect("only a started node has sessions")
+}
+
 // ---------------------------------------------------------------------------
 // Function name registry for remote spawn (Phase 67)
 // ---------------------------------------------------------------------------
@@ -1635,10 +1642,7 @@ impl HeartbeatState {
 /// Wire format: [DIST_PEER_LIST][u16 count][u16 name_len][name bytes]...
 /// Skips the receiving node's own name (no need to tell B about B).
 fn send_peer_list(session: &Arc<NodeSession>) {
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
+    let state = started_node();
 
     let sessions = state.sessions.read();
     let peers: Vec<&String> = sessions
@@ -1675,11 +1679,7 @@ fn handle_peer_list(data: &[u8]) {
     let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
     let mut pos = 2;
     let mut to_connect = Vec::new();
-
-    let state = match node_state() {
-        Some(s) => s,
-        None => return,
-    };
+    let state = started_node();
 
     for _ in 0..count {
         if pos + 2 > data.len() {
@@ -1784,9 +1784,7 @@ fn decode_dist_send(
 fn pid_on_node(node: &str, local: u64) -> u64 {
     use crate::actor::process::ProcessId;
     let local = ProcessId(local).local_id();
-    let Some(state) = node_state() else {
-        return 0;
-    };
+    let state = started_node();
     match node {
         "" => 0,
         _ if node == state.name => local,
@@ -2680,9 +2678,7 @@ fn heartbeat_loop_session(
 }
 
 fn send_load_report(session: &Arc<NodeSession>) {
-    let Some(state) = node_state() else {
-        return;
-    };
+    let state = started_node();
     crate::dist::routing::refresh_local_routing_telemetry();
     let handlers: BTreeSet<String> = declared_handler_registry().read().keys().cloned().collect();
     let report = crate::dist::routing::local_load_report(&state.name, handlers);
@@ -2882,10 +2878,8 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
     use crate::actor::link;
     use crate::actor::process::{ExitReason, Message, ProcessId, ProcessState};
 
-    let sched = match crate::actor::GLOBAL_SCHEDULER.get() {
-        Some(s) => s,
-        None => return,
-    };
+    // A node starts from code the scheduler runs.
+    let sched = crate::actor::global_scheduler();
 
     let noconnection = ExitReason::Noconnection;
 
@@ -3847,14 +3841,12 @@ fn continuity_prepare_dispatcher() -> &'static crossbeam_channel::Sender<Continu
                 .name(format!("mesh-continuity-prepare-{worker}"))
                 .spawn(move || {
                     while let Ok(task) = receiver.recv() {
-                        let result = match node_state() {
-                            Some(state) if state.name == task.record.replica_node => {
-                                crate::dist::continuity::continuity_registry()
-                                    .mirror_prepare(task.record)
-                                    .map(|_| ())
-                            }
-                            Some(_) => Err("replica_prepare_target_mismatch".to_string()),
-                            None => Err("replica_required_unavailable".to_string()),
+                        let result = if started_node().name == task.record.replica_node {
+                            crate::dist::continuity::continuity_registry()
+                                .mirror_prepare(task.record)
+                                .map(|_| ())
+                        } else {
+                            Err("replica_prepare_target_mismatch".to_string())
                         };
                         send_continuity_prepare_reply(&task.session, task.request_id, &result);
                     }
@@ -7717,9 +7709,7 @@ fn automatic_recovery_candidates(
 }
 
 fn maybe_automatic_promote_and_resume(disconnected_node: &str) {
-    let Some(state) = node_state() else {
-        return;
-    };
+    let state = started_node();
 
     let registry = crate::dist::continuity::continuity_registry();
     let authority = registry.authority_status();
