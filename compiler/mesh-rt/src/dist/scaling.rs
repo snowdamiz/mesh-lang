@@ -4512,6 +4512,16 @@ esac
         let driver = docker_driver(state.path(), Vec::new());
         let node = driver_operation("terminate-target", None);
         add_container(state.path(), "target", &node, "running");
+        // Without environment entries no environment file is written.
+        let created = driver
+            .ensure_node(&driver_operation("no-environment", None))
+            .expect("create");
+        let arguments = docker_calls(state.path())
+            .into_iter()
+            .find(|call| call.starts_with("create"))
+            .expect("create call");
+        assert!(!arguments.contains("--env-file"), "{arguments}");
+        assert_eq!(created.node_id.as_deref(), Some("container1"));
 
         let drain = driver_operation("drain-operation", Some("target"));
         let drained = driver.begin_drain(&drain, "target").expect("drain");
@@ -4952,6 +4962,9 @@ esac
         assert_eq!(reopened.append(pause(true)).expect("append").index, 3);
         drop(reopened);
 
+        assert!(DurableControlLog::open(Path::new(""))
+            .unwrap_err()
+            .starts_with("control_log_open_failed:"));
         std::fs::write(&path, "not json\n").unwrap();
         assert!(DurableControlLog::open(&path)
             .unwrap_err()
@@ -5459,6 +5472,19 @@ esac
             "busy-node",
             DriverOperationState::RetryableFailure("busy".to_string()),
         );
+        // Ordinal 3's node is up already.
+        h.driver.nodes.lock().unwrap().insert(
+            "running-node".to_string(),
+            ObservedCapacityNode {
+                node_id: "running-node".to_string(),
+                operation_id: ensure(3),
+                control_term: h.term,
+                desired_revision: DesiredRevision(1),
+                template_revision: "v1".to_string(),
+                lifecycle: CapacityNodeLifecycle::Ready,
+            },
+        );
+        h.preset(&ensure(3), "running-node", DriverOperationState::Succeeded);
         let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
 
         let outcome = h
@@ -5470,10 +5496,7 @@ esac
             .iter()
             .map(|operation| operation.operation_id.clone())
             .collect();
-        assert_eq!(
-            ensured,
-            [replace(0, "gone-node"), ensure(2), ensure(3), ensure(4)]
-        );
+        assert_eq!(ensured, [replace(0, "gone-node"), ensure(2), ensure(4)]);
         assert_eq!(
             outcome.constraints,
             [
@@ -5517,6 +5540,74 @@ esac
     }
 
     #[test]
+    fn unconfirmed_cleanups_are_constraints() {
+        let h = Harness::new(None);
+        let failed = h.seed(1).remove(0);
+        h.driver
+            .nodes
+            .lock()
+            .unwrap()
+            .get_mut(&failed)
+            .unwrap()
+            .lifecycle = CapacityNodeLifecycle::Failed;
+        let committed = h.desired(1, 1);
+        let cleanup = capacity_operation_id(
+            "cluster",
+            DesiredRevision(1),
+            stable_ordinal(&failed),
+            &format!("cleanup-failed:{failed}"),
+        );
+        h.preset(&cleanup, &failed, DriverOperationState::Pending);
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &[])
+                .expect("reconcile")
+                .constraints,
+            [format!(
+                "capacity_failed_worker_cleanup_incomplete:{failed}:Pending"
+            )]
+        );
+
+        let h = Harness::new(None);
+        let unjoined = h.seed(1).remove(0);
+        h.driver
+            .nodes
+            .lock()
+            .unwrap()
+            .get_mut(&unjoined)
+            .unwrap()
+            .lifecycle = CapacityNodeLifecycle::Ready;
+        let committed = h.desired(1, 1);
+        let cleanup = capacity_operation_id(
+            "cluster",
+            DesiredRevision(1),
+            stable_ordinal(&unjoined),
+            &format!("cleanup-unjoined:{unjoined}"),
+        );
+        h.preset(&cleanup, &unjoined, DriverOperationState::Pending);
+        let mut reconciler =
+            CapacityReconciler::new_runtime(h.driver.clone(), 1, Duration::from_millis(1), false)
+                .expect("reconciler");
+        let safety = [ReconcileNodeSafety {
+            runtime_node_id: String::new(),
+            ..drainable(&unjoined)
+        }];
+        h.reconcile(&mut reconciler, &committed, &safety)
+            .expect("join grace starts");
+        std::thread::sleep(Duration::from_millis(3));
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &safety)
+                .expect("reconcile")
+                .constraints,
+            [format!(
+                "capacity_unjoined_worker_cleanup_incomplete:{unjoined}:Pending"
+            )]
+        );
+        // Still unconfirmed, the node stays in its grace bookkeeping.
+        assert!(reconciler.unjoined_ready_since.contains_key(&unjoined));
+    }
+
+    #[test]
     fn a_rebounding_target_cancels_drains_that_have_not_terminated() {
         for workers in [2, 3] {
             let h = Harness::new(None);
@@ -5525,8 +5616,14 @@ esac
             let committed = h.desired(2, workers);
             let mut reconciler = h.restored(false);
 
+            // With a safety entry the drain's runtime member is known.
+            let safety = if workers == 2 {
+                drainable_all(&nodes)
+            } else {
+                Vec::new()
+            };
             let outcome = h
-                .reconcile(&mut reconciler, &committed, &[])
+                .reconcile(&mut reconciler, &committed, &safety)
                 .expect("rebound");
 
             assert!(outcome.drains.is_empty());
@@ -5578,6 +5675,22 @@ esac
             [format!(
                 "drain_timeout_force_blocked_by_continuity_or_membership:{node}"
             )]
+        );
+        // A drain past its deadline is forced only for a known member.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Draining);
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(true);
+        std::thread::sleep(Duration::from_millis(3));
+        let mut unknown = busy(&nodes);
+        unknown[0].runtime_node_id = String::new();
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &unknown),
+            Err(format!(
+                "forced_drain_runtime_identity_missing:{}",
+                nodes[0]
+            ))
         );
 
         // A drained worker whose termination the provider has not finished.
