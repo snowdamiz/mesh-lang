@@ -86,7 +86,9 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
     let mut data = msg_tag.to_le_bytes().to_vec();
     data.extend_from_slice(&caller.as_u64().to_le_bytes());
     data.extend_from_slice(&super::message_bytes(payload_ptr, payload_size));
-    let mut buffer = MessageBuffer::new(data, msg_tag);
+    // The service reads the handler's tag from the data; its receive takes
+    // a program's messages.
+    let mut buffer = MessageBuffer::new(data, super::PROGRAM_MESSAGE_TAG);
     super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
 
     // Watched before the call is queued, so that however the service ends,
@@ -181,8 +183,7 @@ pub extern "C" fn mesh_service_cast_shaped(
     shape: *const u32,
 ) {
     let bytes = unsafe { std::slice::from_raw_parts(data, size as usize) }.to_vec();
-    let tag = u64::from_ne_bytes(bytes[..8].try_into().unwrap());
-    let mut buffer = MessageBuffer::new(bytes, tag);
+    let mut buffer = MessageBuffer::new(bytes, super::PROGRAM_MESSAGE_TAG);
     if let Some(sched) = GLOBAL_SCHEDULER.get() {
         super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
     }

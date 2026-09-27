@@ -737,9 +737,20 @@ fn send_application_frame(session: &crate::dist::node::NodeSession, payload: Vec
 ///
 /// The returned pointer points to a layout: `[u64 type_tag, u64 data_len, u8... data]`
 /// allocated in the current actor's heap.
+///
+/// Only a program's own messages are received: what the runtime sends an
+/// actor (a job's result, a service's reply) waits for what asked for it.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
-    actor_receive_matching(timeout_ms, |_| true)
+    actor_receive_matching(timeout_ms, |message| {
+        message.buffer.type_tag == PROGRAM_MESSAGE_TAG
+    })
+}
+
+/// A blocking receive of any message, for the runtime's own actors
+/// (supervisors, WebSocket connections), which read the tags themselves.
+pub(crate) fn receive_any() -> *const u8 {
+    actor_receive_matching(-1, |_| true)
 }
 
 /// Stop a generated actor without returning a fabricated receive value.
@@ -1180,7 +1191,7 @@ extern "C-unwind" fn supervisor_entry(args: *const u8) {
     };
     let (supervisor_pid, _) = running_process();
     loop {
-        let message = mesh_actor_receive(-1);
+        let message = receive_any();
         if message.is_null() {
             break;
         }
@@ -2583,6 +2594,22 @@ mod tests {
     /// A pid on node 3, which this process has never heard of.
     fn unknown_node_pid() -> ProcessId {
         ProcessId::from_remote(3, 1, 9)
+    }
+
+    /// A program's receive takes its own messages: a job's result the actor
+    /// has not awaited stays for the await, not read as one of them.
+    #[test]
+    fn a_receive_passes_over_what_the_runtime_sent() {
+        let (received, left) = as_process(|me| {
+            let process = global_scheduler().get_process(me).unwrap();
+            let result = MessageBuffer::new(vec![0; 32], job::JOB_RESULT_TAG);
+            process.lock().mailbox.push(Message { buffer: result });
+            local_send(me.as_u64(), 7u64.to_le_bytes().as_ptr(), 8);
+            let received = unsafe { (mesh_actor_receive(0).add(16) as *const u64).read() };
+            let left = process.lock().mailbox.pop().map(|m| m.buffer.type_tag);
+            (received, left)
+        });
+        assert_eq!((received, left), (7, Some(job::JOB_RESULT_TAG)));
     }
 
     /// A message for another node needs a session to it (4) and must hold

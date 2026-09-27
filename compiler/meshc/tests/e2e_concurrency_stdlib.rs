@@ -299,6 +299,30 @@ fn e2e_job_async_await() {
     assert_eq!(output, "1\n2\n");
 }
 
+/// A job's result the actor never awaits is not one of its messages: its
+/// `receive` gets the String sent to it (it read the result as one).
+#[test]
+fn e2e_receive_passes_over_an_unawaited_job_result() {
+    let source = r#"
+actor listener() do
+  let job = Job.async(fn () -> 5 end)
+  Timer.sleep(100)
+  receive do
+    text -> println("got #{text}")
+  end
+end
+
+fn main() do
+  let pid :: Pid<String> = spawn(listener)
+  Timer.sleep(200)
+  send(pid, "hello")
+  Timer.sleep(200)
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 30);
+    assert_eq!(output, "got hello\n");
+}
+
 // ── Receive-with-timeout E2E Tests ──────────────────────────────────
 
 /// Test: receive timeout fires when no message arrives within the deadline.

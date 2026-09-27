@@ -525,11 +525,9 @@ fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId, code: u
 /// - `EXIT_SIGNAL_TAG`: exit signal from linked actor, exit loop
 /// - Other: regular actor-to-actor message (ignored for now)
 fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) -> (u16, String) {
-    use crate::actor::mesh_actor_receive;
-
     loop {
         // An actor's receive without a timeout returns only a message.
-        let msg_ptr = mesh_actor_receive(-1);
+        let msg_ptr = crate::actor::receive_any();
 
         // Read type_tag from heap layout: [u64 type_tag, u64 data_len, u8... data]
         let type_tag = unsafe {
