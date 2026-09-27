@@ -13007,7 +13007,9 @@ mod tests {
         primary_record.cluster_role = Primary;
         let mut elsewhere = mirrored("e");
         elsewhere.owner_node = "other@h:1".to_string();
-        for stray in [primary_record, elsewhere] {
+        let mut unmirrored = mirrored("u");
+        unmirrored.replica_status = ReplicaStatus::DegradedContinuing;
+        for stray in [primary_record, elsewhere, unmirrored] {
             assert_eq!(
                 reason(0, Standby, vec![mirrored("m"), stray]),
                 Err(AUTOMATIC_PROMOTION_REJECTED_AMBIGUOUS_PENDING)
@@ -13112,10 +13114,15 @@ mod tests {
 
     /// Plays `peers` as live nodes until `done`: each replica prepare is
     /// acknowledged (refused for a record whose key says `unprepared`, and
-    /// for one that says `superseded` after completing it), each
-    /// reservation accepted (turned away, as by a draining owner, when its
-    /// key says `turned-away`), each routed request answered (with an error
-    /// when its key says `failing`) and each spawn given a pid (but for a
+    /// for one that says `superseded` after completing it; acknowledged
+    /// after the record is rejected when the key says `rejected-meanwhile`,
+    /// or completed when it says `completed-meanwhile`, or after the other
+    /// of a `pair-a`/`pair-b` is completed when it says `completes-other`),
+    /// each reservation accepted (turned away, as by a draining owner, when
+    /// its key says `turned-away`), each routed request answered (with an
+    /// error when its key says `failing`; after completing the record when
+    /// it says `overtaken`; with `attempt_id_mismatch` after rejecting it
+    /// when it says `mismatched`) and each spawn given a pid (but for a
     /// function whose name says `Unspawnable`).
     fn serve_as_nodes(peers: &[&TestPeer], done: &AtomicBool) {
         let registry = crate::dist::continuity::continuity_registry();
@@ -13131,6 +13138,28 @@ mod tests {
                                     "attempt-1",
                                     "someone@h:1",
                                 );
+                            }
+                            if record.request_key.contains("rejected-meanwhile") {
+                                registry
+                                    .reject_durable_request(
+                                        &record.request_key,
+                                        &record.attempt_id,
+                                        "rejected_meanwhile",
+                                    )
+                                    .unwrap();
+                            }
+                            if record.request_key.contains("completed-meanwhile") {
+                                registry
+                                    .mark_completed(&record.request_key, "attempt-1", "someone@h:1")
+                                    .unwrap();
+                            }
+                            if record.request_key.contains("completes-other") {
+                                let other = if record.request_key.contains("pair-a") {
+                                    record.request_key.replace("pair-a", "pair-b")
+                                } else {
+                                    record.request_key.replace("pair-b", "pair-a")
+                                };
+                                let _ = registry.mark_completed(&other, "attempt-1", "someone@h:1");
                             }
                             let result = if record.request_key.contains("unprepared")
                                 || record.request_key.contains("superseded")
@@ -13160,9 +13189,21 @@ mod tests {
                             peer.receive(encode_http_reserve_reply(correlation, result));
                         }
                         DIST_HTTP_ROUTE_V2_QUERY => {
-                            let (correlation, _, key, ..) =
+                            let (correlation, _, key, attempt, _) =
                                 decode_http_route_v2_query_frame(&message).unwrap();
-                            let result = if key.contains("failing") {
+                            if key.contains("overtaken") {
+                                registry
+                                    .mark_completed(&key, &attempt, "someone@h:1")
+                                    .unwrap();
+                            }
+                            if key.contains("mismatched") {
+                                registry
+                                    .reject_durable_request(&key, &attempt, "rejected_elsewhere")
+                                    .unwrap();
+                            }
+                            let result = if key.contains("mismatched") {
+                                Err("attempt_id_mismatch".to_string())
+                            } else if key.contains("failing") || key.contains("overtaken") {
                                 Err("handler_failed".to_string())
                             } else {
                                 Ok(b"200 drained".to_vec())
@@ -14157,6 +14198,15 @@ mod tests {
             &route_payload("GET", "lonely")
         )
         .is_err());
+        let mirrored = "Mirrored.route";
+        mesh_register_declared_handler(
+            mirrored.as_ptr(),
+            mirrored.len() as u64,
+            mirrored.as_ptr(),
+            mirrored.len() as u64,
+            2,
+            clustered_route_handler as *const u8,
+        );
 
         let local = key_owned_by(&state.name, "local-route");
         let first = run(&local, "sha256:local").unwrap();
@@ -14207,8 +14257,37 @@ mod tests {
                 run(&failing, "sha256:failing").err(),
                 Some("handler_failed".to_string())
             );
+            // An owner that saw a newer attempt refuses this one; when no
+            // recovery follows, the request fails as the owner answered.
+            let mismatched = key_owned_by(&owner.session.remote_name, "remote-mismatched-route");
+            assert_eq!(
+                run(&mismatched, "sha256:mismatched").err(),
+                Some("attempt_id_mismatch".to_string())
+            );
+            // Work rejected while its replica takes it is refused, as a
+            // request or as declared work, and does not run.
+            report_worker(&owner.session.remote_name, &[mirrored]);
+            let meanwhile = key_owned_by(&state.name, "rejected-meanwhile-route");
+            assert_eq!(
+                execute_clustered_http_route(
+                    mirrored,
+                    &meanwhile,
+                    "sha256:meanwhile",
+                    &route_payload("GET", &meanwhile)
+                )
+                .err(),
+                Some("rejected_meanwhile".to_string())
+            );
+            let meanwhile = key_owned_by(&state.name, "rejected-meanwhile-work");
+            let decision = submit_declared_work(mirrored, &meanwhile, "sha256:work", 1).unwrap();
+            assert_eq!(decision.record.phase, ContinuityPhase::Rejected);
             done.store(true, Ordering::Release);
         });
+        // A key longer than a record holds is refused before anything runs.
+        assert_eq!(
+            run(&"k".repeat(4_097), "sha256:long").err(),
+            Some("continuity_text_too_large".to_string())
+        );
         assert_eq!(
             registry.record(&failing).map(|record| record.phase),
             Some(ContinuityPhase::Rejected)
