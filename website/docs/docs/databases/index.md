@@ -421,7 +421,7 @@ end
 | `Changeset.get_change(changeset, field)` | Read one accepted value, or `""` when absent |
 | `Changeset.get_error(changeset, field)` | Read one error, or `""` when absent |
 
-`Repo.insert_changeset` and `Repo.update_changeset` return `Result<Map<String, String>, Changeset>`. Invalid input is returned as the `Err` changeset without executing SQL. PostgreSQL unique, foreign-key, and not-null violations are mapped back to field errors; other database failures become a `_base` error.
+`Repo.insert_changeset` and `Repo.update_changeset` return `Result<Map<String, String>, Changeset>`. Invalid input is returned as the `Err` changeset without executing SQL, and so is a changeset with no changes, its `_base` error `"has no changes"`. PostgreSQL unique, foreign-key, and not-null violations are mapped back to field errors; other database failures become a `_base` error.
 
 ## Migrations
 
