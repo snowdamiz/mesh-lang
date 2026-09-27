@@ -11976,4 +11976,226 @@ mod tests {
             .unwrap_err()
             .contains("not sent"));
     }
+
+    /// Registers a session to `name` over a fresh loopback TLS connection,
+    /// in the direction given (the stream end the test node holds), and
+    /// returns what registration says with the other end of the stream.
+    fn register_test_session(
+        name: &str,
+        direction: SessionDirection,
+    ) -> Result<Arc<NodeSession>, String> {
+        let state = test_node();
+        let (client, server) = tls_pair();
+        let stream = match direction {
+            SessionDirection::Outgoing => NodeStream::ClientTls(client),
+            SessionDirection::Incoming => NodeStream::ServerTls(server),
+        };
+        register_session(
+            state,
+            name.to_string(),
+            1,
+            state.assign_node_id(),
+            stream,
+            protocol_one(),
+            None,
+        )
+    }
+
+    /// Two nodes that connect to each other at once each end up with two
+    /// transports; both keep the one the earlier-sorting name opened. A live
+    /// session is not replaced otherwise, but a shut-down one is, and the
+    /// session it replaced can no longer clean the replacement up.
+    #[test]
+    fn duplicate_sessions_keep_the_preferred_direction_and_replace_dead_ones() {
+        let state = test_node();
+        // The test node's name sorts before this one: it keeps its outgoing
+        // transport.
+        let later = "zz-duplicate-peer@127.0.0.1:1";
+        assert_eq!(
+            preferred_session_direction(&state.name, later),
+            SessionDirection::Outgoing
+        );
+        let incoming = register_test_session(later, SessionDirection::Incoming).unwrap();
+        let outgoing = register_test_session(later, SessionDirection::Outgoing).unwrap();
+        assert!(incoming.shutdown.load(Ordering::SeqCst), "replaced");
+        assert!(!state.node_id_map.read().contains_key(&incoming.node_id));
+        assert_eq!(
+            register_test_session(later, SessionDirection::Incoming).err(),
+            Some(format!("already_connected:{later}"))
+        );
+        cleanup_session_if_current(&incoming);
+        assert!(
+            state.sessions.read().contains_key(later),
+            "not by the replaced one"
+        );
+
+        outgoing.shutdown.store(true, Ordering::SeqCst);
+        let replacement = register_test_session(later, SessionDirection::Incoming).unwrap();
+        assert!(Arc::ptr_eq(
+            state.sessions.read().get(later).unwrap(),
+            &replacement
+        ));
+        replacement.shutdown.store(true, Ordering::SeqCst);
+        cleanup_session_if_current(&replacement);
+        assert!(!state.sessions.read().contains_key(later));
+
+        // A name that sorts first keeps its own outgoing transport, which
+        // is this node's incoming one.
+        let earlier = "0-duplicate-peer@127.0.0.1:1";
+        assert_eq!(
+            preferred_session_direction(&state.name, earlier),
+            SessionDirection::Incoming
+        );
+        let outgoing = register_test_session(earlier, SessionDirection::Outgoing).unwrap();
+        let incoming = register_test_session(earlier, SessionDirection::Incoming).unwrap();
+        assert!(outgoing.shutdown.load(Ordering::SeqCst));
+        incoming.shutdown.store(true, Ordering::SeqCst);
+        cleanup_session_if_current(&incoming);
+    }
+
+    /// An owner accepts a reservation for a handler it has, while it has
+    /// room, and holds it for the query that follows; the query then runs
+    /// on an actor and its reply says how it went. A query without a
+    /// reservation, or a reservation for a handler it lacks or a request
+    /// too large, is refused.
+    #[test]
+    fn an_owner_reserves_room_for_a_routed_request_then_runs_it() {
+        extern "C" fn routed_test_handler(_request: *const u8) {}
+        // The peer first: a test that clears the handlers waits for it.
+        let peer = TestPeer::new("reserving-peer@127.0.0.1:1");
+        let runtime_name = "PeerRouted.handle";
+        let executable = "PeerRouted__handle";
+        mesh_register_declared_handler(
+            runtime_name.as_ptr(),
+            runtime_name.len() as u64,
+            executable.as_ptr(),
+            executable.len() as u64,
+            1,
+            routed_test_handler as *const u8,
+        );
+        let reserve = |correlation: u64, runtime: &str, bytes: usize| {
+            peer.receive(encode_http_reserve(correlation, runtime, "reserved-key", bytes).unwrap());
+            decode_http_reserve_reply(&peer.next_sent()).unwrap()
+        };
+        let reserved = |correlation: u64| {
+            peer.session
+                .accepted_http_reservations
+                .lock()
+                .unwrap()
+                .contains_key(&correlation)
+        };
+        assert_eq!(reserve(1, runtime_name, 5), (1, Ok(())));
+        assert!(reserved(1));
+        assert_eq!(
+            reserve(1, runtime_name, 5),
+            (1, Ok(())),
+            "a repeat keeps it"
+        );
+        assert_eq!(
+            reserve(2, "Unregistered.handle", 5),
+            (
+                2,
+                Err("declared_handler_not_registered:Unregistered.handle".to_string())
+            )
+        );
+        assert_eq!(
+            reserve(3, runtime_name, MAX_DIST_MSG as usize + 1),
+            (3, Err("owner_reservation_payload_limit".to_string()))
+        );
+        peer.receive(vec![DIST_HTTP_RESERVE, 1]);
+        assert_eq!(
+            decode_http_reserve_reply(&peer.next_sent()).unwrap(),
+            (0, Err("clustered_http_reservation_invalid".to_string()))
+        );
+
+        let query = |correlation: u64| {
+            encode_http_route_v2_query_frame(
+                correlation,
+                runtime_name,
+                "reserved-key",
+                "attempt-1",
+                b"not a request",
+            )
+            .unwrap()
+        };
+        peer.receive(query(9));
+        assert_eq!(
+            decode_http_route_v2_reply_frame(&peer.next_sent()).unwrap(),
+            (9, Err("owner_reservation_missing_or_expired".to_string()))
+        );
+        peer.receive(query(1));
+        let (correlation, result) = decode_http_route_v2_reply_frame(&peer.next_sent()).unwrap();
+        assert_eq!(correlation, 1);
+        assert!(
+            result
+                .as_ref()
+                .unwrap_err()
+                .starts_with("clustered_route_request_decode_failed"),
+            "{result:?}"
+        );
+        assert!(!reserved(1), "the query took its reservation");
+
+        peer.session.shutdown.store(true, Ordering::SeqCst);
+        peer.receive(encode_http_reserve(4, runtime_name, "reserved-key", 5).unwrap());
+        assert!(!reserved(4), "a reservation it cannot confirm is not held");
+    }
+
+    /// Reservations and their replies are framed whole.
+    #[test]
+    fn reservation_frames_refuse_malformed_bytes() {
+        let reserve = encode_http_reserve(7, "Runtime.handle", "key", 12).unwrap();
+        assert_eq!(
+            decode_http_reserve(&reserve),
+            Ok((7, 12, "Runtime.handle".to_string(), "key".to_string()))
+        );
+        let refused = |bytes: &[u8]| decode_http_reserve(bytes).unwrap_err();
+        assert_eq!(
+            refused(&reserve[..12]),
+            "clustered_http_reservation_invalid"
+        );
+        assert_eq!(
+            refused(&[&reserve[..], b"!"].concat()),
+            "clustered_http_reservation_metadata_invalid"
+        );
+        let unnamed = encode_http_reserve(7, "", "key", 12).unwrap();
+        assert_eq!(
+            refused(&unnamed),
+            "clustered_http_reservation_metadata_invalid"
+        );
+        assert_eq!(
+            encode_http_reserve(7, "Runtime.handle", "key", u32::MAX as usize + 1),
+            Err("clustered_http_reservation_payload_too_large".to_string())
+        );
+
+        let reply = encode_http_reserve_reply(7, Err("full".to_string())).unwrap();
+        assert_eq!(
+            decode_http_reserve_reply(&reply),
+            Ok((7, Err("full".to_string())))
+        );
+        let refused = |bytes: &[u8]| decode_http_reserve_reply(bytes).unwrap_err();
+        assert_eq!(
+            refused(&reply[..11]),
+            "clustered_http_reservation_reply_invalid"
+        );
+        assert_eq!(
+            refused(&reply[..reply.len() - 1]),
+            "clustered_http_reservation_reply_length_invalid"
+        );
+        let mut accepted_with_reason = reply.clone();
+        accepted_with_reason[9] = 1;
+        assert_eq!(
+            refused(&accepted_with_reason),
+            "clustered_http_reservation_reply_status_invalid"
+        );
+        let mut not_text = reply;
+        not_text[12] = 0xFF;
+        assert_eq!(
+            refused(&not_text),
+            "clustered_http_reservation_reason_invalid"
+        );
+        assert_eq!(
+            encode_http_reserve_reply(7, Err("x".repeat(70_000))),
+            Err("clustered_http_reservation_reason_too_large".to_string())
+        );
+    }
 }
