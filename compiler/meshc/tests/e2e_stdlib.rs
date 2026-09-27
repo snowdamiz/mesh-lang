@@ -830,10 +830,13 @@ fn wait_for_server_ready(guard: &mut ServerGuard) {
         let _ = tx.send(Err(said));
     });
 
-    match rx.recv_timeout(std::time::Duration::from_secs(60)) {
+    match rx.recv_timeout(artifacts::LAUNCH_ALLOWANCE) {
         Ok(Ok(())) => {}
         Ok(Err(said)) => panic!("the server exited without listening:\n{said}"),
-        Err(_) => panic!("the server did not start within 60 seconds"),
+        Err(_) => panic!(
+            "the server did not start within {:?}",
+            artifacts::LAUNCH_ALLOWANCE
+        ),
     }
 }
 

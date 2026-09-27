@@ -84,9 +84,9 @@ pub fn stop_child(child: &mut Child) {
 
 /// Time a host that assesses each new process before it starts (macOS, for
 /// a child of a test cargo launched, under load) can hold a program before
-/// its first instruction. A test's run budget bounds the program; this is
-/// added to it.
-pub const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(60);
+/// its first instruction: 77 s has been seen with the scanner backlogged. A
+/// test's run budget bounds the program; this is added to it.
+pub const LAUNCH_ALLOWANCE: Duration = Duration::from_secs(180);
 
 /// A child still running when its budget (and the launch allowance) ran out,
 /// killed, with what it had printed.
