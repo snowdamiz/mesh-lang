@@ -2198,6 +2198,17 @@ impl CapacityReconciler {
 
         let observation = self.driver.observe_capacity(cluster_id)?;
         let (safety, unmanaged_ready_workers) = safety_for_observation(&observation)?;
+        // A drain restored from the control log knows its provider node but
+        // not the runtime member it is: that node's safety entry does.
+        for progress in self.draining.values_mut() {
+            if progress.runtime_node_id.is_empty() {
+                if let Some(candidate) = safety.iter().find(|candidate| {
+                    candidate.node_id == progress.node_id && !candidate.runtime_node_id.is_empty()
+                }) {
+                    progress.runtime_node_id = candidate.runtime_node_id.clone();
+                }
+            }
+        }
         let mut active: Vec<_> = observation
             .nodes
             .iter()
@@ -2348,14 +2359,13 @@ impl CapacityReconciler {
             }
         }
 
-        if let Some(node_id) = self.draining.iter().find_map(|(node_id, progress)| {
-            (progress.phase == DrainPhase::Preparing).then_some(node_id.clone())
-        }) {
-            let progress = self
-                .draining
-                .get(&node_id)
-                .cloned()
-                .ok_or_else(|| "capacity_drain_progress_missing".to_string())?;
+        if let Some(progress) = self
+            .draining
+            .values()
+            .find(|progress| progress.phase == DrainPhase::Preparing)
+            .cloned()
+        {
+            let node_id = progress.node_id.clone();
             let operation = DriverOperation {
                 cluster_id: cluster_id.to_string(),
                 operation_id: progress.drain_operation_id,
@@ -2375,22 +2385,15 @@ impl CapacityReconciler {
                 ControlMutation::DriverOperation(result.clone()),
             )?;
             if result.state == DriverOperationState::Succeeded {
-                let runtime_node_id = if progress.runtime_node_id.is_empty() {
-                    safety
-                        .iter()
-                        .find(|candidate| candidate.node_id == node_id)
-                        .map(|candidate| candidate.runtime_node_id.clone())
-                        .filter(|runtime| !runtime.is_empty())
-                        .ok_or_else(|| format!("capacity_drain_runtime_missing:{node_id}"))?
-                } else {
-                    progress.runtime_node_id.clone()
-                };
+                let runtime_node_id = progress.runtime_node_id;
+                if runtime_node_id.is_empty() {
+                    return Err(format!("capacity_drain_runtime_missing:{node_id}"));
+                }
                 crate::dist::operator::prepare_committed_drain(&runtime_node_id);
                 match self.prepare_continuity_for_drain(&runtime_node_id) {
                     Ok(_) => {
                         if let Some(progress) = self.draining.get_mut(&node_id) {
                             progress.phase = DrainPhase::Draining;
-                            progress.runtime_node_id = runtime_node_id;
                         }
                     }
                     Err(reason) => outcome.constraints.push(format!(
@@ -2407,21 +2410,21 @@ impl CapacityReconciler {
             return Ok(outcome);
         }
 
-        if let Some(node_id) = self.draining.iter().find_map(|(node_id, progress)| {
-            (progress.phase == DrainPhase::Terminating
-                && active.iter().any(|node| &node.node_id == node_id))
-            .then_some(node_id.clone())
-        }) {
-            let progress = self
-                .draining
-                .get(&node_id)
-                .cloned()
-                .ok_or_else(|| "capacity_termination_progress_missing".to_string())?;
+        if let Some(progress) = self
+            .draining
+            .values()
+            .find(|progress| {
+                progress.phase == DrainPhase::Terminating
+                    && active.iter().any(|node| node.node_id == progress.node_id)
+            })
+            .cloned()
+        {
+            let node_id = progress.node_id.clone();
             let operation = DriverOperation {
                 cluster_id: cluster_id.to_string(),
                 operation_id: progress
                     .terminate_operation_id
-                    .ok_or_else(|| "capacity_terminate_operation_id_missing".to_string())?,
+                    .expect("a terminating drain records its terminate operation"),
                 control_term: progress.control_term,
                 desired_revision: progress.desired_revision,
                 template_revision: progress.template_revision,
@@ -3701,6 +3704,103 @@ mod tests {
             CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
         recovered.restore_from_control_entries(&log.entries());
         assert!(recovered.drain_progress().is_empty());
+    }
+
+    /// A drain restored from the log after a leader change has no runtime
+    /// identity; forcing it past its deadline refused with
+    /// forced_drain_runtime_identity_missing on every tick.
+    #[test]
+    fn a_restored_drain_can_be_forced_after_its_deadline() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log =
+            Arc::new(DurableControlLog::open(&directory.path().join("control.log")).expect("log"));
+        let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log.clone()).expect("quorum");
+        let term = quorum.elect("a", &voters).expect("leader");
+        let driver = Arc::new(FakeCapacityDriver::new());
+        let desired_two = DesiredCapacity {
+            revision: DesiredRevision(1),
+            worker_nodes: 2,
+            gateway_nodes: 0,
+            template_revision: "v1".to_string(),
+        };
+        reconcile_scale_up(&*driver, "cluster", term, &desired_two, 0).expect("seed workers");
+        let nodes = driver.observe_capacity("cluster").expect("nodes").nodes;
+        let draining_node = nodes[0].node_id.clone();
+        let commit = |reason: &str, mutation| {
+            quorum
+                .commit("a", term, &voters, "autoscaler", reason, mutation)
+                .expect("commit")
+        };
+        commit(
+            "begin worker drain",
+            ControlMutation::DrainIntent {
+                node_id: draining_node.clone(),
+                cancelled: false,
+            },
+        );
+        let mut drain = driver_operation("restored-drain", Some(&draining_node));
+        drain.state = DriverOperationState::Succeeded;
+        commit(
+            "record begin drain result",
+            ControlMutation::DriverOperation(drain),
+        );
+        let committed = quorum
+            .commit_desired_capacity(
+                "a",
+                term,
+                &voters,
+                "autoscaler",
+                "sustained idle",
+                DesiredCapacity {
+                    revision: DesiredRevision(2),
+                    worker_nodes: 1,
+                    gateway_nodes: 0,
+                    template_revision: "v1".to_string(),
+                },
+            )
+            .expect("lower desired capacity");
+        let mut reconciler =
+            CapacityReconciler::new_runtime(driver.clone(), 1, Duration::from_millis(1), true)
+                .expect("reconciler");
+        reconciler.restore_from_control_entries(&log.entries());
+        assert_eq!(reconciler.drain_progress()[0].phase, DrainPhase::Draining);
+        assert_eq!(reconciler.drain_progress()[0].runtime_node_id, "");
+        std::thread::sleep(Duration::from_millis(5));
+        let safety: Vec<_> = nodes
+            .iter()
+            .map(|node| ReconcileNodeSafety {
+                node_id: node.node_id.clone(),
+                runtime_node_id: format!("runtime-{}@host:4370", node.node_id),
+                transferable_load: 1,
+                active_ownership_transfers: 0,
+                active_work: 1,
+                required_replica_responsibilities: 0,
+                only_active_copy: false,
+                membership_generation_acknowledged: true,
+                controller_voter: false,
+                unique_capability: false,
+            })
+            .collect();
+
+        let forced = reconciler
+            .reconcile(
+                &quorum,
+                "cluster",
+                "a",
+                &voters,
+                &committed,
+                "autoscaler",
+                &safety,
+            )
+            .expect("forced termination");
+
+        assert_eq!(forced.drains[0].phase, DrainPhase::Terminating);
+        assert!(forced.drains[0].forced_termination);
+        assert_eq!(
+            forced.drains[0].runtime_node_id,
+            format!("runtime-{draining_node}@host:4370")
+        );
     }
 
     #[test]
