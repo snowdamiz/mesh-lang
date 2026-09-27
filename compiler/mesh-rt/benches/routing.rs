@@ -71,7 +71,7 @@ fn candidates(size: usize) -> Vec<NodeLoadReport> {
 fn time(candidates: &[NodeLoadReport], iterations: usize) -> Duration {
     let start = Instant::now();
     for _ in 0..iterations {
-        black_box(select_record_replicas("worker-0000", 3, black_box(candidates)).unwrap());
+        black_box(select_record_replicas("worker-0000", 2, black_box(candidates)).unwrap());
     }
     start.elapsed()
 }
@@ -86,14 +86,14 @@ fn main() {
             ["worker-0001", "worker-0009"]
         };
         assert_eq!(
-            select_record_replicas("worker-0000", 3, &candidates).unwrap(),
+            select_record_replicas("worker-0000", 2, &candidates).unwrap(),
             expected
         );
 
         // Count separately from timing, after one call initializes shared state.
         let before = ALLOCATIONS.load(Ordering::Relaxed);
         COUNT_ALLOCATIONS.store(true, Ordering::Relaxed);
-        let result = select_record_replicas("worker-0000", 3, &candidates).unwrap();
+        let result = select_record_replicas("worker-0000", 2, &candidates).unwrap();
         COUNT_ALLOCATIONS.store(false, Ordering::Relaxed);
         let allocations = ALLOCATIONS.load(Ordering::Relaxed) - before;
         assert_eq!(result, expected);

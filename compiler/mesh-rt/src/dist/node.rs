@@ -3726,7 +3726,7 @@ pub(crate) fn select_continuity_replica_set(
             )
         })
         .collect();
-    crate::dist::routing::select_record_replicas(owner_node, required + 1, &reports)
+    crate::dist::routing::select_record_replicas(owner_node, required, &reports)
 }
 
 fn prepare_one_continuity_replica(
