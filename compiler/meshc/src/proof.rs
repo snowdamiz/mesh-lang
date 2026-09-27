@@ -161,12 +161,7 @@ fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
         return Err("autonomous_chaos_rounds_must_be_1_to_100".to_string());
     }
     let root = repository_root()?;
-    let evidence = args.evidence_dir.unwrap_or_else(|| {
-        root.join("target")
-            .join("proof")
-            .join("autonomous-chaos")
-            .join(unix_millis().to_string())
-    });
+    let evidence = evidence_directory(&root, "autonomous-chaos", unix_millis(), args.evidence_dir);
     fs::create_dir_all(&evidence)
         .map_err(|error| format!("autonomous_chaos_evidence_directory_failed:{error}"))?;
     let filters = [
@@ -720,12 +715,7 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
     let root = repository_root()?;
     let timestamp = unix_millis();
     let project = format!("mesh-proof-{}-{timestamp}", std::process::id());
-    let evidence = evidence_dir.unwrap_or_else(|| {
-        root.join("target")
-            .join("proof")
-            .join("docker-autoscaling")
-            .join(timestamp.to_string())
-    });
+    let evidence = evidence_directory(&root, "docker-autoscaling", timestamp, evidence_dir);
     let connection_file = start_only
         .then(|| connection_file.unwrap_or_else(|| evidence.join("connection.json")))
         .map(absolute_path)
@@ -2612,6 +2602,22 @@ fn wait_for_http(port: u16, path: &str, timeout: Duration) -> Result<(), String>
         thread::park_timeout(Duration::from_millis(250));
     }
     Err(format!("proof_http_readiness_timeout:{port}:{last}"))
+}
+
+/// Where a proof writes its evidence: the directory asked for, else one
+/// named for `timestamp` under the repository's `target/proof/<kind>`.
+fn evidence_directory(
+    root: &Path,
+    kind: &str,
+    timestamp: u64,
+    requested: Option<PathBuf>,
+) -> PathBuf {
+    requested.unwrap_or_else(|| {
+        root.join("target")
+            .join("proof")
+            .join(kind)
+            .join(timestamp.to_string())
+    })
 }
 
 fn repository_root() -> Result<PathBuf, String> {
