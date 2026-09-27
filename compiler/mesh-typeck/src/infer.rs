@@ -4979,10 +4979,12 @@ pub fn register_variant_constructors(
 /// A grouped item: either a single item or a multi-clause function group.
 /// The order to check the module's top-level children in (indices into
 /// `children`): source order, except that a function, top-level `let`,
-/// actor or service comes after the ones of these it names further down.
-/// Their types are then known where it uses them: a generic function
-/// called before its definition stays generic, and `spawn(worker)` above
-/// `actor worker` finds it. Items in a cycle (mutual recursion) keep
+/// actor, service or impl comes after the ones of these it names further
+/// down, an impl being named by its methods. Their types are then known
+/// where it uses them: a generic function called before its definition
+/// stays generic, `spawn(worker)` above `actor worker` finds it, and a
+/// method whose return type its body settles (`fn count(self) do ... end`)
+/// is found above its impl. Items in a cycle (mutual recursion) keep
 /// their source order, and the earlier ones see the later ones through
 /// their pre-registered placeholders.
 fn dependency_order(
@@ -5000,19 +5002,23 @@ fn dependency_order(
             first_child.entry(group).or_insert(child);
         }
     }
-    let defined_name = |group: &GroupedItem| -> Option<String> {
-        match group {
-            GroupedItem::MultiClause { clauses } => clauses.first()?.name()?.text(),
-            GroupedItem::Single(Item::FnDef(def)) => def.name()?.text(),
-            GroupedItem::Single(Item::LetBinding(def)) => def.name()?.text(),
-            GroupedItem::Single(Item::ActorDef(def)) => def.name()?.text(),
-            GroupedItem::Single(Item::ServiceDef(def)) => def.name()?.text(),
+    let defined_names = |group: &GroupedItem| -> Vec<String> {
+        let name = match group {
+            GroupedItem::MultiClause { clauses } => clauses.first().and_then(|c| c.name()?.text()),
+            GroupedItem::Single(Item::FnDef(def)) => def.name().and_then(|n| n.text()),
+            GroupedItem::Single(Item::LetBinding(def)) => def.name().and_then(|n| n.text()),
+            GroupedItem::Single(Item::ActorDef(def)) => def.name().and_then(|n| n.text()),
+            GroupedItem::Single(Item::ServiceDef(def)) => def.name().and_then(|n| n.text()),
+            GroupedItem::Single(Item::ImplDef(def)) => {
+                return def.methods().filter_map(|m| m.name()?.text()).collect();
+            }
             _ => None,
-        }
+        };
+        name.into_iter().collect()
     };
     let mut by_name: FxHashMap<String, Vec<usize>> = FxHashMap::default();
     for (group, item) in grouped.iter().enumerate() {
-        if let Some(name) = defined_name(item) {
+        for name in defined_names(item) {
             by_name.entry(name).or_default().push(group);
         }
     }
@@ -5025,10 +5031,17 @@ fn dependency_order(
         };
         let mut used = Vec::new();
         for node in nodes {
-            for name_ref in node.descendants().filter_map(NameRef::cast) {
-                let Some(text) = name_ref.text() else {
-                    continue;
-                };
+            // Names, and the methods named after a `.` (`e.count()`).
+            let names = node
+                .descendants()
+                .filter_map(NameRef::cast)
+                .filter_map(|name_ref| name_ref.text())
+                .chain(
+                    node.descendants()
+                        .filter_map(FieldAccess::cast)
+                        .filter_map(|fa| Some(fa.field()?.text().to_string())),
+                );
+            for text in names {
                 for &other in by_name.get(&text).into_iter().flatten() {
                     if other != group && !used.contains(&other) {
                         used.push(other);
@@ -5062,7 +5075,7 @@ fn dependency_order(
     for child in 0..children.len() {
         match group_of(child) {
             // Only orderable items are checked ahead of their place.
-            Some(group) if defined_name(&grouped[group]).is_some() => {
+            Some(group) if !defined_names(&grouped[group]).is_empty() => {
                 visit(group, &first_child, &uses, &mut seen, &mut order)
             }
             Some(group) => {

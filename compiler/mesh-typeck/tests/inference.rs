@@ -467,3 +467,21 @@ fn a_for_over_a_set_binds_its_element_type() {
     );
     assert_result_type(&result, Ty::fun(vec![], Ty::list(Ty::int())));
 }
+
+/// A method whose return type its body settles is found by a call above
+/// its impl, as a function is above its definition: the impl was checked
+/// in its place, after the call, and the call was "no method".
+#[test]
+fn a_method_is_found_above_its_impl() {
+    let result = check_source(
+        "fn main() do\n  let b = Box { items: [1] }\n  b.count() + b.twice() + List.length(b.listed())\nend\n\n\
+         interface Counter do\n  fn count(self) -> Int\nend\n\n\
+         interface Twice do\n  fn twice(self)\nend\n\n\
+         interface Lister do\n  fn listed(self) -> List\nend\n\n\
+         struct Box do\n  items :: List<Int>\nend\n\n\
+         impl Counter for Box do\n  fn count(self) do\n    List.length(self.items)\n  end\nend\n\n\
+         impl Twice for Box do\n  fn twice(self) do\n    List.length(self.items) * 2\n  end\nend\n\n\
+         impl Lister for Box do\n  fn listed(self) -> List do\n    self.items\n  end\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
