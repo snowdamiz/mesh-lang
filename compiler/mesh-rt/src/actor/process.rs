@@ -476,6 +476,34 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "local_id exceeds 40 bits")]
+    fn a_remote_pid_takes_a_40_bit_local_id() {
+        ProcessId::from_remote(1, 0, 1 << 40);
+    }
+
+    /// Once its worker has begun to finalize it, a process's exit is decided:
+    /// neither a later exit nor a second finalization changes it.
+    #[test]
+    fn a_process_being_finalized_keeps_its_exit() {
+        let mut process = Process::new(ProcessId::next(), Priority::Normal);
+        let reason = process.begin_exit_finalization(ExitReason::Normal);
+        assert_eq!(reason, Some(ExitReason::Normal));
+        assert!(!process.mark_exited(ExitReason::Killed));
+        assert_eq!(process.begin_exit_finalization(ExitReason::Killed), None);
+        assert_eq!(process.state, ProcessState::Exited(ExitReason::Normal));
+    }
+
+    #[test]
+    fn a_heap_borrow_shows_what_it_is() {
+        let borrow = HeapBorrow {
+            owner: None,
+            _lent: Arc::new(()),
+        };
+        assert_eq!(format!("{borrow:?}"), "HeapBorrow");
+    }
+
+    #[test]
     fn test_pid_unique() {
         let pids: Vec<ProcessId> = (0..100).map(|_| ProcessId::next()).collect();
         // All PIDs should be distinct.

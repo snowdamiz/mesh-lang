@@ -117,10 +117,24 @@ const DEFAULT_GC_THRESHOLD: usize = 256 * 1024;
 /// collector cannot see then fails at once instead of once in a while.
 fn min_gc_threshold() -> usize {
     static STRESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *STRESS.get_or_init(|| std::env::var_os("MESH_GC_STRESS").is_some()) {
+    threshold_floor(*STRESS.get_or_init(|| std::env::var_os("MESH_GC_STRESS").is_some()))
+}
+
+fn threshold_floor(stress: bool) -> usize {
+    if stress {
         0
     } else {
         DEFAULT_GC_THRESHOLD
+    }
+}
+
+/// The threshold a heap holding `live` bytes collects at next: twice what
+/// survived, but never below `floor`, and always 0 under stress (floor 0).
+fn next_threshold(floor: usize, live: usize) -> usize {
+    if floor == 0 {
+        0
+    } else {
+        floor.max(live.saturating_mul(2))
     }
 }
 
@@ -660,12 +674,9 @@ impl ActorHeap {
         // Worklist lives on the system heap (Rust Vec -> malloc).
         let mut worklist: Vec<*mut GcHeader> = Vec::new();
 
-        // Ensure stack_top <= stack_bottom (stack_top is lower address).
-        let (lo, hi) = if (stack_top as usize) <= (stack_bottom as usize) {
-            (stack_top as usize, stack_bottom as usize)
-        } else {
-            (stack_bottom as usize, stack_top as usize)
-        };
+        // The stack grows down on every target: its top is the lower address.
+        let (lo, hi) = (stack_top as usize, stack_bottom as usize);
+        assert!(lo <= hi, "a stack's top is below its bottom");
 
         // Phase 1: Conservative stack scanning.
         // Walk every 8-byte-aligned word in the stack range.
@@ -801,30 +812,13 @@ impl ActorHeap {
 
         self.all_objects = if first { ptr::null_mut() } else { new_head };
         self.total_allocated = live_bytes;
-        self.gc_threshold = match min_gc_threshold() {
-            0 => 0,
-            floor => floor.max(live_bytes.saturating_mul(2)),
-        };
+        self.gc_threshold = next_threshold(min_gc_threshold(), live_bytes);
     }
 }
 
 impl Default for ActorHeap {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl std::fmt::Debug for ActorHeap {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ActorHeap")
-            .field("pages", &self.pages.len())
-            .field("offset", &self.offset)
-            .field("total_allocated", &self.total_allocated)
-            .field("all_objects", &(!self.all_objects.is_null()))
-            .field("free_list", &(!self.free_list_head().is_null()))
-            .field("gc_threshold", &self.gc_threshold)
-            .field("gc_in_progress", &self.gc_in_progress)
-            .finish()
     }
 }
 
@@ -905,6 +899,18 @@ impl MessageBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Under MESH_GC_STRESS a heap's threshold is 0 and stays 0; otherwise
+    /// it is twice what survived a collection, but not below the default.
+    #[test]
+    fn gc_thresholds_under_stress_and_not() {
+        assert_eq!(threshold_floor(true), 0);
+        assert_eq!(next_threshold(threshold_floor(true), 1 << 20), 0);
+        let floor = threshold_floor(false);
+        assert_eq!(next_threshold(floor, 10), floor);
+        assert_eq!(next_threshold(floor, floor), 2 * floor);
+        assert_eq!(ActorHeap::default().gc_threshold(), min_gc_threshold());
+    }
 
     #[test]
     fn test_gc_header_layout() {

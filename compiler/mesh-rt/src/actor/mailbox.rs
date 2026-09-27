@@ -188,10 +188,6 @@ impl Mailbox {
         self.state.lock().bytes
     }
 
-    pub fn rejected(&self) -> u64 {
-        self.state.lock().rejected
-    }
-
     /// Selectively remove the first message matching a predicate.
     ///
     /// Scans the mailbox from front to back and removes the first message
@@ -240,17 +236,6 @@ impl Default for Mailbox {
     }
 }
 
-impl std::fmt::Debug for Mailbox {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let state = self.state.lock();
-        f.debug_struct("Mailbox")
-            .field("len", &state.queue.len())
-            .field("bytes", &state.bytes)
-            .field("rejected", &state.rejected)
-            .finish()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -259,6 +244,31 @@ impl std::fmt::Debug for Mailbox {
 mod tests {
     use super::*;
     use crate::actor::heap::MessageBuffer;
+
+    /// A counter takes what fits under its maximum, and nothing that would
+    /// overflow; a global reservation that fails on bytes gives back its item.
+    #[test]
+    fn reservations_refuse_what_does_not_fit() {
+        let counter = AtomicUsize::new(5);
+        assert!(
+            !reserve_counter(&counter, usize::MAX, usize::MAX),
+            "overflow"
+        );
+        assert!(!reserve_counter(&counter, 6, 10), "past the maximum");
+        assert!(reserve_counter(&counter, 5, 10));
+        assert_eq!(counter.load(Ordering::Acquire), 10);
+
+        assert!(!reserve_global(1, usize::MAX, 0));
+    }
+
+    /// A mailbox with room refuses a message the global bound has none for.
+    #[test]
+    fn a_full_runtime_refuses_a_message_a_mailbox_has_room_for() {
+        let mailbox = Mailbox::default();
+        let pushed = mailbox.try_push_with_global_limits(make_msg(&[1], 1), 0, 0, false);
+        assert_eq!(pushed, Err(MailboxPushError::Full));
+        assert!(mailbox.is_empty());
+    }
 
     fn make_msg(data: &[u8], tag: u64) -> Message {
         Message {

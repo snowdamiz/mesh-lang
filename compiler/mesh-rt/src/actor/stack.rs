@@ -224,14 +224,6 @@ impl CoroutineHandle {
     }
 }
 
-impl std::fmt::Debug for CoroutineHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CoroutineHandle")
-            .field("done", &self.done())
-            .finish()
-    }
-}
-
 /// The highest address of the calling thread's stack, where a conservative
 /// scan of it has to stop, or null where the platform offers no way to ask
 /// (the thread then never collects, as the main thread used not to).
@@ -284,6 +276,20 @@ pub(crate) fn current_thread_stack_base() -> *const u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A panic that carries neither a String nor a &str is still an exit
+    /// reason.
+    #[test]
+    fn a_panic_of_any_other_payload_is_an_actor_panic() {
+        extern "C-unwind" fn panics(_args: *const u8) {
+            std::panic::panic_any(42);
+        }
+        let mut handle = CoroutineHandle::new(panics as *const u8, std::ptr::null());
+        assert_eq!(
+            handle.resume_catching_panic(),
+            Err("actor panicked".to_string())
+        );
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]

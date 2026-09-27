@@ -91,12 +91,12 @@ impl ProcessRegistry {
         let mut names = self.names.write();
         if let Some(pid) = names.remove(name) {
             // Remove from reverse index.
+            // The reverse index holds every registered name.
             let mut pid_names = self.pid_names.write();
-            if let Some(name_list) = pid_names.get_mut(&pid) {
-                name_list.retain(|n| n != name);
-                if name_list.is_empty() {
-                    pid_names.remove(&pid);
-                }
+            let name_list = pid_names.entry(pid).or_default();
+            name_list.retain(|n| n != name);
+            if name_list.is_empty() {
+                pid_names.remove(&pid);
             }
             true
         } else {
@@ -150,6 +150,19 @@ pub fn global_registry() -> &'static ProcessRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_taken_name_says_who_holds_it() {
+        let registry = ProcessRegistry::default();
+        registry.register("svc".to_string(), ProcessId(7)).unwrap();
+        let taken = registry
+            .register("svc".to_string(), ProcessId(8))
+            .unwrap_err();
+        assert_eq!(
+            taken.to_string(),
+            format!("name 'svc' already registered to {}", ProcessId(7))
+        );
+    }
 
     /// Create a fresh registry for testing (avoids global state interference).
     fn fresh_registry() -> ProcessRegistry {
