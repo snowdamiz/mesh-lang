@@ -133,11 +133,13 @@ add:ok
 add_again:ok
 add_plain:ok
 add_untyped:failed
+add_sql:ok
+add_sql_again:ok
 rename:ok
 rename_missing:failed
 drop_column:ok
 drop_column_again:ok
-columns:id,name,age,email
+columns:id,name,age,email,score
 index:ok
 index_unique:ok
 index_named:ok

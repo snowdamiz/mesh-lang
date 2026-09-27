@@ -27,6 +27,19 @@ use crate::string::{mesh_str, MeshString};
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 
+/// A column definition as SQL: `name:TYPE` or `name:TYPE:CONSTRAINTS`
+/// with the name quoted and the rest verbatim; an entry without a colon is
+/// SQL already (a table constraint, or a column written out).
+fn column_def_sql(def: &str) -> String {
+    match def.splitn(3, ':').collect::<Vec<_>>()[..] {
+        [name, sql_type, constraints] => {
+            format!("{} {sql_type} {constraints}", quote_ident(name))
+        }
+        [name, sql_type] => format!("{} {sql_type}", quote_ident(name)),
+        _ => def.to_string(),
+    }
+}
+
 /// Build CREATE TABLE SQL from table name and column definitions.
 ///
 /// Each column entry is colon-separated: `"name:TYPE:CONSTRAINTS"` (3 parts)
@@ -36,22 +49,12 @@ use crate::string::{mesh_str, MeshString};
 /// Example: `["id:UUID:PRIMARY KEY", "name:TEXT:NOT NULL", "age:BIGINT"]`
 /// produces: `CREATE TABLE IF NOT EXISTS "t" ("id" UUID PRIMARY KEY, "name" TEXT NOT NULL, "age" BIGINT)`
 pub(crate) fn build_create_table_sql(table: &str, columns: &[String]) -> String {
-    let mut sql = format!("CREATE TABLE IF NOT EXISTS {}", quote_ident(table));
-    sql.push_str(" (");
-    let col_defs: Vec<String> = columns
-        .iter()
-        .map(|c| {
-            let parts: Vec<&str> = c.splitn(3, ':').collect();
-            match parts.len() {
-                3 => format!("{} {} {}", quote_ident(parts[0]), parts[1], parts[2]),
-                2 => format!("{} {}", quote_ident(parts[0]), parts[1]),
-                _ => c.to_string(),
-            }
-        })
-        .collect();
-    sql.push_str(&col_defs.join(", "));
-    sql.push(')');
-    sql
+    let col_defs: Vec<String> = columns.iter().map(|c| column_def_sql(c)).collect();
+    format!(
+        "CREATE TABLE IF NOT EXISTS {} ({})",
+        quote_ident(table),
+        col_defs.join(", ")
+    )
 }
 
 /// Build DROP TABLE SQL.
@@ -63,27 +66,11 @@ pub(crate) fn build_drop_table_sql(table: &str) -> String {
 ///
 /// Column definition uses same colon encoding as create_table.
 pub(crate) fn build_add_column_sql(table: &str, column_def: &str) -> String {
-    let parts: Vec<&str> = column_def.splitn(3, ':').collect();
-    match parts.len() {
-        3 => format!(
-            "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {} {}",
-            quote_ident(table),
-            quote_ident(parts[0]),
-            parts[1],
-            parts[2]
-        ),
-        2 => format!(
-            "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {}",
-            quote_ident(table),
-            quote_ident(parts[0]),
-            parts[1]
-        ),
-        _ => format!(
-            "ALTER TABLE {} ADD COLUMN {}",
-            quote_ident(table),
-            column_def
-        ),
-    }
+    format!(
+        "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {}",
+        quote_ident(table),
+        column_def_sql(column_def)
+    )
 }
 
 /// Build DROP COLUMN SQL.
@@ -557,6 +544,16 @@ mod tests {
         assert_eq!(
             sql,
             "ALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS \"bio\" TEXT"
+        );
+    }
+
+    /// A definition written as SQL (no colon) is added if absent too, as
+    /// the docs say add_column does: it lost the IF NOT EXISTS.
+    #[test]
+    fn add_column_written_as_sql_is_added_if_absent() {
+        assert_eq!(
+            build_add_column_sql("users", "age INT NOT NULL DEFAULT 0"),
+            "ALTER TABLE \"users\" ADD COLUMN IF NOT EXISTS age INT NOT NULL DEFAULT 0"
         );
     }
 
