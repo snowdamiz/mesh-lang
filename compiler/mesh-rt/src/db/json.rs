@@ -9,59 +9,44 @@
 //! - If the field exists and is a number/bool/null, convert to string
 //! - If the field is missing or JSON is invalid, return empty string ""
 
-use crate::string::{mesh_str, MeshString};
+use crate::string::{mesh_str, text_of};
+use serde_json::Value;
 
 // ── Pure Rust helpers (testable without GC) ─────────────────────────
+
+/// `json_str` parsed, or `None` for text that is not JSON.
+fn parse(json_str: &str) -> Option<Value> {
+    serde_json::from_str(json_str).ok()
+}
 
 /// Extract a top-level field from a JSON string by key.
 /// Returns the field value as a string, or empty string if missing/invalid.
 fn json_get_field(json_str: &str, key: &str) -> String {
-    let val: serde_json::Value = match serde_json::from_str(json_str) {
-        Ok(v) => v,
-        Err(_) => return String::new(),
-    };
-    value_to_string(val.get(key))
+    value_to_string(parse(json_str).as_ref().and_then(|value| value.get(key)))
 }
 
 /// Extract a nested field from a JSON string by two path segments.
 /// Traverses `value[path1][path2]` and returns the leaf as a string.
 /// Returns empty string if any segment is missing or JSON is invalid.
 fn json_get_nested_field(json_str: &str, path1: &str, path2: &str) -> String {
-    let val: serde_json::Value = match serde_json::from_str(json_str) {
-        Ok(v) => v,
-        Err(_) => return String::new(),
-    };
-    let nested = val.get(path1).and_then(|v| v.get(path2));
-    value_to_string(nested)
+    let value = parse(json_str);
+    value_to_string(value.as_ref().and_then(|v| v.get(path1)?.get(path2)))
 }
 
 /// Return whether a top-level field exists and is a JSON string.
 fn json_field_is_string(json_str: &str, key: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(json_str)
-        .ok()
-        .and_then(|value| value.get(key).cloned())
-        .is_some_and(|value| value.is_string())
+    parse(json_str).is_some_and(|value| value.get(key).is_some_and(Value::is_string))
 }
 
 /// Convert an optional serde_json::Value to a string representation.
 /// Matches PostgreSQL `->>` operator behavior:
 /// - String values are returned directly (no quotes)
-/// - Numbers, bools are converted to string representation
+/// - Numbers, bools, arrays and objects as their JSON text
 /// - Null and missing values return empty string
-fn value_to_string(val: Option<&serde_json::Value>) -> String {
+fn value_to_string(val: Option<&Value>) -> String {
     match val {
-        None => String::new(),
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Number(n)) => n.to_string(),
-        Some(serde_json::Value::Bool(b)) => {
-            if *b {
-                "true".to_string()
-            } else {
-                "false".to_string()
-            }
-        }
-        Some(serde_json::Value::Null) => String::new(),
-        // Arrays/objects: return JSON string representation (matches PG ->> on complex types)
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(s)) => s.clone(),
         Some(other) => other.to_string(),
     }
 }
@@ -76,12 +61,7 @@ fn value_to_string(val: Option<&serde_json::Value>) -> String {
 /// Returns empty string on invalid JSON or missing key (matches COALESCE behavior).
 #[no_mangle]
 pub extern "C" fn mesh_json_get(json_ptr: *mut u8, key_ptr: *mut u8) -> *mut u8 {
-    unsafe {
-        let json_str = (*(json_ptr as *const MeshString)).as_str();
-        let key = (*(key_ptr as *const MeshString)).as_str();
-        let result = json_get_field(json_str, key);
-        mesh_str(&result) as *mut u8
-    }
+    unsafe { mesh_str(&json_get_field(text_of(json_ptr), text_of(key_ptr))) as *mut u8 }
 }
 
 /// Extract a nested string field from a JSON string (two levels deep).
@@ -97,22 +77,16 @@ pub extern "C" fn mesh_json_get_nested(
     path2_ptr: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let json_str = (*(json_ptr as *const MeshString)).as_str();
-        let path1 = (*(path1_ptr as *const MeshString)).as_str();
-        let path2 = (*(path2_ptr as *const MeshString)).as_str();
-        let result = json_get_nested_field(json_str, path1, path2);
-        mesh_str(&result) as *mut u8
+        let nested =
+            json_get_nested_field(text_of(json_ptr), text_of(path1_ptr), text_of(path2_ptr));
+        mesh_str(&nested) as *mut u8
     }
 }
 
 /// Return true only when the top-level field exists and is a JSON string.
 #[no_mangle]
 pub extern "C" fn mesh_json_is_string(json_ptr: *mut u8, key_ptr: *mut u8) -> i8 {
-    unsafe {
-        let json_str = (*(json_ptr as *const MeshString)).as_str();
-        let key = (*(key_ptr as *const MeshString)).as_str();
-        json_field_is_string(json_str, key) as i8
-    }
+    unsafe { json_field_is_string(text_of(json_ptr), text_of(key_ptr)) as i8 }
 }
 
 #[cfg(test)]
@@ -224,6 +198,19 @@ mod tests {
 
         let without_field = json_get_field(r#"{}"#, "enabled");
         assert_eq!(without_field, ""); // caller defaults to "true" when empty
+    }
+
+    /// The Mesh functions answer the helpers' results as Mesh values: a
+    /// false, an array as its JSON, a string test as 1.
+    #[test]
+    fn the_mesh_functions_read_and_answer_mesh_strings() {
+        crate::gc::mesh_rt_init();
+        let s = |text: &str| mesh_str(text) as *mut u8;
+        let json = s(r#"{"a":{"b":false},"c":[1],"d":"x"}"#);
+        let nested = mesh_json_get_nested(json, s("a"), s("b"));
+        assert_eq!(unsafe { text_of(nested) }, "false");
+        assert_eq!(unsafe { text_of(mesh_json_get(json, s("c"))) }, "[1]");
+        assert_eq!(mesh_json_is_string(json, s("d")), 1);
     }
 
     #[test]
