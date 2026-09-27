@@ -2320,4 +2320,701 @@ mod tests {
         assert_eq!(store.compact_log_to_replica_safe_point().unwrap(), 2);
         assert!(store.log_entries_after(0, 10).unwrap().is_empty());
     }
+
+    /// Runs `sql` on the store's own connection, to age or damage its data.
+    fn execute(store: &SqliteContinuityStore, sql: &str) {
+        execute_batch(store.connection.lock().unwrap().raw, sql).expect(sql);
+    }
+
+    #[test]
+    fn every_phase_round_trips_through_its_stored_name() {
+        let phases = [
+            StoredContinuityPhase::Reserved,
+            StoredContinuityPhase::Replicating,
+            StoredContinuityPhase::Admitted,
+            StoredContinuityPhase::Started,
+            StoredContinuityPhase::Completed,
+            StoredContinuityPhase::Failed,
+            StoredContinuityPhase::Indeterminate,
+            StoredContinuityPhase::Expired,
+            StoredContinuityPhase::Tombstoned,
+        ];
+        for phase in phases {
+            assert_eq!(StoredContinuityPhase::parse(phase.as_str()), Ok(phase));
+        }
+        assert_eq!(
+            StoredContinuityPhase::parse("paused"),
+            Err("continuity_store_phase_invalid:paused".to_string())
+        );
+    }
+
+    #[test]
+    fn records_are_refused_for_each_broken_invariant() {
+        let base = record("operation", 1, StoredContinuityPhase::Started);
+        let cases: [(fn(&mut StoredContinuityRecord), &str); 6] = [
+            (
+                |record| record.attempts.push(String::new()),
+                "continuity_store_record_identity_invalid",
+            ),
+            (
+                |record| record.version = 0,
+                "continuity_store_record_version_invalid",
+            ),
+            (
+                |record| record.schema_version = SCHEMA_VERSION + 1,
+                "continuity_store_record_version_invalid",
+            ),
+            (
+                |record| record.replica_set.push("replica".to_string()),
+                "continuity_store_replica_set_invalid",
+            ),
+            (
+                |record| record.replica_set.push("owner".to_string()),
+                "continuity_store_replica_set_invalid",
+            ),
+            (
+                |record| record.terminal_at_millis = Some(5),
+                "continuity_store_active_record_terminal_timestamp",
+            ),
+        ];
+        for (change, expected) in cases {
+            let mut broken = base.clone();
+            change(&mut broken);
+            assert_eq!(broken.validate(), Err(expected.to_string()));
+            assert_eq!(store().upsert(&broken), Err(expected.to_string()));
+        }
+    }
+
+    #[test]
+    fn stores_open_only_with_valid_limits_and_paths() {
+        let invalid = ContinuityStoreLimits {
+            compaction_batch_size: 0,
+            ..ContinuityStoreLimits::default()
+        };
+        assert_eq!(
+            SqliteContinuityStore::open(Path::new(":memory:"), invalid).err(),
+            Some("continuity_store_limits_invalid".to_string())
+        );
+        assert_eq!(
+            SqliteContinuityStore::open(Path::new("bad\0path"), ContinuityStoreLimits::default())
+                .err(),
+            Some("continuity_store_path_contains_nul".to_string())
+        );
+        let directory = tempfile::tempdir().expect("tempdir");
+        assert!(
+            SqliteContinuityStore::open(directory.path(), ContinuityStoreLimits::default())
+                .expect_err("a directory is no database")
+                .starts_with("continuity_store_database_error:")
+        );
+        let blocked = directory.path().join("file");
+        std::fs::write(&blocked, "").unwrap();
+        assert!(SqliteContinuityStore::open(
+            &blocked.join("continuity.db"),
+            ContinuityStoreLimits::default()
+        )
+        .expect_err("a path under a file")
+        .starts_with("continuity_store_directory_failed:"));
+    }
+
+    #[test]
+    fn an_older_store_gains_its_later_columns_and_counter() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("continuity.db");
+        {
+            let store = SqliteContinuityStore::open(&path, ContinuityStoreLimits::default())
+                .expect("store");
+            store
+                .upsert(&record("terminal", 1, StoredContinuityPhase::Completed))
+                .expect("terminal record");
+            // Back to the first schema: no request body, runtime record, or
+            // terminal counter.
+            execute(
+                &store,
+                "DROP TRIGGER continuity_terminal_count_insert;
+                 DROP TRIGGER continuity_terminal_count_delete;
+                 DROP TRIGGER continuity_terminal_count_update;
+                 DROP TABLE continuity_store_counters;
+                 ALTER TABLE continuity_records DROP COLUMN request_body;
+                 ALTER TABLE continuity_records DROP COLUMN runtime_record;",
+            );
+        }
+        let store =
+            SqliteContinuityStore::open(&path, ContinuityStoreLimits::default()).expect("reopen");
+        let migrated = store.get("terminal").expect("lookup").expect("record");
+        assert!(migrated.request_body.is_empty() && migrated.runtime_record.is_empty());
+        assert_eq!(store.stats().expect("stats").terminal_records, 1);
+    }
+
+    #[test]
+    fn terminal_record_limit_compacts_before_refusing() {
+        let limits = ContinuityStoreLimits {
+            max_terminal_records: 1,
+            ..ContinuityStoreLimits::default()
+        };
+        let store = SqliteContinuityStore::open(Path::new(":memory:"), limits).expect("store");
+        // Its retention ended long ago: compaction makes room.
+        store
+            .upsert(&record("expired", 1, StoredContinuityPhase::Completed))
+            .expect("first terminal record");
+        store
+            .upsert(&record("second", 1, StoredContinuityPhase::Completed))
+            .expect("room after compaction");
+        assert!(store.get("expired").expect("lookup").is_none());
+
+        execute(
+            &store,
+            "UPDATE continuity_records SET expires_at_millis = 9223372036854775807",
+        );
+        assert_eq!(
+            store.upsert(&record("third", 1, StoredContinuityPhase::Completed)),
+            Err("continuity_store_terminal_record_limit_reached".to_string())
+        );
+    }
+
+    #[test]
+    fn responses_are_stored_on_their_record_only() {
+        let store = store();
+        store
+            .upsert(&record("operation", 1, StoredContinuityPhase::Completed))
+            .expect("record");
+        store
+            .update_response("operation", b"response")
+            .expect("update");
+        let updated = store.get("operation").unwrap().unwrap();
+        assert_eq!(updated.response_body, b"response");
+        assert_eq!(
+            updated.response_metadata,
+            [("replayable".to_string(), "true".to_string())]
+        );
+        assert_eq!(
+            store.update_response("missing", b"response"),
+            Err("continuity_response_record_missing".to_string())
+        );
+    }
+
+    #[test]
+    fn damaged_rows_are_refused_and_reads_roll_back() {
+        let damages = [
+            (
+                "UPDATE continuity_records SET attempts_json = 'x'",
+                "continuity_store_attempts_corrupt",
+            ),
+            (
+                "UPDATE continuity_records SET replica_set_json = 'x'",
+                "continuity_store_replicas_corrupt",
+            ),
+            (
+                "UPDATE continuity_records SET response_metadata_json = 'x'",
+                "continuity_store_response_metadata_corrupt",
+            ),
+            (
+                "UPDATE continuity_records SET phase = 'paused'",
+                "continuity_store_phase_invalid:paused",
+            ),
+            (
+                "UPDATE continuity_records SET schema_version = -1",
+                "continuity_store_schema_version_corrupt",
+            ),
+            (
+                "UPDATE continuity_records SET created_at_millis = -1",
+                "continuity_store_negative_integer",
+            ),
+        ];
+        for (damage, expected) in damages {
+            let store = store();
+            store
+                .upsert(&record("operation", 1, StoredContinuityPhase::Completed))
+                .expect("record");
+            execute(&store, damage);
+            assert_eq!(store.snapshot_chunks(1024), Err(expected.to_string()));
+            // The snapshot's read transaction was rolled back.
+            execute(&store, "BEGIN; COMMIT;");
+        }
+    }
+
+    #[test]
+    fn a_failed_compaction_changes_nothing() {
+        let store = store();
+        store
+            .upsert(&record("terminal", 1, StoredContinuityPhase::Completed))
+            .expect("record");
+        execute(&store, "DROP TABLE continuity_tombstones");
+        assert!(store
+            .compact(30)
+            .unwrap_err()
+            .starts_with("continuity_store_database_error:"));
+        assert!(store.get("terminal").expect("lookup").is_some());
+        // So does a failed log compaction.
+        store.acknowledge_replica_safe_point("replica", 1).unwrap();
+        execute(&store, "DROP TABLE continuity_log");
+        assert!(store
+            .compact_log_to_replica_safe_point()
+            .unwrap_err()
+            .starts_with("continuity_store_database_error:"));
+        execute(&store, "BEGIN; COMMIT;");
+    }
+
+    #[test]
+    fn compaction_extends_tombstones_and_expires_them() {
+        let store = store();
+        store
+            .upsert(&record("operation", 1, StoredContinuityPhase::Completed))
+            .expect("record");
+        store.compact(30).expect("tombstone");
+        // A later version terminates again: its tombstone is extended.
+        execute(&store, "DELETE FROM continuity_tombstones");
+        store
+            .upsert(&record("operation", 2, StoredContinuityPhase::Completed))
+            .expect("newer record");
+        execute(
+            &store,
+            "INSERT INTO continuity_tombstones VALUES ('operation', 1, 0, 40)",
+        );
+        let outcome = store.compact(30).expect("extend tombstone");
+        assert_eq!(outcome.records_tombstoned, 1);
+        let far = ContinuityStoreLimits::default().tombstone_retention_millis + 31;
+        assert_eq!(
+            store.compact(far).expect("expire tombstone"),
+            CompactionOutcome {
+                records_tombstoned: 0,
+                tombstones_deleted: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn the_replication_log_refuses_what_does_not_verify() {
+        let store = store();
+        store
+            .upsert(&record("operation", 1, StoredContinuityPhase::Completed))
+            .expect("record");
+        assert_eq!(store.high_water_mark(), Ok(1));
+        assert_eq!(
+            store.log_entries_after(0, 0),
+            Err("continuity_log_batch_limit_zero".to_string())
+        );
+        let entry = store.log_entries_after(0, 10).unwrap().remove(0);
+        assert!(entry.verify());
+        let target = super::tests::store();
+        target.apply_log_entry(&entry).expect("apply");
+        assert_eq!(target.get("operation").unwrap().unwrap(), entry.record);
+        for tampered in [
+            ContinuityLogEntry {
+                version: 2,
+                ..entry.clone()
+            },
+            ContinuityLogEntry {
+                operation_key: "other".to_string(),
+                ..entry.clone()
+            },
+            ContinuityLogEntry {
+                checksum: [0; 32],
+                ..entry.clone()
+            },
+        ] {
+            assert!(!tampered.verify());
+            assert_eq!(
+                target.apply_log_entry(&tampered),
+                Err("continuity_log_entry_checksum_mismatch".to_string())
+            );
+        }
+        let damages = [
+            (
+                "UPDATE continuity_log SET checksum = X'00'",
+                "continuity_log_checksum_invalid",
+            ),
+            (
+                "UPDATE continuity_log SET checksum = zeroblob(32)",
+                "continuity_log_entry_checksum_mismatch",
+            ),
+            (
+                "UPDATE continuity_log SET record_json = X'00'",
+                "continuity_log_record_decode_failed:",
+            ),
+        ];
+        for (damage, expected) in damages {
+            execute(&store, damage);
+            assert!(
+                store
+                    .log_entries_after(0, 10)
+                    .unwrap_err()
+                    .starts_with(expected),
+                "{expected}"
+            );
+        }
+        assert_eq!(
+            store.acknowledge_replica_safe_point(" ", 1),
+            Err("continuity_replica_safe_point_node_missing".to_string())
+        );
+        assert_eq!(store.compact_log_to_replica_safe_point(), Ok(0));
+    }
+
+    #[test]
+    fn the_replay_cache_ignores_oversized_responses_and_evicts_the_oldest() {
+        let mut cache = ResponseReplayCache::default();
+        // Zeroed and never touched: no memory is committed for it.
+        cache.insert("huge", &vec![0; MAX_REPLAY_BYTES + 1]);
+        assert!(cache.responses.is_empty());
+        cache.insert("first", b"one");
+        cache.insert("first", b"three");
+        assert_eq!(cache.bytes, 5);
+        assert_eq!(cache.insertion_order.len(), 1);
+        for index in 0..MAX_REPLAY_RESPONSES {
+            cache.insert(&format!("response-{index}"), b"x");
+        }
+        assert_eq!(cache.responses.len(), MAX_REPLAY_RESPONSES);
+        assert!(!cache.responses.contains_key("first"));
+        assert_eq!(cache.bytes, MAX_REPLAY_RESPONSES);
+    }
+
+    fn lookup<'a>(table: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            table
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
+        }
+    }
+
+    fn autonomous(
+        durable_continuity: bool,
+        path: Option<&str>,
+    ) -> super::super::autonomous::RuntimeAutonomousConfig {
+        let mut config: super::super::autonomous::RuntimeAutonomousConfig =
+            serde_json::from_value(serde_json::json!({
+                "schema_version": 4,
+                "enabled": true,
+                "policy_revision": 1,
+                "policy": crate::dist::scaling::ScalingPolicy::default(),
+                "gateway_nodes": 0,
+                "template_revision": "v1",
+                "reconcile_interval_millis": 1,
+                "startup_timeout_millis": 1,
+                "drain_timeout_millis": 1,
+                "termination_timeout_millis": 1,
+                "driver": {"kind": "disabled"},
+            }))
+            .expect("config");
+        config.features.durable_continuity = durable_continuity;
+        config.continuity.path = path.map(PathBuf::from);
+        config
+    }
+
+    #[test]
+    fn the_store_path_follows_the_environment_then_the_manifest() {
+        let explicit = [("MESH_CONTINUITY_DB", "/data/explicit.db")];
+        assert_eq!(
+            continuity_database_path(None, &lookup(&explicit), None),
+            Some(PathBuf::from("/data/explicit.db"))
+        );
+        assert_eq!(
+            continuity_database_path(None, &lookup(&[("MESH_CONTINUITY_DB", " ")]), None),
+            None
+        );
+        // Manual mode has no store unless one is named.
+        assert_eq!(continuity_database_path(None, &lookup(&[]), None), None);
+        let without_durability = autonomous(false, None);
+        assert_eq!(
+            continuity_database_path(Some(&without_durability), &lookup(&[]), None),
+            None
+        );
+        let declared = autonomous(true, Some("/data/declared.db"));
+        assert_eq!(
+            continuity_database_path(Some(&declared), &lookup(&[]), None),
+            Some(PathBuf::from("/data/declared.db"))
+        );
+        // Otherwise a node-private default, named for the node's identity.
+        let default = autonomous(true, Some(""));
+        let by_stable_id = continuity_database_path(
+            Some(&default),
+            &lookup(&[
+                ("MESH_STABLE_NODE_ID", "stable"),
+                ("MESH_DATA_DIR", "/var/mesh"),
+            ]),
+            Some("node@host"),
+        )
+        .unwrap();
+        assert!(by_stable_id.starts_with("/var/mesh"));
+        let by_name = continuity_database_path(Some(&default), &lookup(&[]), Some("node@host"));
+        let unnamed = continuity_database_path(Some(&default), &lookup(&[]), None).unwrap();
+        assert!(unnamed.starts_with(".mesh"));
+        assert_ne!(by_name, Some(unnamed.clone()));
+        assert_ne!(by_name, Some(by_stable_id.clone()));
+        assert_eq!(
+            unnamed.file_name().unwrap().len(),
+            "continuity-".len() + 24 + ".db".len()
+        );
+    }
+
+    #[test]
+    fn chunk_size_and_durability_come_from_the_environment_or_config() {
+        let config = super::super::autonomous::RuntimeContinuityConfig::default();
+        assert_eq!(
+            snapshot_chunk_bytes(
+                &lookup(&[("MESH_CONTINUITY_SNAPSHOT_CHUNK_BYTES", "4096")]),
+                &config
+            ),
+            4096
+        );
+        for ignored in ["64", "not-a-number", "999999999"] {
+            assert_eq!(
+                snapshot_chunk_bytes(
+                    &lookup(&[("MESH_CONTINUITY_SNAPSHOT_CHUNK_BYTES", ignored)]),
+                    &config
+                ),
+                1024 * 1024
+            );
+        }
+        assert!(!durability_degraded(&lookup(&[]), &config));
+        assert!(durability_degraded(
+            &lookup(&[("MESH_CONTINUITY_DURABILITY", " Degraded ")]),
+            &config
+        ));
+        let relaxed = super::super::autonomous::RuntimeContinuityConfig {
+            strict_durability: false,
+            ..config
+        };
+        assert!(durability_degraded(&lookup(&[]), &relaxed));
+        assert!(!durability_degraded(
+            &lookup(&[("MESH_CONTINUITY_DURABILITY", "strict")]),
+            &relaxed
+        ));
+    }
+
+    fn runtime_record(
+        key: &str,
+        phase: super::super::continuity::ContinuityPhase,
+    ) -> super::super::continuity::ContinuityRecord {
+        use super::super::continuity::*;
+        ContinuityRecord {
+            request_key: key.to_string(),
+            payload_hash: "hash".to_string(),
+            record_version: 1,
+            request_payload: b"payload".to_vec(),
+            attempt_id: attempt_id_from_token(1),
+            phase,
+            result: if phase == ContinuityPhase::Completed {
+                ContinuityResult::Succeeded
+            } else {
+                ContinuityResult::Pending
+            },
+            ingress_node: "owner-node".to_string(),
+            owner_node: "owner-node".to_string(),
+            replica_nodes: vec!["replica-node".to_string()],
+            acknowledged_replica_nodes: vec!["replica-node".to_string()],
+            replica_node: "replica-node".to_string(),
+            replication_count: 2,
+            replica_status: ReplicaStatus::Mirrored,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            replication_health: ReplicationHealth::Healthy,
+            execution_node: "owner-node".to_string(),
+            routed_remotely: false,
+            fell_back_locally: false,
+            error: String::new(),
+            declared_handler_runtime_name: "Api.handle".to_string(),
+        }
+    }
+
+    #[test]
+    fn non_durable_safety_counts_submitted_records_of_the_node() {
+        use super::super::continuity::ContinuityPhase;
+        let registry = super::super::continuity::ContinuityRegistry::new();
+        registry
+            .merge_remote_record(2, runtime_record("submitted", ContinuityPhase::Submitted))
+            .expect("submitted record");
+        registry
+            .merge_remote_record(3, runtime_record("completed", ContinuityPhase::Completed))
+            .expect("completed record");
+        let both = BTreeSet::from(["owner-node".to_string(), "replica-node".to_string()]);
+        assert_eq!(
+            registry_node_safety(&registry, "owner-node", &both),
+            ContinuityNodeSafety {
+                active_owned_records: 1,
+                required_replica_responsibilities: 0,
+                only_active_copy: false,
+            }
+        );
+        let replica_alone = BTreeSet::from(["replica-node".to_string()]);
+        assert_eq!(
+            registry_node_safety(&registry, "replica-node", &replica_alone),
+            ContinuityNodeSafety {
+                active_owned_records: 0,
+                required_replica_responsibilities: 1,
+                only_active_copy: true,
+            }
+        );
+        assert_eq!(
+            registry_node_safety(&registry, "elsewhere", &both),
+            ContinuityNodeSafety::default()
+        );
+    }
+
+    #[test]
+    fn stores_replay_responses_and_rebuild_runtime_records() {
+        use super::super::continuity::ContinuityPhase;
+        let store = store();
+        let submitted = runtime_record("stored-submitted", ContinuityPhase::Submitted);
+        let stored = store.stored_runtime_record(&submitted).expect("stored");
+        assert_eq!(stored.phase, StoredContinuityPhase::Started);
+        assert_eq!(stored.terminal_at_millis, None);
+        assert!(stored.response_body.is_empty() && stored.response_metadata.is_empty());
+        store.upsert(&stored).expect("upsert");
+        assert_eq!(store.replay_response("stored-submitted"), Ok(None));
+
+        // A response cached before the record was stored is kept with it.
+        let completed = runtime_record("stored-completed", ContinuityPhase::Completed);
+        response_replay_cache()
+            .lock()
+            .unwrap()
+            .insert("stored-completed", b"cached response");
+        let stored = store.stored_runtime_record(&completed).expect("stored");
+        assert_eq!(stored.phase, StoredContinuityPhase::Completed);
+        assert!(stored.terminal_at_millis.is_some() && stored.expires_at_millis.is_some());
+        assert_eq!(stored.response_body, b"cached response");
+        store.upsert(&stored).expect("upsert");
+        response_replay_cache()
+            .lock()
+            .unwrap()
+            .responses
+            .remove("stored-completed");
+        assert_eq!(
+            store.replay_response("stored-completed"),
+            Ok(Some(b"cached response".to_vec()))
+        );
+        assert_eq!(
+            replay_runtime_response("stored-completed"),
+            Ok(Some(b"cached response".to_vec()))
+        );
+        // A later version keeps what the stored record had.
+        let mut rejected = runtime_record("stored-completed", ContinuityPhase::Rejected);
+        rejected.record_version = 2;
+        let restored = store.stored_runtime_record(&rejected).expect("stored");
+        assert_eq!(restored.phase, StoredContinuityPhase::Failed);
+        assert_eq!(restored.response_body, b"cached response");
+
+        let records = store.runtime_records().expect("runtime records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            super::super::continuity::decode_record_payload(&records[1]).unwrap(),
+            submitted
+        );
+    }
+
+    #[test]
+    fn the_group_commit_writer_answers_each_write() {
+        use super::super::continuity::ContinuityPhase;
+        let store = Arc::new(store());
+        let writer = DurableWriter::start(Arc::clone(&store));
+        persist_runtime(
+            &store,
+            &writer,
+            &runtime_record("persisted", ContinuityPhase::Submitted),
+            "runtime",
+        )
+        .expect("persist");
+        assert!(store.get("persisted").unwrap().is_some());
+        let fenced = record("persisted", 1, StoredContinuityPhase::Failed);
+        store.upsert(&fenced).expect("stale version ignored");
+        assert_eq!(
+            writer.persist(
+                StoredContinuityRecord {
+                    version: 0,
+                    ..fenced
+                },
+                "runtime"
+            ),
+            Err("continuity_store_record_version_invalid".to_string())
+        );
+
+        // A writer whose queue takes nothing more, or is gone.
+        let (sender, receiver) = crossbeam_channel::bounded(0);
+        let full = DurableWriter { sender };
+        let entry = || record("queued", 1, StoredContinuityPhase::Started);
+        assert_eq!(
+            full.persist(entry(), "prepare"),
+            Err("continuity_prepare_group_commit_queue_full".to_string())
+        );
+        drop(receiver);
+        assert_eq!(
+            full.persist(entry(), "prepare"),
+            Err("continuity_prepare_group_commit_unavailable".to_string())
+        );
+        // A writer that drops the write unanswered.
+        let (sender, receiver) = crossbeam_channel::bounded::<DurableWrite>(1);
+        let dropping = std::thread::spawn(move || drop(receiver.recv()));
+        assert_eq!(
+            DurableWriter { sender }.persist(entry(), "runtime"),
+            Err("continuity_runtime_group_commit_unavailable".to_string())
+        );
+        dropping.join().unwrap();
+    }
+
+    #[test]
+    fn a_write_the_group_commit_never_answers_times_out() {
+        let (sender, receiver) = crossbeam_channel::bounded::<DurableWrite>(1);
+        let writer = DurableWriter { sender };
+        assert_eq!(
+            writer.persist(
+                record("unanswered", 1, StoredContinuityPhase::Started),
+                "runtime"
+            ),
+            Err("continuity_runtime_group_commit_timeout".to_string())
+        );
+        drop(receiver);
+    }
+
+    #[test]
+    fn configured_stores_open_compact_and_report_failures() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let config = super::super::autonomous::RuntimeContinuityConfig::default();
+        let store =
+            open_configured_store(&directory.path().join("configured.db"), &config).expect("open");
+        store
+            .upsert(&record("terminal", 1, StoredContinuityPhase::Completed))
+            .expect("record");
+        store.acknowledge_replica_safe_point("replica", 1).unwrap();
+        compaction_pass(&store);
+        let stats = store.stats().unwrap();
+        assert_eq!(
+            (stats.records, stats.tombstones, stats.log_entries),
+            (0, 1, 0)
+        );
+        compaction_pass(&store);
+        execute(&store, "DROP TABLE continuity_tombstones");
+        // A failed pass is reported, not fatal.
+        compaction_pass(&store);
+
+        let blocked = directory.path().join("file");
+        std::fs::write(&blocked, "").unwrap();
+        assert!(open_configured_store(&blocked.join("configured.db"), &config).is_none());
+    }
+
+    /// Nothing in this process configures a durable store.
+    #[test]
+    fn without_a_configured_store_the_runtime_keeps_memory_only_state() {
+        use super::super::continuity::ContinuityPhase;
+        assert!(configured_continuity_store().is_none());
+        assert_eq!(
+            continuity_node_safety("", &BTreeSet::new()),
+            Err("continuity_safety_node_missing".to_string())
+        );
+        assert!(continuity_node_safety("unknown-node", &BTreeSet::new()).is_ok());
+        assert_eq!(
+            persist_runtime_response("", b"x"),
+            Err("continuity_response_invalid".to_string())
+        );
+        assert_eq!(persist_runtime_response("memory-only", b"response"), Ok(()));
+        assert_eq!(
+            replay_runtime_response("memory-only"),
+            Ok(Some(b"response".to_vec()))
+        );
+        assert_eq!(replay_runtime_response("never-stored"), Ok(None));
+        assert_eq!(load_runtime_records(), Ok(Vec::new()));
+        let record = runtime_record("memory-only", ContinuityPhase::Submitted);
+        assert_eq!(persist_replica_prepare(&record), Ok(()));
+        persist_runtime_record(1, &record);
+        assert!(runtime_snapshot_chunk_bytes() >= 128);
+        let _ = degraded_durability_enabled();
+    }
 }
