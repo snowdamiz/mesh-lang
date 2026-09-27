@@ -87,6 +87,9 @@ fn database_url() -> String {
 #[test]
 #[ignore = "requires MESH_TEST_DATABASE_URL or the documented local mesh_test PostgreSQL"]
 fn migrations_apply_report_and_roll_back() {
+    let _tracking = TRACKING_TABLE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     ensure_mesh_rt_staticlib();
     let url = database_url();
     let mut conn = native_pg_connect(&url).expect("the test database accepts connections");
@@ -229,4 +232,75 @@ fn migrations_apply_report_and_roll_back() {
             command_output_text(&output)
         );
     }
+}
+
+/// The tests that use the one tracking table, one at a time.
+static TRACKING_TABLE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Runs `statements` against the test database.
+fn execute(url: &str, statements: &[&str]) {
+    let mut conn = native_pg_connect(url).expect("the test database accepts connections");
+    for sql in statements {
+        native_pg_execute(&mut conn, sql, &[]).unwrap_or_else(|error| panic!("{sql}: {error}"));
+    }
+    native_pg_close(conn);
+}
+
+/// A tracking table that is not `meshc migrate`'s, or one a migration
+/// drops, stops the run naming what could not be read or recorded.
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL or the documented local mesh_test PostgreSQL"]
+fn a_broken_tracking_table_stops_the_run() {
+    let _tracking = TRACKING_TABLE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    ensure_mesh_rt_staticlib();
+    let url = database_url();
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    write_migration(
+        project,
+        "29990201000001_drops_tracking.mpl",
+        "Pool.execute(pool, \"DROP TABLE _mesh_migrations\", [])",
+        "Pool.execute(pool, \"DROP TABLE _mesh_migrations\", [])",
+    );
+    let run = |action: &str| {
+        let output = migrate(project, &[action], Some(&url));
+        (output.status.success(), command_output_text(&output))
+    };
+
+    // Another table by that name, with no versions to read.
+    execute(
+        &url,
+        &[
+            "DROP TABLE IF EXISTS _mesh_migrations",
+            "CREATE TABLE _mesh_migrations (id BIGINT)",
+        ],
+    );
+    let (ok, text) = run("status");
+    assert!(!ok && text.contains("version"), "{text}");
+
+    // The migration runs, and then there is nowhere to record it.
+    execute(&url, &["DROP TABLE _mesh_migrations"]);
+    let (ok, text) = run("up");
+    assert!(
+        !ok && text.contains("Failed to record migration 29990201000001_drops_tracking"),
+        "{text}"
+    );
+
+    // Rolled back, with nothing left to remove its row from.
+    execute(
+        &url,
+        &[
+            "CREATE TABLE _mesh_migrations (version BIGINT PRIMARY KEY, name TEXT NOT NULL, \
+             applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+            "INSERT INTO _mesh_migrations (version, name) VALUES (29990201000001, 'drops_tracking')",
+        ],
+    );
+    let (ok, text) = run("down");
+    assert!(
+        !ok && text.contains("Failed to remove tracking row for version 29990201000001"),
+        "{text}"
+    );
+    execute(&url, &["DROP TABLE IF EXISTS _mesh_migrations"]);
 }
