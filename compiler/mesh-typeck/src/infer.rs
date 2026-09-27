@@ -9030,7 +9030,11 @@ fn monitor_type(
 
 /// Infer the type of a name reference (variable lookup).
 fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Result<Ty, TypeError> {
-    let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
+    // A name the parser could not read was reported with it, and is no
+    // variable to look up.
+    let Some(name) = name_ref.text() else {
+        return Ok(ctx.fresh_var());
+    };
     // `monitor` imported from `Process` or `Node` is typed as
     // `Process.monitor` or `Node.monitor` is.
     let monitor_module = match ctx.stdlib_imports.get(&name).map(String::as_str) {

@@ -3184,6 +3184,16 @@ fn a_case_over_a_type_without_variants_needs_no_arm() {
     );
 }
 
+/// A name the parser could not read (a positional argument after keyword
+/// arguments) is its parse error alone, not also "undefined variable
+/// `<unknown>`".
+#[test]
+fn a_name_the_parser_could_not_read_is_not_undefined() {
+    let source = "fn f(m) do\n  m\nend\n\nfn main() do\n  f(a: 1, 2)\nend\n";
+    assert!(!mesh_parser::parse(source).errors().is_empty());
+    assert_eq!(errors(source), Vec::<String>::new());
+}
+
 /// Each call in a chain of method calls infers its receiver once: every
 /// call inferred it three times, and a chain of twelve calls took seconds.
 #[test]
