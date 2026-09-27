@@ -112,6 +112,14 @@ fn main() do
     end
     Err(error) -> println("error:" <> error)
   end
+  case WsClient.reconnect_delay(2, 100, 1_000, 0) do
+    Ok(delay) -> println("delay:#{{delay}}")
+    Err(error) -> println(error)
+  end
+  case WsClient.reconnect_delay(63, 100, 1_000, 0) do
+    Ok(delay) -> println("delay:#{{delay}}")
+    Err(_) -> println("refused")
+  end
 end
 "##
         ),
@@ -135,7 +143,7 @@ end
     );
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "ready\n010203\ndone\n"
+        "ready\n010203\ndone\ndelay:400\nrefused\n"
     );
     server.join().unwrap();
 }

@@ -162,12 +162,14 @@ fn next_handle() -> u64 {
 }
 
 fn error(message: impl AsRef<str>) -> *mut MeshResult {
-    let message = message.as_ref();
-    err_result(message)
+    err_result(message.as_ref())
 }
 
-fn ok_unit() -> *mut MeshResult {
-    alloc_result(0, std::ptr::null_mut())
+fn unit_result(result: Result<(), String>) -> *mut MeshResult {
+    match result {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()),
+        Err(reason) => error(reason),
+    }
 }
 
 fn mesh_message(event: ClientEvent) -> *mut MeshResult {
@@ -190,9 +192,6 @@ fn mesh_message(event: ClientEvent) -> *mut MeshResult {
 }
 
 fn update_options(handle: i64, update: impl FnOnce(&mut WsClientOptions)) -> i64 {
-    if handle <= 0 {
-        return handle;
-    }
     if let Some(value) = options().lock().get_mut(&(handle as u64)) {
         update(value);
     }
@@ -269,9 +268,6 @@ pub extern "C-unwind" fn mesh_ws_client_connect(
     url: *const MeshString,
     options_handle: i64,
 ) -> *mut MeshResult {
-    if url.is_null() || options_handle <= 0 {
-        return error("invalid WebSocket URL or options handle");
-    }
     let Some(options) = options().lock().remove(&(options_handle as u64)) else {
         return error("invalid or already-consumed WebSocket options handle");
     };
@@ -298,20 +294,18 @@ pub extern "C-unwind" fn mesh_ws_client_connect(
         return error(format!("WebSocket connect worker spawn failed: {reason}"));
     }
 
-    match cooperative_recv_timeout(
-        &receiver,
-        deadline.saturating_duration_since(Instant::now()),
-    ) {
-        Ok(Ok(connection)) => {
+    // The worker answers by the deadline, unless name resolution, which it
+    // cannot interrupt, holds it past; it stops only after answering.
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    match cooperative_recv_timeout(&receiver, remaining)
+        .unwrap_or_else(|_| Err("TIMEOUT: WebSocket connect".to_string()))
+    {
+        Ok(connection) => {
             let handle = next_handle();
             connections().lock().insert(handle, Arc::new(connection));
             ok_int(handle as i64)
         }
-        Ok(Err(reason)) => error(reason),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => error("TIMEOUT: WebSocket connect"),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            error("WebSocket connect worker stopped")
-        }
+        Err(reason) => error(reason),
     }
 }
 
@@ -349,30 +343,29 @@ fn connect_until(
     if parsed.fragment().is_some() {
         return Err("WebSocket URL fragments are not sent to servers".to_string());
     }
-    // An IPv6 host without the URL's brackets, as resolution and TLS take it.
-    let host = match parsed
-        .host()
-        .ok_or_else(|| "WebSocket URL is missing a host".to_string())?
-    {
+    // ws and wss are special schemes, which the parser refuses without a
+    // host, and whose default ports it knows. An IPv6 host is taken without
+    // the URL's brackets, as resolution and TLS take it.
+    let host = match parsed.host().expect("a ws or wss URL has a host") {
         Host::Domain(name) => name.to_string(),
         Host::Ipv4(address) => address.to_string(),
         Host::Ipv6(address) => address.to_string(),
     };
-    let port = parsed
-        .port_or_known_default()
-        .ok_or_else(|| "WebSocket URL is missing a port".to_string())?;
-    if Instant::now() >= deadline {
-        return Err("TIMEOUT: WebSocket connect".to_string());
-    }
-    let addresses = (host.as_str(), port).to_socket_addrs();
-    if Instant::now() >= deadline {
-        return Err("TIMEOUT: WebSocket connect".to_string());
-    }
-    let addresses = addresses.map_err(|reason| format!("DNS_FAILURE: {reason}"))?;
+    let port = parsed.port().unwrap_or(if secure { 443 } else { 80 });
+    let tls = if secure {
+        Some(tls_client(&host)?)
+    } else {
+        None
+    };
+    let (request, key) = handshake_request(&parsed, &host, port, secure)?;
+
+    let addresses = (host.as_str(), port)
+        .to_socket_addrs()
+        .map_err(|reason| format!("DNS_FAILURE: {reason}"))?;
     let mut tcp = None;
     for address in addresses {
         let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-            return Err("TIMEOUT: WebSocket connect".to_string());
+            break;
         };
         if let Ok(stream) = TcpStream::connect_timeout(&address, remaining) {
             tcp = Some(stream);
@@ -387,21 +380,11 @@ fn connect_until(
         }
     })?;
     tcp.set_nodelay(true).ok();
-
-    let stream = if secure {
-        let mut roots = RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        let config = ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        let server_name = ServerName::try_from(host.clone())
-            .map_err(|_| "TLS_ERROR: invalid certificate server name".to_string())?;
-        let connection = ClientConnection::new(Arc::new(config), server_name)
-            .map_err(|reason| format!("TLS_ERROR: {reason}"))?;
-        ReactorTransport::client_tls(StreamOwned::new(connection, tcp))
-    } else {
-        ReactorTransport::plain(tcp)
+    let stream = match tls {
+        Some(connection) => ReactorTransport::client_tls(StreamOwned::new(connection, tcp)),
+        None => ReactorTransport::plain(tcp),
     };
+
     let inbound = Arc::new(Mutex::new(InboundState {
         queue: VecDeque::new(),
         queued_bytes: 0,
@@ -420,29 +403,30 @@ fn connect_until(
         inbound: Arc::clone(&inbound),
         ready: Mutex::new(Some(ready_sender)),
     });
-    let (request, key) = handshake_request(&parsed, &host, port, secure)?;
-    let remaining = deadline
-        .checked_duration_since(Instant::now())
-        .ok_or_else(|| "TIMEOUT: WebSocket connect".to_string())?;
     let config = ReactorConfig::client(options.max_message_bytes, options.heartbeat_timeout)
-        .with_handshake_timeout(remaining);
+        .with_handshake_timeout(deadline.saturating_duration_since(Instant::now()));
     let io = register_client(stream, request, key, sink, config)?;
-    let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-        io.cancel("TIMEOUT: WebSocket handshake");
-        return Err("TIMEOUT: WebSocket handshake".to_string());
-    };
-    match ready_receiver.recv_timeout(remaining) {
-        Ok(Ok(())) => Ok(WsConnection { io, inbound }),
-        Ok(Err(reason)) => Err(reason),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            io.cancel("TIMEOUT: WebSocket handshake");
-            Err("TIMEOUT: WebSocket handshake".to_string())
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            io.cancel("WebSocket handshake worker stopped");
-            Err("WebSocket handshake worker stopped".to_string())
-        }
-    }
+    // The reactor answers when the upgrade completes or fails, at the latest
+    // at the handshake deadline; only its end drops the sink unanswered.
+    ready_receiver
+        .recv()
+        .unwrap_or_else(|_| Err("WebSocket reactor stopped".to_string()))
+        .map(|()| WsConnection { io, inbound })
+}
+
+/// A TLS client session for `host`, verified against the web's roots.
+fn tls_client(host: &str) -> Result<ClientConnection, String> {
+    let server_name = ServerName::try_from(host.to_string()).map_err(tls_error)?;
+    let mut roots = RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    ClientConnection::new(Arc::new(config), server_name).map_err(tls_error)
+}
+
+fn tls_error(reason: impl std::fmt::Display) -> String {
+    format!("TLS_ERROR: {reason}")
 }
 
 fn handshake_request(
@@ -532,9 +516,6 @@ fn terminate(inbound: &Arc<Mutex<InboundState>>, reason: &str) {
 }
 
 fn connection(handle: i64) -> Result<Arc<WsConnection>, String> {
-    if handle <= 0 {
-        return Err("invalid WebSocket connection handle".to_string());
-    }
     connections()
         .lock()
         .get(&(handle as u64))
@@ -543,14 +524,7 @@ fn connection(handle: i64) -> Result<Arc<WsConnection>, String> {
 }
 
 fn send_frame(handle: i64, opcode: WsOpcode, data: &[u8]) -> *mut MeshResult {
-    let connection = match connection(handle) {
-        Ok(connection) => connection,
-        Err(reason) => return error(reason),
-    };
-    match connection.io.send(opcode, data) {
-        Ok(()) => ok_unit(),
-        Err(reason) => error(reason),
-    }
+    unit_result(connection(handle).and_then(|connection| connection.io.send(opcode, data)))
 }
 
 #[no_mangle]
@@ -558,9 +532,6 @@ pub extern "C" fn mesh_ws_client_send_text(
     handle: i64,
     body: *const MeshString,
 ) -> *mut MeshResult {
-    if body.is_null() {
-        return error("WebSocket text body is null");
-    }
     let body = unsafe { (*body).as_str().as_bytes() };
     send_frame(handle, WsOpcode::Text, body)
 }
@@ -570,18 +541,15 @@ pub extern "C" fn mesh_ws_client_send_bytes(
     handle: i64,
     body: *const MeshBytes,
 ) -> *mut MeshResult {
-    if body.is_null() {
-        return error("WebSocket binary body is null");
-    }
     let body = unsafe { (*body).as_slice() };
     send_frame(handle, WsOpcode::Binary, body)
 }
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *mut MeshResult {
-    if timeout_ms < 0 {
+    let Ok(timeout_ms) = u64::try_from(timeout_ms) else {
         return error("WebSocket receive timeout must be non-negative");
-    }
+    };
     let connection = match connection(handle) {
         Ok(connection) => connection,
         Err(reason) => return error(reason),
@@ -605,10 +573,11 @@ pub extern "C-unwind" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *m
         id
     };
 
-    let timeout = Duration::from_millis(timeout_ms as u64);
-    match cooperative_recv_timeout(&receiver, timeout) {
-        Ok(event) => mesh_message(event),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+    // A delivery takes the waiter and sends before it drops the sender: the
+    // wait ends in an event, or in a timeout that withdraws the waiter unless
+    // a delivery took it first, its event then already in the channel.
+    let event =
+        cooperative_recv_timeout(&receiver, Duration::from_millis(timeout_ms)).or_else(|_| {
             let mut inbound = connection.inbound.lock();
             if inbound
                 .waiter
@@ -618,14 +587,11 @@ pub extern "C-unwind" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *m
                 inbound.waiter = None;
             }
             drop(inbound);
-            match receiver.try_recv() {
-                Ok(event) => mesh_message(event),
-                Err(_) => error("TIMEOUT: WebSocket receive"),
-            }
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            error("WebSocket receive channel disconnected")
-        }
+            receiver.try_recv()
+        });
+    match event {
+        Ok(event) => mesh_message(event),
+        Err(_) => error("TIMEOUT: WebSocket receive"),
     }
 }
 
@@ -635,26 +601,21 @@ pub extern "C" fn mesh_ws_client_close(
     code: i64,
     reason: *const MeshString,
 ) -> *mut MeshResult {
-    let Ok(code) = u16::try_from(code) else {
+    let Some(code) = u16::try_from(code)
+        .ok()
+        .filter(|code| is_valid_close_code(*code))
+    else {
         return error("invalid WebSocket close code");
     };
-    if !is_valid_close_code(code) {
-        return error("invalid WebSocket close code");
-    }
-    if reason.is_null() {
-        return error("WebSocket close reason is null");
-    }
     let Some(connection) = connections().lock().remove(&(handle as u64)) else {
         return error("closed or unknown WebSocket connection");
     };
-    let reason = unsafe { (*reason).as_str() };
-    match connection.io.graceful_close(code, reason) {
-        Ok(()) => ok_unit(),
-        Err(reason) => {
-            connection.io.cancel(reason.clone());
-            error(reason)
-        }
-    }
+    // A close the reactor cannot take cancels the connection.
+    unit_result(
+        connection
+            .io
+            .graceful_close(code, unsafe { (*reason).as_str() }),
+    )
 }
 
 #[no_mangle]
@@ -704,6 +665,59 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::time::Instant;
+
+    /// Held by the tests that use the runtime API, whose registries and
+    /// connect workers are the process's: one test filling them must not
+    /// refuse another's connect.
+    static API: Mutex<()> = Mutex::new(());
+
+    /// A Mesh `Result` as Rust sees it: the payload, or the error text.
+    fn outcome(result: *mut MeshResult) -> Result<*mut u8, String> {
+        unsafe {
+            match (*result).tag {
+                0 => Ok((*result).value),
+                _ => Err((*((*result).value as *const MeshString))
+                    .as_str()
+                    .to_string()),
+            }
+        }
+    }
+
+    fn api_error(result: *mut MeshResult) -> String {
+        outcome(result).map(|_| ()).unwrap_err()
+    }
+
+    fn api_int(result: *mut MeshResult) -> i64 {
+        unsafe { *(outcome(result).unwrap() as *const i64) }
+    }
+
+    /// `WsClient.connect(url, options)` with the options `configure` sets.
+    fn api_connect(url: &str, configure: impl FnOnce(i64) -> i64) -> *mut MeshResult {
+        crate::gc::mesh_rt_init();
+        let options = configure(mesh_ws_client_options());
+        mesh_ws_client_connect(mesh_str(url), options)
+    }
+
+    /// A peer on a port of its own: `serve` gets the accepted connection.
+    fn peer<T: Send + 'static>(
+        serve: impl FnOnce(TcpStream) -> T + Send + 'static,
+    ) -> (u16, std::thread::JoinHandle<T>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        (
+            port,
+            std::thread::spawn(move || serve(listener.accept().unwrap().0)),
+        )
+    }
+
+    /// Wait until `condition` holds (another thread's work), for at most 5s.
+    fn wait_until(condition: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !condition() {
+            assert!(Instant::now() < deadline, "condition never held");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
 
     fn accept_handshake(listener: TcpListener) -> TcpStream {
         let (mut stream, _) = listener.accept().unwrap();
@@ -839,6 +853,7 @@ mod tests {
 
     #[test]
     fn connect_worker_limit_is_released_only_when_a_worker_finishes() {
+        let _api = API.lock();
         let mut permits = (0..MAX_CONNECT_WORKERS)
             .map(|_| ConnectWorkerPermit::reserve().unwrap())
             .collect::<Vec<_>>();
@@ -1255,5 +1270,378 @@ mod tests {
         );
         drop(inbound);
         server.join().unwrap();
+    }
+
+    /// Each option outside its range refuses the connect that consumes it,
+    /// before any I/O; a consumed or unknown handle refuses too.
+    #[test]
+    fn connect_validates_and_consumes_its_options() {
+        let _api = API.lock();
+        let url = "ws://127.0.0.1:9/";
+        for (configure, expected) in [
+            (
+                (|o| mesh_ws_client_connect_timeout(o, 0)) as fn(i64) -> i64,
+                "connect timeout must be between 1 and 120000 milliseconds",
+            ),
+            (
+                |o| mesh_ws_client_connect_timeout(o, -1),
+                "connect timeout must be between 1 and 120000 milliseconds",
+            ),
+            (
+                |o| mesh_ws_client_heartbeat_timeout(o, 999),
+                "heartbeat timeout must be between 1000 and 300000 milliseconds",
+            ),
+            (
+                |o| mesh_ws_client_max_message_bytes(o, 0),
+                "maximum message size must be between 1 and 16777216 bytes",
+            ),
+            (
+                |o| mesh_ws_client_max_message_bytes(o, -1),
+                "maximum message size must be between 1 and 16777216 bytes",
+            ),
+            (
+                |o| mesh_ws_client_queue_capacity(o, 65_537),
+                "queue capacity must be between 1 and 65536",
+            ),
+        ] {
+            assert_eq!(api_error(api_connect(url, configure)), expected);
+        }
+
+        let options = mesh_ws_client_options();
+        let _ = mesh_ws_client_connect(mesh_str(url), mesh_ws_client_queue_capacity(options, 0));
+        for handle in [options, 0, -1] {
+            assert_eq!(mesh_ws_client_connect_timeout(handle, 5), handle);
+            assert_eq!(
+                api_error(mesh_ws_client_connect(mesh_str(url), handle)),
+                "invalid or already-consumed WebSocket options handle"
+            );
+        }
+    }
+
+    /// The options, connection and connect-worker bounds each refuse the
+    /// call that would pass them, and admit again once below.
+    #[test]
+    fn client_handles_and_workers_are_bounded() {
+        let _api = API.lock();
+        crate::gc::mesh_rt_init();
+        let open = options().lock().len();
+        let filler = (open..MAX_OPEN_HANDLES)
+            .map(|_| mesh_ws_client_options())
+            .collect::<Vec<_>>();
+        assert_eq!(mesh_ws_client_options(), 0);
+        let url = mesh_str("ws://127.0.0.1:9/");
+        for handle in filler {
+            let _ = mesh_ws_client_connect(url, mesh_ws_client_queue_capacity(handle, 0));
+        }
+
+        let (port, server) = peer(|mut stream| {
+            complete_handshake(&mut stream).unwrap();
+            stream
+        });
+        let connection = Arc::new(
+            connect(
+                &format!("ws://127.0.0.1:{port}/"),
+                WsClientOptions::default(),
+            )
+            .unwrap(),
+        );
+        let _peer = server.join().unwrap();
+        let open = connections().lock().len();
+        let fillers = (open..MAX_OPEN_HANDLES)
+            .map(|_| {
+                let handle = next_handle();
+                connections().lock().insert(handle, Arc::clone(&connection));
+                handle
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            api_error(api_connect("ws://127.0.0.1:9/", |o| o)),
+            "WebSocket connection limit reached"
+        );
+        for handle in fillers {
+            connections().lock().remove(&handle);
+        }
+        connection.io.cancel("test complete");
+
+        let permits = (0..MAX_CONNECT_WORKERS)
+            .map(|_| ConnectWorkerPermit::reserve().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            api_error(api_connect("ws://127.0.0.1:9/", |o| o)),
+            "WebSocket connect worker limit reached"
+        );
+        drop(permits);
+    }
+
+    /// A URL the client cannot use is refused before any connection.
+    #[test]
+    fn connect_refuses_urls_it_cannot_use() {
+        let long_label = "a".repeat(64);
+        for (url, expected) in [
+            (
+                "not a url",
+                "invalid WebSocket URL: relative URL without a base",
+            ),
+            (
+                "http://127.0.0.1/",
+                "WebSocket URL must use ws:// or wss://",
+            ),
+            (
+                "ws://user:secret@127.0.0.1/",
+                "WebSocket URL userinfo is not supported",
+            ),
+            (
+                "ws://user@127.0.0.1/",
+                "WebSocket URL userinfo is not supported",
+            ),
+            (
+                "ws://127.0.0.1/#part",
+                "WebSocket URL fragments are not sent to servers",
+            ),
+            (
+                &format!("wss://{long_label}.test/"),
+                "TLS_ERROR: invalid dns name",
+            ),
+        ] {
+            assert_eq!(
+                connect(url, WsClientOptions::default()).err().as_deref(),
+                Some(expected)
+            );
+        }
+        let error = connect("ws://nonexistent.invalid/", WsClientOptions::default())
+            .err()
+            .unwrap();
+        assert!(error.starts_with("DNS_FAILURE: "), "{error}");
+    }
+
+    /// A refused address is a connect failure; a deadline already past is a
+    /// timeout, without an attempt.
+    #[test]
+    fn connect_reports_refusal_and_a_passed_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://127.0.0.1:{}/", listener.local_addr().unwrap().port());
+        assert_eq!(
+            connect_until(&url, WsClientOptions::default(), Instant::now())
+                .err()
+                .as_deref(),
+            Some("TIMEOUT: WebSocket connect")
+        );
+        drop(listener);
+        assert_eq!(
+            connect(&url, WsClientOptions::default()).err().as_deref(),
+            Some("CONNECT_FAILURE: no resolved address accepted the connection")
+        );
+    }
+
+    /// wss verifies the server against the web's roots: a certificate they
+    /// do not sign fails the connect.
+    #[test]
+    fn wss_refuses_a_certificate_the_web_roots_do_not_sign() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, _) = crate::dist::node::ws_test_tls_configs();
+        let (port, server) = peer(move |tcp| {
+            let mut stream = StreamOwned::new(ServerConnection::new(server_config).unwrap(), tcp);
+            let _ = stream.read(&mut [0u8; 1]);
+        });
+        let error = connect(
+            &format!("wss://127.0.0.1:{port}/"),
+            WsClientOptions::default(),
+        )
+        .err()
+        .unwrap();
+        assert!(error.contains("invalid peer certificate"), "{error}");
+        server.join().unwrap();
+    }
+
+    /// The upgrade request carries the URL's path and query.
+    #[test]
+    fn the_upgrade_request_carries_the_query() {
+        let (port, server) = peer(|mut stream| {
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            let key = request
+                .lines()
+                .find_map(|line| line.strip_prefix("Sec-WebSocket-Key: "))
+                .unwrap()
+                .to_string();
+            write_handshake_response(&mut stream, &key).unwrap();
+            (request, stream)
+        });
+        let connection = connect(
+            &format!("ws://127.0.0.1:{port}/feed?room=1&since=5"),
+            WsClientOptions::default(),
+        )
+        .unwrap();
+        let (request, _stream) = server.join().unwrap();
+        assert!(
+            request.starts_with("GET /feed?room=1&since=5 HTTP/1.1\r\n"),
+            "{request}"
+        );
+        connection.io.cancel("test complete");
+    }
+
+    /// A server that never answers the upgrade times the connect out, in
+    /// the reactor (the worker's wait) and at the caller's deadline.
+    #[test]
+    fn a_silent_server_times_the_connect_out() {
+        let silent = || {
+            peer(|mut stream| {
+                // Until the client gives up.
+                while stream.read(&mut [0u8; 1024]).is_ok_and(|read| read > 0) {}
+            })
+        };
+        let (port, server) = silent();
+        assert_eq!(
+            connect(
+                &format!("ws://127.0.0.1:{port}/"),
+                WsClientOptions {
+                    connect_timeout: Duration::from_millis(100),
+                    ..WsClientOptions::default()
+                },
+            )
+            .err()
+            .as_deref(),
+            Some("TIMEOUT: WebSocket handshake")
+        );
+        server.join().unwrap();
+
+        let _api = API.lock();
+        let (port, server) = silent();
+        let error = api_error(api_connect(&format!("ws://127.0.0.1:{port}/"), |o| {
+            mesh_ws_client_connect_timeout(o, 100)
+        }));
+        assert!(error.starts_with("TIMEOUT: WebSocket "), "{error}");
+        server.join().unwrap();
+    }
+
+    /// The runtime API over one connection: sends, the three ways a receive
+    /// ends (a queued message, a wait, a timeout), what it refuses, and the
+    /// close that releases the handle.
+    #[test]
+    fn the_client_api_sends_receives_and_closes() {
+        let _api = API.lock();
+        let (go, went) = std::sync::mpsc::channel::<()>();
+        let (port, server) = peer(move |mut stream| {
+            complete_handshake(&mut stream).unwrap();
+            let text = read_frame_with_mask(&mut stream).unwrap().0;
+            let binary = read_frame_with_mask(&mut stream).unwrap().0;
+            write_frame(&mut stream, WsOpcode::Text, &text.payload, true).unwrap();
+            went.recv().unwrap();
+            write_frame(&mut stream, WsOpcode::Binary, &binary.payload, true).unwrap();
+            let close = read_frame_with_mask(&mut stream).unwrap().0;
+            assert_eq!(
+                parse_close_payload(&close.payload),
+                (1000, "bye".to_string())
+            );
+            write_frame(&mut stream, WsOpcode::Close, &close.payload, true).unwrap();
+        });
+        let handle = api_int(api_connect(&format!("ws://127.0.0.1:{port}/"), |o| {
+            mesh_ws_client_max_message_bytes(mesh_ws_client_connect_timeout(o, 5_000), 8)
+        }));
+
+        assert!(outcome(mesh_ws_client_send_text(handle, mesh_str("ping"))).is_ok());
+        let bytes = crate::bytes::mesh_bytes_new([1u8, 2].as_ptr(), 2);
+        assert!(outcome(mesh_ws_client_send_bytes(handle, bytes)).is_ok());
+        assert_eq!(
+            api_error(mesh_ws_client_send_text(handle, mesh_str("too long!"))),
+            "MESSAGE_TOO_BIG"
+        );
+        let message = |result| unsafe {
+            let message = &*(outcome(result).unwrap() as *const MeshWsMessage);
+            (
+                (*message.kind).as_str().to_string(),
+                (*message.data).as_slice().to_vec(),
+            )
+        };
+        let connection = connection(handle).unwrap();
+        wait_until(|| !connection.inbound.lock().queue.is_empty());
+        assert_eq!(
+            message(mesh_ws_client_recv(handle, 0)),
+            ("text".to_string(), b"ping".to_vec())
+        );
+        assert_eq!(
+            api_error(mesh_ws_client_recv(handle, 10)),
+            "TIMEOUT: WebSocket receive"
+        );
+
+        let waiting = std::thread::spawn(move || message(mesh_ws_client_recv(handle, 5_000)));
+        wait_until(|| connection.inbound.lock().waiter.is_some());
+        assert_eq!(
+            api_error(mesh_ws_client_recv(handle, 0)),
+            "only one concurrent receiver is allowed per WebSocket connection"
+        );
+        go.send(()).unwrap();
+        assert_eq!(waiting.join().unwrap(), ("binary".to_string(), vec![1, 2]));
+
+        assert_eq!(
+            api_error(mesh_ws_client_recv(handle, -1)),
+            "WebSocket receive timeout must be non-negative"
+        );
+        for code in [70_000, 1005] {
+            assert_eq!(
+                api_error(mesh_ws_client_close(handle, code, mesh_str(""))),
+                "invalid WebSocket close code"
+            );
+        }
+        assert!(outcome(mesh_ws_client_close(handle, 1000, mesh_str("bye"))).is_ok());
+        server.join().unwrap();
+        for result in [
+            mesh_ws_client_close(handle, 1000, mesh_str("")),
+            mesh_ws_client_recv(handle, 0),
+            mesh_ws_client_send_text(handle, mesh_str("")),
+        ] {
+            assert_eq!(api_error(result), "closed or unknown WebSocket connection");
+        }
+    }
+
+    /// A connection its peer drops ends a waiting receive with a close, and
+    /// every later receive with the reason.
+    #[test]
+    fn a_dropped_connection_ends_receives() {
+        let _api = API.lock();
+        let (port, server) = peer(|mut stream| {
+            complete_handshake(&mut stream).unwrap();
+            // Until the waiting receive is in place.
+            read_frame_with_mask(&mut stream).unwrap();
+        });
+        let connection = connect(
+            &format!("ws://127.0.0.1:{port}/"),
+            WsClientOptions::default(),
+        )
+        .unwrap();
+        let handle = next_handle() as i64;
+        connections()
+            .lock()
+            .insert(handle as u64, Arc::new(connection));
+        let waiting = std::thread::spawn(move || {
+            let message = outcome(mesh_ws_client_recv(handle, 5_000)).unwrap();
+            unsafe { (*(message as *const MeshWsMessage)).close_code }
+        });
+        let connection = super::connection(handle).unwrap();
+        wait_until(|| connection.inbound.lock().waiter.is_some());
+        connection.io.send(WsOpcode::Text, b"now").unwrap();
+        server.join().unwrap();
+        assert_eq!(waiting.join().unwrap(), 1006);
+        assert_eq!(
+            api_error(mesh_ws_client_recv(handle, 0)),
+            "WebSocket peer disconnected"
+        );
+        connections().lock().remove(&(handle as u64));
+    }
+
+    #[test]
+    fn reconnect_delay_is_a_mesh_result() {
+        crate::gc::mesh_rt_init();
+        assert_eq!(
+            api_int(mesh_ws_client_reconnect_delay(2, 100, 1_000, 0)),
+            400
+        );
+        assert!(api_error(mesh_ws_client_reconnect_delay(63, 100, 1_000, 0))
+            .starts_with("invalid reconnect policy"));
     }
 }
