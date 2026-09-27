@@ -6010,13 +6010,10 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
         return;
     }
 
-    let server_conn = match rustls::ServerConnection::new(Arc::clone(&state.tls_server_config)) {
-        Ok(connection) => connection,
-        Err(error) => {
-            eprintln!("mesh node: TLS server connection failed: {error}");
-            return;
-        }
-    };
+    // rustls refuses a connection only for a maximum fragment size it cannot
+    // use, and the node's config sets none.
+    let server_conn = rustls::ServerConnection::new(Arc::clone(&state.tls_server_config))
+        .expect("the node's TLS config sets no fragment size");
     let mut tls_stream = StreamOwned::new(server_conn, tcp_stream);
     let (remote_name, remote_creation, negotiated_protocol, remote_identity) =
         match perform_handshake_negotiated(&mut tls_stream, state, false) {
