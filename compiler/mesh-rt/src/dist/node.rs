@@ -3808,118 +3808,59 @@ fn prepare_one_continuity_replica(
         .unwrap()
         .insert(request_id, tx);
 
-    {
-        if session.send(OutboundClass::Continuity, payload).is_err() {
-            session
-                .pending_continuity_prepares
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            let error = "replica_required_unavailable".to_string();
-            crate::dist::operator::record_diagnostic(
-                crate::dist::operator::OperatorDiagnosticRecord {
-                    transition: "prepare_write_failed".to_string(),
-                    request_key: Some(record.request_key.clone()),
-                    attempt_id: Some(record.attempt_id.clone()),
-                    owner_node: Some(record.owner_node.clone()),
-                    replica_node: Some(record.replica_node.clone()),
-                    cluster_role: Some(record.cluster_role.as_str().to_string()),
-                    promotion_epoch: Some(record.promotion_epoch),
-                    replication_health: Some(record.replication_health.as_str().to_string()),
-                    replica_status: Some(record.replica_status.as_str().to_string()),
-                    reason: Some(error.clone()),
-                    metadata: vec![("target_node".to_string(), record.replica_node.clone())],
-                    ..crate::dist::operator::OperatorDiagnosticRecord::default()
-                },
-            );
-            eprintln!(
-                "mesh continuity: transition=prepare_write_failed request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={}",
-                crate::dist::continuity::request_key_fingerprint(&record.request_key),
-                record.attempt_id,
-                record.cluster_role.as_str(),
-                record.promotion_epoch,
-                record.replication_health.as_str(),
-                record.replica_node,
-                error
-            );
-            return Err(error);
-        }
+    let failed = |transition: &str, error: &str| {
+        session
+            .pending_continuity_prepares
+            .lock()
+            .unwrap()
+            .remove(&request_id);
+        replica_prepare_failed(record, transition, error)
+    };
+    if session.send(OutboundClass::Continuity, payload).is_err() {
+        return Err(failed(
+            "prepare_write_failed",
+            "replica_required_unavailable",
+        ));
     }
+    // The ack handler and a disconnect (fail_pending_session_requests) both
+    // send before they drop the sender, so the wait ends in a reply or here.
+    crate::actor::cooperative_recv_timeout(&rx, Duration::from_secs(5)).unwrap_or_else(|_| {
+        crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
+        Err(failed("prepare_timeout", "replica_prepare_timeout"))
+    })
+}
 
-    match crate::actor::cooperative_recv_timeout(&rx, Duration::from_secs(5)) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            session
-                .pending_continuity_prepares
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
-            let error = "replica_prepare_timeout".to_string();
-            crate::dist::operator::record_diagnostic(
-                crate::dist::operator::OperatorDiagnosticRecord {
-                    transition: "prepare_timeout".to_string(),
-                    request_key: Some(record.request_key.clone()),
-                    attempt_id: Some(record.attempt_id.clone()),
-                    owner_node: Some(record.owner_node.clone()),
-                    replica_node: Some(record.replica_node.clone()),
-                    cluster_role: Some(record.cluster_role.as_str().to_string()),
-                    promotion_epoch: Some(record.promotion_epoch),
-                    replication_health: Some(record.replication_health.as_str().to_string()),
-                    replica_status: Some(record.replica_status.as_str().to_string()),
-                    reason: Some(error.clone()),
-                    metadata: vec![("target_node".to_string(), record.replica_node.clone())],
-                    ..crate::dist::operator::OperatorDiagnosticRecord::default()
-                },
-            );
-            eprintln!(
-                "mesh continuity: transition=prepare_timeout request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={}",
-                crate::dist::continuity::request_key_fingerprint(&record.request_key),
-                record.attempt_id,
-                record.cluster_role.as_str(),
-                record.promotion_epoch,
-                record.replication_health.as_str(),
-                record.replica_node,
-                error
-            );
-            Err(error)
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            session
-                .pending_continuity_prepares
-                .lock()
-                .unwrap()
-                .remove(&request_id);
-            let error = "replica_required_unavailable".to_string();
-            crate::dist::operator::record_diagnostic(
-                crate::dist::operator::OperatorDiagnosticRecord {
-                    transition: "prepare_disconnected".to_string(),
-                    request_key: Some(record.request_key.clone()),
-                    attempt_id: Some(record.attempt_id.clone()),
-                    owner_node: Some(record.owner_node.clone()),
-                    replica_node: Some(record.replica_node.clone()),
-                    cluster_role: Some(record.cluster_role.as_str().to_string()),
-                    promotion_epoch: Some(record.promotion_epoch),
-                    replication_health: Some(record.replication_health.as_str().to_string()),
-                    replica_status: Some(record.replica_status.as_str().to_string()),
-                    reason: Some(error.clone()),
-                    metadata: vec![("target_node".to_string(), record.replica_node.clone())],
-                    ..crate::dist::operator::OperatorDiagnosticRecord::default()
-                },
-            );
-            eprintln!(
-                "mesh continuity: transition=prepare_disconnected request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={}",
-                record.request_key,
-                record.attempt_id,
-                record.cluster_role.as_str(),
-                record.promotion_epoch,
-                record.replication_health.as_str(),
-                record.replica_node,
-                error
-            );
-            Err(error)
-        }
-    }
+/// Records that preparing `record` on its replica failed at `transition`,
+/// and returns `error`.
+fn replica_prepare_failed(
+    record: &crate::dist::continuity::ContinuityRecord,
+    transition: &str,
+    error: &str,
+) -> String {
+    crate::dist::operator::record_diagnostic(crate::dist::operator::OperatorDiagnosticRecord {
+        transition: transition.to_string(),
+        request_key: Some(record.request_key.clone()),
+        attempt_id: Some(record.attempt_id.clone()),
+        owner_node: Some(record.owner_node.clone()),
+        replica_node: Some(record.replica_node.clone()),
+        cluster_role: Some(record.cluster_role.as_str().to_string()),
+        promotion_epoch: Some(record.promotion_epoch),
+        replication_health: Some(record.replication_health.as_str().to_string()),
+        replica_status: Some(record.replica_status.as_str().to_string()),
+        reason: Some(error.to_string()),
+        metadata: vec![("target_node".to_string(), record.replica_node.clone())],
+        ..crate::dist::operator::OperatorDiagnosticRecord::default()
+    });
+    eprintln!(
+        "mesh continuity: transition={transition} request_key={} attempt_id={} cluster_role={} promotion_epoch={} replication_health={} replica={} error={error}",
+        crate::dist::continuity::request_key_fingerprint(&record.request_key),
+        record.attempt_id,
+        record.cluster_role.as_str(),
+        record.promotion_epoch,
+        record.replication_health.as_str(),
+        record.replica_node,
+    );
+    error.to_string()
 }
 
 fn encode_continuity_prepare_payload(
