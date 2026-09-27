@@ -39,6 +39,17 @@ pub struct PendingField {
     pub span: TextRange,
 }
 
+/// A parameter of an impl method or an interface's default method, with the
+/// type its inference gave it: one still unknown at the module's end is an
+/// error. `name` is none for `self` and for a pattern.
+#[derive(Clone, Debug)]
+pub struct MethodParam {
+    pub method: Option<String>,
+    pub name: Option<mesh_parser::SyntaxToken>,
+    pub span: TextRange,
+    pub ty: Ty,
+}
+
 /// A value a function returns before its end: `return value`, or the
 /// early exit of `?`.
 #[derive(Clone, Debug)]
@@ -197,6 +208,9 @@ pub struct InferCtx {
     /// call of a name that type has no field of is retried as a method of
     /// it, without inferring the base again.
     pub field_base: Option<(TextRange, Ty)>,
+    /// The parameters of the module's impl methods and interface default
+    /// methods, checked for a type when the module is done.
+    pub method_params: Vec<MethodParam>,
     /// Operands of `<>` or `++` whose type was not known yet, with the
     /// operator and where it is: checked when the function is done.
     pub concat_operands: Vec<(Ty, &'static str, TextRange)>,

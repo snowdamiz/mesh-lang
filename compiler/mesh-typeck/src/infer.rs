@@ -39,7 +39,7 @@ use crate::traits::{
     TraitDef, TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
-use crate::unify::{EarlyReturn, ImplChoice, InferCtx, PendingField};
+use crate::unify::{EarlyReturn, ImplChoice, InferCtx, MethodParam, PendingField};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
@@ -4780,7 +4780,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // was done, and those outside any function (top-level code, actors).
     let pending_fields = std::mem::take(&mut ctx.pending_fields);
     resolve_pending_fields(&mut ctx, &type_registry, pending_fields, true);
-    check_method_params_typed(&mut ctx, &tree, &types);
+    check_method_params_typed(&mut ctx);
     // The same for what an interpolation or operator needs of its operand's
     // type, and for `<>`: outside a function nothing else checks them.
     let concat = std::mem::take(&mut ctx.concat_operands);
@@ -7323,6 +7323,12 @@ fn infer_interface_def(
                         .map(|t| t.text().to_string())
                         .unwrap_or_else(|| "_".to_string())
                 };
+                ctx.method_params.push(MethodParam {
+                    method: method.name().and_then(|n| n.text()),
+                    name: param.name().filter(|_| !is_self),
+                    span: param.syntax().text_range(),
+                    ty: param_ty.clone(),
+                });
                 env.insert(name, Scheme::mono(param_ty.clone()));
                 param_tys.push(param_ty);
             }
@@ -7627,85 +7633,29 @@ fn register_impl_signature(
         }));
 }
 
-/// Type-check an impl's method bodies (the impl itself was registered by
-/// `register_impl_signature`), filling in the return types of methods that
-/// declare none from their bodies.
 /// A method is compiled once, for the type it is implemented for, so each
 /// of its parameters needs a type by the module's end: one nothing fixed was
 /// compiled as `()` (a `Box` argument read as `()`, an `Int` one failing in
 /// LLVM). So is an interface's default method, once per implementing type.
-fn check_method_params_typed(
-    ctx: &mut InferCtx,
-    tree: &mesh_parser::ast::item::SourceFile,
-    types: &FxHashMap<TextRange, Ty>,
-) {
-    // Each method's name, range, and parameters as its recorded type lists
-    // them: an impl method's `self` and then its named parameters, a
-    // default method's parameters in order.
-    let mut methods = Vec::new();
-    for item in tree.items() {
-        match item {
-            Item::ImplDef(impl_) => {
-                for method in impl_.methods() {
-                    let params: Vec<_> = method
-                        .param_list()
-                        .iter()
-                        .flat_map(|list| list.params())
-                        .collect();
-                    let listed = params
-                        .iter()
-                        .filter(|param| param.is_self())
-                        .chain(
-                            params
-                                .iter()
-                                .filter(|param| !param.is_self() && param.name().is_some()),
-                        )
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    methods.push((
-                        method.name().and_then(|n| n.text()),
-                        method.syntax().text_range(),
-                        listed,
-                    ));
-                }
-            }
-            Item::InterfaceDef(iface) => {
-                for method in iface.methods().filter(|method| method.body().is_some()) {
-                    let params = method
-                        .param_list()
-                        .iter()
-                        .flat_map(|list| list.params())
-                        .collect();
-                    methods.push((
-                        method.name().and_then(|n| n.text()),
-                        method.syntax().text_range(),
-                        params,
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-    for (method, range, params) in methods {
-        let Some(Ty::Fun(fn_params, _)) = types.get(&range).map(|ty| ctx.resolve(ty.clone()))
-        else {
+/// The parameters are those the methods' inference recorded.
+fn check_method_params_typed(ctx: &mut InferCtx) {
+    for param in std::mem::take(&mut ctx.method_params) {
+        let Some(name) = param.name else {
             continue;
         };
-        for (param, ty) in params.iter().zip(&fn_params) {
-            let Some(name) = param.name().filter(|_| !param.is_self()) else {
-                continue;
-            };
-            if ctx.resolve(ty.clone()).has_type_vars() {
-                ctx.errors.push(TypeError::UntypedMethodParam {
-                    method: method.clone().unwrap_or_default(),
-                    param: name.text().to_string(),
-                    span: param.syntax().text_range(),
-                });
-            }
+        if ctx.resolve(param.ty).has_type_vars() {
+            ctx.errors.push(TypeError::UntypedMethodParam {
+                method: param.method.unwrap_or_default(),
+                param: name.text().to_string(),
+                span: param.span,
+            });
         }
     }
 }
 
+/// Type-check an impl's method bodies (the impl itself was registered by
+/// `register_impl_signature`), filling in the return types of methods that
+/// declare none from their bodies.
 fn infer_impl_def(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -7792,6 +7742,12 @@ fn infer_impl_def(
                                     .map(|ty| with_self(&ty, &impl_type))
                             })
                             .unwrap_or_else(|| ctx.fresh_var());
+                        ctx.method_params.push(MethodParam {
+                            method: method.name().and_then(|n| n.text()),
+                            name: Some(name_tok),
+                            span: param.syntax().text_range(),
+                            ty: param_ty.clone(),
+                        });
                         env.insert(name_text, Scheme::mono(param_ty.clone()));
                         all_param_tys.push(param_ty);
                     }
