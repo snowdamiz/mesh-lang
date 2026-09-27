@@ -518,6 +518,18 @@ fn first_positive(values :: List<Int>) -> Int? do
   Some(value)
 end
 
+# Option and Result functions spell out common cases
+fn describe(x :: Int) -> String do
+  let doubled = find(x) |> Option.map(fn n -> n * 2 end)
+  "#{Option.unwrap_or(doubled, 0)}"
+end
+
+# ? after a pipe applies to the call the value goes into
+fn half(x :: Int) -> Int!String do
+  let h = x |> divide(2) |> Result.map_err(fn e -> "half: " <> e end)?
+  Ok(h)
+end
+
 # panic ends the actor (or the program from main, exit status 101)
 fn port(text :: String) -> Int do
   case String.to_int(text) do
@@ -657,7 +669,7 @@ end
 
 Precedence from low to high is: pipes; or; and; equality; ordering; range; concatenation; addition; multiplication; prefix; postfix call/field/`?`.
 
-`Int` `/` truncates toward zero (`-7 / 2` is `-3`) and `%` takes the dividend's sign (`7 % -2` is `1`); dividing by zero panics. NaN is unequal to itself, and `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round` saturate at the `Int` bounds.
+`Int` `/` truncates toward zero (`-7 / 2` is `-3`) and `%` takes the dividend's sign (`7 % -2` is `1`); dividing by zero panics, and `+`, `-` and `*` wrap on overflow (`Checked` reports it instead). NaN is unequal to itself, and `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round` saturate at the `Int` bounds.
 
 ## Testing
 
