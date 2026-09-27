@@ -14535,4 +14535,92 @@ mod tests {
         assert!(peer.sent().is_empty());
         clear_declared_handler_registry_for_test();
     }
+
+    /// Startup work whose cluster never settles (one peer after another
+    /// coming and going) gives up once its polls run out. Startup work kept
+    /// in more than one copy waits out the dispatch window before it runs,
+    /// and work a peer owns but will not spawn is rejected with the reason.
+    #[test]
+    fn startup_work_waits_for_a_settled_cluster_and_a_peer_that_takes_it() {
+        let exclusive = declared_handler_registry_test_lock();
+        clear_startup_work_test_state();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let _window = set_startup_work_delay_env(Some("1"));
+        let register = |name: &str, executable: &str, copies: u64| {
+            mesh_register_declared_handler(
+                name.as_ptr(),
+                name.len() as u64,
+                executable.as_ptr(),
+                executable.len() as u64,
+                copies,
+                startup_outcome_handler as *const u8,
+            );
+        };
+
+        register("Startup.unsettled", "Startup__unsettled", 1);
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for index in 0.. {
+                    if done.load(Ordering::Acquire) {
+                        break;
+                    }
+                    let peer =
+                        TestPeer::within(&exclusive, &format!("flapping-{index}@127.0.0.1:1"));
+                    std::thread::sleep(Duration::from_millis(20));
+                    drop(peer);
+                }
+            });
+            spawn_startup_work_actor("Startup.unsettled");
+            let key = startup_request_key("Startup.unsettled");
+            let timed_out = await_diagnostic("startup_convergence_timeout", &key);
+            done.store(true, Ordering::Release);
+            assert!(timed_out
+                .metadata
+                .contains(&("saw_peer".to_string(), "true".to_string())));
+            assert_eq!(
+                await_diagnostic("startup_rejected", &key).reason,
+                Some(STARTUP_CONVERGENCE_TIMEOUT.to_string())
+            );
+        });
+
+        let peer = TestPeer::within(&exclusive, "startup-replica@127.0.0.1:1");
+        report_worker(&peer.session.remote_name, &[]);
+        let owned_by = |owner: &str, prefix: &str| {
+            let membership = canonical_declared_membership();
+            (0..)
+                .map(|index| format!("{prefix}{index}.complete"))
+                .find(|name| {
+                    let key = format!("request::{}", startup_request_key(name));
+                    membership[stable_hash_u64(&key) as usize % membership.len()] == owner
+                })
+                .unwrap()
+        };
+        let held = owned_by(&state.name, "Startup.held");
+        register(&held, "Startup__held", 2);
+        let refused = owned_by(&peer.session.remote_name, "Startup.refused");
+        register(&refused, "Unspawnable__startup", 1);
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(&[&peer], &done));
+            spawn_startup_work_actor(&held);
+            spawn_startup_work_actor(&refused);
+            let key = startup_request_key(&held);
+            await_diagnostic("startup_dispatch_window", &key);
+            await_diagnostic("startup_completed", &key);
+            assert_eq!(
+                await_diagnostic("startup_rejected", &startup_request_key(&refused)).reason,
+                Some(format!(
+                    "declared_work_remote_spawn_failed:{}:Unspawnable__startup",
+                    peer.session.remote_name
+                ))
+            );
+            done.store(true, Ordering::Release);
+        });
+        drop(peer);
+        registry.clear_for_test();
+        clear_startup_work_test_state();
+    }
 }
