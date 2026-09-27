@@ -960,6 +960,8 @@ fn apply_operator_control(
     if !operator_control_signature_matches(&key, &payload, &signature) {
         return Err("operator_control_unauthorized".to_string());
     }
+    // No audit record, no action: the log is opened before anything changes.
+    let audit = open_operator_audit_log()?;
 
     refresh_operator_control_from_consensus();
     let mut state = operator_control_state().lock();
@@ -985,7 +987,7 @@ fn apply_operator_control(
         let outcome = state.record_control(request, None);
         drop(state);
         super::telemetry::global_admission_controller().set_draining(draining);
-        audit_operator_control(request, &outcome)?;
+        audit_operator_control(audit, request, &outcome);
         return Ok(outcome);
     }
     let mutation = match &request.action {
@@ -1047,7 +1049,7 @@ fn apply_operator_control(
             prepare_committed_drain(node_id);
         }
     }
-    audit_operator_control(request, &outcome)?;
+    audit_operator_control(audit, request, &outcome);
     Ok(outcome)
 }
 
@@ -1170,17 +1172,17 @@ fn apply_control_entries(
 }
 
 fn audit_operator_control(
+    audit: Option<std::fs::File>,
     request: &OperatorControlRequest,
     outcome: &OperatorControlOutcome,
-) -> Result<(), String> {
-    let action = serde_json::to_string(&request.action)
-        .map_err(|error| format!("operator_audit_encode_failed:{error}"))?;
+) {
+    let action = serde_json::to_string(&request.action).expect("a control action encodes");
     record_diagnostic(OperatorDiagnosticRecord {
         transition: "operator_control_committed".to_string(),
         reason: Some(request.reason.clone()),
         metadata: vec![
             ("actor".to_string(), request.actor.clone()),
-            ("action".to_string(), action.clone()),
+            ("action".to_string(), action),
             ("sequence".to_string(), request.sequence.to_string()),
             (
                 "control_sequence".to_string(),
@@ -1189,17 +1191,28 @@ fn audit_operator_control(
         ],
         ..OperatorDiagnosticRecord::default()
     });
-    append_operator_audit_entry(&serde_json::json!({
-        "schema_version": 1,
-        "timestamp_unix_millis": unix_millis(),
-        "cluster_id": request.cluster_id,
-        "actor": request.actor,
-        "sequence": request.sequence,
-        "reason": request.reason,
-        "action": request.action,
-        "outcome": "committed",
-        "control_sequence": outcome.control_sequence,
-    }))
+    // The control has taken effect: an entry the opened log would not take
+    // is reported, not turned into a failure the operator would retry.
+    if let Err(error) = write_operator_audit_entry(
+        audit,
+        &serde_json::json!({
+            "schema_version": 1,
+            "timestamp_unix_millis": unix_millis(),
+            "cluster_id": request.cluster_id,
+            "actor": request.actor,
+            "sequence": request.sequence,
+            "reason": request.reason,
+            "action": request.action,
+            "outcome": "committed",
+            "control_sequence": outcome.control_sequence,
+        }),
+    ) {
+        record_diagnostic(OperatorDiagnosticRecord {
+            transition: "operator_control_audit_failed".to_string(),
+            reason: Some(error),
+            ..OperatorDiagnosticRecord::default()
+        });
+    }
 }
 
 fn operator_action_name(action: &OperatorControlAction) -> &'static str {
@@ -1231,7 +1244,7 @@ fn audit_operator_control_rejection(request: &OperatorControlRequest, rejection:
         ],
         ..OperatorDiagnosticRecord::default()
     });
-    if let Err(error) = append_operator_audit_entry(&serde_json::json!({
+    let entry = serde_json::json!({
         "schema_version": 1,
         "timestamp_unix_millis": unix_millis(),
         "cluster_id": bounded_audit_value(&request.cluster_id, 128),
@@ -1240,7 +1253,10 @@ fn audit_operator_control_rejection(request: &OperatorControlRequest, rejection:
         "action": action,
         "outcome": "rejected",
         "rejection": rejection,
-    })) {
+    });
+    if let Err(error) =
+        open_operator_audit_log().and_then(|audit| write_operator_audit_entry(audit, &entry))
+    {
         record_diagnostic(OperatorDiagnosticRecord {
             transition: "operator_control_rejection_audit_failed".to_string(),
             reason: Some(error),
@@ -1249,18 +1265,20 @@ fn audit_operator_control_rejection(request: &OperatorControlRequest, rejection:
     }
 }
 
-fn append_operator_audit_entry(entry: &serde_json::Value) -> Result<(), String> {
+/// The operator audit log (MESH_OPERATOR_AUDIT_LOG), opened for appending
+/// and private to its owner, when one is configured.
+fn open_operator_audit_log() -> Result<Option<std::fs::File>, String> {
     let Some(path) = std::env::var("MESH_OPERATOR_AUDIT_LOG")
         .ok()
         .filter(|path| !path.trim().is_empty())
     else {
-        return Ok(());
+        return Ok(None);
     };
     if let Some(parent) = Path::new(&path).parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("operator_audit_directory_failed:{error}"))?;
     }
-    let mut file = OpenOptions::new()
+    let file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
@@ -1271,9 +1289,19 @@ fn append_operator_audit_entry(entry: &serde_json::Value) -> Result<(), String> 
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
             .map_err(|error| format!("operator_audit_permissions_failed:{error}"))?;
     }
-    writeln!(file, "{entry}").map_err(|error| format!("operator_audit_write_failed:{error}"))?;
-    file.sync_data()
-        .map_err(|error| format!("operator_audit_sync_failed:{error}"))
+    Ok(Some(file))
+}
+
+fn write_operator_audit_entry(
+    audit: Option<std::fs::File>,
+    entry: &serde_json::Value,
+) -> Result<(), String> {
+    let Some(mut file) = audit else {
+        return Ok(());
+    };
+    writeln!(file, "{entry}")
+        .and_then(|()| file.sync_data())
+        .map_err(|error| format!("operator_audit_write_failed:{error}"))
 }
 
 /// Runs `query` on `target` over a transient authenticated connection and
@@ -2528,6 +2556,82 @@ mod tests {
     }
 
     use crate::dist::scaling::ControlMutation;
+
+    const TEST_OPERATOR_KEY: &str = "operator-test-key-0123456789abcdef";
+
+    /// A request `TEST_OPERATOR_KEY` signs, valid for a minute.
+    fn signed_request(actor: &str, action: OperatorControlAction) -> OperatorControlRequest {
+        sign_operator_control_request(
+            OperatorControlRequest {
+                schema_version: 1,
+                cluster_id: "mesh".to_string(),
+                actor: actor.to_string(),
+                sequence: 1,
+                expires_at_unix_millis: unix_millis() + 60_000,
+                reason: "operator test".to_string(),
+                action,
+                signature: String::new(),
+            },
+            TEST_OPERATOR_KEY,
+        )
+        .expect("signed request")
+    }
+
+    /// Runs `test` with the operator key and audit log set; only this
+    /// module reads them.
+    fn with_operator_environment(audit_log: &Path, test: impl FnOnce()) {
+        let _guard = operator_test_guard();
+        std::env::set_var("MESH_OPERATOR_KEY", TEST_OPERATOR_KEY);
+        std::env::set_var("MESH_OPERATOR_AUDIT_LOG", audit_log);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
+        std::env::remove_var("MESH_OPERATOR_KEY");
+        std::env::remove_var("MESH_OPERATOR_AUDIT_LOG");
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    /// An audit log that cannot be opened refuses the control before it
+    /// is committed; a committed control used to fail afterwards instead,
+    /// telling the operator it had not happened.
+    #[test]
+    fn an_unwritable_audit_log_refuses_controls_before_they_commit() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let blocked = directory.path().join("file");
+        std::fs::write(&blocked, "").unwrap();
+        with_operator_environment(&blocked.join("audit.log"), || {
+            let request = signed_request(
+                "audit-test-operator",
+                OperatorControlAction::PauseAutoscaler,
+            );
+            let refused = apply_operator_control(&request, false).unwrap_err();
+            assert!(
+                refused.starts_with("operator_audit_directory_failed:"),
+                "{refused}"
+            );
+        });
+
+        // A log that opened but then takes no entry is reported, and the
+        // control stands.
+        let read_only = std::fs::File::open(&blocked).unwrap();
+        let request = signed_request(
+            "audit-write-operator",
+            OperatorControlAction::PauseAutoscaler,
+        );
+        audit_operator_control(
+            Some(read_only),
+            &request,
+            &OperatorControlState::default().record_control(&request, None),
+        );
+        let snapshot = diagnostics_buffer().snapshot(None);
+        assert!(snapshot.entries.iter().any(|entry| {
+            entry.transition == "operator_control_audit_failed"
+                && entry
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.starts_with("operator_audit_write_failed:"))
+        }));
+    }
 
     #[test]
     fn control_mutations_are_refused_for_each_invalid_field() {
