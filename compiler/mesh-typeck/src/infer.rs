@@ -13346,6 +13346,9 @@ fn infer_rebuilt_pattern(
         });
         ctx.fresh_var()
     };
+    // The arm's pattern was checked first: each name in it is one it bound
+    // or a constructor it found.
+    let known = "a pass-through arm's pattern names what it binds or constructs";
     match pat {
         // A name the pattern bound, or a nullary constructor.
         Pattern::Ident(ident) => {
@@ -13353,10 +13356,7 @@ fn infer_rebuilt_pattern(
                 .name()
                 .map(|t| t.text().to_string())
                 .unwrap_or_default();
-            let Some(scheme) = env.lookup(&name) else {
-                return Ok(ctx.fresh_var());
-            };
-            let ty = ctx.instantiate(scheme);
+            let ty = ctx.instantiate(env.lookup(&name).expect(known));
             if matches!(ctx.resolve(ty.clone()), Ty::Fun(..))
                 && name.starts_with(|c: char| c.is_uppercase())
             {
@@ -13368,9 +13368,9 @@ fn infer_rebuilt_pattern(
             Ok(ty)
         }
         Pattern::Constructor(ctor_pat) => {
-            let Some(scheme) = env.lookup(&constructor_lookup_name(ctx, ctor_pat)) else {
-                return Ok(ctx.fresh_var());
-            };
+            let scheme = env
+                .lookup(&constructor_lookup_name(ctx, ctor_pat))
+                .expect(known);
             match ctx.instantiate(scheme) {
                 Ty::Fun(param_types, ret) => {
                     for (field, param_ty) in ctor_pat.fields().zip(param_types) {
