@@ -36,7 +36,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
 #[global_allocator]
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
-extern "C" fn int_to_json(value: u64) -> *mut u8 {
+extern "C-unwind" fn int_to_json(value: u64) -> *mut u8 {
     json::mesh_json_from_int(value as i64)
 }
 
