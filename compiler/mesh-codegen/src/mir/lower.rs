@@ -1462,25 +1462,12 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Determine the key_type tag for a Map.new() call based on the resolved type.
-    /// Returns 1 for String keys, 0 for everything else (Int or unresolved).
-    fn infer_map_key_type(&self, call_range: TextRange) -> i64 {
-        if let Some(ty) = self.types.get(&call_range) {
-            if Self::ty_has_string_map_keys(ty) {
-                return 1;
-            }
-        }
-        0 // KEY_TYPE_INT (default)
-    }
-
-    /// Check if a Ty represents Map<String, V> or List<(String, V)> (i.e., has
-    /// string keys that should be preserved through collect operations).
-    fn ty_has_string_map_keys(ty: &Ty) -> bool {
-        match ty_head(ty) {
-            Some(("Map", [key, ..])) => *key == Ty::string(),
-            // A list of (String, V) tuples.
-            Some(("List", [Ty::Tuple(elems)])) => elems.first() == Some(&Ty::string()),
-            _ => false,
+    /// The runtime key type tag of the map literal at `range`: 1 for String
+    /// keys, 0 (compared as words) for any other.
+    fn infer_map_key_type(&self, range: TextRange) -> i64 {
+        match self.types.get(&range).and_then(ty_head) {
+            Some(("Map", [key, ..])) if *key == Ty::string() => 1,
+            _ => 0,
         }
     }
 
